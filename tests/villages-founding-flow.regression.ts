@@ -1,3 +1,4 @@
+import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
 import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
@@ -1017,7 +1018,115 @@ async function foundingConnectionOwnership() {
   );
 }
 
+async function foundingArchitecturePrompts() {
+  const prompts: string[] = [];
+  let galleryCalls = 0;
+  const unused = () => {
+    throw new Error("Unexpected provider or catalog request");
+  };
+  const service = createFoundingDrafts({
+    findVillagerCard: async () => null,
+    readLinkedPersona: async () => null,
+    readVillageLore: unused,
+    readVillageVisualLore: async () => "",
+    villagesLanguageModels: unused,
+    villagesConnectionIdFor: unused,
+    completeWithRoom: unused,
+    decodeVillageImageDataUrl: unused,
+    generateVillageImage: async (input) => {
+      prompts.push(input.prompt);
+      return { dataUrl: "fixture", mime: "image/png", bytes: new Uint8Array([1]) };
+    },
+    uploadVillageGalleryImage: async () => {
+      galleryCalls++;
+      return { ref: "global-gallery:fixture", id: "fixture", url: "/fixture.png" };
+    },
+  });
+  const venue = {
+    id: "bungalow",
+    name: "Professor Mari's Bungalow",
+    venueClass: "residence",
+    form: "A pleasant resort bungalow",
+    description: "A small timber bungalow with a low roof.",
+    spaceDescription: "A desk under the window.",
+    layout: "both",
+    areas: [
+      { id: "common", name: "Study Nook" },
+      { id: "private", name: "Retreat" },
+    ],
+  };
+  for (const area of ["exterior", "interior", "private"]) {
+    const appearance =
+      area === "exterior"
+        ? venue.description
+        : area === "interior"
+          ? "A desk under the window."
+          : "A quiet resting corner.";
+    const result = await service.generateFoundingVenueImage({
+      venue,
+      area,
+      setting: "A tropical resort",
+      privateOwnerId: "player",
+      zoneName: area === "interior" ? "Study Nook" : "Retreat",
+      zoneAppearance: appearance,
+    });
+    assert.equal(result.url, "/fixture.png");
+    const prompt = prompts.at(-1)!;
+    assert.ok(prompt.includes("Physical form: A pleasant resort bungalow"));
+    assert.ok(prompt.includes("Venue form defines the whole place"));
+    assert.ok(prompt.includes("do not invent materials, windows or proportions"));
+    assert.ok(prompt.includes(appearance));
+    assert.ok(prompt.length <= 4000);
+    if (area !== "exterior") {
+      assert.ok(prompt.includes("Public exterior context for architectural continuity only: " + venue.description));
+      assert.ok(prompt.includes("Do not invent or show adjoining rooms"));
+      assert.ok(!prompt.includes(area === "private" ? "A desk under the window." : "A quiet resting corner."));
+    } else assert.ok(!prompt.includes("Public exterior context"));
+  }
+  const before = prompts.length;
+  assert.equal(galleryCalls, before);
+  await assert.rejects(
+    service.generateFoundingVenueImage({
+      venue,
+      area: "private",
+      privateOwnerId: "resident",
+      zoneAppearance: "Hidden contents",
+      setting: "Resort",
+    }),
+    /Hidden personal spaces/,
+  );
+  assert.equal(prompts.length, before, "hidden resident space sends no image request");
+  const overflowing = {
+    ...venue,
+    name: "n".repeat(100),
+    form: "f".repeat(240),
+    description: "e".repeat(1000),
+    areas: Array.from({ length: 5 }, (_, id) => ({ id: String(id), name: "z".repeat(100) })),
+  };
+  const original = structuredClone(overflowing);
+  await assert.rejects(
+    service.generateFoundingVenueImage({
+      venue: overflowing,
+      area: "interior",
+      setting: "Resort",
+      zoneName: "s".repeat(100),
+      zonePurpose: "p".repeat(240),
+      zoneAppearance: "a".repeat(1000),
+      sceneryArtStyle: "v".repeat(600),
+    }),
+    /too long for an image prompt/,
+  );
+  assert.equal(prompts.length, before, "over-budget required facts send no image request");
+  assert.deepEqual(overflowing, original, "failed generation preserves authored draft");
+  assert.equal(galleryCalls, before, "rejected requests create no gallery result");
+
+  console.log(
+    "Founding images: shared architecture across Exterior/Common/player Private; resident Private guard retained.",
+  );
+}
+
 await main()
+  .then(foundingArchitecturePrompts)
   .then(reviewNavigation)
   .then(foundingConnectionOwnership)
   .catch((error) => {

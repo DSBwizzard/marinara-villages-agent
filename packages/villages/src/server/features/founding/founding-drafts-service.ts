@@ -336,10 +336,14 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           ? renderResidentFoundingContext(row.resident.name, foundingContext)
           : "",
         `Venue Type: ${row.venueType || row.venueClass}. Physical form: ${row.form}. Selected Zone: ${asTrimmedString(input.zoneName) || "Entrance"}. Used for: ${asTrimmedString(input.zonePurpose).slice(0, 240) || "Arrival and approach"}.`,
+        "Shared architecture: Venue form defines the whole place. Preserve its scale and construction across every Zone. Zone appearance describes part of this same place and must not redefine its architecture. Use only explicitly described architectural facts; do not invent materials, windows or proportions from the building type alone.",
+        area !== "exterior" && row.description
+          ? `Public exterior context for architectural continuity only: ${row.description}. Carry over explicit architectural cues that apply inside; do not depict this exterior or infer hidden contents.`
+          : "",
         `Wide, empty ${area === "private" ? "interior" : area} view of ${row.name || "a village venue"}, a ${row.form || row.venueClass} in ${asTrimmedString(input.villageName) || "a village"}.`,
         area === "exterior"
           ? "Show the described Venue entrance and approach, not its enterable interior. A room's approach can be a corridor within a larger building; do not invent a detached building or outdoor surroundings."
-          : "Show the described enterable space from inside, not the exterior.",
+          : "Show only the selected enterable space from inside, within this same Venue, not the exterior. Do not invent or show adjoining rooms, other Zones or hidden private contents.",
         `${area} description, follow closely: ${areaDescription}.`,
         row.layout
           ? `Selected layout: ${row.layout}. Only these areas exist: ${JSON.stringify(Array.isArray(row.areas) ? row.areas.map((area) => ({ id: record(area).id, name: record(area).name })) : [])}. Do not invent other interiors or adjoining rooms. Do not reveal hidden private contents.`
