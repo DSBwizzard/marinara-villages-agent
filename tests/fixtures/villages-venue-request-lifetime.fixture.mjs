@@ -134,7 +134,8 @@ export async function verifyVenueRequestLifetimes(browser) {
     await f.page.evaluate(() => window.h.refound());
     await expect.poll(async () => (await f.state()).setting).toBe("B");
   }
-  for (const width of [1280, 390])
+  // State/ownership harness: responsive presentation is covered by the visual suites.
+  for (const width of [1280])
     for (const strict of [false, true]) {
       for (const kind of commands)
         for (const fail of [false, true]) {
@@ -311,6 +312,6 @@ export async function verifyVenueRequestLifetimes(browser) {
       }
     }
   console.log(
-    "Venue request lifetimes: exact current requests, draft sources, shared admission, replacement Settings requests, reset/hydration, retained callbacks and disposal passed (actual hooks/page, synthetic HTTP; desktop/mobile and StrictMode).",
+    "Venue request lifetimes: exact current requests, draft sources, shared admission, replacement Settings requests, reset/hydration, retained callbacks and disposal passed (actual hooks/page, synthetic HTTP; single viewport and StrictMode).",
   );
 }

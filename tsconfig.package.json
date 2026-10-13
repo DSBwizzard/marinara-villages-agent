@@ -7,6 +7,8 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "noEmit": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".build-tmp/typecheck.tsbuildinfo",
     "isolatedModules": true,
     "allowJs": true,
     "checkJs": false,

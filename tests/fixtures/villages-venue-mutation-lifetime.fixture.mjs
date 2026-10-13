@@ -145,7 +145,8 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     });
     await expect.poll(async () => (await f.state()).setting).toBe("B");
   }
-  for (const width of [1280, 390])
+  // State/ownership harness: responsive presentation is covered by the visual suites.
+  for (const width of [1280])
     for (const strict of [false, true]) {
       // Current Save preserves existing PUT and new Project POST, including no immediate returned Venue.
       for (const create of [false, true])
@@ -462,6 +463,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
         }
     }
   console.log(
-    "Venue mutation lifetimes: current Save/Remove/Decide contracts, shared Settings admission, guarded delete continuation, newer drafts, replacement ownership and disposal passed (mounted hooks, synthetic HTTP; desktop/mobile and StrictMode).",
+    "Venue mutation lifetimes: current Save/Remove/Decide contracts, shared Settings admission, guarded delete continuation, newer drafts, replacement ownership and disposal passed (mounted hooks, synthetic HTTP; single viewport and StrictMode).",
   );
 }

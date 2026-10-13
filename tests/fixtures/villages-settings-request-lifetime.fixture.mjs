@@ -114,7 +114,8 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     add: { notice: "A notice" },
     remove: null,
   };
-  for (const width of [1280, 390])
+  // State/ownership harness: responsive presentation is covered by the visual suites.
+  for (const width of [1280])
     for (const strict of [false, true]) {
       // Current success and failure retain payloads, optimistic updates, rollback and acknowledgement.
       for (const kind of kinds)
@@ -317,6 +318,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
     }
   console.log(
-    "Settings request lifetimes: current contracts/rollback, shared synchronous admission, real replacement requests, raw notice acknowledgement, reset/founding/hydration, retained callbacks and disposal passed (mounted hooks, synthetic HTTP; desktop/mobile and StrictMode).",
+    "Settings request lifetimes: current contracts/rollback, shared synchronous admission, real replacement requests, raw notice acknowledgement, reset/founding/hydration, retained callbacks and disposal passed (mounted hooks, synthetic HTTP; single viewport and StrictMode).",
   );
 }

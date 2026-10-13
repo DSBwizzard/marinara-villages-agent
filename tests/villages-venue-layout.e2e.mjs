@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+// Test cases: venues/layout/exterior, venues/layout/common, venues/layout/private, venues/layout/both, venues/screen-lifetimes
+import { runCase, wantsCase } from "../scripts/test-cases.mjs";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
@@ -13,6 +15,7 @@ const browser = await chromium.launch({
 try {
   for (const width of [1366, 390])
     for (const layout of ["exterior", "common", "private", "both"]) {
+      if (!wantsCase("venues/layout/" + layout + "/" + width)) continue;
       const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -120,11 +123,10 @@ try {
       }
       assert.deepEqual(errors, []);
       await page.close();
+      await runCase("venues/layout/" + layout + "/" + width, async () => {});
     }
-  await verifyVenueScreenLifetimes(browser);
-  console.log(
-    "Desktop and phone new-venue layouts: Entrance-only and multiple Zone selection, separated name/use/appearance, class association, and submissions passed.",
-  );
+  await runCase("venues/screen-lifetimes", () => verifyVenueScreenLifetimes(browser));
+  console.log("Selected Venue layout and screen-lifetime scenarios passed; the case report records exact coverage.");
 } finally {
   await browser.close();
 }

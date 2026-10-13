@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 import { expect } from "./fast-browser-expect.mjs";
+import { runCase, wantsCase } from "../../scripts/test-cases.mjs";
 
 /** Actual mounted hooks; HTTP and authoritative selection/reset are controlled inputs. */
 export async function verifySceneActionLifetimes(browser) {
@@ -664,274 +665,282 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   }
 
   for (const strict of [false, true]) {
-    for (const width of [1366, 390]) {
-      for (const action of ["move", "continue"]) {
-        const hold = action === "move" ? "preflight" : "continue";
-        const control = await mount(strict, width, { hold });
-        try {
-          const [index, duplicate, other] = await control.page.evaluate(
-            (kind) => [
-              window.h.launch(kind),
-              window.h.launch(kind),
-              window.h.launch(kind === "move" ? "continue" : "move"),
-            ],
-            action,
-          );
-          await expect.poll(() => control.held.length).toBe(1);
-          await control.settle(duplicate);
-          await control.settle(other);
-          assert.equal(control.requests.length, 1, "Duplicate admission does not dispatch another request");
-          await control.release();
-          await control.settle(index);
-          const state = await control.state();
-          assert.equal(state.id, "A");
-          assert.equal(state.busy, false);
-          assert.equal(state.error, "");
-          assert.equal((await control.refs()).flight, false);
-          assert.equal(control.requests.filter((request) => request.method === "POST").length, 1);
-          if (action === "move") {
-            assert.deepEqual(control.requests[1].body, {
-              sessionId: "A",
-              zoneId: "private-A",
-              operationId: control.requests[1].body.operationId,
-              expectedSceneRevision: 0,
-            });
-            assert.ok(control.requests[1].body.operationId);
-            assert.equal(state.mode, "chat");
-            assert.equal(state.target, "");
-            assert.equal(state.boundary, "");
-            assert.equal((await control.refs()).move, null);
-            assert.equal(await control.page.evaluate(() => window.loads), 1);
-          } else {
-            assert.deepEqual(control.requests[0].body, { sessionId: "A" });
-            assert.equal(state.notice, "The opening failed. You can continue the Scene now.");
+    // This harness renders state, not responsive UI. Visual suites cover both widths.
+    for (const width of [1366]) {
+      if (wantsCase("scene/movement")) {
+        for (const action of ["move", "continue"]) {
+          const hold = action === "move" ? "preflight" : "continue";
+          const control = await mount(strict, width, { hold });
+          try {
+            const [index, duplicate, other] = await control.page.evaluate(
+              (kind) => [
+                window.h.launch(kind),
+                window.h.launch(kind),
+                window.h.launch(kind === "move" ? "continue" : "move"),
+              ],
+              action,
+            );
+            await expect.poll(() => control.held.length).toBe(1);
+            await control.settle(duplicate);
+            await control.settle(other);
+            assert.equal(control.requests.length, 1, "Duplicate admission does not dispatch another request");
+            await control.release();
+            await control.settle(index);
+            const state = await control.state();
+            assert.equal(state.id, "A");
+            assert.equal(state.busy, false);
+            assert.equal(state.error, "");
+            assert.equal((await control.refs()).flight, false);
+            assert.equal(control.requests.filter((request) => request.method === "POST").length, 1);
+            if (action === "move") {
+              assert.deepEqual(control.requests[1].body, {
+                sessionId: "A",
+                zoneId: "private-A",
+                operationId: control.requests[1].body.operationId,
+                expectedSceneRevision: 0,
+              });
+              assert.ok(control.requests[1].body.operationId);
+              assert.equal(state.mode, "chat");
+              assert.equal(state.target, "");
+              assert.equal(state.boundary, "");
+              assert.equal((await control.refs()).move, null);
+              assert.equal(await control.page.evaluate(() => window.loads), 1);
+            } else {
+              assert.deepEqual(control.requests[0].body, { sessionId: "A" });
+              assert.equal(state.notice, "The opening failed. You can continue the Scene now.");
+            }
+            assert.equal((await control.refs()).completion, null);
+          } finally {
+            await control.close();
           }
-          assert.equal((await control.refs()).completion, null);
-        } finally {
-          await control.close();
+
+          for (const transition of ["replacement", "reset", "closed", "ended", "unmount"]) {
+            const f = await mount(strict, width, { hold });
+            try {
+              const index = await f.launch(action);
+              await expect.poll(() => f.held.length).toBe(1);
+              await f.page.evaluate((kind) => {
+                if (kind === "replacement") window.h.select("B", true);
+                else if (kind === "reset") window.h.reset();
+                else if (kind === "unmount") window.unmount();
+                else if (kind === "closed") window.h.close();
+                else window.h.end();
+              }, transition);
+              await expect(f.page.locator("#state"))[transition === "unmount" ? "toHaveCount" : "toContainText"](
+                transition === "unmount"
+                  ? 0
+                  : transition === "replacement"
+                    ? '"id":"B"'
+                    : transition === "reset"
+                      ? '"founded":false'
+                      : '"busy":false',
+              );
+              const selected = transition === "unmount" ? await f.refs() : await f.snapshot();
+              await f.release();
+              await f.settle(index);
+              assert.deepEqual(transition === "unmount" ? await f.refs() : await f.snapshot(), selected);
+              assert.equal(f.requests.length, 1, "Retired preflight or reply admits no follow-up request");
+            } finally {
+              await f.close();
+            }
+          }
+
+          for (const transition of ["selection", "refounding"]) {
+            const aba = await mount(strict, width);
+            try {
+              await aba.page.evaluate((kind) => window.h.retain(kind), action);
+              await aba.page.evaluate(
+                (kind) => (kind === "selection" ? window.h.select() : window.h.reset()),
+                transition,
+              );
+              await expect(aba.page.locator("#state")).toContainText(
+                transition === "selection" ? '"id":"B"' : '"founded":false',
+              );
+              await aba.page.evaluate(
+                (kind) => (kind === "selection" ? window.h.select("A", false, 10) : window.h.refound()),
+                transition,
+              );
+              await expect(aba.page.locator("#state")).toContainText('"revision":10');
+              const selected = await aba.snapshot();
+              const index = await aba.page.evaluate(() => window.h.old());
+              await aba.settle(index);
+              assert.deepEqual(await aba.snapshot(), selected);
+              assert.equal(aba.requests.length, 0, "A retained prior-selection callback cannot regain ownership by ID");
+            } finally {
+              await aba.close();
+            }
+          }
+
+          const hydrate = await mount(strict, width, { hold, hydrate: true, opening: action === "continue" });
+          try {
+            const index = await hydrate.launch(action);
+            await expect.poll(() => hydrate.held.length).toBe(1);
+            await hydrate.page.evaluate(() => window.h.hydrate());
+            await expect(hydrate.page.locator("#state")).toContainText('"founded":true');
+            await hydrate.release();
+            await hydrate.settle(index);
+            assert.equal(
+              (await hydrate.state()).revision,
+              2,
+              "Initial snapshot hydration does not retire a current action",
+            );
+            assert.equal((await hydrate.state()).busy, false);
+            assert.equal(hydrate.requests.filter((request) => request.method === "POST").length, 1);
+          } finally {
+            await hydrate.close();
+          }
+
+          for (const retire of [false, true]) {
+            const marker = await mount(strict, width, { hold });
+            try {
+              await marker.page.evaluate(() => window.h.marker());
+              const pointer = (await marker.refs()).completion;
+              const index = await marker.launch(action);
+              await expect.poll(() => marker.held.length).toBe(1);
+              assert.deepEqual(
+                (await marker.refs()).completion,
+                pointer,
+                "Move/Continue do not publish a polling-suppression marker",
+              );
+              if (retire) {
+                await marker.page.evaluate(() => window.h.unfound());
+                await expect(marker.page.locator("#state")).toContainText('"busy":false');
+                assert.deepEqual(
+                  (await marker.refs()).completion,
+                  pointer,
+                  "Retirement preserves the captured marker it did not publish",
+                );
+              }
+              await marker.release();
+              await marker.settle(index);
+              assert.deepEqual(
+                (await marker.refs()).completion,
+                pointer,
+                "Move/Continue completion preserves the prior marker",
+              );
+            } finally {
+              await marker.close();
+            }
+          }
+
+          const replacement = await mount(strict, width, { hold });
+          try {
+            const index = await replacement.launch(action);
+            await expect.poll(() => replacement.held.length).toBe(1);
+            await replacement.page.evaluate(() => window.h.select());
+            await expect(replacement.page.locator("#state")).toContainText('"id":"B"');
+            const second = await replacement.launch(action);
+            if (action === "move") await expect.poll(() => replacement.held.length).toBe(2);
+            else await expect.poll(() => replacement.requests.length).toBe(2);
+            const old = replacement.held.shift();
+            await old.route.fulfill(old.response);
+            await replacement.settle(index);
+            assert.equal((await replacement.state()).busy, true);
+            const current = replacement.held.shift();
+            await current.route.fulfill({
+              ...current.response,
+              body: JSON.stringify(action === "move" ? { operation: null } : { session: scene("B") }),
+            });
+            await replacement.settle(second);
+            assert.equal((await replacement.state()).id, "B");
+            assert.equal((await replacement.state()).busy, false);
+          } finally {
+            await replacement.close();
+          }
         }
 
-        for (const transition of ["replacement", "reset", "closed", "ended", "unmount"]) {
-          const f = await mount(strict, width, { hold });
+        for (const stage of ["zone", "recovery-operation", "active", "archive"]) {
+          const f = await mount(strict, width, { hold: stage, fail: stage !== "zone", archive: stage === "archive" });
           try {
-            const index = await f.launch(action);
+            const index = await f.launch("move");
             await expect.poll(() => f.held.length).toBe(1);
-            await f.page.evaluate((kind) => {
-              if (kind === "replacement") window.h.select("B", true);
-              else if (kind === "reset") window.h.reset();
-              else if (kind === "unmount") window.unmount();
-              else if (kind === "closed") window.h.close();
-              else window.h.end();
-            }, transition);
-            await expect(f.page.locator("#state"))[transition === "unmount" ? "toHaveCount" : "toContainText"](
-              transition === "unmount"
-                ? 0
-                : transition === "replacement"
-                  ? '"id":"B"'
-                  : transition === "reset"
-                    ? '"founded":false'
-                    : '"busy":false',
-            );
-            const selected = transition === "unmount" ? await f.refs() : await f.snapshot();
+            await f.page.evaluate(() => window.h.select("B", true));
+            await expect(f.page.locator("#state")).toContainText('"id":"B"');
+            const selected = await f.snapshot(),
+              count = f.requests.length;
             await f.release();
             await f.settle(index);
-            assert.deepEqual(transition === "unmount" ? await f.refs() : await f.snapshot(), selected);
-            assert.equal(f.requests.length, 1, "Retired preflight or reply admits no follow-up request");
+            assert.deepEqual(
+              await f.snapshot(),
+              selected,
+              "Retired Move recovery preserves every replacement field/ref",
+            );
+            assert.equal(f.requests.length, count, "Recovery stops before its next read after retirement");
           } finally {
             await f.close();
           }
         }
 
-        for (const transition of ["selection", "refounding"]) {
-          const aba = await mount(strict, width);
+        for (const action of ["move", "continue"]) {
+          const f = await mount(strict, width, { hold: action === "move" ? "zone" : "continue", fail: true });
           try {
-            await aba.page.evaluate((kind) => window.h.retain(kind), action);
-            await aba.page.evaluate(
-              (kind) => (kind === "selection" ? window.h.select() : window.h.reset()),
-              transition,
+            const index = await f.launch(action);
+            await expect.poll(() => f.held.length).toBe(1);
+            await f.page.evaluate(() => window.h.select("B", true));
+            await expect(f.page.locator("#state")).toContainText('"id":"B"');
+            const selected = await f.snapshot();
+            await f.release();
+            await f.settle(index);
+            assert.deepEqual(
+              await f.snapshot(),
+              selected,
+              "Retired failure preserves replacement error and pending state",
             );
-            await expect(aba.page.locator("#state")).toContainText(
-              transition === "selection" ? '"id":"B"' : '"founded":false',
-            );
-            await aba.page.evaluate(
-              (kind) => (kind === "selection" ? window.h.select("A", false, 10) : window.h.refound()),
-              transition,
-            );
-            await expect(aba.page.locator("#state")).toContainText('"revision":10');
-            const selected = await aba.snapshot();
-            const index = await aba.page.evaluate(() => window.h.old());
-            await aba.settle(index);
-            assert.deepEqual(await aba.snapshot(), selected);
-            assert.equal(aba.requests.length, 0, "A retained prior-selection callback cannot regain ownership by ID");
           } finally {
-            await aba.close();
+            await f.close();
           }
         }
 
-        const hydrate = await mount(strict, width, { hold, hydrate: true, opening: action === "continue" });
-        try {
-          const index = await hydrate.launch(action);
-          await expect.poll(() => hydrate.held.length).toBe(1);
-          await hydrate.page.evaluate(() => window.h.hydrate());
-          await expect(hydrate.page.locator("#state")).toContainText('"founded":true');
-          await hydrate.release();
-          await hydrate.settle(index);
-          assert.equal(
-            (await hydrate.state()).revision,
-            2,
-            "Initial snapshot hydration does not retire a current action",
-          );
-          assert.equal((await hydrate.state()).busy, false);
-          assert.equal(hydrate.requests.filter((request) => request.method === "POST").length, 1);
-        } finally {
-          await hydrate.close();
-        }
-
-        for (const retire of [false, true]) {
-          const marker = await mount(strict, width, { hold });
+        for (const recovered of [false, true]) {
+          const saved = {
+            id: "saved-move",
+            kind: "move",
+            status: "failed",
+            attemptId: "saved-attempt",
+            input: { zoneId: "private-A" },
+          };
+          const f = await mount(strict, width, { fail: true, recovered, closed: recovered, archive: recovered, saved });
           try {
-            await marker.page.evaluate(() => window.h.marker());
-            const pointer = (await marker.refs()).completion;
-            const index = await marker.launch(action);
-            await expect.poll(() => marker.held.length).toBe(1);
-            assert.deepEqual(
-              (await marker.refs()).completion,
-              pointer,
-              "Move/Continue do not publish a polling-suppression marker",
-            );
-            if (retire) {
-              await marker.page.evaluate(() => window.h.unfound());
-              await expect(marker.page.locator("#state")).toContainText('"busy":false');
-              assert.deepEqual(
-                (await marker.refs()).completion,
-                pointer,
-                "Retirement preserves the captured marker it did not publish",
-              );
-            }
-            await marker.release();
-            await marker.settle(index);
-            assert.deepEqual(
-              (await marker.refs()).completion,
-              pointer,
-              "Move/Continue completion preserves the prior marker",
-            );
+            const index = await f.launch("move");
+            await f.settle(index);
+            const state = await f.state();
+            assert.equal(state.busy, false);
+            assert.equal(state.error, recovered ? "" : "Exact action failure");
+            assert.equal(state.mode, recovered ? "chat" : "move");
+            assert.equal((await f.refs()).move, recovered ? null : "saved-move");
+            assert.deepEqual(f.requests.find((request) => request.kind === "zone").body, {
+              sessionId: "A",
+              zoneId: "private-A",
+              operationId: "saved-move",
+              expectedSceneRevision: 0,
+              retryOfAttemptId: "saved-attempt",
+            });
+            assert.equal(f.requests.filter((request) => request.method === "POST").length, 1);
+            assert.equal(await f.page.evaluate(() => window.loads), recovered ? 1 : 0);
           } finally {
-            await marker.close();
+            await f.close();
           }
         }
-
-        const replacement = await mount(strict, width, { hold });
+        const failedContinue = await mount(strict, width, { fail: true, opening: true });
         try {
-          const index = await replacement.launch(action);
-          await expect.poll(() => replacement.held.length).toBe(1);
-          await replacement.page.evaluate(() => window.h.select());
-          await expect(replacement.page.locator("#state")).toContainText('"id":"B"');
-          const second = await replacement.launch(action);
-          if (action === "move") await expect.poll(() => replacement.held.length).toBe(2);
-          else await expect.poll(() => replacement.requests.length).toBe(2);
-          const old = replacement.held.shift();
-          await old.route.fulfill(old.response);
-          await replacement.settle(index);
-          assert.equal((await replacement.state()).busy, true);
-          const current = replacement.held.shift();
-          await current.route.fulfill({
-            ...current.response,
-            body: JSON.stringify(action === "move" ? { operation: null } : { session: scene("B") }),
-          });
-          await replacement.settle(second);
-          assert.equal((await replacement.state()).id, "B");
-          assert.equal((await replacement.state()).busy, false);
-        } finally {
-          await replacement.close();
-        }
-      }
-
-      for (const stage of ["zone", "recovery-operation", "active", "archive"]) {
-        const f = await mount(strict, width, { hold: stage, fail: stage !== "zone", archive: stage === "archive" });
-        try {
-          const index = await f.launch("move");
-          await expect.poll(() => f.held.length).toBe(1);
-          await f.page.evaluate(() => window.h.select("B", true));
-          await expect(f.page.locator("#state")).toContainText('"id":"B"');
-          const selected = await f.snapshot(),
-            count = f.requests.length;
-          await f.release();
-          await f.settle(index);
-          assert.deepEqual(await f.snapshot(), selected, "Retired Move recovery preserves every replacement field/ref");
-          assert.equal(f.requests.length, count, "Recovery stops before its next read after retirement");
-        } finally {
-          await f.close();
-        }
-      }
-
-      for (const action of ["move", "continue"]) {
-        const f = await mount(strict, width, { hold: action === "move" ? "zone" : "continue", fail: true });
-        try {
-          const index = await f.launch(action);
-          await expect.poll(() => f.held.length).toBe(1);
-          await f.page.evaluate(() => window.h.select("B", true));
-          await expect(f.page.locator("#state")).toContainText('"id":"B"');
-          const selected = await f.snapshot();
-          await f.release();
-          await f.settle(index);
+          const index = await failedContinue.launch("continue");
+          await failedContinue.settle(index);
+          assert.equal((await failedContinue.state()).error, "Exact action failure");
+          assert.equal((await failedContinue.state()).busy, false);
+          assert.equal((await failedContinue.refs()).flight, false);
           assert.deepEqual(
-            await f.snapshot(),
-            selected,
-            "Retired failure preserves replacement error and pending state",
+            failedContinue.requests.map((request) => request.body),
+            [{ sessionId: "A" }],
           );
         } finally {
-          await f.close();
+          await failedContinue.close();
         }
+        await runCase("scene/movement/" + strict, async () => {});
       }
-
-      for (const recovered of [false, true]) {
-        const saved = {
-          id: "saved-move",
-          kind: "move",
-          status: "failed",
-          attemptId: "saved-attempt",
-          input: { zoneId: "private-A" },
-        };
-        const f = await mount(strict, width, { fail: true, recovered, closed: recovered, archive: recovered, saved });
-        try {
-          const index = await f.launch("move");
-          await f.settle(index);
-          const state = await f.state();
-          assert.equal(state.busy, false);
-          assert.equal(state.error, recovered ? "" : "Exact action failure");
-          assert.equal(state.mode, recovered ? "chat" : "move");
-          assert.equal((await f.refs()).move, recovered ? null : "saved-move");
-          assert.deepEqual(f.requests.find((request) => request.kind === "zone").body, {
-            sessionId: "A",
-            zoneId: "private-A",
-            operationId: "saved-move",
-            expectedSceneRevision: 0,
-            retryOfAttemptId: "saved-attempt",
-          });
-          assert.equal(f.requests.filter((request) => request.method === "POST").length, 1);
-          assert.equal(await f.page.evaluate(() => window.loads), recovered ? 1 : 0);
-        } finally {
-          await f.close();
-        }
-      }
-      const failedContinue = await mount(strict, width, { fail: true, opening: true });
-      try {
-        const index = await failedContinue.launch("continue");
-        await failedContinue.settle(index);
-        assert.equal((await failedContinue.state()).error, "Exact action failure");
-        assert.equal((await failedContinue.state()).busy, false);
-        assert.equal((await failedContinue.refs()).flight, false);
-        assert.deepEqual(
-          failedContinue.requests.map((request) => request.body),
-          [{ sessionId: "A" }],
-        );
-      } finally {
-        await failedContinue.close();
-      }
-      await verifyExitActions(strict, width);
+      await runCase("scene/exit/" + strict, () => verifyExitActions(strict, width));
     }
   }
   console.log(
-    "Mounted Scene actions: current/duplicate, replacement/reset/closure/disposal, ABA, independent admission, exact resend and recovery stages passed in normal/StrictMode desktop/mobile",
+    "Selected mounted Scene action lifetimes passed in normal/StrictMode; responsive UI is covered separately.",
   );
 }

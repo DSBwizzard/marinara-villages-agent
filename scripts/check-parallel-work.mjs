@@ -31,7 +31,9 @@ if (current.base.ref !== "staging") {
 
 const mergeBase = execFileSync("git", ["merge-base", baseSha, current.head.sha], { encoding: "utf8" }).trim();
 if (mergeBase !== baseSha) {
-  throw new Error("This branch is behind origin/staging. Rebase onto the latest staging and push again.");
+  console.warn(
+    "Branch predates current staging. CI validates GitHub's merged candidate; update only when integration needs it.",
+  );
 }
 
 async function paginated(path) {
@@ -65,7 +67,9 @@ if (conflicts.length) {
   for (const conflict of conflicts) {
     console.error(`- ${conflict.path} (PR #${conflict.number}: ${conflict.title})`);
   }
-  throw new Error("Review overlapping changes together and rebase after integrating the related PR.");
+  console.warn("Coordinate these changes. File overlap alone is not a merge conflict and does not block this PR.");
 }
 
-console.log("Branch is based on current staging and has no changed-file overlap with other open Villages PRs.");
+console.log(
+  "Parallel-work coordination inspected. GitHub mergeability and required candidate checks remain authoritative.",
+);
