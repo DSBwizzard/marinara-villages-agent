@@ -134,15 +134,16 @@ assert.equal(chooseAgendaZone(place("exterior"), "a", "Sleep").id, "exterior");
 assert.equal(chooseAgendaZone(place("common"), "a", "Sleep").kind, "shared-residence");
 const vacant = place("private", "residence", "");
 assert.equal(
-  vacant.zones!.find((zone) => zone.kind === "private-residence")!.preparation,
-  undefined,
-  "vacant rooms do not spend generation requests",
+  vacant.zones!.find((zone) => zone.kind === "private-residence")!.preparation?.status,
+  "pending",
+  "vacant rooms prepare neutral interiors",
 );
 assert.equal(canOccupyZone(vacant, vacant.zones![1]!, "a"), false);
 const initial = defaultVillageState();
 initial.venues = [privateOnly, place("exterior", "residence", "b"), vacant];
 initial.venues[0]!.zones![1]!.description = "A secret journal and old furnishings.";
-initial.venues[0]!.zones![1]!.state.items = ["Fixed hammock"];
+initial.venues[0]!.zones![1]!.state.items = ["Personal hammock"];
+initial.venues[0]!.zones![1]!.state.condition = "Fixed hammock hooks remain anchored to the beams.";
 initial.venues[0]!.zones![1]!.state.publicFacts = ["A personal secret"];
 initial.villagers = coerceVillageState({
   wishSystemVersion: 3,
@@ -169,6 +170,9 @@ initial.villagers = coerceVillageState({
     },
   ],
 }).villagers;
+// Neutral preparation is a separate model job; this fixture completes it before testing moves.
+assert.throws(() => assertResidencePrivateDestination(initial, vacant, "b", "personal"), /no longer vacant/);
+vacant.zones!.find((zone) => zone.id === "personal")!.preparation!.status = "ready";
 const state = coerceVillageState(initial);
 assertResidencePrivateDestination(state, vacant, "b", "personal");
 assert.throws(() => assertResidencePrivateDestination(state, privateOnly, "b", "personal"), /no longer vacant/);
@@ -237,7 +241,12 @@ async function main() {
     current = await readVillageState();
     const old = current.venues.find((venue) => venue.id === privateOnly.id)!;
     assert.equal(old.zones!.find((zone) => zone.id === "personal")!.ownerId, undefined);
-    assert.deepEqual(old.zones!.find((zone) => zone.id === "personal")!.state.items, ["Fixed hammock"]);
+    assert.deepEqual(old.zones!.find((zone) => zone.id === "personal")!.state.items, []);
+    assert.equal(
+      old.zones!.find((zone) => zone.id === "personal")!.state.condition,
+      "Fixed hammock hooks remain anchored to the beams.",
+    );
+    assert.deepEqual(old.archivedPrivateSpaces![0]!.space.state.items, ["Personal hammock"]);
     assert.match(old.archivedPrivateSpaces![0]!.space.description, /secret journal/);
     assert.deepEqual(
       current.venues.find((venue) => venue.id === outside.id)!.zones!.map((zone) => zone.kind),
@@ -386,8 +395,16 @@ async function main() {
     const chamber = expanded.zones!.find((zone) => zone.kind === "private-residence")!;
     assert.ok(chamber.upgradeId);
     assert.equal(chamber.ownerId, undefined);
-    assert.equal(chamber.preparation, undefined);
+    assert.equal(chamber.preparation?.status, "pending");
     assert.equal(venueCapacity(expanded), 2);
+    // The room stays closed during neutral preparation; later checks use a completed synthetic job.
+    assert.throws(() => assertResidencePrivateDestination(current, expanded, "player", chamber.id), /no longer vacant/);
+    chamber.preparation!.status = "ready";
+    await mutateVillageState((record) => {
+      for (const venue of record.venues)
+        for (const zone of venue.zones ?? [])
+          if (zone.preparation?.status === "pending") zone.preparation.status = "ready";
+    });
     assert.equal(
       canOccupyZone(expanded, chamber, "a"),
       false,
@@ -411,8 +428,8 @@ async function main() {
     current = await readVillageState();
     assert.equal(current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.ownerId, "player");
     assert.equal(
-      current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.state.items[0],
-      "Fixed hammock",
+      current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.state.condition,
+      "Fixed hammock hooks remain anchored to the beams.",
     );
     await proposePlayerMove(outside.id, chamber.id);
     current = await readVillageState();
