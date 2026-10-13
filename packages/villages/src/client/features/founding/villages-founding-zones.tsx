@@ -44,12 +44,14 @@ export function FoundingZoneFields({
   imageFields,
   editAccess = true,
   selectedZoneId,
+  identityInHeader = false,
 }: {
   venue: VillageVenue;
   people: { id: string; name: string }[];
   busy: boolean;
   editAccess?: boolean;
   selectedZoneId?: string;
+  identityInHeader?: boolean;
   onPatch(venue: VillageVenue): void;
   imageFields(
     area: "exterior" | "interior" | "private",
@@ -77,31 +79,39 @@ export function FoundingZoneFields({
           const policy = zone.access ?? draftZonePolicy(venue, zone, personal);
           const generatedLater = personal && zone.ownerId !== "player";
           return (
-            <section key={zone.id}>
-              <h4>{zone.name || "Zone"}</h4>
-              <label>
-                Zone name
-                <input
-                  aria-label="Zone name"
-                  disabled={busy}
-                  maxLength={100}
-                  value={zone.name ?? ""}
-                  placeholder="Living room, bedroom, foyer…"
-                  onChange={(event) => patch({ name: event.target.value })}
-                />
-              </label>
-              <label>
-                Used for
-                <input
-                  aria-label="Zone used for"
-                  disabled={busy}
-                  maxLength={240}
-                  value={zone.purpose ?? ""}
-                  placeholder="Eating together, sleeping, worship, washing…"
-                  onChange={(event) => patch({ purpose: event.target.value })}
-                />
-              </label>
-              <p>Describe the activities here. Access is a separate choice.</p>
+            <section key={zone.id} data-zone-id={zone.id}>
+              {!identityInHeader ? (
+                <>
+                  <h4>{zone.name || "Zone"}</h4>
+                  <label>
+                    Zone name
+                    <input
+                      aria-label="Zone name"
+                      disabled={busy}
+                      maxLength={100}
+                      value={zone.name ?? ""}
+                      placeholder="Living room, bedroom, foyer…"
+                      onChange={(event) => patch({ name: event.target.value })}
+                    />
+                  </label>
+                </>
+              ) : null}
+              {!identityInHeader ? (
+                <>
+                  <label>
+                    Used for
+                    <input
+                      aria-label="Zone used for"
+                      disabled={busy}
+                      maxLength={240}
+                      value={zone.purpose ?? ""}
+                      placeholder="Eating together, sleeping, worship, washing…"
+                      onChange={(event) => patch({ purpose: event.target.value })}
+                    />
+                  </label>
+                  <p>Describe the activities here. Access is a separate choice.</p>
+                </>
+              ) : null}
               {(venue.classes?.length ?? 0) > 1 ? (
                 <label>
                   Zone role
@@ -125,8 +135,24 @@ export function FoundingZoneFields({
                 </label>
               ) : null}
               {generatedLater ? (
-                <p>Appearance is prepared for the assigned resident after founding and stays hidden until entry.</p>
-              ) : (
+                <>
+                  <label>
+                    Room specification (optional)
+                    <textarea
+                      aria-label="Room specification"
+                      disabled={busy}
+                      maxLength={1000}
+                      rows={3}
+                      value={zone.roomSpecification ?? zone.description}
+                      placeholder="Structure, windows, and furnishings you are providing…"
+                      onChange={(event) => patch({ roomSpecification: event.target.value })}
+                    />
+                  </label>
+                  <p>
+                    The interior is prepared privately from this specification and stays hidden until authorized entry.
+                  </p>
+                </>
+              ) : !identityInHeader ? (
                 <label>
                   Appearance
                   <textarea
@@ -143,7 +169,7 @@ export function FoundingZoneFields({
                     onChange={(event) => patch({ description: event.target.value })}
                   />
                 </label>
-              )}
+              ) : null}
               {editAccess ? (
                 <>
                   {personal && !zone.access && !["residence", "workplace"].includes(zone.venueClass) ? (

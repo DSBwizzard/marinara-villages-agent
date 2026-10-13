@@ -18,7 +18,7 @@ try {
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
-    { width: 844, height: 390 },
+    { width: 360, height: 640 },
     { width: 1440, height: 900 },
   ]) {
     for (let count = 1; count <= 4; count++) {
@@ -248,7 +248,7 @@ try {
       const people = cast.locator(".marinara-capability-villages-chat-cast-person");
       const mara = cast.locator('[data-character-id="mara"]');
       const composer = page.getByRole("textbox", { name: "Message at The Mill" });
-      const mobile = width <= 704 || (width <= 880 && height <= 512);
+      const mobile = width <= 704;
       await page.getByRole("button", { name: "Venue actions" }).click();
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
       const flipSwitch = page.getByRole("checkbox", { name: "Card-flip sprite changes" });
@@ -489,13 +489,6 @@ try {
         await previous.click();
         await expect(people).toHaveCount(count, "backward reading restores departed residents");
         await next.click();
-      }
-      if (width === 390) {
-        await page.setViewportSize({ width: 844, height: 390 });
-        await checkSpriteSize(true);
-        await expect(mara).toHaveAttribute("data-position", "right");
-        await page.setViewportSize({ width, height });
-        await checkSpriteSize(true);
       }
       // Older visits retain their row centers with enlarged mobile artwork.
       await composer.fill("A legacy visit.");

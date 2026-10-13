@@ -1,3 +1,4 @@
+import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
 import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
@@ -34,8 +35,84 @@ import {
   installDefaultActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 
+async function reviewNavigation() {
+  const { createFoundingGotoSetupStep } =
+    await import("../packages/villages/src/client/features/founding/setup-controller.js");
+  let reviewed = false,
+    step = 4,
+    problem = "",
+    blocked = "Place every starting Venue photograph.";
+  const ports = {
+    catalog: [{ id: "resident" }],
+    connectionSetupProblem: "",
+    loadCatalog: async () => {},
+    loadLorebooks: async () => {},
+    loadPersonas: async () => {},
+    personaDraft: "player",
+    personas: [{ id: "player" }],
+    residentContextProblem: "",
+    setMovingSetupVenueId() {},
+    setSetupEditorOpen() {},
+    setSetupProblem: (value: string) => {
+      problem = value;
+    },
+    setSetupStep: (value: number) => {
+      step = value;
+    },
+    setSetupMapReviewed: (value: boolean) => {
+      reviewed = value;
+    },
+    setupBlocker: (reviewingMap?: boolean) => {
+      assert.equal(reviewingMap, true);
+      return blocked;
+    },
+    setupFoundingDetails: "Neighbors sharing a home",
+    setupFoundingVillagerIds: ["resident"],
+    setupHomeCount: 1,
+    setupMapBusy: false,
+    setupMapSrc: "map",
+    setupName: "Village",
+    setupPlayerRole: { enabled: true, title: "Project Coordinator", explanation: "" },
+    setupSetting: "Coastal rooms",
+    setupStep: 4,
+    setupSuggestionsBusy: false,
+    setupVenueBusy: false,
+    snapshot: { isFounded: true },
+  };
+  const goto = createFoundingGotoSetupStep(ports as any);
+  goto(4);
+  assert.equal(reviewed, false, "re-entering restored Review cannot acknowledge an invalid map");
+  assert.match(problem, /Place every/);
+  blocked = "";
+  goto(4);
+  assert.equal(reviewed, true, "successful Review navigation incorporates map acknowledgment");
+  assert.equal(step, 4);
+  assert.equal(problem, "");
+  reviewed = false;
+  ports.setupMapSrc = "";
+  ports.snapshot.isFounded = false;
+  goto(4);
+  assert.equal(reviewed, false, "missing artwork cannot be acknowledged");
+  assert.match(problem, /Generate or upload map artwork/);
+}
+
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const { savedFoundingStep, SETUP_STEPS } =
+    await import("../packages/villages/src/client/features/founding/founding-steps.js");
+  for (const [step, expected] of [
+    [0, 0],
+    [1, 1],
+    [2, 3],
+    [3, 4],
+  ])
+    assert.equal(savedFoundingStep({ step }), expected);
+  for (const [step, phase] of SETUP_STEPS.entries()) assert.equal(savedFoundingStep({ step, phase }), step);
+  assert.equal(savedFoundingStep({ step: NaN }), 0);
+  assert.equal(savedFoundingStep({ step: 2, mapSource: "none" }), 2);
+  assert.equal(savedFoundingStep({ step: 3, mapSource: "none" }), 2);
+  assert.equal(savedFoundingStep({ step: 3, phase: "Review", mapSource: "none", mapImage: "cached" }), 4);
+
   const serverRoot = join(root, "packages/villages/src/server");
   const { foundingPhotoOverlaps } = await import(
     pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
@@ -48,7 +125,7 @@ async function main() {
   const unexpected = () => {
     throw Error("Unexpected connection in a setup validation probe.");
   };
-  const { runVillageSetup } = createFoundingSetup({
+  const setupPorts = {
     readVillageState: unexpected,
     mutateVillageState: unexpected,
     buildVillageSnapshot: unexpected,
@@ -64,7 +141,8 @@ async function main() {
     proposeVillage: unexpected,
     proposePublicVenueNames: unexpected,
     draftVillageVenueDescriptions: unexpected,
-  });
+  };
+  const { runVillageSetup } = createFoundingSetup(setupPorts);
   const { parsePlace } = await import("../packages/villages/src/server/domain/rules/founding-record.ts");
   const { assertFoundingScenarioLocked } =
     await import("../packages/villages/src/server/domain/rules/founding-record.ts");
@@ -283,6 +361,20 @@ async function main() {
     /locked/,
   );
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
+  const noMapSetup = createFoundingSetup({
+    ...setupPorts,
+    readVillageState: async () => coerceVillageState({ wishSystemVersion: 3 }),
+    readTownMapSubmission: async () => ({
+      image: "",
+      size: null,
+      view: { fit: "cover" as const, focusX: 50, focusY: 50, zoom: 1 },
+    }),
+  });
+  await assert.rejects(
+    noMapSetup.runVillageSetup({ ...identity, foundingReason: "custom", foundingDetails: "We gather at dawn." }),
+    /Generate or upload map artwork before founding/,
+  );
+
   for (const foundingReason of [
     "fresh-start",
     "refuge",
@@ -339,6 +431,8 @@ async function main() {
         {
           venueClass: "residence",
           description: "A hearth and a low table",
+          name: "Hearth room",
+          purpose: "Sharing meals",
           image: insideImage,
           state: {
             condition: "lived in",
@@ -361,8 +455,16 @@ async function main() {
   assert.throws(() => parsePlace({ ...parsed, form: "" }, true), /Form/);
   assert.throws(() => parsePlace({ ...parsed, description: "" }, true), /exterior/);
   assert.throws(
-    () => parsePlace({ ...parsed, layout: "common", spaces: [{ venueClass: "residence", description: "" }] }, true),
-    /Common Space/,
+    () =>
+      parsePlace(
+        {
+          ...parsed,
+          layout: "common",
+          spaces: [{ venueClass: "residence", name: "Room", purpose: "Meals", description: "" }],
+        },
+        true,
+      ),
+    /visible Zone/,
   );
 
   const client = await clientImplementation();
@@ -374,9 +476,9 @@ async function main() {
     (await readFile(join(serverRoot, "features/residents/resident-agenda-service.ts"), "utf8")) +
     (await readFile(join(serverRoot, "domain/rules/founding-record.ts"), "utf8"));
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts-service.ts"), "utf8");
-  assert.ok(client.includes('["People", "Place", "Venues", "Review"]'));
-  assert.ok(client.includes("Where are we?"));
-  assert.ok(client.includes("What brings you together?"));
+  assert.ok(client.includes('["People", "Place", "Map", "Venues", "Review"]'));
+  assert.ok(client.includes("Place and world"));
+  assert.ok(client.includes("Starting circumstances"));
   assert.ok(client.includes("Search lorebooks"));
   const editor = await readFile(
     join(root, "packages/villages/src/client/features/founding/villages-founding-editor.tsx"),
@@ -392,7 +494,7 @@ async function main() {
   assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");
   assert.ok(client.includes('setScreen("preparing")'));
-  assert.ok(client.includes("Use this saved artwork"));
+  assert.equal(client.includes("Use this saved artwork"), false);
   assert.ok(client.includes("Change starting Venues"));
   assert.ok(routes.includes('"/setup/venues/suggest"'));
   assert.equal(routes.includes('"/setup/venues/draft"'), false);
@@ -636,8 +738,10 @@ async function foundingConnectionOwnership() {
                     venues: draftRows.map((row) => ({
                       ...row,
                       name: `${label} ${row.name}`,
-                      commonName: "",
-                      commonDescription: "",
+                      layout: "common",
+                      commonName: "Shared room",
+                      commonPurpose: "Conversation",
+                      commonDescription: "A table",
                       privateName: "",
                       privatePurpose: "",
                       privateDescription: "model secret",
@@ -738,12 +842,21 @@ async function foundingConnectionOwnership() {
       oldFetch = globalThis.fetch;
     const clearA = installDefaultActivation(a.scope, () => {});
     let clearB = () => {};
-    globalThis.fetch = async (input) => {
+    globalThis.fetch = async (input, init) => {
       const owner = activationScope() === a.scope ? a : activationScope() === b.scope ? b : undefined;
       assert(owner);
       const path = new URL(String(input)).pathname;
       if (path === "/api/lorebooks") await owner.pause("lore");
-      if (path === "/api/characters/avatar-generation") await owner.pause("provider");
+      if (path === "/api/characters/avatar-generation") {
+        const request = JSON.parse(String(init?.body));
+        assert.match(request.appearance, /eye-level landscape view/u);
+        assert.match(request.appearance, /works behind chat overlays/u);
+        assert.match(request.appearance, /recognizable at thumbnail size/u);
+        assert.match(request.appearance, /application supplies the Polaroid frame/u);
+        assert.equal(request.width, 1216);
+        assert.equal(request.height, 832);
+        await owner.pause("provider");
+      }
       if (path === "/api/global-gallery/upload") await owner.pause("gallery");
       const payload =
         path === "/api/connections"
@@ -914,7 +1027,116 @@ async function foundingConnectionOwnership() {
   );
 }
 
+async function foundingArchitecturePrompts() {
+  const prompts: string[] = [];
+  let galleryCalls = 0;
+  const unused = () => {
+    throw new Error("Unexpected provider or catalog request");
+  };
+  const service = createFoundingDrafts({
+    findVillagerCard: async () => null,
+    readLinkedPersona: async () => null,
+    readVillageLore: unused,
+    readVillageVisualLore: async () => "",
+    villagesLanguageModels: unused,
+    villagesConnectionIdFor: unused,
+    completeWithRoom: unused,
+    decodeVillageImageDataUrl: unused,
+    generateVillageImage: async (input) => {
+      prompts.push(input.prompt);
+      return { dataUrl: "fixture", mime: "image/png", bytes: new Uint8Array([1]) };
+    },
+    uploadVillageGalleryImage: async () => {
+      galleryCalls++;
+      return { ref: "global-gallery:fixture", id: "fixture", url: "/fixture.png" };
+    },
+  });
+  const venue = {
+    id: "bungalow",
+    name: "Professor Mari's Bungalow",
+    venueClass: "residence",
+    form: "A pleasant resort bungalow",
+    description: "A small timber bungalow with a low roof.",
+    spaceDescription: "A desk under the window.",
+    layout: "both",
+    areas: [
+      { id: "common", name: "Study Nook" },
+      { id: "private", name: "Retreat" },
+    ],
+  };
+  for (const area of ["exterior", "interior", "private"]) {
+    const appearance =
+      area === "exterior"
+        ? venue.description
+        : area === "interior"
+          ? "A desk under the window."
+          : "A quiet resting corner.";
+    const result = await service.generateFoundingVenueImage({
+      venue,
+      area,
+      setting: "A tropical resort",
+      privateOwnerId: "player",
+      zoneName: area === "interior" ? "Study Nook" : "Retreat",
+      zoneAppearance: appearance,
+    });
+    assert.equal(result.url, "/fixture.png");
+    const prompt = prompts.at(-1)!;
+    assert.ok(prompt.includes("Physical form: A pleasant resort bungalow"));
+    assert.ok(prompt.includes("Venue form defines the whole place"));
+    assert.ok(prompt.includes("do not invent materials, windows or proportions"));
+    assert.ok(prompt.includes(appearance));
+    assert.ok(prompt.length <= 4000);
+    if (area !== "exterior") {
+      assert.ok(prompt.includes("Public exterior context for architectural continuity only: " + venue.description));
+      assert.ok(prompt.includes("Do not invent or show adjoining rooms"));
+      assert.ok(!prompt.includes(area === "private" ? "A desk under the window." : "A quiet resting corner."));
+    } else assert.ok(!prompt.includes("Public exterior context"));
+  }
+  const before = prompts.length;
+  assert.equal(galleryCalls, before);
+  await assert.rejects(
+    service.generateFoundingVenueImage({
+      venue,
+      area: "private",
+      privateOwnerId: "resident",
+      zoneAppearance: "Hidden contents",
+      setting: "Resort",
+    }),
+    /Hidden personal spaces/,
+  );
+  assert.equal(prompts.length, before, "hidden resident space sends no image request");
+  const overflowing = {
+    ...venue,
+    name: "n".repeat(100),
+    form: "f".repeat(240),
+    description: "e".repeat(1000),
+    areas: Array.from({ length: 5 }, (_, id) => ({ id: String(id), name: "z".repeat(100) })),
+  };
+  const original = structuredClone(overflowing);
+  await assert.rejects(
+    service.generateFoundingVenueImage({
+      venue: overflowing,
+      area: "interior",
+      setting: "Resort",
+      zoneName: "s".repeat(100),
+      zonePurpose: "p".repeat(240),
+      zoneAppearance: "a".repeat(1000),
+      sceneryArtStyle: "v".repeat(600),
+    }),
+    /too long for an image prompt/,
+  );
+  assert.equal(prompts.length, before, "over-budget required facts send no image request");
+  assert.deepEqual(overflowing, original, "failed generation preserves authored draft");
+  assert.equal(galleryCalls, before, "rejected requests create no gallery result");
+
+  console.log(
+    "Founding images: shared architecture across Exterior/Common/player Private; resident Private guard retained.",
+  );
+}
+
 await main()
+  .then(foundingArchitecturePrompts)
+  .then(reviewNavigation)
   .then(foundingConnectionOwnership)
   .catch((error) => {
     console.error(error);

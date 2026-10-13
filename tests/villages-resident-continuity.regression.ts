@@ -1,3 +1,4 @@
+import { PNG } from "pngjs";
 import assert from "node:assert/strict";
 import {
   DEFAULT_RESIDENT_FOUNDING_CONTEXT as defaults,
@@ -40,6 +41,7 @@ for (const historyMode of Object.keys(RESIDENT_HISTORY_MODES))
     const value = {
       ...context,
       historyMode,
+      ...(historyMode === "village" ? { villageBackstory: "Aqua grew up here." } : {}),
       storyRole,
       customDescription: storyRole === "custom" ? "Guardian bound to the station's foundations." : "",
     };
@@ -127,6 +129,24 @@ let dispatches = 0;
 const model: any = { fitContext: () => ({ messages: [] }), chatComplete: () => dispatches++ };
 assert.throws(() => fitVenueWritingMessages(model, [{ text: profile }], "Hello", 1000), /No reply was requested/);
 assert.equal(dispatches, 0);
+const alternate = { ...defaults, historyMode: "village", villageBackstory: "Aqua grew up here." } as const;
+assert.deepEqual(readResidentFoundingContext(alternate), alternate);
+assert.equal(readResidentFoundingContext({ ...alternate, villageBackstory: " " }), null);
+assert.equal(readResidentFoundingContext({ ...alternate, villageBackstory: "x".repeat(1201) }), null);
+assert.equal(readResidentFoundingContext({ ...alternate, villageBackstory: 42 }), null);
+assert.match(renderResidentFoundingContext("Aqua", alternate), /Historical claims anywhere in the original card/);
+assert.match(renderResidentFoundingContext("Aqua", alternate), /authored instructions/);
+assert.ok(
+  !renderResidentFoundingContext("Aqua", { ...alternate, historyMode: "continue" }).includes("Aqua grew up here."),
+);
+assert.ok(!renderResidentFoundingContext("Aqua", alternate).includes("Place in the Village's story"));
+state.villagers[0].foundingContext = alternate;
+assert.deepEqual(coerceVillageState(state).villagers[0].foundingContext, alternate);
+assert.ok(
+  proposeStartingTies({ ...state, chronicle: [] }, defaultRelationshipState(state.seed), [
+    "Aqua is best friends with Alex",
+  ]).every((tie) => !tie.established),
+);
 console.log(
   "Resident continuity: choices, limits, legacy saves, full identity, relationship exclusions and required context verified.",
 );
@@ -149,6 +169,7 @@ async function setupPersistence() {
   const originalFetch = globalThis.fetch;
   const originalQueue = globalThis.queueMicrotask;
   globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/api/image-metadata/inspect")) return Response.json({ width: 1536, height: 1024 });
     assert.match(String(url), /\/api\/connections$/);
     return Response.json([{ id: "fixture", provider: "openai" }]);
   };
@@ -199,11 +220,14 @@ async function setupPersistence() {
             assert.match(messages[0].content, /narrator-only truths are not resident knowledge/);
             assert.equal(options.reasoningEffort, "none", "drafting leaves output room for the Venue list");
             assert.equal(options.maxTokens, Math.min(outputLimit, 4000));
+            assert.deepEqual(options.responseFormat, { type: "json_object" });
+            if (responseMode === "unsupported-json") throw new Error("response_format json_object is unsupported");
             const input = JSON.parse(messages.at(-1).content);
             assert.deepEqual(
               input.responseTemplate.venues.map((venue: any) => venue.id),
               input.venues.map((venue: any) => venue.id),
             );
+            if (responseMode === "missing-venues") return { content: "{}", finishReason: "stop" };
             if (responseMode === "blank") return { content: "", finishReason: "stop" };
             if (responseMode === "malformed") return { content: '{"venues":[', finishReason: "stop" };
             if (responseMode === "truncated") return { content: '{"venues":[', finishReason: "length" };
@@ -213,7 +237,10 @@ async function setupPersistence() {
               content: JSON.stringify({
                 venues: input.venues.map((venue: any) => ({
                   ...venue,
-                  layout: "exterior",
+                  layout: "common",
+                  commonName: "Common Space",
+                  commonPurpose: "Conversation",
+                  commonDescription: "A table",
                   name: venue.id + " space",
                   form: "Room",
                   description: "A doorway.",
@@ -227,6 +254,7 @@ async function setupPersistence() {
     },
   } as any);
   const input = {
+    townMapImage: "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),
     name: "Station Fields",
     setting: "An orbital observatory in an undecided world.",
     foundingReason: "none",
@@ -241,8 +269,16 @@ async function setupPersistence() {
       category: id === "hall" ? "public-center" : "house",
       classes: [id === "hall" ? "gathering" : "residence"],
       layoutVersion: 1,
-      layout: "exterior",
-      spaces: [],
+      layout: "common",
+      spaces: [
+        {
+          id: "common:base",
+          name: "Room",
+          purpose: "Conversation",
+          description: "A table",
+          venueClass: id === "hall" ? "gathering" : "residence",
+        },
+      ],
       privateSpaces: [],
       occupancy: { playerHome: id === "player", residentCharacterId: id === "aqua" ? id : null, homeKind: null },
       presentation: { x: 0.2 + index * 0.2, y: 0.5 },
@@ -266,8 +302,10 @@ async function setupPersistence() {
     assert.equal((await suggestStartingVenues(suggestionInput)).venues.length, 3);
     assert.equal(requests, 1, "resident context uses the existing suggestion request");
     for (const [mode, error] of [
-      ["blank", /readable Venue suggestions/],
-      ["malformed", /readable Venue suggestions/],
+      ["missing-venues", /readable Venue suggestions/],
+      ["blank", /empty Venue reply/],
+      ["malformed", /invalid JSON for Venue suggestions/],
+      ["unsupported-json", /rejected JSON mode.*No fallback request was made/],
       ["truncated", /ran out of output room/],
       ["max_tokens", /ran out of output room/],
     ] as const) {

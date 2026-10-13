@@ -1,4 +1,5 @@
 import { readResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
+import { isPrivateInterior, observePrivateInterior, privateInteriorKey } from "../rules/private-interior.js";
 import type {
   VillageAgenda,
   VillageChronicleActor,
@@ -613,6 +614,19 @@ function coerceVenue(value: unknown): VillageVenue | null {
           ? undefined
           : { status: "pending" as const },
       ownerId,
+      ...(typeof row.roomSpecification === "string"
+        ? { roomSpecification: boundText(row.roomSpecification, MAX_VENUE_DESCRIPTION_LENGTH) }
+        : {}),
+      ...(asIsoString(asRecord(row.lastObserved).observedAt)
+        ? {
+            lastObserved: {
+              description: boundText(asRecord(row.lastObserved).description, MAX_VENUE_DESCRIPTION_LENGTH),
+              state: coerceSpaceState(asRecord(row.lastObserved).state),
+              observedAt: asIsoString(asRecord(row.lastObserved).observedAt)!,
+            },
+          }
+        : {}),
+      ...(typeof row.imageInteriorKey === "string" ? { imageInteriorKey: row.imageInteriorKey.slice(0, 20000) } : {}),
       description: value
         ? boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || `A private space for this resident at ${name}.`
         : "",
@@ -899,12 +913,25 @@ function coerceVenue(value: unknown): VillageVenue | null {
       return null;
     const upgradeId = asTrimmedString(row.upgradeId);
     if (upgradeId && !improvements.some((upgrade) => upgrade?.id === upgradeId)) return null;
-    return {
+    const zone: VillageVenueZone = {
       id,
       name: boundText(row.name, MAX_VENUE_NAME_LENGTH) || "Zone",
       kind: row.kind as VillageVenueZone["kind"],
       venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
       description: boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH),
+      ...(typeof row.roomSpecification === "string"
+        ? { roomSpecification: boundText(row.roomSpecification, MAX_VENUE_DESCRIPTION_LENGTH) }
+        : {}),
+      ...(asIsoString(asRecord(row.lastObserved).observedAt)
+        ? {
+            lastObserved: {
+              description: boundText(asRecord(row.lastObserved).description, MAX_VENUE_DESCRIPTION_LENGTH),
+              state: coerceSpaceState(asRecord(row.lastObserved).state),
+              observedAt: asIsoString(asRecord(row.lastObserved).observedAt)!,
+            },
+          }
+        : {}),
+      ...(typeof row.imageInteriorKey === "string" ? { imageInteriorKey: row.imageInteriorKey.slice(0, 20000) } : {}),
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
       ownerId: ownerId || undefined,
@@ -914,6 +941,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
       preparation: ["pending", "ready", "failed"].includes(String(asRecord(row.preparation).status))
         ? {
             status: asRecord(row.preparation).status as "pending" | "ready" | "failed",
+            ...(asRecord(row.preparation).mode === "renovation" ? { mode: "renovation" as const } : {}),
             error: boundText(asRecord(row.preparation).error, 300),
             ...(asTrimmedString(asRecord(row.preparation).claimId)
               ? { claimId: asTrimmedString(asRecord(row.preparation).claimId).slice(0, 100) }
@@ -933,6 +961,11 @@ function coerceVenue(value: unknown): VillageVenue | null {
       adaptationPending: row.adaptationPending === true,
       adaptationSourceArchiveAt: asIsoString(row.adaptationSourceArchiveAt) ?? "",
     };
+    if (isPrivateInterior(zone) && zone.seen) {
+      if (!zone.lastObserved) observePrivateInterior(zone, zone.state.updatedAt || "1970-01-01T00:00:00.000Z");
+      if (zone.image && !zone.imageInteriorKey) zone.imageInteriorKey = privateInteriorKey(zone.lastObserved!);
+    }
+    return zone;
   };
   if (Array.isArray(raw.zones)) {
     const ids = new Set<string>();
@@ -1010,6 +1043,9 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
         id,
         name,
         description,
+        ...(typeof row.roomSpecification === "string"
+          ? { roomSpecification: boundText(row.roomSpecification, MAX_VENUE_DESCRIPTION_LENGTH) }
+          : {}),
         purpose: boundText(row.purpose, 240),
         controllerIds: coerceVenueIds(row.controllerIds),
         ownerId: asTrimmedString(row.ownerId) || undefined,
@@ -2035,6 +2071,10 @@ export function coerceVillageState(value: unknown): VillageState {
           : "sixteen-total-v1",
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
     sceneryArtStyle: boundText(raw.sceneryArtStyle, 600),
+    sceneryStyleProfileId:
+      typeof raw.sceneryStyleProfileId === "string" && /^[a-zA-Z0-9_-]{0,80}$/.test(raw.sceneryStyleProfileId)
+        ? raw.sceneryStyleProfileId
+        : null,
     personalizeVenueImagesByDefault: raw.personalizeVenueImagesByDefault !== false,
     useVisualLoreByDefault: raw.useVisualLoreByDefault !== false,
     loreTokenBudget: coerceLoreTokenBudget(raw.loreTokenBudget),

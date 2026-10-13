@@ -1,3 +1,9 @@
+import {
+  MAP_UPLOAD_FALLBACK,
+  townMapFileSizeMessage,
+  townMapImageProblem,
+  townMapUploadError,
+} from "../../../shared/helpers/town-map-upload.js";
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 import type {
   ScenarioImprint,
@@ -10,12 +16,12 @@ import type { ResidentFoundingContext } from "../../../shared/helpers/resident-f
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
 import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
-import type { SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
+import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
-import { DEFAULT_TOWN_MAP_OPTIONS, emptyScenarioImprint, foundingScenario } from "./FoundingPanels.js";
+import { emptyScenarioImprint, foundingScenario } from "./FoundingPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
-import { SCENERY_STYLES, venueHasCommon } from "./villages-founding-editor";
+import { venueHasCommon } from "./villages-founding-editor";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
@@ -102,16 +108,15 @@ export function usePickSetupTownMap(ports: {
       setSetupMapProblem("");
       const bytesThatFit = Math.floor(((snapshot.settings.townMapImageMaxLength - 64) * 3) / 4);
       if (file.size > bytesThatFit) {
-        const mb = (bytes: number) => Math.round(bytes / 100_000) / 10;
-        setSetupMapProblem(
-          `That picture is ${mb(file.size)} MB and a village map holds ${mb(bytesThatFit)} MB. Choose a smaller copy.`,
-        );
+        setSetupMapProblem(townMapFileSizeMessage(file.size, bytesThatFit));
         return;
       }
       setSetupMapBusy(true);
       try {
         const image = await readFileAsDataUrl(file);
         const size = await measureImage(image);
+        const problem = townMapImageProblem(size);
+        if (problem) throw new Error(problem);
         setSetupMapImage(image);
         setSetupMapImageSource("upload");
         setSetupMapSize(size);
@@ -119,7 +124,7 @@ export function usePickSetupTownMap(ports: {
         setSetupMapReviewed(false);
         updateSetupMapRequest(null);
       } catch (cause) {
-        setSetupMapProblem(messageFrom(cause, "That picture could not be used as the village map."));
+        setSetupMapProblem(townMapUploadError(messageFrom(cause, MAP_UPLOAD_FALLBACK)));
       } finally {
         setSetupMapBusy(false);
       }
@@ -169,8 +174,8 @@ export function usePlaceSetupPin(ports: {
         : (rows.find((row) => row.id === movingSetupVenueId) ??
           rows.find((row) => row.presentation.x === null || row.presentation.y === null));
       if (!target || setupEditorOpen || (setupWorkspace.paused && !movingSetupVenueId && !draggedVenueId)) return;
-      if (setupMapSource !== "none" && (!setupMapSrc || setupMapBusy)) {
-        setSetupPlacementError("Wait for the selected artwork before placing Venue photographs, or use Simple map.");
+      if (!setupMapSrc || setupMapBusy) {
+        setSetupPlacementError("Wait for the selected artwork before placing Venue photographs.");
         return;
       }
       if (
@@ -191,7 +196,7 @@ export function usePlaceSetupPin(ports: {
         setSetupWorkspace((state) => ({ ...state, paused: true }));
       setMovingSetupVenueId(null);
       setSetupPlacementError("");
-      if (next.every((row) => row.presentation.x !== null && row.presentation.y !== null)) setSetupMapReviewed(true);
+      setSetupMapReviewed(false);
     },
     [movingSetupVenueId, setupEditorOpen, setupWorkspace.paused, setupMapSource, setupMapSrc, setupMapBusy],
   );
@@ -231,6 +236,7 @@ export function useOpenSetup(ports: {
   setPickerOpen: React.Dispatch<SetStateAction<boolean>>;
   setResetArmed: React.Dispatch<SetStateAction<boolean>>;
   setSceneryStyle: React.Dispatch<SetStateAction<string>>;
+  setSceneryStyleProfileId: React.Dispatch<SetStateAction<string | null>>;
   setScreen: React.Dispatch<
     SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
   >;
@@ -240,7 +246,6 @@ export function useOpenSetup(ports: {
   setSetupEditorOpen: React.Dispatch<SetStateAction<boolean>>;
   setSetupFocusIssue: React.Dispatch<SetStateAction<FoundingIssue>>;
   setSetupFoundingDetails: React.Dispatch<SetStateAction<string>>;
-  setSetupFoundingGuidance: React.Dispatch<SetStateAction<string>>;
   setSetupFoundingReason: React.Dispatch<SetStateAction<"rebuild" | "pioneer" | "prosper" | "custom" | "none">>;
   setSetupFoundingVillagerIds: React.Dispatch<SetStateAction<string[]>>;
   setSetupImprint: React.Dispatch<SetStateAction<ScenarioImprint>>;
@@ -251,7 +256,6 @@ export function useOpenSetup(ports: {
   setSetupMapImage: React.Dispatch<SetStateAction<string>>;
   setSetupMapImageSource: React.Dispatch<SetStateAction<"generate" | "upload">>;
   setSetupMapNegativePrompt: React.Dispatch<SetStateAction<string>>;
-  setSetupMapOptions: React.Dispatch<SetStateAction<TownMapOptions>>;
   setSetupMapProblem: React.Dispatch<SetStateAction<string>>;
   setSetupMapPrompt: React.Dispatch<SetStateAction<string>>;
   setSetupMapSize: React.Dispatch<SetStateAction<{ width: number; height: number }>>;
@@ -281,6 +285,7 @@ export function useOpenSetup(ports: {
     setPickerOpen,
     setResetArmed,
     setSceneryStyle,
+    setSceneryStyleProfileId,
     setScreen,
     setSearch,
     setSelectedSetupVenueId,
@@ -288,7 +293,6 @@ export function useOpenSetup(ports: {
     setSetupEditorOpen,
     setSetupFocusIssue,
     setSetupFoundingDetails,
-    setSetupFoundingGuidance,
     setSetupFoundingReason,
     setSetupFoundingVillagerIds,
     setSetupImprint,
@@ -299,7 +303,6 @@ export function useOpenSetup(ports: {
     setSetupMapImage,
     setSetupMapImageSource,
     setSetupMapNegativePrompt,
-    setSetupMapOptions,
     setSetupMapProblem,
     setSetupMapPrompt,
     setSetupMapSize,
@@ -329,7 +332,8 @@ export function useOpenSetup(ports: {
       setSetupWorkspace(emptyFoundingWorkspace());
       setSetupShowIssues(false);
       setSetupFocusIssue(null);
-      setSetupName(fresh ? "" : (village?.village.name ?? ""));
+      // Unfounded snapshots have a server fallback name; authored drafts restore their own name separately.
+      setSetupName(fresh || !village?.isFounded ? "" : village.village.name);
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       const storedReason = fresh ? "" : (village?.settings.foundingReason ?? "");
       const isCurrentScenario = FOUNDING_SCENARIOS.some((scenario) => scenario.value === storedReason);
@@ -340,10 +344,8 @@ export function useOpenSetup(ports: {
         : fresh || !storedReason
           ? foundingScenario(reason).premise
           : savedDetails;
-      const guidance = fresh ? "" : (village?.settings.foundingGuidance ?? "");
       setSetupFoundingReason(reason);
       setSetupFoundingDetails(details);
-      setSetupFoundingGuidance(reason === "none" ? "" : guidance);
       setSetupPlayerRole(
         fresh
           ? { ...DEFAULT_PLAYER_ROLE }
@@ -367,11 +369,8 @@ export function useOpenSetup(ports: {
         ),
       );
       setSetupEditorOpen(false);
-      setSceneryStyle(
-        fresh || !village?.isFounded
-          ? SCENERY_STYLES["Painted illustration"]
-          : (village.settings.sceneryArtStyle ?? ""),
-      );
+      setSceneryStyle(fresh || !village?.isFounded ? "" : (village.settings.sceneryArtStyle ?? ""));
+      setSceneryStyleProfileId(fresh || !village?.isFounded ? "" : (village.settings.sceneryStyleProfileId ?? null));
       setPersonalizeHomes(village?.settings.personalizeVenueImagesByDefault !== false);
       setVisualLoreDefault(village?.settings.useVisualLoreByDefault !== false);
       setMapVisualLore(village?.settings.useVisualLoreByDefault !== false);
@@ -380,8 +379,7 @@ export function useOpenSetup(ports: {
       setSetupPlacementError("");
       setSetupLorebookDraft(fresh ? [] : (village?.settings.selectedLorebookIds ?? []));
       setSetupLoreTokenBudgetDraft(fresh ? 1600 : (village?.settings.loreTokenBudget ?? 1600));
-      setSetupMapOptions({ ...DEFAULT_TOWN_MAP_OPTIONS });
-      setSetupMapSource(fresh ? "none" : village?.settings.townMapImageSetAt ? "existing" : "none");
+      setSetupMapSource(!fresh && village?.isFounded ? "existing" : "generate");
       setSetupMapImage("");
       setSetupMapImageSource(null);
       setSetupMapGeneratedKey("");
@@ -417,6 +415,7 @@ export function useFoundVillage(ports: {
   residentContextProblem: "" | "Complete the highlighted resident background fields in People.";
   savedTownMapView: TownMapView;
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   selectedResidentContexts: { [k: string]: ResidentFoundingContext };
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setDraftReady: React.Dispatch<SetStateAction<boolean>>;
@@ -429,7 +428,6 @@ export function useFoundVillage(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
   setupBlocker: () => string;
   setupFoundingDetails: string;
-  setupFoundingGuidance: string;
   setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
   setupFoundingVillagerIds: string[];
   setupLorebookDraft: string[];
@@ -454,6 +452,7 @@ export function useFoundVillage(ports: {
     residentContextProblem,
     savedTownMapView,
     sceneryStyle,
+    sceneryStyleProfileId,
     selectedResidentContexts,
     setBusy,
     setDraftReady,
@@ -464,7 +463,6 @@ export function useFoundVillage(ports: {
     setSnapshot,
     setupBlocker,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupFoundingReason,
     setupFoundingVillagerIds,
     setupLorebookDraft,
@@ -504,7 +502,7 @@ export function useFoundVillage(ports: {
               ? "exterior-description"
               : "interior-description";
         setSelectedSetupVenueId(incomplete.id);
-        setSetupStep(2);
+        setSetupStep(3);
         window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
       }
       setSetupProblem(blocker);
@@ -521,7 +519,7 @@ export function useFoundVillage(ports: {
           setting: setupSetting.trim(),
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
           foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
-          foundingGuidance: snapshot?.isFounded ? snapshot.settings.foundingGuidance : setupFoundingGuidance.trim(),
+          ...(snapshot?.isFounded ? { foundingGuidance: snapshot.settings.foundingGuidance } : {}),
           playerRole: snapshot?.isFounded ? (snapshot.settings.playerRole ?? null) : setupPlayerRole,
           scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts.map((line) => line.trim()).filter(Boolean) : [],
@@ -529,6 +527,7 @@ export function useFoundVillage(ports: {
           personalizeVenueImagesByDefault: personalizeHomes,
           useVisualLoreByDefault: visualLoreDefault,
           sceneryArtStyle: sceneryStyle,
+          sceneryStyleProfileId,
           useVisualLore: mapVisualLore,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           playerPersonaId: personaDraft,
@@ -574,6 +573,7 @@ export function useFoundVillage(ports: {
     savedTownMapView,
     setupBlocker,
     sceneryStyle,
+    sceneryStyleProfileId,
     mapVisualLore,
     personalizeHomes,
     visualLoreDefault,
@@ -582,7 +582,6 @@ export function useFoundVillage(ports: {
     setupName,
     setupFoundingReason,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupPlayerRole,
     setupWorldFacts,
     setupLorebookDraft,

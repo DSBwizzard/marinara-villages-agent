@@ -250,11 +250,13 @@ export function useProjectsController({
     snapshot?.settings.setting,
     snapshot?.settings.worldFacts,
     snapshot?.settings.sceneryArtStyle,
+    snapshot?.settings.sceneryStyleProfileId,
   ]);
   const imageContextKey = JSON.stringify([
     snapshot?.settings.setting,
     snapshot?.settings.worldFacts,
     snapshot?.settings.sceneryArtStyle,
+    snapshot?.settings.sceneryStyleProfileId,
   ]);
   const imageInputsCurrent = useProjectImageKey(workspace.imageKeys, workspace.key, openingImageKey, imageContextKey);
   const generateImage = async (area: "exterior" | "interior") => {
@@ -289,6 +291,7 @@ export function useProjectsController({
           worldFacts: snapshot?.settings.worldFacts,
           selectedLorebookIds: snapshot?.settings.selectedLorebookIds,
           sceneryArtStyle: snapshot?.settings.sceneryArtStyle,
+          sceneryStyleProfileId: snapshot?.settings.sceneryStyleProfileId,
           useVisualLore: openingLore,
           useAssignedVillagerContext: openingPersonality,
         }),

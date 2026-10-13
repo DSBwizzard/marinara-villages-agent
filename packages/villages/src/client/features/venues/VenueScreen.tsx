@@ -608,6 +608,11 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                   </p>
                 ) : null}
 
+                {privateSpace?.roomSpecification ? <p>Room specification: {privateSpace.roomSpecification}</p> : null}
+                {privateSpace?.observedAt ? <p>Showing the last observed interior.</p> : null}
+                {privateSpace?.imageOutdated ? (
+                  <p role="status">Image predates observed changes. Regenerate it in Edit Venue when you choose.</p>
+                ) : null}
                 {hasZoneDetails ? (
                   <details className={ELEMENT_TAG + "-venue-more"}>
                     <summary>Area details</summary>

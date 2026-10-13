@@ -175,7 +175,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
 try {
   for (const restored of [false, true]) {
     const f = await fixture({ restored });
-    await expect(f.page.getByRole("alert")).toContainText("Failed to fetch");
+    await expect(f.page.getByRole("alert")).toContainText("Could not reach the server");
     await expect(f.page.getByRole("button", { name: "Retry opening", exact: true })).toBeVisible();
     await expect(f.page.getByRole("button", { name: "Continue without opening", exact: true })).toBeVisible();
     assert.equal(f.calls, 1, "a genuine opening failure does not retry generation");
@@ -189,10 +189,10 @@ try {
     const composer = f.page.getByRole("textbox", { name: "Message at The Mill" });
     await composer.fill("Keep this unsent draft.");
     await f.page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(f.page.getByRole("alert")).toContainText("Failed to fetch");
+    await expect(f.page.getByRole("alert")).toContainText("Could not reach the server");
     await f.focus();
     await expect(composer).toHaveValue("Keep this unsent draft.");
-    await expect(f.page.getByRole("alert")).toContainText("Failed to fetch");
+    await expect(f.page.getByRole("alert")).toContainText("Could not reach the server");
     await f.mount();
     await expect(f.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
     await expect(f.page.getByRole("alert")).toHaveCount(0);
@@ -227,7 +227,7 @@ try {
   switched.release();
   await expect.poll(() => switched.settled).toBe(true);
   await expect(switched.page.getByRole("alert")).toContainText("The second visit could not open.");
-  await expect(switched.page.getByRole("alert")).not.toContainText("Failed to fetch");
+  await expect(switched.page.getByRole("alert")).not.toContainText("Could not reach the server");
   assert.equal(switched.calls, 2, "each deliberate visit makes exactly one greeting request");
   await switched.page.close();
   assert.deepEqual(errors, []);

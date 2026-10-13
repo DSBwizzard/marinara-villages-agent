@@ -254,6 +254,53 @@ assert.deepEqual(
   "An unneeded adaptation creates no job or model request.",
 );
 
+const roomMove = fixture("Room move");
+const neutralRoom = {
+  ...defaultVenueSpace("residence", "Neutral room"),
+  id: "vacant",
+  name: "Bedroom",
+  kind: "private-residence" as const,
+  roomSpecification: "A garden-facing window",
+  preparation: { status: "ready" as const },
+  seen: true,
+  initialImageAttemptedAt: "2026-10-05T12:00:00Z",
+  image: { id: "neutral", ref: "global-gallery:neutral", url: "https://example.test/neutral.png" },
+  lastObserved: {
+    description: "Neutral room",
+    state: defaultVenueSpace("residence").state,
+    observedAt: "2026-10-05T12:00:00Z",
+  },
+};
+roomMove.destination.layoutVersion = 1;
+roomMove.destination.zones = [neutralRoom];
+roomMove.destination.privateSpaces = [{ ...neutralRoom, ownerId: "" }];
+roomMove.state.residences = [
+  {
+    characterId: "same",
+    venueId: "",
+    proposedVenueId: "destination",
+    proposedPrivateZoneId: "vacant",
+    status: "moving",
+    requestedAt: "2026-10-05T12:00:00Z",
+    requestedBy: "player",
+    villagerDecision: "approved",
+  },
+];
+await roomMove.service.completeVillageResidence("same", true, attemptClock, false);
+const occupiedRoom = roomMove.state.venues[0].zones![0];
+assert.equal(occupiedRoom.ownerId, "same");
+assert.equal(occupiedRoom.roomSpecification, "A garden-facing window");
+assert.equal(occupiedRoom.seen, false);
+assert.equal(occupiedRoom.lastObserved, undefined);
+assert.equal(occupiedRoom.image, null);
+assert.equal(occupiedRoom.initialImageAttemptedAt, undefined);
+assert.equal(occupiedRoom.preparation?.status, "pending");
+assert.equal(
+  roomMove.state.venues[0].archivedZones![0].zone.image?.id,
+  "neutral",
+  "previous neutral image is archived when personal occupancy starts",
+);
+
 function adaptationFixture(name: string) {
   const item = fixture(name);
   const room = {
@@ -261,6 +308,7 @@ function adaptationFixture(name: string) {
     id: "private",
     kind: "private-residence",
     name: "Room",
+    roomSpecification: "A garden-facing window",
     ownerId: "same",
     adaptationPending: true,
     adaptationSourceArchiveAt: "archived",
@@ -292,6 +340,9 @@ assert(handler.valid(adapted.state, job.input));
 const stale = structuredClone(adapted.state);
 stale.villagers[0]!.cardSnapshot.capturedAt = "new card";
 assert(!handler.valid(stale, job.input));
+const changedSpecification = structuredClone(adapted.state);
+changedSpecification.venues[0].privateSpaces![0].roomSpecification = "A different physical specification";
+assert(!handler.valid(changedSpecification, job.input), "changed destination specifications reject late adaptation");
 const generated = (await handler.generate(job.input)) as any;
 assert.equal(generated.description.length, MAX_VENUE_DESCRIPTION_LENGTH);
 assert.deepEqual(generated.items, ["Scarf"]);

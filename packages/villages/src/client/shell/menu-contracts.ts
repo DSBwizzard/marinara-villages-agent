@@ -141,6 +141,7 @@ export type MenuScreenController = {
   readonly saveVenue: ReturnType<typeof useSaveVenue>;
   readonly saveVisitRetention: ReturnType<typeof useSaveVisitRetention>;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
+  readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
   readonly selectedMapVenueId: ExplorationState["selectedMapVenueId"];
   readonly setArchiveOffset: ScenesState["setArchiveOffset"];
@@ -165,6 +166,7 @@ export type MenuScreenController = {
   readonly setRequestEdits: SettingsState["setRequestEdits"];
   readonly setResetArmed: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];
+  readonly setSceneryStyleProfileId: FoundingState["setSceneryStyleProfileId"];
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
   >;

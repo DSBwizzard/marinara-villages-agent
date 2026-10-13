@@ -18,9 +18,9 @@ function Harness(){
  const settings=useSettingsState(),[snapshot,setSnapshot]=useState(window.seed),[busy,setBusy]=useState(false),
  [flipDraft,setSpriteFlipDraft]=useState(null),[flipError,setSpriteFlipError]=useState(''),[flipSaving,setSpriteFlipSaving]=useState(false),
  [archive,setArchiveVersion]=useState(0),[noticeDraft,setNoticeDraft]=useState(' A notice '),
- [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[personalizeHomes,setPersonalizeHomes]=useState(false),[visualLoreDefault,setVisualLoreDefault]=useState(true);
+ [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[sceneryStyleProfileId]=useState(null),[personalizeHomes,setPersonalizeHomes]=useState(false),[visualLoreDefault,setVisualLoreDefault]=useState(true);
  const ports={...settings,snapshot,setSnapshot,setBusy,setSpriteFlipDraft,setSpriteFlipError,setSpriteFlipSaving,setArchiveVersion,noticeDraft,setNoticeDraft,
-  sceneryStyle,personalizeHomes,visualLoreDefault,acceptSavedSettings:()=>{window.acks++}};
+  sceneryStyle,sceneryStyleProfileId,personalizeHomes,visualLoreDefault,acceptSavedSettings:()=>{window.acks++}};
  const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),flip=useSaveSpriteCardFlip(ports),pace=useSaveStoryPace(ports),enter=useSaveSendOnEnter(ports),colors=useSaveCharacterSpeechColors(ports),retention=useSaveVisitRetention(ports),add=useAddNotice(ports),remove=useRemoveNotice(ports);
  const commands={save,scenery,flip:()=>flip(window.flipValue??true),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>colors(false),retention:()=>retention({mode:'count',value:20}),add,remove:()=>remove(0)};
  const launch=work=>{window.pending.push(work());return window.pending.length-1},run=kind=>launch(commands[kind]);
@@ -102,6 +102,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   const payloads = {
     save: { promptKnowledge: "", playerPersonaId: "", setting: "", selectedLorebookIds: [], loreTokenBudget: 1600 },
     scenery: {
+      sceneryStyleProfileId: null,
       sceneryArtStyle: " Exact scenery A ",
       personalizeVenueImagesByDefault: false,
       useVisualLoreByDefault: true,

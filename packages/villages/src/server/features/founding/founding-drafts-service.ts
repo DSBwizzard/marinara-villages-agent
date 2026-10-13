@@ -8,6 +8,12 @@ import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import {
+  LOCATION_IMAGE_WIDTH,
+  LOCATION_IMAGE_HEIGHT,
+  LOCATION_NEGATIVE_PROMPT,
+  venueImageCompositionPrompt,
+} from "../../domain/rules/location-image-rules.js";
+import {
   DEFAULT_LORE_TOKEN_BUDGET,
   readLoreTokenBudget,
   readSelectedLorebookIds,
@@ -107,9 +113,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "Suggest the required starting Venues for this shared-life setting. These are editable drafts, not saved facts.",
             "A village may be indoors or already established. Living spaces may be rooms, cells, bunks, apartments, tents, or buildings. Follow the player's setting; do not assume cottages.",
             "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
-            "Exterior is each Venue's entrance and approach, including an indoor corridor if appropriate. Common and Private Space are independent optional areas; choose a fitting layout.",
-            "Only suggest Private Space names and structural purposes. Never return private descriptions, images, objects or resident secrets. A Gathering Place with a Private Space is controlled by the player.",
-            'Venue Type identifies the place (home, bakery, church); Physical form describes its structure. Every Zone needs a concrete use, independent of access. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Entrance appearance","layout":"exterior|common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone"}]}.',
+            "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Gathering Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
+            "For villager Private Space suggest only names and structural purposes; never descriptions, images, objects or resident secrets. For the player's included Private Space also supply privateDescription: a short visible physical description. Identify the player's residence by its absent residentCharacterId.",
+            'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"player residence only"}]}.',
             "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 100 characters, form/purpose at most 240 and descriptions at most 1000.",
             `Return exactly ${rows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Do not omit the player's living space or the Gathering Place.`,
           ].join("\n"),
@@ -129,12 +135,13 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             venueType: "",
             form: "",
             description: "",
-            layout: "exterior|common|private|both",
+            layout: row.venueClass === "gathering" ? "common" : "common|private|both",
             commonName: "",
             commonPurpose: "",
             commonDescription: "",
             privateName: "",
             privatePurpose: "",
+            privateDescription: "",
           })),
         },
       }),
@@ -142,6 +149,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       "System",
     );
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 4000, {
+      responseFormat: { type: "json_object" },
       temperature: 0.7,
       reasoningEffort: "none",
       retryEmpty: false,
@@ -151,10 +159,21 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest(
         "The System model ran out of output room while drafting Venues. Your draft is unchanged; check the connection's output and thinking settings or choose another model, then retry.",
       );
+    const content = (completion.content ?? "").trim();
+    if (!content)
+      throw badRequest(
+        "The System model returned an empty Venue reply. Your draft is unchanged; check the connection's output and thinking settings, then explicitly retry.",
+      );
+    const payload = extractJsonObject(content);
+    if (!payload)
+      throw badRequest(
+        "The System model returned invalid JSON for Venue suggestions. Your draft is unchanged; choose a System connection supporting JSON responses, then explicitly retry.",
+      );
     return {
       venues: parseFoundingVenueSuggestions(
-        extractJsonObject(completion.content ?? ""),
+        payload,
         rows.map((row) => row.id),
+        rows,
       ),
     };
   }
@@ -323,15 +342,19 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           ? renderResidentFoundingContext(row.resident.name, foundingContext)
           : "",
         `Venue Type: ${row.venueType || row.venueClass}. Physical form: ${row.form}. Selected Zone: ${asTrimmedString(input.zoneName) || "Entrance"}. Used for: ${asTrimmedString(input.zonePurpose).slice(0, 240) || "Arrival and approach"}.`,
+        "Shared architecture: Venue form defines the whole place. Preserve its scale and construction across every Zone. Zone appearance describes part of this same place and must not redefine its architecture. Use only explicitly described architectural facts; do not invent materials, windows or proportions from the building type alone.",
+        area !== "exterior" && row.description
+          ? `Public exterior context for architectural continuity only: ${row.description}. Carry over explicit architectural cues that apply inside; do not depict this exterior or infer hidden contents.`
+          : "",
         `Wide, empty ${area === "private" ? "interior" : area} view of ${row.name || "a village venue"}, a ${row.form || row.venueClass} in ${asTrimmedString(input.villageName) || "a village"}.`,
         area === "exterior"
           ? "Show the described Venue entrance and approach, not its enterable interior. A room's approach can be a corridor within a larger building; do not invent a detached building or outdoor surroundings."
-          : "Show the described enterable space from inside, not the exterior.",
+          : "Show only the selected enterable space from inside, within this same Venue, not the exterior. Do not invent or show adjoining rooms, other Zones or hidden private contents.",
         `${area} description, follow closely: ${areaDescription}.`,
         row.layout
           ? `Selected layout: ${row.layout}. Only these areas exist: ${JSON.stringify(Array.isArray(row.areas) ? row.areas.map((area) => ({ id: record(area).id, name: record(area).name })) : [])}. Do not invent other interiors or adjoining rooms. Do not reveal hidden private contents.`
           : "",
-        "No people, lettering, numerals, signs, labels, or interface graphics.",
+        venueImageCompositionPrompt(area === "exterior" ? "exterior" : "interior"),
       ],
       [
         `Setting: ${setting}.`,
@@ -344,11 +367,12 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
     );
     const decoded = await generateVillageImage({
+      sceneryStyleProfileId: input.sceneryStyleProfileId,
       name: row.name || "Founding venue",
       prompt,
-      negativePrompt: "people, faces, text, letters, numbers, numerals, signs, labels, captions, watermark, interface",
-      width: 1216,
-      height: 832,
+      negativePrompt: LOCATION_NEGATIVE_PROMPT,
+      width: LOCATION_IMAGE_WIDTH,
+      height: LOCATION_IMAGE_HEIGHT,
       maxBase64Length: Math.ceil(MAX_VENUE_IMAGE_BYTES / 3) * 4,
     });
     return uploadVillageGalleryImage({
@@ -356,8 +380,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       mime: decoded.mime,
       name: row.name || "Founding venue",
       prompt,
-      width: 1216,
-      height: 832,
+      width: LOCATION_IMAGE_WIDTH,
+      height: LOCATION_IMAGE_HEIGHT,
     });
   }
 

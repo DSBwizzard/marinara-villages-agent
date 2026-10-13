@@ -24,11 +24,11 @@ export function calculateSetupBeginningSourceKey(ports: {
   personaDraft: string;
   personalizeHomes: boolean;
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   selectedResidentContexts: {
     [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
   };
   setupFoundingDetails: string;
-  setupFoundingGuidance: string;
   setupFoundingReason: "custom" | "rebuild" | "pioneer" | "prosper" | "none";
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
@@ -39,9 +39,9 @@ export function calculateSetupBeginningSourceKey(ports: {
     personaDraft,
     personalizeHomes,
     sceneryStyle,
+    sceneryStyleProfileId,
     selectedResidentContexts,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupFoundingReason,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -52,12 +52,12 @@ export function calculateSetupBeginningSourceKey(ports: {
     residentContexts: selectedResidentContexts,
     scenario: setupFoundingReason,
     premise: setupFoundingDetails.trim(),
-    direction: setupFoundingGuidance.trim(),
     setting: setupSetting.trim(),
     lorebooks: setupLorebookDraft,
     loreBudget: setupLoreTokenBudgetDraft,
     persona: personaDraft,
     artStyle: sceneryStyle,
+    styleProfileId: sceneryStyleProfileId,
     personalityDefault: personalizeHomes,
     visualLoreDefault,
   });
@@ -93,9 +93,9 @@ export function calculateSetupImageContextKey(ports: {
 export function calculateSetupMapGenerationKey(ports: {
   mapVisualLore: boolean;
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   setupLorebookDraft: string[];
   setupMapNegativePrompt: string;
-  setupMapOptions: import("../../shared/types").TownMapOptions;
   setupMapPrompt: string;
   setupSetting: string;
   setupWorldFacts: string[];
@@ -104,9 +104,9 @@ export function calculateSetupMapGenerationKey(ports: {
   const {
     mapVisualLore,
     sceneryStyle,
+    sceneryStyleProfileId,
     setupLorebookDraft,
     setupMapNegativePrompt,
-    setupMapOptions,
     setupMapPrompt,
     setupSetting,
     setupWorldFacts,
@@ -117,25 +117,11 @@ export function calculateSetupMapGenerationKey(ports: {
     worldFacts: snapshot?.isFounded ? setupWorldFacts : null,
     lorebooks: setupLorebookDraft,
     artStyle: sceneryStyle,
+    styleProfileId: sceneryStyleProfileId,
     useVisualLore: mapVisualLore,
     structure: setupMapPrompt,
     negative: setupMapNegativePrompt,
-    options: setupMapOptions,
   });
-}
-export function calculateSetupMapSeconds(ports: {
-  setupMapClock: number;
-  setupMapRequest: import("../../../shared/contracts/village").SetupMapRequest;
-}) {
-  const { setupMapClock, setupMapRequest } = ports;
-  return Math.max(
-    0,
-    Math.floor((setupMapClock - Date.parse(setupMapRequest?.startedAt ?? new Date().toISOString())) / 1000),
-  );
-}
-export function calculateSetupMapProgress(ports: { setupMapSeconds: number }) {
-  const { setupMapSeconds } = ports;
-  return `Waiting for map artwork — ${Math.floor(setupMapSeconds / 60)}m ${setupMapSeconds % 60}s. Image generation can take several minutes. You can continue editing.`;
 }
 export function calculateSetupMapShape(ports: {
   setupMapImageSource: "generate" | "upload";
@@ -159,13 +145,11 @@ export function calculateSetupMapSrc(ports: {
   townMapImage: string;
 }) {
   const { setupMapImage, setupMapImageSource, setupMapSource, townMapImage } = ports;
-  return setupMapSource === "none"
-    ? null
-    : setupMapSource === "existing"
-      ? townMapImage || null
-      : setupMapImageSource === setupMapSource
-        ? setupMapImage || null
-        : null;
+  return setupMapSource === "existing"
+    ? townMapImage || null
+    : setupMapImageSource === setupMapSource
+      ? setupMapImage || null
+      : null;
 }
 export function calculatePlaceCount(ports: {
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;

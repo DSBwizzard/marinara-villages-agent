@@ -1,12 +1,12 @@
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 import type { ScenarioImprint, SetupMapRequest, VillageLorebookOption } from "../../../shared/contracts/village.js";
 import type { ResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
-import type { SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
-import { DEFAULT_TOWN_MAP_OPTIONS, emptyScenarioImprint } from "./FoundingPanels.js";
+import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
+import { emptyScenarioImprint } from "./FoundingPanels.js";
 import type { FoundingScenarioId } from "./scenarios.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { SavedFoundingDraft } from "./villages-founding-draft.js";
-import { type AreaDraftCache, SCENERY_STYLES } from "./villages-founding-editor";
+import { type AreaDraftCache } from "./villages-founding-editor";
 import { emptyFoundingWorkspace, type FoundingIssue } from "./villages-founding-workspace-state";
 import { DEFAULT_PLAYER_ROLE } from "./villages-player-role.js";
 import { useRef, useState } from "react";
@@ -34,8 +34,6 @@ export function useFoundingState() {
 
   const [setupFoundingDetails, setSetupFoundingDetails] = useState<string>("");
 
-  const [setupFoundingGuidance, setSetupFoundingGuidance] = useState("");
-
   const [setupPlayerRole, setSetupPlayerRole] = useState<PlayerRole | null>({ ...DEFAULT_PLAYER_ROLE });
 
   const [setupImprint, setSetupImprint] = useState<ScenarioImprint>(emptyScenarioImprint);
@@ -48,8 +46,6 @@ export function useFoundingState() {
 
   const [setupResidentContexts, setSetupResidentContexts] = useState<Record<string, ResidentFoundingContext>>({});
 
-  const [setupRoleExpanded, setSetupRoleExpanded] = useState(false);
-
   const [setupKeyboardSpot, setSetupKeyboardSpot] = useState({ x: 0.5, y: 0.5 });
 
   const [setupEditorOpen, setSetupEditorOpen] = useState(false);
@@ -60,7 +56,8 @@ export function useFoundingState() {
 
   const setupEditorZoneOriginal = useRef<AreaDraftCache["current"] | undefined>(undefined);
 
-  const [sceneryStyle, setSceneryStyle] = useState(SCENERY_STYLES["Painted illustration"]);
+  const [sceneryStyle, setSceneryStyle] = useState("");
+  const [sceneryStyleProfileId, setSceneryStyleProfileId] = useState<string | null>("");
 
   const [personalizeHomes, setPersonalizeHomes] = useState(true);
 
@@ -88,8 +85,6 @@ export function useFoundingState() {
 
   const [setupPlacementError, setSetupPlacementError] = useState("");
 
-  const [setupMapOptions, setSetupMapOptions] = useState<TownMapOptions>(DEFAULT_TOWN_MAP_OPTIONS);
-
   const [setupMapSource, setSetupMapSource] = useState<SetupMapSource>("generate");
 
   const [setupMapImage, setSetupMapImage] = useState("");
@@ -111,8 +106,6 @@ export function useFoundingState() {
   const [setupMapRequest, setSetupMapRequest] = useState<SetupMapRequest | null>(null);
 
   const setupMapRequestRef = useRef<SetupMapRequest | null>(null);
-
-  const [setupMapClock, setSetupMapClock] = useState(Date.now());
 
   const [preparationProblem, setPreparationProblem] = useState("");
 
@@ -174,8 +167,6 @@ export function useFoundingState() {
     setSetupFoundingReason,
     setupFoundingDetails,
     setSetupFoundingDetails,
-    setupFoundingGuidance,
-    setSetupFoundingGuidance,
     setupPlayerRole,
     setSetupPlayerRole,
     setupImprint,
@@ -188,8 +179,6 @@ export function useFoundingState() {
     setSetupFoundingVillagerIds,
     setupResidentContexts,
     setSetupResidentContexts,
-    setupRoleExpanded,
-    setSetupRoleExpanded,
     setupKeyboardSpot,
     setSetupKeyboardSpot,
     setupEditorOpen,
@@ -198,7 +187,9 @@ export function useFoundingState() {
     setupEditorAuthoredOriginal,
     setupEditorZoneOriginal,
     sceneryStyle,
+    sceneryStyleProfileId,
     setSceneryStyle,
+    setSceneryStyleProfileId,
     personalizeHomes,
     setPersonalizeHomes,
     visualLoreDefault,
@@ -223,8 +214,6 @@ export function useFoundingState() {
     setSetupVenueBusy,
     setupPlacementError,
     setSetupPlacementError,
-    setupMapOptions,
-    setSetupMapOptions,
     setupMapSource,
     setSetupMapSource,
     setupMapImage,
@@ -246,8 +235,6 @@ export function useFoundingState() {
     setupMapRequest,
     setSetupMapRequest,
     setupMapRequestRef,
-    setupMapClock,
-    setSetupMapClock,
     preparationProblem,
     setPreparationProblem,
     connectionSetupProblem,

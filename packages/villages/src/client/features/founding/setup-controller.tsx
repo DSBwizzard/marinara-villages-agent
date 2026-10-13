@@ -74,6 +74,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           commonDescription: string;
           privateName: string;
           privatePurpose: string;
+          privateDescription?: string;
         }>;
       }>("/setup/venues/suggest", {
         method: "POST",
@@ -158,6 +159,7 @@ export function createFoundingSuggestSetupVenues(ports: {
                       ownerId: row.occupancy.playerHome ? "player" : (row.occupancy.residentCharacterId ?? ""),
                       name: proposal.privateName,
                       purpose: proposal.privatePurpose,
+                      description: row.occupancy.playerHome ? (proposal.privateDescription ?? "") : "",
                       access: draftZonePolicy(
                         row,
                         {
@@ -189,7 +191,6 @@ export function createFoundingSuggestSetupVenues(ports: {
 // writing the village. A half-answered setup never claims to be founded.
 export function createFoundingChooseSetupScenario(ports: {
   readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingGuidance: FoundingState["setSetupFoundingGuidance"];
   readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
@@ -199,7 +200,6 @@ export function createFoundingChooseSetupScenario(ports: {
   return (value: FoundingScenarioId) => {
     const {
       setSetupFoundingDetails,
-      setSetupFoundingGuidance,
       setSetupFoundingReason,
       setSetupProblem,
       setupFoundingDetails,
@@ -213,7 +213,6 @@ export function createFoundingChooseSetupScenario(ports: {
     const keepPlayerText = !!setupFoundingDetails.trim() && setupFoundingDetails !== previousStarter;
     setSetupFoundingReason(value);
     if (!keepPlayerText) setSetupFoundingDetails(foundingScenario(value).premise);
-    setSetupFoundingGuidance("");
     setSetupProblem("");
   };
 }
@@ -231,10 +230,13 @@ export function createFoundingGotoSetupStep(ports: {
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupStep: FoundingState["setSetupStep"];
-  readonly setupBlocker: () => string;
+  readonly setupBlocker: (reviewingMap?: boolean) => string;
+  readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
   readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
   readonly setupHomeCount: number;
+  readonly setupMapBusy: FoundingState["setupMapBusy"];
+  readonly setupMapSrc: string | null;
   readonly setupName: FoundingState["setupName"];
   readonly setupPlayerRole: FoundingState["setupPlayerRole"];
   readonly setupSetting: FoundingState["setupSetting"];
@@ -258,9 +260,12 @@ export function createFoundingGotoSetupStep(ports: {
       setSetupProblem,
       setSetupStep,
       setupBlocker,
+      setSetupMapReviewed,
       setupFoundingDetails,
       setupFoundingVillagerIds,
       setupHomeCount,
+      setupMapBusy,
+      setupMapSrc,
       setupName,
       setupPlayerRole,
       setupSetting,
@@ -270,11 +275,11 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
-    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
+    if (step === 4 && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
-    if (step > setupStep) {
+    if (step > setupStep || step === 4) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
@@ -290,17 +295,29 @@ export function createFoundingGotoSetupStep(ports: {
       const placeProblem = !setupName.trim()
         ? "Give the village a name."
         : !setupSetting.trim()
-          ? "Describe where we are."
+          ? "Describe the place and world."
           : !snapshot?.isFounded && !setupFoundingDetails.trim()
-            ? "Describe what brings you together."
+            ? "Describe the starting circumstances."
             : "";
-      const problem = peopleProblem || (step >= 2 ? placeProblem : "") || (step >= 3 ? setupBlocker() : "");
+      const mapProblem =
+        !snapshot?.isFounded && !setupMapSrc && !setupMapBusy
+          ? "Generate or upload map artwork on Map before continuing."
+          : "";
+      const problem =
+        peopleProblem ||
+        (step >= 2 ? placeProblem : "") ||
+        (step >= 3 ? mapProblem : "") ||
+        (step >= 4 ? setupBlocker(step === 4) : "");
       if (problem) {
+        if (peopleProblem) setSetupStep(0);
+        else if (step >= 2 && placeProblem) setSetupStep(1);
+        else if (step >= 3 && mapProblem) setSetupStep(2);
         setSetupProblem(problem);
         return;
       }
     }
     setSetupProblem("");
+    if (step === 4) setSetupMapReviewed(true);
     setSetupStep(step);
     setSetupEditorOpen(false);
     void loadPersonas();

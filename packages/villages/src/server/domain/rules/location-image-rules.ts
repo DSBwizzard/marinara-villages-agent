@@ -10,7 +10,17 @@ export const LOCATION_IMAGE_HEIGHT = 832;
 const MAX_SETTING_IN_PROMPT_LENGTH = 400;
 
 export const LOCATION_NEGATIVE_PROMPT =
-  "people, person, human, crowd, face, portrait, text, lettering, caption, signature, watermark, blurry, low quality";
+  "people, person, human, crowd, face, portrait, animals, text, lettering, numerals, signs, labels, caption, signature, watermark, map, floor plan, cutaway, icons, markers, interface elements, photograph frames, decorative borders, collage, blurry, low quality";
+
+export function venueImageCompositionPrompt(area: "exterior" | "interior"): string {
+  return (
+    "Create one continuous, eye-level landscape view from a viewpoint appropriate to the setting's inhabitants. Fill the canvas with scenery to every edge. This image is a background for chatting in the selected Venue Zone; use a readable sense of depth, balanced detail and a calm composition that works behind chat overlays. " +
+    (area === "exterior"
+      ? "The same exterior image also identifies the Venue in a small Polaroid. Keep its entrance and distinctive visible features clear and comfortably within the image, recognizable at thumbnail size. "
+      : "Depict only the selected Zone as experienced from within it, with its defining furnishings and usable space clearly visible. ") +
+    "Render only the place: no people, animals, writing, numerals, labels, interface graphics, icons or markers. Do not draw an overhead map, floor plan, cutaway, collage, photograph frame, decorative border or blank panel for chat. The application supplies the Polaroid frame and chat interface."
+  );
+}
 
 export const avatarPromptId = imagePromptId;
 
@@ -52,6 +62,7 @@ export function buildLocationPrompt(
     : venue.state.publicFacts;
   const approvedDescription = venue.description;
   return [
+    venueImageCompositionPrompt(area),
     area === "exterior"
       ? `A wide, empty exterior view of ${venue.name} and its approach in ${village.name}. Show its described entrance and approach, not its enterable interior. For a room within a larger place, the approach can be a corridor; do not invent a detached building or outdoor surroundings.`
       : `A wide, empty interior view of ${spaceLabel || "the described space"} at ${venue.name} in ${village.name}. Show the room from inside; do not show the building exterior.`,

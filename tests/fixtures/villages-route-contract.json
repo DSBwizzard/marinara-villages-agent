@@ -92,6 +92,10 @@
     },
     {
       "method": "get",
+      "path": "/image-style-profiles"
+    },
+    {
+      "method": "get",
       "path": "/town-map"
     },
     {

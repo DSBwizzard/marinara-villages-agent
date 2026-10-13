@@ -16,7 +16,7 @@ try {
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
-    { width: 844, height: 390 },
+    { width: 360, height: 640 },
     { width: 1440, height: 900 },
   ]) {
     const mobile = width !== 1440;

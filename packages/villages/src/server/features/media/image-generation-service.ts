@@ -1,3 +1,5 @@
+import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
+import type { loadEngineImageStyleSupport } from "../../adapters/engine/image-style-profiles.js";
 import type { villageEngineJson } from "../../adapters/engine/engine-loopback.js";
 import type { decodeVillageImageDataUrl, DecodedVillageImage } from "../../adapters/engine/image-files.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
@@ -10,6 +12,7 @@ import {
 } from "../../domain/rules/image-generation-rules.js";
 import type { villagesImageConnectionChoice } from "../settings/connections.js";
 export type ImageGenerationPorts = {
+  loadEngineImageStyleSupport?: typeof loadEngineImageStyleSupport;
   villageEngineJson: typeof villageEngineJson;
   villagesImageConnectionChoice: typeof villagesImageConnectionChoice;
   decodeVillageImageDataUrl: typeof decodeVillageImageDataUrl;
@@ -38,8 +41,32 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     throw badRequest("No image connection is set up. Add one in the Engine's settings, or upload an image instead.");
   }
 
+  async function styleSupport() {
+    if (!ports.loadEngineImageStyleSupport)
+      throw badRequest("Engine image styles are unavailable. Use a custom description.");
+    return ports.loadEngineImageStyleSupport();
+  }
+  async function readProfiles() {
+    const response = asRecord(await villageEngineJson<unknown>("/api/app-settings/ui"));
+    let ui: Record<string, unknown> = {};
+    try {
+      if (typeof response.value === "string") ui = asRecord(JSON.parse(response.value));
+    } catch {
+      /* Engine also uses default profiles for malformed synced UI settings. */
+    }
+    const support = await styleSupport();
+    return { support, settings: support.normalizeImageStyleProfileSettings(ui.imageStyleProfiles) };
+  }
+  async function readVillageImageStyleCatalog() {
+    const { settings } = await readProfiles();
+    return {
+      defaultProfileId: settings.defaultProfileId,
+      profiles: settings.profiles.map(({ id, name }) => ({ id, name })),
+    };
+  }
   async function generateVillageImage(input: {
     connectionId?: string;
+    sceneryStyleProfileId?: unknown;
     name: string;
     prompt: string;
     negativePrompt?: string;
@@ -47,7 +74,33 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     height: number;
     maxBase64Length: number;
   }): Promise<DecodedVillageImage> {
-    const prompt = readPrompt(input.prompt);
+    let prompt = readPrompt(input.prompt);
+    let negativePrompt = input.negativePrompt?.trim() || "";
+    const profileId = readSceneryStyleProfileId(input.sceneryStyleProfileId);
+    if (profileId !== null) {
+      const { support, settings } = await readProfiles();
+      const id = profileId || settings.defaultProfileId;
+      if (!settings.profiles.some((row) => row.id === id))
+        throw badRequest(
+          "That image style profile is no longer available. Choose another Art style or Engine default.",
+        );
+      const compiled = support.compileImagePrompt({
+        kind: "background",
+        prompt,
+        styleProfiles: settings,
+        styleProfileId: id,
+        hardNegative: negativePrompt,
+        // Villages owns map/Zone geometry. Generic subject tags must not introduce a competing composition.
+        omitProfileSubjectTags: true,
+      });
+      prompt = compiled.prompt;
+      negativePrompt = compiled.negativePrompt;
+      // The authored source retains its existing 4k limit; profiles have separate Engine-normalized bounds.
+      if (!prompt.trim() || prompt.length > 16000 || negativePrompt.length > 16000)
+        throw badRequest(
+          "The Engine image style makes this prompt too long. Shorten the profile in Generation settings.",
+        );
+    }
     const width = readDimension(input.width, "Image width");
     const height = readDimension(input.height, "Image height");
     if (width * height > MAX_IMAGE_PIXELS) {
@@ -68,7 +121,7 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
             {
               id: imagePromptId(name),
               prompt,
-              negativePrompt: input.negativePrompt?.trim() || undefined,
+              negativePrompt: negativePrompt || undefined,
             },
           ],
         },
@@ -80,6 +133,6 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     });
   }
 
-  return { resolveVillageImageConnectionId, generateVillageImage };
+  return { resolveVillageImageConnectionId, generateVillageImage, readVillageImageStyleCatalog };
 }
 export type ImageGenerationService = ReturnType<typeof createImageGeneration>;

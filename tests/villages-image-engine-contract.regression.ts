@@ -21,8 +21,47 @@ async function main() {
     ),
     "Engine's avatar override lookup moved",
   );
+  const { loadEngineImageStyleSupport } =
+    await import("../packages/villages/src/server/adapters/engine/image-style-profiles.js");
+  const support = await loadEngineImageStyleSupport(join(engineRoot, "packages/server/dist/index.js"));
+  const defaults = support.normalizeImageStyleProfileSettings(null);
+  assert.ok(defaults.profiles.length > 2, "Fresh Engine built-ins are available without Illustrator settings");
+  assert.ok(defaults.profiles.some((row) => row.id === defaults.defaultProfileId));
+  const partial = support.normalizeImageStyleProfileSettings({
+    defaultProfileId: "deleted",
+    profiles: [{ id: "test-ink", name: "User ink", styleText: "Ink rendering", negativeTags: "shiny" }],
+  });
+  assert.equal(partial.defaultProfileId, defaults.defaultProfileId);
+  for (const row of defaults.profiles) assert.ok(partial.profiles.some((other) => other.id === row.id));
+  assert.ok(partial.profiles.some((row) => row.id === "test-ink"));
+  for (const row of partial.profiles) {
+    const geometry = "Five connected rooms around an open courtyard. Corridors follow the described layout.";
+    const compiled = support.compileImagePrompt({
+      kind: "background",
+      prompt: geometry,
+      styleProfiles: partial,
+      styleProfileId: row.id,
+      hardNegative: "people, text, labels",
+      omitProfileSubjectTags: true,
+    });
+    assert.ok(
+      compiled.prompt.includes("Five connected rooms around an open courtyard"),
+      row.name + " preserves map geometry",
+    );
+    assert.match(compiled.negativePrompt, /people/);
+  }
+  const ink = support.compileImagePrompt({
+    kind: "background",
+    prompt: "Room geometry",
+    styleProfiles: partial,
+    styleProfileId: "test-ink",
+    hardNegative: "people",
+    omitProfileSubjectTags: true,
+  });
+  assert.match(ink.prompt, /Ink rendering/);
+  assert.match(ink.negativePrompt, /shiny/);
   console.log(
-    "Villages image Engine contract: identifier normalization, prefix and override lookup match the selected read-only Engine source; no model requests.",
+    "Villages image Engine contract: identifier normalization, prefix and override lookup, public style export loading, normalized built-ins/custom profiles and scene-preserving compilation match the selected read-only built Engine; no model requests.",
   );
 }
 main().catch((error) => {

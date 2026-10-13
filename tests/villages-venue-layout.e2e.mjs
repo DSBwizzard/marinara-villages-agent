@@ -108,7 +108,8 @@ try {
         await editor.getByRole("button", { name: "Add personal Zone", exact: true }).click();
         await editor.getByLabel("Zone name", { exact: true }).last().fill("Sleeping alcove");
         await editor.getByLabel("Zone used for", { exact: true }).last().fill("Sleeping");
-        await expect(editor.getByText(/Appearance is prepared for the assigned resident/)).toBeVisible();
+        await editor.getByLabel("Room specification", { exact: true }).fill("A quiet canvas sleeping alcove.");
+        await expect(editor.getByText(/The interior is prepared privately from this specification/)).toBeVisible();
       }
       await editor.getByRole("button", { name: "Open Venue", exact: true }).click();
       await expect.poll(() => submitted).toBeTruthy();
@@ -116,6 +117,8 @@ try {
       assert.equal(submitted.layoutVersion, 1);
       assert.equal(submitted.spaces.length, Number(layout === "common" || layout === "both"));
       assert.equal(submitted.privateSpaces.length, Number(layout === "private" || layout === "both"));
+      if (submitted.privateSpaces.length)
+        assert.equal(submitted.privateSpaces[0].roomSpecification, "A quiet canvas sleeping alcove.");
       if (submitted.spaces.length) assert.equal(submitted.spaces[0].venueClass, "workplace");
       else {
         assert.equal(submitted.interiorDescription, undefined);

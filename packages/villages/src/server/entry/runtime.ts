@@ -8,6 +8,7 @@ import { createFoundingDrafts } from "../features/founding/founding-drafts-servi
 import { configureFoundingDrafts } from "../features/founding/founding-drafts.js";
 import { createVillageBootstrap } from "../features/founding/village-bootstrap-service.js";
 import { configureVillageBootstrap } from "../features/founding/village-bootstrap.js";
+import { loadEngineImageStyleSupport } from "../adapters/engine/image-style-profiles.js";
 import { createImageGeneration } from "../features/media/image-generation-service.js";
 import { configureImageGeneration } from "../features/media/image-generation.js";
 import { villageEngineJson as villageImageEngineJson } from "../adapters/engine/engine-loopback.js";
@@ -459,6 +460,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseImageGeneration = configureImageGeneration(
     createImageGeneration({
       villageEngineJson: villageImageEngineJson,
+      loadEngineImageStyleSupport,
       villagesImageConnectionChoice,
       decodeVillageImageDataUrl,
     }),

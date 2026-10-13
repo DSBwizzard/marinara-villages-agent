@@ -9,6 +9,7 @@ export interface SettingsDraftValues {
   lorebookDraft: string[];
   loreTokenBudgetDraft: number;
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   personalizeHomes: boolean;
   visualLoreDefault: boolean;
   venuesDraft: VillageVenue[];
@@ -30,6 +31,7 @@ function savedValues(snapshot: NonNullable<VillageSnapshot>): SettingsDraftValue
     lorebookDraft: [...snapshot.settings.selectedLorebookIds],
     loreTokenBudgetDraft: snapshot.settings.loreTokenBudget,
     sceneryStyle: snapshot.settings.sceneryArtStyle ?? "",
+    sceneryStyleProfileId: snapshot.settings.sceneryStyleProfileId ?? null,
     personalizeHomes: snapshot.settings.personalizeVenueImagesByDefault !== false,
     visualLoreDefault: snapshot.settings.useVisualLoreByDefault !== false,
     venuesDraft: destinationPlaces(snapshot.settings.venues).map((venue) => ({ ...venue })),
@@ -59,6 +61,7 @@ export function useSettingsDraftSession(ports: Setters & { snapshot: VillageSnap
     seed("lorebookDraft", ports.setLorebookDraft);
     seed("loreTokenBudgetDraft", ports.setLoreTokenBudgetDraft);
     seed("sceneryStyle", ports.setSceneryStyle);
+    seed("sceneryStyleProfileId", ports.setSceneryStyleProfileId);
     seed("personalizeHomes", ports.setPersonalizeHomes);
     seed("visualLoreDefault", ports.setVisualLoreDefault);
     seed("venuesDraft", ports.setVenuesDraft);

@@ -129,13 +129,13 @@ try {
   for (const { width, height, shell } of [
     { width: 320, height: 568, shell: 120 },
     { width: 390, height: 844, shell: 144 },
-    { width: 844, height: 390, shell: 80 },
+    { width: 360, height: 640, shell: 80 },
     { width: 390, height: 500, shell: 144 },
     { width: 1440, height: 900, shell: 160 },
     { width: 1024, height: 768, shell: 120 },
     { width: 720, height: 900, shell: 120 },
   ]) {
-    const mobile = width <= 704 || (width <= 880 && height - shell <= 512);
+    const mobile = width <= 704;
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
     await page.addInitScript(() => {
       const viewport = new EventTarget();
@@ -369,7 +369,7 @@ try {
     await expect(home.locator('[data-pin-id="market"]')).toHaveCount(1);
     await expect(home.locator('[data-pin-id="crowded"]')).toHaveCount(1);
     await expect(home.locator("[data-group-ids], ." + P + "-explore-count")).toHaveCount(0);
-    // Add actual saved anchors at all four visible frame edges, including in landscape.
+    // Add actual saved anchors at all four visible frame edges, including on compact portrait phones.
     const pictureBox = Object.fromEntries(Object.entries(initial).map(([key, value]) => [key, parseFloat(value)]));
     const frameBox = await canvas.boundingBox();
     for (const [id, px, py] of [

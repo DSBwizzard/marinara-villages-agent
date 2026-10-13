@@ -28,7 +28,6 @@ export function createScenarioImprint(ports: ScenarioImprintServicePorts) {
     if (!premise || premise.length > 2_000)
       throw badRequest("Describe shared starting circumstances in at most 2,000 characters.");
     if (!setting || setting.length > 2_000) throw badRequest("Describe the place and world first.");
-    const direction = asTrimmedString(input.foundingGuidance).slice(0, 500);
     const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
     const budget = input.loreTokenBudget === undefined ? 800 : readLoreTokenBudget(input.loreTokenBudget);
     const lore = await readVillageLore(ids, `${setting}\n${premise}`, undefined, budget);
@@ -50,7 +49,7 @@ export function createScenarioImprint(ports: ScenarioImprintServicePorts) {
           "Origin is at most 400 characters. Each list has at most four short strings.",
         ].join("\n"),
       },
-      { role: "user", content: JSON.stringify({ scenario: input.foundingReason, premise, direction, setting, lore }) },
+      { role: "user", content: JSON.stringify({ scenario: input.foundingReason, premise, setting, lore }) },
     ];
     const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1400, 1400) });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 1400, {

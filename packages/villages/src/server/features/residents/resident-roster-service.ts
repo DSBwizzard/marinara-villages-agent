@@ -149,12 +149,17 @@ export function createResidentRoster({
               zone.access.memberIds = [];
             }
             zone.seen = false;
+            zone.lastObserved = undefined;
+            zone.initialImageAttemptedAt = undefined;
+            zone.imageInteriorKey = undefined;
             zone.preparation = undefined;
             zone.adaptationPending = false;
             zone.adaptationSourceArchiveAt = "";
-            zone.description = zone.purpose || "Vacant residential Private Space.";
+            zone.description = zone.roomSpecification || zone.purpose || "Vacant residential Private Space.";
             zone.image = null;
             zone.state.publicFacts = [];
+            zone.state.items = [];
+            zone.state.features = zone.state.features.filter((feature) => feature.sourceCharacterId !== characterId);
             zone.state.traces = [];
             venue.editProposals = venue.editProposals?.filter((proposal) => proposal.zoneId !== zone.id);
           }

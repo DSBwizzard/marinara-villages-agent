@@ -19,7 +19,7 @@ try {
       r.fulfill({
         status: 200,
         contentType: "text/html",
-        body: "<style>html,body{margin:0;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
+        body: "<style>html,body{margin:0;height:100%;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
     );
     await page.route("**/api/villages**", async (route) => {
@@ -72,7 +72,11 @@ try {
     await expect(page.getByText(/0 expected AI requests/).first()).toBeVisible();
     await expect(page.getByText(/1 with unknown cost/).first()).toBeVisible();
     const meter = page.getByRole("complementary", { name: "Villages AI usage" });
-    await expect(meter).toContainText("18 requests");
+    await expect(meter).toContainText("$0.42");
+    await expect(meter.getByRole("button", { name: "Villages AI usage", exact: true })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     await page.evaluate(() => {
       const button = document.createElement("button");
       button.textContent = "Test fullscreen";
@@ -84,11 +88,24 @@ try {
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
     await expect.poll(() => meter.evaluate((element) => document.fullscreenElement?.contains(element))).toBe(true);
     await meter.getByRole("button", { name: /Villages AI usage/ }).click();
+    await expect(meter).toContainText("18 requests");
     await expect(meter).toContainText("1 requests remaining");
     await expect(meter).toContainText("Player: regenerate Agenda");
     const box = await meter.boundingBox();
-    assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1);
+    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    assert.ok(
+      box && box.x >= 0 && box.x + box.width <= viewport.width + 1,
+      "floating meter stays inside the active fullscreen viewport",
+    );
     await page.screenshot({ path: resolve("artifacts/usage-preview-" + width + ".png") });
+    await page.evaluate(() => document.exitFullscreen());
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBe(null);
+    await expect.poll(() => meter.evaluate((element) => element.parentElement?.tagName)).toBe("BODY");
+    await meter.getByRole("button", { name: /Villages AI usage/ }).click();
+    await expect(meter.getByRole("button", { name: "Villages AI usage", exact: true })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     assert.ok(previews > 0);
     assert.equal(paid, 0);
     assert.deepEqual(errors, []);

@@ -11,6 +11,9 @@ export async function resolveVillageImageConnectionId(
   return binding.get().resolveVillageImageConnectionId(...args);
 }
 
+export async function readVillageImageStyleCatalog() {
+  return binding.get().readVillageImageStyleCatalog();
+}
 export async function generateVillageImage(
   ...args: Parameters<ImageGenerationService["generateVillageImage"]>
 ): ReturnType<ImageGenerationService["generateVillageImage"]> {

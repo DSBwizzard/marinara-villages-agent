@@ -6,7 +6,7 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { VillageState, VillageVenueImage } from "../../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound, safeFailureMessage, statusCodeOf } from "../../domain/rules/errors.js";
-import { signaturePrompt } from "../../domain/rules/resident-signature-prompt.js";
+import { signaturePrompt, legacySignaturePrompt } from "../../domain/rules/resident-signature-prompt.js";
 import type { ResidentSignatureTasks } from "./resident-signature-tasks.js";
 import { createHash } from "node:crypto";
 
@@ -73,8 +73,17 @@ export function createResidentSignatures({
       documentId: `villages-signature-${incarnation}`,
       incarnation,
       runtimeEpoch: villagesRuntimeEpoch(),
-      revision: digest([resident.cardSnapshot.name, resident.cardSnapshot.personality]),
+      revision: digest(signaturePrompt(resident)),
+      legacyRevision: digest([resident.cardSnapshot.name, resident.cardSnapshot.personality]),
+      legacyPrompt: legacySignaturePrompt(resident),
     };
+  }
+  function matchesRevision(attempt: Attempt | undefined, current: Awaited<ReturnType<typeof subject>>) {
+    return Boolean(
+      attempt &&
+      (attempt.revision === current.revision ||
+        (attempt.revision === current.legacyRevision && attempt.prompt === current.legacyPrompt)),
+    );
   }
   async function readAttempt(id: string) {
     const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, id);
@@ -97,7 +106,8 @@ export function createResidentSignatures({
     } else await villagesDocuments().create({ ...fields, createdAt: stamp });
   }
   async function readResidentSignature(id: string): Promise<ResidentSignatureView> {
-    const { resident, documentId, revision } = await subject(id);
+    const current = await subject(id);
+    const { resident, documentId } = current;
     const attempt = (await readAttempt(documentId))?.data;
     let available = false,
       unavailableReason = "";
@@ -116,7 +126,7 @@ export function createResidentSignatures({
       available,
       recoverable: Boolean(
         attempt?.status !== "saved" &&
-        attempt?.revision === revision &&
+        matchesRevision(attempt, current) &&
         (attempt?.response || (attempt?.original && attempt?.image)),
       ),
       unavailableReason,
@@ -165,7 +175,7 @@ export function createResidentSignatures({
     // A failed upload or Village write reuses the paid image, even if the image connection is now disabled.
     const recover =
       previous?.data.status !== "saved" &&
-      previous?.data.revision === initial.revision &&
+      matchesRevision(previous?.data, initial) &&
       Boolean(previous.data.response || (previous.data.original && previous.data.image));
     const connectionId = recover ? "" : await resolveVillageImageConnectionId();
     const data: Attempt = {
@@ -180,6 +190,10 @@ export function createResidentSignatures({
       name: initial.resident.cardSnapshot.name,
       error: "",
     };
+    if (!recover && data.prompt.length > 4000)
+      throw badRequest(
+        "This Villager\u0027s name is too long for the image connection. Shorten the character name before generating a signature.",
+      );
     await saveAttempt(initial.documentId, data, previous?.record.revision);
     const checkpoint = async () => {
       if (villagesRuntimeEpoch() !== initial.runtimeEpoch) throw conflict("The Villages package runtime changed.");
@@ -202,7 +216,8 @@ export function createResidentSignatures({
           connectionId,
           name: `${data.name} signature`,
           prompt: data.prompt,
-          negativePrompt: "portrait, person, objects, scenery, paper texture, watermark, captions, extra text",
+          negativePrompt:
+            "portrait, person, scenery, paper texture, shadows, gray background, checkerboard, watermark, captions, extra text",
           width: 1536,
           height: 1024,
           maxBase64Length: LIMIT,
@@ -251,7 +266,7 @@ export function createResidentSignatures({
         if (
           village.seed !== initial.village.seed ||
           !resident ||
-          digest([resident.cardSnapshot.name, resident.cardSnapshot.personality]) !== initial.revision
+          digest(signaturePrompt(resident)) !== initial.revision
         )
           throw conflict("The Villager changed while the signature was generated.");
         resident.signature = {

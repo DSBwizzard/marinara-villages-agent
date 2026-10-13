@@ -169,6 +169,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       promptKnowledge?: unknown;
       selectedLorebookIds?: unknown;
       sceneryArtStyle?: unknown;
+      sceneryStyleProfileId?: unknown;
       personalizeVenueImagesByDefault?: unknown;
       useVisualLoreByDefault?: unknown;
       useVisualLore?: unknown;
@@ -194,6 +195,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       let snapshot = await buildVillageSnapshot();
       if (
         body.sceneryArtStyle !== undefined ||
+        body.sceneryStyleProfileId !== undefined ||
         body.personalizeVenueImagesByDefault !== undefined ||
         body.useVisualLoreByDefault !== undefined
       )

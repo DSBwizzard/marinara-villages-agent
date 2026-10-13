@@ -1,5 +1,6 @@
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
+import { observePrivateInterior } from "../../domain/rules/private-interior.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import {
   MAX_VENUE_DESCRIPTION_LENGTH,
@@ -85,6 +86,7 @@ export function createVenueZoneEdits({
         features: venueFeatures(scene.features, current.state.features),
         updatedAt: new Date().toISOString(),
       };
+      observePrivateInterior(current, new Date().toISOString());
     });
     return buildVillageSnapshot();
   }
@@ -221,6 +223,8 @@ export function createVenueZoneEdits({
         zone.name = applied.name ?? zone.name;
         zone.purpose = applied.purpose ?? zone.purpose;
         zone.state = applied.state;
+        // The exact approved player-authored change is already known to the player.
+        observePrivateInterior(zone, applied.state.updatedAt);
       } else if (proposal.target === "shared") {
         venue.spaces = venueSpaces(venue).map((space) =>
           space.venueClass === "residence" ? { ...applied, image: space.image } : space,
