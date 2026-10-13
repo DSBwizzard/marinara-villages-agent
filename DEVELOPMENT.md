@@ -27,7 +27,9 @@ npm test -- --filter=venue-access
 
 `check` covers formatting, lint, maintained-code compiler checking, pinned declaration integrity, architectural imports and runtime cycles. It rejects client imports of server code, impure domain dependencies, and connector calls back into feature coordinators. Client and server features collaborate only through the named contracts in [feature-interfaces.mjs](scripts/feature-interfaces.mjs); other modules and exports remain private. Entry assembles factories, the client shell connects its feature implementations, and modules within one feature may use their own implementation. Shared client support cannot import features or shell assembly; features cannot import the shell. Types, aliases, reexports and delayed imports obey the same boundaries. Add public contracts deliberately after reviewing their ownership and effects. An empty test selection fails. Focused checks support iteration; they do not establish complete candidate readiness.
 
-Before presenting a complete candidate:
+During feedback, a clearly labeled preview may use static checks and explicit affected regression/browser selections plus relevant packaged acceptance. Shared helpers require coverage of affected consumers; unknown impact requires broader validation.
+
+Before publication or claiming a fully validated candidate:
 
 ```sh
 npm run validate
@@ -68,3 +70,10 @@ Staging integrates reviewed source changes. A merge, tiny edit, local commit or 
 The architecture baseline is numbered 0.7.0 and starts with fresh worlds. The [migration ledger](docs/architecture-migration.md) records the starting baseline, completed work and validation scope. Keep changes focused and atomic; separate code movement from behavior corrections. Explain any change to saving, privacy, recovery, concurrency or model spending and obtain independent technical review.
 
 Installing a package uses the host's supported package mechanism and a validated ZIP, rather than copying a source tree into Engine. Computer-specific review environments, approval gates and installation helpers live in local workflow instructions outside this repository. Loading a changed server package requires a restart; follow that environment's explicit restart authorization. This repository does not publish a replacement for the official multi-agent catalog or plan upstream submission.
+
+
+## Test iteration and diagnostics
+
+The runner defaults to four total workers and two browser workers. Use --jobs=1 for a serial comparison or --browser-jobs=1 to reduce browser pressure. Test and imported local helper hashes bind the maintained parallel audit; unknown/changed suites are exclusive until reviewed. Test outputs live under .build-tmp/test-results/<run-id>, with report.json recording exact coverage, outcomes and wall time. A per-checkout lock prevents overlapping runners; interrupted locks require owner inspection, not automatic removal.
+
+The three largest browser scenarios use shorter observation intervals for synthetic fixture state without changing assertion deadlines or product timers. All desktop/mobile and StrictMode cases remain covered. No CI jobs or repository protections are removed. Computer-specific preview orchestration and source/package/runtime evidence stay in private tooling.

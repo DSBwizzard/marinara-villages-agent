@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { expect } from "@playwright/test";
+import { expect } from "./fast-browser-expect.mjs";
 
 /** Actual mounted hooks; HTTP and authoritative selection/reset are controlled inputs. */
 export async function verifySceneActionLifetimes(browser) {

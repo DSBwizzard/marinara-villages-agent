@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { chromium, expect } from "@playwright/test";
+import { chromium } from "@playwright/test";
+import { expect } from "./fixtures/fast-browser-expect.mjs";
 import { build } from "esbuild";
 import { resolve } from "node:path";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
