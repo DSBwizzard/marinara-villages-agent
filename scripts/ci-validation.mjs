@@ -2,7 +2,8 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { readFile, writeFile, mkdir, appendFile } from "node:fs/promises";
 import { validationInputs } from "./validation-inputs.mjs";
-import { fullPlatformValidation, platformTests, needsBrowserPreparation, pipelineOnlyChanges } from "./ci-policy.mjs";
+import { needsBrowserPreparation, ciTestPlan } from "./ci-policy.mjs";
+import { testConsumers } from "./test-dependencies.mjs";
 import { isDocumentation } from "./change-scope.mjs";
 import { testInventory } from "./test-inventory.mjs";
 import { reusableCi } from "./ci-reuse.mjs";
@@ -20,10 +21,6 @@ const release =
   args.includes("--release") ||
   process.env.GITHUB_REF === "refs/heads/main" ||
   process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
-const documentationOnly = !release && paths.every(isDocumentation);
-const pipelineOnly = !release && pipelineOnlyChanges(paths);
-const full =
-  !documentationOnly && !pipelineOnly && (!args.includes("--platform") || fullPlatformValidation(paths, { release }));
 const reproducible =
   release ||
   paths.includes("scripts/unknown-base") ||
@@ -34,11 +31,23 @@ const reproducible =
   );
 const before = await validationInputs(root);
 const inventory = (await testInventory()).filter((test) => test.group !== "engine");
-const expected = (full ? inventory : inventory.filter((test) => platformTests.includes(test.path))).map(
-  (test) => test.path,
+const shared = paths.some(
+  (path) =>
+    !isDocumentation(path) &&
+    ((/^(packages\/|sources\/)/.test(path) && !/src\/(?:client|server)\/features\//.test(path)) ||
+      (path.startsWith("tests/") && !inventory.some((test) => test.path === path))),
 );
+const consumers =
+  shared || paths.some((path) => !isDocumentation(path) && /^(packages\/|sources\/)/.test(path))
+    ? await testConsumers(inventory, root, { expandBundles: shared })
+    : new Map();
+const plan = ciTestPlan(paths, inventory, consumers, {
+  release,
+  secondary: args.includes("--platform"),
+});
+const { full, documentationOnly, pipelineOnly, tests: expected } = plan;
 const reuse = !release && !documentationOnly ? await reusableCi({ current: before, inventory: expected, full }) : null;
-const policy = { full, reproducible, documentationOnly, pipelineOnly, reused: Boolean(reuse), browser: full && !reuse };
+const policy = { ...plan, reproducible, reused: Boolean(reuse), browser: plan.browser && !reuse };
 if (args.includes("--github-output")) {
   if (!process.env.GITHUB_OUTPUT) throw Error("GitHub output file required");
   await appendFile(process.env.GITHUB_OUTPUT, "browser=" + policy.browser + "\n");
@@ -46,7 +55,7 @@ if (args.includes("--github-output")) {
 if (args.includes("--policy")) console.log(JSON.stringify(policy));
 else {
   const run = (...args) => execFileSync(process.execPath, args, { cwd: root, stdio: "inherit" });
-  if ((full || pipelineOnly) && !reuse) {
+  if (!documentationOnly && !reuse) {
     const npm = process.env.npm_execpath ?? resolve(process.execPath, "../node_modules/npm/bin/npm-cli.js");
     run(npm, "run", "check");
   }
@@ -56,18 +65,14 @@ else {
     process.env.CI === "true" &&
     needsBrowserPreparation({
       full,
+      browser: plan.browser,
       reused: Boolean(reuse),
       prepared: process.env.VILLAGES_CI_BROWSER_READY,
     })
   )
     run("node_modules/playwright/cli.js", "install", "--with-deps", "chromium");
   if (!reuse && !documentationOnly)
-    run(
-      "scripts/run-tests.mjs",
-      "review",
-      ...(full ? [] : platformTests.map((path) => "--test=" + path)),
-      "--keep-going",
-    );
+    run("scripts/run-tests.mjs", "review", ...(full ? [] : expected.map((path) => "--test=" + path)), "--keep-going");
   if (reproducible && reuse?.reproducible !== true) run("scripts/verify-build.mjs");
   const build = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8"));
   if (reuse && reuse.archiveHash !== build.sha256) throw Error("Current package differs from the validated CI archive");
@@ -100,6 +105,7 @@ else {
       tests: report.results,
       completeInventory: report.completeInventory,
       documentationOnly,
+      selectionReason: plan.reason,
       reusedFrom: reuse?.reusedFrom ?? null,
       inventory: report.results.map((row) => row.path),
       runId: process.env.GITHUB_RUN_ID ?? null,
