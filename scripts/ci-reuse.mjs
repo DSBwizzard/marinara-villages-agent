@@ -4,13 +4,13 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-export function assertReusableCi({ run, receipt, testedCommit, tree, current, inventory, platform, node, full }) {
+export function assertReusableCi({ run, receipt, testedCommit, tree, base, current, inventory, platform, node, full }) {
   const provenance =
     receipt.sourceRevision === run.head_sha ||
     (testedCommit.sha === receipt.sourceRevision &&
       testedCommit.parents?.length === 2 &&
       testedCommit.parents.some((parent) => parent.sha === run.head_sha) &&
-      run.pull_requests?.some((pull) => testedCommit.parents.some((parent) => parent.sha === pull.base?.sha)));
+      testedCommit.parents.some((parent) => parent.sha === base));
   if (
     run.event !== "pull_request" ||
     run.status !== "completed" ||
@@ -102,6 +102,7 @@ export async function reusableCi({ current, inventory, full, root = process.cwd(
       receipt,
       testedCommit: commit,
       tree,
+      base: parents[0],
       current,
       inventory,
       platform: process.platform,

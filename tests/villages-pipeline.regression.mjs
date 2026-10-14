@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { scheduleTests } from "../scripts/test-scheduler.mjs";
 import { testResources } from "../scripts/test-resources.mjs";
 import { checkPlan } from "../scripts/check-changed.mjs";
-import { fullPlatformValidation, needsBrowserPreparation } from "../scripts/ci-policy.mjs";
+import { fullPlatformValidation, needsBrowserPreparation, pipelineOnlyChanges } from "../scripts/ci-policy.mjs";
 import { isDocumentation } from "../scripts/change-scope.mjs";
 import { assertReusableCi } from "../scripts/ci-reuse.mjs";
 import { selectAffectedTests } from "../scripts/select-tests.mjs";
@@ -134,6 +134,25 @@ const ciContext = {
   full: true,
 };
 assert.equal(assertReusableCi(ciContext), ciContext.receipt);
+const mergedContext = {
+  ...ciContext,
+  base: "base",
+  run: { ...ciContext.run, pull_requests: [] },
+  receipt: { ...ciContext.receipt, sourceRevision: "tested-merge" },
+  testedCommit: { sha: "tested-merge", tree: { sha: "tree" }, parents: [{ sha: "base" }, { sha: "head" }] },
+};
+assert.equal(assertReusableCi(mergedContext), mergedContext.receipt, "Closed PR links are not provenance");
+assert.throws(() => assertReusableCi({ ...mergedContext, base: "wrong-base" }));
+assert.equal(pipelineOnlyChanges(["scripts/ci-reuse.mjs", ".github/workflows/ci.yml", "DEVELOPMENT.md"]), true);
+for (const path of [
+  "scripts/run-tests.mjs",
+  "package-lock.json",
+  "packages/villages/src/client/main.ts",
+  "scripts/unknown-base",
+  "tests/unknown-helper.mjs",
+])
+  assert.equal(pipelineOnlyChanges(["scripts/ci-policy.mjs", path]), false);
+assert.equal(pipelineOnlyChanges([]), false);
 for (const changed of [{ tree: "changed" }, { node: "v24.12.0" }, { platform: "win32" }, { inventory: ["missing"] }])
   assert.throws(() => assertReusableCi({ ...ciContext, ...changed }));
 assert.throws(() => assertReusableCi({ ...ciContext, run: { ...ciContext.run, conclusion: "failure" } }));
