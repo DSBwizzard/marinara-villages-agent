@@ -7,7 +7,12 @@ import { pathToFileURL } from "node:url";
 import { scheduleTests } from "../scripts/test-scheduler.mjs";
 import { testResources } from "../scripts/test-resources.mjs";
 import { checkPlan } from "../scripts/check-changed.mjs";
-import { fullPlatformValidation, needsBrowserPreparation, pipelineOnlyChanges } from "../scripts/ci-policy.mjs";
+import {
+  fullPlatformValidation,
+  needsBrowserPreparation,
+  pipelineOnlyChanges,
+  ciTestPlan,
+} from "../scripts/ci-policy.mjs";
 import { isDocumentation } from "../scripts/change-scope.mjs";
 import { assertReusableCi } from "../scripts/ci-reuse.mjs";
 import { selectAffectedTests } from "../scripts/select-tests.mjs";
@@ -153,6 +158,48 @@ for (const path of [
 ])
   assert.equal(pipelineOnlyChanges(["scripts/ci-policy.mjs", path]), false);
 assert.equal(pipelineOnlyChanges([]), false);
+const ciInventory = [
+  ...["pipeline", "test-scheduler", "checkout-operation", "package-verifier"].map((name) => ({
+    path: "tests/villages-" + name + ".regression.mjs",
+    group: "regression",
+  })),
+  { path: "tests/villages-settings-navigation.e2e.mjs", group: "browser" },
+  { path: "tests/villages-settings-ownership.regression.ts", group: "regression" },
+  { path: "tests/villages-venue-layout.e2e.mjs", group: "browser" },
+  { path: "tests/villages-other.regression.ts", group: "regression" },
+];
+const focused = ciTestPlan([oneOwner, twoOwner], ciInventory);
+assert.equal(focused.full, false);
+assert.equal(focused.tests.length, 2);
+assert.equal(focused.browser, true);
+const personaTests = ["persona-cache-race", "persona-cache-ownership", "persona-ownership"].map((name) => ({
+  path: "tests/villages-" + name + ".regression.ts",
+  group: "regression",
+}));
+const personaPath = "packages/villages/src/server/features/settings/persona-cache-service.ts";
+const personaPlan = ciTestPlan(
+  [personaPath],
+  [...ciInventory, ...personaTests],
+  new Map([[personaPath, personaTests.map((test) => test.path)]]),
+);
+assert.equal(personaPlan.full, false);
+for (const test of personaTests) assert.ok(personaPlan.tests.includes(test.path));
+assert.ok(
+  ciTestPlan([oneOwner], ciInventory, new Map([[oneOwner, [ciInventory[7].path]]])).tests.includes(ciInventory[7].path),
+  "Feature-family names never override actual dependency consumers",
+);
+assert.equal(needsBrowserPreparation({ full: false, browser: true, reused: false, prepared: "false" }), true);
+assert.equal(ciTestPlan([oneOwner], ciInventory, new Map(), { secondary: true }).tests.length, 4);
+assert.equal(ciTestPlan(["docs/guide.md"], ciInventory).tests.length, 0);
+for (const paths of [
+  ["package-lock.json"],
+  ["scripts/build-villages.mjs"],
+  ["unknown.data"],
+  [oneOwner, "unknown.data"],
+])
+  assert.equal(ciTestPlan(paths, ciInventory).full, true);
+assert.equal(ciTestPlan([oneOwner], ciInventory, new Map(), { release: true }).tests.length, ciInventory.length);
+assert.equal(ciTestPlan([domain], ciInventory, new Map([[domain, [ciInventory[7].path]]])).tests.length, 1);
 for (const changed of [{ tree: "changed" }, { node: "v24.12.0" }, { platform: "win32" }, { inventory: ["missing"] }])
   assert.throws(() => assertReusableCi({ ...ciContext, ...changed }));
 assert.throws(() => assertReusableCi({ ...ciContext, run: { ...ciContext.run, conclusion: "failure" } }));

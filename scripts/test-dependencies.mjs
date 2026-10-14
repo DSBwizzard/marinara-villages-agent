@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
 /** Follow literal imports and source-extraction fixtures, including inline esbuild entries. */
-export async function testConsumers(inventory, root = process.cwd()) {
+export async function testConsumers(inventory, root = process.cwd(), { expandBundles = true } = {}) {
   const edges = new Map();
   const find = async (path) => {
     for (const candidate of [
@@ -46,7 +46,7 @@ export async function testConsumers(inventory, root = process.cwd()) {
             if (candidate && !relative(root, candidate).startsWith("..")) next.push(candidate);
           }
           if (source.includes("@marinara-engine/shared")) next.push(resolve(root, "sources/package-shared.ts"));
-          if (bundles.size) {
+          if (bundles.size && expandBundles) {
             const definition = await readFile(join(root, "packages/villages/package-definition.mjs"), "utf8");
             for (const match of definition.matchAll(/(?:clientImport|serverImport):\s*["']([^"']+)["']/g)) {
               if (!bundles.has(match[0].startsWith("client") ? "client" : "server")) continue;

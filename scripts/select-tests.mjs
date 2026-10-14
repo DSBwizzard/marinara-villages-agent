@@ -26,7 +26,7 @@ export function selectAffectedTests(paths, inventory, consumers = new Map()) {
       const aliases = {
         scenes: "scene|contact|venue-session",
         founding: "founding|foundation",
-        settings: "settings|connections|usage",
+        settings: "settings|connections|usage|persona",
         venues: "venue|zones|access",
         generation: "generation|interpretation|writing",
         projects: "project",
@@ -36,6 +36,7 @@ export function selectAffectedTests(paths, inventory, consumers = new Map()) {
       const family = new RegExp("villages-(?:" + (aliases[owner] ?? owner.replace(/s$/, "")) + ")");
       const matches = inventory.filter((test) => test.group !== "engine" && family.test(test.path));
       matches.forEach((test) => selected.add(test.path));
+      for (const test of consumers.get(path) ?? []) selected.add(test);
       if (!matches.length) {
         const affected = consumers.get(path);
         if (affected?.length) affected.forEach((test) => selected.add(test));
@@ -69,7 +70,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       ((/^(packages\/|sources\/)/.test(path) && !/src\/(?:client|server)\/features\//.test(path)) ||
         (path.startsWith("tests/") && !inventory.some((test) => test.path === path))),
   );
-  const tests = selectAffectedTests(paths, inventory, shared ? await testConsumers(inventory) : new Map());
+  const source = paths.some((path) => !isDocumentation(path) && /^(packages\/|sources\/)/.test(path));
+  const tests = selectAffectedTests(
+    paths,
+    inventory,
+    shared || source ? await testConsumers(inventory, process.cwd(), { expandBundles: shared }) : new Map(),
+  );
   console.log(
     JSON.stringify({
       paths,
