@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { readFile, writeFile, mkdir, appendFile } from "node:fs/promises";
 import { validationInputs } from "./validation-inputs.mjs";
-import { fullPlatformValidation, platformTests, needsBrowserPreparation } from "./ci-policy.mjs";
+import { fullPlatformValidation, platformTests, needsBrowserPreparation, pipelineOnlyChanges } from "./ci-policy.mjs";
 import { isDocumentation } from "./change-scope.mjs";
 import { testInventory } from "./test-inventory.mjs";
 import { reusableCi } from "./ci-reuse.mjs";
@@ -21,7 +21,9 @@ const release =
   process.env.GITHUB_REF === "refs/heads/main" ||
   process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
 const documentationOnly = !release && paths.every(isDocumentation);
-const full = !documentationOnly && (!args.includes("--platform") || fullPlatformValidation(paths, { release }));
+const pipelineOnly = !release && pipelineOnlyChanges(paths);
+const full =
+  !documentationOnly && !pipelineOnly && (!args.includes("--platform") || fullPlatformValidation(paths, { release }));
 const reproducible =
   release ||
   paths.includes("scripts/unknown-base") ||
@@ -36,7 +38,7 @@ const expected = (full ? inventory : inventory.filter((test) => platformTests.in
   (test) => test.path,
 );
 const reuse = !release && !documentationOnly ? await reusableCi({ current: before, inventory: expected, full }) : null;
-const policy = { full, reproducible, documentationOnly, reused: Boolean(reuse), browser: full && !reuse };
+const policy = { full, reproducible, documentationOnly, pipelineOnly, reused: Boolean(reuse), browser: full && !reuse };
 if (args.includes("--github-output")) {
   if (!process.env.GITHUB_OUTPUT) throw Error("GitHub output file required");
   await appendFile(process.env.GITHUB_OUTPUT, "browser=" + policy.browser + "\n");
@@ -44,7 +46,7 @@ if (args.includes("--github-output")) {
 if (args.includes("--policy")) console.log(JSON.stringify(policy));
 else {
   const run = (...args) => execFileSync(process.execPath, args, { cwd: root, stdio: "inherit" });
-  if (full && !reuse) {
+  if ((full || pipelineOnly) && !reuse) {
     const npm = process.env.npm_execpath ?? resolve(process.execPath, "../node_modules/npm/bin/npm-cli.js");
     run(npm, "run", "check");
   }
@@ -74,7 +76,7 @@ else {
   let report;
   if (reuse) {
     report = { passed: true, completeInventory: reuse.completeInventory, results: reuse.tests };
-    console.log("REUSE complete authenticated CI coverage for identical tree: " + reuse.reusedFrom.url);
+    console.log("REUSE authenticated CI coverage for identical tree: " + reuse.reusedFrom.url);
   } else if (documentationOnly) report = { passed: true, completeInventory: false, results: [] };
   else {
     const latest = JSON.parse(await readFile(".build-tmp/test-results/review-latest.json", "utf8"));
