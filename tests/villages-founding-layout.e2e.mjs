@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { PNG } from "pngjs";
 import { chromium, expect } from "@playwright/test";
 import { build } from "esbuild";
+import { wantsCase, runCase } from "../scripts/test-cases.mjs";
+// Test cases: founding/layout/desktop, founding/layout/phone, founding/layout/compact-phone, founding/saved-zone-selection, founding/reopening
 
 const art = new PNG({ width: 1536, height: 1024 });
 art.data.fill(90);
@@ -219,7 +221,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
   );
 }
 try {
-  await verifySavedZoneSelection();
+  await runCase("founding/saved-zone-selection", verifySavedZoneSelection);
   for (const { width, height, fontSize, homeCount, chromeHeight = 0 } of [
     { width: 1366, height: 768, fontSize: 16, homeCount: 3 },
     { width: 1440, height: 650, fontSize: 16, homeCount: 1, chromeHeight: 200 },
@@ -231,6 +233,13 @@ try {
     { width: 320, height: 568, fontSize: 16, homeCount: 1 },
     { width: 390, height: 650, fontSize: 20, homeCount: 3 },
   ].filter((row) => !process.env.VILLAGES_VIEWPORT || row.width === Number(process.env.VILLAGES_VIEWPORT))) {
+    const caseName =
+      width >= 600
+        ? "founding/layout/desktop"
+        : height < 700
+          ? "founding/layout/compact-phone"
+          : "founding/layout/phone";
+    if (!wantsCase(caseName)) continue;
     const context = await browser.newContext({ viewport: { width, height }, hasTouch: width < 600 });
     const page = await context.newPage();
     const errors = [];
@@ -680,7 +689,7 @@ try {
       const circumstanceHints = new Set([first]);
       assert.match(first, /\bI\b/, "Circumstance hints use first person");
       for (let tick = 1; tick <= 4; tick++) {
-        await page.clock.runFor(4000);
+        await page.clock.fastForward(4000);
         const circumstanceHint = await circumstance.getAttribute("placeholder");
         assert.match(circumstanceHint, /\bI\b/, "Circumstance hints use first person");
         if (tick < 4) {
@@ -756,14 +765,14 @@ try {
     await circumstance.fill("We rented the observatory together because ordinary housing was too expensive.");
     if (width === 390 && height === 844) {
       const hint = await circumstance.getAttribute("placeholder");
-      await page.clock.runFor(4100);
+      await page.clock.fastForward(4100);
       await expect(circumstance).toHaveValue(
         "We rented the observatory together because ordinary housing was too expensive.",
       );
       assert.equal(await circumstance.getAttribute("placeholder"), hint, "authored text stops placeholder rotation");
       const place = root.getByLabel("Place and world", { exact: true });
       const placeHint = await place.getAttribute("placeholder");
-      await page.clock.runFor(4000);
+      await page.clock.fastForward(4000);
       await expect(place).toHaveValue(
         "A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.",
       );
@@ -845,7 +854,7 @@ try {
       const firstHint = await mapDetails.getAttribute("placeholder");
       const seen = new Set([firstHint]);
       for (let tick = 1; tick <= 4; tick++) {
-        await page.clock.runFor(4000);
+        await page.clock.fastForward(4000);
         const hint = await mapDetails.getAttribute("placeholder");
         if (tick < 4) {
           assert.ok(mapHints.includes(hint) && !seen.has(hint));
@@ -855,7 +864,7 @@ try {
       await expect(mapDetails).toHaveValue("");
       await mapDetails.fill("Keep this map detail intact.");
       const hint = await mapDetails.getAttribute("placeholder");
-      await page.clock.runFor(8000);
+      await page.clock.fastForward(8000);
       await expect(mapDetails).toHaveValue("Keep this map detail intact.");
       assert.equal(await mapDetails.getAttribute("placeholder"), hint, "Authored Map details stop hint rotation");
       assert.equal(mapCalls, 0, "Hint rotation makes no generation requests");
@@ -1855,8 +1864,9 @@ try {
     assert.equal(errors.length, 0, JSON.stringify(errors));
     console.log(`Founding v2: ${width}x${height}, ${homeCount} villagers, saved/resumed, validated.`);
     await context.close();
+    await runCase(caseName, async () => {});
   }
-  await verifyFoundingReopening();
+  await runCase("founding/reopening", verifyFoundingReopening);
 } finally {
   await browser.close();
 }

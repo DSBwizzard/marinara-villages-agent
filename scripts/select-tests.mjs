@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { testInventory } from "./test-inventory.mjs";
 import { testConsumers } from "./test-dependencies.mjs";
+import { isDocumentation } from "./change-scope.mjs";
 
 export function selectAffectedTests(paths, inventory, consumers = new Map()) {
   const selected = new Set();
@@ -11,6 +12,7 @@ export function selectAffectedTests(paths, inventory, consumers = new Map()) {
       .filter((test) => test.group !== "engine" && pattern.test(test.path))
       .forEach((test) => selected.add(test.path));
   for (const path of paths) {
+    if (isDocumentation(path)) continue;
     if (inventory.some((test) => test.path === path && test.group !== "engine")) {
       selected.add(path);
       continue;
@@ -21,7 +23,6 @@ export function selectAffectedTests(paths, inventory, consumers = new Map()) {
     }
     const owner = path.match(/src\/(?:client|server)\/features\/([^/]+)\//)?.[1];
     if (owner) {
-      const previousSize = selected.size;
       const aliases = {
         scenes: "scene|contact|venue-session",
         founding: "founding|foundation",
@@ -32,8 +33,10 @@ export function selectAffectedTests(paths, inventory, consumers = new Map()) {
         artwork: "image|artwork|sprite",
         maps: "map",
       };
-      add(new RegExp("villages-(?:" + (aliases[owner] ?? owner.replace(/s$/, "")) + ")"));
-      if (selected.size === previousSize) {
+      const family = new RegExp("villages-(?:" + (aliases[owner] ?? owner.replace(/s$/, "")) + ")");
+      const matches = inventory.filter((test) => test.group !== "engine" && family.test(test.path));
+      matches.forEach((test) => selected.add(test.path));
+      if (!matches.length) {
         const affected = consumers.get(path);
         if (affected?.length) affected.forEach((test) => selected.add(test));
         else inventory.filter((test) => test.group !== "engine").forEach((test) => selected.add(test.path));
@@ -42,9 +45,10 @@ export function selectAffectedTests(paths, inventory, consumers = new Map()) {
       const affected = consumers.get(path);
       if (affected?.length) affected.forEach((test) => selected.add(test));
       else inventory.filter((test) => test.group !== "engine").forEach((test) => selected.add(test.path));
-    } else if (path.startsWith("tests/fixtures/")) {
-      const family = path.match(/villages-([a-z]+)-/)?.[1];
-      if (family) add(new RegExp("villages-" + family + "-"));
+    } else if (path.startsWith("tests/")) {
+      const affected = consumers.get(path);
+      if (affected?.length) affected.forEach((test) => selected.add(test));
+      else inventory.filter((test) => test.group !== "engine").forEach((test) => selected.add(test.path));
     }
   }
   return inventory.filter((test) => selected.has(test.path)).map((test) => test.path);
@@ -60,7 +64,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   ];
   const inventory = await testInventory();
   const shared = paths.some(
-    (path) => /^(packages\/|sources\/)/.test(path) && !/src\/(?:client|server)\/features\//.test(path),
+    (path) =>
+      !isDocumentation(path) &&
+      ((/^(packages\/|sources\/)/.test(path) && !/src\/(?:client|server)\/features\//.test(path)) ||
+        (path.startsWith("tests/") && !inventory.some((test) => test.path === path))),
   );
   const tests = selectAffectedTests(paths, inventory, shared ? await testConsumers(inventory) : new Map());
   console.log(

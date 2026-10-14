@@ -14,6 +14,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  actions: read
 
 concurrency:
   group: villages-ci-${{ github.event.pull_request.number || github.ref }}
@@ -21,6 +22,7 @@ concurrency:
 
 env:
   VILLAGES_CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   parallel-work:
@@ -54,9 +56,15 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Select validation coverage and prior evidence
+        id: scope
+        run: node scripts/ci-validation.mjs --policy --github-output
       - name: Install browser test runtime
+        if: steps.scope.outputs.browser == 'true'
         run: npx playwright install --with-deps chromium
       - name: Validate maintained source and package
+        env:
+          VILLAGES_CI_BROWSER_READY: ${{ steps.scope.outputs.browser }}
         run: npm run validate:ci
       - name: Retain validated package and source receipt
         uses: actions/upload-artifact@v4
@@ -96,11 +104,13 @@ jobs:
         run: |
           $scope = node scripts/ci-validation.mjs --platform --policy | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Platform policy failed.' }
-          "full=$($scope.full.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "browser=$($scope.browser.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
       - name: Install browser test runtime
-        if: steps.scope.outputs.full == 'true'
+        if: steps.scope.outputs.browser == 'true'
         run: npx playwright install --with-deps chromium
       - name: Validate maintained source and package
+        env:
+          VILLAGES_CI_BROWSER_READY: ${{ steps.scope.outputs.browser }}
         run: npm run validate:ci -- --platform
       - name: Retain validated package and source receipt
         uses: actions/upload-artifact@v4

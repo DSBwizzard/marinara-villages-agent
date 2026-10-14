@@ -7,7 +7,9 @@ import { pathToFileURL } from "node:url";
 import { scheduleTests } from "../scripts/test-scheduler.mjs";
 import { testResources } from "../scripts/test-resources.mjs";
 import { checkPlan } from "../scripts/check-changed.mjs";
-import { fullPlatformValidation } from "../scripts/ci-policy.mjs";
+import { fullPlatformValidation, needsBrowserPreparation } from "../scripts/ci-policy.mjs";
+import { isDocumentation } from "../scripts/change-scope.mjs";
+import { assertReusableCi } from "../scripts/ci-reuse.mjs";
 import { selectAffectedTests } from "../scripts/select-tests.mjs";
 import { validationInputs } from "../scripts/validation-inputs.mjs";
 
@@ -71,6 +73,70 @@ assert.equal(fullPlatformValidation(["packages/villages/src/client/features/home
 assert.equal(fullPlatformValidation(["scripts/run-tests.mjs"]), true);
 assert.equal(fullPlatformValidation([], { release: true }), true);
 const domain = "packages/villages/src/server/domain/rules/memory-selection.ts";
+const selectionInventory = [
+  { path: "tests/villages-settings-navigation.e2e.mjs", group: "browser" },
+  { path: "tests/villages-venue-layout.e2e.mjs", group: "browser" },
+  { path: "tests/villages-other.regression.ts", group: "regression" },
+];
+const oneOwner = "packages/villages/src/client/features/settings/actions.tsx";
+const twoOwner = "packages/villages/src/client/features/settings/draft-session.tsx";
+assert.deepEqual(
+  selectAffectedTests([oneOwner], selectionInventory),
+  selectAffectedTests([oneOwner, twoOwner], selectionInventory),
+);
+assert.deepEqual(selectAffectedTests(["packages/villages/README.md"], selectionInventory), []);
+assert.equal(selectAffectedTests(["tests/unknown-helper.mjs"], selectionInventory).length, 3);
+assert.deepEqual(
+  selectAffectedTests(
+    ["tests/helper.mjs"],
+    selectionInventory,
+    new Map([["tests/helper.mjs", ["tests/villages-other.regression.ts"]]]),
+  ),
+  ["tests/villages-other.regression.ts"],
+);
+assert.equal(checkPlan(["packages/villages/engine-boundary.json"]).engineTypes, true);
+assert.equal(fullPlatformValidation(["packages/villages/engine-boundary.json"]), true);
+assert.equal(fullPlatformValidation(["scripts/select-tests.mjs"]), false);
+assert.equal(isDocumentation("README.ts"), false);
+assert.equal(isDocumentation("packages/villages/AGENTS.mjs"), false);
+assert.equal(needsBrowserPreparation({ full: true, reused: false, prepared: "false" }), true);
+assert.equal(needsBrowserPreparation({ full: true, reused: true, prepared: "false" }), false);
+assert.equal(needsBrowserPreparation({ full: true, reused: false, prepared: "true" }), false);
+const ciContext = {
+  run: {
+    id: 5,
+    event: "pull_request",
+    status: "completed",
+    conclusion: "success",
+    path: ".github/workflows/ci.yml",
+    head_sha: "head",
+  },
+  receipt: {
+    schemaVersion: 1,
+    passed: true,
+    runId: 5,
+    platform: "linux",
+    node: "v24.11.0",
+    full: true,
+    completeInventory: true,
+    sourceRevision: "head",
+    inputDigest: "inputs",
+    inputs: [],
+    inventory: ["a"],
+    tests: [{ path: "a", code: 0 }],
+  },
+  testedCommit: { sha: "head", tree: { sha: "tree" } },
+  tree: "tree",
+  current: { digest: "inputs", inputs: [] },
+  inventory: ["a"],
+  platform: "linux",
+  node: "v24.11.0",
+  full: true,
+};
+assert.equal(assertReusableCi(ciContext), ciContext.receipt);
+for (const changed of [{ tree: "changed" }, { node: "v24.12.0" }, { platform: "win32" }, { inventory: ["missing"] }])
+  assert.throws(() => assertReusableCi({ ...ciContext, ...changed }));
+assert.throws(() => assertReusableCi({ ...ciContext, run: { ...ciContext.run, conclusion: "failure" } }));
 const candidates = [
   { path: "tests/privacy.regression.ts", group: "regression" },
   { path: "tests/other.e2e.mjs", group: "browser" },
