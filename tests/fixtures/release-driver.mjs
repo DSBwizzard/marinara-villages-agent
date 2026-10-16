@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import AdmZip from "adm-zip";
+import { checkKeys, environmentFor, fingerprint, policyKey } from "../../scripts/ci-checks.mjs";
 import { join } from "node:path";
 import { validationInputs } from "../../scripts/validation-inputs.mjs";
 import { releaseOptions, runRelease } from "../../scripts/release.mjs";
@@ -15,7 +17,9 @@ export async function releaseDriverFixture(root) {
   await writeFile(join(root, "tests/a.regression.mjs"), "// fixture\n");
   const current = await validationInputs(root);
   const candidate = "a".repeat(40);
-  const bytes = Buffer.from("immutable release package");
+  const zip = new AdmZip();
+  zip.addFile("manifest.json", Buffer.from(JSON.stringify({ version: "1.2.3", files: [] })));
+  const bytes = zip.toBuffer();
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const build = {
     version: "1.2.3",
@@ -44,6 +48,7 @@ export async function releaseDriverFixture(root) {
   const prs = [10, 11].map((number, index) => ({
     number,
     headRefOid: candidate,
+    headRefName: "candidate",
     baseRefName: index === 0 ? "staging" : "main",
     state: "OPEN",
     isDraft: false,
@@ -54,24 +59,8 @@ export async function releaseDriverFixture(root) {
   let tag;
   const commands = [];
   let waiting = false;
-  const receipt = (platform) => ({
-    schemaVersion: 2,
-    passed: true,
-    runId: 5,
-    runAttempt: 1,
-    job: platform === "linux" ? "validate" : "validate-windows",
-    platform,
-    node: process.version,
-    sourceRevision: candidate,
-    inputs: current.inputs,
-    inputDigest: current.digest,
-    inputsUnchanged: true,
-    full: true,
-    completeInventory: true,
-    reproducible: true,
-    requestedInventory: ["tests/a.regression.mjs"],
-    tests: [{ path: "tests/a.regression.mjs", code: 0 }],
-  });
+  let absent = false;
+  let activePreparation = false;
   const run = {
     id: 5,
     run_attempt: 1,
@@ -88,22 +77,21 @@ export async function releaseDriverFixture(root) {
     if (args[0] === "repo") return "example/villages";
     if (args[0] === "pr") {
       const pr = prs.find((pr) => String(pr.number) === args[2]);
-      if (args[1] === "view") return send(waiting ? { ...pr, statusCheckRollup: [] } : pr);
+      if (args[1] === "view")
+        return send(
+          waiting
+            ? {
+                ...pr,
+                statusCheckRollup: absent
+                  ? []
+                  : checks.map((check) => ({ ...check, status: "IN_PROGRESS", conclusion: null })),
+              }
+            : pr,
+        );
       assert.equal(args[1], "merge");
       assert.ok(args.includes("--match-head-commit"));
       if (pr.number === 11) assert.equal(prs[0].state, "MERGED", "Staging merges before main");
       pr.state = "MERGED";
-      return "";
-    }
-    if (args[0] === "run") {
-      const name = args[args.indexOf("--name") + 1];
-      const platform = name.endsWith("windows") ? "win32" : "linux";
-      const destination = args[args.indexOf("--dir") + 1];
-      mkdirSync(join(destination, ".build-tmp"), { recursive: true });
-      mkdirSync(join(destination, "artifacts"), { recursive: true });
-      writeFileSync(join(destination, ".build-tmp/ci-validation.json"), send(receipt(platform)));
-      writeFileSync(join(destination, ".build-tmp/package-build.json"), send(build));
-      writeFileSync(join(destination, "artifacts/villages-1.2.3.zip"), bytes);
       return "";
     }
     if (args[0] === "release") {
@@ -126,8 +114,12 @@ export async function releaseDriverFixture(root) {
       } else throw Error("Unexpected release operation");
       return "";
     }
+    if (args[0] === "workflow") return "";
     assert.equal(args[0], "api");
     const path = args[1].slice("repos/example/villages/".length);
+    if (path === "git/ref/heads/candidate") return send({ object: { sha: candidate } });
+    if (path.startsWith("actions/workflows/ci.yml/runs?head_sha="))
+      return send({ workflow_runs: activePreparation ? [{ id: 6, head_sha: candidate, status: "in_progress" }] : [] });
     if (path === "actions/runs/4") return send({ ...run, id: 4 });
     if (path === "actions/runs/4/artifacts") return send({ artifacts: [] });
     if (path === "actions/runs/5") return send(run);
@@ -167,7 +159,63 @@ export async function releaseDriverFixture(root) {
     throw Error("Unexpected fixture API: " + path);
   };
   const args = ["--version", "1.2.3", "--candidate", candidate, "--staging-pr", "10", "--main-pr", "11"];
-  const deps = { root, execute, status: () => {} };
+  const blueprint = {
+    inputDigest: current.digest,
+    policyDigest: policyKey(current),
+    catalog: [],
+    toolchain: {
+      node: process.version.slice(1),
+      arch: process.arch,
+      runners: { linux: "ubuntu-24.04", win32: "windows-2025" },
+    },
+    specs: [{ id: "test:tests/a.regression.mjs", kind: "test", inputs: [] }],
+  };
+  const manifest = {
+    ready: true,
+    inputDigest: current.digest,
+    blueprint,
+    candidate: { id: 7, runId: 5, digest: "sha256:fixture" },
+    platforms: {},
+  };
+  for (const platform of ["linux", "win32"]) {
+    const environment = environmentFor(blueprint.toolchain, platform);
+    manifest.platforms[platform] = {
+      schemaVersion: 3,
+      policyDigest: blueprint.policyDigest,
+      inputDigest: current.digest,
+      environment,
+      inputsUnchanged: true,
+      coverageComplete: true,
+      build,
+      executor: { platform, node: environment.node },
+      checks: checkKeys(blueprint, environment).map((spec) => ({
+        id: spec.id,
+        key: spec.key,
+        passed: true,
+        code: 0,
+        executed: false,
+        origin: {
+          runId: 5,
+          attempt: 1,
+          job: platform === "linux" ? "validate" : "validate-windows",
+          sourceRevision: candidate,
+          platform,
+          node: environment.node,
+          environmentDigest: fingerprint(environment),
+        },
+      })),
+    };
+  }
+  const github = {
+    coverage: async (id) => {
+      if (id !== "5") throw Error("No manifest");
+      return { manifest, run };
+    },
+    api: () => ({ expired: false, digest: "sha256:fixture", workflow_run: { id: 5 } }),
+    jsonFile: async () => build,
+    file: async () => bytes,
+  };
+  const deps = { root, execute, github, status: () => {} };
   waiting = true;
   assert.equal((await runRelease(releaseOptions(args), deps)).stage, "waiting");
   assert.ok(!commands.some((args) => args[1] === "merge"), "Status never merges");
@@ -181,6 +229,30 @@ export async function releaseDriverFixture(root) {
   });
   assert.equal(waitingResult.stage, "validated");
   assert.equal(sleeps, 1, "The release process owns waiting");
+  for (const active of [false, true]) {
+    waiting = true;
+    absent = true;
+    activePreparation = active;
+    const before = commands.filter((args) => args[1] === "workflow").length;
+    let missingSleeps = 0;
+    assert.equal(
+      (
+        await runRelease(releaseOptions([...args, "--wait"]), {
+          ...deps,
+          sleep: async () => {
+            if (++missingSleeps === 2) waiting = false;
+          },
+        })
+      ).stage,
+      "validated",
+    );
+    assert.equal(
+      commands.filter((args) => args[1] === "workflow").length - before,
+      active ? 0 : 1,
+      "Absent contexts start preparation once and reuse an active exact-head run",
+    );
+  }
+  absent = false;
   const authorized = releaseOptions([
     ...args,
     "--merge",
@@ -191,6 +263,12 @@ export async function releaseDriverFixture(root) {
     "notes.md",
   ]);
   await writeFile(join(root, "notes.md"), "Release notes");
+  const rehearsal = await runRelease(releaseOptions([...args, "--dry-run", "--acceptance", "acceptance.json"]), deps);
+  assert.equal(rehearsal.stage, "rehearsed");
+  assert.ok(
+    !commands.some((args) => args[1] === "release" || args[2] === "merge"),
+    "Rehearsal never publishes or merges",
+  );
   assert.equal((await runRelease(authorized, deps)).stage, "published");
   const mutations = commands.filter((args) => args[1] === "release" || args[2] === "merge").length;
   assert.equal((await runRelease(authorized, deps)).stage, "published");
