@@ -20,6 +20,7 @@ export function assertReusableCi({ run, receipt, testedCommit, job, repository, 
     run.head_repository?.full_name !== repository ||
     !provenance ||
     receipt.schemaVersion !== 2 ||
+    typeof receipt.passed !== "boolean" ||
     String(receipt.runId) !== String(run.id) ||
     receipt.runAttempt !== run.run_attempt ||
     receipt.job !== jobName(platform) ||
@@ -32,8 +33,13 @@ export function assertReusableCi({ run, receipt, testedCommit, job, repository, 
     receipt.inputsUnchanged !== true ||
     !Array.isArray(receipt.tests) ||
     !Array.isArray(receipt.requestedInventory) ||
+    new Set(receipt.requestedInventory).size !== receipt.requestedInventory.length ||
     new Set(receipt.tests.map((test) => test.path)).size !== receipt.tests.length ||
-    receipt.tests.some((test) => !receipt.requestedInventory.includes(test.path))
+    receipt.tests.some((test) => !receipt.requestedInventory.includes(test.path)) ||
+    (receipt.completeInventory === true && receipt.full !== true) ||
+    (receipt.passed &&
+      (receipt.tests.length !== receipt.requestedInventory.length ||
+        receipt.tests.some((test) => test.code !== 0 || test.skipped || test.signal)))
   )
     throw Error("CI job provenance, attempt, platform or coverage is invalid");
   return receipt;

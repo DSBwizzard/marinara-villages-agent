@@ -40,6 +40,7 @@ export async function releaseDriverFixture(root) {
     conclusion: "SUCCESS",
     detailsUrl: "https://github.com/example/villages/actions/runs/5/job/1",
   }));
+  checks.unshift({ ...checks[0], detailsUrl: "https://github.com/example/villages/actions/runs/4/job/1" });
   const prs = [10, 11].map((number, index) => ({
     number,
     headRefOid: candidate,
@@ -127,6 +128,8 @@ export async function releaseDriverFixture(root) {
     }
     assert.equal(args[0], "api");
     const path = args[1].slice("repos/example/villages/".length);
+    if (path === "actions/runs/4") return send({ ...run, id: 4 });
+    if (path === "actions/runs/4/artifacts") return send({ artifacts: [] });
     if (path === "actions/runs/5") return send(run);
     if (path === "actions/runs/5/artifacts")
       return send({

@@ -155,12 +155,9 @@ export async function runRelease(
     const inventory = (await testInventory(pathToFileURL(resolve(root) + "/")))
       .filter((test) => test.group !== "engine")
       .map((test) => test.path);
-    // Main's complete platform receipts prove the candidate, even when staging had focused coverage.
-    for (const platform of ["linux", "win32"]) {
+    // Multiple PR workflows can attach identically named checks to the same candidate.
+    const verifyEvidence = async (platform, runId) => {
       const name = platform === "linux" ? "validate" : "validate-windows";
-      const check = prs[1].statusCheckRollup.find((check) => check.name === name);
-      const runId = check.detailsUrl?.match(/\/actions\/runs\/(\d+)/)?.[1];
-      assert.ok(runId, "Missing authenticated CI run for " + name);
       const run = api("actions/runs/" + runId);
       assert.equal(run.head_sha, options.candidate);
       const artifactName = "villages-" + name;
@@ -208,6 +205,29 @@ export async function runRelease(
         hash(await readFile(join(evidence, "artifacts", "villages-" + options.version + ".zip"))),
         build.sha256,
       );
+    };
+    for (const platform of ["linux", "win32"]) {
+      const name = platform === "linux" ? "validate" : "validate-windows";
+      const runIds = [
+        ...new Set(
+          prs[1].statusCheckRollup
+            .filter((check) => check.name === name)
+            .map((check) => check.detailsUrl?.match(/\/actions\/runs\/(\d+)/)?.[1])
+            .filter(Boolean),
+        ),
+      ].slice(0, 4);
+      let verified = false;
+      const failures = [];
+      for (const runId of runIds) {
+        try {
+          await verifyEvidence(platform, runId);
+          verified = true;
+          break;
+        } catch (error) {
+          failures.push(error.message);
+        }
+      }
+      assert.ok(verified, "Missing complete authenticated " + name + " evidence: " + failures.join("; "));
     }
     for (let index = 0; index < prs.length; index++) {
       const pr = readPr(String(prs[index].number));
