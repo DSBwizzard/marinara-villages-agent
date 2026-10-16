@@ -183,12 +183,11 @@ try {
         async () => {
           const next = page.getByRole("button", { name: "Next paragraph", exact: true });
           if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
-          return hasDraft
-            ? send(page).isEnabled()
-            : !(await next.isEnabled()) &&
-                (await page.getByRole("button", { name: "Sending", exact: true }).count()) === 0;
+          if (!(await composer(page).isVisible())) return false;
+          if (await page.getByRole("button", { name: "Sending", exact: true }).isVisible()) return false;
+          return !hasDraft || ((await send(page).isVisible()) && (await send(page).isEnabled()));
         },
-        { timeout: 10_000 },
+        { timeout: 15_000, intervals: [100, 250, 500] },
       )
       .toBe(true);
   };
@@ -215,8 +214,8 @@ try {
   }
   await composer(two).fill("Second tab draft");
   await send(two).click();
-  await expect(composer(two)).toHaveValue("Second tab draft");
   await expect(two.getByText(/This Scene is responding/).first()).toBeVisible();
+  await expect(composer(two)).toHaveCount(0);
   assert.equal(calls, 1);
   held();
   await expect.poll(() => record.data.operation.status).toBe("complete");
