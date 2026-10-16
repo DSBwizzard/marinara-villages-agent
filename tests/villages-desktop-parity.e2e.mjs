@@ -36,7 +36,7 @@ const mapImage = image("#719b77");
 const place = (id, x, y) => ({
   id,
   name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
-  classes: id === "mill" ? ["workplace", "gathering"] : ["other"],
+  classes: id === "mill" ? ["workplace", "community"] : ["other"],
   category: "destination",
   description: "A village place.",
   capabilities: [],
@@ -337,79 +337,23 @@ try {
     const pin = home.locator(`[data-pin-id="${visitedId}"]`);
     await pin.focus();
     await page.keyboard.press("Enter");
-    const doors = home.locator(".marinara-capability-villages-explore-sheet");
-    await expect(doors.getByRole("button", { name: "Visit" })).toBeVisible();
+    const doors = page.locator(".marinara-capability-villages-venue-profile");
+    await expect(doors.getByRole("button", { name: "Visit venue" })).toBeVisible();
     const bounds = await doors.boundingBox();
-    assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, "edge pin choices stay on screen");
-    if (!mobile) {
-      await home.locator('[data-pin-id="harbour"]').focus();
-      await page.keyboard.press("Enter");
-      const harbourBounds = await doors.boundingBox();
-      assert.ok(
-        harbourBounds &&
-          harbourBounds.x >= 0 &&
-          harbourBounds.x + harbourBounds.width <= width &&
-          harbourBounds.y + harbourBounds.height <= height,
-        "choices at the lower right map edge stay on screen",
-      );
-      await pin.focus();
-      await page.keyboard.press("Enter");
-    }
-    await doors.getByRole("button", { name: /View venue/i }).click();
-    await expect(page.getByText("Nobody is here right now")).toBeVisible();
-    const zoneNav = page.getByRole("navigation", { name: "Venue zones" });
-    await expect(zoneNav.getByRole("button", { name: /Exterior/u })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Enter this Zone →" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "About" })).toHaveCount(0);
-    await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
-    if (process.env.VILLAGES_VISUAL_OUTPUT) {
+    assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, "venue profile stays on screen");
+    const sections = doors.getByRole("navigation", { name: "Venue sections" });
+    await sections.getByRole("button", { name: "Zones", exact: true }).click();
+    await expect(doors.getByRole("checkbox", { name: "Freeze picture" })).toBeVisible();
+    await sections.getByRole("button", { name: "Manage", exact: true }).click();
+    await expect(doors.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
+    await sections.getByRole("button", { name: "About", exact: true }).click();
+    if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({
         path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-venue-${width}x${height}.png`),
       });
-    }
-    await zoneNav
-      .getByRole("button", { name: /Common Space|interior/iu })
-      .first()
-      .click();
-    await expect(page.getByText("Zone not discovered yet")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Enter this Zone →" })).toBeEnabled();
-    await page.getByRole("button", { name: "Edit Venue" }).click();
-    await expect(page.getByRole("button", { name: "Close Editor" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Enter this Zone →" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Back to map" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Propose Change" })).toHaveCount(0);
-    if (process.env.VILLAGES_VISUAL_OUTPUT) {
-      await page.screenshot({
-        path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-venue-edit-${width}x${height}.png`),
-      });
-    }
-    await page.getByRole("textbox", { name: "Name", exact: true }).fill("Unsaved venue name");
-    page.once("dialog", (dialog) => void dialog.dismiss());
-    await page.getByRole("button", { name: "Close Editor" }).click();
-    await expect(page.getByRole("button", { name: "Close Editor" })).toBeVisible();
-    page.once("dialog", (dialog) => void dialog.accept());
-    await page.getByRole("button", { name: "Close Editor" }).click();
-    await page.getByRole("button", { name: "Propose Change" }).click();
-    await expect(page.getByRole("button", { name: "Exit Change Proposal" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Edit Venue" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Enter this Zone →" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Back to map" })).toHaveCount(0);
-    if (process.env.VILLAGES_VISUAL_OUTPUT) {
-      await page.screenshot({
-        path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-venue-proposal-${width}x${height}.png`),
-      });
-    }
-    await page.getByRole("textbox", { name: /Improvement title/u }).fill("Unsaved improvement");
-    page.once("dialog", (dialog) => void dialog.dismiss());
-    await page.getByRole("button", { name: "Exit Change Proposal" }).click();
-    await expect(page.getByRole("button", { name: "Exit Change Proposal" })).toBeVisible();
-    page.once("dialog", (dialog) => void dialog.accept());
-    await page.getByRole("button", { name: "Exit Change Proposal" }).click();
-    await page.getByRole("button", { name: "Enter this Zone →" }).click();
-    await expect
-      .poll(() => lastEntry?.entryArea, { message: "zone visit enters the selected interior" })
-      .toBe("public");
-    assert.equal(lastEntry?.spaceClass, mobile ? "other" : "workplace");
+    await doors.getByRole("button", { name: "Visit venue" }).click();
+    await expect.poll(() => lastEntry?.entryArea).toBe("outside");
+    assert.equal(lastEntry?.zoneId, "exterior", "Venue visits always enter through Exterior");
     const composer = page.getByRole("textbox", { name: mobile ? "Message at The Market" : "Message at The Mill" });
     const dock = page.locator(".marinara-capability-villages-chat-vn");
     const stage = page.locator(".marinara-capability-villages-chat-stage");
@@ -468,15 +412,16 @@ try {
     const stageWithHistory = await stage.boundingBox();
     assert.equal(stageWithHistory.height, stageBox.height, "history overlay does not shrink the stage");
     await historyButton.click();
+    while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
+      await page.getByRole("button", { name: "Next paragraph" }).click();
     await expect(composer).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
-    await page.getByRole("button", { name: "Back to the village" }).click();
-    await pin.focus();
-    await page.keyboard.press("Enter");
-    await doors.getByRole("button", { name: "Visit" }).click();
+    await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+    while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
+      await page.getByRole("button", { name: "Next paragraph" }).click();
     await expect(composer).toBeVisible();
     await expect(page.getByRole("button", { name: /(?:Hide composer|Compose)/u })).toHaveCount(0);
     await page.getByRole("button", { name: "Venue actions" }).click();
@@ -515,7 +460,8 @@ try {
     await historyButton.focus();
     await expect(page.getByRole("menu", { name: "Scene mode" })).toHaveCount(0);
     await modeButton().click();
-    await reading.click({ position: { x: 4, y: 4 } });
+    await historyButton.click();
+    await historyButton.click();
     await expect(page.getByRole("menu", { name: "Scene mode" })).toHaveCount(0);
     await modeButton().click();
     await page.getByRole("menuitemradio", { name: "Conclude" }).click();
@@ -531,8 +477,10 @@ try {
     await page.getByRole("menuitemradio", { name: "Say / Do" }).click();
     await expect(modeButton()).toHaveAttribute("title", "Say / Do");
     assert.equal(lastTurn, null, "changing modes does not send the draft");
+    while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
+      await page.getByRole("button", { name: "Next paragraph" }).click();
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
     await expect(reading).toContainText("First reply.");
     assert.equal(lastTurn.mode, "chat");
     assert.equal(lastTurn.message, "My response.");
@@ -603,19 +551,20 @@ try {
     if (width === 1440) {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();
-      await home
-        .locator(".marinara-capability-villages-explore-sheet")
-        .getByRole("button", { name: /View venue/iu })
+      await page
+        .getByRole("navigation", { name: "Venue sections" })
+        .getByRole("button", { name: "Manage", exact: true })
         .click();
-      const headerActions = page.locator(".marinara-capability-villages-actions");
-      await expect(headerActions.getByRole("button", { name: "Request to live here" })).toBeVisible();
-      await expect(headerActions.getByRole("button", { name: "Edit Venue" })).toBeVisible();
-      await headerActions.getByRole("button", { name: "Request to live here" }).click();
+      await expect(page.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
+      await page.getByRole("button", { name: "Request to live here" }).click();
+      await page.getByRole("button", { name: "Send housing request" }).click();
       const moveError = page.getByRole("alert");
       await expect(moveError).toHaveText("This home has no room for another resident.");
       const errorBox = await moveError.boundingBox();
-      const zoneBox = await page.locator(".marinara-capability-villages-venue-zone-context").boundingBox();
-      assert.ok(errorBox && zoneBox && errorBox.y + errorBox.height <= zoneBox.y, "move error appears above Zone");
+      assert.ok(
+        errorBox && errorBox.x >= 0 && errorBox.x + errorBox.width <= width,
+        "residence error fits the viewport",
+      );
       await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
     }
     await page.close();

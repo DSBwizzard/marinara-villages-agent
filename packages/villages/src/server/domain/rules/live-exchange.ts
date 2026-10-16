@@ -20,7 +20,7 @@ const LIVE_RELATIONSHIP_INSTRUCTION = RELATIONSHIP_REVIEW_INSTRUCTION.replace(
     'Use only listed character and Zone IDs. In every relationship lineIds array, use numeric zero-based indexes for current segments, "player" for the current player line, or exact supplied earlier evidence IDs. Do not quote numeric indexes (0 is valid; "0" is not), invent future saved line IDs, or cite unsupplied history.',
   );
 
-export const LIVE_MEMORY_INSTRUCTION = `Return memoryChanges:[] and relationshipChanges:{changes:[],permissions:[],disclosures:[]} even when empty. Memory proposals use {kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:["player",0],memoryIds:[]}. Numeric evidence is a zero-based segment index in this reply; "player" means the latest player line. You may also cite exact earlier evidence IDs listed below. Recaps are context, never evidence. Every knower must directly witness EVERY cited line. Use passing for useful temporary continuity (24 hours); durable only for commitments, stable personal facts, meaningful preferences/boundaries, relationship changes, or significant shared experiences. Omit greetings, filler, weak inference, transient mood, repetition and facts already represented in world state. There is NO promotion quota. For reinforcement or a correction, cite only a supplied existing durable memory ID in memoryIds; passing entries provide temporary context, not durable correction targets. Cite the durable ID with new witnessed evidence; supersede replaces an obsolete fact, reinforce preserves its text. A memory does not prove a physical action or grant authority. ${EVENT_MEMORY_GUIDANCE} Relationship proposals are independent of memories. Use evidence references in relationship lineIds in the same format as memory evidence. ${LIVE_RELATIONSHIP_INSTRUCTION}`;
+export const LIVE_MEMORY_INSTRUCTION = `Return memoryChanges:[] and relationshipChanges:{changes:[],permissions:[],disclosures:[]} even when empty. Memory proposals use {kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:["player",0],memoryIds:[]}. Numeric evidence is a zero-based segment index in this reply; "player" means the latest player line. You may also cite exact earlier evidence IDs listed below. Recaps are context, never evidence. Every knower must directly witness EVERY cited line. In acoustic Scenes the complete player line is local-only; remote speech must cite its supplied attention fragment ID. A speaker knows their own words, not unseen accompanying narration. Use passing for useful temporary continuity (24 hours); durable only for commitments, stable personal facts, meaningful preferences/boundaries, relationship changes, or significant shared experiences. Omit greetings, filler, weak inference, transient mood, repetition and facts already represented in world state. There is NO promotion quota. For reinforcement or a correction, cite only a supplied existing durable memory ID in memoryIds; passing entries provide temporary context, not durable correction targets. Cite the durable ID with new witnessed evidence; supersede replaces an obsolete fact, reinforce preserves its text. A memory does not prove a physical action or grant authority. ${EVENT_MEMORY_GUIDANCE} Relationship proposals are independent of memories. Use evidence references in relationship lineIds in the same format as memory evidence. ${LIVE_RELATIONSHIP_INSTRUCTION}`;
 
 export function memoryVersion(memory: VillageChronicleEntry): string {
   return createHash("sha256")
@@ -38,6 +38,7 @@ export function memoryVersion(memory: VillageChronicleEntry): string {
 export function bindLiveProposals(
   reply: {
     responseDiagnostics?: ResponseDiagnostics;
+    evidenceFingerprints?: Record<string, string>;
     memoryChanges?: unknown;
     relationshipChanges?: unknown;
     earlierLineIds?: string[];
@@ -48,6 +49,7 @@ export function bindLiveProposals(
 ): LiveExchangeProposals {
   return {
     version: 1,
+    ...(reply.evidenceFingerprints ? { evidenceFingerprints: reply.evidenceFingerprints } : {}),
     ...(reply.responseDiagnostics ? { responseDiagnostics: coerceResponseDiagnostics(reply.responseDiagnostics) } : {}),
     memoryChanges: reply.memoryChanges,
     relationshipChanges: reply.relationshipChanges,
@@ -95,9 +97,23 @@ export function liveEvidence(scene: VenueScene, proposals: LiveExchangeProposals
   const allowed = new Set([...proposals.earlierLineIds, proposals.playerLineId, ...proposals.replyLineIds]);
   return scene.lines
     .filter((line) => allowed.has(line.id) && !line.contactReport)
+    .map((line) => {
+      const expected = proposals.evidenceFingerprints?.[line.id];
+      if (
+        expected &&
+        expected !==
+          createHash("sha256")
+            .update(JSON.stringify([line.id, line.content, line.heardBy, line.soundOnly]))
+            .digest("hex")
+      )
+        throw new Error("Saved Scene evidence fingerprint changed; recover saved data before replay.");
+      return line;
+    })
     .map((line) => ({
       ...line,
-      playerHeard: !line.contactHidden && (line.kind !== "whisper" || line.targetId === "player"),
+      playerHeard:
+        (!line.contactHidden || line.attentionEvidence === true) &&
+        (line.kind !== "whisper" || line.targetId === "player"),
     }));
 }
 

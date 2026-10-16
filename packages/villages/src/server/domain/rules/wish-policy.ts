@@ -72,6 +72,15 @@ export function routineRevision(agenda: VillageAgenda): string {
     .digest("hex");
 }
 
+/** Legacy social continuations remain valid only for the exact migrated routine. */
+export function routineRevisionMatches(agenda: VillageAgenda, revision: string): boolean {
+  const current = routineRevision(agenda);
+  return (
+    revision === current ||
+    (revision === agenda.legacyRoutineRevision?.previous && current === agenda.legacyRoutineRevision.current)
+  );
+}
+
 /** Future overlays lose invalid links locally; today's started activity remains stable. */
 export function pruneWishActivities(state: VillageState, now: Date): void {
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;

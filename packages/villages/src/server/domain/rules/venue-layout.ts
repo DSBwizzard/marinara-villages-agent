@@ -1,3 +1,8 @@
+import {
+  applyConnectionEdits,
+  connectionProblem,
+  materializeConnections,
+} from "../../../shared/helpers/zone-contact.js";
 import type {
   VillageState,
   VillageVenue,
@@ -69,10 +74,11 @@ export function readBaseVenueLayout(
       ...defaultVenueSpace(role, description),
       ...(isPrivate && ownerId !== "player" ? { roomSpecification, description: "" } : {}),
       id: asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base"),
+      connectedTo: Array.isArray(area.connectedTo) ? (area.connectedTo as string[]) : undefined,
       name: asTrimmedString(area.name).slice(0, 100) || "Zone",
       purpose:
         asTrimmedString(area.purpose).slice(0, 240) ||
-        (isPrivate ? "Personal space" : "Gathering and everyday activities"),
+        (isPrivate ? "Personal space" : "Shared and everyday activities"),
       access: area.access === undefined ? undefined : readZonePolicy(area.access),
       kind: isPrivate
         ? role === "residence"
@@ -92,7 +98,11 @@ export function readBaseVenueLayout(
   }
   if (new Set(result.map((zone) => zone.id)).size !== result.length)
     throw badRequest("Every area needs a distinct ID.");
-  return result;
+  // Older drafts retain their inferred layout. Explicit drafts must be valid.
+  const connected = materializeConnections(result);
+  const problem = connectionProblem(connected);
+  if (problem) throw badRequest(problem);
+  return connected;
 }
 
 export function validateLayoutZones(
@@ -103,6 +113,27 @@ export function validateLayoutZones(
 ): void {
   if (new Set(drafts.map((zone) => zone.id)).size !== drafts.length)
     throw badRequest("Every physical zone must have a distinct ID.");
+  const allowed = new Set(["exterior", ...drafts.map((zone) => zone.id)]);
+  const priorIds = new Set(venueZones(venue).map((zone) => zone.id));
+  for (const zone of drafts) {
+    if (
+      zone.connectedTo &&
+      (new Set(zone.connectedTo).size !== zone.connectedTo.length ||
+        zone.connectedTo.some((id) => id === zone.id || (!allowed.has(id) && !priorIds.has(id))))
+    )
+      throw badRequest("Connections must reference other included spaces, without duplicates.");
+  }
+  const currentLayout = materializeConnections(venueZones(venue));
+  for (const zone of drafts) if (zone.connectedTo) zone.connectedTo = zone.connectedTo.filter((id) => allowed.has(id));
+  const entrance = currentLayout.find((zone) => zone.id === "exterior")!;
+  const combined = [entrance, ...drafts];
+  // Old API clients may omit connections; retain exact current connections, or the legacy layout for old new-zone drafts.
+  const resolved = combined.map((zone) => ({
+    ...zone,
+    connectedTo: zone.connectedTo ?? currentLayout.find((old) => old.id === zone.id)?.connectedTo,
+  }));
+  const problem = connectionProblem(materializeConnections(applyConnectionEdits(resolved, drafts)));
+  if (problem) throw badRequest(problem);
   for (const zone of drafts) {
     if (zone.ownerId && zone.kind !== "private-residence")
       throw badRequest("Only residential Private Spaces have assigned residents.");

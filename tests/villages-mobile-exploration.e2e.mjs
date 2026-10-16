@@ -54,7 +54,7 @@ const mapImage = image("#719b77");
 const place = (id, x, y) => ({
   id,
   name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
-  classes: id === "mill" ? ["workplace", "gathering"] : ["other"],
+  classes: id === "mill" ? ["workplace", "community"] : ["other"],
   category: "destination",
   description: "A village place.",
   capabilities: [],
@@ -135,6 +135,7 @@ try {
     { width: 1024, height: 768, shell: 120 },
     { width: 720, height: 900, shell: 120 },
   ]) {
+    if (process.env.VILLAGES_TEST_WIDTH && width !== Number(process.env.VILLAGES_TEST_WIDTH)) continue;
     const mobile = width <= 704;
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
     await page.addInitScript(() => {
@@ -262,6 +263,14 @@ try {
     await expect(home.getByRole("button", { name: /^(Zoom in|Zoom out|Reset map view)$/ })).toHaveCount(0);
     await expect(home.getByRole("button", { name: /^Events/ })).toHaveCount(0);
     await expect(home).toHaveCSS("background-color", "rgb(41, 37, 31)");
+    const venueCard = (name) =>
+      page.locator("." + P + "-venue-profile").filter({ has: page.getByRole("heading", { name, exact: true }) });
+    const returnFromVenue = async () => {
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      if (await page.getByRole("button", { name: "Back to People", exact: true }).isVisible())
+        await page.getByRole("button", { name: "Back to People", exact: true }).click();
+      if (await page.getByRole("dialog").count()) await page.keyboard.press("Escape");
+    };
     const sharedMapBox = await stage.boundingBox();
     await nav.getByRole("button", { name: "Places", exact: true }).click();
     const sharedPanel = page.getByRole("dialog", { name: "Places", exact: true });
@@ -275,13 +284,10 @@ try {
     await expect(sharedPanel.getByRole("searchbox")).toHaveValue("unPLACED");
     await expect(sharedPanel.locator("." + P + "-explore-row")).toHaveCount(1);
     await sharedPanel.getByRole("button", { name: /Unplaced Venue/ }).click();
-    await expect(page.getByRole("dialog", { name: "Unplaced Venue", exact: true })).toBeVisible();
+    await expect(venueCard("Unplaced Venue")).toBeVisible();
     await page.setViewportSize({ width, height });
-    await expect(page.getByRole("dialog", { name: "Unplaced Venue", exact: true })).toHaveAttribute(
-      "data-layout",
-      mobile ? "sheet" : "side",
-    );
-    await page.getByRole("button", { name: "Close exploration card" }).click();
+
+    await returnFromVenue();
     await expect(nav.getByRole("button", { name: "Places", exact: true })).toBeFocused();
     await nav.getByRole("button", { name: "Places", exact: true }).click();
     await expect(sharedPanel.getByRole("searchbox")).toHaveValue("unPLACED");
@@ -296,9 +302,9 @@ try {
     await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
     await expect(page.getByText("No wishes shared yet", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
-    const sharedPreview = page.getByRole("dialog", { name: "Village Market", exact: true });
-    await expect(sharedPreview.getByRole("button").nth(1)).toHaveText("Visit");
-    await page.keyboard.press("Escape");
+    const sharedPreview = venueCard("Village Market");
+    await expect(sharedPreview.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
+    await returnFromVenue();
     await expect(nav.getByRole("button", { name: "People", exact: true })).toBeFocused();
     await nav.getByRole("button", { name: "People", exact: true }).click();
     await sharedPeople.getByRole("searchbox").fill("");
@@ -339,22 +345,22 @@ try {
       const edgePin = home.locator('[data-pin-id="edge"]');
       await edgePin.focus();
       await page.keyboard.press("Enter");
-      await expect(page.getByRole("dialog", { name: "Edge Venue", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Visit", exact: true })).toBeVisible();
+      await expect(venueCard("Edge Venue")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
       await screenshot("warm-preview");
-      await page.keyboard.press("Escape");
+      await returnFromVenue();
       await expect(edgePin).toBeFocused();
       await nav.getByRole("button", { name: "Places", exact: true }).click();
       await sharedPanel.getByRole("button", { name: /New Mill/ }).click();
-      const worksite = page.getByRole("dialog", { name: "New Mill", exact: true });
+      const worksite = venueCard("New Mill");
       await expect(worksite.getByRole("button", { name: "View Project", exact: true })).toBeVisible();
-      await expect(worksite.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
+      await expect(worksite.getByRole("button", { name: "Visit venue", exact: true })).toHaveCount(0);
       assert.equal(sceneRequests.length, 0);
-      await page.keyboard.press("Escape");
+      await returnFromVenue();
       await nav.getByRole("button", { name: "Places", exact: true }).click();
       await sharedPanel.getByRole("searchbox").fill("Village Market");
       await sharedPanel.getByRole("button", { name: /Village Market/ }).click();
-      await sharedPreview.getByRole("button", { name: "Visit", exact: true }).click();
+      await sharedPreview.getByRole("button", { name: "Visit venue", exact: true }).click();
       await expect.poll(() => sceneRequests.length).toBe(1);
       await expect(page.getByRole("textbox", { name: "Message at Village Market" })).toBeVisible();
       await page.getByRole("button", { name: "Venue actions", exact: true }).click();
@@ -433,7 +439,7 @@ try {
         const bounds = await thumbnail.boundingBox();
         assert.equal(bounds.width, 48);
         assert.equal(bounds.height, 48);
-        await expect(thumbnail.locator("img")).toHaveCSS("object-fit", "contain");
+        await expect(thumbnail.locator("img")).toHaveCSS("object-fit", "cover");
         const names = fixture.villagers
           .filter((resident) => resident.place?.id === venue.id)
           .slice(0, 3)
@@ -459,9 +465,9 @@ try {
     const edgeBounds = await edgeMarker.boundingBox();
     assert.ok(edgeBounds.x < frameBox.x, "edge cards clip naturally instead of sliding inward");
     await edgeMarker.tap({ position: { x: 56, y: 38 } });
-    await expect(page.getByRole("dialog", { name: "left-edge Venue" })).toBeVisible();
+    await expect(venueCard("left-edge Venue")).toBeVisible();
     assert.equal(sceneRequests.length, 0);
-    await page.getByRole("button", { name: "Close exploration card" }).click();
+    await returnFromVenue();
     await nav.getByRole("button", { name: "Places", exact: true }).click();
     let sheet = page.getByRole("dialog", { name: "Places", exact: true });
     await expect(sheet.getByRole("heading", { name: "Places", exact: true })).toBeFocused();
@@ -527,10 +533,10 @@ try {
     await sheet.getByRole("button", { name: /Mara Village Market/ }).click();
     await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
-    sheet = page.getByRole("dialog", { name: "Village Market", exact: true });
-    await expect(sheet.getByRole("button", { name: "Visit", exact: true })).toBeVisible();
+    sheet = venueCard("Village Market");
+    await expect(sheet.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
     assert.equal(sceneRequests.length, 0);
-    await sheet.getByRole("button", { name: "Close exploration card" }).click();
+    await returnFromVenue();
     await expect(nav.getByRole("button", { name: "People", exact: true })).toBeFocused();
     // Gesture handling uses real Chromium touch events, including anchored two-finger pinch.
     const box = await canvas.boundingBox();
@@ -596,11 +602,8 @@ try {
     sheet = page.getByRole("dialog", { name: "Places", exact: true });
     await sheet.getByRole("searchbox").fill("Village Market");
     await sheet.getByRole("button", { name: /Village Market/ }).click();
-    await page
-      .getByRole("dialog", { name: "Village Market" })
-      .getByRole("button", { name: "View venue", exact: true })
-      .click();
-    await page.getByRole("button", { name: /Back to map/ }).click();
+
+    await returnFromVenue();
     await expect.poll(geometry, { message: "Venue roundtrip retains map view" }).toEqual(retained);
     await touch("touchStart", [
       [x - 60, y],
@@ -618,11 +621,11 @@ try {
     sheet = page.getByRole("dialog", { name: "Places", exact: true });
     await sheet.getByRole("searchbox").fill("New Mill");
     await sheet.getByRole("button", { name: /New Mill/ }).click();
-    sheet = page.getByRole("dialog", { name: "New Mill", exact: true });
+    sheet = venueCard("New Mill");
     await expect(sheet.getByRole("button", { name: "View Project", exact: true })).toBeVisible();
-    await expect(sheet.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
-    await sheet.getByRole("button", { name: "Close exploration card" }).click();
-    // Polling updates a selected card, closes deleted venues, and resets a replaced map.
+    await expect(sheet.getByRole("button", { name: "Visit venue", exact: true })).toHaveCount(0);
+    await returnFromVenue();
+    // Polling shows a deleted Venue explicitly and still preserves map replacement.
     await nav.getByRole("button", { name: "Places", exact: true }).click();
     await page.getByRole("dialog", { name: "Places", exact: true }).getByRole("searchbox").fill("Village Market");
     await page
@@ -631,7 +634,8 @@ try {
       .click();
     fixture.settings.venues = fixture.settings.venues.filter((v) => v.id !== "market");
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Venue unavailable", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
     await touch("touchStart", [
       [x - 15, y],
       [x + 15, y],
@@ -656,10 +660,7 @@ try {
       .click();
     assert.equal(sceneRequests.length, 0, "all exploration remains free of scene operations");
     await screenshot("preview");
-    await page
-      .getByRole("dialog", { name: "Village Market" })
-      .getByRole("button", { name: "Visit", exact: true })
-      .click();
+    await venueCard("Village Market").getByRole("button", { name: "Visit venue", exact: true }).click();
     await expect.poll(() => sceneRequests.length).toBe(1);
     assert.equal(sceneRequests[0].venueId, "market");
     await expect(page.getByRole("textbox", { name: "Message at Village Market" })).toBeVisible();

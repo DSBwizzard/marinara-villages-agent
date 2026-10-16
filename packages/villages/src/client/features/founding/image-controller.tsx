@@ -137,7 +137,7 @@ export function createFoundingSetupDraftRow(ports: {}) {
         purpose: "purpose" in area ? area.purpose : "",
         venueClass: area.venueClass,
       })),
-      venueClass: venue.classes?.includes("gathering") ? "gathering" : "residence",
+      venueClass: venue.classes?.includes("community") ? "community" : "residence",
       residentCharacterId: venue.occupancy.residentCharacterId ?? "",
     };
   };

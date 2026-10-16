@@ -117,6 +117,21 @@ function fixture(provider: string, inputRate: number) {
   };
 }
 const meta = { connectionId: "same-connection", model: "same-model" };
+const capability = fixture("google", 1);
+await capability.service.trackUsage({ capability: "decisions", purpose: "checks" }, async () => ({
+  model: "engine-selected-model",
+  answers: { yes: 0.9 },
+  choices: {},
+  threshold: 0.5,
+}));
+assert.equal(capability.connectionReads(), 0, "capability accounting does not inspect Engine connections");
+const capabilityReceipt = capability.row().data.requests[0];
+assert.equal(capabilityReceipt.model, "engine-selected-model");
+assert.equal(capabilityReceipt.provider, "");
+assert.equal(capabilityReceipt.connectionId, "");
+assert.equal(capabilityReceipt.dollars, null);
+assert.equal(capabilityReceipt.usage, undefined);
+assert.match(capabilityReceipt.priceNote, /usage and cost unavailable/);
 const completion = () =>
   Promise.resolve({
     content: "private text never stored",
@@ -211,7 +226,14 @@ async function periodAndRestart() {
     const current = await a.service.readUsageLedger();
     assert.equal(current.totals.requests, 0);
     assert.equal(current.totals.tokens, 0);
-    assert.equal(a.row().data.all.tokens, 15, "late results count in lifetime totals, not a new display period");
+    assert.equal(a.row().data.all.tokens, 0, "late results cannot restore erased history");
+    assert.deepEqual(a.row().data.days, {});
+    assert.deepEqual(a.row().data.requests, []);
+    const afterResetRestart = createUsageLedger({ ...a.ports, owner: "after-reset-process" });
+    const resetView = await afterResetRestart.readUsageLedger();
+    assert.equal(resetView.totals.requests, 0);
+    assert.equal(resetView.today.dollars, 0);
+    assert.deepEqual(resetView.connections, {});
     const stamp = new Date().toISOString();
     a.row().data.requests.push({
       id: "abandoned",

@@ -1,4 +1,11 @@
-import type { ResidentSprite, RoomLine, RoomRecordEvent, SceneView } from "../../../shared/contracts/village.js";
+import type {
+  ResidentSprite,
+  RoomLine,
+  RoomRecordEvent,
+  SceneView,
+  SceneChangeIssue,
+} from "../../../shared/contracts/village.js";
+import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import {
   initialStaging,
   lineStagingCues,
@@ -11,6 +18,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
 import type { Portrait, PortraitMap, RoomStep, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
+import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";
 import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene.js";
@@ -88,9 +96,14 @@ export async function refreshSceneAfterFailure(
   try {
     if (!owns()) return null;
     if (submissionId)
-      await request(`/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`, {
-        signal: AbortSignal.timeout(5_000),
-      });
+      try {
+        await request(`/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`, {
+          signal: AbortSignal.timeout(5_000),
+        });
+      } catch {
+        // Operation diagnostics can be missing or unavailable after a lost POST.
+        // The saved Scene and submission receipt still establish completion.
+      }
     if (!owns()) return null;
     const { session } = await request<{ session: SceneView | null }>("/rooms/active", {
       signal: AbortSignal.timeout(5_000),
@@ -199,6 +212,10 @@ export function RoomPanel({
   busy,
   error,
   greetingNotice,
+  turnRecovery,
+  sceneErrors = [],
+  onCheckSavedReply,
+  draftWhilePending,
   ruling,
   open,
   ended,
@@ -210,12 +227,12 @@ export function RoomPanel({
   onMode,
   onTarget,
   onSend,
+  onAttentionChoice,
   sendOnEnter,
   spriteCardFlipEnabled,
   onViewVenue,
-  onEnterPrivate,
-  privateSpaceOwnerName,
   onEnd,
+  onStartSpinoff,
   onRetryGreeting,
   onContinueWithoutGreeting,
   notices,
@@ -234,9 +251,7 @@ export function RoomPanel({
   contactDoors,
   contactBoundary,
   onContactBoundary,
-  onAcceptEntry,
   movementZones,
-  movementTarget,
   onMovementTarget,
   currentZoneLabel,
 }: {
@@ -253,6 +268,10 @@ export function RoomPanel({
   busy: boolean;
   error: string;
   greetingNotice: string;
+  turnRecovery?: string;
+  sceneErrors?: SceneErrorItem[];
+  onCheckSavedReply?: () => void;
+  draftWhilePending?: boolean;
   ruling: string;
   open: boolean;
   ended: boolean;
@@ -264,12 +283,12 @@ export function RoomPanel({
   onMode: (value: SceneComposerMode) => void;
   onTarget: (value: string) => void;
   onSend: () => void;
+  onAttentionChoice?: (zoneId: string) => void;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
-  onEnterPrivate?: () => void;
-  privateSpaceOwnerName?: string;
   onEnd: () => void;
+  onStartSpinoff?: () => void;
   onRetryGreeting: () => void;
   onContinueWithoutGreeting: () => void;
   notices: RoomRecordEvent[];
@@ -277,8 +296,11 @@ export function RoomPanel({
   onOpenWish?: (actorId: string, wishId: string) => void;
   changeStatus?: { pending: number; failed: number; rejected: number };
   onReplayChanges?: () => void;
-  unresolvedChanges?: { submissionId: string; domain: string; reason?: string }[];
-  onRetryChangeInterpretation?: (submissionId: string, domain: "memories" | "relationships" | "wishes") => void;
+  unresolvedChanges?: SceneChangeIssue[];
+  onRetryChangeInterpretation?: (
+    submissionId: string,
+    domain: "memories" | "relationships" | "wishes" | "projects",
+  ) => void;
   debugDiscardEnabled: boolean;
   onDebugDiscard: () => void;
   onUseMailbox?: () => void;
@@ -288,9 +310,7 @@ export function RoomPanel({
   contactDoors: { id: string; label: string }[];
   contactBoundary: string;
   onContactBoundary: (id: string) => void;
-  onAcceptEntry: (zoneId: string) => void;
   movementZones: { id: string; label: string; closed?: boolean }[];
-  movementTarget: string;
   onMovementTarget: (id: string) => void;
   currentZoneLabel: string;
 }) {
@@ -302,6 +322,7 @@ export function RoomPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
+  const [errorsOpen, setErrorsOpen] = useState(false);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -322,15 +343,16 @@ export function RoomPanel({
 
   useEffect(() => {
     setNoticesOpen(false);
+    setErrorsOpen(false);
     previousNoticeIds.current.clear();
   }, [room.id]);
 
   useEffect(() => {
     const fresh = notices.some((notice) => !previousNoticeIds.current.has(notice.id));
     previousNoticeIds.current = new Set(notices.map((notice) => notice.id));
-    if (fresh) setNoticesOpen(true);
+    if (fresh && !errorsOpen) setNoticesOpen(true);
     else if (notices.length === 0) setNoticesOpen(false);
-  }, [notices, room.id]);
+  }, [notices, room.id, errorsOpen]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -393,6 +415,131 @@ export function RoomPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeMemory, openMemory]);
 
+  const requestFields = [
+    { label: "Scene", value: room.placeName },
+    ...(room.operation
+      ? [
+          { label: "Request", value: room.operation.id },
+          { label: "Attempt", value: room.operation.attemptId },
+          { label: "Stage", value: room.operation.stage ?? room.operation.kind },
+          { label: "Status", value: room.operation.status },
+        ]
+      : []),
+  ];
+  const openingActions =
+    room.status === "opening" ? (
+      <>
+        <button type="button" onClick={onEnd} disabled={busy}>
+          Back to map
+        </button>
+        <button type="button" onClick={onRetryGreeting} disabled={busy}>
+          Retry opening
+        </button>
+        {room.id ? (
+          <button type="button" onClick={onContinueWithoutGreeting} disabled={busy}>
+            Continue without opening
+          </button>
+        ) : null}
+      </>
+    ) : undefined;
+  const errorItems: SceneErrorItem[] = sceneErrors.map((item) => ({
+    ...item,
+    fields:
+      item.id === "sprite-setting" || item.id === "decisions" || item.id === "diagnostics" || item.id === "spinoff"
+        ? [{ label: "Scene", value: room.placeName }, ...(item.fields ?? [])]
+        : [...requestFields, ...(item.fields ?? [])],
+    actions: item.actions ?? (["room", "greeting", "operation"].includes(item.id) ? openingActions : undefined),
+  }));
+  if (error && !sceneErrors.length)
+    errorItems.push({
+      id: "request",
+      title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
+      message: error,
+      fields: requestFields,
+      actions: openingActions,
+    });
+  if (turnRecovery)
+    errorItems.push({
+      id: "reply-recovery",
+      title: "Reply connection interrupted",
+      message: turnRecovery,
+      fields: requestFields,
+      actions: (
+        <button type="button" onClick={onCheckSavedReply}>
+          Check saved reply
+        </button>
+      ),
+    });
+  if (greetingNotice)
+    errorItems.push({
+      id: "opening-notice",
+      title: "Scene opening notice",
+      message: greetingNotice,
+      fields: requestFields,
+    });
+  for (const change of unresolvedChanges ?? []) {
+    if (change.status === "pending") continue;
+    errorItems.push({
+      id: change.submissionId + ":" + change.domain,
+      title: change.domain + (change.status === "rejected" ? " update not saved" : " update failed"),
+      message:
+        change.reason ?? "The proposed world update could not be saved. See saved change diagnostics for details.",
+      fields: [
+        { label: "Scene", value: room.placeName },
+        { label: "Request", value: change.submissionId },
+        { label: "World update", value: change.domain },
+        { label: "Result", value: change.status === "rejected" ? "Not saved" : "Needs attention" },
+        ...(change.at ? [{ label: "Time", value: new Date(change.at).toLocaleString() }] : []),
+      ],
+      actions:
+        change.status !== "rejected" ? (
+          <>
+            {onReplayChanges ? (
+              <button type="button" disabled={busy} onClick={onReplayChanges}>
+                Replay saved work · no model request
+              </button>
+            ) : null}
+            {onRetryChangeInterpretation &&
+            ["memories", "relationships", "wishes", "projects"].includes(change.domain) ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  onRetryChangeInterpretation(
+                    change.submissionId,
+                    change.domain as "memories" | "relationships" | "wishes" | "projects",
+                  )
+                }
+              >
+                Retry {change.domain} interpretation · may use model requests
+              </button>
+            ) : null}
+          </>
+        ) : undefined,
+    });
+  }
+  if (
+    changeStatus &&
+    changeStatus.failed + changeStatus.rejected >
+      (unresolvedChanges ?? []).filter((change) => change.status !== "pending").length
+  )
+    errorItems.push({
+      id: "other-world-updates",
+      title: "Other world updates need attention",
+      message:
+        "Some proposed world changes weren’t saved or could not be processed. See this Scene’s saved diagnostics for the remaining results.",
+      fields: [
+        { label: "Failed", value: String(changeStatus.failed) },
+        { label: "Not saved", value: String(changeStatus.rejected) },
+      ],
+      actions:
+        changeStatus.failed > 0 && onReplayChanges ? (
+          <button type="button" disabled={busy} onClick={onReplayChanges}>
+            Replay saved work · no model request
+          </button>
+        ) : undefined,
+    });
+
   /**
    * The whole room, one paragraph at a time, each paragraph wearing a name.
    *
@@ -412,13 +559,21 @@ export function RoomPanel({
   const steps = useMemo<RoomStep[]>(() => {
     const built: RoomStep[] = [];
     const boundaries = stagingBoundaries(room.lines, room.submissions ?? []);
-    const stageAsides = new Map<string, RoomLine[]>();
-    const attached = new Map<string, RoomStep["asides"]>();
-    for (const line of room.lines) {
-      if ((line.kind !== "side" && line.kind !== "whisper") || !line.asideFor) continue;
-      const list = attached.get(line.asideFor) ?? [];
+    const mainLines = room.lines.filter((line) => !isSceneAside(line));
+    if (!mainLines.length && room.lines.length) mainLines.push(room.lines[0]!);
+    const stageAsides = new Map<RoomLine, RoomLine[]>();
+    const attached = new Map<RoomLine, RoomStep["asides"]>();
+    for (const [index, line] of room.lines.entries()) {
+      if (!isSceneAside(line) || mainLines.includes(line)) continue;
+      // Also repair orphaned anchors in already-saved Scenes, without changing evidence.
+      const anchor =
+        mainLines.find((main) => main.id && main.id === line.asideFor) ??
+        mainLines.findLast((main) => room.lines.indexOf(main) < index) ??
+        mainLines[0];
+      if (!anchor) continue;
+      const list = attached.get(anchor) ?? [];
       list.push({
-        register: line.kind,
+        register: speechDelivery(line) === "ordinary" ? "side" : (speechDelivery(line) as "whisper" | "shout"),
         text: line.content,
         ...(line.targetId
           ? {
@@ -433,14 +588,14 @@ export function RoomPanel({
         expression: line.expression,
         gazeAt: line.gazeAt,
       });
-      attached.set(line.asideFor, list);
-      stageAsides.set(line.asideFor, [...(stageAsides.get(line.asideFor) ?? []), line]);
+      attached.set(anchor, list);
+      stageAsides.set(anchor, [...(stageAsides.get(anchor) ?? []), line]);
     }
     for (const line of room.lines) {
-      if (line.kind === "side" || line.kind === "whisper") continue;
+      if (!mainLines.includes(line)) continue;
       const player = line.speakerId.length === 0;
       const walk = villagesWalk(line.content, line.beats ?? null);
-      const asideLines = stageAsides.get(line.id ?? "") ?? [];
+      const asideLines = stageAsides.get(line) ?? [];
       const momentBoundaries = [line, ...asideLines].map((item) => boundaries.get(item.id ?? ""));
       const beforeIds = momentBoundaries.find((item) => item?.beforeIds)?.beforeIds;
       const afterIds = momentBoundaries.find((item) => item?.afterIds)?.afterIds;
@@ -463,9 +618,10 @@ export function RoomPanel({
           name: player ? playerName : line.name,
           player,
           text: paragraph,
+          delivery: speechDelivery(line),
           asides: [
             ...(walk.asides[index] ?? []),
-            ...(index === walk.paragraphs.length - 1 ? (attached.get(line.id ?? "") ?? []) : []),
+            ...(index === walk.paragraphs.length - 1 ? (attached.get(line) ?? []) : []),
           ],
           ...(line.kind ? { register: line.kind === "narration" ? "narration" : "speech" } : {}),
           ...(line.expression ? { expression: line.expression } : {}),
@@ -504,7 +660,10 @@ export function RoomPanel({
     [room.stagingVersion, room.participants, steps],
   );
   const stagingFrame = stagingFrames[at];
-  const stagingState = stagingFrame?.state ?? initialStaging(room.participants.map((person) => person.characterId));
+  const stagingState = {
+    ...initialStaging(room.participants.map((person) => person.characterId)),
+    ...stagingFrame?.state,
+  };
   const previousStageReading = useRef<{ roomId: string; at: number; restoring: boolean } | null>(null);
   const animateStaging = useMemo(
     () =>
@@ -524,8 +683,7 @@ export function RoomPanel({
   const canReadPrevious = at > 0 || readingPages.index > 0;
   const canReadNext = at < steps.length - 1 || readingPages.index < readingPages.count - 1;
   const canDraft = !ended && room.status === "active";
-  // Display pages do not impose a new requirement to read every word before replying.
-  const canCompose = canDraft && (steps.length === 0 || at === steps.length - 1) && !historyOpen;
+  const canCompose = canDraft && !busy && !canReadNext && !historyOpen;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -541,7 +699,7 @@ export function RoomPanel({
 
   useLayoutEffect(() => {
     resizeComposer();
-  }, [canDraft, draft, mode, resizeComposer]);
+  }, [canCompose, draft, mode, resizeComposer]);
 
   useEffect(() => {
     const frame = composerRef.current?.parentElement;
@@ -554,17 +712,16 @@ export function RoomPanel({
     });
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [canDraft, mode, resizeComposer]);
+  }, [canCompose, mode, resizeComposer]);
 
   const submitComposer = () => {
     if (
       !canCompose ||
+      mode === "move" ||
       busy ||
-      (mode !== "conclude" && mode !== "contact" && mode !== "move" && !draft.trim()) ||
+      (mode !== "conclude" && mode !== "contact" && !draft.trim()) ||
       (mode === "fulfill" && !targetId) ||
-      (mode === "contact" && !contactDoors.some((door) => door.id === contactBoundary)) ||
-      (mode === "move" &&
-        !movementZones.some((zone) => zone.id === movementTarget && zone.id !== room.zoneId && !zone.closed))
+      (mode === "contact" && !contactDoors.some((door) => door.id === contactBoundary))
     )
       return;
     setModeMenuOpen(false);
@@ -587,11 +744,13 @@ export function RoomPanel({
   const speakerPortrait = step === undefined ? undefined : step.player ? playerPortrait : portraits[step.speakerId];
   const activeParticipants = room.participants.filter((person) => room.activeIds.includes(person.characterId));
   const cast =
-    room.stagingVersion === 1
-      ? room.participants.filter((person) => (stagingFrame?.activeIds ?? room.activeIds).includes(person.characterId))
-      : room.status === "closed" && activeParticipants.length === 0
-        ? room.participants
-        : activeParticipants;
+    !canReadNext && !historyOpen && !ended
+      ? activeParticipants
+      : room.stagingVersion === 1
+        ? room.participants.filter((person) => (stagingFrame?.activeIds ?? room.activeIds).includes(person.characterId))
+        : room.status === "closed" && activeParticipants.length === 0
+          ? room.participants
+          : activeParticipants;
   const speaker = cast.find((person) => person.characterId === step?.speakerId);
   const speechStyle = (speakerId: string) => villagesSpeechPaintStyle(speechColors[speakerId]);
   const nameStyle = (speakerId: string) => villagesSpeechPaintStyle(nameColors[speakerId]);
@@ -624,6 +783,45 @@ export function RoomPanel({
    * to in the settings, so the sentence that carries the information here is that
    * the room is answering at all, and that it may take one call or several.
    */
+  const [progress, setProgress] = useState("");
+  useEffect(() => {
+    if (!busy || !room.id) {
+      setProgress("");
+      return;
+    }
+    let stopped = false;
+    let reading = false;
+    const poll = async () => {
+      if (stopped || reading || document.hidden) return;
+      reading = true;
+      try {
+        const { operation } = await request<{
+          operation: import("../../../shared/contracts/village.js").RoomOperation | null;
+        }>("/rooms/" + encodeURIComponent(room.id) + "/operation", { signal: AbortSignal.timeout(5000) });
+        if (!stopped)
+          setProgress(
+            operation?.status === "running"
+              ? /routing|attention|acoustic/.test(operation.stage ?? "")
+                ? "Working out who can hear…"
+                : /interpret/.test(operation.stage ?? "")
+                  ? "Checking the reply and its effects…"
+                  : /reply|response/.test(operation.stage ?? "")
+                    ? "Writing the reply…"
+                    : "Processing the Scene…"
+              : "",
+          );
+      } catch {
+        /* Progress is optional; never replace the request's result. */
+      } finally {
+        reading = false;
+      }
+    };
+    const timer = window.setInterval(() => void poll(), 1500);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [room.id, busy]);
   const waiting = (
     <p className={`${ELEMENT_TAG}-chat-pending`} role="status">
       <span className={`${ELEMENT_TAG}-chat-spinner ${ELEMENT_TAG}-spin`} aria-hidden="true" />
@@ -632,7 +830,9 @@ export function RoomPanel({
           ? "Opening the Scene…"
           : room.status === "closing"
             ? "Saving this Scene…"
-            : "This Scene is responding. Your draft stays here."}
+            : mode === "move"
+              ? "Moving…"
+              : progress || "This Scene is responding. Your draft stays here."}
       </span>
     </p>
   );
@@ -714,6 +914,19 @@ export function RoomPanel({
                   View Mailbox
                 </button>
               ) : null}
+              {onStartSpinoff ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy || ended}
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onStartSpinoff();
+                  }}
+                >
+                  Start a spinoff
+                </button>
+              ) : null}
               {onProjects ? (
                 <button
                   type="button"
@@ -748,19 +961,6 @@ export function RoomPanel({
               >
                 Scene settings
               </button>
-              {onEnterPrivate ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsOpen(false);
-                    onEnterPrivate();
-                  }}
-                  disabled={busy}
-                >
-                  Move to {privateSpaceOwnerName ?? "private space"}
-                </button>
-              ) : null}
               <button
                 type="button"
                 role="menuitem"
@@ -796,6 +996,7 @@ export function RoomPanel({
           onClick={(event) => {
             if (event.target === event.currentTarget) {
               setSettingsOpen(false);
+              setErrorsOpen(false);
               actionsRef.current?.querySelector("button")?.focus();
             }
           }}
@@ -811,6 +1012,7 @@ export function RoomPanel({
               if (event.key === "Escape" && !event.defaultPrevented) {
                 event.stopPropagation();
                 setSettingsOpen(false);
+                setErrorsOpen(false);
                 actionsRef.current?.querySelector("button")?.focus();
               }
               if (event.key === "Tab") {
@@ -839,6 +1041,7 @@ export function RoomPanel({
                 aria-label="Close Scene settings"
                 onClick={() => {
                   setSettingsOpen(false);
+                  setErrorsOpen(false);
                   actionsRef.current?.querySelector("button")?.focus();
                 }}
               >
@@ -849,6 +1052,9 @@ export function RoomPanel({
               Changes and Wish updates are saved during replies. Ending the Scene does not run another review. See saved
               changes below for pending or failed work.
             </p>
+            <div className={`${ELEMENT_TAG}-scene-modal-errors`}>
+              <SceneErrorChip items={errorItems} open={errorsOpen} onOpen={setErrorsOpen} />
+            </div>
             {sceneSettings}
           </div>
         </div>
@@ -860,108 +1066,85 @@ export function RoomPanel({
             : "You’re outside this Venue. You can speak in your own words, or leave whenever you like."}
         </p>
       ) : null}
-      {changeStatus && (changeStatus.pending > 0 || changeStatus.failed > 0 || changeStatus.rejected > 0) ? (
-        <details className={`${ELEMENT_TAG}-saved-change-status`} role="status" aria-label="Saved change status">
-          <summary>
-            {changeStatus.pending > 0 ? "Some changes are still being checked. " : ""}
-            {changeStatus.failed > 0 ? "Some saved changes need attention. " : ""}
-            {changeStatus.rejected > 0 ? "Some proposals lacked valid evidence. " : ""}
-          </summary>
-          <div style={{ maxHeight: "9rem", overflow: "auto" }}>
-            {changeStatus.failed > 0 && onReplayChanges ? (
-              <button type="button" onClick={onReplayChanges}>
-                Replay saved work · no model request
-              </button>
-            ) : null}
-            {(unresolvedChanges ?? [])
-              .filter((change) => ["memories", "relationships", "wishes"].includes(change.domain))
-              .map((change) => (
-                <div key={change.submissionId + change.domain}>
-                  <p>
-                    {change.domain}:{" "}
-                    {change.reason ?? "Saved changes need attention. Replay saved work or inspect saved diagnostics."}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      onRetryChangeInterpretation?.(
-                        change.submissionId,
-                        change.domain as "memories" | "relationships" | "wishes",
-                      )
-                    }
-                  >
-                    Retry {change.domain} interpretation · may use model requests
-                  </button>
-                </div>
-              ))}
-          </div>
-        </details>
-      ) : null}
-      {notices.length > 0 ? (
-        <div className={`${ELEMENT_TAG}-room-notices`} aria-live="polite">
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-room-notices-trigger`}
-            onClick={() => setNoticesOpen((value) => !value)}
-            aria-expanded={noticesOpen}
-            aria-label={`${notices.length} village ${notices.length === 1 ? "notice" : "notices"}`}
-          >
-            ✦ {notices.length}
-          </button>
-          {noticesOpen ? (
-            <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
-              {notices.map((notice) => (
-                <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
-                  <span aria-hidden="true">{roomNoticeIcon(notice.kind)}</span>
-                  {(notice.kind === "memory" ||
-                    notice.kind === "wish" ||
-                    notice.kind === "relationship-up" ||
-                    notice.kind === "relationship-down") &&
-                  notice.detail ? (
+      <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
+        {!settingsOpen ? (
+          <SceneErrorChip
+            items={errorItems}
+            open={errorsOpen}
+            onOpen={(value) => {
+              setErrorsOpen(value);
+              if (value) setNoticesOpen(false);
+            }}
+          />
+        ) : null}
+        {notices.length > 0 ? (
+          <div className={`${ELEMENT_TAG}-room-notices`} aria-live="polite">
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-room-notices-trigger`}
+              onClick={() => {
+                setNoticesOpen((value) => !value);
+                setErrorsOpen(false);
+              }}
+              aria-expanded={noticesOpen}
+              aria-label={`${notices.length} village ${notices.length === 1 ? "notice" : "notices"}`}
+            >
+              ✦ {notices.length}
+            </button>
+            {noticesOpen ? (
+              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
+                {notices.map((notice) => (
+                  <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
+                    <span aria-hidden="true">{roomNoticeIcon(notice.kind)}</span>
+                    {(notice.kind === "memory" ||
+                      notice.kind === "wish" ||
+                      notice.kind === "relationship-up" ||
+                      notice.kind === "relationship-down") &&
+                    notice.detail ? (
+                      <button
+                        type="button"
+                        className={`${ELEMENT_TAG}-room-star-detail`}
+                        onClick={(event) => {
+                          if (notice.wishUpdate?.actorId && onOpenWish) {
+                            onOpenWish(notice.wishUpdate.actorId, notice.wishUpdate.wishId);
+                            return;
+                          }
+                          memoryTriggerRef.current = event.currentTarget;
+                          setOpenMemory(notice);
+                        }}
+                        aria-label={`View ${roomNoticeLabel(notice.kind)}: ${notice.text}`}
+                        title={
+                          notice.kind === "memory"
+                            ? "View saved memory"
+                            : notice.kind === "wish"
+                              ? "View Wish update"
+                              : "View relationship change"
+                        }
+                      >
+                        {notice.text}
+                      </button>
+                    ) : (
+                      <span>{notice.text}</span>
+                    )}
                     <button
                       type="button"
-                      className={`${ELEMENT_TAG}-room-star-detail`}
-                      onClick={(event) => {
-                        if (notice.wishUpdate?.actorId && onOpenWish) {
-                          onOpenWish(notice.wishUpdate.actorId, notice.wishUpdate.wishId);
-                          return;
-                        }
-                        memoryTriggerRef.current = event.currentTarget;
-                        setOpenMemory(notice);
+                      className={`${ELEMENT_TAG}-room-star-dismiss`}
+                      onClick={() => {
+                        if (openMemory?.id === notice.id) setOpenMemory(null);
+                        onDismissNotice(notice.id);
                       }}
-                      aria-label={`View ${roomNoticeLabel(notice.kind)}: ${notice.text}`}
-                      title={
-                        notice.kind === "memory"
-                          ? "View saved memory"
-                          : notice.kind === "wish"
-                            ? "View Wish update"
-                            : "View relationship change"
-                      }
+                      aria-label={`Dismiss ${notice.text}`}
+                      title="Dismiss notice"
                     >
-                      {notice.text}
+                      ×
                     </button>
-                  ) : (
-                    <span>{notice.text}</span>
-                  )}
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-room-star-dismiss`}
-                    onClick={() => {
-                      if (openMemory?.id === notice.id) setOpenMemory(null);
-                      onDismissNotice(notice.id);
-                    }}
-                    aria-label={`Dismiss ${notice.text}`}
-                    title="Dismiss notice"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       {openMemory?.detail ? (
         <div
           className={`${ELEMENT_TAG}-memory-backdrop`}
@@ -1172,8 +1355,13 @@ export function RoomPanel({
                     : line.kind === "narration" || line.speakerId === "__venue_scene__"
                       ? "Narration"
                       : line.name || "Resident"}
-                  {line.kind === "side" ? " · aside" : line.kind === "whisper" ? " · whisper" : ""}:{" "}
-                  {line.viaDoorway ? "Through the doorway · " : ""}
+                  {isSceneAside(line) ? " · aside" : ""}
+                  {speechDelivery(line) === "whisper"
+                    ? " · whisper"
+                    : speechDelivery(line) === "shout"
+                      ? " · shout"
+                      : ""}
+                  : {line.viaDoorway ? "Through the doorway · " : ""}
                 </strong>
                 <span
                   style={
@@ -1208,7 +1396,7 @@ export function RoomPanel({
                 <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
                   <p className={`${ELEMENT_TAG}-chat-vn-aside-head`}>
                     <span className={`${ELEMENT_TAG}-chat-vn-aside-icon`}>
-                      {aside.register === "whisper" ? "🤫" : "💬"}
+                      {aside.register === "whisper" ? "🤫" : aside.register === "shout" ? "📣" : "💬"}
                     </span>
                     <span
                       className={`${ELEMENT_TAG}-chat-vn-aside-name`}
@@ -1233,7 +1421,12 @@ export function RoomPanel({
         ) : null}
 
         {/* One readable paragraph shares the same dock with navigation and the composer at the latest paragraph. */}
-        <div className={`${ELEMENT_TAG}-chat-vn-card`} data-register={register} hidden={historyOpen}>
+        <div
+          className={`${ELEMENT_TAG}-chat-vn-card`}
+          data-register={register}
+          data-delivery={step?.delivery}
+          hidden={historyOpen}
+        >
           <div className={`${ELEMENT_TAG}-chat-vn-row`}>
             {register === "narration" ? (
               <div className={ELEMENT_TAG + "-chat-vn-portrait"} aria-hidden="true">
@@ -1256,6 +1449,17 @@ export function RoomPanel({
                   style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
                 >
                   {step?.name ?? ""}
+                  {step?.delivery === "whisper" ? (
+                    <span title="Whisper" aria-label="Whisper">
+                      {" "}
+                      · 🤫
+                    </span>
+                  ) : step?.delivery === "shout" ? (
+                    <span title="Shout" aria-label="Shout">
+                      {" "}
+                      · 📣
+                    </span>
+                  ) : null}
                   {room.lines.some(
                     (line) =>
                       line.viaDoorway && line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
@@ -1348,69 +1552,14 @@ export function RoomPanel({
             </span>
           </div>
         </div>
-        {error && room.status === "opening" ? (
-          <div className={`${ELEMENT_TAG}-room-error`} role="alert">
-            <p>{error}</p>
-            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onEnd} disabled={busy}>
-              Back to map
-            </button>
-            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onRetryGreeting} disabled={busy}>
-              Retry opening
-            </button>
-            {room.id ? (
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                onClick={onContinueWithoutGreeting}
-                disabled={busy}
-              >
-                Continue without opening
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-        {greetingNotice ? (
-          <div className={`${ELEMENT_TAG}-room-error`} role="status">
-            <p>{greetingNotice}</p>
-          </div>
-        ) : null}
         {ruling ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
         {canCompose && mode === "fulfill" && activeParticipants.length === 0 ? (
           <p className={`${ELEMENT_TAG}-hint`}>Nobody is here whose wish you can fulfill.</p>
         ) : null}
-        {canDraft ? (
+        {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>
-            {(room.entryOffers ?? []).map((offer) => (
-              <button
-                key={offer.zoneId}
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={busy}
-                onClick={() => onAcceptEntry(offer.zoneId)}
-              >
-                Move to {offer.label}
-              </button>
-            ))}
-            {mode === "move" ? (
-              <select
-                className={`${ELEMENT_TAG}-select`}
-                aria-label="Move to Zone"
-                value={movementTarget}
-                disabled={busy}
-                onChange={(event) => onMovementTarget(event.target.value)}
-              >
-                <option value="">Choose a Zone</option>
-                {movementZones
-                  .filter((zone) => zone.id !== room.zoneId)
-                  .map((zone) => (
-                    <option key={zone.id} value={zone.id} disabled={zone.closed}>
-                      {zone.label}
-                    </option>
-                  ))}
-              </select>
-            ) : null}
             {mode === "contact" ? (
               <div className={`${ELEMENT_TAG}-contact-controls`}>
                 <select
@@ -1445,14 +1594,11 @@ export function RoomPanel({
               </select>
             ) : null}
             <div className={`${ELEMENT_TAG}-composer-row`}>
-              <p className={`${ELEMENT_TAG}-scene-scope`} role="status" data-scene-scope>
-                {mode === "contact"
-                  ? "Contacting " +
-                    (contactDoors.find((door) => door.id === contactBoundary)?.label ?? "an adjacent Zone")
-                  : mode === "move"
-                    ? "Moving to " + (movementZones.find((zone) => zone.id === movementTarget)?.label ?? "a Zone")
-                    : "In " + currentZoneLabel}
-              </p>
+              {mode === "contact" ? (
+                <p className={`${ELEMENT_TAG}-scene-scope`} role="status" data-scene-scope>
+                  Contacting {contactDoors.find((door) => door.id === contactBoundary)?.label ?? "an adjacent Zone"}
+                </p>
+              ) : null}
               <span className={`${ELEMENT_TAG}-chat-input`}>
                 <span ref={modeAnchorRef} className={`${ELEMENT_TAG}-room-mode-anchor`}>
                   <button
@@ -1494,7 +1640,12 @@ export function RoomPanel({
                           type="button"
                           role="menuitemradio"
                           aria-checked={mode === option}
-                          disabled={busy || (option === "contact" && contactDoors.length === 0)}
+                          disabled={
+                            busy ||
+                            (option === "contact" && contactDoors.length === 0) ||
+                            (option === "move" &&
+                              !movementZones.some((zone) => zone.id !== room.zoneId && !zone.closed))
+                          }
                           onClick={() => {
                             onMode(option);
                             setModeMenuOpen(false);
@@ -1512,62 +1663,96 @@ export function RoomPanel({
                     </span>
                   ) : null}
                 </span>
-                {mode !== "move" ? (
-                  <textarea
-                    ref={composerRef}
-                    data-villages-scene-composer
-                    className={`${ELEMENT_TAG}-textarea`}
-                    rows={1}
-                    value={draft}
-                    onChange={(event) => onDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing, sendOnEnter)) {
-                        event.preventDefault();
-                        submitComposer();
+                {mode === "move" ? (
+                  <select
+                    className={`${ELEMENT_TAG}-select ${ELEMENT_TAG}-zone-navigation`}
+                    aria-label="Move to Zone"
+                    value=""
+                    onChange={(event) => onMovementTarget(event.target.value)}
+                  >
+                    <option value="">Choose a Zone · in {currentZoneLabel}</option>
+                    {movementZones
+                      .filter((zone) => zone.id !== room.zoneId && !zone.closed)
+                      .map((zone) => (
+                        <option key={zone.id} value={zone.id}>
+                          {zone.label}
+                          {room.entryOffers?.some((offer) => offer.zoneId === zone.id) ? " (invited)" : ""}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  <>
+                    {mode === "chat" && room.attentionClarification?.message === draft.trim() ? (
+                      <span
+                        role="group"
+                        aria-label="Clarify who to reach"
+                        className={`${ELEMENT_TAG}-attention-choice`}
+                      >
+                        <span role="status">{room.attentionClarification.question}</span>
+                        {room.attentionClarification.choices.length ? (
+                          <small>Choose below, or edit your message.</small>
+                        ) : null}
+                        {room.attentionClarification.choices.map((choice) => (
+                          <button
+                            key={choice.id}
+                            type="button"
+                            disabled={busy || !canCompose}
+                            onClick={() => onAttentionChoice?.(choice.id)}
+                          >
+                            {choice.label}
+                          </button>
+                        ))}
+                      </span>
+                    ) : null}
+                    <textarea
+                      ref={composerRef}
+                      data-villages-scene-composer
+                      className={`${ELEMENT_TAG}-textarea`}
+                      rows={1}
+                      value={draft}
+                      onChange={(event) => onDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (
+                          shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing, sendOnEnter)
+                        ) {
+                          event.preventDefault();
+                          submitComposer();
+                        }
+                      }}
+                      placeholder={
+                        mode === "contact"
+                          ? "Optional knock, call, or message…"
+                          : mode === "fulfill"
+                            ? "What did you do for them?"
+                            : mode === "conclude"
+                              ? "Final line (optional)…"
+                              : "Say or do something…"
                       }
-                    }}
-                    placeholder={
-                      mode === "contact"
-                        ? "Optional knock, call, or message…"
-                        : mode === "fulfill"
-                          ? "What did you do for them?"
-                          : mode === "conclude"
-                            ? "Final line (optional)…"
-                            : "Say or do something…"
-                    }
-                    aria-label={`Message at ${room.placeName}`}
-                    disabled={busy || ended || room.status !== "active"}
-                  />
-                ) : null}
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-chat-send`}
-                  onClick={submitComposer}
-                  disabled={
-                    !canCompose ||
-                    busy ||
-                    ended ||
-                    room.status !== "active" ||
-                    (mode !== "conclude" && mode !== "contact" && mode !== "move" && draft.trim().length === 0) ||
-                    (mode === "fulfill" && !targetId) ||
-                    (mode === "contact" && !contactDoors.some((door) => door.id === contactBoundary)) ||
-                    (mode === "move" &&
-                      !movementZones.some(
-                        (zone) => zone.id === movementTarget && zone.id !== room.zoneId && !zone.closed,
-                      ))
-                  }
-                  aria-label={busy ? "Sending" : "Send"}
-                  title={busy ? "Sending" : "Send"}
-                >
-                  <SceneControlIcon name={busy ? "sending" : "send"} />
-                </button>
+                      aria-label={`Message at ${room.placeName}`}
+                      disabled={(busy && !draftWhilePending) || ended || room.status !== "active"}
+                    />
+                    <button
+                      type="button"
+                      className={`${ELEMENT_TAG}-chat-send`}
+                      onClick={submitComposer}
+                      disabled={
+                        !canCompose ||
+                        busy ||
+                        ended ||
+                        room.status !== "active" ||
+                        (mode !== "conclude" && mode !== "contact" && draft.trim().length === 0) ||
+                        (mode === "fulfill" && !targetId) ||
+                        (mode === "contact" && !contactDoors.some((door) => door.id === contactBoundary))
+                      }
+                      aria-label={busy ? "Sending" : "Send"}
+                      title={busy ? "Sending" : "Send"}
+                    >
+                      <SceneControlIcon name={busy ? "sending" : "send"} />
+                    </button>
+                  </>
+                )}
               </span>
             </div>
-          </div>
-        ) : null}
-        {error && room.status !== "opening" ? (
-          <div className={`${ELEMENT_TAG}-room-error`} role="alert">
-            <p>{error}</p>
           </div>
         ) : null}
       </div>

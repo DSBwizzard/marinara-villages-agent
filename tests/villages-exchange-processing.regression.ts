@@ -57,8 +57,10 @@ async function main() {
         (domain) => domain !== faultDomain,
       ))
         assert.ok(receipts.has(domain), `${faultDomain} ${fault}: independent ${domain} commit`);
-      if (fault === "before-effect" || fault === "after-effect")
+      if (fault === "before-effect" || fault === "after-effect") {
         assert.equal(saved.domains[faultDomain].status, "failed");
+        assert.equal(saved.domains[faultDomain].failure.cause, "storage_application");
+      }
       saved = coerceExchangeProcessing(saved)!; // restart from stored data
       await dispatchExchange(structuredClone(saved), handlers, save);
       await dispatchExchange(structuredClone(saved), handlers, save); // duplicate submission/tab

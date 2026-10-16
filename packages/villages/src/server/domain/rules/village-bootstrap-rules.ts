@@ -87,7 +87,7 @@ export function coerceProposal(payload: Record<string, unknown>): { venues: Vill
       id: randomVillageSeed(),
       name,
       form: "",
-      classes: ["gathering"],
+      classes: ["community"],
       description: "",
       category: "",
       presentation: { image: null, x: null, y: null },

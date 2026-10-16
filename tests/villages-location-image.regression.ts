@@ -757,6 +757,7 @@ async function main() {
           return false;
         },
       },
+      registerSceneOrigin: () => () => {},
       async registerPrivilegedRoutes(routes: any, options: { prefix: string }) {
         await app.register(routes, { prefix: options.prefix });
         await app.ready();
@@ -861,11 +862,11 @@ async function main() {
         layout: "common",
         name: "Village square",
         form: "An open square",
-        classes: ["gathering"],
+        classes: ["community"],
         description: "A public square where neighbours meet.",
         spaces: [
           {
-            venueClass: "gathering",
+            venueClass: "community",
             name: "Square",
             purpose: "Conversation",
             description: "An open central yard with benches.",
@@ -890,7 +891,7 @@ async function main() {
   );
   assert.equal((await readVillageState()).venues[0]?.state.condition, "", "seed failure leaves details empty");
   assert.equal(
-    founded.json().settings.venues.filter((venue: any) => venue.classes.includes("gathering")).length,
+    founded.json().settings.venues.filter((venue: any) => venue.classes.includes("community")).length,
     1,
     "founding creates exactly one public venue",
   );
@@ -1227,9 +1228,10 @@ async function main() {
     3,
     "the tab reaches the three picture routes and nothing else",
   );
-  assert.match(
-    client,
-    /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, ownerId, zoneId\)\}/,
+  assert.ok(
+    /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, (?:ownerId, zoneId|zone\.ownerId \?\? "", zone\.id)\)\}/.test(
+      client,
+    ),
     "and wired to a click on the screen that stands in a place",
   );
   const imageService = await readFile(join(repoRoot, services, "features/media/location-image-service.ts"), "utf8");
@@ -1418,6 +1420,8 @@ async function mediaConnectionOwnership() {
       const state = coerceVillageState({
         wishSystemVersion: 3,
         seed: "equal-media-seed",
+        timeZone: "UTC",
+        clock: { revision: 1, trustedAt: new Date().toISOString(), recovery: null, replayUntilDate: "" },
         name: label,
         setting: "Quiet harbor",
         setupAt: new Date().toISOString(),
@@ -1633,7 +1637,8 @@ async function mediaConnectionOwnership() {
       else if (variant === "provider-failure") assert.match(String(result.error), new RegExp(controlledError.message));
       else if (variant === "disposed")
         assert(result.error instanceof Error, "disposed work refuses further connections");
-      else if (variant === "context" || variant === "only-empty") assert.match(String(result.error), /scenery changed/);
+      else if (variant === "context" || variant === "only-empty")
+        assert.match(String(result.error), /scenery changed/, `${operation}/${stage}/${variant}`);
       else assert.equal(result.error, undefined, `${operation}/${stage} succeeds`);
       assert.equal(b.requests().length, 1, "A neither borrows nor duplicates B's receipt");
       assert.equal(b.world().venues[0]!.presentation.image, null);

@@ -435,6 +435,7 @@ export function useFoundVillage(ports: {
   setupMapSource: SetupMapSource;
   setupMapSrc: string;
   setupName: string;
+  setupTimeZone?: string;
   setupPlayerRole: PlayerRole;
   setupSetting: string;
   setupVenues: VillageVenue[];
@@ -516,6 +517,7 @@ export function useFoundVillage(ports: {
         method: "POST",
         body: JSON.stringify({
           name: setupName.trim(),
+          timeZone: ports.setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
           setting: setupSetting.trim(),
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
           foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
@@ -580,6 +582,7 @@ export function useFoundVillage(ports: {
     setupMapSource,
     setupMapSrc,
     setupName,
+    ports.setupTimeZone,
     setupFoundingReason,
     setupFoundingDetails,
     setupPlayerRole,

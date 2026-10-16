@@ -69,18 +69,18 @@ function fixture(seeded = true) {
     })),
     venues: ["aqua", "feddy", "sneak", "hall"].map((id, index) => ({
       id,
-      name: id === "hall" ? "Gathering Place" : `${names[index]}'s living space`,
+      name: id === "hall" ? "Community Place" : `${names[index]}'s living space`,
       form: "Converted station space",
       description: "An old station door",
       layoutVersion: 1,
-      classes: id === "hall" ? ["gathering"] : ["residence"],
+      classes: id === "hall" ? ["community"] : ["residence"],
       occupancy: { playerHome: false, residentCharacterId: id === "hall" ? null : id, homeKind: null },
       residentIds: id === "hall" ? [] : [id],
       presentation: { image: null, x: (index + 1) / 5, y: 0.5 },
       zones: [
         { ...defaultVenueSpace("other", "An old station door"), id: "exterior", name: "Exterior", kind: "exterior" },
         {
-          ...defaultVenueSpace(id === "hall" ? "gathering" : "residence"),
+          ...defaultVenueSpace(id === "hall" ? "community" : "residence"),
           id: "private:base",
           name: ["Signal Loft", "Storage Bay", "Underplatform Den", "Ticket Office"][index],
           kind: id === "hall" ? "restricted" : "private-residence",

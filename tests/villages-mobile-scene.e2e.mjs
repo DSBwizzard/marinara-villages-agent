@@ -216,8 +216,12 @@ try {
           .toBe(i === Math.min(2, count - 1) ? "1" : "0.72");
       }
       const scene = await page.locator(`.${tag}-room-screen`).boundingBox();
-      const frame = await input.boundingBox();
-      assert.ok(Math.abs(scene.y + scene.height - frame.y - frame.height) < 1, "composer frame touches Scene bottom");
+      await expect(composer).toHaveCount(0);
+      const frame = await page.locator(`.${tag}-chat-vn-card`).boundingBox();
+      assert.ok(
+        Math.abs(scene.y + scene.height - frame.y - frame.height) < 1,
+        "dialogue touches Scene bottom while reading",
+      );
       if (mode === "sprites") {
         await expect(people.locator(":scope > img")).toHaveCount(count);
         const canvas = await page.locator(`.${tag}-chat-cast`).boundingBox();
@@ -266,6 +270,13 @@ try {
         await next.click();
         assert.deepEqual(await boxes(), baseline, "speaker changes do not rearrange the cast");
       }
+      while (await next.isEnabled()) await next.click();
+      await expect(composer).toBeVisible();
+      const inputAtBottom = await input.boundingBox();
+      assert.ok(
+        Math.abs(scene.y + scene.height - inputAtBottom.y - inputAtBottom.height) < 1,
+        "input touches Scene bottom when actionable",
+      );
       await composer.fill("A very long draft that wraps. ".repeat(35));
       assert.deepEqual(await boxes(), baseline, "draft height does not move the cast");
       assert.ok(await composer.evaluate((el) => el.scrollHeight > el.clientHeight));
@@ -309,6 +320,7 @@ try {
       }
       await screenshot();
       if (count === 4 && mode === "sprites") {
+        while (await next.isEnabled()) await next.click();
         await composer.fill("Move to center");
         await page.getByRole("button", { name: "Send", exact: true }).click();
         await expect(counter).toContainText("Paragraph");

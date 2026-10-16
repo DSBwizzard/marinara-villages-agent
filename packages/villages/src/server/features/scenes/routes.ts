@@ -64,7 +64,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
         spaceClass !== undefined &&
         spaceClass !== "residence" &&
         spaceClass !== "workplace" &&
-        spaceClass !== "gathering" &&
+        spaceClass !== "community" &&
         spaceClass !== "other"
       )
         throw badRequest("Choose a valid Venue Class space.");
@@ -227,8 +227,8 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
     async (request, reply) => {
       try {
         const domain = request.body?.domain;
-        if (domain !== "memories" && domain !== "relationships" && domain !== "wishes")
-          throw badRequest("Choose memories, relationships, or wishes.");
+        if (domain !== "memories" && domain !== "relationships" && domain !== "wishes" && domain !== "projects")
+          throw badRequest("Choose memories, relationships, wishes, or projects.");
         return await retrySceneChangeInterpretation(
           readChatId(request.params.id),
           readChatId(request.params.submissionId),
@@ -266,6 +266,14 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
         message: readMessage(request.body?.message),
         mode,
         targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
+        ...(request.body?.attentionChoice
+          ? {
+              attentionChoice: {
+                id: readSubmissionId(request.body.attentionChoice.id),
+                zoneId: readChatId(request.body.attentionChoice.zoneId),
+              },
+            }
+          : {}),
         ...(mode === "contact"
           ? {
               contact: {

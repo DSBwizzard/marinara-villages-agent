@@ -1,3 +1,5 @@
+import { copyDate, calendarDate } from "../../../shared/helpers/zoned-date.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
@@ -94,7 +96,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         : villageCurrentSetting(village);
     const initialWishAttemptId =
       village.foundingPreparation?.status === "pending"
-        ? await reserveInitialWishAllowance(characterId, new Date())
+        ? await reserveInitialWishAllowance(characterId, villageNow())
         : undefined;
     await reportFoundingProgress(village.seed, { stage: "lore" }, characterId);
     const context = {
@@ -200,10 +202,10 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     if (!villager) return;
     if (state.foundingPreparation?.status === "pending" && state.foundingPreparation.currentId === characterId) {
       state.foundingPreparation.stage = "saving";
-      state.foundingPreparation.stageStartedAt = new Date().toISOString();
+      state.foundingPreparation.stageStartedAt = villageNow().toISOString();
     }
     const previous = villager.agenda;
-    const now = new Date();
+    const now = villageNow();
     const initialAttempt = villager.wishLifecycle?.attempt;
     const acceptsInitialWish =
       !!initialWishAttemptId &&
@@ -252,7 +254,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     }
     if (villager.agenda.week)
       for (const weekday of VILLAGE_WEEKDAYS) {
-        const date = new Date(now);
+        const date = copyDate(now);
         date.setDate(now.getDate() + ((VILLAGE_WEEKDAYS.indexOf(weekday) - ((now.getDay() + 6) % 7) + 7) % 7));
         villager.agenda.week[weekday] = validateRoutineDay(villager.agenda.week[weekday]!, villager, state, date);
       }
@@ -311,7 +313,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
 
   /** Resolve owned days and refresh optional local preferences; no paid work is dispatched. */
   async function buildVillageAgendas(): Promise<VillageAgendaView[]> {
-    const now = new Date(),
+    const now = villageNow(),
       initial = await readVillageState();
     await refreshVillagerRemaps(initial, now);
     await rollActiveAgendas(now);
@@ -321,7 +323,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       village.villagers.map((resident) => resident.characterId),
     );
     const weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
-    const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
+    const moment = deriveVillageMoment({
+      foundedAt: village.foundedAt,
+      seed: village.seed,
+      timeZone: village.timeZone || undefined,
+      now,
+    });
     return village.villagers.map((resident) => ({
       characterId: resident.characterId,
       name: resident.cardSnapshot.name,
@@ -335,7 +342,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       nativeSchedule: weeks.has(resident.characterId) ? { weekStart: "", days: {} } : null,
       effectiveDays: Object.fromEntries(
         Array.from({ length: 7 }, (_, offset) => {
-          const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
+          const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
           return [
             VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!,
             resident.agenda ? agendaBlocksFor(resident.agenda, false, date) : [],
@@ -411,7 +418,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       });
       resident.ingestSchedule = resident.scheduleInfluence.enabled;
     });
-    await refreshVillagerRemaps(await readVillageState(), new Date(), characterId);
+    await refreshVillagerRemaps(await readVillageState(), villageNow(), characterId);
   }
   return {
     rollActiveAgendas,

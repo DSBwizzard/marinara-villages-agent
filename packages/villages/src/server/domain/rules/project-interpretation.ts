@@ -10,7 +10,7 @@ export type ProjectSpeechProposal = ProjectSpeechContext & {
   speakerId: string;
   citations: { lineId: string; quote: string }[];
   checklist: { category: "structure" | "equipment" | "finish"; title: string; needed: boolean; citation: number }[];
-  contextual?: { version: 1; source: "system" | "decisions"; checkId: string };
+  contextual?: { version: 1; source: "system" | "decisions"; checkId: string; decisionEvidenceVersion?: 1 };
 };
 type SpeechLine = { id: string; speakerId: string; content: string; heardBy?: string[]; kind?: string };
 const normalized = (text: string) =>
@@ -143,6 +143,9 @@ export function coerceProjectSpeech(value: unknown): ProjectSpeechProposal[] {
                 version: 1 as const,
                 source: asRecord(row.contextual).source as "system" | "decisions",
                 checkId: asTrimmedString(asRecord(row.contextual).checkId),
+                ...(asRecord(row.contextual).decisionEvidenceVersion === 1
+                  ? { decisionEvidenceVersion: 1 as const }
+                  : {}),
               },
             }
           : {}),
@@ -178,6 +181,8 @@ export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: Sp
       return "Interpretation citation does not match this speaker's saved words.";
   }
   if (proposal.kind !== "requirements") {
+    if (proposal.contextual?.source === "decisions" && proposal.contextual.decisionEvidenceVersion !== 1)
+      return "Legacy Decision evidence requires a new grounded interpretation.";
     if (proposal.contextual) return "";
     // Guard common false positives even when the semantic extractor labels them as unconditional.
     const speech = normalized(

@@ -15,7 +15,7 @@ import type {
   CapabilityLanguageModelMessage,
   CapabilityResolvedLanguageModel,
 } from "@marinara-engine/shared";
-import type { EngineDecisionBackend } from "../packages/villages/src/server/adapters/engine/decisions-adapter.js";
+import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import { createInterpretation } from "../packages/villages/src/server/features/generation/interpretation-service.js";
 import { createSystemInterpretation } from "../packages/villages/src/server/features/generation/system-interpretation-service.js";
 import {
@@ -26,15 +26,10 @@ import {
   configureSystemInterpretation,
   systemInterpretations,
 } from "../packages/villages/src/server/features/generation/system-interpretation.js";
-import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   configureDecisionsAdapter,
-  loadDecisionEngineModules,
   decisionAdapterStatus,
 } from "../packages/villages/src/server/adapters/engine/decisions-adapter.js";
 import {
@@ -54,8 +49,6 @@ import { type InterpretationCheck } from "../packages/villages/src/server/domain
 import {
   readInterpretationDiagnostics,
   writeInterpretationDiagnostics,
-  scheduleSystemComparisons,
-  stopInterpretationComparisons,
 } from "../packages/villages/src/server/features/generation/interpretation-diagnostics.js";
 
 import { applyInterpretedRoomEvents } from "../packages/villages/src/server/domain/rules/scene-room-application.js";
@@ -147,12 +140,8 @@ async function ownedInterpretationConnections() {
       linkApiQuote: async () => null,
       readExchangeRate: async () => null,
     });
-    const backend: EngineDecisionBackend = {
-      model: "same-model",
-      maxStateTokens: 10000,
-      calibration: { defaultThreshold: 0.5 },
-      deferPreGeneration: false,
-      async ask(state, questions) {
+    const backend: NonNullable<CapabilityRuntimeHost["decisions"]> = {
+      async evaluate({ messages: state, questions }) {
         owned("ask");
         assert.equal(this, backend);
         assert.doesNotMatch(JSON.stringify(state), /"outcomes"/);
@@ -163,7 +152,7 @@ async function ownedInterpretationConnections() {
         providerCalls++;
         await pause("ask");
         if (backendFailure) throw backendFailure;
-        return new Map([["0:0", 1]]);
+        return { model: "same-model", threshold: 0.5, answers: { "0:0": 1 }, choices: {} };
       },
     };
     let originalMessages: CapabilityLanguageModelMessage[] | undefined;
@@ -230,12 +219,15 @@ async function ownedInterpretationConnections() {
       },
     });
     const interpretation = createInterpretation({
-      async resolveVillagesDecisionBackend(signal) {
+      async decisionAdapterStatus() {
         owned("backend");
-        assert.equal(signal, controller.signal);
         await pause("backend");
-        return decisions ? backend : null;
+        return { available: decisions, reason: "" };
       },
+      evaluateVillagesDecisions: (request) => backend.evaluate(request),
+      backgroundCalls: { getStore: () => undefined, run: (_store, work) => work() },
+      backgroundSetting: async (_key, create) => create(),
+      readInterpretationSettings: async () => ({ decisionsEnabled: true }),
       async trackUsage(meta, work) {
         owned("claim");
         assert.equal(meta.purpose, "checks");
@@ -259,7 +251,7 @@ async function ownedInterpretationConnections() {
       },
       venueInterpretationSettings() {
         owned("settings");
-        return { decisionsEnabled: true, compareSystem: false };
+        return { decisionsEnabled: true };
       },
       async writeInterpretationDiagnostics() {
         owned("diagnostics");
@@ -455,10 +447,8 @@ const documents = {
     return structuredClone(row);
   },
 };
-let systemCalls = 0,
-  nativeOutcome = "invite-now",
-  holdComparison = false;
-let releaseComparison: (() => void) | undefined;
+let systemCalls = 0;
+const nativeOutcome = "invite-now";
 const frozenInputs: unknown[] = [];
 const release = configureVillagesRuntime({
   persistence: { documents },
@@ -479,11 +469,6 @@ const release = configureVillagesRuntime({
           systemCalls++;
           const { checks } = JSON.parse(messages[1].content);
           frozenInputs.push(checks);
-          if (holdComparison)
-            await new Promise<void>((resolve, reject) => {
-              releaseComparison = resolve;
-              options.signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true });
-            });
           return {
             content: JSON.stringify({
               results: checks.map((check: any) => ({
@@ -533,48 +518,50 @@ async function operation(work: () => Promise<any>) {
   return coordinateVenue(id, id, "turn", {}, 0, undefined, work);
 }
 async function main() {
-  const root = await mkdtemp(join(tmpdir(), "villages-decision-contract-"));
-  let teardown: (() => void) | undefined;
+  const fixture = {
+    calls: 0,
+    mode: "yes",
+    setMode(value: string) {
+      this.mode = value;
+    },
+    async evaluate({ questions }: any) {
+      this.calls++;
+      if (this.mode === "error") throw new Error("SECRET provider body");
+      if (["missing", "absent"].includes(this.mode)) return null;
+      return {
+        model: null,
+        threshold: 0.1,
+        choices: {},
+        answers: Object.fromEntries(
+          questions.map((question: any, index: number) => [
+            question.id,
+            this.mode === "conflict"
+              ? 1
+              : this.mode === "no"
+                ? 0
+                : this.mode === "malformed"
+                  ? NaN
+                  : index === 0
+                    ? 0.2
+                    : 0,
+          ]),
+        ),
+      };
+    },
+  };
+  const teardown = configureDecisionsAdapter({ decisions: fixture } as any);
   try {
-    const dist = join(root, "dist");
-    await mkdir(join(dist, "services/decision"), { recursive: true });
-    await mkdir(join(dist, "services/storage"), { recursive: true });
-    await mkdir(join(dist, "config"), { recursive: true });
-    await writeFile(join(root, "package.json"), JSON.stringify({ name: "@marinara-engine/server", type: "module" }));
-    await writeFile(join(dist, "index.js"), "");
-    await writeFile(join(dist, "config/build-meta.json"), JSON.stringify({ commit: "ead04150a132" }));
-    await writeFile(
-      join(dist, "services/storage/connections.storage.js"),
-      'export const createConnectionsStorage = () => ({ getDefaultForDecision: async () => ({id:"fixture"}), getWithKey: async () => ({}) });',
-    );
-    await writeFile(
-      join(dist, "services/storage/app-settings.storage.js"),
-      "export const createAppSettingsStorage = () => ({get:async()=>null});",
-    );
-    await writeFile(
-      join(dist, "services/decision/decision-default.js"),
-      'export const DECISION_SETTINGS_KEYS = {localDefault:"local",thinkingPreGeneration:"thinking"}; export let calls=0; export let mode="yes"; export const setMode=value=>{mode=value}; export async function resolveDecisionBackend(){if(mode==="absent")return null;return {model:"fixture",maxStateTokens:30000,calibration:{defaultThreshold:0.1,questionShape:"statement"},deferPreGeneration:mode==="deferred",ask:async(state,questions)=>{calls++;if(mode==="error")throw new Error("SECRET provider body");if(mode==="missing")return null;return new Map(questions.map((question,index)=>[question.id,mode==="conflict"?1:mode==="no"?0:mode==="malformed"?NaN:index===0?0.2:0]))}}};',
-    );
-    const entry = join(dist, "index.js");
-    // Windows temp paths can use different drive/directory casing from their real paths.
-    // Load the host fixture by its canonical URL, just as the Engine adapter does.
-    const fixture = await import(
-      pathToFileURL(await realpath(join(dist, "services/decision/decision-default.js"))).href
-    );
-    const modules = await loadDecisionEngineModules(entry);
-    assert.equal(modules.resolveDecisionBackend, fixture.resolveDecisionBackend, "canonical live ESM module reused");
-    teardown = configureDecisionsAdapter({ app: { db: {} } }, entry);
     assert.equal((await decisionAdapterStatus()).available, true);
-    assert.deepEqual(await readInterpretationSettings(), { decisionsEnabled: false, compareSystem: true });
+    assert.deepEqual(await readInterpretationSettings(), { decisionsEnabled: false });
     const off = await operation(() => interpretChecks([check], "off", "visible"));
     assert.equal(off.results[0].source, "system");
     assert.equal(fixture.calls, 0);
-    await saveInterpretationSettings({ decisionsEnabled: true });
+    await saveInterpretationSettings({ decisionsEnabled: true, compareSystem: true });
     const enabled = await operation(() => interpretChecks([check], "on", "visible"));
     assert.equal(enabled.results[0].source, "decisions");
     assert.equal(systemCalls, 1, "no authoritative native vote for usable Decisions");
     assert.equal(enabled.traces[0].decisions.threshold, 0.1);
-    for (const mode of ["no", "conflict", "missing", "malformed", "error", "absent", "deferred"]) {
+    for (const mode of ["no", "conflict", "missing", "malformed", "error", "absent"]) {
       fixture.setMode(mode);
       const batch = await operation(() => interpretChecks([check], mode));
       assert.equal(batch.results[0].source, "system", mode);
@@ -618,39 +605,10 @@ async function main() {
     await saveInterpretationSettings({ decisionsEnabled: true });
     enabled.traces[0].applied = "Entry offer created";
     await writeInterpretationDiagnostics("visible", enabled.traces);
-    const before = structuredClone(records.get("villages-interpretation-visible").data);
     const count = systemCalls;
-    holdComparison = true;
-    nativeOutcome = "refuse";
-    scheduleSystemComparisons("visible", enabled);
-    for (let index = 0; index < 100 && !releaseComparison; index++)
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    assert.ok(releaseComparison, "comparison dispatched independently");
-    assert.equal(systemCalls, count + 1);
-    assert.deepEqual(
-      (frozenInputs.at(-1) as any[]).map(({ evidenceIds: _evidenceIds, ...row }) => ({
-        ...row,
-        evidence: enabled.checks.find((check) => check.id === row.id)?.evidence,
-      })),
-      enabled.checks,
-      "same witnessed input without Decisions verdict",
-    );
-    releaseComparison!();
-    for (
-      let index = 0;
-      index < 100 && (await readInterpretationDiagnostics("visible")).checks.at(-1)?.system.status !== "complete";
-      index++
-    )
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    const compared = (await readInterpretationDiagnostics("visible")).checks.at(-1)!;
-    assert.equal(compared.system.outcome, "refuse");
-    assert.equal(compared.result.outcome, "invite-now");
-    assert.equal(compared.applied, "Entry offer created");
-    assert.deepEqual(compared.evidence, before.checks.at(-1).evidence);
-    scheduleSystemComparisons("visible", enabled);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.equal(systemCalls, count + 1, "comparison not repeated");
-    holdComparison = false;
+    await readInterpretationDiagnostics("visible");
+    await readInterpretationDiagnostics("visible");
+    assert.equal(systemCalls, count, "diagnostics never dispatch a comparison request");
     const scores = new Map([
       ["0:0", 0],
       ["0:1", 0],
@@ -730,13 +688,10 @@ async function main() {
     venue.zones[2].ownerId = "someone-else";
     applyInterpretedRoomEvents(rejected, dismiss, village);
     assert.equal(rejected.zoneId, "bedroom");
-    await assert.rejects(() => loadDecisionEngineModules(join(root, "unsupported.ts")));
     console.log("villages-interpretation: ok");
   } finally {
-    stopInterpretationComparisons();
     teardown?.();
     release();
-    await rm(root, { recursive: true, force: true });
   }
   await ownedInterpretationConnections();
   for (const [op, at] of [
@@ -749,13 +704,12 @@ async function main() {
       const pending = saveInterpretationSettings({ decisionsEnabled: true });
       await paused.wait(pending);
       selectB();
-      assert.deepEqual(await readInterpretationSettings(), { decisionsEnabled: false, compareSystem: false });
+      assert.deepEqual(await readInterpretationSettings(), { decisionsEnabled: false });
       const bCalls = b.calls.length;
       paused.resume();
-      assert.deepEqual(await pending, { decisionsEnabled: true, compareSystem: true });
+      assert.deepEqual(await pending, { decisionsEnabled: true });
       assert.deepEqual(a.rows.get("villages-interpretation-settings")?.data, {
         decisionsEnabled: true,
-        compareSystem: true,
       });
       assert.equal(b.calls.length, bCalls);
       assert(a.calls.every((call) => call.owner));
@@ -764,7 +718,7 @@ async function main() {
         a.owner.run(() => readInterpretationSettings()),
         /interpretation settings are not configured/,
       );
-      assert.deepEqual(await readInterpretationSettings(), { decisionsEnabled: false, compareSystem: false });
+      assert.deepEqual(await readInterpretationSettings(), { decisionsEnabled: false });
     });
   }
   await withSettingsOwners(async (a, _b, selectB) => {
@@ -774,12 +728,12 @@ async function main() {
     await paused.wait(pending);
     selectB();
     const row = a.rows.get("villages-interpretation-settings")!;
-    row.data = { decisionsEnabled: false, compareSystem: true };
+    row.data = { decisionsEnabled: false };
     row.revision++;
     paused.resume();
     assert.deepEqual(
       await pending,
-      { decisionsEnabled: false, compareSystem: true },
+      { decisionsEnabled: false },
       "final reread observes the owning concurrent writer, not a callback snapshot",
     );
     assert.equal(a.calls.filter((call) => call.op === "update").length, 2, "CAS conflict retries in A");
@@ -810,7 +764,7 @@ async function main() {
     a.failNext("get", "villages-interpretation-settings", new Error("stored settings unavailable"));
     assert.deepEqual(
       await readInterpretationSettings(),
-      { decisionsEnabled: false, compareSystem: true },
+      { decisionsEnabled: false },
       "document failure preserves the in-service fallback",
     );
     const paused = a.pause("update", "villages-interpretation-settings");

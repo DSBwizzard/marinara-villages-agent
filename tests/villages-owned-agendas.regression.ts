@@ -3,6 +3,8 @@ import {
   setVillagerScheduleInfluence,
   buildVillageAgendas,
 } from "../packages/villages/src/server/features/residents/resident-agendas.js";
+import { routineRevision, routineRevisionMatches } from "../packages/villages/src/server/domain/rules/wish-policy.js";
+import { adoptedProfile } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
 import {
   influenceSettings,
@@ -26,7 +28,11 @@ import {
 } from "../packages/villages/src/server/jobs/background-work.js";
 import { parseCompactFounding } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
-import { agendaDateKey, agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import {
+  agendaDateKey,
+  agendaBlocksFor,
+  completeAgendaWeek,
+} from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { wishSlots } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
 import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
@@ -184,11 +190,65 @@ async function main() {
   const migration = coerceVillageState(raw),
     resident = migration.villagers[0]!;
   assert.equal(resident.agenda!.scheduleWeek, null);
-  assert.deepEqual(resident.agenda!.week, translated, "adopt the effective saved translated life");
-  assert.deepEqual(resident.agenda!.activeDay?.blocks, [block], "today is preserved separately");
+  assert.deepEqual(
+    resident.agenda!.week,
+    completeAgendaWeek(translated, translated),
+    "adopt the effective saved translated life",
+  );
+  assert.deepEqual(
+    resident.agenda!.activeDay?.blocks,
+    completeAgendaWeek({ Monday: [block] }, legacyWeek).Monday,
+    "today is preserved separately",
+  );
   assert.equal(resident.agenda!.personalizationPending, false);
   assert.equal(resident.scheduleInfluence!.enabled, true);
   assert.deepEqual(coerceVillageState(migration), migration, "migration is idempotent");
+
+  const previousDigest = routineRevision(raw.villagers[0]!.agenda as any);
+  assert.ok(
+    routineRevisionMatches(resident.agenda!, previousDigest),
+    "exact legacy social revision survives field removal",
+  );
+  assert.equal(
+    routineRevisionMatches(resident.agenda!, "0".repeat(64)),
+    false,
+    "stale social revisions are not blessed",
+  );
+  const changedRoutine = structuredClone(resident.agenda!);
+  changedRoutine.week!.Monday![0]!.activity = "Changed routine";
+  assert.equal(
+    routineRevisionMatches(changedRoutine, previousDigest),
+    false,
+    "compatibility expires on a real routine change",
+  );
+  for (const fields of [{ essential: true }, { commitmentId: "committed" }]) {
+    const protectedBlock = {
+      ...block,
+      reason: undefined,
+      status: undefined,
+      activity: "Keeping a commitment",
+      startMinute: 0,
+      endMinute: 720,
+      ...fields,
+    };
+    const restBlock = { ...block, activity: "Resting", startMinute: 720, endMinute: 1440, flexible: false };
+    const seedWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [protectedBlock, restBlock]]));
+    const profile = adoptedProfile(seedWeek as any);
+    const influence = {
+      ...resident.agenda!.scheduleInfluenceSnapshot,
+      rhythms: [{ weekday: "Monday", startMinute: 660, endMinute: 1440 }],
+    } as any;
+    const day = routineDay(profile, "seed", new Date(2026, 9, 5, 12), influence, influenceSettings({ enabled: true }));
+    assert.equal(day[0]!.endMinute, 720, "rest preference cannot shift essential or committed time");
+    const optional = { ...block, activity: "Optional reading", startMinute: 0, endMinute: 1440 };
+    profile.seedWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [optional]]));
+    profile.activities = [{ ...profile.activities[0]!, ...fields }];
+    const replacement = routineDay(profile, "seed", new Date(2026, 9, 5, 12));
+    assert.ok(
+      replacement.every((row) => row.activity === "Optional reading"),
+      "protected palette activity cannot replace optional time",
+    );
+  }
   assert.equal(influenceSettings(null).enabled, false, "new residents opt in");
   const owned = parseCompactFounding(payload, context as any).agenda;
   assert.equal(owned.routineProfile!.rhythm.length, 0, "nonhuman residents need no imposed sleep");

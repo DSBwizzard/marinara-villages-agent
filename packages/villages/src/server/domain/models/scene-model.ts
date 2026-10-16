@@ -1,4 +1,5 @@
 import type { StagingCue } from "../../../shared/helpers/scene-staging.js";
+import type { SpeechDelivery, SpeechPresentation } from "../../../shared/helpers/scene-speech.js";
 import type { ProjectSpeechContext, ProjectSpeechProposal } from "../rules/project-interpretation.js";
 import type { ResponseDiagnostics } from "../rules/response-diagnostics.js";
 import type { ContactIntent, ContactMove, ContactRelay, DoorwayContact } from "../rules/venue-contact.js";
@@ -10,8 +11,10 @@ import type { VenueActionResult } from "./venue-action-model.js";
 import type { WishProposal } from "./wish-check-model.js";
 import type { WishCriteria } from "./wish-interpretation-model.js";
 import type { VillageVenueClass } from "./world.js";
+import type { AttentionPlan } from "../rules/scene-attention.js";
 
 export type VenueLine = {
+  speechSource?: { version: 3; spans: import("../rules/player-speech-capture.js").SpeechSource[] };
   id: string;
   speakerId: string;
   name: string;
@@ -19,12 +22,19 @@ export type VenueLine = {
   content: string;
   at: string;
   heardBy: string[];
+  /** Server-routed acoustic view without the accompanying visuals or private speech. */
+  soundOnly?: { characterIds: string[]; player: boolean; text: string };
   zoneId?: string;
   viaDoorway?: boolean;
+  /** Server-projected local cast after a validated movement in this line. */
+  physicalIdsAfter?: string[];
   remoteDelivery?: "loud" | "device";
   contactHidden?: boolean;
+  attentionEvidence?: boolean;
   contactReport?: boolean;
   kind?: "narration" | "dialogue" | "side" | "whisper";
+  delivery?: SpeechDelivery;
+  presentation?: SpeechPresentation;
   expression?: string;
   gazeAt?: string;
   staging?: StagingCue[];
@@ -33,10 +43,20 @@ export type VenueLine = {
 };
 export type VenueParticipant = { characterId: string; name: string; doing: string };
 export type SceneAttendance = {
+  layout?: Pick<import("./world.js").VillageVenueZone, "id" | "kind" | "name" | "venueClass" | "connectedTo">[];
   capturedAt: string;
-  occupants: (VenueParticipant & { zoneId: string; availability: string })[];
+  occupants: (VenueParticipant & { zoneId: string })[];
 };
 export type VenueSubmission = {
+  speechCapture?: { version: 3; status: "captured" | "silent" };
+  effectFailures?: Partial<
+    Record<
+      import("./exchange-model.js").ExchangeDomain,
+      { kind: "metadata" | "interpretation"; message: string; proposal?: unknown }
+    >
+  >;
+  zoneEventsVersion?: 1;
+  attention?: AttentionPlan;
   wishProposals?: WishProposal[];
   wishProposalError?: string;
   processing?: ExchangeProcessing;
@@ -80,6 +100,8 @@ export type VenueSubmission = {
   /** Approved access interpretations saved with their exact witnessed reply; never sent to the client. */
   accessEvents?: SavedAccessEvent[];
   invitationSignal?: {
+    /** Minted by Villages after interpretation and evidence validation, never by narration. */
+    interpretationVersion?: 1;
     residentId: string;
     venueId: string;
     scope: "shared" | "private";
@@ -108,6 +130,7 @@ export type VenueSubmission = {
   liveProposals?: LiveExchangeProposals;
   wishContexts?: { actorId: string; wishId: string; fingerprint: string }[];
   requestMetrics?: VenueRequestMetrics;
+  timing?: import("./operation-model.js").VenueTiming;
   interpretationHistory?: {
     at: string;
     domain: string;
@@ -137,12 +160,16 @@ export type VenueRecordEvent = {
   detail?: string;
 };
 export type VenueScene = {
+  spinoff?: import("./spinoff-model.js").VillageSpinoff;
   version: 1;
   processingVersion?: 1;
   changeSequence?: number;
   villageSeed?: string;
   sceneRevision: number;
   operation?: VenueOperation;
+  /** Idempotent free navigation, separate from conversational turns. */
+  pictureEvaluatedZoneIds?: string[];
+  navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];
   generationReceipts?: {
     operationId: string;
     attemptId: string;
@@ -168,9 +195,23 @@ export type VenueScene = {
   privateSpaceId?: string;
   accompanying?: { characterId: string; zoneId: string }[];
   doorwayContacts?: DoorwayContact[];
+  pendingAttention?: {
+    intentKey?: string;
+    id: string;
+    message: string;
+    revision: number;
+    originZoneId: string;
+    plan: AttentionPlan;
+    choices: { id: string; label: string }[];
+  };
   entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];
   /** Ephemeral prompt context; never stored or disclosed. */
   contactGeneration?: {
+    zoneEvents?: boolean;
+    attention?: AttentionPlan;
+    acoustics?: boolean;
+    venue?: import("./world.js").VillageVenue;
+    replyAudiences?: Record<string, string[]>;
     instruction: string;
     localIds: string[];
     remoteIds: string[];
@@ -183,6 +224,7 @@ export type VenueScene = {
   startedAt: string;
   endedAt: string;
   lastActivityAt: string;
+  clockShiftMs?: number;
   endReason: "player" | "scene" | "inactivity" | "debug" | "";
   memoryMode: "live";
   status: "opening" | "active" | "closing" | "closed";
@@ -207,11 +249,20 @@ export type VenueReplyFailureKind =
   | "construction-worksite"
   | "unsupported-physical-claim";
 export type VenueReplyLine = {
+  speechSource?: VenueLine["speechSource"];
+  zoneId?: string;
+  soundOnly?: VenueLine["soundOnly"];
+  attentionEvidence?: boolean;
+  role?: "user" | "assistant";
+  evidenceId?: string;
   kind: NonNullable<VenueLine["kind"]>;
+  delivery?: SpeechDelivery;
+  presentation?: SpeechPresentation;
   speakerId: string;
   content: string;
   heardBy: string[];
   viaDoorway?: boolean;
+  physicalIdsAfter?: string[];
   remoteDelivery?: "loud" | "device";
   contactHidden?: boolean;
   contactReport?: boolean;
@@ -222,6 +273,8 @@ export type VenueReplyLine = {
   anchorIndex?: number;
 };
 export type SavedAccessEvent = {
+  /** Unversioned pending effects lack interpreter provenance and require fresh interpretation. */
+  interpretationVersion?: 1;
   id: string;
   facts: {
     actorId: string;

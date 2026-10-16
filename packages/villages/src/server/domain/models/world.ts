@@ -100,6 +100,8 @@ export type VillageCompletedWish = {
  * is the village's own fallback for the ones who do not.
  */
 export type VillageAgenda = {
+  /** Exact legacy digest accepted only while the normalized routine is unchanged. */
+  legacyRoutineRevision?: { previous: string; current: string };
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
@@ -138,8 +140,6 @@ export type VillageAgendaBlock = {
   venueId: string;
   zoneId?: string;
   activity: string;
-  reason: string;
-  status: "online" | "idle" | "dnd" | "offline";
   /** The original schedule slot, when this block was informed by one. */
   sourceTime?: string;
 };
@@ -328,8 +328,6 @@ export type RemapBlock = {
   time: string;
   /** The Engine's own sentence for the block, verbatim. */
   activity: string;
-  /** The availability the Engine gave this block, or "" when it gave none. */
-  status: string;
 };
 
 /**
@@ -566,10 +564,23 @@ export type VillageVenueTrace = {
   expiresAt?: string;
 };
 
-export type VillageVenueClass = "residence" | "workplace" | "gathering" | "other";
+export type VillageVenueClass = "residence" | "workplace" | "community" | "other";
 
 /** One class contributes one enterable scene. The venue remains one map place. */
+export type ZonePicture = {
+  base: VillageVenueImage | null;
+  baseline?: string;
+  context?: string;
+  attempted?: string;
+  claim?: string;
+  removed?: boolean;
+  failed?: boolean;
+};
 export type VillageVenueSpace = {
+  picture?: ZonePicture;
+  freezePicture?: boolean;
+  pictureRevision?: number;
+  connectedTo?: string[];
   id: string;
   venueClass: VillageVenueClass;
   /** Known authored constraints, separate from the prepared interior. */
@@ -617,7 +628,16 @@ export type VillageVenueZone = VillageVenueSpace & {
 };
 export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
   VillageVenueZone,
-  "id" | "name" | "kind" | "description" | "roomSpecification" | "venueClass" | "purpose" | "controllerIds" | "ownerId"
+  | "id"
+  | "name"
+  | "kind"
+  | "description"
+  | "roomSpecification"
+  | "venueClass"
+  | "purpose"
+  | "controllerIds"
+  | "ownerId"
+  | "connectedTo"
 >;
 
 export type VillagePrivateSpace = VillageVenueSpace & {
@@ -1232,6 +1252,8 @@ export type VillageState = {
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
   sceneryStyleProfileId?: string | null;
+  automaticZonePictures?: boolean;
+  zonePictureEpoch?: number;
   personalizeVenueImagesByDefault: boolean;
   useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
@@ -1314,6 +1336,9 @@ export type VillageState = {
   simulatedThrough: string;
   /** Device timezone observed by the last reconciliation. */
   lastKnownTimeZone: string;
+  /** Calendar authority selected once at founding. */
+  timeZone: string;
+  clock: import("../../../shared/contracts/clock.js").VillageClockRecord | null;
   /** Optional model-shaped story frequency; deterministic life always advances. */
   storyPace: VillageStoryPace;
   /** Last local calendar day on which a creative planning call committed. */
@@ -1717,6 +1742,8 @@ export type VillageSettingsView = {
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
   sceneryStyleProfileId?: string | null;
+  automaticZonePictures?: boolean;
+  zonePictureEpoch?: number;
   personalizeVenueImagesByDefault: boolean;
   useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
@@ -1827,6 +1854,7 @@ export type VillageMomentView = {
 type ClientVisibleSnapshot<T extends import("../../../shared/contracts/village.js").VillageSnapshot> = T;
 
 export type VillageSnapshot = ClientVisibleSnapshot<{
+  clock?: import("../../../shared/contracts/clock.js").VillageClockView;
   relationshipStartingPending?: boolean;
   backgroundWork: import("./background-model.js").BackgroundSummary[];
   status: "ready";
@@ -1911,7 +1939,7 @@ export type VillageAgendaView = {
   scheduleInfluence?: import("../rules/owned-routine.js").ScheduleInfluence;
   nativeSchedule: {
     weekStart: string;
-    days: Record<string, { time: string; activity: string; status: string }[]>;
+    days: Record<string, { time: string; activity: string }[]>;
   } | null;
   /**
    * How this villager's week happens here, or null when the village has not
@@ -2058,8 +2086,6 @@ export type VillageDayBlock = {
   activity: string;
   /** What that same block reads as here, or the village's own default. */
   here: string;
-  /** Villages' short explanation of why this activity is in the agenda. */
-  reason?: string;
   /**
    * Whether the village had words for this block.
    *
@@ -2086,8 +2112,6 @@ export type VillageDayBlock = {
    * rather than printing an id nobody can read.
    */
   wishId: string;
-  /** The Engine's availability token for this block, or "". */
-  status: string;
   /** Whether this is the block the hour asked for falls in. */
   current: boolean;
 };

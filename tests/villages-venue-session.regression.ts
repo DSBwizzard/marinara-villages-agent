@@ -1,4 +1,5 @@
 import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
+import { fixtureLocalAttention, fixtureAcousticModel } from "./fixtures/villages-attention.fixture.js";
 import { setVillageSendOnEnter } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
@@ -7,14 +8,25 @@ import { wishReceiptRecords } from "../packages/villages/src/server/domain/rules
 import { physicalVenueEvents } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import { measurePipeline } from "../packages/villages/src/server/adapters/observability/pipeline-metrics.js";
 // Older narration fixtures declare no Wish proposal; missing/invalid metadata has dedicated live-domain coverage.
+let fixtureSource = "";
 function fixtureJson(value: any) {
   return JSON.stringify(
     value?.segments || value?.lines
       ? {
+          playerSpeechCapture:
+            fixtureSource === "An edited ordinary message"
+              ? { status: "captured", utterances: [{ text: fixtureSource, occurrence: 1 }] }
+              : { status: "silent", utterances: [] },
           wishChanges: [],
           memoryChanges: [],
           relationshipChanges: { changes: [], permissions: [], disclosures: [] },
           ...value,
+          segments:
+            value.segments ??
+            value.lines.map((line: any) => ({
+              kind: line.speakerId && line.speakerId !== "__venue_scene__" ? "dialogue" : "narration",
+              ...line,
+            })),
         }
       : value,
   );
@@ -85,6 +97,7 @@ import { buildVillageSnapshot } from "../packages/villages/src/server/features/w
 
 // These tests deliberately retry failed calls. Supply explicit authorization under the new contract.
 async function sendVenueTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {
+  await admitLegacyTurn(input);
   const session = records.get(key("villages", `villages-venue-visit-${input.sessionId}`))?.data ?? {};
   return sendVenueTurnRaw({
     ...input,
@@ -280,968 +293,1033 @@ const release = configureVillagesRuntime({
   languageModels: {
     async resolveForRequest() {
       providerResolves++;
-      return {
-        model: "fixture",
-        maxOutputTokens: 4096,
-        fitContext(messages: any[], options: any) {
-          const inputChars = messages.reduce((size, message) => size + String(message.content ?? "").length, 0);
-          if (inputChars > fitAnswerBudgetChars) _reviewContextRejects += 1;
-          return {
-            messages,
-            maxTokens: inputChars > fitAnswerBudgetChars ? options.maxTokens - 1 : options.maxTokens,
-          };
-        },
-        async chatComplete(messages: any[], options: any) {
-          providerCalls++;
-          if (
-            String(messages[0]?.content).includes("Response format and evidence metadata") ||
-            String(messages[0]?.content).startsWith("Interpret the meaning of witnessed Scene evidence")
-          )
-            assert.deepEqual(options.responseFormat, { type: "json_object" });
-          modelPayloadBytes.push(Buffer.byteLength(JSON.stringify(messages), "utf8"));
-          const system = String(messages[0]?.content ?? "");
-          const user = String(messages[1]?.content ?? "");
-          if (
-            system.startsWith("Interpret the meaning of witnessed Scene evidence") ||
-            system.startsWith("Interpret only the cited witnessed evidence")
-          ) {
-            const checks = fixtureInterpretationChecks(user);
+      return fixtureAcousticModel(
+        {
+          model: "fixture",
+          maxOutputTokens: 4096,
+          fitContext(messages: any[], options: any) {
+            const inputChars = messages.reduce((size, message) => size + String(message.content ?? "").length, 0);
+            if (inputChars > fitAnswerBudgetChars) _reviewContextRejects += 1;
             return {
-              content: fixtureJson({
-                results: checks.map((check: any) => {
-                  if (check.domain === "wish") {
-                    _wishJudgeCalls++;
-                    _lastJudgeSystem = system;
-                    return {
-                      id: check.id,
-                      outcome: check.facts.matchingReceiptIds.length ? "fulfilled" : "none",
-                      evidenceIds: check.facts.matchingReceiptIds.map((id: string) => `receipt:${id}`),
-                      reason: "The parcel was transferred in the labeled fixture",
-                      details: { proofKind: "physical" },
-                    };
-                  }
-                  if (check.domain !== "room")
-                    return {
-                      id: check.id,
-                      outcome: "none",
-                      evidenceIds: [],
-                      reason: "No Project event in this fixture",
-                    };
-                  const speech = check.evidence.filter(
-                    (line: any) => line.current && line.speakerId === check.facts.actorId,
-                  );
-                  const text = speech.map((line: any) => line.content).join(" ");
-                  const shared = !check.facts.zoneId.startsWith("private");
-                  if (check.facts.venueId !== "home")
-                    return { id: check.id, outcome: "none", evidenceIds: [], reason: "Another Venue" };
-                  const outcome =
-                    text === "You may come into our shared space on your next visit." && shared
-                      ? "invite-later"
-                      : text === "Come into our Common Space with me now." && shared
-                        ? "invite-now"
-                        : ["You may enter my private space with me now.", "Oh yeah."].includes(text) && !shared
-                          ? "invite-now"
-                          : "none";
-                  return {
-                    id: check.id,
-                    outcome,
-                    evidenceIds: speech.map((line: any) => line.id),
-                    reason: "Labeled fixture interpretation",
-                  };
+              messages,
+              maxTokens: inputChars > fitAnswerBudgetChars ? options.maxTokens - 1 : options.maxTokens,
+            };
+          },
+          async chatComplete(messages: any[], options: any) {
+            providerCalls++;
+            const attention = fixtureLocalAttention(messages);
+            if (attention) return attention;
+            if (
+              String(messages[0]?.content).includes("Response format and evidence metadata") ||
+              String(messages[0]?.content).startsWith("Interpret the meaning of witnessed Scene evidence")
+            )
+              assert.deepEqual(options.responseFormat, { type: "json_object" });
+            modelPayloadBytes.push(Buffer.byteLength(JSON.stringify(messages), "utf8"));
+            const system = String(messages[0]?.content ?? "");
+            const user = String(messages[1]?.content ?? "");
+            fixtureSource = user;
+            if (system.startsWith("Verify consequential Scene proposals"))
+              return {
+                content: JSON.stringify({
+                  results: JSON.parse(user).proposals.map((p: any) => ({ id: p.id, status: "supported" })),
                 }),
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (system.startsWith("Prepare faithful fulfillment conditions"))
-            return {
-              content: fixtureJson({
-                complete: true,
-                kind: "transfer",
-                requiresPhysical: true,
-                goal: "The parcel is handed to Tina.",
-                itemName: "parcel",
-              }),
-              finishReason: "stop",
-            };
-          calls += 1; // Existing cadence assertions concern narration and legacy calls; interpretation has its own suite.
-          if (system.startsWith("Identify explicit Project events"))
-            return { content: fixtureJson({ events: [] }), finishReason: "stop" };
-          // This suite exercises foreground visits, not agenda prose. Block the agenda without a provider failure.
-          if (system.startsWith("Describe a stable ordinary routine")) return { content: "{}", finishReason: "stop" };
-          if (user.startsWith("The player arrives in this Residence's Exterior Zone"))
-            return {
-              content: fixtureJson({
-                heardPlayerBy: [],
-                segments: [{ kind: "narration", text: "The door stays closed for now.", heardBy: [] }],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "Please let me in") {
-            const quote = "Come into our Common Space with me now.";
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
-                invitation: {
-                  speakerId: "bob",
-                  venueId: "home",
-                  scope: "shared",
-                  timing: "now",
-                  accompanies: true,
-                  quote,
-                },
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "Can I use Bob's room") {
-            const quote = "Oh yeah.";
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
-                invitation: {
-                  speakerId: "bob",
-                  venueId: "home",
-                  scope: "private",
-                  ownerId: "bob",
-                  timing: "now",
-                  quote,
-                },
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "I wait quietly")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: [],
-                segments: [{ kind: "narration", text: "No one comes to the door.", heardBy: [] }],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "I place a sign outside")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: [],
-                segments: [{ kind: "narration", text: "A sign stands beside the gate.", heardBy: [] }],
-                sceneChange: { happened: true, narration: "A sign stands beside the gate.", addItem: "sign" },
-              }),
-              finishReason: "stop",
-            };
-          if (user === "What new venue do we need?") {
-            const quote = "Could we build a Power Plant for reliable light?";
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
-                venueRequest: { speakerId: "bob", name: "Power Plant", classes: ["workplace"], quote },
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "Come visit tomorrow") {
-            const quote = "You may come into our shared space on your next visit.";
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
-                invitation: { speakerId: "bob", venueId: "home", scope: "shared", timing: "later", quote },
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "Please enter Bob's private space") {
-            const quote = "You may enter my private space with me now.";
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
-                invitation: {
-                  speakerId: "bob",
-                  venueId: "home",
-                  scope: "private",
-                  ownerId: "bob",
-                  timing: "now",
-                  accompanies: true,
-                  quote,
-                },
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "Bob approves the edit" || user === "Tina approves the edit") {
-            const speakerId = user.startsWith("Bob") ? "bob" : "tina";
-            const quote = "I approve that exact room proposal.";
-            const proposalId = system.match(/Pending exact Residence edit proposals: ([a-z0-9]+):/u)?.[1] ?? "";
-            return {
-              content: fixtureJson({
-                heardPlayerBy: [speakerId],
-                segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: [speakerId] }],
-                editApproval: { speakerId, proposalId, approved: true, quote },
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (system.includes("Answer as each affected villager")) {
-            lastMailboxSystem = system;
-            const people = JSON.parse(user).people as Array<{ id: string }>;
-            return {
-              content: fixtureJson({
-                decisions: people.map((person) => ({
-                  characterId: person.id,
-                  accepted: mailboxAccept,
-                  reply: mailboxAccept ? "That works for me." : "I would rather keep it as it is.",
-                })),
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user.startsWith("The player enters this space"))
-            assert.ok(options.maxTokens <= 1_600, "a brief greeting cannot spend a full-turn output budget");
-          if (system.includes("Distill one Scene")) {
-            memoryCalls += 1;
-            if (holdMemoryOnce) {
-              holdMemoryOnce = false;
-              signalMemoryStarted?.();
-              await new Promise<void>((_resolve, reject) => {
-                options.signal.addEventListener("abort", () => reject(new Error("memory aborted")), { once: true });
-              });
-            }
-            _memoryInputChars += system.length + user.length;
-            const evidence = JSON.parse(user);
-            evidence.evidence = evidence.evidence.map(([lineId, part, role, speaker, text, heardBy]: any[]) => ({
-              lineId,
-              part,
-              role,
-              speaker,
-              text,
-              heardBy,
-            }));
-            memoryEvidence.push(evidence);
-            if (saturateMemoryOnce) {
-              saturateMemoryOnce = false;
-              const content = JSON.stringify({ memories: [], more: true, complete: false });
-              _memoryOutputChars += content.length;
-              return { content, finishReason: "length" };
-            }
-            if (memoryCalls === failMemoryAtCall) throw new Error("memory chunk unavailable");
-            if (failMemoryOnce) {
-              failMemoryOnce = false;
-              throw new Error("memory unavailable");
-            }
-            if (misattributeMemoryOnce) {
-              misattributeMemoryOnce = false;
-              const privateLine = evidence.evidence.find(
-                (line: any) => line.heardBy.includes("bob") && !line.heardBy.includes("tina"),
-              );
+                finishReason: "stop",
+              };
+            if (
+              system.startsWith("Interpret the meaning of witnessed Scene evidence") ||
+              system.startsWith("Interpret only the cited witnessed evidence")
+            ) {
+              const checks = fixtureInterpretationChecks(user);
               return {
                 content: fixtureJson({
-                  memories: [
-                    { characterId: "tina", text: "A secret Tina did not hear.", lineIds: [privateLine.lineId] },
+                  results: checks.map((check: any) => {
+                    if (check.domain === "wish") {
+                      _wishJudgeCalls++;
+                      _lastJudgeSystem = system;
+                      return {
+                        id: check.id,
+                        outcome: check.facts.matchingReceiptIds.length ? "fulfilled" : "none",
+                        evidenceIds: check.facts.matchingReceiptIds.map((id: string) => `receipt:${id}`),
+                        reason: "The parcel was transferred in the labeled fixture",
+                        details: { proofKind: "physical" },
+                      };
+                    }
+                    if (check.domain !== "room")
+                      return {
+                        id: check.id,
+                        outcome: "none",
+                        evidenceIds: [],
+                        reason: "No Project event in this fixture",
+                      };
+                    const speech = check.evidence.filter(
+                      (line: any) => line.current && line.speakerId === check.facts.actorId,
+                    );
+                    const text = speech.map((line: any) => line.content).join(" ");
+                    const shared = !check.facts.zoneId.startsWith("private");
+                    if (check.facts.venueId !== "home")
+                      return { id: check.id, outcome: "none", evidenceIds: [], reason: "Another Venue" };
+                    const outcome =
+                      text === "You may come into our shared space on your next visit." && shared
+                        ? "invite-later"
+                        : text === "Come into our Common Space with me now." && shared
+                          ? "invite-now"
+                          : ["You may enter my private space with me now.", "Oh yeah."].includes(text) && !shared
+                            ? "invite-now"
+                            : "none";
+                    return {
+                      id: check.id,
+                      outcome,
+                      evidenceIds: speech.map((line: any) => line.id),
+                      reason: "Labeled fixture interpretation",
+                    };
+                  }),
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (system.startsWith("Prepare faithful fulfillment conditions"))
+              return {
+                content: fixtureJson({
+                  complete: true,
+                  kind: "transfer",
+                  requiresPhysical: true,
+                  goal: "The parcel is handed to Tina.",
+                  itemName: "parcel",
+                }),
+                finishReason: "stop",
+              };
+            calls += 1; // Existing cadence assertions concern narration and legacy calls; interpretation has its own suite.
+            if (system.startsWith("Identify explicit Project events"))
+              return { content: fixtureJson({ events: [] }), finishReason: "stop" };
+            // This suite exercises foreground visits, not agenda prose. Block the agenda without a provider failure.
+            if (system.startsWith("Describe a stable ordinary routine")) return { content: "{}", finishReason: "stop" };
+            if (user.startsWith("The player arrives in this Residence's Exterior Zone"))
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: [],
+                  segments: [{ kind: "narration", text: "The door stays closed for now.", heardBy: [] }],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "Please let me in") {
+              const quote = "Come into our Common Space with me now.";
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob"],
+                  segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
+                  invitation: {
+                    speakerId: "bob",
+                    venueId: "home",
+                    scope: "shared",
+                    timing: "now",
+                    accompanies: true,
+                    quote,
+                  },
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "Can I use Bob's room") {
+              const quote = "Oh yeah.";
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob"],
+                  segments: [
+                    { kind: "dialogue", speakerId: "player", text: user },
+                    { kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] },
                   ],
+                  invitation: {
+                    speakerId: "bob",
+                    venueId: "home",
+                    scope: "private",
+                    ownerId: "bob",
+                    timing: "now",
+                    quote,
+                  },
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "I wait quietly")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: [],
+                  segments: [{ kind: "narration", text: "No one comes to the door.", heardBy: [] }],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "I place a sign outside")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: [],
+                  segments: [{ kind: "narration", text: "A sign stands beside the gate.", heardBy: [] }],
+                  sceneChange: { happened: true, narration: "A sign stands beside the gate.", addItem: "sign" },
+                }),
+                finishReason: "stop",
+              };
+            if (user === "What new venue do we need?") {
+              const quote = "Could we build a Power Plant for reliable light?";
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob"],
+                  segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
+                  venueRequest: { speakerId: "bob", name: "Power Plant", classes: ["workplace"], quote },
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "Come visit tomorrow") {
+              const quote = "You may come into our shared space on your next visit.";
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob"],
+                  segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
+                  invitation: { speakerId: "bob", venueId: "home", scope: "shared", timing: "later", quote },
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "Please enter Bob's private space") {
+              const quote = "You may enter my private space with me now.";
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob"],
+                  segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
+                  invitation: {
+                    speakerId: "bob",
+                    venueId: "home",
+                    scope: "private",
+                    ownerId: "bob",
+                    timing: "now",
+                    accompanies: true,
+                    quote,
+                  },
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "Bob approves the edit" || user === "Tina approves the edit") {
+              const speakerId = user.startsWith("Bob") ? "bob" : "tina";
+              const quote = "I approve that exact room proposal.";
+              const proposalId = system.match(/Pending exact Residence edit proposals: ([a-z0-9]+):/u)?.[1] ?? "";
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: [speakerId],
+                  segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: [speakerId] }],
+                  editApproval: { speakerId, proposalId, approved: true, quote },
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (system.includes("Answer as each affected villager")) {
+              lastMailboxSystem = system;
+              const people = JSON.parse(user).people as Array<{ id: string }>;
+              return {
+                content: fixtureJson({
+                  decisions: people.map((person) => ({
+                    characterId: person.id,
+                    accepted: mailboxAccept,
+                    reply: mailboxAccept ? "That works for me." : "I would rather keep it as it is.",
+                  })),
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user.startsWith("The player enters this space"))
+              assert.ok(options.maxTokens <= 1_600, "a brief greeting cannot spend a full-turn output budget");
+            if (system.includes("Distill one Scene")) {
+              memoryCalls += 1;
+              if (holdMemoryOnce) {
+                holdMemoryOnce = false;
+                signalMemoryStarted?.();
+                await new Promise<void>((_resolve, reject) => {
+                  options.signal.addEventListener("abort", () => reject(new Error("memory aborted")), { once: true });
+                });
+              }
+              _memoryInputChars += system.length + user.length;
+              const evidence = JSON.parse(user);
+              evidence.evidence = evidence.evidence.map(([lineId, part, role, speaker, text, heardBy]: any[]) => ({
+                lineId,
+                part,
+                role,
+                speaker,
+                text,
+                heardBy,
+              }));
+              memoryEvidence.push(evidence);
+              if (saturateMemoryOnce) {
+                saturateMemoryOnce = false;
+                const content = JSON.stringify({ memories: [], more: true, complete: false });
+                _memoryOutputChars += content.length;
+                return { content, finishReason: "length" };
+              }
+              if (memoryCalls === failMemoryAtCall) throw new Error("memory chunk unavailable");
+              if (failMemoryOnce) {
+                failMemoryOnce = false;
+                throw new Error("memory unavailable");
+              }
+              if (misattributeMemoryOnce) {
+                misattributeMemoryOnce = false;
+                const privateLine = evidence.evidence.find(
+                  (line: any) => line.heardBy.includes("bob") && !line.heardBy.includes("tina"),
+                );
+                return {
+                  content: fixtureJson({
+                    memories: [
+                      { characterId: "tina", text: "A secret Tina did not hear.", lineIds: [privateLine.lineId] },
+                    ],
+                    complete: true,
+                  }),
+                  finishReason: "stop",
+                };
+              }
+              const content = JSON.stringify({
+                memories: evidence.evidence.some((line: any) => line.heardBy.includes("tina"))
+                  ? [
+                      {
+                        characterId: "tina",
+                        text: "Tina remembers the visit.",
+                        lineIds: [evidence.evidence.find((line: any) => line.heardBy.includes("tina")).lineId],
+                      },
+                    ]
+                  : [],
+                complete: true,
+              });
+              _memoryOutputChars += content.length;
+              return { content, finishReason: "stop" };
+            }
+            if (system.includes("You adjudicate short-term conversational recollections")) {
+              reviewCalls += 1;
+              const input = JSON.parse(user);
+              reviewBatches.push({
+                firstText: input.recollections[0]?.text ?? "",
+                count: input.recollections.length,
+                outputLimit: options.maxTokens,
+              });
+              if (reviewCalls === failReviewAtCall) throw new Error(reviewFailureMessage);
+              if (failReviewOnce) {
+                failReviewOnce = false;
+                throw new Error("review unavailable");
+              }
+              const responseMode = reviewResponseModes.shift();
+              if (responseMode === "length") return { content: "{", finishReason: "length" };
+              if (responseMode === "malformed") return { content: "{bad", finishReason: "stop" };
+              return {
+                content: fixtureJson({
+                  relationshipReview: {
+                    changes: relationshipDecisions
+                      ? ["warmth", "trust"].map((dimension) => ({
+                          fromId: "bob",
+                          toId: "player",
+                          dimension,
+                          strength: "minor",
+                          direction: dimension === "warmth" ? "increase" : "decrease",
+                          ordinary: dimension === "warmth",
+                          reason: "A shared exchange affected company and confidence independently.",
+                          lineIds: input.recollections[0].evidence.map((line: any) => line.id),
+                          disclosed: false,
+                        }))
+                      : [],
+                    permissions: [],
+                    disclosures: [],
+                  },
+                  decisions: input.recollections.map((recollection: any) => ({
+                    action:
+                      recollection.text.includes("promised") || recollection.text.includes("kissed")
+                        ? "promote"
+                        : "reject",
+                    indices: [recollection.index],
+                    reason:
+                      recollection.text.includes("promised") || recollection.text.includes("kissed")
+                        ? "A distinct lasting event."
+                        : "routine",
+                    ...(recollection.text.includes("promised") || recollection.text.includes("kissed")
+                      ? {
+                          category: recollection.text.includes("promised") ? "commitment" : "shared-experience",
+                          text: recollection.text,
+                        }
+                      : {}),
+                  })),
                   complete: true,
                 }),
                 finishReason: "stop",
               };
             }
-            const content = JSON.stringify({
-              memories: evidence.evidence.some((line: any) => line.heardBy.includes("tina"))
-                ? [
-                    {
-                      characterId: "tina",
-                      text: "Tina remembers the visit.",
-                      lineIds: [evidence.evidence.find((line: any) => line.heardBy.includes("tina")).lineId],
-                    },
-                  ]
-                : [],
-              complete: true,
-            });
-            _memoryOutputChars += content.length;
-            return { content, finishReason: "stop" };
-          }
-          if (system.includes("You adjudicate short-term conversational recollections")) {
-            reviewCalls += 1;
-            const input = JSON.parse(user);
-            reviewBatches.push({
-              firstText: input.recollections[0]?.text ?? "",
-              count: input.recollections.length,
-              outputLimit: options.maxTokens,
-            });
-            if (reviewCalls === failReviewAtCall) throw new Error(reviewFailureMessage);
-            if (failReviewOnce) {
-              failReviewOnce = false;
-              throw new Error("review unavailable");
+            if (system.includes("Find exact, short quotations")) {
+              _wishScanCalls += 1;
+              if (failWishScanOnce) {
+                failWishScanOnce = false;
+                throw new Error("wish scan unavailable");
+              }
+              const input = JSON.parse(user);
+              return {
+                content: fixtureJson({
+                  evidence: input.lines
+                    .filter((line: any) => line.content.includes("important detail"))
+                    .map((line: any) => ({ lineId: line.lineId, quote: "important detail" })),
+                  complete: true,
+                }),
+                finishReason: "stop",
+              };
             }
-            const responseMode = reviewResponseModes.shift();
-            if (responseMode === "length") return { content: "{", finishReason: "length" };
-            if (responseMode === "malformed") return { content: "{bad", finishReason: "stop" };
-            return {
-              content: fixtureJson({
-                relationshipReview: {
-                  changes: relationshipDecisions
-                    ? ["warmth", "trust"].map((dimension) => ({
-                        fromId: "bob",
-                        toId: "player",
-                        dimension,
-                        strength: "minor",
-                        direction: dimension === "warmth" ? "increase" : "decrease",
-                        ordinary: dimension === "warmth",
-                        reason: "A shared exchange affected company and confidence independently.",
-                        lineIds: input.recollections[0].evidence.map((line: any) => line.id),
-                        disclosed: false,
-                      }))
-                    : [],
-                  permissions: [],
-                  disclosures: [],
-                },
-                decisions: input.recollections.map((recollection: any) => ({
-                  action:
-                    recollection.text.includes("promised") || recollection.text.includes("kissed")
-                      ? "promote"
-                      : "reject",
-                  indices: [recollection.index],
-                  reason:
-                    recollection.text.includes("promised") || recollection.text.includes("kissed")
-                      ? "A distinct lasting event."
-                      : "routine",
-                  ...(recollection.text.includes("promised") || recollection.text.includes("kissed")
+            if (system.includes("Write a brief visual Events update")) {
+              assert.match(system, /In Villages, a Village is a shared place/u);
+              lastEventsSystem = system;
+              assert.match(system, /Do not give them a new turn in an Event/u);
+              return {
+                content: fixtureJson({
+                  happenings: [
+                    {
+                      opportunityId: "opportunity-feature",
+                      kind: "routine",
+                      actorIds: creativeActorIds,
+                      venueId: "park",
+                      narration: "Bob tends the place.",
+                    },
+                  ],
+                  memory: [],
+                  notices: [],
+                  featureEdits: featureProposal ? [featureProposal] : [],
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (system.includes("You narrate one action")) {
+              assert.match(system, /The submitted action is the full extent of the player's choice/u);
+              assert.match(system, /Do not invent their dialogue, a follow-up action or decision/u);
+              const failed = user.includes("tries to: Fail to lift the wall");
+              const lantern = user.includes("tries to: Set down a lantern");
+              const note = user.includes("tries to: Leave a note for Tina");
+              const spill = user.includes("tries to: Spill tea");
+              const window = user.includes("tries to: Open the window");
+              const cleanup = user.includes("tries to: Clean the spill");
+              return {
+                content: fixtureJson({
+                  happened: !failed,
+                  narration: failed
+                    ? "The wall is too heavy to lift."
+                    : lantern
+                      ? "The player sets down a lantern."
+                      : note
+                        ? "The player leaves a note for Tina."
+                        : spill
+                          ? "The player spills tea on the floor."
+                          : window
+                            ? "The player opens the window."
+                            : cleanup
+                              ? "The player cleans the spill."
+                              : "The player sets down a cup.",
+                  addItem: failed || note || spill || window || cleanup ? "" : lantern ? "lantern" : "cup",
+                  removeItem: "",
+                  traceKind: note ? "note" : spill ? "stain" : window ? "open-window" : "",
+                  traceText: note ? "Meet me by the bridge." : spill ? "a tea stain" : window ? "an open window" : "",
+                  recipientId: note ? "tina" : "",
+                  resolveTraceId: cleanup ? "trace:spill-action" : "",
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (!system.includes("You write one shared scene")) {
+              _lastJudgeSystem = system;
+              assert.match(user, /Has .* really done that/u);
+              _wishJudgeCalls += 1;
+              return {
+                content: fixtureJson({
+                  fulfilled: true,
+                  wishId: "wish-tina",
+                  reason: "The deed happened.",
+                  memory: "Tina remembers the help.",
+                }),
+                finishReason: "stop",
+              };
+            }
+            lastVenueSystem = system;
+            venueReplyCalls += 1;
+            if (sceneActionFixture)
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [
+                    { kind: "narration", text: "The physical outcome is confirmed.", heardBy: ["bob", "tina"] },
+                  ],
+                  sceneChange: sceneActionFixture,
+                }),
+                finishReason: "stop",
+              };
+            if (user === "Hold concurrent scene") {
+              concurrencyStarted?.();
+              await new Promise<void>((resolve) => {
+                releaseConcurrent = resolve;
+              });
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [
+                    {
+                      kind: "dialogue",
+                      speakerId: "bob",
+                      text: "We can take a moment together.",
+                      heardBy: ["bob", "tina"],
+                    },
+                  ],
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (
+              [
+                "Set down a cup",
+                "Set down a lantern",
+                "Fail to lift the wall",
+                "Leave a note for Tina",
+                "Spill tea",
+                "Open the window",
+                "Clean the spill",
+              ].includes(user)
+            ) {
+              if (user === "Set down a lantern" && failActReplyOnce) {
+                failActReplyOnce = false;
+                throw new Error("action reply unavailable");
+              }
+              const alone = system.includes("Nobody is present.");
+              const failed = user === "Fail to lift the wall";
+              const lantern = user === "Set down a lantern";
+              const note = user === "Leave a note for Tina";
+              const spill = user === "Spill tea";
+              const window = user === "Open the window";
+              const cleanup = user === "Clean the spill";
+              const narration = failed
+                ? "The wall is too heavy to lift."
+                : lantern
+                  ? "The player sets down a lantern."
+                  : note
+                    ? "The player leaves a note for Tina."
+                    : spill
+                      ? "The player spills tea on the floor."
+                      : window
+                        ? "The player opens the window."
+                        : cleanup
+                          ? "The player cleans the spill."
+                          : "The player sets down a cup.";
+              const text = quietActReplyOnce && lantern ? "Bob makes room for the lantern on the table." : narration;
+              quietActReplyOnce = false;
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: alone ? [] : ["bob", "tina"],
+                  segments: [{ kind: "narration", text, heardBy: alone ? [] : ["bob", "tina"] }],
+                  ...(!failed
                     ? {
-                        category: recollection.text.includes("promised") ? "commitment" : "shared-experience",
-                        text: recollection.text,
+                        sceneChange: {
+                          happened: true,
+                          narration,
+                          addItem: note || spill || window || cleanup ? "" : lantern ? "lantern" : "cup",
+                          traceKind: note ? "note" : spill ? "stain" : window ? "open-window" : "",
+                          traceText: note
+                            ? "Meet me by the bridge."
+                            : spill
+                              ? "a tea stain"
+                              : window
+                                ? "an open window"
+                                : "",
+                          recipientId: note ? "tina" : "",
+                          resolveTraceId: cleanup ? "trace:spill-action" : "",
+                        },
                       }
                     : {}),
-                })),
-                complete: true,
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (system.includes("Find exact, short quotations")) {
-            _wishScanCalls += 1;
-            if (failWishScanOnce) {
-              failWishScanOnce = false;
-              throw new Error("wish scan unavailable");
+                }),
+                finishReason: "stop",
+              };
             }
-            const input = JSON.parse(user);
-            return {
-              content: fixtureJson({
-                evidence: input.lines
-                  .filter((line: any) => line.content.includes("important detail"))
-                  .map((line: any) => ({ lineId: line.lineId, quote: "important detail" })),
-                complete: true,
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (system.includes("Write a brief visual Events update")) {
-            assert.match(system, /In Villages, a Village is a shared place/u);
-            lastEventsSystem = system;
-            assert.match(system, /Do not give them a new turn in an Event/u);
-            return {
-              content: fixtureJson({
-                happenings: [
-                  {
-                    opportunityId: "opportunity-feature",
-                    kind: "routine",
-                    actorIds: creativeActorIds,
-                    venueId: "park",
-                    narration: "Bob tends the place.",
-                  },
-                ],
-                memory: [],
-                notices: [],
-                featureEdits: featureProposal ? [featureProposal] : [],
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (system.includes("You narrate one action")) {
-            assert.match(system, /The submitted action is the full extent of the player's choice/u);
-            assert.match(system, /Do not invent their dialogue, a follow-up action or decision/u);
-            const failed = user.includes("tries to: Fail to lift the wall");
-            const lantern = user.includes("tries to: Set down a lantern");
-            const note = user.includes("tries to: Leave a note for Tina");
-            const spill = user.includes("tries to: Spill tea");
-            const window = user.includes("tries to: Open the window");
-            const cleanup = user.includes("tries to: Clean the spill");
-            return {
-              content: fixtureJson({
-                happened: !failed,
-                narration: failed
-                  ? "The wall is too heavy to lift."
-                  : lantern
-                    ? "The player sets down a lantern."
-                    : note
-                      ? "The player leaves a note for Tina."
-                      : spill
-                        ? "The player spills tea on the floor."
-                        : window
-                          ? "The player opens the window."
-                          : cleanup
-                            ? "The player cleans the spill."
-                            : "The player sets down a cup.",
-                addItem: failed || note || spill || window || cleanup ? "" : lantern ? "lantern" : "cup",
-                removeItem: "",
-                traceKind: note ? "note" : spill ? "stain" : window ? "open-window" : "",
-                traceText: note ? "Meet me by the bridge." : spill ? "a tea stain" : window ? "an open window" : "",
-                recipientId: note ? "tina" : "",
-                resolveTraceId: cleanup ? "trace:spill-action" : "",
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (!system.includes("You write one shared scene")) {
-            _lastJudgeSystem = system;
-            assert.match(user, /Has .* really done that/u);
-            _wishJudgeCalls += 1;
-            return {
-              content: fixtureJson({
-                fulfilled: true,
-                wishId: "wish-tina",
-                reason: "The deed happened.",
-                memory: "Tina remembers the help.",
-              }),
-              finishReason: "stop",
-            };
-          }
-          lastVenueSystem = system;
-          venueReplyCalls += 1;
-          if (sceneActionFixture)
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [{ kind: "narration", text: "The physical outcome is confirmed.", heardBy: ["bob", "tina"] }],
-                sceneChange: sceneActionFixture,
-              }),
-              finishReason: "stop",
-            };
-          if (user === "Hold concurrent scene") {
-            concurrencyStarted?.();
-            await new Promise<void>((resolve) => {
-              releaseConcurrent = resolve;
-            });
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [
-                  {
-                    kind: "dialogue",
-                    speakerId: "bob",
-                    text: "We can take a moment together.",
-                    heardBy: ["bob", "tina"],
-                  },
-                ],
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (
-            [
-              "Set down a cup",
-              "Set down a lantern",
-              "Fail to lift the wall",
-              "Leave a note for Tina",
-              "Spill tea",
-              "Open the window",
-              "Clean the spill",
-            ].includes(user)
-          ) {
+            if (
+              system.includes("Nobody is present.") ||
+              (system.includes("ZONE EVENTS") &&
+                /Local residents: \./u.test(system) &&
+                !system.includes("Scene-start activity:"))
+            )
+              return {
+                content:
+                  fixtureJson({
+                    heardPlayerBy: [],
+                    segments: [{ kind: "narration", text: "The empty room stays quiet.", heardBy: [] }],
+                  }).slice(0, -1) + ",}", // Malformed provider syntax must recover without another call.
+                finishReason: "stop",
+              };
+            if (user.startsWith("The player enters this space") && failGreetingOnce) {
+              failGreetingOnce = false;
+              throw new Error("greeting unavailable");
+            }
+            if (user.startsWith("The player enters this space") && holdGreetingOnce) {
+              holdGreetingOnce = false;
+              return new Promise((resolve) => {
+                releaseHeldGreeting = () =>
+                  resolve({
+                    content: fixtureJson({
+                      heardPlayerBy: [],
+                      segments: [{ kind: "dialogue", speakerId: "bob", text: "A late hello.", heardBy: ["bob"] }],
+                    }),
+                    finishReason: "stop",
+                  });
+                greetingStarted?.();
+              });
+            }
+            if (user.startsWith("The player enters this space") && malformedGreetingOnce) {
+              malformedGreetingOnce = false;
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["outsider"],
+                  segments: [
+                    {
+                      kind: "whisper",
+                      speakerId: "tina",
+                      targetId: "unavailable target",
+                      text: "Welcome.",
+                      heardBy: ["outsider"],
+                      expression: "a very long expression that should be bounded rather than fail the visit",
+                    },
+                  ],
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user.startsWith("The player enters this space") && emptyOpeningFailures > 0) {
+              emptyOpeningFailures -= 1;
+              return { content: fixtureJson({ heardPlayerBy: [], segments: [] }), finishReason: "stop" };
+            }
+            if (user.startsWith("The player enters this space") && openingSegmentsOnce) {
+              const segments = openingSegmentsOnce;
+              openingSegmentsOnce = null;
+              return { content: fixtureJson({ heardPlayerBy: [], segments }), finishReason: "stop" };
+            }
+            if (user === "Fail once" && failReplyOnce) {
+              failReplyOnce = false;
+              throw new Error("reply unavailable");
+            }
             if (user === "Set down a lantern" && failActReplyOnce) {
               failActReplyOnce = false;
               throw new Error("action reply unavailable");
             }
-            const alone = system.includes("Nobody is present.");
-            const failed = user === "Fail to lift the wall";
-            const lantern = user === "Set down a lantern";
-            const note = user === "Leave a note for Tina";
-            const spill = user === "Spill tea";
-            const window = user === "Open the window";
-            const cleanup = user === "Clean the spill";
-            const narration = failed
-              ? "The wall is too heavy to lift."
-              : lantern
-                ? "The player sets down a lantern."
-                : note
-                  ? "The player leaves a note for Tina."
-                  : spill
-                    ? "The player spills tea on the floor."
-                    : window
-                      ? "The player opens the window."
-                      : cleanup
-                        ? "The player cleans the spill."
-                        : "The player sets down a cup.";
-            const text = quietActReplyOnce && lantern ? "Bob makes room for the lantern on the table." : narration;
-            quietActReplyOnce = false;
-            return {
-              content: fixtureJson({
-                heardPlayerBy: alone ? [] : ["bob", "tina"],
-                segments: [{ kind: "narration", text, heardBy: alone ? [] : ["bob", "tina"] }],
-                ...(!failed
-                  ? {
-                      sceneChange: {
-                        happened: true,
-                        narration,
-                        addItem: note || spill || window || cleanup ? "" : lantern ? "lantern" : "cup",
-                        traceKind: note ? "note" : spill ? "stain" : window ? "open-window" : "",
-                        traceText: note
-                          ? "Meet me by the bridge."
-                          : spill
-                            ? "a tea stain"
-                            : window
-                              ? "an open window"
-                              : "",
-                        recipientId: note ? "tina" : "",
-                        resolveTraceId: cleanup ? "trace:spill-action" : "",
-                      },
-                    }
-                  : {}),
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (system.includes("Nobody is present."))
-            return {
-              content: fixtureJson({
-                heardPlayerBy: [],
-                segments: [{ kind: "narration", text: "The empty room stays quiet.", heardBy: [] }],
-              }),
-              finishReason: "stop",
-            };
-          if (user.startsWith("The player enters this space") && failGreetingOnce) {
-            failGreetingOnce = false;
-            throw new Error("greeting unavailable");
-          }
-          if (user.startsWith("The player enters this space") && holdGreetingOnce) {
-            holdGreetingOnce = false;
-            return new Promise((resolve) => {
-              releaseHeldGreeting = () =>
-                resolve({
-                  content: fixtureJson({
-                    heardPlayerBy: [],
-                    segments: [{ kind: "dialogue", speakerId: "bob", text: "A late hello.", heardBy: ["bob"] }],
-                  }),
-                  finishReason: "stop",
-                });
-              greetingStarted?.();
-            });
-          }
-          if (user.startsWith("The player enters this space") && malformedGreetingOnce) {
-            malformedGreetingOnce = false;
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["outsider"],
-                segments: [
-                  {
-                    kind: "whisper",
-                    speakerId: "tina",
-                    targetId: "unavailable target",
-                    text: "Welcome.",
-                    heardBy: ["outsider"],
-                    expression: "a very long expression that should be bounded rather than fail the visit",
-                  },
-                ],
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user.startsWith("The player enters this space") && emptyOpeningFailures > 0) {
-            emptyOpeningFailures -= 1;
-            return { content: fixtureJson({ heardPlayerBy: [], segments: [] }), finishReason: "stop" };
-          }
-          if (user.startsWith("The player enters this space") && openingSegmentsOnce) {
-            const segments = openingSegmentsOnce;
-            openingSegmentsOnce = null;
-            return { content: fixtureJson({ heardPlayerBy: [], segments }), finishReason: "stop" };
-          }
-          if (user === "Fail once" && failReplyOnce) {
-            failReplyOnce = false;
-            throw new Error("reply unavailable");
-          }
-          if (user === "Set down a lantern" && failActReplyOnce) {
-            failActReplyOnce = false;
-            throw new Error("action reply unavailable");
-          }
-          if (user === "Set down a lantern" && quietActReplyOnce) {
-            quietActReplyOnce = false;
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [{ kind: "narration", text: "Bob makes room for the lantern on the table." }],
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "How are you doing?" && narrationOnlyOnce) {
-            narrationOnlyOnce = false;
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [{ kind: "narration", text: "Tina glanced over.", heardBy: ["bob", "tina"] }],
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "Still no answer")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [{ kind: "narration", text: "No one spoke.", heardBy: ["bob", "tina"] }],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "No scene moment")
-            return { content: fixtureJson({ heardPlayerBy: ["tina"], segments: [] }), finishReason: "stop" };
-          if (user === "Ask me about myself")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: "What about you?", heardBy: ["bob", "tina"] }],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "I actually don't remember anything. Funny, huh?")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: acceptEcho
-                  ? [
-                      {
-                        kind: "dialogue",
-                        speakerId: "bob",
-                        text: "That sounds disorienting. I can listen.",
-                        heardBy: ["bob", "tina"],
-                      },
-                    ]
-                  : [
-                      {
-                        kind: "dialogue",
-                        speakerId: "tina",
-                        text: "Yeah — what about you? We've both done our bit.",
-                        heardBy: ["bob", "tina"],
-                      },
-                      {
-                        kind: "dialogue",
-                        speakerId: "bob",
-                        text: "I actually don't remember anything. Funny, huh?",
-                        heardBy: ["bob", "tina"],
-                      },
-                    ],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "I don't remember where I came from.")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [
-                  {
-                    kind: "dialogue",
-                    speakerId: "tina",
-                    text: acceptRepeatedQuestion
-                      ? "That sounds unsettling. Do you want to tell us more?"
-                      : "Yeah — what about you? We've both done our bit.",
-                    heardBy: ["bob", "tina"],
-                  },
-                ],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "Blank once" && blankTurnOnce) {
-            blankTurnOnce = false;
-            return { content: "", finishReason: "stop" };
-          }
-          if (user === "Malformed once" && malformedTurnOnce) {
-            malformedTurnOnce = false;
-            return { content: "{not json", finishReason: "stop" };
-          }
-          if (user === "Always echo this long player statement" && exhaustEcho)
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: user, heardBy: ["bob", "tina"] }],
-                sceneChange: { happened: true, narration: "A chair moves.", sceneNote: "A chair moves." },
-              }),
-              finishReason: "stop",
-            };
-          if (user === "Place an intricately carved silver bowl on the table")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: user, heardBy: ["bob", "tina"] }],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "Wait outside quietly" || user === "Look around the Private Space")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: user === "Wait outside quietly" ? [] : ["bob"],
-                segments: [{ kind: "narration", text: "Bob continues mending the torn cloth." }],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "A lively scene")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [
-                  {
-                    kind: "narration",
-                    text: "The room quiets.",
-                    heardBy: ["bob", "tina"],
-                    staging: [
-                      {
-                        characterId: "bob",
-                        position: "right",
-                        expression: "e-123e4567-e89b-42d3-a456-426614174000",
-                        look: { target: "direction", direction: "left" },
-                      },
-                      { characterId: "tina", position: "center", expression: "e-123e4567-e89b-42d3-a456-426614174000" },
-                    ],
-                  },
-                  {
-                    kind: "dialogue",
-                    speakerId: "tina",
-                    text: "Did you hear that?",
-                    heardBy: ["bob", "tina"],
-                    expression: "surprised",
-                  },
-                  { kind: "side", speakerId: "bob", text: "I did.", heardBy: ["bob"], expression: "thinking" },
-                  { kind: "whisper", speakerId: "tina", targetId: "bob", text: "Stay close.", heardBy: ["tina"] },
-                ],
-                departures: [],
-                sceneEnded: false,
-              }),
-              finishReason: "stop",
-            };
-          if (
-            [
-              "I fixed the ceiling drip",
-              "I moved the tables",
-              "I tell Bob I moved the tables",
-              "I lift the wall",
-            ].includes(user)
-          ) {
-            const sceneChange =
-              user === "I fixed the ceiling drip"
-                ? {
-                    happened: true,
-                    narration: "The player repaired the ceiling drip.",
-                    conditionBefore: "a ceiling drip",
-                    conditionAfter: "a dry ceiling",
-                    resolveTraceId: "trace:drip",
-                  }
-                : user === "I moved the tables"
+            if (user === "Set down a lantern" && quietActReplyOnce) {
+              quietActReplyOnce = false;
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [{ kind: "narration", text: "Bob makes room for the lantern on the table." }],
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "How are you doing?" && narrationOnlyOnce) {
+              narrationOnlyOnce = false;
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [{ kind: "narration", text: "Tina glanced over.", heardBy: ["bob", "tina"] }],
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "Still no answer")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [{ kind: "narration", text: "No one spoke.", heardBy: ["bob", "tina"] }],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "No scene moment")
+              return { content: fixtureJson({ heardPlayerBy: ["tina"], segments: [] }), finishReason: "stop" };
+            if (user === "Ask me about myself")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [{ kind: "dialogue", speakerId: "bob", text: "What about you?", heardBy: ["bob", "tina"] }],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "I actually don't remember anything. Funny, huh?")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: acceptEcho
+                    ? [
+                        {
+                          kind: "dialogue",
+                          speakerId: "bob",
+                          text: "That sounds disorienting. I can listen.",
+                          heardBy: ["bob", "tina"],
+                        },
+                      ]
+                    : [
+                        {
+                          kind: "dialogue",
+                          speakerId: "tina",
+                          text: "Yeah — what about you? We've both done our bit.",
+                          heardBy: ["bob", "tina"],
+                        },
+                        {
+                          kind: "dialogue",
+                          speakerId: "bob",
+                          text: "I actually don't remember anything. Funny, huh?",
+                          heardBy: ["bob", "tina"],
+                        },
+                      ],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "I don't remember where I came from.")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [
+                    {
+                      kind: "dialogue",
+                      speakerId: "tina",
+                      text: acceptRepeatedQuestion
+                        ? "That sounds unsettling. Do you want to tell us more?"
+                        : "Yeah — what about you? We've both done our bit.",
+                      heardBy: ["bob", "tina"],
+                    },
+                  ],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "Blank once" && blankTurnOnce) {
+              blankTurnOnce = false;
+              return { content: "", finishReason: "stop" };
+            }
+            if (user === "Malformed once" && malformedTurnOnce) {
+              malformedTurnOnce = false;
+              return { content: "{not json", finishReason: "stop" };
+            }
+            if (user === "Always echo this long player statement" && exhaustEcho)
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [{ kind: "dialogue", speakerId: "bob", text: user, heardBy: ["bob", "tina"] }],
+                  sceneChange: { happened: true, narration: "A chair moves.", sceneNote: "A chair moves." },
+                }),
+                finishReason: "stop",
+              };
+            if (user === "Place an intricately carved silver bowl on the table")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [{ kind: "dialogue", speakerId: "bob", text: user, heardBy: ["bob", "tina"] }],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "Wait outside quietly" || user === "Look around the Private Space")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: user === "Wait outside quietly" ? [] : ["bob"],
+                  segments: [{ kind: "narration", text: "Bob continues mending the torn cloth." }],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "A lively scene")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [
+                    {
+                      kind: "narration",
+                      text: "The room quiets.",
+                      heardBy: ["bob", "tina"],
+                      staging: [
+                        {
+                          characterId: "bob",
+                          position: "right",
+                          expression: "e-123e4567-e89b-42d3-a456-426614174000",
+                          look: { target: "direction", direction: "left" },
+                        },
+                        {
+                          characterId: "tina",
+                          position: "center",
+                          expression: "e-123e4567-e89b-42d3-a456-426614174000",
+                        },
+                      ],
+                    },
+                    {
+                      kind: "dialogue",
+                      speakerId: "tina",
+                      text: "Did you hear that?",
+                      heardBy: ["bob", "tina"],
+                      expression: "surprised",
+                    },
+                    { kind: "side", speakerId: "bob", text: "I did.", heardBy: ["bob"], expression: "thinking" },
+                    { kind: "whisper", speakerId: "tina", targetId: "bob", text: "Stay close.", heardBy: ["tina"] },
+                  ],
+                  departures: [],
+                  sceneEnded: false,
+                }),
+                finishReason: "stop",
+              };
+            if (
+              [
+                "I fixed the ceiling drip",
+                "I moved the tables",
+                "I tell Bob I moved the tables",
+                "I lift the wall",
+              ].includes(user)
+            ) {
+              const sceneChange =
+                user === "I fixed the ceiling drip"
                   ? {
                       happened: true,
-                      narration: "The player moved the tables aside.",
-                      sceneNote: "The tables stand beside the wall.",
+                      narration: "The player repaired the ceiling drip.",
+                      conditionBefore: "a ceiling drip",
+                      conditionAfter: "a dry ceiling",
+                      resolveTraceId: "trace:drip",
                     }
-                  : undefined;
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [
-                  {
-                    kind: "dialogue",
-                    speakerId: "bob",
-                    text: sceneChange ? "That helps." : "I hear you.",
-                    heardBy: ["bob", "tina"],
-                  },
-                ],
-                ...(sceneChange ? { sceneChange } : {}),
-                ...(system.includes("Also return recap") ? { recap: "Bob and Tina discussed the visit." } : {}),
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "Live commitment") {
-            const result = {
-              heardPlayerBy: ["bob"],
-              segments: [
-                {
-                  kind: "dialogue",
-                  speakerId: "bob",
-                  text: "I will bring seedlings when we plant together.",
-                  heardBy: ["bob"],
-                },
-              ],
-              memoryChanges: [
-                {
-                  kind: "durable",
-                  category: "commitment",
-                  text: "Bob will bring seedlings for planting together.",
-                  subjectCharacterIds: ["bob"],
-                  knownByCharacterIds: ["bob"],
-                  evidence: [0],
-                  memoryIds: [],
-                },
-              ],
-              relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-              wishChanges: [],
-            };
-            return { content: fixtureJson(result), finishReason: "stop" };
-          }
-          if (user === "Live truncated metadata")
-            return {
-              content:
-                '{"heardPlayerBy":["bob"],"segments":[{"kind":"dialogue","speakerId":"bob","text":"Let us keep talking about those seedlings.","heardBy":["bob"]}],"wishChanges":[],"memoryChanges":[{"text":"cut',
-              finishReason: "length",
-            };
-          if (user === "Remember the bridge")
-            return {
-              content: fixtureJson({
+                  : user === "I moved the tables"
+                    ? {
+                        happened: true,
+                        narration: "The player moved the tables aside.",
+                        sceneNote: "The tables stand beside the wall.",
+                      }
+                    : undefined;
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [
+                    {
+                      kind: "dialogue",
+                      speakerId: "bob",
+                      text: sceneChange ? "That helps." : "I hear you.",
+                      heardBy: ["bob", "tina"],
+                    },
+                  ],
+                  ...(sceneChange ? { sceneChange } : {}),
+                  ...(system.includes("Also return recap") ? { recap: "Bob and Tina discussed the visit." } : {}),
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "Live commitment") {
+              const result = {
                 heardPlayerBy: ["bob"],
                 segments: [
                   {
                     kind: "dialogue",
                     speakerId: "bob",
-                    text: "I will remember your promise about the bridge.",
+                    text: "I will bring seedlings when we plant together.",
                     heardBy: ["bob"],
                   },
                 ],
-                recollections: [
+                memoryChanges: [
                   {
-                    text: "The player promised Bob to help with the bridge.",
+                    kind: "durable",
+                    category: "commitment",
+                    text: "Bob will bring seedlings for planting together.",
                     subjectCharacterIds: ["bob"],
                     knownByCharacterIds: ["bob"],
-                    evidence: ["player", 0],
-                  },
-                  {
-                    text: "Tina heard a private promise.",
-                    subjectCharacterIds: ["tina"],
-                    knownByCharacterIds: ["tina"],
-                    evidence: ["player"],
+                    evidence: [0],
+                    memoryIds: [],
                   },
                 ],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "A promise and four kisses") {
-            const everyone = ["bob", "tina", "cora", "dan"];
+                relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+                wishChanges: [],
+              };
+              return { content: fixtureJson(result), finishReason: "stop" };
+            }
+            if (user === "Live truncated metadata")
+              return {
+                content:
+                  '{"heardPlayerBy":["bob"],"segments":[{"kind":"dialogue","speakerId":"bob","text":"Let us keep talking about those seedlings.","heardBy":["bob"]}],"attentionWitnesses":[],"acousticReplies":[{"segment":0,"delivery":"ordinary","outward":false,"heardBy":["bob"],"understoodBy":["bob"],"playerHeard":true,"playerUnderstood":true}],"wishChanges":[],"memoryChanges":[{"text":"cut',
+                finishReason: "length",
+              };
+            if (user === "Remember the bridge")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob"],
+                  segments: [
+                    {
+                      kind: "dialogue",
+                      speakerId: "bob",
+                      text: "I will remember your promise about the bridge.",
+                      heardBy: ["bob"],
+                    },
+                  ],
+                  recollections: [
+                    {
+                      text: "The player promised Bob to help with the bridge.",
+                      subjectCharacterIds: ["bob"],
+                      knownByCharacterIds: ["bob"],
+                      evidence: ["player", 0],
+                    },
+                    {
+                      text: "Tina heard a private promise.",
+                      subjectCharacterIds: ["tina"],
+                      knownByCharacterIds: ["tina"],
+                      evidence: ["player"],
+                    },
+                  ],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "A promise and four kisses") {
+              const everyone = ["bob", "tina", "cora", "dan"];
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: everyone,
+                  segments: [
+                    {
+                      kind: "dialogue",
+                      speakerId: "bob",
+                      text: "That is an unforgettable morning.",
+                      heardBy: everyone,
+                    },
+                  ],
+                  recollections: [
+                    {
+                      text: "The player promised Bob, Tina, Cora, and Dan twenty million dollars.",
+                      subjectCharacterIds: everyone,
+                      knownByCharacterIds: everyone,
+                      evidence: ["player", 0],
+                    },
+                    ...everyone.map((characterId) => ({
+                      text: `The player kissed ${characterId} on the lips.`,
+                      subjectCharacterIds: [characterId],
+                      knownByCharacterIds: everyone,
+                      evidence: ["player", 0],
+                    })),
+                  ],
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "Review failure promise")
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob"],
+                  segments: [
+                    {
+                      kind: "dialogue",
+                      speakerId: "bob",
+                      text: "I will hold you to the red umbrella.",
+                      heardBy: ["bob"],
+                    },
+                  ],
+                  recollections: [
+                    {
+                      text: "The player promised Bob a red umbrella.",
+                      subjectCharacterIds: ["bob"],
+                      knownByCharacterIds: ["bob"],
+                      evidence: ["player", 0],
+                    },
+                  ],
+                }),
+                finishReason: "stop",
+              };
+            if (user === "Bob asks to move") {
+              const quote = "May I move to the empty room?";
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob"],
+                  segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
+                  residenceRequest: { speakerId: "bob", venueId: "empty", quote },
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "Bob says goodbye" || user === "Tina says goodbye") {
+              const speakerId = user.startsWith("Bob") ? "bob" : "tina";
+              const quote = "I am heading out now.";
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: [speakerId],
+                  segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: [speakerId] }],
+                  departures: [{ speakerId, quote }],
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (user === "Everyone says goodbye") {
+              const quote = "We are all closing up and heading home.";
+              return {
+                content: fixtureJson({
+                  heardPlayerBy: ["bob", "tina"],
+                  segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
+                  sceneEnded: { speakerId: "bob", quote },
+                }),
+                finishReason: "stop",
+              };
+            }
+            const cast = system.match(/(?:The residents currently here are|Local residents): ([^.]+)\./u)?.[1] ?? "";
+            const hasBob = cast.includes("bob");
+            const speakerId = system.includes("Intended target: tina") ? "tina" : hasBob ? "bob" : "tina";
+            let departures: string[] = [];
+            let sceneEnded = false;
+            let heardBy = hasBob ? ["bob"] : ["tina"];
+            if (user === "Bob heads away") {
+              departures = ["bob"];
+              heardBy = ["bob", "tina"];
+            }
+            if (user === "Tina heads away") departures = ["tina"];
+            if (user === "A natural goodbye") sceneEnded = true;
             return {
               content: fixtureJson({
-                heardPlayerBy: everyone,
-                segments: [
+                heardPlayerBy: user.startsWith("The player is already inside") ? [] : heardBy,
+                lines: [
                   {
-                    kind: "dialogue",
-                    speakerId: "bob",
-                    text: "That is an unforgettable morning.",
-                    heardBy: everyone,
+                    speakerId: user === "Tina heads away" ? "tina" : speakerId,
+                    text: user.startsWith("The player is already inside")
+                      ? "Welcome."
+                      : user === "The player leaves without saying anything."
+                        ? "Take care on your way out."
+                        : "I hear you.",
+                    heardBy,
                   },
                 ],
-                recollections: [
-                  {
-                    text: "The player promised Bob, Tina, Cora, and Dan twenty million dollars.",
-                    subjectCharacterIds: everyone,
-                    knownByCharacterIds: everyone,
-                    evidence: ["player", 0],
-                  },
-                  ...everyone.map((characterId) => ({
-                    text: `The player kissed ${characterId} on the lips.`,
-                    subjectCharacterIds: [characterId],
-                    knownByCharacterIds: everyone,
-                    evidence: ["player", 0],
-                  })),
-                ],
+                departures,
+                sceneEnded,
               }),
               finishReason: "stop",
             };
-          }
-          if (user === "Review failure promise")
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob"],
-                segments: [
-                  {
-                    kind: "dialogue",
-                    speakerId: "bob",
-                    text: "I will hold you to the red umbrella.",
-                    heardBy: ["bob"],
-                  },
-                ],
-                recollections: [
-                  {
-                    text: "The player promised Bob a red umbrella.",
-                    subjectCharacterIds: ["bob"],
-                    knownByCharacterIds: ["bob"],
-                    evidence: ["player", 0],
-                  },
-                ],
-              }),
-              finishReason: "stop",
-            };
-          if (user === "Bob asks to move") {
-            const quote = "May I move to the empty room?";
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
-                residenceRequest: { speakerId: "bob", venueId: "empty", quote },
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "Bob says goodbye" || user === "Tina says goodbye") {
-            const speakerId = user.startsWith("Bob") ? "bob" : "tina";
-            const quote = "I am heading out now.";
-            return {
-              content: fixtureJson({
-                heardPlayerBy: [speakerId],
-                segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: [speakerId] }],
-                departures: [{ speakerId, quote }],
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (user === "Everyone says goodbye") {
-            const quote = "We are all closing up and heading home.";
-            return {
-              content: fixtureJson({
-                heardPlayerBy: ["bob", "tina"],
-                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
-                sceneEnded: { speakerId: "bob", quote },
-              }),
-              finishReason: "stop",
-            };
-          }
-          const cast = system.match(/The residents currently here are: ([^.]+)\./u)?.[1] ?? "";
-          const hasBob = cast.includes("bob");
-          const speakerId = system.includes("Intended target: tina") ? "tina" : hasBob ? "bob" : "tina";
-          let departures: string[] = [];
-          let sceneEnded = false;
-          let heardBy = hasBob ? ["bob"] : ["tina"];
-          if (user === "Bob heads away") {
-            departures = ["bob"];
-            heardBy = ["bob", "tina"];
-          }
-          if (user === "Tina heads away") departures = ["tina"];
-          if (user === "A natural goodbye") sceneEnded = true;
-          return {
-            content: fixtureJson({
-              heardPlayerBy: user.startsWith("The player is already inside") ? [] : heardBy,
-              lines: [
-                {
-                  speakerId: user === "Tina heads away" ? "tina" : speakerId,
-                  text: user.startsWith("The player is already inside")
-                    ? "Welcome."
-                    : user === "The player leaves without saying anything."
-                      ? "Take care on your way out."
-                      : "I hear you.",
-                  heardBy,
-                },
-              ],
-              departures,
-              sceneEnded,
-            }),
-            finishReason: "stop",
-          };
+          },
         },
-      };
+        records,
+      );
     },
   },
 } as any);
+
+// Legacy writer fixtures exercise current Zone routing with their admitted v1 writing contract.
+// The sparse/packaged suites cover newly admitted reference-only writing.
+async function admitLegacyTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {
+  const row = records.get(key("villages", "villages-venue-visit-" + input.sessionId));
+  const scene = row?.data;
+  if (
+    scene &&
+    (!scene.operation || scene.operation.status === "complete") &&
+    scene.operation?.id !== input.submissionId
+  ) {
+    scene.operation = {
+      id: input.submissionId,
+      kind: "turn",
+      status: "complete",
+      input: {
+        message: input.message,
+        mode: input.mode,
+        targetId: input.targetId,
+        ...(input.contact ? { contact: input.contact } : {}),
+        ...(input.attentionChoice ? { attentionChoice: input.attentionChoice } : {}),
+        interactionScopeVersion: 6,
+        writingContractVersion: 1,
+      },
+      token: "fixture-admission",
+      attemptId: "fixture-admission",
+      stage: "admission",
+      startedAt: new Date().toISOString(),
+      sceneRevision: scene.sceneRevision,
+      snapshot: null,
+      checkpoints: {},
+      attempts: {},
+      error: "",
+    };
+  }
+  return;
+}
 
 const now = new Date();
 const dateKey = agendaDateKey(now);
@@ -1497,7 +1575,14 @@ async function main() {
       }),
     );
     assert.equal(emptyChat.session.lines.at(-1)?.content, "The empty room stays quiet.");
-    assert.equal(calls, 1, "empty Chat uses one scene narration call");
+    assert.equal(calls, 1, "a trailing-comma Scene response recovers with one narration call");
+    assert.equal(emptyChat.session.operation?.input.interactionScopeVersion, 6);
+    assert(
+      !Object.keys(emptyChat.session.operation?.checkpoints ?? {}).some((stage) =>
+        /attention-plan|acoustic-routing/u.test(stage),
+      ),
+      "new turns bypass the hearing interpreter",
+    );
     const emptyAction = await sendVenueTurn({
       sessionId: empty.id,
       message: "Set down a cup",
@@ -1730,10 +1815,10 @@ async function main() {
       writingGuidance: "",
     });
     assert.equal((await readVillageWriting()).writingGuidance, "");
-    assert.equal(asked.session.lines.at(-2)?.heardBy.join(), "bob", "targeting can keep a line from a bystander");
+    assert.equal(asked.session.lines.at(-2)?.heardBy.join(), "", "unfiltered player input is never witness evidence");
     assert.equal(asked.session.lines.at(-1)?.speakerId, "bob");
     assert.ok(
-      asked.session.heardHistory
+      !asked.session.heardHistory
         .find((person) => person.characterId === "bob")
         ?.lineIds.includes(asked.session.lines.at(-2)!.id),
     );
@@ -1827,8 +1912,8 @@ async function main() {
     assert.equal(venueReplyCalls, beforeStageRetry, "duplicate submissions do not regenerate staging");
     assert.equal(duplicateStage.session.lines.length, lively.session.lines.length);
     assert.equal(aside.expression, undefined, "an unfilled sprite expression is dropped without losing the aside");
-    assert.deepEqual(aside.heardBy, ["bob"], "a side remark keeps its own audience");
-    assert.deepEqual(lively.session.lines.find((line) => line.kind === "whisper")?.heardBy, ["tina", "bob"]);
+    assert.deepEqual(aside.heardBy, ["bob", "tina"], "ordinary side chatter uses computed Zone witnesses");
+    assert.deepEqual(lively.session.lines.find((line) => line.kind === "whisper")?.heardBy, ["bob", "tina"]);
     narrationOnlyOnce = true;
     const beforeQuietReply = calls;
     const answered = await sendVenueTurn({
@@ -1889,7 +1974,7 @@ async function main() {
     );
     assert.equal(
       editedOrdinary.session.lines.filter(
-        (line) => line.role === "user" && line.content === "An edited ordinary message",
+        (line) => line.role === "user" && !line.contactHidden && line.content === "An edited ordinary message",
       ).length,
       1,
     );
@@ -2972,7 +3057,7 @@ async function main() {
     );
     assert.equal(reviewCalls, reviewsBeforeDebugDiscard, "DEBUG discard intentionally performs no durable review");
     await proposeVenueChange("park", {
-      classes: ["workplace", "gathering"],
+      classes: ["workplace", "community"],
       title: "Open the workshop for gatherings",
       detail: "Add a shared table.",
     });
@@ -3326,6 +3411,109 @@ async function main() {
         resident.agenda!.activeDay!.blocks.forEach((block) => (block.zoneId = "exterior"));
       }
     });
+    // A purchased, already-interpreted reply skips generate() during coordinator replay.
+    // Its legacy Decision signal must still pass the application boundary.
+    for (const source of ["decisions", "system"] as const) {
+      for (const timing of ["now", "later"] as const) {
+        const opening = await enterVenue("home", "residence", "", "outside");
+        const quote = timing === "now" ? "Come into the Common Space." : "Visit the Common Space tomorrow.";
+        const check = {
+          id: "saved-invitation",
+          domain: "room",
+          question: "Did Bob invite the player?",
+          facts: { actorId: "bob", venueId: "home", zoneId: "residence" },
+          outcomes: [{ id: "invite-" + timing, statement: "Permission granted" }],
+          evidence: [{ id: "draft:0", speakerId: "bob", content: quote, current: true }],
+        };
+        const result = { source, outcome: "invite-" + timing, evidenceIds: ["draft:0"], reason: "" };
+        const savedReply = {
+          ...parseVenueReply(
+            { segments: [{ kind: "dialogue", speakerId: "bob", text: quote }], heardPlayerBy: [] },
+            opening.activeIds,
+          ),
+          wishChanges: [],
+          wishContexts: [],
+          memoryChanges: [],
+          earlierLineIds: [],
+          memoryVersions: {},
+          relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+          projectSpeech: [],
+          projectContexts: [],
+          departures: [],
+          recollections: [],
+          contactEndIds: [],
+          contactMoves: [],
+          invitationSignal: {
+            residentId: "bob",
+            venueId: "home",
+            zoneId: "residence",
+            zoneLabel: "Common Space",
+            scope: "shared",
+            area: "shared",
+            spaceClass: "residence",
+            timing,
+            ownerId: "",
+            quote,
+            evidenceKind: "speech",
+          },
+          roomInterpretation: {
+            checks: [check],
+            results: [result],
+            settings: { decisionsEnabled: true },
+            traces: [
+              {
+                id: check.id,
+                domain: "room",
+                question: check.question,
+                evidence: check.evidence,
+                decisions: { status: source === "decisions" ? "answered" : "off" },
+                system: { status: "not-requested" },
+                result,
+                applied: "",
+                startedAt: new Date().toISOString(),
+              },
+            ],
+          },
+        };
+        const record = records.get(key("villages", `villages-venue-visit-${opening.id}`))!;
+        record.data.operation = {
+          id: "greeting",
+          kind: "greet",
+          input: {},
+          token: "old-owner",
+          attemptId: "saved-greeting",
+          status: "interrupted",
+          stage: "greeting-reply",
+          startedAt: new Date().toISOString(),
+          sceneRevision: opening.sceneRevision,
+          snapshot: structuredClone({ ...record.data, operation: undefined }),
+          checkpoints: { "greeting-reply": savedReply },
+          attempts: {},
+          error: "Application was interrupted",
+        };
+        const beforeReplay = calls;
+        const replayed = await greetVenue(opening.id);
+        assert.equal(calls, beforeReplay, "saved invitation replay makes no generation or interpretation request");
+        assert.equal(
+          replayed.entryOffers?.some((offer) => offer.zoneId === "residence") ?? false,
+          source === "system" && timing === "now",
+        );
+        assert.equal(
+          replayed.zoneGrants?.some((grant) => grant.zoneId === "residence") ?? false,
+          source === "system" && timing === "now",
+        );
+        const recorded =
+          (await readVillageState()).venues
+            .find((place) => place.id === "home")!
+            .playerInvitations?.some((invite) => invite.quote === quote) ?? false;
+        assert.equal(recorded, source === "system" && timing === "later");
+        await endVenueSession(opening.id);
+        await mutateVillageState((state) => {
+          const home = state.venues.find((place) => place.id === "home")!;
+          home.playerInvitations = home.playerInvitations?.filter((invite) => invite.quote !== quote);
+        });
+      }
+    }
     outside = await greetVenue((await enterVenue("home", "residence")).id);
     assert.equal(outside.area, "outside");
     await sendVenueTurn({

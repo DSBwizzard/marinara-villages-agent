@@ -8,8 +8,8 @@ export type InactiveFoundingZones = {
 };
 
 export function startingZone(venue: VillageVenue, personal: boolean) {
-  const gathering = venue.category === "public-center";
-  const role = gathering ? "gathering" : "residence";
+  const community = venue.category === "public-center";
+  const role = community ? "community" : "residence";
   const ownerId = personal ? (venue.occupancy.playerHome ? "player" : (venue.occupancy.residentCharacterId ?? "")) : "";
   return {
     ...personalSpaceDraft(),
@@ -17,7 +17,7 @@ export function startingZone(venue: VillageVenue, personal: boolean) {
     name: personal ? "Private Space" : "Common Space",
     purpose: "",
     ownerId,
-    venueClass: role as "gathering" | "residence",
+    venueClass: role as "community" | "residence",
     access: draftZonePolicy(venue, { ownerId, venueClass: role }, personal),
   };
 }
@@ -35,7 +35,7 @@ export function includeFoundingZone(
     return {
       venue,
       inactive,
-      problem: "The starting Gathering Place requires public Common Space and has no Private Space.",
+      problem: "The starting Community Place requires public Common Space and has no Private Space.",
     };
   if (!included && !(personal ? common : privateSpaces).length)
     return { venue, inactive, problem: "At least one Common or Private Space is required." };
@@ -77,15 +77,15 @@ export function resumeFoundingVenue(venue: VillageVenue, inactive: InactiveFound
     inactive: saved,
     venue: {
       ...venue,
-      classes: ["gathering"] as VillageVenue["classes"],
+      classes: ["community"] as VillageVenue["classes"],
       layoutVersion: 1 as const,
       layout: "common" as const,
       spaces: (venue.spaces?.length ? venue.spaces : [startingZone(venue, false)]).map((zone) => ({
         ...zone,
         ownerId: "",
         controllerIds: [],
-        venueClass: "gathering" as const,
-        access: draftZonePolicy(venue, { venueClass: "gathering" }),
+        venueClass: "community" as const,
+        access: draftZonePolicy(venue, { venueClass: "community" }),
       })),
       privateSpaces: [],
     },

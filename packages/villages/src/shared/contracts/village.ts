@@ -1,4 +1,5 @@
 import type { StagingCue } from "../helpers/scene-staging.js";
+import type { SpeechDelivery, SpeechPresentation } from "../helpers/scene-speech.js";
 import type { PlayerRole } from "./player-role.js";
 import type { VillagesWalkBeat } from "./scene-beat.js";
 
@@ -138,6 +139,7 @@ export type BackgroundWork = {
 };
 
 export type VillageSnapshot = {
+  clock?: import("./clock.js").VillageClockView;
   backgroundWork?: BackgroundWork[];
   status: string;
   village: {
@@ -231,7 +233,7 @@ export type VenueRequest = {
   requestQuote?: string;
   source?: "chat" | "background";
   proposedAt: string;
-  venueDraft?: { name: string; classes: Array<"residence" | "workplace" | "gathering" | "other">; description: string };
+  venueDraft?: { name: string; classes: Array<"residence" | "workplace" | "community" | "other">; description: string };
 };
 
 export type BuildProject = {
@@ -416,8 +418,8 @@ export type VillageVenue = {
   buildProjectId?: string;
   name: string;
   form?: string;
-  classes?: Array<"residence" | "workplace" | "gathering" | "other">;
-  baseClasses?: Array<"residence" | "workplace" | "gathering" | "other">;
+  classes?: Array<"residence" | "workplace" | "community" | "other">;
+  baseClasses?: Array<"residence" | "workplace" | "community" | "other">;
   zones?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
       name: string;
@@ -435,6 +437,7 @@ export type VillageVenue = {
     }
   >;
   spaces?: Array<{
+    connectedTo?: string[];
     id: string;
     roomSpecification?: string;
     imageOutdated?: boolean;
@@ -445,8 +448,10 @@ export type VillageVenue = {
     access?: import("../helpers/venue-access.js").ZoneAccessPolicy;
     accessView?: import("../helpers/venue-access.js").ZoneAccessView;
     controllerIds?: string[];
-    venueClass: "residence" | "workplace" | "gathering" | "other";
+    venueClass: "residence" | "workplace" | "community" | "other";
     description: string;
+    freezePicture?: boolean;
+    pictureRetryAvailable?: boolean;
     image: VillageVenueImage | null;
     state: {
       condition: string;
@@ -499,8 +504,9 @@ export type VillageVenue = {
     title: string;
     description: string;
     spaceId: string | null;
-    classContribution?: "residence" | "workplace" | "gathering" | "other";
+    classContribution?: "residence" | "workplace" | "community" | "other";
     zones?: Array<{
+      connectedTo?: string[];
       id?: string;
       name: string;
       kind: "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
@@ -510,7 +516,7 @@ export type VillageVenue = {
       accessView?: import("../helpers/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
       description: string;
-      venueClass: "residence" | "workplace" | "gathering" | "other";
+      venueClass: "residence" | "workplace" | "community" | "other";
     }>;
     extraBeds: number;
     approvedAt: string;
@@ -551,7 +557,16 @@ export type TownMapFit = "cover" | "stretch" | "contain";
 /** Reviewed zone terms; artwork and discovered state are not part of a layout draft. */
 export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
   NonNullable<VillageVenue["zones"]>[number],
-  "id" | "name" | "kind" | "description" | "roomSpecification" | "venueClass" | "purpose" | "controllerIds" | "ownerId"
+  | "id"
+  | "name"
+  | "kind"
+  | "description"
+  | "roomSpecification"
+  | "venueClass"
+  | "purpose"
+  | "controllerIds"
+  | "ownerId"
+  | "connectedTo"
 >;
 
 /**
@@ -620,6 +635,7 @@ export type VillageSettings = {
   selectedLorebookIds: string[];
   sceneryArtStyle?: string;
   sceneryStyleProfileId?: string | null;
+  automaticZonePictures?: boolean;
   personalizeVenueImagesByDefault?: boolean;
   useVisualLoreByDefault?: boolean;
   loreTokenBudget: number;
@@ -813,10 +829,14 @@ export type RoomLine = {
   at: string;
   heardBy?: string[];
   viaDoorway?: boolean;
+  /** Local cast after this line's completed movement; never unseen Zone attendance. */
+  physicalIdsAfter?: string[];
   remoteDelivery?: "loud" | "device";
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
   beats?: ChatBeat[];
   kind?: "narration" | "dialogue" | "side" | "whisper";
+  delivery?: SpeechDelivery;
+  presentation?: SpeechPresentation;
   expression?: string;
   gazeAt?: string;
   staging?: StagingCue[];
@@ -852,10 +872,21 @@ export type RoomOperation = {
     mode?: string;
     targetId?: string;
     contact?: { kind?: string; boundaryZoneId?: string };
+    attentionChoice?: { id: string; zoneId: string };
   };
 };
 
+export type SceneChangeIssue = {
+  submissionId: string;
+  domain: string;
+  status?: "pending" | "failed" | "rejected";
+  at?: string;
+  reason?: string;
+};
+
 export type SceneView = {
+  connectionMap?: { id: string; connectedTo?: string[] }[];
+  attentionClarification?: { id: string; message: string; question: string; choices: { id: string; label: string }[] };
   memoryMode?: "live";
   version: 1;
   sceneRevision?: number;
@@ -1056,8 +1087,6 @@ export type AgendaBlock = {
   endMinute: number;
   venueId: string;
   activity: string;
-  reason: string;
-  status: string;
 };
 export /**
  * How this villager's week happens here.
@@ -1124,7 +1153,6 @@ type VillageDayBlock = {
   here: string;
   translated: boolean;
   venueId: string;
-  status: string;
   current: boolean;
 };
 export /**
@@ -1200,7 +1228,7 @@ export type VillagerAgendaView = {
   ingestSchedule: boolean;
   nativeSchedule: {
     weekStart: string;
-    days: Record<string, { time: string; activity: string; status: string }[]>;
+    days: Record<string, { time: string; activity: string }[]>;
   } | null;
   remap: VillageRemap | null;
   weekStart: string;

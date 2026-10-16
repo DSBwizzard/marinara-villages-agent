@@ -644,7 +644,7 @@ async function main() {
       "Scene-change projection has no access commands.",
     );
     await endVenueSession(entered.id);
-    await updateVillageZone("home", "exterior", { name: "Entrance", purpose: "Arrival", description: "A stone gate" });
+    await updateVillageZone("home", "exterior", { name: "Exterior", purpose: "Arrival", description: "A stone gate" });
     assert.equal(
       (await readVillageState()).venues[0].zones!.find((zone) => zone.kind === "exterior")!.description,
       "A stone gate",
@@ -725,6 +725,7 @@ async function main() {
     const invitationScene = structuredClone(arrival);
     invitationScene.lines.push(invitationLine);
     await recordSpokenInvitation(invitationScene, {
+      interpretationVersion: 1,
       residentId: "jim",
       venueId: "home",
       scope: "shared",
@@ -759,6 +760,7 @@ async function main() {
         lines: [...refusedMove.lines, { ...invitationLine, id: "immediate-retry", at: new Date().toISOString() }],
       } as any,
       {
+        interpretationVersion: 1,
         residentId: "jim",
         venueId: "home",
         scope: "shared",
@@ -812,6 +814,7 @@ async function main() {
       ],
     } as any;
     await recordSpokenInvitation(standingScene, {
+      interpretationVersion: 1,
       residentId: "jim",
       venueId: "home",
       scope: "shared",
@@ -1136,7 +1139,7 @@ async function main() {
     const banCheck = banChecks.find((check) => check.outcomes.some((outcome) => outcome.id === "ban-venue"))!;
     const banBatch = {
       checks: [banCheck],
-      results: [{ outcome: "ban-venue", evidenceIds: ["draft:0"] }],
+      results: [{ source: "system", outcome: "ban-venue", evidenceIds: ["draft:0"] }],
       traces: [{ applied: "Pending" }],
     } as any;
     banScene.submissions = [
@@ -1207,6 +1210,7 @@ async function main() {
           replyLineIds: ["previous-world-line"],
           movement: {},
           invitationSignal: {
+            interpretationVersion: 1,
             residentId: "jim",
             venueId: "home",
             scope: "shared",

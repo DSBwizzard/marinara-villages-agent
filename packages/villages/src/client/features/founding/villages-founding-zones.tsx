@@ -1,3 +1,5 @@
+import { SpaceConnections } from "../../shared/SpaceConnections.js";
+import { connectionProblem, materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { ZoneAccessPolicy } from "../../../shared/helpers/venue-access.js";
 import { ZonePolicyFields } from "../venues/villages-venue-access";
@@ -11,7 +13,13 @@ export function foundingZoneProblem(venue: VillageVenue): string {
   )
     return "Give each Zone a name and describe what it is used for.";
   if (venue.spaces?.some((zone) => !zone.description.trim())) return "Describe each Zone's appearance.";
-  return "";
+  return connectionProblem(
+    materializeConnections([
+      { id: "exterior", kind: "exterior" },
+      ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
+      ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "restricted" })),
+    ]),
+  );
 }
 
 export function draftZonePolicy(
@@ -126,8 +134,8 @@ export function FoundingZoneFields({
                           ? "Residential"
                           : role === "workplace"
                             ? "Work"
-                            : role === "gathering"
-                              ? "Gathering"
+                            : role === "community"
+                              ? "Community"
                               : "Other"}
                       </option>
                     ))}
@@ -298,12 +306,38 @@ export function FoundingZoneFields({
                 ))}
               </select>
               <p>
-                Used by schedules. Access remains separate; an unset or inaccessible destination falls back to Entrance.
+                Used by schedules. Access remains separate; an unset or inaccessible destination falls back to Exterior.
               </p>
             </label>
           );
         });
       })()}
     </>
+  );
+}
+
+/** Shared by the founding workspace and the standalone Venue editor. */
+export function FoundingConnections({ venue, onPatch }: { venue: VillageVenue; onPatch(venue: VillageVenue): void }) {
+  return (
+    <SpaceConnections
+      spaces={[
+        { id: "exterior", name: "Exterior", kind: "exterior", connectedTo: undefined as string[] | undefined },
+        ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
+        ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "restricted" })),
+      ]}
+      onChange={(rows) =>
+        onPatch({
+          ...venue,
+          spaces: venue.spaces?.map((zone) => ({
+            ...zone,
+            connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+          })),
+          privateSpaces: venue.privateSpaces?.map((zone) => ({
+            ...zone,
+            connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+          })),
+        })
+      }
+    />
   );
 }

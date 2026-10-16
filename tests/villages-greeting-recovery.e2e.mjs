@@ -1,3 +1,4 @@
+import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -97,7 +98,8 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
       }
     }
     if (path.endsWith("/rooms/active") && failActiveReads) return route.abort("failed");
-    if (path.endsWith("/rooms/turn")) return route.abort("failed");
+    if (path.endsWith("/rooms/turn"))
+      return route.fulfill({ status: 400, json: { error: "This line could not be accepted." } });
     let value;
     if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity"))
       value = { session, debugDiscardEnabled: false };
@@ -133,10 +135,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
     // Clicking waits for the map pin to remain attached and settle after the
     // initial image/layout read; a key press can lose focus during that render.
     await page.locator('[data-pin-id="mill"]').click();
-    await page
-      .locator(".marinara-capability-villages-explore-sheet")
-      .getByRole("button", { name: "Visit", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Visit venue", exact: true }).click();
   }
   async function focus() {
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -175,10 +174,12 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
 try {
   for (const restored of [false, true]) {
     const f = await fixture({ restored });
-    await expect(f.page.getByRole("alert")).toContainText("Could not reach the server");
+    await expectSceneError(f.page, "Could not reach the server");
+    await openSceneErrors(f.page);
     await expect(f.page.getByRole("button", { name: "Retry opening", exact: true })).toBeVisible();
     await expect(f.page.getByRole("button", { name: "Continue without opening", exact: true })).toBeVisible();
     assert.equal(f.calls, 1, "a genuine opening failure does not retry generation");
+    await closeSceneErrors(f.page);
     f.complete();
     f.allowReads();
     await f.focus();
@@ -189,10 +190,10 @@ try {
     const composer = f.page.getByRole("textbox", { name: "Message at The Mill" });
     await composer.fill("Keep this unsent draft.");
     await f.page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(f.page.getByRole("alert")).toContainText("Could not reach the server");
+    await expectSceneError(f.page, "This line could not be accepted.");
     await f.focus();
     await expect(composer).toHaveValue("Keep this unsent draft.");
-    await expect(f.page.getByRole("alert")).toContainText("Could not reach the server");
+    await expectSceneError(f.page, "This line could not be accepted.");
     await f.mount();
     await expect(f.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
     await expect(f.page.getByRole("alert")).toHaveCount(0);
@@ -223,11 +224,11 @@ try {
   switched.replaceVisit();
   await switched.focus();
   await switched.start();
-  await expect(switched.page.getByRole("alert")).toContainText("The second visit could not open.");
+  await expectSceneError(switched.page, "The second visit could not open.");
   switched.release();
   await expect.poll(() => switched.settled).toBe(true);
-  await expect(switched.page.getByRole("alert")).toContainText("The second visit could not open.");
-  await expect(switched.page.getByRole("alert")).not.toContainText("Could not reach the server");
+  await expectSceneError(switched.page, "The second visit could not open.");
+  await expect(await openSceneErrors(switched.page)).not.toContainText("Could not reach the server");
   assert.equal(switched.calls, 2, "each deliberate visit makes exactly one greeting request");
   await switched.page.close();
   assert.deepEqual(errors, []);

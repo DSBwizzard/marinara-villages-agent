@@ -45,7 +45,8 @@ export function createProjectChecks({
     scene: VenueScene,
     village: VillageState,
     message: string,
-    draft: Pick<VenueLine, "speakerId" | "content" | "kind" | "heardBy" | "contactHidden" | "contactReport">[],
+    draft: (Pick<VenueLine, "speakerId" | "content" | "kind" | "heardBy" | "contactHidden" | "contactReport"> &
+      Partial<Pick<VenueLine, "role" | "attentionEvidence">>)[],
     heardPlayerBy: string[],
     key: string,
   ): InterpretationCheck[] {
@@ -72,7 +73,13 @@ export function createProjectChecks({
           !(flow.phase === "construction" && project.status === "blocked")
         )
           return [];
-        if (!projectExchangeRelevant(scene, project, context.revision, actor, message, draft)) {
+        const witnessedMessage = heardPlayerBy.includes(actor)
+          ? message
+          : draft
+              .filter((line) => line.attentionEvidence && line.role === "user" && line.heardBy.includes(actor))
+              .map((line) => line.content)
+              .join("\n");
+        if (!projectExchangeRelevant(scene, project, context.revision, actor, witnessedMessage, draft)) {
           pipelineSignal("projectRelevanceSkips");
           return [];
         }
@@ -86,7 +93,7 @@ export function createProjectChecks({
         const name = village.villagers.find((person) => person.characterId === actor)?.cardSnapshot.name ?? actor;
         const history = scene.lines.filter(
           (line) =>
-            !line.contactHidden &&
+            (!line.contactHidden || line.attentionEvidence) &&
             !line.contactReport &&
             line.kind !== "side" &&
             line.kind !== "whisper" &&
@@ -110,6 +117,20 @@ export function createProjectChecks({
                 },
               ]
             : []),
+          ...draft.flatMap((line, index) =>
+            line.attentionEvidence && line.heardBy.includes(actor)
+              ? [
+                  {
+                    id: `draft:${index}`,
+                    speakerId: line.role === "user" ? "player" : "__venue_scene__",
+                    name: line.role === "user" ? "Player" : "Sound",
+                    content: line.content,
+                    kind: line.kind,
+                    current: true,
+                  },
+                ]
+              : [],
+          ),
           ...draft.flatMap((line, index) =>
             !line.contactHidden &&
             !line.contactReport &&

@@ -1,9 +1,11 @@
+import { guardedClockGeneration } from "../../adapters/time/clock-gate.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import type { loadEngineImageStyleSupport } from "../../adapters/engine/image-style-profiles.js";
 import type { villageEngineJson } from "../../adapters/engine/engine-loopback.js";
 import type { decodeVillageImageDataUrl, DecodedVillageImage } from "../../adapters/engine/image-files.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
+import { imageEditSupport } from "../../domain/rules/image-edit-support.js";
 import {
   imagePromptId,
   readPrompt,
@@ -65,6 +67,7 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     };
   }
   async function generateVillageImage(input: {
+    referenceImages?: string[];
     connectionId?: string;
     sceneryStyleProfileId?: unknown;
     name: string;
@@ -109,23 +112,26 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     const connectionId = await resolveVillageImageConnectionId(input.connectionId);
     const name = input.name.trim() || "Village image";
     const answer = asRecord(
-      await villageEngineJson<unknown>(IMAGE_GENERATION_PATH, {
-        body: {
-          connectionId,
-          name,
-          appearance: prompt,
-          purpose: "avatar",
-          width,
-          height,
-          promptOverrides: [
-            {
-              id: imagePromptId(name),
-              prompt,
-              negativePrompt: negativePrompt || undefined,
-            },
-          ],
-        },
-      }),
+      await guardedClockGeneration(() =>
+        villageEngineJson<unknown>(IMAGE_GENERATION_PATH, {
+          body: {
+            connectionId,
+            referenceImages: input.referenceImages,
+            name,
+            appearance: prompt,
+            purpose: "avatar",
+            width,
+            height,
+            promptOverrides: [
+              {
+                id: imagePromptId(name),
+                prompt,
+                negativePrompt: negativePrompt || undefined,
+              },
+            ],
+          },
+        }),
+      ),
     );
     return decodeVillageImageDataUrl(answer.image, {
       label: "generated image",
@@ -133,6 +139,46 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     });
   }
 
-  return { resolveVillageImageConnectionId, generateVillageImage, readVillageImageStyleCatalog };
+  async function resolveVillageImageEditing() {
+    const choice = await villagesImageConnectionChoice();
+    if (!choice.enabled) return null;
+    const connectionId = await resolveVillageImageConnectionId();
+    const listed = await villageEngineJson<unknown>("/api/connections");
+    if (!Array.isArray(listed)) return null;
+    const rows = listed.map(asRecord);
+    const primary = rows.find((row) => row.id === connectionId);
+    if (!primary || imageEditSupport(primary).status !== "supported") return null;
+    const fallbacks = rows.filter(
+      (row) =>
+        row.provider === "image_generation" &&
+        (row.fallbackForAgents === true || row.fallbackForAgents === "true") &&
+        row.profileImportReviewRequired !== true &&
+        row.profileImportReviewRequired !== "true" &&
+        row.id !== connectionId,
+    );
+    if (fallbacks.some((row) => imageEditSupport(row).status !== "supported")) return null;
+    const relevant = [primary, ...fallbacks];
+    return {
+      connectionId,
+      multiple: relevant.every((row) => imageEditSupport(row).multiple),
+      signature: JSON.stringify(
+        relevant.map((row) => [
+          row.id,
+          row.model,
+          row.baseUrl,
+          row.imageService,
+          row.imageGenerationSource,
+          row.comfyuiWorkflow,
+          row.defaultParameters,
+        ]),
+      ),
+    };
+  }
+  return {
+    resolveVillageImageConnectionId,
+    generateVillageImage,
+    readVillageImageStyleCatalog,
+    resolveVillageImageEditing,
+  };
 }
 export type ImageGenerationService = ReturnType<typeof createImageGeneration>;

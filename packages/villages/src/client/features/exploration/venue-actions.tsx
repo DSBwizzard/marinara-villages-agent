@@ -12,7 +12,7 @@ export function createVenueExplorationActions(ports: {
   readonly openPlace: (place: import("../../../shared/contracts/village").VillageVenue) => void;
   readonly openRoom: (
     place: import("../../../shared/contracts/village").VillageVenue,
-    spaceClass?: "residence" | "workplace" | "gathering" | "other",
+    spaceClass?: "residence" | "workplace" | "community" | "other",
     privateOwnerId?: string,
     entryArea?: "private" | "outside" | "shared" | "public",
     zoneId?: string,

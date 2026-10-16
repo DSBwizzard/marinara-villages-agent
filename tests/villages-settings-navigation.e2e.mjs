@@ -323,8 +323,9 @@ async function checkPackage(width) {
     }
     if (route.request().method() !== "GET" && !path.endsWith("/presence") && !path.endsWith("/reconcile"))
       throw Error(`Unexpected mutation: ${path}`);
-    const body =
-      path === "/api/villages" || path.endsWith("/snapshot") || path.endsWith("/reconcile")
+    const body = path.endsWith("/debug/runtime")
+      ? { showUsageMeter: false }
+      : path === "/api/villages" || path.endsWith("/snapshot") || path.endsWith("/reconcile")
         ? snapshot
         : path.endsWith("/background")
           ? { work: [] }
@@ -365,7 +366,7 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: "General Settings", exact: true }).click();
   await page.getByRole("button", { name: "Village Settings", exact: true }).click();
   await page.clock.fastForward(350);
-  await expect.poll(() => usagePreviews.length).toBeGreaterThan(0);
+  assert.equal(usagePreviews.length, 0, "public Settings never request the private cost preview");
   await page.getByLabel("The information villagers know", { exact: true }).fill("Packaged retained draft");
   await page.getByRole("button", { name: "Back to menu", exact: true }).click();
   await page.getByRole("button", { name: "General Settings", exact: true }).click();
@@ -396,6 +397,24 @@ async function checkPackage(width) {
     "Newer packaged scenery draft",
   );
   assert.equal(scenerySaves.length, 1);
+  const automatic = page.getByRole("checkbox", { name: "Automatic Zone pictures", exact: true });
+  await expect(automatic).toBeChecked();
+  await automatic.click();
+  await expect.poll(() => scenerySaves.length).toBe(2);
+  assert.deepEqual(scenerySaves[1].request().postDataJSON(), { automaticZonePictures: false });
+  saved.settings.automaticZonePictures = false;
+  await scenerySaves[1].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await expect(automatic).not.toBeChecked();
+  await automatic.click();
+  await expect.poll(() => scenerySaves.length).toBe(3);
+  assert.deepEqual(scenerySaves[2].request().postDataJSON(), { automaticZonePictures: true });
+  saved.settings.automaticZonePictures = true;
+  await scenerySaves[2].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await expect(automatic).toBeChecked();
+  if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
+    await page.screenshot({
+      path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-settings-${width}.png`),
+    });
   assert.deepEqual(errors, []);
   await page.close();
 }

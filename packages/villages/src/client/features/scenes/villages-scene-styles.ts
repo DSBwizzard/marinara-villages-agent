@@ -15,10 +15,10 @@ ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !imp
 .${tag}-room-screen .${tag}-chat-vn {
   position: absolute; z-index: 10; left: 50%; bottom: var(--villages-scene-dock-bottom, 0px);
   transform: translateX(-50%); width: min(58rem, 100%); margin: 0;
-  padding: 0 .75rem max(.75rem, env(safe-area-inset-bottom)); gap: .5rem;
+  padding: 0 .75rem; gap: .5rem;
   border: 0; border-radius: 0; background: transparent; backdrop-filter: none; box-shadow: none;
 }
-${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: .5rem; }
+${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-tab { margin-bottom: -.5rem; }
 .${tag}-room-screen .${tag}-chat-history-toggle {
   width: 2.5rem; height: 1.5rem; min-height: 0; padding: 0; align-self: auto;
@@ -58,6 +58,12 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: .5rem; }
 }
 .${tag}-room-screen .${tag}-composer { border: 0; padding: 0; gap: .375rem; }
 .${tag}-room-screen .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }
+.${tag}-room-screen .${tag}-chat-input:has(> .${tag}-attention-choice) { flex-wrap: wrap; }
+.${tag}-attention-choice { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem; flex-basis: 100%; order: -1; min-width: 0; padding: .25rem 0; }
+.${tag}-attention-choice > small { flex-basis: 100%; font-size: .75rem; opacity: .8; }
+.${tag}-attention-choice > span { flex-basis: 100%; font-size: .8rem; }
+.${tag}-attention-choice > button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; border: 1px solid var(--border); border-radius: .5rem; padding: .25rem .5rem; background: var(--secondary); color: inherit; }
+.${tag}-room-screen .${tag}-chat-input > .${tag}-zone-navigation { flex: 1 1 0; min-width: 0; width: 100%; border: 0; padding: 0; background: transparent; font: inherit; color: inherit; }
 .${tag}-room-screen .${tag}-chat-input > .${tag}-textarea {
   height: auto; min-height: 0; max-height: 12.5rem; padding: 0; font-size: .875rem; line-height: 1.5;
 }
@@ -82,9 +88,35 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: .5rem; }
 .${tag}-scene-settings-head h2 { margin: 0 0 .75rem; font-size: 1rem; }
 .${tag}-scene-settings button { cursor: pointer; font: inherit; color: inherit; border: 1px solid var(--border); border-radius: .5rem; padding: .25rem .5rem; background: var(--secondary); }
 .${tag}-scene-settings .villages-decisions-control > [role="region"] { width: 100% !important; box-sizing: border-box; }
-.${tag}-saved-change-status { position: absolute; z-index: 20; top: 5.5rem; left: .75rem; right: .75rem; max-width: 36rem; max-height: max(2rem, calc(var(--villages-scene-visible-height, 100cqh) - 12rem)); overflow-y: auto; padding: .5rem .75rem; box-sizing: border-box; border: 1px solid var(--border); border-radius: .5rem; background: var(--popover); font-size: .75rem; }
-.${tag}-saved-change-status summary { cursor: pointer; }
-.${tag}-saved-change-status button { display: block; margin-top: .5rem; max-width: 100%; cursor: pointer; font: inherit; color: inherit; border: 1px solid var(--border); border-radius: .5rem; padding: .25rem .5rem; background: var(--secondary); }
+
+.${tag}-scene-notice-chips { position: absolute; top: 3.5rem; left: .75rem; right: .75rem; z-index: 20; display: flex; align-items: flex-start; gap: .5rem; pointer-events: none; }
+.${tag}-scene-notice-chips > * { pointer-events: auto; }
+.${tag}-room-screen .${tag}-scene-notice-chips .${tag}-room-notices { position: static; }
+.${tag}-room-screen .${tag}-scene-notice-chips .${tag}-room-stars { top: calc(100% + .5rem); left: 0; right: auto; }
+.${tag}-scene-error-trigger { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 44px; min-width: 3.5rem; padding: .35rem .65rem; border: 1px solid var(--border); border-radius: 1.5rem; background: var(--popover); color: var(--foreground); font: inherit; font-size: .75rem; cursor: pointer; }
+.${tag}-scene-error-trigger[aria-expanded="true"] { border-color: #ed6689; }
+.${tag}-scene-error-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #ed6689; color: #2c101a; font-weight: 750; font-size: .875rem; line-height: 1; }
+.${tag}-scene-error-panel { position: absolute; top: calc(100% + .5rem); left: 0; width: min(26rem, 100%); max-height: max(5rem, calc(var(--villages-scene-visible-height, 100cqh) - 12rem)); overflow-y: auto; box-sizing: border-box; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); color: var(--foreground); box-shadow: 0 .75rem 2rem #0006; font-size: .8125rem; }
+.${tag}-scene-error-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .25rem .75rem; border-bottom: 1px solid var(--border); }
+.${tag}-scene-error-head h2 { margin: 0; font-size: .875rem; }
+.${tag}-scene-error-head button { min-width: 44px; min-height: 44px; background: transparent; color: inherit; border: 0; font: inherit; cursor: pointer; }
+.${tag}-scene-error-item + .${tag}-scene-error-item { border-top: 1px solid var(--border); }
+.${tag}-scene-error-item summary { display: flex; align-items: center; gap: .5rem; padding: .75rem; min-height: 44px; box-sizing: border-box; list-style: none; cursor: pointer; }
+.${tag}-scene-error-item summary::-webkit-details-marker { display: none; }
+.${tag}-scene-error-item summary::after { content: "›"; margin-left: auto; }
+.${tag}-scene-error-item[open] summary::after { transform: rotate(90deg); }
+.${tag}-scene-error-detail { padding: 0 .75rem .75rem; overflow-wrap: anywhere; }
+.${tag}-scene-error-detail p { margin: 0 0 .75rem; white-space: pre-wrap; }
+.${tag}-scene-error-detail dl { margin: .75rem 0; font-size: .75rem; }
+.${tag}-scene-error-detail dl > div { display: grid; grid-template-columns: 5rem minmax(0,1fr); gap: .5rem; margin: .35rem 0; }
+.${tag}-scene-error-detail dt { color: var(--muted-foreground); }
+.${tag}-scene-error-detail dd { margin: 0; white-space: pre-wrap; }
+.${tag}-scene-error-detail button { min-height: 44px; max-width: 100%; padding: .35rem .5rem; margin-top: .35rem; background: var(--secondary); border: 1px solid var(--border); border-radius: .5rem; color: inherit; font: inherit; cursor: pointer; white-space: normal; overflow-wrap: anywhere; }
+.${tag}-scene-error-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.${tag}-scene-error-trigger:focus-visible, .${tag}-scene-error-item summary:focus-visible, .${tag}-scene-error-panel button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.${tag}-scene-modal-errors { position: relative; margin-bottom: .5rem; }
+.${tag}-scene-modal-errors .${tag}-scene-error-panel { z-index: 40; }
+.${tag}-spinoff-error-notice .${tag}-scene-error-panel { top: auto; bottom: calc(100% + .5rem); max-height: 50cqh; }
 @media (min-width: 768px) {
   .${tag}-room-screen .${tag}-chat-vn-row { padding: 1rem; gap: 1rem; }
   .${tag}-room-screen .${tag}-chat-input { padding: .625rem 1rem; gap: .5rem; }
@@ -105,7 +137,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: .5rem; }
   height: auto !important; max-height: none !important; margin: 0; overflow: visible;
 }
 .${tag}-dialogue-hide, .${tag}-dialogue-restore { display: none; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem env(safe-area-inset-bottom, 0px); gap: .25rem; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem; gap: .25rem; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-tab { position: absolute; bottom: 100%; left: calc(50% - 22px); margin: 0; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-history-toggle { width: 44px; }

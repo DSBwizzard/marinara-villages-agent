@@ -38,6 +38,8 @@ import type { createFoundingRestoreSetupDraft } from "./draft-controller.js";
 
 /** Values and actions used by FoundingScreen; independent of shell implementation. */
 export type FoundingScreenController = {
+  readonly setupTimeZone?: string;
+  readonly setSetupTimeZone?: (value: string) => void;
   readonly busy: boolean;
   readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];
   readonly chooseSetupScenario: ReturnType<typeof createFoundingChooseSetupScenario>;

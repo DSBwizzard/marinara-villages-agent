@@ -33,6 +33,9 @@ export function calculateSetupBeginningSourceKey(ports: {
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
   setupSetting: string;
+  setupName?: string;
+  setupWorldFacts?: string[];
+  setupImprint?: import("../../../shared/contracts/village").ScenarioImprint;
   visualLoreDefault: boolean;
 }) {
   const {
@@ -49,6 +52,9 @@ export function calculateSetupBeginningSourceKey(ports: {
     visualLoreDefault,
   } = ports;
   return JSON.stringify({
+    name: ports.setupName,
+    worldFacts: ports.setupWorldFacts,
+    imprint: ports.setupImprint,
     residentContexts: selectedResidentContexts,
     scenario: setupFoundingReason,
     premise: setupFoundingDetails.trim(),
@@ -181,7 +187,7 @@ export function calculateDraftPins(ports: {
       access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
       accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
       controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "gathering" | "other";
+      venueClass: "residence" | "workplace" | "community" | "other";
       description: string;
       image: import("../../../shared/contracts/village").VillageVenueImage;
       state: {
@@ -201,7 +207,7 @@ export function calculateDraftPins(ports: {
       access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
       accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
       controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "gathering" | "other";
+      venueClass: "residence" | "workplace" | "community" | "other";
       description: string;
       image: import("../../../shared/contracts/village").VillageVenueImage;
       state: {
@@ -236,7 +242,7 @@ export function calculateDraftPins(ports: {
           access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
           accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
           controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "gathering" | "other";
+          venueClass: "residence" | "workplace" | "community" | "other";
           description: string;
           image: import("../../../shared/contracts/village").VillageVenueImage;
           state: {
@@ -256,7 +262,7 @@ export function calculateDraftPins(ports: {
           access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
           accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
           controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "gathering" | "other";
+          venueClass: "residence" | "workplace" | "community" | "other";
           description: string;
           image: import("../../../shared/contracts/village").VillageVenueImage;
           state: {
@@ -302,8 +308,8 @@ export function calculateDraftPins(ports: {
         id: venue.id,
         x: spot.x,
         y: spot.y,
-        text: venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence"),
-        label: `${index + 1}. ${venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence")}`,
+        text: venue.name || (venue.category === "public-center" ? "Community Place" : "Residence"),
+        label: `${index + 1}. ${venue.name || (venue.category === "public-center" ? "Community Place" : "Residence")}`,
         image: venue.presentation.image?.url ?? null,
         tone: venue.category === "public-center" ? "venue" : venue.occupancy.playerHome ? "player" : "resident",
         selected: selectedSetupVenueId === venue.id,

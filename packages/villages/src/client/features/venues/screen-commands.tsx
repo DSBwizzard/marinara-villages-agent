@@ -94,6 +94,40 @@ export function useVenueScreenCommands(ports: {
       );
     setVenueEditNotice(notice);
   };
+  const setZonePictureFrozen = async (place: VillageVenue, zoneId: string, frozen: boolean) => {
+    if (!isCurrentVenue(place.id)) return;
+    const claim = beginGlobal();
+    if (!claim) return;
+    setBusy(true);
+    try {
+      const next = await request<VillageSnapshot>("/locations/venue/image/freeze", {
+        method: "PATCH",
+        body: JSON.stringify({ venueId: place.id, zoneId, frozen }),
+      });
+      if (global.owns(claim)) setSnapshot(next);
+    } catch (cause) {
+      if (global.owns(claim)) setSettingsError(messageFrom(cause, "Picture preference could not be saved."));
+    } finally {
+      if (global.finish(claim)) setBusy(false);
+    }
+  };
+  const retryZonePicture = async (place: VillageVenue, zoneId: string) => {
+    if (!isCurrentVenue(place.id)) return;
+    const claim = beginGlobal();
+    if (!claim) return;
+    setBusy(true);
+    try {
+      const next = await request<VillageSnapshot>("/locations/venue/image/retry", {
+        method: "POST",
+        body: JSON.stringify({ venueId: place.id, zoneId }),
+      });
+      if (global.owns(claim)) setSnapshot(next);
+    } catch (cause) {
+      if (global.owns(claim)) setSettingsError(messageFrom(cause, "Artwork could not be updated."));
+    } finally {
+      if (global.finish(claim)) setBusy(false);
+    }
+  };
   const saveVenueImageContext = async (
     place: VillageVenue,
     imageContext: NonNullable<VillageVenue["imageContext"]>,
@@ -112,6 +146,29 @@ export function useVenueScreenCommands(ports: {
       if (global.owns(claim)) setSettingsError(messageFrom(cause, "Image context could not be saved."));
     } finally {
       if (global.finish(claim)) setBusy(false);
+    }
+  };
+  const saveVenueName = async (place: VillageVenue, name: string) => {
+    if (!isCurrentVenue(place.id) || !name.trim()) return;
+    const claim = editor.begin();
+    if (!claim) return;
+    claim.onRetire = () => setVenueEditBusy(false);
+    setVenueEditBusy(true);
+    setVenueEditError("");
+    setVenueEditNotice("");
+    try {
+      const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(place.id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (!editor.owns(claim)) return;
+      setSnapshot(next);
+      setVenueEditDraft((current) => (current?.id === place.id && current.name === name ? null : current));
+      setVenueEditNotice("Venue name saved.");
+    } catch (cause) {
+      if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "The Venue name could not be saved."));
+    } finally {
+      if (editor.finish(claim)) setVenueEditBusy(false);
     }
   };
   const saveVenueDetails = async (
@@ -367,7 +424,10 @@ export function useVenueScreenCommands(ports: {
     }
   };
   return {
+    saveVenueName,
     saveVenueImageContext,
+    setZonePictureFrozen,
+    retryZonePicture,
     saveVenueDetails,
     proposeRoomEdit,
     requestPlayerMove,

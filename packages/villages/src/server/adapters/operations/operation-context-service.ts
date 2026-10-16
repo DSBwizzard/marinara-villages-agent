@@ -9,6 +9,7 @@ export type Context = {
   operation: VenueOperation;
   controller: AbortController;
   allowPaid: boolean;
+  explicitRetry?: boolean;
   scope: string;
   counts: Map<string, number>;
   usedAttemptKeys: Map<string, string>;

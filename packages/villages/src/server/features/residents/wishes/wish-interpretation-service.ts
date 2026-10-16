@@ -47,6 +47,7 @@ export function createWishInterpretation(ports: WishInterpretationPorts) {
     key: string,
     allowProgress = true,
     compactWish = true,
+    useDecisions = false,
   ): Promise<InterpretationBatch> {
     const checks = contexts.flatMap((context) =>
       context.wishes.map((wish) => {
@@ -70,10 +71,13 @@ export function createWishInterpretation(ports: WishInterpretationPorts) {
         );
         return {
           ...check,
-          decisionEligible: false,
-          decisionReason: "One cited System batch; no preparatory request",
+          decisionEligible: useDecisions && admission.admitted,
+          decisionReason: useDecisions
+            ? "Only bounded witnessed Wish evidence uses Decisions"
+            : "One cited System batch; no preparatory request",
           facts: {
             ...asRecord(check.facts),
+            ...(useDecisions ? { actorName: context.card.name } : {}),
             physicalOnly,
             admission: admission.admitted,
             admissionReason: admission.reason,
@@ -83,7 +87,7 @@ export function createWishInterpretation(ports: WishInterpretationPorts) {
     );
     const batch = await interpretChecks(
       checks,
-      `wish-v2:${key}`,
+      `${useDecisions ? "wish-v3" : "wish-v2"}:${key}`,
       sceneId,
       bindCallback(async (pending, signal) => {
         const paid = pending.filter((check) => asRecord(check.facts).admission);
@@ -105,9 +109,15 @@ export function createWishInterpretation(ports: WishInterpretationPorts) {
       const original = facts.criteria as WishCriteria;
       const proofKind = asRecord(result.details).proofKind;
       // Only partial CONVERSATIONAL progress can bypass a mixed goal's eventual physical requirement.
-      if (result.outcome === "progress" && proofKind === "conversation" && !facts.physicalOnly)
+      if (
+        result.source === "system" &&
+        result.outcome === "progress" &&
+        proofKind === "conversation" &&
+        !facts.physicalOnly
+      )
         facts.criteria = { ...original, requiresPhysical: false, kind: "complex" };
-      else if (proofKind === "physical") facts.criteria = { ...original, requiresPhysical: true };
+      else if (result.source === "system" && proofKind === "physical")
+        facts.criteria = { ...original, requiresPhysical: true };
       let reason = validateWishInterpretation(check, result);
       if (
         ["progress", "fulfilled"].includes(result.outcome) &&

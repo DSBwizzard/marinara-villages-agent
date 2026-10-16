@@ -29,6 +29,8 @@ import type { VillageVenue, VillageVillager } from "../packages/villages/src/ser
 
 const records = new Map<string, any>();
 let failVillageWrites = 0;
+let failWritesAfterReply = 0;
+const warnings: string[] = [];
 const documents = {
   async getById(_packageId: string, id: string) {
     return records.get(id) ?? null;
@@ -42,7 +44,11 @@ const documents = {
     return row;
   },
   async update(input: any) {
-    if (input.id === "villages-village" && failVillageWrites > 0) {
+    if (
+      input.id === "villages-village" &&
+      failVillageWrites > 0 &&
+      input.data.projects?.some((project: any) => project.lifecycle?.candidates?.length)
+    ) {
       failVillageWrites--;
       return null;
     }
@@ -96,7 +102,15 @@ let modelReply: Record<string, unknown> = {};
 let lastPrompt = "";
 const release = configureVillagesRuntime({
   getAgentConfig: async () => ({ connectionId: "fixture" }),
-  logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
+  logger: {
+    debug() {},
+    info() {},
+    warn(...args: unknown[]) {
+      warnings.push(args.join(" "));
+    },
+    error() {},
+    debugOverride() {},
+  },
   isDebugAgentsEnabled: () => true,
   persistence: { documents },
   languageModels: {
@@ -108,6 +122,20 @@ const release = configureVillagesRuntime({
           return { messages, ...options };
         },
         async chatComplete(messages: any[]) {
+          if (messages[0]?.content.startsWith("Interpret nearby attention")) {
+            const wire = JSON.parse(messages[1].content);
+            return {
+              content: JSON.stringify({
+                results: wire.checks.map((check: any) => ({
+                  id: check.id,
+                  outcome: "local",
+                  evidenceIds: ["player-input"],
+                  reason: "Local Project speech fixture",
+                })),
+              }),
+              finishReason: "stop",
+            };
+          }
           if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
             interpretationCalls++;
             const { checks } = JSON.parse(messages[1].content);
@@ -125,13 +153,13 @@ const release = configureVillagesRuntime({
                   return {
                     id: check.id,
                     outcome: proposal ? check.outcomes[0].id : "none",
-                    evidenceIds: proposal ? ["draft:0"] : [],
+                    evidenceIds: proposal ? ["draft:1"] : [],
                     reason: "Independent labeled fixture",
                     ...(proposal?.kind === "requirements"
                       ? {
                           details: {
                             citations: proposal.citations.map((citation: any) => ({
-                              evidenceId: `draft:${citation.segment}`,
+                              evidenceId: `draft:${citation.segment + 1}`,
                               quote: citation.quote,
                             })),
                             checklist: proposal.checklist,
@@ -146,7 +174,18 @@ const release = configureVillagesRuntime({
           }
           modelCalls++;
           lastPrompt = messages.map((message) => message.content).join("\n");
-          return { content: JSON.stringify(modelReply), finishReason: "stop" };
+          const current = messages.at(-1).content;
+          const reply = structuredClone(modelReply) as any;
+          reply.segments = [{ kind: "dialogue", speakerId: "player", text: current }, ...reply.segments];
+          reply.playerSpeechCapture = {
+            status: "captured",
+            segments: [{ segment: 0, sources: [{ text: current, occurrence: 1 }] }],
+          };
+          for (const proposal of reply.projectSpeech ?? [])
+            for (const citation of proposal.citations) citation.segment++;
+          failVillageWrites += failWritesAfterReply;
+          failWritesAfterReply = 0;
+          return { content: JSON.stringify(reply), finishReason: "stop" };
         },
       };
     },
@@ -323,7 +362,7 @@ async function main() {
     builderReply = await sendVenueTurn(builderInput);
     assert.equal((await project()).lifecycle!.candidates.length, 1);
     assert.equal((await project()).lifecycle!.builderId, "", "Assign remains a decision");
-    const builderLine = builderReply.session.submissions[0].replyLineIds![0];
+    const builderLine = builderReply.session.submissions[0].replyLineIds![1];
     assert.equal(builderReply.session.submissions[0].projectSpeech![0].citations[0].lineId, builderLine);
     assert.ok(builderReply.session.submissions[0].progressProcessedAt);
     assert.equal(builderReply.recordEvents.filter((event) => event.kind === "project").length, 1);
@@ -520,6 +559,20 @@ async function main() {
     doorway(approval);
     await processSavedProgressSubmission(approval.sessionId, approval.submissionId);
     assert.equal((await readVillageState()).projects.find((entry) => entry.id === roofId)!.lifecycle!.phase, "builder");
+    modelReply = {
+      segments: [{ kind: "dialogue", speakerId: "rosa", text: "Good afternoon.", heardBy: ["rosa"] }],
+      projectSpeech: [],
+    };
+    const beforeObservationFailure = modelCalls;
+    failWritesAfterReply = 6;
+    const observationInput = { ...builderInput, submissionId: "observation-conflict", message: "Good afternoon." };
+    await sendVenueTurn(observationInput);
+    assert(
+      warnings.some((message) => message.includes("saved turn observation deferred")),
+      "ancillary observation failure is exercised",
+    );
+    await sendVenueTurn(observationInput);
+    assert.equal(modelCalls, beforeObservationFailure + 1, "observation recovery reuses the paid reply");
     console.log(
       "Villages automatic Project interpretation: natural speech, citations, decisions, physical gates, replay and cost ok",
     );

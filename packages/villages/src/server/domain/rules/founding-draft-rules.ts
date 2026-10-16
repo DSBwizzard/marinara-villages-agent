@@ -1,3 +1,4 @@
+import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
 
@@ -8,6 +9,7 @@ export type FoundingVenueSuggestion = {
   venueType?: string;
   description: string;
   layout: "exterior" | "common" | "private" | "both";
+  connections?: [string, string][];
   commonName: string;
   commonPurpose?: string;
   commonDescription: string;
@@ -20,6 +22,8 @@ export function parseFoundingVenueSuggestions(
   value: unknown,
   ids: readonly string[],
   template?: readonly { id: string; venueClass: string; residentCharacterId?: string | null }[],
+  quickStart = false,
+  requireConnections = false,
 ): FoundingVenueSuggestion[] {
   const payload = record(value);
   if (!Array.isArray(payload.venues))
@@ -42,14 +46,51 @@ export function parseFoundingVenueSuggestions(
     };
     const layout = row.layout;
     const venue = template?.find((venue) => venue.id === id);
-    if (venue && (venue.venueClass === "gathering" ? layout !== "common" : layout === "exterior"))
+    if (quickStart && venue?.venueClass === "residence" && layout !== "both")
       throw badRequest(
-        "Residences require Common or Private Space; the starting Gathering Place requires Common only.",
+        "Quick Start requires both Common Space and Private Space for every Residence. Your draft is unchanged.",
+      );
+    if (venue && (venue.venueClass === "community" ? layout !== "common" : layout === "exterior"))
+      throw badRequest(
+        "Residences require Common or Private Space; the starting Community Place requires Common only.",
       );
     if (!["exterior", "common", "private", "both"].includes(String(layout)))
       throw badRequest("Choose a valid suggested Zone layout.");
+    const connections = row.connections;
+    if (requireConnections && connections === undefined)
+      throw badRequest("The suggested Venue needs explicit space connections. Your draft is unchanged.");
+    if (connections !== undefined) {
+      const zoneIds = [
+        "exterior",
+        ...(["common", "both"].includes(String(layout)) ? ["common:base"] : []),
+        ...(["private", "both"].includes(String(layout)) ? ["private:base"] : []),
+      ];
+      if (
+        !Array.isArray(connections) ||
+        connections.length > 3 ||
+        connections.some(
+          (edge) =>
+            !Array.isArray(edge) ||
+            edge.length !== 2 ||
+            edge.some((id) => typeof id !== "string" || !zoneIds.includes(id)) ||
+            edge[0] === edge[1],
+        ) ||
+        new Set(connections.map((edge) => [...edge].sort().join("\\0"))).size !== connections.length
+      )
+        throw badRequest("The proposed space connections are invalid. Your draft is unchanged.");
+      const problem = connectionProblem(
+        zoneIds.map((id) => ({
+          id,
+          connectedTo: connections
+            .filter((edge) => edge.includes(id))
+            .map((edge) => (edge[0] === id ? edge[1] : edge[0])),
+        })),
+      );
+      if (problem) throw badRequest(problem);
+    }
     return {
       id,
+      ...(connections === undefined ? {} : { connections: connections as [string, string][] }),
       name: text("name", 100, true),
       form: text("form", 240, true),
       venueType: text("venueType", 100),
@@ -73,7 +114,7 @@ export type DraftRow = {
   form: string;
   description: string;
   spaceDescription: string;
-  venueClass: "residence" | "gathering" | "workplace" | "other";
+  venueClass: "residence" | "community" | "workplace" | "other";
   residentCharacterId: string;
   layout?: string;
   areas?: unknown;
@@ -89,7 +130,7 @@ export function rowsOf(value: unknown): DraftRow[] {
   return value.map((raw) => {
     const row = record(raw);
     const venueClass = row.venueClass;
-    if (!["residence", "gathering", "workplace", "other"].includes(String(venueClass)))
+    if (!["residence", "community", "workplace", "other"].includes(String(venueClass)))
       throw badRequest("Choose a founding Venue Class.");
     const id = asTrimmedString(row.id).slice(0, 100);
     if (!id) throw badRequest("A founding venue needs an id.");

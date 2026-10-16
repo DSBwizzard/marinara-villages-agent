@@ -28,6 +28,7 @@ import type { useSendRoom } from "./actions.js";
 
 /** Values and actions used by SceneScreen; independent of shell implementation. */
 export type SceneScreenController = {
+  readonly openVenue: (place: VillageVenue) => void;
   readonly sceneReading: ScenesState["sceneReading"];
   readonly closeRoom: ReturnType<typeof useCloseRoom>;
   readonly composerEditVersionRef: ScenesState["composerEditVersionRef"];
@@ -69,7 +70,10 @@ export type SceneScreenController = {
   readonly roomTargetId: ScenesState["roomTargetId"];
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
   readonly saveSpriteCardFlip: (spriteCardFlipEnabled: boolean) => Promise<void>;
-  readonly sendRoom: ReturnType<typeof useSendRoom>;
+  readonly sendRoom: ReturnType<typeof useSendRoom>["sendRoom"];
+  readonly turnRecovery?: string;
+  readonly replyPending?: boolean;
+  readonly checkSavedReply?: () => Promise<void>;
   readonly setMailboxOpen: ScenesState["setMailboxOpen"];
   readonly setRoom: React.ActionDispatch<
     [next: React.SetStateAction<import("../../../shared/contracts/village").SceneView>]

@@ -10,7 +10,6 @@ import type {
 import { asRecord, condense } from "./coerce.js";
 import {
   boundText,
-  describeStatus,
   MAX_REMAP_HERE_LENGTH,
   MAX_REMAP_SLOT_LENGTH,
   MAX_ROUTINE_SUMMARY_LENGTH,
@@ -178,7 +177,6 @@ const REMAP_SYSTEM_PROMPT = [
   "- Keep the routine independent of wishes. Mark flexible:true only for genuine optional free time, never for sleep, meals, work or commitments.",
   "- Current village places and confirmed outcomes outrank lorebook descriptions of older desires. Never portray an already fulfilled wish as still unmet.",
   "- A desire in lore does not prove that an object exists or belongs to this person. Only current venue facts and confirmed outcomes establish present assets.",
-  "- Keep the availability you were given. Somebody whose block is busy is busy doing this; somebody whose block is asleep is asleep through it. Do not turn a committed hour into free time, or the other way round.",
   `- "agenda" is one sentence under ${MAX_ROUTINE_SUMMARY_LENGTH} characters describing an ordinary day for them HERE, in the same terms as your moves. It must not mention anything this village does not have.`,
   "- Never mention anything this village does not have: no technology, no vehicles, no travel to other worlds, no countries, no companies, no institutions, no places and no people the description does not imply. Somebody whose week involves flying a ship does not fly one here; they do the nearest thing this village could actually hold.",
   "- Keep it ordinary. Nobody here is saving anybody, and nothing you write may need explaining.",
@@ -238,7 +236,7 @@ export function remapBlocks(schedule: NativeWeekSchedule): RemapBlock[] {
   const blocks: RemapBlock[] = [];
   for (const day of VILLAGE_WEEKDAYS) {
     for (const block of schedule.days[day] ?? []) {
-      blocks.push({ day, time: block.time, activity: block.activity, status: block.status });
+      blocks.push({ day, time: block.time, activity: block.activity });
     }
   }
   return blocks;
@@ -323,8 +321,7 @@ export function remapSignature(input: {
   const weekStart = input.weekStart.trim();
   if (weekStart.length === 0) return "";
   const asked = remapBlocksInPrompt(input.blocks).map(
-    (entry) =>
-      `${remapBlockKey(entry.day, entry.time)}\u0000${phraseKey(entry.activity)}\u0000${entry.status.trim().toLowerCase()}`,
+    (entry) => `${remapBlockKey(entry.day, entry.time)}\u0000${phraseKey(entry.activity)}`,
   );
   const lens = remapVenues(input.venues)
     .slice(0, MAX_VENUES)
@@ -379,11 +376,7 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
   // Wishes are private context, not numbered labels for agenda hours. Weight is
   // said in words so it matches the villager's own panel and narration context.
   const week = remapBlocksInPrompt(context.blocks).reduce<{ day: string; lines: string[] }[]>((days, entry) => {
-    const words = describeStatus(entry.status);
-    const line =
-      words.length > 0
-        ? `- ${entry.time}: ${JSON.stringify(entry.activity)} (when they are ${words})`
-        : `- ${entry.time}: ${JSON.stringify(entry.activity)}`;
+    const line = `- ${entry.time}: ${JSON.stringify(entry.activity)}`;
     const open = days[days.length - 1];
     if (open && open.day === entry.day) open.lines.push(line);
     else days.push({ day: entry.day, lines: [line] });
@@ -745,7 +738,6 @@ export function dayPlan(
       // Kept in the response shape for older consumers, but no agenda hour is
       // labelled as belonging to a wish, even when a stored remap has old tags.
       wishId: "",
-      status: block.status,
       current: range ? (wraps ? now >= range.start || now < range.end : now >= range.start && now < range.end) : false,
     };
   });

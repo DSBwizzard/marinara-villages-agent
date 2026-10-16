@@ -17,6 +17,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
   let resolve!: () => void;
@@ -53,6 +54,7 @@ function fixture(label: string) {
     guardDisposed = false,
     brokenReply = false;
   const owner = createActivationScope();
+  let roomInterpretation: Awaited<ReturnType<SceneWritingPorts["interpretRoomReply"]>> = null;
   async function touch(stage: string) {
     calls.push(stage);
     owners.push(scopedActivation());
@@ -154,7 +156,7 @@ function fixture(label: string) {
       assert.equal(selected, scene);
       assert.equal(current, world);
       await touch("interpretation");
-      return null;
+      return roomInterpretation;
     },
   };
   const service = createSceneWriting(ports);
@@ -165,6 +167,9 @@ function fixture(label: string) {
     owners,
     owner,
     service,
+    interpretation(value: typeof roomInterpretation) {
+      roomInterpretation = value;
+    },
     entered,
     gate,
     exact,
@@ -200,6 +205,51 @@ assert.equal(reply.lines[0]?.content, "A room remains quiet.");
 assert.equal(reply.roomInterpretation, null);
 assert.equal(complete.calls.filter((x) => x === "completion").length, 1);
 assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
+for (const source of ["decisions", "system"] as const) {
+  const invitation = fixture(source);
+  invitation.world.venues = [
+    {
+      id: "same-place",
+      name: "Ada's home",
+      classes: ["residence"],
+      occupancy: { playerHome: false },
+      residentIds: ["ada"],
+      description: "A small home",
+      presentation: { image: null, x: null, y: null },
+      state: defaultVenueSpace("residence").state,
+      zones: [
+        { ...defaultVenueSpace("residence"), id: "exterior", name: "Exterior", kind: "exterior" },
+        {
+          ...defaultVenueSpace("residence"),
+          id: "private:ada",
+          name: "Ada's room",
+          kind: "private-residence",
+          ownerId: "ada",
+        },
+      ],
+    },
+  ] as any;
+  invitation.interpretation({
+    checks: [
+      {
+        id: "invite",
+        domain: "room",
+        question: "Did Ada invite Pat?",
+        outcomes: [],
+        facts: { venueId: "same-place", zoneId: "private:ada", actorId: "ada" },
+        evidence: [{ id: "spoken", speakerId: "ada", content: "Come into my room.", current: true }],
+      },
+    ],
+    results: [{ outcome: "invite-now", source, evidenceIds: ["spoken"], reason: "" }],
+    traces: [],
+  });
+  const result = await invitation.run();
+  assert.equal(
+    !!result.invitationSignal,
+    source === "system",
+    "unbound saved Decision invitations are inert; the same System evidence retains normal authority checks",
+  );
+}
 for (const stage of ["world", "connection", "lore", "model", "completion", "refresh", "interpretation"]) {
   const failed = fixture("failed");
   failed.fail(stage);

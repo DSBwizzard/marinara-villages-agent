@@ -12,7 +12,7 @@ npm run build
 npm run verify:package
 ```
 
-`packages/villages/package-definition.mjs` owns the package identity, version, entry points, permissions, and contributions. `packages/villages/src` owns editable code. `sources/engine-public/PROVENANCE.md` identifies the pinned public declarations and small compatibility fixture. Decisions has a separately documented private compatibility adapter in `engine-boundary.json`; unsupported runtime identities use its existing System fallback.
+`packages/villages/package-definition.mjs` owns the package identity, version, entry points, permissions, and contributions. `packages/villages/src` owns editable code. `sources/engine-public/PROVENANCE.md` identifies the pinned public declarations and small compatibility fixture. Decisions uses `api.runtime.decisions.evaluate()` introduced by Engine PR #7369. Engine 2.5.0 is the minimum; earlier 2.5.0 builds without the capability use System. `engine-boundary.json` contains no private runtime imports.
 
 ## Find and check a change
 

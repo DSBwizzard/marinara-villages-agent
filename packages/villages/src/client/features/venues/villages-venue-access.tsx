@@ -537,7 +537,7 @@ export function VenueAccessPanel({
               <details>
                 <summary>Venue-wide policy and bans</summary>
                 <p>
-                  Venue bans cover every Zone except Entrance, including Zones added later. Separately managed Zones
+                  Venue bans cover every Zone except Exterior, including Zones added later. Separately managed Zones
                   keep their own entry rules.
                 </p>
                 <PeopleFields label="Manages Venue access" people={people} value={managers} onChange={setManagers} />

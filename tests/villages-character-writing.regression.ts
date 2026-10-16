@@ -100,7 +100,7 @@ async function run() {
       placeId: "camp",
       placeName: "Camp",
       area: "inside",
-      spaceClass: "gathering",
+      spaceClass: "community",
       startedAt: stamp,
       participants: [{ characterId: card.id, name: card.name, doing: "Talking" }],
       activeIds: [card.id],
@@ -138,7 +138,7 @@ async function run() {
       title: "Local organizer",
       explanation: "People know the player coordinates shared plans.",
     };
-    for (const spaceClass of ["gathering", "residence"]) {
+    for (const spaceClass of ["community", "residence"]) {
       const exterior = {
         ...session,
         area: "outside",
@@ -157,7 +157,7 @@ async function run() {
       assert.ok(outsidePrompt.includes("People know the player coordinates shared plans."));
       assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));
       assert.match(outsidePrompt, /Activity captured at Scene start: Checking a map/);
-      assert.match(outsidePrompt, /witnessed developments establish what is happening now/);
+      assert.match(outsidePrompt, /witnessed developments establish what is happening now/i);
       assert.match(
         outsidePrompt,
         /Shared historical background, separate from the current activity and individual ambitions/,

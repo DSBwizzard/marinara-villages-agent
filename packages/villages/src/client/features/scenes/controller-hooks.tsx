@@ -3,6 +3,7 @@ import type {
   RoomOperation,
   RoomRecordEvent,
   SceneView,
+  SceneChangeIssue,
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import {
@@ -14,7 +15,7 @@ import {
 } from "./ScenePanel.js";
 import { isLocalRoomCompletion } from "./villages-room-reading";
 import { useSceneEntryLifetime } from "./entry-lifetime.js";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export function useSceneChangesPolling(ports: {
   dismissedRoomEventIdsRef: React.RefObject<Set<string>>;
@@ -25,9 +26,7 @@ export function useSceneChangesPolling(ports: {
   setRoomNotices: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village.js").RoomRecordEvent[]>
   >;
-  setRoomUnresolvedChanges: React.Dispatch<
-    React.SetStateAction<{ submissionId: string; domain: string; reason?: string }[]>
-  >;
+  setRoomUnresolvedChanges: React.Dispatch<React.SetStateAction<SceneChangeIssue[]>>;
 }) {
   const {
     dismissedRoomEventIdsRef,
@@ -54,7 +53,7 @@ export function useSceneChangesPolling(ports: {
           processingSummary: typeof roomChangeStatus;
           nextCursor: string;
           hasMore: boolean;
-          unresolved: { submissionId: string; domain: string; reason?: string }[];
+          unresolved: SceneChangeIssue[];
         }>(`/rooms/${encodeURIComponent(room.id)}/changes?cursor=${encodeURIComponent(cursor)}&limit=20`);
         if (stopped) return;
         for (const id of answer.dismissedNoticeIds ?? []) dismissedRoomEventIdsRef.current.add(id);
@@ -298,7 +297,7 @@ export function useSceneInterruptedSubmission(ports: {
         if (operation.kind === "move" && operation.input.zoneId) {
           restoredSceneDraftRef.current = restoreKey;
           if (composerEditVersionRef.current === editVersion && editVersion === 0) {
-            setRoomMode("move");
+            setRoomMode("chat");
             setRoomMoveZoneId(operation.input.zoneId);
             roomMoveOperationIdRef.current = operation.id;
           }
@@ -371,6 +370,8 @@ export function useActiveSceneRestoration(ports: {
     completion: roomCompletionRef,
     setBusy: setRoomBusy,
   });
+  const [status, setStatus] = useState<"checking" | "ready" | "error">("checking");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     let claim: ReturnType<typeof lifetime.begin> = null;
@@ -378,7 +379,9 @@ export function useActiveSceneRestoration(ports: {
       signal: controller.signal,
     })
       .then(async ({ session, debugDiscardEnabled: debugEnabled }) => {
-        if (controller.signal.aborted || !lifetime.isCurrent()) return;
+        if (controller.signal.aborted) return;
+        setStatus("ready");
+        if (!lifetime.isCurrent()) return;
         setDebugDiscardEnabled(debugEnabled);
         if (!session) return;
         const owned = lifetime.begin();
@@ -392,7 +395,8 @@ export function useActiveSceneRestoration(ports: {
           setRoomMode("chat");
           setRoomOpen(true);
           setScreen("room");
-          if (session.status === "opening") {
+          // A retry only checks saved state; opening generation remains an explicit action.
+          if (session.status === "opening" && attempt === 0) {
             owned.busy = true;
             setRoomBusy(true);
             try {
@@ -426,12 +430,21 @@ export function useActiveSceneRestoration(ports: {
           if (!controller.signal.aborted && lifetime.finish(owned) && owned.busy) setRoomBusy(false);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus("error");
+      });
     return () => {
       controller.abort();
       if (claim) lifetime.cancel(claim);
     };
-  }, []);
+  }, [attempt]);
+  return {
+    status,
+    retry: () => {
+      setStatus("checking");
+      setAttempt((current) => current + 1);
+    },
+  };
 }
 
 export function useSceneArchive(ports: {

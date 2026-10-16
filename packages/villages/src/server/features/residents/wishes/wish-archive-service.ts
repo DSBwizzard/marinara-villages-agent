@@ -1,3 +1,4 @@
+import { villageNow } from "../../../adapters/time/clock-gate.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createHash } from "node:crypto";
 import type { WishOutcome } from "../../../domain/models/wish-types.js";
@@ -46,7 +47,7 @@ export function createWishArchive(ports: WishArchivePorts) {
         (a, b) => a.sequence - b.sequence,
       );
       if (next.length > WISH_PAGE_SIZE) throw new Error("Wish archive page overflow.");
-      const at = new Date().toISOString();
+      const at = villageNow().toISOString();
       if (record) {
         if (
           !(await documents.update({
@@ -88,7 +89,7 @@ export function createWishArchive(ports: WishArchivePorts) {
       const record = await documents.getById(VILLAGES_PACKAGE_ID, pointer);
       const previous = (record?.data as { sequence?: number })?.sequence;
       if (Number.isSafeInteger(previous) && previous! >= outcome.sequence) return;
-      const at = new Date().toISOString();
+      const at = villageNow().toISOString();
       if (record) {
         if (
           await documents.update({

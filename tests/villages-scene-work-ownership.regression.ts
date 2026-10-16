@@ -133,7 +133,7 @@ function commandFixture(
       assert.equal(id, scene.id);
       assert.equal(submissionId, "same-turn");
       assert.equal(kind, "turn");
-      assert.deepEqual(input, { message: "Already saved", mode: "chat", targetId: "", interactionScopeVersion: 1 });
+      assert.deepEqual(input, { message: "Already saved", mode: "chat", targetId: "", interactionScopeVersion: 6 });
       assert.equal(expected, undefined);
       assert.equal(retry, undefined);
       assert.equal(options?.replay, true);
@@ -144,6 +144,11 @@ function commandFixture(
       assert.equal(id, scene.id);
       assert.equal(submissionId, "same-turn");
       await touch("progress");
+    },
+    mutateVillageState: async (change) => {
+      await touch("world");
+      await change(world);
+      return world;
     },
     readVillageSnapshot: async () => {
       await touch("snapshot");
@@ -189,6 +194,7 @@ function commandFixture(
   return {
     scene,
     world,
+    work,
     calls,
     owners,
     unexpected,
@@ -431,7 +437,7 @@ for (const canonical of [false, true]) {
   const shared = fixture("Shared", false, identity);
   shared.rows.clear();
   const world = defaultVillageState();
-  const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["gathering"] }, null);
+  const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["community"] }, null);
   world.venues = [venue];
   world.storyPace = "off";
   shared.rows.set("villages-village", { id: "villages-village", revision: 1, data: world });
@@ -777,11 +783,10 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
   }
 }
 
-// A detached image callback retains its owner while the lazy module promise is paused.
+// Free navigation replay retains its owner and never starts image work.
 {
-  const generated = deferred();
   const first = commandFixture("Image A", ({ scene, world, touch, stamp }) => {
-    const venue = venueDraft({ name: "Staff hall", description: "A staff hall", classes: ["gathering"] }, null);
+    const venue = venueDraft({ name: "Staff hall", description: "A staff hall", classes: ["community"] }, null);
     venue.id = scene.placeId;
     venue.zones = [{ ...venue.spaces[0], id: "staff-zone", name: "Staff room", kind: "staff" }];
     world.venues = [venue];
@@ -817,19 +822,16 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
             assert.equal(placeId, scene.placeId);
             assert.equal(zoneId, "staff-zone");
             await touch("image-command");
-            generated.resolve();
           },
         };
       },
     };
   });
   const second = commandFixture("Image B");
-  first.pause("image-loader");
   const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
   const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
   const clearFirst = installDefaultActivation(first.owner, () => {});
   const pending = moveVenueZone("same-scene", "staff-zone", undefined, undefined, "same-image-operation");
-  await first.entered.promise;
   const clearSecond = installDefaultActivation(second.owner, () => {});
   try {
     assert.equal((await pending).placeName, "Image A");
@@ -837,8 +839,8 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
     releaseFirst();
     clearFirst();
     first.gate.resolve();
-    await generated.promise;
-    assert.equal(first.calls.filter((stage) => stage === "image-command").length, 1);
+    assert.equal(first.calls.includes("image-loader"), false);
+    assert.equal(first.calls.filter((stage) => stage === "image-command").length, 0);
     assert(first.owners.every((owner) => owner === first.owner));
     assert.deepEqual(second.calls, []);
     assert.equal(first.modelAccess + second.modelAccess, 0);
@@ -855,3 +857,142 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
 console.log(
   "Scene command construction, paused replay, captured effects, lazy connections, errors and disposal retain their owners.",
 );
+
+// Pending effects predating interpreter provenance cannot acquire authority on saved-turn replay.
+{
+  let worldWrites = 0;
+  const pending = commandFixture("Pending access", ({ scene, world, stamp }) => {
+    const home = venueDraft({ name: "Home", description: "A small home", classes: ["residence"] }, null);
+    home.id = scene.placeId;
+    home.residentIds = ["ada"];
+    world.venues = [home];
+    scene.lines.push({
+      id: "invite-line",
+      speakerId: "ada",
+      name: "Ada",
+      kind: "dialogue",
+      role: "assistant",
+      content: "Visit tomorrow.",
+      at: stamp,
+      heardBy: ["ada"],
+    });
+    return {
+      mutateVillageState: async (change) => {
+        worldWrites++;
+        await change(world);
+        return world;
+      },
+    };
+  });
+  try {
+    const effects = pending.owner.run(() => pending.service.sceneReplayEffects());
+    const invitation = {
+      residentId: "ada",
+      venueId: pending.scene.placeId,
+      zoneId: "residence",
+      scope: "shared" as const,
+      timing: "later" as const,
+      ownerId: "",
+      quote: "Visit tomorrow.",
+      sourceLineId: "invite-line",
+    };
+    await effects.recordSpokenInvitation(pending.scene, invitation);
+    assert.equal(worldWrites, 0);
+    assert(pending.scene.pendingRoomQuestions?.some((question) => question.includes("lacks validated")));
+    assert.equal(pending.world.venues[0].playerInvitations?.length ?? 0, 0);
+    await effects.recordSpokenInvitation(pending.scene, { ...invitation, interpretationVersion: 1 });
+    assert.equal(pending.world.venues[0].playerInvitations?.length, 1, "validated saved invitations still replay");
+    const before = worldWrites;
+    await effects.applySavedAccessEvents(pending.scene, {
+      ...pending.scene.submissions[0],
+      replyLineIds: ["invite-line"],
+      accessEvents: [
+        {
+          id: "old-access",
+          facts: { actorId: "ada", venueId: pending.scene.placeId, zoneId: "residence", accessRevision: 0 },
+          outcome: "invite-outside-hours",
+          evidenceIds: ["draft:0"],
+        },
+      ],
+    });
+    assert.equal(worldWrites, before, "unversioned access effects do not enter mutation");
+    assert.equal(pending.modelAccess, 0);
+    assert.deepEqual(pending.unexpected, []);
+  } finally {
+    pending.owner.dispose();
+  }
+}
+
+// Greeting admission is observed and cancellable before storage reads settle.
+const originalGreetingTimeout = AbortSignal.timeout;
+const greetingUnhandled: unknown[] = [];
+const captureGreetingUnhandled = (error: unknown) => greetingUnhandled.push(error);
+process.on("unhandledRejection", captureGreetingUnhandled);
+try {
+  for (const failingRead of ["session", "world"] as const) {
+    const timeout = new AbortController();
+    AbortSignal.timeout = () => timeout.signal;
+    const exactFailure = new Error("failed greeting " + failingRead);
+    const failed = commandFixture("Failed greeting", ({ scene }) => ({
+      readSession: async () => {
+        if (failingRead === "session") throw exactFailure;
+        return scene;
+      },
+      readVillageState: async () => {
+        throw exactFailure;
+      },
+    }));
+    try {
+      await assert.rejects(
+        failed.owner.run(() => failed.service.greetVenue("same-scene")),
+        (error) => error === exactFailure,
+      );
+      assert.equal(failed.work.greetingTask("same-scene"), undefined);
+      timeout.abort(new DOMException("test timeout after read failure", "TimeoutError"));
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      failed.owner.dispose();
+    }
+  }
+  const timeout = new AbortController();
+  AbortSignal.timeout = () => timeout.signal;
+  const admissionGate = deferred(),
+    admissionEntered = deferred();
+  let coordination = 0,
+    worldReads = 0;
+  const blocked = commandFixture("Blocked greeting", ({ scene }) => ({
+    readSession: async () => {
+      admissionEntered.resolve();
+      await admissionGate.promise;
+      return scene;
+    },
+    readVillageState: async () => {
+      worldReads++;
+      throw new Error("cancelled admission may not read world");
+    },
+    coordinateVenue: async () => {
+      coordination++;
+      throw new Error("cancelled admission may not coordinate");
+    },
+  }));
+  try {
+    const pending = blocked.owner.run(() => blocked.service.greetVenue("same-scene"));
+    await admissionEntered.promise;
+    assert(blocked.work.greetingTask("same-scene"), "blocked admission is already registered");
+    const rejected = assert.rejects(pending, (error: any) => error?.name === "AbortError");
+    blocked.work.abortGreeting("same-scene");
+    await rejected;
+    assert.equal(blocked.work.greetingTask("same-scene"), undefined);
+    admissionGate.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(coordination, 0);
+    assert.equal(worldReads, 0);
+  } finally {
+    admissionGate.resolve();
+    blocked.owner.dispose();
+  }
+  assert.deepEqual(greetingUnhandled, [], "failed or cancelled admission leaves no orphan timeout rejection");
+} finally {
+  AbortSignal.timeout = originalGreetingTimeout;
+  process.off("unhandledRejection", captureGreetingUnhandled);
+}

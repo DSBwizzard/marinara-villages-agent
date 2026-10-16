@@ -62,6 +62,8 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
   const raw = asRecord(structuredClone(value)),
     result = defaultRelationshipState(seed);
   if (raw.seed !== seed) return result;
+  result.clockShiftMs =
+    typeof raw.clockShiftMs === "number" && Number.isFinite(raw.clockShiftMs) ? raw.clockShiftMs : 0;
   for (const row of Object.values(asRecord(raw.edges))) {
     const edge = asRecord(row);
     if (
@@ -81,6 +83,7 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
       familiarity: typeof edge.familiarity === "number" ? Math.max(0, Math.trunc(edge.familiarity)) : 0,
       lastContactAt: typeof edge.lastContactAt === "string" ? edge.lastContactAt : "",
       decayAnchorAt: typeof edge.decayAnchorAt === "string" ? edge.decayAnchorAt : "",
+      decayTimerAt: typeof edge.decayTimerAt === "string" ? edge.decayTimerAt : undefined,
       knowledgeBlockedUntilContact: edge.knowledgeBlockedUntilContact === true,
       decayThrough: typeof edge.decayThrough === "number" ? Math.max(0, Math.trunc(edge.decayThrough)) : 0,
       decayAmount: relationshipScore(edge.decayAmount),
@@ -115,11 +118,18 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
 }
 export function reconcileRelationships(
   state: RelationshipState,
-  village: Pick<VillageState, "villagers" | "venues" | "projects">,
+  village: Pick<VillageState, "villagers" | "venues" | "projects"> & Partial<Pick<VillageState, "clock">>,
   now = Date.now(),
 ): void {
+  const clockShift = village.clock?.shiftTotalMs ?? 0;
+  const difference = clockShift - (state.clockShiftMs ?? 0);
+  state.clockShiftMs = clockShift;
   for (const edge of Object.values(state.edges)) {
-    const last = Date.parse(edge.lastContactAt || edge.decayAnchorAt);
+    if (difference) {
+      const at = Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt);
+      if (Number.isFinite(at)) edge.decayTimerAt = new Date(at + difference).toISOString();
+    }
+    const last = Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt);
     if (Number.isFinite(last)) {
       const days = Math.max(
         0,
@@ -208,12 +218,13 @@ export function applyRelationshipReview(
   village: VillageState,
   sourceId: string,
   at: string,
+  now = Date.now(),
 ): RelationshipReceipt[] {
   // Pending reviews may settle out of order. Reconcile through their event date,
   // then through the present once the new contact clock has been recorded.
   reconcileRelationships(state, village, Date.parse(at));
   const residents = new Set(village.villagers.map((person) => person.characterId));
-  const dateKey = localRelationshipDate(at);
+  const dateKey = localRelationshipDate(at, village.timeZone);
   const contactPairs = new Set<string>();
   for (const change of review.changes) {
     if (state.applied[change.id]) continue;
@@ -230,13 +241,14 @@ export function applyRelationshipReview(
     );
     const freshContact = change.contact && contactEvidenceKeys.some((id) => !state.applied[id]);
     if (change.contact) for (const id of contactEvidenceKeys) state.applied[id] = true;
-    if (freshContact && (!edge.lastContactAt || Date.parse(at) > Date.parse(edge.lastContactAt))) {
+    if (freshContact && (!edge.lastContactAt || Date.parse(at) > Date.parse(edge.decayTimerAt || edge.lastContactAt))) {
       // A saved review can arrive after absence was already reconciled. Restore
       // only the decay after this actual contact; retain the earlier elapsed loss.
       const elapsedBeforeContact = Math.max(
         0,
         Math.floor(
-          (Date.parse(at) - Date.parse(edge.lastContactAt || edge.decayAnchorAt)) / RELATIONSHIP_POLICY.dayMs,
+          (Date.parse(at) - Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt)) /
+            RELATIONSHIP_POLICY.dayMs,
         ) - RELATIONSHIP_POLICY.decayGraceDays,
       );
       const origin = edge.warmth + edge.decayAmount;
@@ -245,6 +257,7 @@ export function applyRelationshipReview(
         : 0;
       edge.warmth = relationshipScore(origin - beforeContact);
       edge.lastContactAt = at;
+      edge.decayTimerAt = at;
       edge.decayThrough = 0;
       edge.decayAmount = 0;
     }
@@ -339,7 +352,7 @@ export function applyRelationshipReview(
     };
     state.applied[permission.id] = true;
   }
-  reconcileRelationships(state, village, Date.now());
+  reconcileRelationships(state, village, now);
   return Object.values(state.receipts).filter(
     (receipt) => receipt.sourceId === sourceId && receipt.before !== receipt.after,
   );

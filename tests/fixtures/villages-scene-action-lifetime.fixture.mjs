@@ -134,7 +134,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
                 },
               }
             : kind === "recovery-operation"
-              ? { operation: null }
+              ? { operation: options.recovered ? { id: operationId, status: "complete", kind: "move" } : null }
               : kind === "active"
                 ? {
                     session: options.archive

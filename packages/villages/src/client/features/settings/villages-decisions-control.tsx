@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-type Settings = { decisionsEnabled: boolean; compareSystem: boolean };
-type Configuration = { settings: Settings; status: { available: boolean; reason: string; engineBuild: string | null } };
+type Settings = { decisionsEnabled: boolean };
+type Configuration = { settings: Settings; status: { available: boolean; reason: string } };
 type Trace = {
   id: string;
   question: string;
@@ -24,8 +24,10 @@ export function DecisionsControl({
   sceneId,
   busy,
   api,
+  onError,
 }: {
   sceneId: string;
+  onError?: (message: string) => void;
   busy: boolean;
   api: <T>(path: string, init?: RequestInit) => Promise<T>;
 }) {
@@ -97,6 +99,7 @@ export function DecisionsControl({
     setSaving(true);
     setConfiguration({ ...previous, settings: { ...previous.settings, ...patch } });
     setError("");
+    onError?.("");
     try {
       const result = await api<Configuration>("/interpretation-settings", {
         method: "PATCH",
@@ -104,9 +107,13 @@ export function DecisionsControl({
       });
       setConfiguration(result);
       if (busy) setNextTurn(true);
-    } catch {
+    } catch (cause) {
       setConfiguration(previous);
       setError("The switch could not be saved. Its previous setting remains in use.");
+      onError?.(
+        "The switch could not be saved. Its previous setting remains in use." +
+          (cause instanceof Error ? "\n\n" + cause.message : ""),
+      );
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -165,7 +172,7 @@ export function DecisionsControl({
         ) : null}
         {nextTurn ? <span role="status">Applies next turn</span> : null}
       </div>
-      {error ? (
+      {error && !onError ? (
         <p role="alert" style={{ background: "var(--popover)", padding: ".5rem" }}>
           {error}
         </p>
@@ -208,20 +215,10 @@ export function DecisionsControl({
               Close
             </button>
           </div>
-          <label style={{ display: "block", marginTop: ".6rem" }}>
-            <input
-              type="checkbox"
-              checked={configuration?.settings.compareSystem !== false}
-              disabled={!configuration || saving}
-              onChange={(event) => void save({ compareSystem: event.target.checked })}
-            />{" "}
-            Compare with System
-          </label>
           <p>
-            A successful Decisions check can make an extra, read-only System request. Comparison never changes gameplay.
-            Switch changes apply to the next Scene operation.
+            Decisions checks narrow witnessed evidence. Unresolved checks use System. Changes apply to the next
+            operation.
           </p>
-          {configuration?.status.engineBuild ? <p>Engine build: {configuration.status.engineBuild}</p> : null}
           {!checks.length ? <p>No interpretation checks have been recorded in this Scene yet.</p> : null}
           {[...checks].reverse().map((check) => (
             <article
@@ -252,7 +249,7 @@ export function DecisionsControl({
                 </p>
               ) : null}
               <p>
-                <b>System comparison:</b>{" "}
+                <b>System fallback:</b>{" "}
                 {check.system.status === "complete"
                   ? outcomeLabel(check.system.outcome)
                   : check.system.status.replace(/-/gu, " ")}
@@ -261,12 +258,6 @@ export function DecisionsControl({
               <p>
                 <b>Applied:</b> {check.applied}
               </p>
-              {check.decisions.status === "answered" && check.system.status === "complete" ? (
-                <p>
-                  <b>{check.decisions.outcome === check.system.outcome ? "Agreement" : "Disagreement"}</b> · comparison
-                  did not override the applied result.
-                </p>
-              ) : null}
               <details>
                 <summary>Evidence for this check</summary>
                 {check.evidence.map((line) => (

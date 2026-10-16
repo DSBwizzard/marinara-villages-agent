@@ -75,37 +75,44 @@ export function useSaveScenerySettings(ports: {
     setSnapshot,
   } = ports;
   const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
-  return useCallback(async () => {
-    const claim = lifetime.begin();
-    if (!claim) return;
-    setBusy(true);
-    setSettingsError("");
-    try {
-      const saved = await request<VillageSnapshot>("/settings", {
-        method: "PATCH",
-        body: JSON.stringify({
-          sceneryArtStyle: sceneryStyle,
-          sceneryStyleProfileId,
-          personalizeVenueImagesByDefault: personalizeHomes,
-          useVisualLoreByDefault: visualLoreDefault,
-        }),
-      });
-      if (lifetime.owns(claim)) setSnapshot(saved);
-    } catch (cause) {
-      if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "Scenery settings could not be saved."));
-    } finally {
-      if (lifetime.finish(claim)) setBusy(false);
-    }
-  }, [
-    sceneryStyle,
-    sceneryStyleProfileId,
-    personalizeHomes,
-    visualLoreDefault,
-    setBusy,
-    setSettingsError,
-    setSnapshot,
-    lifetime,
-  ]);
+  return useCallback(
+    async (automaticZonePictures?: boolean) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
+      setBusy(true);
+      setSettingsError("");
+      try {
+        const saved = await request<VillageSnapshot>("/settings", {
+          method: "PATCH",
+          body: JSON.stringify({
+            ...(automaticZonePictures === undefined
+              ? {
+                  sceneryArtStyle: sceneryStyle,
+                  sceneryStyleProfileId,
+                  personalizeVenueImagesByDefault: personalizeHomes,
+                  useVisualLoreByDefault: visualLoreDefault,
+                }
+              : { automaticZonePictures }),
+          }),
+        });
+        if (lifetime.owns(claim)) setSnapshot(saved);
+      } catch (cause) {
+        if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "Scenery settings could not be saved."));
+      } finally {
+        if (lifetime.finish(claim)) setBusy(false);
+      }
+    },
+    [
+      sceneryStyle,
+      sceneryStyleProfileId,
+      personalizeHomes,
+      visualLoreDefault,
+      setBusy,
+      setSettingsError,
+      setSnapshot,
+      lifetime,
+    ],
+  );
 }
 
 export function useSaveSpriteCardFlip(ports: {

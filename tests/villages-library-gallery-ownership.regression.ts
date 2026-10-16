@@ -66,7 +66,12 @@ function library(name: string) {
     },
   };
   const service = createNativeSchedules({ villagesResources: () => resources, villagesLogger: () => logger });
-  const host: any = { resources, logger, isDebugAgentsEnabled: () => false };
+  const host: any = {
+    resources,
+    logger,
+    persistence: { documents: { getById: async () => null, list: async () => [] } },
+    isDebugAgentsEnabled: () => false,
+  };
   return {
     host,
     service,

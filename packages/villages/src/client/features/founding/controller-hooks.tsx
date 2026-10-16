@@ -112,7 +112,7 @@ export function useFoundingSetupDraftData(ports: {
       access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
       accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "gathering" | "other";
+      venueClass: "residence" | "workplace" | "community" | "other";
       description: string;
       image: import("../../../shared/contracts/village.js").VillageVenueImage;
       state: {
@@ -132,7 +132,7 @@ export function useFoundingSetupDraftData(ports: {
       access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
       accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "gathering" | "other";
+      venueClass: "residence" | "workplace" | "community" | "other";
       description: string;
       image: import("../../../shared/contracts/village.js").VillageVenueImage;
       state: {
@@ -173,6 +173,7 @@ export function useFoundingSetupDraftData(ports: {
   setupMapSize: { width: number; height: number };
   setupMapSource: import("../../shared/types.js").SetupMapSource;
   setupName: string;
+  setupTimeZone?: string;
   setupPlayerRole: import("../../../shared/contracts/player-role.js").PlayerRole;
   setupResidentContexts: Record<
     string,
@@ -198,7 +199,7 @@ export function useFoundingSetupDraftData(ports: {
           access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
           accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
           controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "gathering" | "other";
+          venueClass: "residence" | "workplace" | "community" | "other";
           description: string;
           image: import("../../../shared/contracts/village.js").VillageVenueImage;
           state: {
@@ -218,7 +219,7 @@ export function useFoundingSetupDraftData(ports: {
           access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
           accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
           controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "gathering" | "other";
+          venueClass: "residence" | "workplace" | "community" | "other";
           description: string;
           image: import("../../../shared/contracts/village.js").VillageVenueImage;
           state: {
@@ -276,6 +277,7 @@ export function useFoundingSetupDraftData(ports: {
     setupMapSize,
     setupMapSource,
     setupName,
+    setupTimeZone,
     setupPlayerRole,
     setupResidentContexts,
     setupSetting,
@@ -294,6 +296,7 @@ export function useFoundingSetupDraftData(ports: {
       step: setupStep,
       phase: SETUP_STEPS[setupStep],
       name: setupName,
+      timeZone: setupTimeZone,
       setting: setupSetting,
       reason: setupFoundingReason,
       circumstances: setupFoundingDetails,
@@ -338,6 +341,7 @@ export function useFoundingSetupDraftData(ports: {
       setupStep,
       setupWorkspace,
       setupName,
+      setupTimeZone,
       setupSetting,
       setupFoundingReason,
       setupFoundingDetails,
@@ -393,7 +397,7 @@ export function useFoundingRosterReconciliation(ports: {
       const home = rows.find((row) => row.occupancy.playerHome);
       const center = rows.find((row) => row.category === "public-center");
       const emptyVenue = (residence: boolean, player = false) => {
-        const row = newSetupVenue(freshRowKey(), residence ? "residence" : "gathering", 0.5, 0.5, player);
+        const row = newSetupVenue(freshRowKey(), residence ? "residence" : "community", 0.5, 0.5, player);
         return { ...row, presentation: { ...row.presentation, x: null, y: null } };
       };
       const next = [
@@ -565,7 +569,7 @@ export function useFoundingSetupBlocker(ports: {
             foundingZoneProblem(venue),
         )
       )
-        return "Complete each Venue's physical form, Entrance appearance and Zone name, use and appearance on Venues.";
+        return "Complete each Venue's physical form, Exterior appearance and Zone name, use and appearance on Venues.";
       const occupants = villagerHomes
         .map((home) => home.occupancy.residentCharacterId)
         .filter((id): id is string => id !== null);
@@ -591,7 +595,7 @@ export function useFoundingSetupBlocker(ports: {
       if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
         return "A chosen villager is no longer in your character cards. Choose another villager on People.";
       if (setupVenues.filter((venue) => venue.category === "public-center").length !== 1)
-        return "Place one Gathering Place.";
+        return "Place one Community Place.";
       return "";
     },
     [

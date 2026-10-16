@@ -322,13 +322,13 @@ async function main() {
   movement.turn().movement = {
     operationId: "move",
     originZoneId: "exterior",
-    destinationZoneId: "gathering",
+    destinationZoneId: "community",
     transitionLineId: "transition",
   };
   movement.turn().accessEvents = [
     {
       id: "access",
-      facts: { actorId: "mara", venueId: "venue", zoneId: "gathering", accessRevision: 0 },
+      facts: { actorId: "mara", venueId: "venue", zoneId: "community", accessRevision: 0 },
       outcome: "allowed",
       evidenceIds: ["reply"],
     },
@@ -380,7 +380,7 @@ async function main() {
       skipped.turn().movement = {
         operationId: "move",
         originZoneId: "exterior",
-        destinationZoneId: "gathering",
+        destinationZoneId: "community",
         transitionLineId: "transition",
       };
     else if (reason === "complete") skipped.turn().progressProcessedAt = skipped.saved.startedAt;

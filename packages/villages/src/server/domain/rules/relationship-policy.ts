@@ -1,3 +1,4 @@
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 /** Central tuning for the village's independent social simulation. */
 export const RELATIONSHIP_POLICY = {
   minimum: -100,
@@ -44,7 +45,7 @@ export function relationshipThreshold(
   return warmth >= (active ? rule.retainWarmth : rule.warmth) && trust >= (active ? rule.retainTrust : rule.trust);
 }
 
-export function localRelationshipDate(at: string): string {
-  const date = new Date(at);
+export function localRelationshipDate(at: string, timeZone?: string): string {
+  const date = timeZone ? new ZonedDate(at, timeZone) : new Date(at);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }

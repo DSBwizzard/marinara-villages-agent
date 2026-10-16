@@ -1,3 +1,4 @@
+import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { VillageState } from "../../domain/models/world.js";
 import type { VillageRepository } from "../../domain/models/world-repository.js";
@@ -6,7 +7,10 @@ import type { WorldRelationships } from "./world-relationships.js";
 
 /** Owns hydrated reads and relationship effects, separate from raw document storage. */
 export function createVillageStateService(repository: VillageRepository, worldRelationships: () => WorldRelationships) {
-  const readVillageAuthority = () => repository.readAuthority();
+  const readVillageAuthority = async () => {
+    await observeVillageClock();
+    return repository.readAuthority();
+  };
 
   /** Read-only ledger snapshot for feeds and diagnostics; never applies an outbox. */
   async function readVillageSnapshot(): Promise<VillageState> {
@@ -14,24 +18,24 @@ export function createVillageStateService(repository: VillageRepository, worldRe
     if (state.seed) {
       const { readRelationshipState, reconcileRelationships } = worldRelationships();
       state.relationshipContext = await readRelationshipState(state.seed);
-      reconcileRelationships(state.relationshipContext, state);
+      reconcileRelationships(state.relationshipContext, state, villageNow().getTime());
     }
     return state;
   }
 
   async function readVillageState(): Promise<VillageState> {
     const state = await readVillageSnapshot();
-    if (state.seed) {
+    if (state.seed && !state.clock?.recovery) {
       const { readRelationshipState, reconcileRelationships } = worldRelationships();
       const { projectSocialActivities, processSocialOutbox, reconcileSocialPlans } = worldRelationships();
       if (await processSocialOutbox(state)) {
         const refreshed = await readVillageAuthority();
         Object.assign(state, refreshed);
         state.relationshipContext = await readRelationshipState(state.seed);
-        reconcileRelationships(state.relationshipContext, state);
+        reconcileRelationships(state.relationshipContext, state, villageNow().getTime());
       }
-      reconcileSocialPlans(state);
-      projectSocialActivities(state);
+      reconcileSocialPlans(state, villageNow());
+      projectSocialActivities(state, villageNow());
     }
     return state;
   }
@@ -52,9 +56,12 @@ export function createVillageStateService(repository: VillageRepository, worldRe
       if (relationshipSeed) {
         const { readRelationshipState, reconcileRelationships } = worldRelationships();
         state.relationshipContext = await readRelationshipState(relationshipSeed);
-        reconcileRelationships(state.relationshipContext, state);
+        reconcileRelationships(state.relationshipContext, state, villageNow().getTime());
       }
-      normalizeVillageMutation(state, relationshipSeed, mutate);
+      normalizeVillageMutation(state, relationshipSeed, mutate, {
+        now: villageNow,
+        seed: () => Math.random().toString(36).slice(2, 10).padEnd(8, "0"),
+      });
 
       next = state;
     });

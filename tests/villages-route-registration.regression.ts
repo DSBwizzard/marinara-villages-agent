@@ -112,11 +112,11 @@ async function main() {
     baseline.routes,
     "host collector methods, paths, body limits and order match the maintained route contract",
   );
-  assert.equal(routes.length, 132);
+  assert.equal(routes.length, 140);
   await agendaHttpAdmission();
   await currentSceneAndWritingHttp();
   console.log(
-    "Villages route registration regression: all 132 maintained definitions and limits match; actual Agenda HTTP rejects retired routes and unidentified regeneration before command admission (mocked service).",
+    "Villages route registration regression: all 140 maintained definitions and limits match; actual Agenda HTTP rejects retired routes and unidentified regeneration before command admission (mocked service).",
   );
 }
 

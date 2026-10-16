@@ -1,4 +1,5 @@
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
+import { fixtureLocalAttention, fixtureAcousticModel } from "./fixtures/villages-attention.fixture.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -11,7 +12,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import {
   enterVenue,
   continueVenueWithoutGreeting,
-  sendVenueTurn as submitTurn,
+  sendVenueTurn as submitTurnRaw,
   moveVenueZone,
   discardVenueVisitDebug,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
@@ -34,7 +35,7 @@ const now = new Date(),
   stamp = now.toISOString(),
   dateKey = agendaDateKey(now),
   weekday = now.toLocaleDateString("en-US", { weekday: "long" });
-function venue(id: string, classes: VillageVenue["classes"] = ["gathering"]): VillageVenue {
+function venue(id: string, classes: VillageVenue["classes"] = ["community"]): VillageVenue {
   return {
     id,
     name: id,
@@ -186,161 +187,179 @@ const release = configureVillagesRuntime({
   languageModels: {
     async resolveForRequest() {
       providerResolves++;
-      return {
-        model: "fixture",
-        maxOutputTokens: 4096,
-        fitContext(messages: any[], options: any) {
-          return { messages, ...options };
-        },
-        async chatComplete(messages: any[]) {
-          providerCalls++;
-          if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
-            const checks = fixtureInterpretationChecks(messages[1].content);
-            return {
-              content: JSON.stringify({
-                results: checks.map((check: any) => {
-                  const speech = check.evidence.filter(
-                    (line: any) => line.current && line.speakerId === check.facts.actorId,
-                  );
-                  const text = speech.map((line: any) => line.content).join(" ");
-                  const outcome =
-                    (check.facts.zoneId === "office" && text === "Come into my office now.") ||
-                    (check.facts.zoneId === "common" && text === "Come into our Common Space now.")
-                      ? "invite-now"
-                      : "none";
-                  return {
-                    id: check.id,
-                    outcome,
-                    evidenceIds: speech.map((line: any) => line.id),
-                    reason: "Labeled witnessed contact response",
-                  };
+      return fixtureAcousticModel(
+        {
+          model: "fixture",
+          maxOutputTokens: 4096,
+          fitContext(messages: any[], options: any) {
+            return { messages, ...options };
+          },
+          async chatComplete(messages: any[]) {
+            providerCalls++;
+            const attention = fixtureLocalAttention(messages);
+            if (attention) return attention;
+            if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
+              const checks = fixtureInterpretationChecks(messages[1].content);
+              return {
+                content: JSON.stringify({
+                  results: checks.map((check: any) => {
+                    const speech = check.evidence.filter(
+                      (line: any) => line.current && line.speakerId === check.facts.actorId,
+                    );
+                    const text = speech.map((line: any) => line.content).join(" ");
+                    const outcome =
+                      (check.facts.zoneId === "office" && text === "Come into my office now.") ||
+                      (check.facts.zoneId === "common" && text === "Come into our Common Space now.")
+                        ? "invite-now"
+                        : "none";
+                    return {
+                      id: check.id,
+                      outcome,
+                      evidenceIds: speech.map((line: any) => line.id),
+                      reason: "Labeled witnessed contact response",
+                    };
+                  }),
                 }),
-              }),
-              finishReason: "stop",
-            };
-          }
-          calls++;
-          const system = String(messages[0]?.content),
-            user = String(messages[1]?.content);
-          prompts.push(system + "\n" + user);
-          const audience = (system.match(/The residents currently here are: ([^.]*)\./)?.[1] ?? "")
-            .split(", ")
-            .filter(Boolean);
-          let result: any = {
-            heardPlayerBy: audience,
-            segments: [{ kind: "narration", text: "A quiet moment.", heardBy: audience }],
-          };
-          if (system.includes("RELAY RESPONSE")) {
-            const quote = "Come into my office now.";
-            result = {
+                finishReason: "stop",
+              };
+            }
+            calls++;
+            const system = String(messages[0]?.content),
+              user = String(messages[1]?.content);
+            prompts.push(system + "\n" + user);
+            const audience = (system.match(/The residents currently here are: ([^.]*)\./)?.[1] ?? "")
+              .split(", ")
+              .filter(Boolean);
+            let result: any = {
               heardPlayerBy: audience,
-              segments: [{ kind: "dialogue", speakerId: "alex", text: quote, heardBy: audience }],
-              invitation: {
-                speakerId: "alex",
-                venueId: "house",
-                zoneId: "office",
-                scope: "shared",
-                timing: "now",
-                quote,
-              },
+              segments: [{ kind: "narration", text: "A quiet moment.", heardBy: audience }],
             };
-          } else if (system.includes("CONTACT RESPONSE")) {
-            const quote =
-              behavior === "relay-move"
-                ? "I'll come outside and fetch Alex for you."
-                : behavior.startsWith("relay")
-                  ? "I'll fetch Alex for you."
-                  : behavior === "invite"
-                    ? "Come into our Common Space now."
-                    : behavior === "end"
-                      ? "Goodbye, I need to go now."
-                      : behavior === "move"
-                        ? "I'll come outside to meet you."
-                        : behavior === "short-end"
-                          ? "Goodbye."
-                          : "Yes, I'm listening.";
-            if (behavior !== "quiet")
+            if (system.includes("RELAY RESPONSE")) {
+              const quote = "Come into my office now.";
               result = {
                 heardPlayerBy: audience,
-                segments: [{ kind: "dialogue", speakerId: "messenger", text: quote, heardBy: audience }],
-              };
-            if (behavior.startsWith("relay")) result.contactRelay = { speakerId: "messenger", targetId: "alex", quote };
-            if (behavior === "relay-move") {
-              result.segments.push({ kind: "narration", text: "Messenger steps outside.", heardBy: audience });
-              result.contactMoves = [{ characterId: "messenger", zoneId: "exterior", quote }];
-            }
-            if (behavior === "invite")
-              result.invitation = {
-                speakerId: "messenger",
-                venueId: "house",
-                zoneId: "common",
-                scope: "shared",
-                timing: "now",
-                quote,
-              };
-            if (behavior === "end" || behavior === "short-end") {
-              result.contactEnd = [{ speakerId: "messenger", quote }];
-              result.sceneEnded = { speakerId: "messenger", quote };
-            }
-            if (behavior === "move") {
-              result.segments.push({ kind: "narration", text: "Messenger steps outside.", heardBy: audience });
-              result.contactMoves = [{ characterId: "messenger", zoneId: "exterior", quote }];
-            }
-          } else if (user === "I make my way into Common Space") {
-            result.contactIntent = { kind: "call", targetId: "alex", boundaryZoneId: "common", quote: user };
-            result.movementIntent = { zoneId: "common", quote: user };
-          } else if (user === "I raise my voice toward the house and ask for Alex.") {
-            // A Contact nomination cannot authorize a remote speaker in local prose.
-            result.segments = [
-              { kind: "dialogue", speakerId: "alex", text: "A discarded premature answer.", heardBy: ["alex"] },
-            ];
-            result.contactIntent = { kind: "call", targetId: "alex", boundaryZoneId: "common", quote: user };
-          }
-          if (system.includes("CONTACT RESPONSE") && behavior.startsWith("distant")) {
-            const speakerId = behavior === "distant-local" ? "trina" : "alex";
-            const quote =
-              behavior === "distant-approach"
-                ? "I'll come closer to the Common Space."
-                : behavior === "distant-end"
-                  ? "Goodbye, I need to go now."
-                  : behavior === "distant-local"
-                    ? "I can hear both of you from out here."
-                    : "I can hear you calling from inside.";
-            result = {
-              heardPlayerBy: ["trina", "alex"],
-              segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: ["trina", "alex"] }],
-            };
-            if (behavior === "distant-silent-witness") {
-              result.heardPlayerBy.push("dozy");
-              result.recollections = [
-                {
-                  text: "Dozy overheard the morning greeting.",
-                  subjectCharacterIds: ["dozy"],
-                  knownByCharacterIds: ["dozy"],
-                  evidence: ["player"],
+                segments: [{ kind: "dialogue", speakerId: "alex", text: quote, heardBy: audience }],
+                invitation: {
+                  speakerId: "alex",
+                  venueId: "house",
+                  zoneId: "office",
+                  scope: "shared",
+                  timing: "now",
+                  quote,
                 },
+              };
+            } else if (system.includes("CONTACT RESPONSE")) {
+              const quote =
+                behavior === "relay-move"
+                  ? "I'll come outside and fetch Alex for you."
+                  : behavior.startsWith("relay")
+                    ? "I'll fetch Alex for you."
+                    : behavior === "invite"
+                      ? "Come into our Common Space now."
+                      : behavior === "end"
+                        ? "Goodbye, I need to go now."
+                        : behavior === "move"
+                          ? "I'll come outside to meet you."
+                          : behavior === "short-end"
+                            ? "Goodbye."
+                            : "Yes, I'm listening.";
+              if (behavior !== "quiet")
+                result = {
+                  heardPlayerBy: audience,
+                  segments: [{ kind: "dialogue", speakerId: "messenger", text: quote, heardBy: audience }],
+                };
+              if (behavior.startsWith("relay"))
+                result.contactRelay = { speakerId: "messenger", targetId: "alex", quote };
+              if (behavior === "relay-move") {
+                result.segments.push({ kind: "narration", text: "Messenger steps outside.", heardBy: audience });
+                result.contactMoves = [
+                  { characterId: "messenger", zoneId: "exterior", segment: 1, quote: "Messenger steps outside." },
+                ];
+              }
+              if (behavior === "invite")
+                result.invitation = {
+                  speakerId: "messenger",
+                  venueId: "house",
+                  zoneId: "common",
+                  scope: "shared",
+                  timing: "now",
+                  quote,
+                };
+              if (behavior === "end" || behavior === "short-end") {
+                result.contactEnd = [{ speakerId: "messenger", quote }];
+                result.sceneEnded = { speakerId: "messenger", quote };
+              }
+              if (behavior === "move") {
+                result.segments.push({ kind: "narration", text: "Messenger steps outside.", heardBy: audience });
+                result.contactMoves = [
+                  { characterId: "messenger", zoneId: "exterior", segment: 1, quote: "Messenger steps outside." },
+                ];
+              }
+            } else if (user === "I make my way into Common Space") {
+              result.contactIntent = { kind: "call", targetId: "alex", boundaryZoneId: "common", quote: user };
+              result.movementIntent = { zoneId: "common", quote: user };
+            } else if (user === "I raise my voice toward the house and ask for Alex.") {
+              // A Contact nomination cannot authorize a remote speaker in local prose.
+              result.segments = [
+                { kind: "dialogue", speakerId: "alex", text: "A discarded premature answer.", heardBy: ["alex"] },
               ];
+              result.contactIntent = { kind: "call", targetId: "alex", boundaryZoneId: "common", quote: user };
             }
-            if (behavior === "distant-approach") {
-              result.contactMoves = [{ characterId: "alex", zoneId: "common", quote }];
-              result.segments.push({
-                kind: "narration",
-                text: "Alex comes closer to the Common Space.",
-                heardBy: ["trina"],
-              });
+            if (system.includes("CONTACT RESPONSE") && behavior.startsWith("distant")) {
+              const speakerId = behavior === "distant-local" ? "trina" : "alex";
+              const quote =
+                behavior === "distant-approach"
+                  ? "I'll come closer to the Common Space."
+                  : behavior === "distant-end"
+                    ? "Goodbye, I need to go now."
+                    : behavior === "distant-local"
+                      ? "I can hear both of you from out here."
+                      : "I can hear you calling from inside.";
+              result = {
+                heardPlayerBy: ["trina", "alex"],
+                segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: ["trina", "alex"] }],
+              };
+              if (behavior === "distant-silent-witness") {
+                result.heardPlayerBy.push("dozy");
+                result.recollections = [
+                  {
+                    text: "Dozy overheard the morning greeting.",
+                    subjectCharacterIds: ["dozy"],
+                    knownByCharacterIds: ["dozy"],
+                    evidence: ["player"],
+                  },
+                ];
+              }
+              if (behavior === "distant-approach") {
+                result.contactMoves = [
+                  {
+                    characterId: "alex",
+                    zoneId: "common",
+                    segment: 1,
+                    quote: "Alex comes closer to the Common Space.",
+                  },
+                ];
+                result.segments.push({
+                  kind: "narration",
+                  text: "Alex comes closer to the Common Space.",
+                  heardBy: ["trina"],
+                });
+              }
+              if (behavior === "distant-end") result.contactEnd = [{ speakerId: "alex", quote }];
             }
-            if (behavior === "distant-end") result.contactEnd = [{ speakerId: "alex", quote }];
-          }
-          if (system.includes("CONTACT RESPONSE") && behavior === "silent-heard")
-            result = {
-              heardPlayerBy: ["messenger"],
-              segments: [{ kind: "narration", text: "No answer.", heardBy: [] }],
-            };
-          if (behavior === "invalid")
-            result.segments = [{ kind: "dialogue", speakerId: "unlisted", text: "Unsupported speech.", heardBy: [] }];
-          return { content: JSON.stringify(result), finishReason: "stop" };
+            if (system.includes("CONTACT RESPONSE") && behavior === "silent-heard")
+              result = {
+                heardPlayerBy: ["messenger"],
+                segments: [{ kind: "narration", text: "No answer.", heardBy: [] }],
+              };
+            if (behavior === "invalid")
+              result.segments = [{ kind: "dialogue", speakerId: "unlisted", text: "Unsupported speech.", heardBy: [] }];
+            result.playerSpeechCapture = { status: "silent", segments: [] };
+            return { content: JSON.stringify(result), finishReason: "stop" };
+          },
         },
-      };
+        records,
+      );
     },
   },
 } as Parameters<typeof configureVillagesRuntime>[0]);
@@ -348,6 +367,37 @@ const release = configureVillagesRuntime({
 async function open() {
   const entered = await enterVenue("house", undefined, "", "outside");
   return continueVenueWithoutGreeting(entered.id);
+}
+// These scenarios preserve the previously admitted explicit-Contact contract.
+// Current v5 Contact propagation is exercised in villages-attention.regression.ts.
+async function submitTurn(input: Parameters<typeof submitTurnRaw>[0]) {
+  const saved = records.get("villages-venue-visit-" + input.sessionId)?.data;
+  if (
+    input.mode === "contact" &&
+    saved.operation?.id !== input.submissionId &&
+    !saved.submissions.some((turn: any) => turn.id === input.submissionId)
+  ) {
+    const attemptId = "legacy-contact-" + input.submissionId;
+    saved.operation = {
+      id: input.submissionId,
+      kind: "turn",
+      status: "interrupted",
+      attemptId,
+      sceneRevision: saved.sceneRevision,
+      input: {
+        message: input.message,
+        mode: input.mode,
+        targetId: input.targetId,
+        contact: input.contact,
+        interactionScopeVersion: 4,
+      },
+      snapshot: null,
+      checkpoints: {},
+      attempts: {},
+    };
+    return submitTurnRaw({ ...input, retryOfAttemptId: attemptId });
+  }
+  return submitTurnRaw(input);
 }
 async function attempt(id: string, submissionId: string, targetId = "messenger", retryOfAttemptId?: string) {
   const message = targetId === "alex" ? "Alex, are you there?" : "I knock at the doorway.";
@@ -381,14 +431,14 @@ async function explicitActionChecks() {
   assert.doesNotMatch(prompts.at(-1)!, /Possible remote listeners:.*alex/);
   const local = await submitTurn({
     sessionId: scene.id,
-    message: "I shout loudly: HEY ALEX!",
+    message: "I speak quietly to myself.",
     mode: "chat",
     targetId: "",
     submissionId: "scoped-local",
   });
   assert.deepEqual(local.session.lines.at(-1)!.heardBy, []);
   assert.equal(local.session.lines.at(-1)!.viaDoorway, undefined);
-  assert.ok(prompts.at(-1)!.includes("Say / Do affects only the current Zone"));
+  assert.ok(prompts.at(-1)!.includes("ACTION-BASED SOUND"));
   assert.doesNotMatch(prompts.at(-1)!, /CONTACT RESPONSE/);
   const movedWords = await submitTurn({
     sessionId: scene.id,
@@ -504,7 +554,7 @@ async function main() {
     const baseCalls = calls;
     const answer = await attempt(scene.id, "answer");
     assert.equal(calls - baseCalls, 1, "adjacent Contact needs one response generation");
-    assert.equal(answer.session.operation?.input.interactionScopeVersion, 1);
+    assert.equal(answer.session.operation?.input.interactionScopeVersion, 4);
     assert.deepEqual(answer.session.activeIds, []);
     assert.equal(answer.session.lines.at(-1)?.viaDoorway, true);
     assert.equal(answer.session.doorwayContacts?.[0]?.characterId, "messenger");
@@ -523,7 +573,7 @@ async function main() {
       submissionId: "local-followup",
     });
     assert.equal(calls - chatCalls, 1, "Say / Do uses one local response generation");
-    assert.equal(local.session.operation?.input.interactionScopeVersion, 1);
+    assert.equal(local.session.operation?.input.interactionScopeVersion, 6);
     assert.deepEqual(local.session.lines.at(-1)!.heardBy, []);
     assert.equal(local.session.lines.at(-1)!.viaDoorway, undefined);
     assert.deepEqual(local.session.activeIds, []);
@@ -589,7 +639,7 @@ async function main() {
       submissionId: "ignored-nominations",
     });
     assert.equal(calls - nominationCalls, 1, "model nominations do not admit extra Contact or movement responses");
-    assert.match(prompts.at(-1)!, /Say \/ Do affects only the current Zone/);
+    assert.match(prompts.at(-1)!, /ACTION-BASED SOUND/);
     assert.doesNotMatch(prompts.at(-1)!, /CONTACT RESPONSE|RELAY RESPONSE/);
     assert.equal(nominations.session.zoneId, "exterior");
     assert.deepEqual(nominations.session.activeIds, []);
@@ -600,16 +650,19 @@ async function main() {
 
     scene = await open();
     const invalidNominationCalls = calls;
-    await assert.rejects(
-      submitTurn({
-        sessionId: scene.id,
-        message: "I raise my voice toward the house and ask for Alex.",
-        mode: "chat",
-        targetId: "",
-        submissionId: "invalid-remote-nomination",
-      }),
-      /failed validation \(invalid-segments\)/,
+    const hiddenNomination = await submitTurn({
+      sessionId: scene.id,
+      message: "I raise my voice toward the house and ask for Alex.",
+      mode: "chat",
+      targetId: "",
+      submissionId: "invalid-remote-nomination",
+    });
+    assert.doesNotMatch(
+      JSON.stringify(publicSceneResponse(hiddenNomination)),
+      /A discarded premature answer/,
+      "Zone events keep unreachable speech private instead of exposing it through a Contact nomination",
     );
+    assert.deepEqual(hiddenNomination.session.activeIds, []);
     assert.equal(
       calls - invalidNominationCalls,
       1,
@@ -791,7 +844,7 @@ async function main() {
         targetId: "",
         submissionId: "invalid-parser",
       }),
-      /failed validation \(invalid-segments\)/,
+      /failed validation \(invalid-segments\)|unsupported hearing/,
     );
     assert.equal(calls - invalidCalls, 1, "invalid Scene replies are not automatically retried");
     const interrupted = (await activeVenueSession())!;
@@ -805,7 +858,7 @@ async function main() {
     };
     behavior = "answer";
     const beforeExplicitRetry = calls;
-    await submitTurn(invalidInput);
+    await submitTurn({ ...invalidInput, retryOfAttemptId: interrupted.operation!.attemptId });
     assert.equal(
       calls - beforeExplicitRetry,
       1,

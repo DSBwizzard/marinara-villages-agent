@@ -1,3 +1,5 @@
+import { recordTurnTiming } from "../../shared/turn-timing.js";
+import { useCallback, useState } from "react";
 import type { RoomOperation, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -8,8 +10,46 @@ import { DecisionsControl } from "../settings/villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
 import { MailboxImprovementEditor } from "../venues/VenuePanels.js";
 import { RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
+import { useContext, useEffect } from "react";
+import type { SceneErrorItem } from "./scene-errors.js";
+import { SpinoffActionContext, SpinoffErrorContext } from "./SpinoffPanel.js";
 
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
+  const displayedSubmissionId = controller.room?.submissions?.at(-1)?.id;
+  useEffect(() => {
+    if (displayedSubmissionId && controller.room?.id)
+      recordTurnTiming(controller.room.id, displayedSubmissionId, "displayed");
+  }, [controller.room?.id, displayedSubmissionId]);
+  const startSpinoff = useContext(SpinoffActionContext);
+  const spinoffError = useContext(SpinoffErrorContext);
+  const [reportedErrors, setReportedErrors] = useState<
+    { sceneId: string; id: string; title: string; message: string }[]
+  >([]);
+  const sceneId = controller.room?.id;
+  const reportSettingsError = useCallback(
+    (id: string, title: string, message: string) => {
+      if (!sceneId) return;
+      setReportedErrors((current) => [
+        ...current.filter((entry) => entry.sceneId !== sceneId || entry.id !== id),
+        ...(message ? [{ sceneId, id, title, message }] : []),
+      ]);
+    },
+    [sceneId],
+  );
+  const reportDecisionsError = useCallback(
+    (message: string) => reportSettingsError("decisions", "Scene interpretation setting failed", message),
+    [reportSettingsError],
+  );
+  const reportDiagnosticsError = useCallback(
+    (message: string) => reportSettingsError("diagnostics", "Saved change diagnostics unavailable", message),
+    [reportSettingsError],
+  );
+  const clarificationId = controller.room?.attentionClarification?.id;
+  const clarificationMessage = controller.room?.attentionClarification?.message;
+  const restoreRoomDraft = controller.setRoomDraft;
+  useEffect(() => {
+    if (clarificationId && clarificationMessage) restoreRoomDraft((current) => current || clarificationMessage);
+  }, [controller.room?.id, clarificationId, clarificationMessage, restoreRoomDraft]);
   const {
     closeRoom,
     composerEditVersionRef,
@@ -43,8 +83,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomGreetingNotice,
     roomLeaveSubmissionIdRef,
     roomMode,
-    roomMoveOperationIdRef,
-    roomMoveZoneId,
     roomNotices,
     roomOpen,
     roomRuling,
@@ -61,12 +99,9 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     setRoomDraft,
     setRoomError,
     setRoomMode,
-    setRoomMoveZoneId,
     setRoomTargetId,
-    setScreen,
     setSnapshot,
-    setVenueEditDraft,
-    setVenueId,
+    openVenue,
     snapshot,
     spriteFlipDraft,
     spriteFlipError,
@@ -75,21 +110,61 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
 
   return (
     <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
-      {room?.operation?.status === "interrupted" ? (
-        <div role="alert" className={`${ELEMENT_TAG}-room-error`}>
-          <p>
-            {room.operation.kind === "turn"
-              ? "The previous request may have been billed. Review your draft and press Send to resend when ready."
-              : "The previous request may have been billed. Retry the saved request when ready."}
-          </p>
-          <button className={`${ELEMENT_TAG}-button`} disabled={roomBusy} onClick={() => void retrySavedScene()}>
-            {room.operation.kind === "turn" ? "Recover saved request" : "Retry saved request"}
-          </button>
-        </div>
-      ) : null}
       {room ? (
         <RoomPanel
           room={room}
+          sceneErrors={[
+            ...[
+              {
+                id: "room",
+                title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
+                message: roomError,
+              },
+              {
+                id: "operation",
+                title: "Saved request failed",
+                message: room.operation?.status === "interrupted" ? "" : room.operation?.error,
+              },
+              {
+                id: "greeting",
+                title: "Scene opening failed",
+                message: roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "",
+              },
+              { id: "sprite-setting", title: "Scene setting could not be saved", message: spriteFlipError },
+              ...reportedErrors
+                .filter((entry) => entry.sceneId === room.id)
+                .map(({ sceneId: _sceneId, ...entry }) => entry),
+              ...(spinoffError ? [{ id: "spinoff", title: "Spinoff request failed", message: spinoffError }] : []),
+            ]
+              .filter(
+                (entry, index, all) =>
+                  !!entry.message && all.findIndex((other) => other.message === entry.message) === index,
+              )
+              .map((entry): SceneErrorItem => ({ ...entry, message: entry.message! })),
+            ...(room.operation?.status === "interrupted"
+              ? [
+                  {
+                    id: "interrupted-" + room.operation.id,
+                    title: "Saved request interrupted",
+                    message: [
+                      room.operation.error,
+                      room.operation.kind === "turn"
+                        ? "The previous request may have been billed. Review your draft and press Send to resend when ready."
+                        : "The previous request may have been billed. Retry the saved request when ready.",
+                    ]
+                      .filter(Boolean)
+                      .join("\n\n"),
+                    actions: (
+                      <button type="button" disabled={roomBusy} onClick={() => void retrySavedScene()}>
+                        {room.operation.kind === "turn" ? "Recover saved request" : "Retry saved request"}
+                      </button>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+          turnRecovery={controller.turnRecovery}
+          onCheckSavedReply={() => void controller.checkSavedReply?.()}
           sceneReading={sceneReading}
           mobile={mobile}
           nameColors={
@@ -108,7 +183,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           targetId={roomTargetId}
           contactDoors={(() => {
             const zones = snapshot?.settings.venues.find((venue) => venue.id === room.placeId)?.zones ?? [];
-            return contactNeighborIds(zones, room.zoneId ?? "exterior").map((id) => {
+            return contactNeighborIds(room.connectionMap ?? zones, room.zoneId ?? "exterior").map((id) => {
               const zone = zones.find((entry) => entry.id === id);
               return {
                 id,
@@ -122,31 +197,41 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             roomSubmissionIdRef.current = null;
             setRoomContactBoundary(id);
           }}
-          onAcceptEntry={(zoneId) => {
-            setRoomMode("move");
-            setRoomMoveZoneId(zoneId);
-            roomMoveOperationIdRef.current = null;
-          }}
-          movementZones={(snapshot?.settings.venues.find((venue) => venue.id === room.placeId)?.zones ?? []).map(
-            (zone) => ({ id: zone.id, label: sceneZoneLabel(zone), closed: zone.closed }),
-          )}
-          movementTarget={roomMoveZoneId}
-          onMovementTarget={(zoneId) => {
-            composerEditVersionRef.current++;
-            setRoomMoveZoneId(zoneId);
-            roomMoveOperationIdRef.current = null;
-          }}
+          movementZones={(() => {
+            const venue = snapshot?.settings.venues.find((entry) => entry.id === room.placeId);
+            return (venue?.zones ?? [])
+              .filter((zone) => {
+                if (zone.id === room.zoneId) return true;
+                if (zone.closed) return false;
+                if (zone.accessView) return zone.accessView.decision.allowed;
+                return (
+                  zone.kind === "exterior" ||
+                  zone.kind === "public" ||
+                  zone.relationshipAccess ||
+                  room.entryOffers?.some((offer) => offer.zoneId === zone.id) ||
+                  room.grantedZoneIds?.includes(zone.id) ||
+                  venue?.playerInvitations?.some((offer) => offer.zoneId === zone.id) ||
+                  (venue?.occupancy.playerHome &&
+                    (zone.kind === "shared-residence" ||
+                      (zone.kind === "private-residence" && zone.ownerId === "player"))) ||
+                  (zone.kind === "restricted" && zone.controllerIds?.includes("player"))
+                );
+              })
+              .map((zone) => ({ id: zone.id, label: sceneZoneLabel(zone), closed: zone.closed }));
+          })()}
+          onMovementTarget={(zoneId) => void moveRoom(zoneId)}
           currentZoneLabel={sceneZoneLabel(
             snapshot?.settings.venues
               .find((venue) => venue.id === room.placeId)
               ?.zones?.find((zone) => zone.id === room.zoneId),
           )}
-          busy={roomBusy || room.operation?.status === "running"}
+          busy={roomBusy || controller.replyPending || room.operation?.status === "running"}
           error={
             roomError ||
             room.operation?.error ||
             (room.status === "opening" && roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "")
           }
+          draftWhilePending={controller.replyPending}
           greetingNotice={roomGreetingNotice}
           ruling={roomRuling}
           open={roomOpen}
@@ -178,31 +263,15 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             setRoomTargetId(value);
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
-          onSend={() => void (roomMode === "move" ? moveRoom() : roomMode === "conclude" ? leaveRoom() : sendRoom())}
+          onSend={() => void (roomMode === "conclude" ? leaveRoom() : sendRoom())}
+          onAttentionChoice={(zoneId) => void sendRoom(zoneId)}
           onViewVenue={() => {
-            setVenueId(room.placeId);
-            setVenueEditDraft(null);
-            setScreen("venue");
+            const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
+            if (place) openVenue(place);
             void loadSnapshot();
           }}
-          onEnterPrivate={
-            room.area === "shared" && room.privateAccessOwnerId
-              ? () => {
-                  const destination = snapshot?.settings.venues
-                    .find((venue) => venue.id === room.placeId)
-                    ?.zones?.find(
-                      (zone) => zone.ownerId === room.privateAccessOwnerId && zone.kind === "private-residence",
-                    );
-                  if (destination) {
-                    setRoomMode("move");
-                    setRoomMoveZoneId(destination.id);
-                    roomMoveOperationIdRef.current = null;
-                  }
-                }
-              : undefined
-          }
-          privateSpaceOwnerName={nameOfCharacter(room.privateAccessOwnerId)}
           onEnd={() => void closeRoom()}
+          onStartSpinoff={startSpinoff}
           notices={roomNotices}
           onDismissNotice={dismissRoomNotice}
           onOpenWish={(actorId, wishId) => {
@@ -277,14 +346,19 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               <p className={ELEMENT_TAG + "-hint"}>
                 Flip when facing or artwork changes. Saved for this Village on every device.
               </p>
-              {spriteFlipError ? <p role="alert">{spriteFlipError}</p> : null}
               <DecisionsControl
                 sceneId={room.id}
+                onError={reportDecisionsError}
                 busy={roomBusy || room.operation?.status === "running"}
                 api={request}
               />
               {room.memoryMode === "live" ? (
-                <SavedChangesDiagnostics key={room.id} sceneId={room.id} api={request} />
+                <SavedChangesDiagnostics
+                  key={room.id}
+                  sceneId={room.id}
+                  api={request}
+                  onError={reportDiagnosticsError}
+                />
               ) : null}
             </>
           }

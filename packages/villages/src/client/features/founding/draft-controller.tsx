@@ -124,6 +124,7 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupMapSize: FoundingState["setSetupMapSize"];
   readonly setSetupMapSource: FoundingState["setSetupMapSource"];
   readonly setSetupName: FoundingState["setSetupName"];
+  readonly setSetupTimeZone?: FoundingState["setSetupTimeZone"];
   readonly setSetupPlayerRole: FoundingState["setSetupPlayerRole"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupResidentContexts: FoundingState["setSetupResidentContexts"];
@@ -205,6 +206,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     const legacySimpleMap = data.mapSource === "none";
     setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
+    ports.setSetupTimeZone?.(data.timeZone ?? "");
     setSetupSetting(data.setting);
     setSetupFoundingReason(data.reason);
     setSetupFoundingDetails(data.circumstances);
@@ -259,6 +261,7 @@ export function createFoundingRestoreSetupDraft(ports: {
         view: data.editorOpen ? "details" : "map",
         paused: !!data.editorOpen,
       }),
+      mode: data.workspace?.mode ?? "advanced",
       inactive,
     });
     setupEditorOriginal.current = data.editorOriginal;

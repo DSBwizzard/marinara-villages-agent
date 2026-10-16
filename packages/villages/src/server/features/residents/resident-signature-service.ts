@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { residentSignature, type ResidentSignatureView } from "../../../shared/helpers/resident-signature.js";
 import type { VillageGalleryUpload } from "../../adapters/engine/global-gallery.js";
 import { decodeVillageImageDataUrl, type DecodedVillageImage } from "../../adapters/engine/image-files.js";
@@ -90,7 +91,7 @@ export function createResidentSignatures({
     return record ? { record, data: structuredClone(record.data) as Attempt } : null;
   }
   async function saveAttempt(id: string, data: Attempt, expectedRevision?: number) {
-    const stamp = new Date().toISOString();
+    const stamp = villageNow().toISOString();
     const fields = {
       id,
       packageId: VILLAGES_PACKAGE_ID,
@@ -273,7 +274,7 @@ export function createResidentSignatures({
           image: data.image!,
           original: data.original!,
           name: data.name,
-          generatedAt: new Date().toISOString(),
+          generatedAt: villageNow().toISOString(),
         };
       });
       data.status = "saved";

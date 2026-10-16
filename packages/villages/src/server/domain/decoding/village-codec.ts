@@ -1,5 +1,10 @@
+import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
+import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
+import { decodeVillageClock } from "../rules/clock-recovery.js";
+import { savedVenueClassRecord } from "./venue-class-compat.js";
 import { readResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
 import { isPrivateInterior, observePrivateInterior, privateInteriorKey } from "../rules/private-interior.js";
+import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
 import type {
   VillageAgenda,
   VillageChronicleActor,
@@ -117,7 +122,7 @@ import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex 
 import { coerceWishActivities, coerceWishLifecycle } from "../rules/wish-coercion.js";
 import { WISH_SYSTEM_VERSION, wishSize } from "../rules/wish-definition.js";
 import { coerceWishKnowledge, resetLegacyWishRecords } from "../rules/wish-journal.js";
-import { shortWishText, wishPolicy } from "../rules/wish-policy.js";
+import { shortWishText, wishPolicy, routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
@@ -191,6 +196,8 @@ export function defaultVillageState(): VillageState {
     correctedWishMemoryIds: [],
     simulatedThrough: "",
     lastKnownTimeZone: "",
+    timeZone: "",
+    clock: null,
     storyPace: "balanced",
     lastCreativeDate: "",
     processedOpportunityIds: [],
@@ -511,6 +518,14 @@ function coerceAgenda(
   agenda.personalizationAttemptDate = /^\d{4}-\d{2}-\d{2}$/.test(asString(raw.personalizationAttemptDate))
     ? asString(raw.personalizationAttemptDate)
     : undefined;
+  // Keep one exact compatibility digest; never bless an already stale continuation.
+  const current = routineRevision(agenda);
+  const previous = routineRevision({ week: raw.week, scheduleWeek: raw.scheduleWeek } as VillageAgenda);
+  const alias = asRecord(raw.legacyRoutineRevision);
+  const hasObsoleteFields = /"(?:status|reason)"\s*:/.test(JSON.stringify([raw.week, raw.scheduleWeek]));
+  if (hasObsoleteFields && previous !== current) agenda.legacyRoutineRevision = { previous, current };
+  else if (alias.current === current && typeof alias.previous === "string" && /^[a-f0-9]{64}$/.test(alias.previous))
+    agenda.legacyRoutineRevision = { previous: alias.previous, current };
   return agenda;
 }
 export function coerceRemap(value: unknown): VillageRemap | null {
@@ -565,7 +580,14 @@ function coerceRemapMove(value: unknown): { key: string; move: VillageRemapMove 
   };
 }
 function coerceVenue(value: unknown): VillageVenue | null {
-  const raw = asRecord(value);
+  const original = asRecord(value);
+  const legacyCommunity = [original.classes, original.baseClasses].some(
+    (classes) => Array.isArray(classes) && classes.includes("gathering"),
+  );
+  const raw = savedVenueClassRecord(value);
+  if (Array.isArray(raw.spaces)) raw.spaces = raw.spaces.map(savedVenueClassRecord);
+  if (Array.isArray(raw.improvements))
+    raw.improvements = raw.improvements.map((entry) => (entry === null ? null : savedVenueClassRecord(entry)));
   const name = boundText(raw.name, MAX_VENUE_NAME_LENGTH);
   const description = boundText(raw.description, MAX_VENUE_DESCRIPTION_LENGTH);
   const category = boundText(raw.category, MAX_VENUE_NOTE_LENGTH);
@@ -632,6 +654,17 @@ function coerceVenue(value: unknown): VillageVenue | null {
         : "",
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
+      freezePicture: row.freezePicture === true,
+      pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
+      picture: {
+        base: coerceVenueImage(asRecord(row.picture).base) ?? coerceVenueImage(row.image),
+        removed: asRecord(row.picture).removed === true,
+        failed: asRecord(row.picture).failed === true,
+        context: boundText(asRecord(row.picture).context, 24000) || undefined,
+        baseline: boundText(asRecord(row.picture).baseline, 24000) || undefined,
+        attempted: boundText(asRecord(row.picture).attempted, 128) || undefined,
+        claim: boundText(asRecord(row.picture).claim, 128) || undefined,
+      },
       initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
       adaptationPending: row.adaptationPending === true,
       adaptationSourceArchiveAt: asIsoString(row.adaptationSourceArchiveAt) ?? "",
@@ -667,7 +700,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     const legacyScene: Record<string, unknown> = Array.isArray(raw.spaces) ? {} : state;
     return {
       ...fallback,
-      id: asTrimmedString(row.id) || venueClass,
+      id: asTrimmedString(row.id) || (legacyCommunity && venueClass === "community" ? "gathering" : venueClass),
       description: boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || description,
       image:
         coerceVenueImage(row.image) ??
@@ -900,7 +933,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     },
   };
   const readZone = (value: unknown, archived = false): VillageVenueZone | null => {
-    const row = asRecord(value);
+    const row = savedVenueClassRecord(value);
     const id = asTrimmedString(row.id);
     if (!id || !ZONE_KINDS.includes(row.kind as VillageVenueZone["kind"])) return null;
     const ownerId = asTrimmedString(row.ownerId);
@@ -915,6 +948,9 @@ function coerceVenue(value: unknown): VillageVenue | null {
     if (upgradeId && !improvements.some((upgrade) => upgrade?.id === upgradeId)) return null;
     const zone: VillageVenueZone = {
       id,
+      connectedTo: Array.isArray(row.connectedTo)
+        ? row.connectedTo.filter((id): id is string => typeof id === "string")
+        : undefined,
       name: boundText(row.name, MAX_VENUE_NAME_LENGTH) || "Zone",
       kind: row.kind as VillageVenueZone["kind"],
       venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
@@ -957,10 +993,28 @@ function coerceVenue(value: unknown): VillageVenue | null {
         : undefined,
       upgradeId: upgradeId || undefined,
       seen: row.seen === true,
+      freezePicture: row.freezePicture === true,
+      pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
+      picture: {
+        base: coerceVenueImage(asRecord(row.picture).base) ?? coerceVenueImage(row.image),
+        removed: asRecord(row.picture).removed === true,
+        failed: asRecord(row.picture).failed === true,
+        context: boundText(asRecord(row.picture).context, 24000) || undefined,
+        baseline: boundText(asRecord(row.picture).baseline, 24000) || undefined,
+        attempted: boundText(asRecord(row.picture).attempted, 128) || undefined,
+        claim: boundText(asRecord(row.picture).claim, 128) || undefined,
+      },
       initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
       adaptationPending: row.adaptationPending === true,
       adaptationSourceArchiveAt: asIsoString(row.adaptationSourceArchiveAt) ?? "",
     };
+    if (zone.image && !zone.picture?.baseline) {
+      zone.picture = {
+        ...zone.picture,
+        base: zone.picture?.base ?? zone.image,
+        baseline: zone.picture?.context ?? zonePictureBaseline(JSON.stringify(zonePicturePhysicalRecord(zone))),
+      };
+    }
     if (isPrivateInterior(zone) && zone.seen) {
       if (!zone.lastObserved) observePrivateInterior(zone, zone.state.updatedAt || "1970-01-01T00:00:00.000Z");
       if (zone.image && !zone.imageInteriorKey) zone.imageInteriorKey = privateInteriorKey(zone.lastObserved!);
@@ -1007,6 +1061,11 @@ function coerceVenue(value: unknown): VillageVenue | null {
     return parsed ? [parsed] : [];
   });
   synchronizeVenueZones(venue, structuredClone(venue));
+  venue.zones = materializeConnections(venue.zones ?? legacyVenueZones(venue)).flatMap((zone) => {
+    const parsed = readZone(zone);
+    return parsed ? [parsed] : [];
+  });
+  synchronizeVenueZones(venue, structuredClone(venue));
   venue.playerInvitations = venue.playerInvitations?.filter((invitation) => {
     invitation.zoneId ??=
       invitation.scope === "private"
@@ -1025,7 +1084,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
 function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value.flatMap((entry) => {
-    const row = asRecord(entry),
+    const row = savedVenueClassRecord(entry),
       id = asTrimmedString(row.id),
       name = boundText(row.name, MAX_VENUE_NAME_LENGTH),
       description = boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH);
@@ -1049,6 +1108,9 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
         purpose: boundText(row.purpose, 240),
         controllerIds: coerceVenueIds(row.controllerIds),
         ownerId: asTrimmedString(row.ownerId) || undefined,
+        connectedTo: Array.isArray(row.connectedTo)
+          ? row.connectedTo.filter((id): id is string => typeof id === "string")
+          : undefined,
         preserveDescription: row.preserveDescription === true,
         kind: row.kind as VillageZoneDraft["kind"],
         venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
@@ -1622,7 +1684,7 @@ function coerceProjects(value: unknown): VillageProject[] {
     if (!id || !title) return [];
     if ((raw.kind === "new-venue" || raw.kind === "renovation") && asRecord(raw.lifecycle).version === 2) {
       const flow = asRecord(raw.lifecycle);
-      const draft = asRecord(raw.venueDraft);
+      const draft = savedVenueClassRecord(raw.venueDraft);
       const position = asRecord(draft.position);
       const phases = [
         "concept",
@@ -1638,8 +1700,8 @@ function coerceProjects(value: unknown): VillageProject[] {
         ? (flow.phase as (typeof phases)[number])
         : "concept";
       const order = asRecord(flow.workOrder);
-      const change = asRecord(flow.change);
-      const improvement = asRecord(change.improvement);
+      const change = savedVenueClassRecord(flow.change);
+      const improvement = savedVenueClassRecord(change.improvement);
       return [
         {
           id,
@@ -1871,7 +1933,7 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
       const proposedAt = asIsoString(raw.proposedAt);
       if (!id || !title || !proposedAt) return [];
       const kinds = ["residence", "project", "venue", "venue-upgrade", "departure", "other"] as const;
-      const draft = asRecord(raw.venueDraft);
+      const draft = savedVenueClassRecord(raw.venueDraft);
       const draftState = asRecord(draft.state);
       const requestName = boundText(draft.name, MAX_VENUE_NAME_LENGTH);
       const requestClasses = validVenueClasses(draft.classes) ? draft.classes : [];
@@ -1925,7 +1987,7 @@ function coerceVenueMail(value: unknown): VillageVenueMail[] {
   if (!Array.isArray(value)) return [];
   return value
     .flatMap((entry) => {
-      const row = asRecord(entry);
+      const row = savedVenueClassRecord(entry);
       if (!asTrimmedString(row.id) || !asTrimmedString(row.venueId)) return [];
       if (
         row.kind !== "change" &&
@@ -1977,11 +2039,11 @@ function coerceVenueMail(value: unknown): VillageVenueMail[] {
           proposedPrivateZoneId: asTrimmedString(row.proposedPrivateZoneId) || undefined,
           counterofferRequestId: asTrimmedString(row.counterofferRequestId) || undefined,
           counterofferDraft: (() => {
-            const draft = asRecord(row.counterofferDraft);
+            const draft = savedVenueClassRecord(row.counterofferDraft);
             return asTrimmedString(draft.name) && asTrimmedString(draft.description)
               ? {
                   name: boundText(draft.name, MAX_VENUE_NAME_LENGTH),
-                  classes: validVenueClasses(draft.classes) ? draft.classes : ["gathering"],
+                  classes: validVenueClasses(draft.classes) ? draft.classes : ["community"],
                   description: boundText(draft.description, MAX_VENUE_DESCRIPTION_LENGTH),
                 }
               : undefined;
@@ -2075,6 +2137,8 @@ export function coerceVillageState(value: unknown): VillageState {
       typeof raw.sceneryStyleProfileId === "string" && /^[a-zA-Z0-9_-]{0,80}$/.test(raw.sceneryStyleProfileId)
         ? raw.sceneryStyleProfileId
         : null,
+    automaticZonePictures: raw.automaticZonePictures !== false,
+    zonePictureEpoch: Number.isSafeInteger(raw.zonePictureEpoch) ? Number(raw.zonePictureEpoch) : 0,
     personalizeVenueImagesByDefault: raw.personalizeVenueImagesByDefault !== false,
     useVisualLoreByDefault: raw.useVisualLoreByDefault !== false,
     loreTokenBudget: coerceLoreTokenBudget(raw.loreTokenBudget),
@@ -2155,6 +2219,8 @@ export function coerceVillageState(value: unknown): VillageState {
     correctedWishMemoryIds: [...new Set(asStringArray(raw.correctedWishMemoryIds).filter(Boolean))],
     simulatedThrough: asIsoString(raw.simulatedThrough) ?? legacySimulatedThrough(foundedAt, raw.lastHappeningKey),
     lastKnownTimeZone: boundText(raw.lastKnownTimeZone, 100),
+    timeZone: validTimeZone(raw.timeZone) ? raw.timeZone : "",
+    clock: decodeVillageClock(raw.clock),
     storyPace: coerceStoryPace(raw),
     lastCreativeDate: boundText(raw.lastCreativeDate, 10),
     processedOpportunityIds: asStringArray(raw.processedOpportunityIds)

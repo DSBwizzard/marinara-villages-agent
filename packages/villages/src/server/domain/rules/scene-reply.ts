@@ -1,4 +1,6 @@
+import { validDecisionEvidence } from "./decision-candidates.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
+import { isSceneAside } from "../../../shared/helpers/scene-speech.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { SavedAccessEvent, VenueReplyLine } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -58,6 +60,10 @@ export function parseVenueReply(
             : "";
     return {
       kind,
+      ...(row.delivery === "ordinary" || row.delivery === "whisper" || row.delivery === "shout"
+        ? { delivery: row.delivery }
+        : {}),
+      ...(row.presentation === "main" || row.presentation === "aside" ? { presentation: row.presentation } : {}),
       speakerId: kind === "narration" ? "__venue_scene__" : speakerId,
       content,
       heardBy:
@@ -77,18 +83,18 @@ export function parseVenueReply(
     };
   });
   if (
-    lines.some((line) => line.kind === "side" || line.kind === "whisper") &&
-    !lines.some((line) => line.kind === "narration" || line.kind === "dialogue")
+    lines.some(isSceneAside) &&
+    !lines.some((line) => !isSceneAside(line)) &&
+    // Zone events repair bubble anchors after private speech evidence is hidden.
+    !lines.some((line) => line.presentation !== undefined)
   )
     throw new Error("The venue response had side chatter without a main line.");
   const anchored: VenueReplyLine[] = lines.map((line, index) => {
-    if (line.kind !== "side" && line.kind !== "whisper") return line;
+    if (!isSceneAside(line)) return line;
     let anchorIndex = index - 1;
-    while (anchorIndex >= 0 && (lines[anchorIndex]!.kind === "side" || lines[anchorIndex]!.kind === "whisper"))
-      anchorIndex -= 1;
-    if (anchorIndex < 0)
-      anchorIndex = lines.findIndex((candidate) => candidate.kind === "narration" || candidate.kind === "dialogue");
-    return { ...line, anchorIndex };
+    while (anchorIndex >= 0 && isSceneAside(lines[anchorIndex]!)) anchorIndex -= 1;
+    if (anchorIndex < 0) anchorIndex = lines.findIndex((candidate) => !isSceneAside(candidate));
+    return anchorIndex < 0 ? line : { ...line, anchorIndex };
   });
   return {
     lines: anchored,
@@ -101,6 +107,9 @@ export function quietContactReply(text: string, localIds: string[]) {
       typeof parseVenueReply
     >["lines"],
     heardPlayerBy: localIds,
+    speechCapture: undefined as import("../models/scene-model.js").VenueSubmission["speechCapture"],
+    evidenceFingerprints: {} as Record<string, string>,
+    effectFailures: {} as NonNullable<import("../models/scene-model.js").VenueSubmission["effectFailures"]>,
     interpretationRouting: undefined,
     roomEvents: undefined,
     projectContexts: [],
@@ -136,6 +145,7 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
           result = batch.results[index];
         if (
           !result ||
+          !validDecisionEvidence(check, result) ||
           (!facts.accessCommand &&
             !["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome))
         )
@@ -143,6 +153,7 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
         return [
           {
             id: check.id,
+            interpretationVersion: 1,
             facts: {
               actorId: String(facts.actorId),
               venueId: String(facts.venueId),

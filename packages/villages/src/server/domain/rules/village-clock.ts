@@ -1,3 +1,4 @@
+import { ZonedDate, copyDate } from "../../../shared/helpers/zoned-date.js";
 // Villages — the village's own clock, derived rather than stored.
 //
 // Every answer to "when is it?" is derived on read from the village founding
@@ -207,7 +208,7 @@ export function hashString(value: string): number {
  * push the village a day out.
  */
 function localDayNumber(date: Date): number {
-  return Math.floor(new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() / MS_PER_DAY);
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / MS_PER_DAY);
 }
 
 /**
@@ -236,7 +237,7 @@ export function dayPhaseForHour(hour: number): string {
 export function nextClockChangeAt(now: Date): Date {
   const hour = now.getHours();
   const next = CLOCKS.find((entry) => entry.fromHour > hour);
-  const at = new Date(now);
+  const at = copyDate(now);
   // 24 rolls to midnight tomorrow, which is what the last part of day wants.
   at.setHours(next ? next.fromHour : 24, 0, 0, 0);
   return at;
@@ -255,9 +256,16 @@ function weatherFor(seed: string, dayIndex: number, season: VillageSeason): stri
  * the honest reading: the village keeps its own time from the moment it exists,
  * and a record written before it had a clock should not invent a past.
  */
-export function deriveVillageMoment(input: { foundedAt: string; seed: string; now: Date }): VillageMoment {
-  const { foundedAt, seed, now } = input;
-  const founded = new Date(foundedAt);
+export function deriveVillageMoment(input: {
+  foundedAt: string;
+  seed: string;
+  now: Date;
+  timeZone?: string;
+}): VillageMoment {
+  const { foundedAt, seed } = input;
+  const zone = input.timeZone ?? (input.now instanceof ZonedDate ? input.now.zone : undefined);
+  const now = zone ? new ZonedDate(input.now, zone) : input.now;
+  const founded = zone ? new ZonedDate(foundedAt, zone) : new Date(foundedAt);
   const start = Number.isNaN(founded.getTime()) ? now : founded;
   const dayIndex = Math.max(0, localDayNumber(now) - localDayNumber(start));
   const month = now.getMonth();
@@ -268,7 +276,7 @@ export function deriveVillageMoment(input: { foundedAt: string; seed: string; no
   const nextTransition = nextClockChangeAt(now);
   let timeZone = "local";
   try {
-    timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
+    timeZone = zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "local";
   } catch {
     // A runtime without Intl still has a perfectly usable device-local clock.
   }

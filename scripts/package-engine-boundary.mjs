@@ -129,20 +129,6 @@ export async function assertPackagePrivateImportBoundary({ sourceRoot, boundaryP
       throw new Error(`${displayName} has an unregistered computed runtime import: ${name}`);
     }
   }
-  for (const entry of runtimeInventory) {
-    const source = await readFile(resolve(sourceRoot, entry.source), "utf8");
-    for (const [constant, values] of [
-      ["DECISION_ENGINE_MODULES", entry.modules],
-      ["TESTED_DECISION_ENGINE_BUILDS", entry.testedBuilds],
-    ]) {
-      const declaration = source.match(new RegExp(`export const ${constant} = \\[([\\s\\S]*?)\\] as const`, "u"));
-      const actualValues = declaration
-        ? [...declaration[1].matchAll(/["']([^"']+)["']/gu)].map((match) => match[1])
-        : [];
-      if (JSON.stringify(actualValues) !== JSON.stringify(values))
-        throw new Error(`${displayName} runtime dependency inventory differs for ${constant}`);
-    }
-  }
   const key = (entry) => `${entry.source}\0${entry.specifier}`;
   const actualKeys = new Set(actual.map(key));
   const expectedKeys = new Set(expected.map(key));

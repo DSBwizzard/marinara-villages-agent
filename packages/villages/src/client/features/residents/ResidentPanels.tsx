@@ -286,12 +286,16 @@ export function VillagerMemoriesPanel({
                   <span>
                     <strong>{line.name || "Player"}</strong>
                     <small>
-                      {stampTime(line.at)} · heard by{" "}
+                      {stampTime(line.at)}
                       {line.heardBy
-                        .map(
-                          (id) => evidence.visit.participants.find((person) => person.characterId === id)?.name ?? id,
-                        )
-                        .join(", ") || "no one"}
+                        ? " · heard by " +
+                          (line.heardBy
+                            .map(
+                              (id) =>
+                                evidence.visit.participants.find((person) => person.characterId === id)?.name ?? id,
+                            )
+                            .join(", ") || "no one")
+                        : ""}
                     </small>
                   </span>
                   {renderVillagesMarkdown(line.content, `memory-evidence-${line.id}-`)}

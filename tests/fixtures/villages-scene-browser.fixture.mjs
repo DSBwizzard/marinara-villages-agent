@@ -26,7 +26,7 @@ const mapImage = image("#719b77");
 const place = (id, x, y) => ({
   id,
   name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
-  classes: id === "mill" ? ["workplace", "gathering"] : ["other"],
+  classes: id === "mill" ? ["workplace", "community"] : ["other"],
   category: "destination",
   description: "A village place.",
   capabilities: [],

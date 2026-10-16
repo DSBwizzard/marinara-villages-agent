@@ -1,15 +1,15 @@
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
-  version: "0.7.1",
-  minEngineVersion: "2.4.6",
+  version: "0.7.2",
+  minEngineVersion: "2.5.0",
   maxEngineExclusive: "4.0.0",
   name: "Villages",
   description: "A text-first shared-life sim in any setting that reconstructs elapsed life when you return.",
   category: "misc",
   kind: ["agent"],
   modes: ["conversation", "roleplay", "game"],
-  permissions: ["network", "routes", "storage", "ui"],
+  permissions: ["network", "routes", "storage", "ui", "scenes", "chat-read"],
   serverImport: "src/server/entry/index.ts",
   serverEntry: true,
   clientImport: "src/client/entry/index.tsx",
@@ -28,7 +28,7 @@ export const villagesDefinition = {
   boundaryDisplayName: "Villages",
   capabilityApi: {
     major: 1,
-    minor: 14,
+    minor: 66,
   },
   contributions: {
     slots: ["home-browser-tab"],

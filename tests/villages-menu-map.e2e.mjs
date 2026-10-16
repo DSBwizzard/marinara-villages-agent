@@ -193,6 +193,8 @@ try {
         };
       await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(value) });
     });
+    // This map fixture omits Engine's toolbar. Keep the unrelated owner meter disabled.
+    await page.route("**/api/villages/debug/runtime", (route) => route.fulfill({ json: { showUsageMeter: false } }));
     await page.route("http://villages.test/", (route) =>
       route.fulfill({
         status: 200,
@@ -224,7 +226,7 @@ try {
     await expect(page.locator('[class*="pin-tack"], [class*="photo-tack"]')).toHaveCount(0);
     await expect(page.locator(".marinara-capability-villages-pin-photo svg")).toHaveCount(0);
     for (const img of await page.locator(".marinara-capability-villages-pin-photo img").all())
-      await expect(img).toHaveCSS("object-fit", "contain");
+      await expect(img).toHaveCSS("object-fit", "cover");
     await page.getByRole("button", { name: "More" }).click();
     await expect(page.getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Homes", exact: true })).toHaveCount(0);
@@ -299,7 +301,7 @@ try {
       page.getByText("Use a 3:2 landscape orientation image. Recommended image size is 1536 x 1024px.", {
         exact: true,
       }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await upload.setInputFiles({
       name: "narrow-map.png",
       mimeType: "image/png",
@@ -318,6 +320,9 @@ try {
     await expect(page.getByText("The village map changed. Reload it before saving.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Cancel replacement" })).toBeVisible();
     await page.getByRole("button", { name: "Cancel replacement" }).click();
+    await page
+      .getByRole("button", { name: "Back to menu" })
+      .evaluate((button) => button.scrollIntoView({ block: "center" }));
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "Back to the village" }).click();
     await expect(page.getByRole("button", { name: /Notices \(1\)/u })).toBeVisible();

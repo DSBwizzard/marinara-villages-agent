@@ -9,7 +9,7 @@ export { coerceInterpretationSettings, type InterpretationSettings } from "../..
 const slot: DocumentSlot<InterpretationSettings> = {
   kind: "settings",
   name: "Interpretation settings",
-  description: "Optional Decisions and independent System comparison",
+  description: "Optional Decisions with System fallback",
   coerce: coerceInterpretationSettings,
   label: () => "Interpretation settings",
 };
@@ -38,7 +38,7 @@ export function createInterpretationSettings({
   async function saveInterpretationSettings(body: unknown): Promise<InterpretationSettings> {
     const raw = asRecord(body);
     const patch: Partial<InterpretationSettings> = {};
-    for (const key of ["decisionsEnabled", "compareSystem"] as const) {
+    for (const key of ["decisionsEnabled"] as const) {
       if (raw[key] === undefined) continue;
       if (typeof raw[key] !== "boolean") throw badRequest("Interpretation switches must be true or false.");
       patch[key] = raw[key];

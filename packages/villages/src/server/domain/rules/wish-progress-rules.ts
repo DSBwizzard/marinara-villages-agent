@@ -3,6 +3,7 @@ import type { PreparedWishVerdict, WishBatchInput, WishCheckInput, WishProposal 
 import type { WishCriteria } from "../models/wish-interpretation-model.js";
 import type { VillageState, VillageWish } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { validDecisionEvidence } from "./decision-candidates.js";
 import { createProgressTask, type ProgressTask, revealProgress, submitProgressEvidence } from "./progress-engine.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { localWishRequirements } from "./wish-admission.js";
@@ -227,6 +228,32 @@ export function applyPreparedWishVerdict(
   const id = effectId(input.sceneId, input.submissionId, input.proposal);
   if (state.exchangeReceipts[id] || state.seed !== input.seed) return;
   const wish = currentWish(state, input.proposal);
+  if (verdict.decision) {
+    const { check, result } = verdict.decision;
+    const facts = asRecord(check.facts);
+    if (
+      !validDecisionEvidence(check, result) ||
+      facts.actorId !== input.proposal.actorId ||
+      facts.wishFingerprint !== input.proposal.fingerprint ||
+      result.outcome !== verdict.outcome ||
+      JSON.stringify(result.evidenceIds) !== JSON.stringify(verdict.evidenceIds) ||
+      JSON.stringify(facts.criteria) !== JSON.stringify(verdict.criteria) ||
+      check.evidence.some(
+        (line) =>
+          line.kind !== "claim" &&
+          line.kind !== "receipt" &&
+          ![
+            ...input.context.evidence,
+            ...(input.context.knowledgeByWish?.[input.proposal.wishId]?.evidence ??
+              input.context.knowledge?.evidence ??
+              []),
+          ].some(
+            (actual) => actual.id === line.id && actual.speakerId === line.speakerId && actual.content === line.content,
+          ),
+      )
+    )
+      return;
+  }
   if (
     !wish ||
     (verdict.criteria.conditionRevision ?? input.proposal.conditionRevision ?? 0) !==

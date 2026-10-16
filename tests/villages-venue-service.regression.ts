@@ -17,7 +17,7 @@ import { configureVenueCommands, venueCommands } from "../packages/villages/src/
 // Synthetic independent stores; no Engine runtime, host bindings or providers.
 function fixture(name: string) {
   const state = defaultVillageState();
-  const venue = venueDraft({ name, description: "A quiet meeting place.", classes: ["gathering"] }, null);
+  const venue = venueDraft({ name, description: "A quiet meeting place.", classes: ["community"] }, null);
   venue.id = "venue";
   initializeVenueAccess(venue);
   state.venues = [venue];
@@ -75,7 +75,7 @@ async function main() {
   await assert.rejects(firstCommands.imageTarget({ zoneId: 7 }), /text IDs/);
   assert.deepEqual(first.events, [], "No-target and invalid-ID paths never read storage.");
   const imageZone = {
-    ...defaultVenueSpace("gathering"),
+    ...defaultVenueSpace("community"),
     id: "common",
     kind: "public" as const,
     name: "Common Space",
@@ -188,7 +188,7 @@ async function main() {
   editVenue.access = undefined; // Legacy access still requires the recorded controller grant.
   editVenue.zones = [
     {
-      ...defaultVenueSpace("gathering", "Original workspace."),
+      ...defaultVenueSpace("community", "Original workspace."),
       id: "staff",
       kind: "staff",
       name: "Workroom",
@@ -232,6 +232,23 @@ async function main() {
   assert.deepEqual(editVenue.zones[0].image, newImage);
   assert.equal(edits.events.at(-1), "mutate");
   assert.equal(editVenue.editProposals!.length, 0);
+
+  const beforeRename = structuredClone(editVenue.zones[0]);
+  editVenue.zones[0].seen = false;
+  await zoneEdits.updateVillageZone("venue", "staff", { name: "  Studio  " });
+  assert.equal(editVenue.zones[0].name, "Studio");
+  assert.equal(editVenue.zones[0].seen, false, "renaming does not reveal an unseen interior");
+  assert.deepEqual(editVenue.zones[0].state, beforeRename.state);
+  assert.deepEqual(editVenue.zones[0].image, beforeRename.image);
+  assert.equal(editVenue.editProposals!.length, 0, "label changes need no resident proposal");
+  await assert.rejects(() => zoneEdits.updateVillageZone("venue", "staff", { name: "  " }), /name/);
+  editVenue.zones.push({ ...structuredClone(beforeRename), id: "exterior", kind: "exterior", name: "Exterior" });
+  await assert.rejects(
+    () => zoneEdits.updateVillageZone("venue", "exterior", { name: "Front door" }),
+    /always named Exterior/,
+  );
+  assert.equal(editVenue.zones[1].name, "Exterior");
+  editVenue.zones[0].seen = true;
 
   await zoneEdits.proposeResidenceSpaceEdit("venue", { zoneId: "staff", description: "Obsolete proposal." });
   const staleProposal = editVenue.editProposals![0];

@@ -4,7 +4,6 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { agendaMinuteLabel, agendaUpdatePending, remapPlaceName } from "../../shared/presentation.js";
 import type { ResidentsScreenController } from "./screen-contracts.js";
 import { BackgroundWorkPanel } from "../background/BackgroundPanel.js";
-import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 import { AvatarFace, VillagerMemoriesPanel, WishHistory, wishLifetimeLabel } from "./ResidentPanels.js";
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
 import { SpriteManager } from "./villages-sprite-manager.js";
@@ -298,11 +297,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                     >
                       Regenerate agenda
                     </button>
-                    <VillagesBurstPreview
-                      request={request}
-                      action="agenda"
-                      args={{ characterId: villager.characterId }}
-                    />
+
                     {Object.entries({
                       rhythm: "Preferred sleep/wake rhythm",
                       busyFree: "Broad busy/free periods",
@@ -379,16 +374,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                                       {part.venueId
                                         ? remapPlaceName(snapshot?.settings.venues ?? [], part.venueId)
                                         : "Home"}
-                                    </span>
-                                    <span>{part.reason}</span>
-                                    <span className={`${ELEMENT_TAG}-story-scope`}>
-                                      {part.status === "idle"
-                                        ? "Available"
-                                        : part.status === "dnd"
-                                          ? "Busy"
-                                          : part.status === "offline"
-                                            ? "Offline"
-                                            : "Online"}
                                     </span>
                                   </li>
                                 ))}

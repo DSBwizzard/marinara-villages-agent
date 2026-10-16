@@ -10,6 +10,7 @@ import { coerceResponseDiagnostics } from "../../domain/rules/response-diagnosti
 import { sceneProcessingSummary } from "../../domain/rules/scene-public.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
 import { knownWish } from "../../domain/rules/wish-journal.js";
+import { workFailureSummary } from "../../domain/rules/work-failure.js";
 export interface SceneChangesPorts {
   readSession(id: string): Promise<VenueScene>;
   readVillageSnapshot(): Promise<VillageState>;
@@ -112,10 +113,12 @@ export function createSceneChanges({
         status: scene.operation?.status,
         error: scene.operation?.error,
         failure: scene.operation?.failure,
+        timing: scene.operation?.timing,
         requests: venueRequestMetrics(scene.operation),
       },
       changes: turns.map(({ turn }) => ({
         submissionId: turn.id,
+        timing: turn.timing,
         at: turn.at,
         processing: turn.processing ?? null,
         receipts: {
@@ -167,16 +170,28 @@ export function createSceneChanges({
       unresolved: scene.submissions
         .flatMap((turn) =>
           Object.entries(turn.processing?.domains ?? {})
-            .filter(([, result]) => result.status === "failed")
+            .filter(([, result]) => ["pending", "failed", "rejected"].includes(result.status))
             .map(([domain, result]) => ({
               submissionId: turn.id,
               domain,
+              status: result.status,
+              at: turn.at,
               reason:
-                result.failure?.cause === "missing_result" || result.failure?.cause === "output_limit"
-                  ? "Required response metadata is missing or incomplete. Replay cannot reconstruct it; explicitly retry interpretation."
-                  : "Saved changes could not be applied. Replay saved work first; inspect saved diagnostics if it persists.",
+                result.status === "pending"
+                  ? "This proposed update is still being checked."
+                  : result.failure
+                    ? workFailureSummary(result.failure)
+                    : result.status === "rejected"
+                      ? /evidence|witness|heard/iu.test(result.reason ?? "")
+                        ? "The proposed update cited words or events that were not witnessed by everyone it would affect. It wasn’t saved; the conversation remains in the transcript."
+                        : "The proposed update did not meet the requirements for saving. The conversation remains in the transcript; saved diagnostics contain the validation result."
+                      : "Saved changes could not be applied. Replay saved work first; inspect saved diagnostics if it persists.",
             })),
         )
+        .sort((left, right) => {
+          const priority = (status: string) => (status === "failed" ? 0 : status === "pending" ? 1 : 2);
+          return priority(left.status) - priority(right.status) || (right.at ?? "").localeCompare(left.at ?? "");
+        })
         .slice(0, 50),
       processingSummary: sceneProcessingSummary(scene),
       nextCursor: `${sceneCursor}:${noticeCursor}:${relationshipCursor}`,

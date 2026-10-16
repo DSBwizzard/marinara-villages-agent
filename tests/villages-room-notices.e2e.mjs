@@ -83,6 +83,8 @@ let pending = true,
   interpretations = 0,
   replays = 0,
   closingReviews = 0;
+let failedDomain = "memories";
+const interpretedDomains = [];
 const api = async (route) => {
   const path = new URL(route.request().url()).pathname;
   let value = snapshot;
@@ -98,9 +100,9 @@ const api = async (route) => {
         ? [
             {
               submissionId: "turn",
-              domain: "memories",
-              reason:
-                "Required response metadata is missing or incomplete. Replay cannot reconstruct it; explicitly retry interpretation.",
+              domain: failedDomain,
+              status: "failed",
+              reason: "A citation is unavailable or was not witnessed by every affected resident.",
             },
           ]
         : [],
@@ -114,6 +116,7 @@ const api = async (route) => {
     value = { dismissed: true };
   } else if (path.endsWith("/interpret")) {
     interpretations++;
+    interpretedDomains.push(route.request().postDataJSON().domain);
     failed = false;
     value = {};
   } else if (path.endsWith("/changes/replay")) {
@@ -144,7 +147,7 @@ try {
   const stack = page.locator("[aria-label='Village events']");
   await composer.waitFor();
   await composer.focus();
-  await expect(page.getByRole("status", { name: "Saved change status" })).toContainText("still being checked");
+  await expect(page.getByRole("button", { name: /^\d+ Scene errors?$/ })).toHaveCount(0);
   const shared = {
     id: "3260cf01-1771-43b8-b72c-c050c713029d:989be974-b9ad-4ed3-9256-8e732575d6fa:relationship:077092eca1d088f3dd4a0440",
     kind: "wish",
@@ -209,16 +212,35 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: "artifacts/live-wish-chips-desktop.png" });
   failed = true;
-  const status = page.getByRole("status", { name: "Saved change status" });
-  await expect(status).toContainText("need attention");
-  await status.locator("summary").click();
-  await expect(status).toContainText("memories: Required response metadata is missing or incomplete");
-  await expect(status).toContainText("Replay cannot reconstruct it");
+  const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
+  await chip.click();
+  const status = page.getByRole("region", { name: "Scene errors" });
+  await status.locator("summary").filter({ hasText: "memories update failed" }).click();
+  await expect(status).toContainText("A citation is unavailable or was not witnessed by every affected resident");
+  await expect(
+    status.getByRole("button", { name: "Retry memories interpretation · may use model requests" }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 740 });
+  await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: "artifacts/memory-cause-desktop.png" });
   await status.getByRole("button", { name: "Replay saved work · no model request" }).click();
   await expect.poll(() => replays).toBe(1);
   assert.equal(interpretations, 0);
   await status.getByRole("button", { name: "Retry memories interpretation · may use model requests" }).click();
   await expect.poll(() => interpretations).toBe(1);
+  failedDomain = "projects";
+  failed = true;
+  await expect(chip).toBeVisible();
+  if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
+  await status.locator("summary").filter({ hasText: "projects update failed" }).click();
+  await page.setViewportSize({ width: 375, height: 740 });
+  await page.screenshot({ path: "artifacts/project-recovery-phone.png" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: "artifacts/project-recovery-desktop.png" });
+  await status.getByRole("button", { name: "Retry projects interpretation · may use model requests" }).click();
+  await expect.poll(() => interpretations).toBe(2);
+  assert.deepEqual(interpretedDomains, ["memories", "projects"]);
   assert.deepEqual(errors, []);
   console.log(
     "villages-room-notices: live Wish chips, stars/hearts, focus, details, duplicate receipts, refresh, two-tab dismissal, and explicit recovery passed",

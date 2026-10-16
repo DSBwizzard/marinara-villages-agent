@@ -117,7 +117,8 @@ try {
     const visitVenueAndReturn = async () => {
       await page.getByRole("button", { name: "Venue actions" }).click();
       await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
-      await expect(page.getByRole("main", { name: "View Venue" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: "About this venue" })).toBeVisible();
       await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
       await expect(reading).toBeVisible();
     };
@@ -126,8 +127,12 @@ try {
     await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
     if (mobile) {
       const scene = await page.locator(`.${tag}-room-screen`).boundingBox();
-      const input = await page.locator(`.${tag}-chat-input`).boundingBox();
-      assert.ok(Math.abs(scene.y + scene.height - input.y - input.height) < 1, "actual composer touches Scene bottom");
+      await expect(draft).toHaveCount(0);
+      const card = await page.locator(`.${tag}-chat-vn-card`).boundingBox();
+      assert.ok(
+        Math.abs(scene.y + scene.height - card.y - card.height) < 1,
+        "dialogue touches Scene bottom while reading",
+      );
     }
     await expect(tray).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByLabel("Village events")).toBeVisible();
@@ -137,13 +142,14 @@ try {
     await tray.click();
     await expect(tray).toHaveAttribute("aria-expanded", "false");
     // Opening a dossier keeps the same mounted scene and its earlier reading position.
-    await previous.click();
-    await expect(text).toHaveText("A quiet afternoon.");
+    while (await next.isEnabled()) await next.click();
     await draft.fill("Draft retained across dossier navigation");
+    while (await previous.isEnabled()) await previous.click();
+    await expect(text).toHaveText("A quiet afternoon.");
     for (let repeat = 0; repeat < 2; repeat++) {
       await visitVenueAndReturn();
       await expect(text).toHaveText("A quiet afternoon.");
-      await expect(draft).toHaveValue("Draft retained across dossier navigation");
+      await expect(draft).toHaveCount(0);
     }
     if ((await tray.getAttribute("aria-expanded")) === "true") await tray.click();
 
@@ -161,7 +167,7 @@ try {
     await expect(page.getByRole("region", { name: "Mara profile", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await expect(text).toHaveText("A quiet afternoon.");
-    await expect(draft).toHaveValue("Draft retained across dossier navigation");
+    await expect(draft).toHaveCount(0);
     await tray.click();
     await next.click();
     if (mobile) {
@@ -173,7 +179,10 @@ try {
       await expect(counter).toContainText("Page 1/");
       assert.equal((await page.locator(`.${tag}-chat-vn-portrait`).boundingBox()).width, 32);
       assert.ok((await reading.boundingBox()).width > width - 48, "text spans the card width");
+      while (await next.isEnabled()) await next.click();
       await draft.fill("Preserve this draft");
+      while (await previous.isEnabled()) await previous.click();
+      await next.click();
 
       await next.click();
       await expect(counter).toContainText("Page 2/");
@@ -186,13 +195,13 @@ try {
         await page.setViewportSize({ width, height });
         await expect(counter).toHaveText(retainedPage);
         await expect(text).toHaveText(retainedText);
-        await expect(draft).toHaveValue("Preserve this draft");
+        await expect(draft).toHaveCount(0);
       }
       for (let repeat = 0; repeat < 2; repeat++) {
         await visitVenueAndReturn();
         await expect(counter).toHaveText(retainedPage);
         await expect(text).toHaveText(retainedText);
-        await expect(draft).toHaveValue("Preserve this draft");
+        await expect(draft).toHaveCount(0);
       }
       if ((await tray.getAttribute("aria-expanded")) === "true") await tray.click();
       await previous.click();
@@ -202,7 +211,7 @@ try {
       await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
       await expect(reading).toBeHidden();
       await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
-      await expect(draft).toHaveValue("Preserve this draft");
+      await expect(draft).toHaveCount(0);
       assert.equal(await text.textContent(), initialText);
       const images = page.locator(`.${tag}-chat-cast-person > img`);
       const baseline = await images.first().boundingBox();
@@ -231,7 +240,9 @@ try {
       } while (pageCount < 100);
       assert.ok(pageCount > 1 && pageCount < 100);
       assert.equal(combined, expected, "every rendered character appears exactly once");
-      await previous.click();
+      await expect(draft).toHaveValue("Preserve this draft");
+      const atBottom = await page.locator(`.${tag}-chat-input`).boundingBox();
+      assert.ok(Math.abs(atBottom.y + atBottom.height - height) <= 1, "action input has no padding beneath it");
       const beforeKeyboard = await text.textContent(),
         counterBeforeKeyboard = await counter.textContent();
       await draft.focus();

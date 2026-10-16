@@ -37,7 +37,7 @@ export function registerInterpretationRoutes(engine: FastifyInstance) {
         settings,
         status: settings.decisionsEnabled
           ? await decisionAdapterStatus()
-          : { available: false, reason: "Decisions is off", engineBuild: null },
+          : { available: false, reason: "Decisions is off" },
       };
     } catch (error) {
       return fail(reply, error, "reading interpretation settings");
@@ -50,7 +50,7 @@ export function registerInterpretationRoutes(engine: FastifyInstance) {
         settings,
         status: settings.decisionsEnabled
           ? await decisionAdapterStatus()
-          : { available: false, reason: "Decisions is off", engineBuild: null },
+          : { available: false, reason: "Decisions is off" },
       };
     } catch (error) {
       return fail(reply, error, "saving interpretation settings");
@@ -170,6 +170,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       selectedLorebookIds?: unknown;
       sceneryArtStyle?: unknown;
       sceneryStyleProfileId?: unknown;
+      automaticZonePictures?: unknown;
       personalizeVenueImagesByDefault?: unknown;
       useVisualLoreByDefault?: unknown;
       useVisualLore?: unknown;
@@ -196,6 +197,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       if (
         body.sceneryArtStyle !== undefined ||
         body.sceneryStyleProfileId !== undefined ||
+        body.automaticZonePictures !== undefined ||
         body.personalizeVenueImagesByDefault !== undefined ||
         body.useVisualLoreByDefault !== undefined
       )

@@ -140,6 +140,22 @@
       "path": "/rooms/zone"
     },
     {
+      "method": "get",
+      "path": "/spinoffs/active"
+    },
+    {
+      "method": "post",
+      "path": "/spinoffs/begin"
+    },
+    {
+      "method": "post",
+      "path": "/spinoffs/prepare"
+    },
+    {
+      "method": "post",
+      "path": "/spinoffs/resolve"
+    },
+    {
       "method": "post",
       "path": "/private-spaces/retry"
     },
@@ -291,6 +307,10 @@
       "path": "/setup/venues/suggest"
     },
     {
+      "method": "get",
+      "path": "/setup/venues/suggestions/:actionId"
+    },
+    {
       "method": "post",
       "path": "/setup/scenario-imprint/draft"
     },
@@ -334,6 +354,14 @@
       "method": "put",
       "path": "/setup/venue-image",
       "bodyLimit": 28027564
+    },
+    {
+      "method": "post",
+      "path": "/locations/venue/image/retry"
+    },
+    {
+      "method": "patch",
+      "path": "/locations/venue/image/freeze"
     },
     {
       "method": "post",
@@ -483,6 +511,10 @@
     {
       "method": "post",
       "path": "/residences/private-space/retry"
+    },
+    {
+      "method": "post",
+      "path": "/clock/recover"
     },
     {
       "method": "post",

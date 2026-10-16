@@ -94,6 +94,7 @@ function requestRefusal(payload: unknown, status: number, fallback: string): Err
     (value) => typeof value === "string" && value.trim() && !GENERIC_HTTP_ERROR.test(value.trim()),
   );
   const message = typeof detail === "string" ? detail : fallback;
+  if (status === 409 && /clock/i.test(message)) window.dispatchEvent(new Event("villages-clock-changed"));
   if (status === 403 && /admin[-_ ]?secret/iu.test(message)) {
     return new VillageApiError(
       `${PRIVILEGED_ACCESS_HINT} (${message})`,

@@ -1,5 +1,3 @@
-import { VillagesUsageMeter } from "../features/settings/villages-usage-meter.js";
-import { request } from "../shared/api.js";
 import { ELEMENT_TAG } from "../shared/constants.js";
 import { syncVillagesStyles } from "./styles.js";
 import { VillagesView } from "../shell/VillagesApp.js";
@@ -91,7 +89,6 @@ function CapabilityRoot({ element }: { element: VillagesCapabilityElement }) {
   }, [element]);
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
-      <VillagesUsageMeter request={request} element={element} />
       <div style={{ flex: "1 1 auto", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
         <VillagesView element={element} />
       </div>

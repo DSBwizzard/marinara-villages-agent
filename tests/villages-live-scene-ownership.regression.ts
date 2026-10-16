@@ -17,6 +17,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { resolveVenueZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { SESSION_PREFIX } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
@@ -37,7 +38,7 @@ function fixture(name: string) {
       ...defaultVillageState(),
       seed: name,
       foundedAt: stamp,
-      venues: [{ id: "venue", name, classes: ["gathering"], description: name }],
+      venues: [{ id: "venue", name, classes: ["community"], description: name }],
     });
   initializeVenueAccess(world.venues[0]!);
   const saved = coerceSession({
@@ -47,14 +48,15 @@ function fixture(name: string) {
     status: "active",
     startedAt: stamp,
     lastActivityAt: stamp,
-    zoneId: "gathering",
+    zoneId: "community",
     area: "public",
     participants: [{ characterId: "mara", name: name + " Mara", doing: "listening" }],
     activeIds: ["mara"],
     sceneAttendance: {
       capturedAt: stamp,
+      layout: captureSceneLayout(world.venues[0]!),
       occupants: [
-        { characterId: "mara", name: name + " Mara", doing: "listening", availability: "online", zoneId: "gathering" },
+        { characterId: "mara", name: name + " Mara", doing: "listening", availability: "online", zoneId: "community" },
       ],
     },
     lines: [],
@@ -281,13 +283,13 @@ async function main() {
     name: "Resident " + i,
     doing: "here",
     availability: "online",
-    zoneId: "gathering",
+    zoneId: "community",
   }));
   await assert.rejects(crowded.service.refreshZoneParticipants(crowded.saved), /Five residents/);
   assert(!crowded.calls.includes("change:same"));
   const claim = fixture("claim"),
     venue = claim.world.venues[0]!,
-    zone = resolveVenueZone(venue, "gathering")!;
+    zone = resolveVenueZone(venue, "community")!;
   zone.access!.mode = "permission-required";
   venue.access!.managerIds = ["mara"];
   venue.access!.permissions.push({
@@ -313,7 +315,7 @@ async function main() {
   );
   const privateExit = fixture("private-exit"),
     privateVenue = privateExit.world.venues[0]!,
-    privateZone = resolveVenueZone(privateVenue, "gathering")!;
+    privateZone = resolveVenueZone(privateVenue, "community")!;
   privateZone.access!.mode = "permission-required";
   privateVenue.access!.managerIds = ["player"];
   privateExit.saved.zoneId = "exterior";
@@ -322,12 +324,12 @@ async function main() {
   const displaced = await privateExit.service.refreshZoneParticipants(privateExit.saved);
   assert.deepEqual(displaced.accompanying, [{ characterId: "mara", zoneId: "exterior" }]);
   assert.equal(displaced.lines.length, 1, "abandoned retry narration is not persisted");
-  assert.equal(displaced.lines[0]!.zoneId, "gathering");
+  assert.equal(displaced.lines[0]!.zoneId, "community");
   assert.equal(displaced.lines[0]!.contactHidden, false, "player at destination witnesses the exit");
   assert.deepEqual(displaced.lines[0]!.heardBy, ["mara"]);
   const unseen = fixture("unseen"),
     unseenVenue = unseen.world.venues[0]!,
-    hiddenZone = structuredClone(resolveVenueZone(unseenVenue, "gathering")!);
+    hiddenZone = structuredClone(resolveVenueZone(unseenVenue, "community")!);
   hiddenZone.id = "restricted";
   hiddenZone.name = "Private room";
   hiddenZone.kind = "restricted";
@@ -340,12 +342,12 @@ async function main() {
     name: "Unrelated witness",
     doing: "reading",
     availability: "online",
-    zoneId: "gathering",
+    zoneId: "community",
   });
   unseen.saved.participants.push({ characterId: "unrelated", name: "Unrelated witness", doing: "reading" });
   unseen.saved.activeIds = ["unrelated"];
   const hiddenExit = await unseen.service.refreshZoneParticipants(unseen.saved);
-  assert.equal(hiddenExit.zoneId, "gathering");
+  assert.equal(hiddenExit.zoneId, "community");
   assert.equal(hiddenExit.lines.length, 1);
   assert.equal(hiddenExit.lines[0]!.contactHidden, true, "unseen third-Zone movement stays server-only");
   assert.equal(hiddenExit.lines[0]!.zoneId, "restricted");
@@ -353,7 +355,7 @@ async function main() {
   assert.deepEqual(hiddenExit.activeIds, ["unrelated"], "unseen departure adds no player-Zone attendance");
   const concurrent = fixture("concurrent"),
     concurrentVenue = concurrent.world.venues[0]!;
-  resolveVenueZone(concurrentVenue, "gathering")!.access!.mode = "permission-required";
+  resolveVenueZone(concurrentVenue, "community")!.access!.mode = "permission-required";
   concurrentVenue.access!.managerIds = ["player"];
   concurrent.saved.zoneId = "exterior";
   concurrent.saved.activeIds = [];

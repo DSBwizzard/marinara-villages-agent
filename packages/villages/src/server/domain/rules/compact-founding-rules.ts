@@ -22,12 +22,10 @@ type PaletteEntry = {
   flexible: boolean;
   activity: string;
   venueId: string;
-  status: "online" | "idle" | "dnd" | "offline";
   zoneId?: string;
   duration: number;
   essential: boolean;
   parts: number[];
-  reason: string;
 };
 
 export type CompactFoundingContext = {
@@ -110,8 +108,6 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
       throw new Error(`Village activity ${index + 1} needs activity text of 1–160 characters.`);
     if (!Number.isInteger(venue) || (venue as number) < 0 || (venue as number) > venues.length)
       throw new Error(`Village activity ${index + 1} needs a numeric venue index from 0 to ${venues.length}.`);
-    if (row.status !== "online" && row.status !== "idle" && row.status !== "dnd" && row.status !== "offline")
-      throw new Error(`Village activity ${index + 1} has no valid availability.`);
     return {
       activity,
       duration: Math.max(30, Math.min(240, Number(row.duration) || 90)),
@@ -123,10 +119,8 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
           : [0, 1, 2, 3],
       essential: row.essential === true || row.flexible !== true,
       zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
-      reason: "",
-      flexible: row.flexible === true && (row.status === "online" || row.status === "idle"),
+      flexible: row.flexible === true,
       venueId: (venue as number) === 0 ? "" : venues[(venue as number) - 1]!.id,
-      status: row.status,
     };
   });
 }

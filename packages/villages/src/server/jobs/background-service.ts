@@ -1,3 +1,9 @@
+import {
+  withVillageClockWork,
+  assertVillageClockWrite,
+  isVillageClockError,
+  clockAdministration,
+} from "../adapters/time/clock-gate.js";
 import { backgroundRevision } from "../domain/rules/background-revision.js";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
@@ -106,6 +112,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     const documents = villagesDocuments();
     for (let attempt = 0; attempt < 8; attempt++) {
       const record = await documents.getById(VILLAGES_PACKAGE_ID, id);
+      await assertVillageClockWrite();
       const next = change(record ? (structuredClone(record.data) as Job) : null);
       if (record && JSON.stringify(next) === JSON.stringify(record.data)) return structuredClone(next);
       const stamp = new Date().toISOString();
@@ -311,7 +318,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     return task;
   }
   async function runJob(id: string): Promise<void> {
-    return measurePipeline("background work", { jobId: id }, () => runMeasuredJob(id));
+    return withVillageClockWork(() => measurePipeline("background work", { jobId: id }, () => runMeasuredJob(id)));
   }
   async function runMeasuredJob(id: string): Promise<void> {
     let job = await readJob(id);
@@ -338,6 +345,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         ...current!,
         status: "completed",
         steps: [],
+        optionalAttempts: {},
         settings: {},
         input: null,
         result: undefined,
@@ -349,7 +357,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       }));
       return;
     }
-    if (job.owner !== runOwner && job.steps.some((step) => step.status === "running")) {
+    if (
+      job.owner !== runOwner &&
+      (job.steps.some((step) => step.status === "running") ||
+        Object.values(job.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching"))
+    ) {
       await changeJob(id, (current) => ({
         ...current!,
         status: "interrupted",
@@ -364,6 +376,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       return;
     }
     const controller = new AbortController();
+    const runJobId = job.id;
+    const runAttempt = job.attempt;
     controllers.set(id, controller);
     let cursor = 0;
     let lastIndex = -1;
@@ -475,6 +489,97 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         return response;
       });
     };
+    complete.signal = controller.signal;
+    complete.optionalCompletion = async <T>(
+      fingerprint: string,
+      work: (signal: AbortSignal) => Promise<T>,
+    ): Promise<T | undefined> => {
+      const assertOwner = () => {
+        if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
+        if (superseded.has(job!.id)) throw new Obsolete("This job was replaced.");
+        controller.signal.throwIfAborted();
+      };
+      assertOwner();
+      const prior = job!.optionalAttempts?.[fingerprint];
+      if (prior) return prior.status === "complete" ? (structuredClone(prior.result) as T) : undefined;
+      // A purchased System checkpoint must replay with exactly the same pending batch.
+      if (job!.steps.length) return undefined;
+      return requestTurn(async () => {
+        assertOwner();
+        if (!job!.finite && !hasVillagePresence()) throw new Paused("Waiting until Villages is visible.");
+        const expectedOwner = job!.owner;
+        checkCurrent(job!, await readVillageState());
+        const allowance = Math.max(
+          0,
+          10_000 - Object.values(job!.optionalAttempts ?? {}).reduce((sum, attempt) => sum + attempt.elapsedMs, 0),
+        );
+        if (!allowance) return undefined;
+        job = await changeJob(id, (current) => {
+          assertOwner();
+          if (
+            !current ||
+            current.id !== runJobId ||
+            current.attempt !== runAttempt ||
+            current.owner !== expectedOwner ||
+            (current.owner !== runOwner && current.status === "running")
+          )
+            throw new Obsolete("This job was replaced.");
+          current.optionalAttempts ??= {};
+          if (current.optionalAttempts[fingerprint]) throw new Paused("Optional request already reserved.");
+          current.optionalAttempts[fingerprint] = { status: "dispatching", elapsedMs: allowance };
+          current.owner = runOwner;
+          current.status = "running";
+          current.requests++;
+          current.usageComplete = false;
+          return current;
+        });
+        const started = performance.now();
+        const timeout = new AbortController();
+        const signal = AbortSignal.any([controller.signal, timeout.signal]);
+        let onAbort: () => void = () => {};
+        const timer = setTimeout(() => timeout.abort(), allowance);
+        let result: T | undefined;
+        let status: "complete" | "unknown" = "unknown";
+        try {
+          result = await Promise.race([
+            work(signal),
+            new Promise<never>((_resolve, reject) => {
+              onAbort = () => reject(signal.reason);
+              signal.addEventListener("abort", onAbort, { once: true });
+              if (signal.aborted) onAbort();
+            }),
+          ]);
+          assertOwner();
+          status = "complete";
+        } catch {
+          assertOwner();
+        } finally {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", onAbort);
+        }
+        assertOwner();
+        checkCurrent(job!, await readVillageState());
+        // Persistence/ownership errors propagate: they never authorize a System request.
+        job = await changeJob(id, (current) => {
+          assertOwner();
+          if (
+            !current ||
+            current.id !== runJobId ||
+            current.attempt !== runAttempt ||
+            current.owner !== runOwner ||
+            current.optionalAttempts?.[fingerprint]?.status !== "dispatching"
+          )
+            throw new Obsolete("Optional request ownership changed.");
+          current.optionalAttempts[fingerprint] = {
+            status,
+            elapsedMs: Math.min(allowance, Math.ceil(performance.now() - started)),
+            ...(status === "complete" ? { result: structuredClone(result) } : {}),
+          };
+          return current;
+        });
+        return result;
+      });
+    };
     complete.metadata = {
       id: job.id,
       kind: job.kind,
@@ -486,11 +591,28 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           : "Automatic: village time or resident agenda update",
     };
     complete.setting = async <T>(key: string, create: () => T | Promise<T>): Promise<T> => {
+      const assertOwner = () => {
+        if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
+        if (superseded.has(runJobId)) throw new Obsolete("This job was replaced.");
+        controller.signal.throwIfAborted();
+      };
+      assertOwner();
+      const expectedOwner = job!.owner;
       const value = key in (job!.settings ?? {}) ? job!.settings[key] : await create();
+      assertOwner();
       job = await changeJob(id, (current) => {
-        current!.settings ??= {};
-        if (!(key in current!.settings)) current!.settings[key] = value;
-        return current!;
+        assertOwner();
+        if (
+          !current ||
+          current.id !== runJobId ||
+          current.attempt !== runAttempt ||
+          current.owner !== expectedOwner ||
+          (current.owner !== runOwner && current.status === "running")
+        )
+          throw new Obsolete("This job was replaced.");
+        current.settings ??= {};
+        if (!(key in current.settings)) current.settings[key] = value;
+        return current;
       });
       return job.settings[key] as T;
     };
@@ -534,6 +656,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         failedAt: undefined,
         partialResult: false,
         steps: [],
+        optionalAttempts: {},
         settings: {},
         input: null,
         result: undefined,
@@ -547,36 +670,72 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         .catch((error) => villagesLogger().warn("[villages] could not queue follow-up work: %s", String(error)));
     } catch (error) {
       if (owner !== runOwner || stopped) return;
+      if (isVillageClockError(error)) {
+        await clockAdministration(() =>
+          changeJob(id, (current) => {
+            if (!current) throw new Obsolete("This job was removed.");
+            if (
+              current.id !== runJobId ||
+              current.attempt !== runAttempt ||
+              (current.owner !== job!.owner && current.owner !== runOwner) ||
+              (current.owner !== runOwner && current.status === "running")
+            )
+              return current;
+            return {
+              ...current,
+              status: "interrupted",
+              error:
+                "The computer clock changed. Resolve the village clock notice before explicitly retrying this work.",
+              failure: undefined,
+              failedAt: undefined,
+            };
+          }),
+        );
+        return;
+      }
       const obsolete = error instanceof Obsolete,
         paused = error instanceof Paused;
       const message = (error instanceof Error ? error.message : String(error)).slice(0, 300);
       const failedInput = job.input;
-      job = await changeJob(id, (current) => ({
-        ...current!,
-        status: obsolete
-          ? "obsolete"
-          : paused
-            ? current!.steps.some((step) => step.status === "running")
-              ? "interrupted"
-              : "paused"
-            : "failed",
-        error: message,
-        failedAt: obsolete || paused ? current!.failedAt : (current!.failedAt ?? new Date().toISOString()),
-        failure:
-          error instanceof WorkFailureError
-            ? error.failure
-            : obsolete || paused
-              ? current!.failure
-              : { cause: dispatched ? "unknown_request" : "storage_application", stage, message },
-        failedStep: current!.partialResult
-          ? current!.failedStep
-          : current!.hasResult
-            ? null
-            : paused || obsolete || !invoked || ["storage", "response-storage"].includes(stage)
-              ? current!.failedStep
-              : Math.max(0, lastIndex),
-        ...(obsolete ? { steps: [], settings: {}, input: null, result: undefined, hasResult: false } : {}),
-      }));
+      job = await changeJob(id, (current) => {
+        if (
+          !current ||
+          current.id !== runJobId ||
+          current.attempt !== runAttempt ||
+          (current.owner !== job!.owner && current.owner !== runOwner) ||
+          (current.owner !== runOwner && current.status === "running")
+        )
+          throw new Obsolete("This job was replaced.");
+        return {
+          ...current!,
+          status: obsolete
+            ? "obsolete"
+            : paused
+              ? current!.steps.some((step) => step.status === "running") ||
+                Object.values(current!.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching")
+                ? "interrupted"
+                : "paused"
+              : "failed",
+          error: message,
+          failedAt: obsolete || paused ? current!.failedAt : (current!.failedAt ?? new Date().toISOString()),
+          failure:
+            error instanceof WorkFailureError
+              ? error.failure
+              : obsolete || paused
+                ? current!.failure
+                : { cause: dispatched ? "unknown_request" : "storage_application", stage, message },
+          failedStep: current!.partialResult
+            ? current!.failedStep
+            : current!.hasResult
+              ? null
+              : paused || obsolete || !invoked || ["storage", "response-storage"].includes(stage)
+                ? current!.failedStep
+                : Math.max(0, lastIndex),
+          ...(obsolete
+            ? { steps: [], optionalAttempts: {}, settings: {}, input: null, result: undefined, hasResult: false }
+            : {}),
+        };
+      });
       await handlers
         .get(job.kind)
         ?.afterFailure?.(failedInput)
@@ -740,6 +899,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               failedAt: undefined,
               completedCount: current.steps.length,
               steps: [],
+              optionalAttempts: {},
               settings: {},
               input: null,
               result: undefined,
@@ -772,6 +932,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             error: "This Wish work no longer applies.",
             failure: undefined,
             steps: [],
+            optionalAttempts: {},
             settings: {},
             input: null,
             result: undefined,
@@ -790,7 +951,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (job.connectionPaused) pausedConnections.add(job.connectionId);
       if (
         job.owner !== owner &&
-        job.steps?.some((step) => step.status === "running") &&
+        (job.steps?.some((step) => step.status === "running") ||
+          Object.values(job.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching")) &&
         !["completed", "obsolete"].includes(job.status)
       ) {
         await changeJob(record.id, (current) => ({

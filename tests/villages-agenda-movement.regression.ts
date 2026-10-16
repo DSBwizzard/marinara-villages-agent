@@ -1,3 +1,6 @@
+import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { flexibleAgendaInterval } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,7 +43,7 @@ for (const blocks of Object.values(week)) {
   assert.equal(blocks.at(-1)?.endMinute, 1440);
   for (let index = 1; index < blocks.length; index += 1) {
     assert.equal(blocks[index]?.startMinute, blocks[index - 1]?.endMinute, "every minute belongs to one block");
-    assert.ok(blocks[index]?.reason, "every block has a reason");
+    assert.ok(!("reason" in blocks[index]!), "agenda blocks have no reason captions");
   }
   assert.ok(blocks.length > 0, "a complete local fallback exists without model output");
   assert.ok(
@@ -129,7 +132,10 @@ const untranslatable = scheduleInformedWeek(
   },
   null,
 );
-assert.equal(untranslatable.Monday?.find((part) => part.sourceTime === "10:00-11:00")?.status, "dnd");
+assert.ok(
+  !("status" in untranslatable.Monday!.find((part) => part.sourceTime === "10:00-11:00")!),
+  "Conversation availability is excluded",
+);
 assert.ok(!JSON.stringify(untranslatable).includes("outer-world wording"));
 const crowdedNative = scheduleInformedWeek(
   week,
@@ -263,7 +269,55 @@ assert.equal(agendaAt(agenda, 540)?.activity, "watering flowers");
 assert.equal(agendaDayPlan(agenda, 540).length, 4);
 
 const venueSource = readFileSync(resolve("packages/villages/src/server/features/scenes/command-service.ts"), "utf8");
-assert.match(venueSource, /const sceneAttendance = captureSceneAttendance\(village, placeId, new Date\(\)\)/u);
+assert.match(venueSource, /const sceneAttendance = captureSceneAttendance\(village, placeId, villageNow\(\)\)/u);
 assert.match(venueSource, /activeIds: participants\.map\(\(person\) => person\.characterId\)/u);
 assert.doesNotMatch(venueSource, /roomPresenceLines|repairRoomMirrors/u);
+
+// A Scene is a snapshot: the live clock crosses the boundary without changing it.
+const beforeSeven = new Date(2026, 9, 14, 6, 59);
+const seven = new Date(2026, 9, 14, 7, 0);
+villager.cardSnapshot = { name: "Lina" } as VillageVillager["cardSnapshot"];
+agenda.activeDay = {
+  dateKey: agendaDateKey(seven),
+  weekday: "Wednesday",
+  scheduleInformed: false,
+  blocks: [
+    { startMinute: 0, endMinute: 420, venueId: "square", activity: "Reading in the square", flexible: true },
+    { startMinute: 420, endMinute: 1440, venueId: "garden", activity: "Watering flowers", flexible: false },
+  ],
+};
+const captured = captureSceneAttendance(village, "square", beforeSeven);
+const scene = coerceSession({
+  id: "clock-scene",
+  placeId: "square",
+  status: "active",
+  startedAt: beforeSeven.toISOString(),
+  sceneAttendance: { ...captured, occupants: captured.occupants.map((row) => ({ ...row, availability: "offline" })) },
+});
+assert.equal(scene.sceneAttendance?.occupants[0]?.doing, "Reading in the square");
+assert.ok(!("availability" in scene.sceneAttendance!.occupants[0]!));
+assert.equal(villagerPlaceView(village, villager, null, 420, seven)?.id, "garden");
+assert.equal(agendaAt(agenda, 420, seven)?.activity, "Watering flowers");
+assert.equal(captureSceneAttendance(village, "square", seven).occupants.length, 0);
+assert.equal(captureSceneAttendance(village, "garden", seven).occupants[0]?.doing, "Watering flowers");
+assert.deepEqual(scene.sceneAttendance, captured, "existing Scene retains the original attendance/activity");
+
+// Obsolete statuses cannot veto optional village time or grant committed time.
+for (const status of ["online", "idle", "dnd", "offline", "away", "unknown", undefined]) {
+  const old = {
+    startMinute: 0,
+    endMinute: 1440,
+    venueId: "",
+    activity: "Reading",
+    flexible: true,
+    status,
+    reason: "To rest",
+  };
+  const normalized = completeAgendaWeek({ Monday: [old] }, week).Monday!;
+  assert.ok(flexibleAgendaInterval(normalized, 60, 120));
+  assert.ok(!("status" in normalized[0]!));
+  assert.ok(!("reason" in normalized[0]!));
+  for (const protectedFields of [{ essential: true }, { commitmentId: "promised-work" }, { flexible: false }])
+    assert.equal(flexibleAgendaInterval([{ ...old, ...protectedFields }], 60, 120), false);
+}
 console.log("villages-agenda-movement: ok");

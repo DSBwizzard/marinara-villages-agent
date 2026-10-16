@@ -73,6 +73,8 @@ import type { ProjectsController } from "../features/projects/useProjectsControl
 
 /** Menu assembly inputs; feature pages own their narrower contracts. */
 export type MenuScreenController = {
+  readonly housingVenueId: string;
+  readonly setHousingVenueId: (id: string) => void;
   readonly projectsController: ProjectsController;
   readonly addNotice: ReturnType<typeof useAddNotice>;
   readonly addVenue: ReturnType<typeof useAddVenue>;
