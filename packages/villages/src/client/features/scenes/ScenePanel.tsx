@@ -242,6 +242,7 @@ export function RoomPanel({
   onReplayChanges,
   unresolvedChanges,
   onRetryChangeInterpretation,
+  onContinueChange,
   debugDiscardEnabled,
   onDebugDiscard,
   onUseMailbox,
@@ -297,6 +298,7 @@ export function RoomPanel({
   changeStatus?: { pending: number; failed: number; rejected: number };
   onReplayChanges?: () => void;
   unresolvedChanges?: SceneChangeIssue[];
+  onContinueChange?: (submissionId: string, domain: string) => void;
   onRetryChangeInterpretation?: (
     submissionId: string,
     domain: "memories" | "relationships" | "wishes" | "projects",
@@ -482,11 +484,9 @@ export function RoomPanel({
     errorItems.push({
       id: change.submissionId + ":" + change.domain,
       title: change.domain + (change.status === "rejected" ? " update not saved" : " update failed"),
-      message:
-        change.reason ?? "The proposed world update could not be saved. See saved change diagnostics for details.",
+      message: change.reason ?? "Update could not be saved.",
       fields: [
         { label: "Scene", value: room.placeName },
-        { label: "Request", value: change.submissionId },
         { label: "World update", value: change.domain },
         { label: "Result", value: change.status === "rejected" ? "Not saved" : "Needs attention" },
         ...(change.at ? [{ label: "Time", value: new Date(change.at).toLocaleString() }] : []),
@@ -496,7 +496,16 @@ export function RoomPanel({
           <>
             {onReplayChanges ? (
               <button type="button" disabled={busy} onClick={onReplayChanges}>
-                Replay saved work · no model request
+                Replay
+              </button>
+            ) : null}
+            {onContinueChange && change.canContinue && !change.continued && change.status === "failed" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onContinueChange(change.submissionId, change.domain)}
+              >
+                Continue
               </button>
             ) : null}
             {onRetryChangeInterpretation &&
@@ -511,7 +520,7 @@ export function RoomPanel({
                   )
                 }
               >
-                Retry {change.domain} interpretation · may use model requests
+                Retry {change.domain}
               </button>
             ) : null}
           </>
@@ -717,6 +726,7 @@ export function RoomPanel({
   const submitComposer = () => {
     if (
       !canCompose ||
+      (room.semanticVersion === 2 && !!changeStatus && changeStatus.pending + changeStatus.failed > 0) ||
       mode === "move" ||
       busy ||
       (mode !== "conclude" && mode !== "contact" && !draft.trim()) ||
@@ -1737,6 +1747,9 @@ export function RoomPanel({
                       onClick={submitComposer}
                       disabled={
                         !canCompose ||
+                        (room.semanticVersion === 2 &&
+                          !!changeStatus &&
+                          changeStatus.pending + changeStatus.failed > 0) ||
                         busy ||
                         ended ||
                         room.status !== "active" ||

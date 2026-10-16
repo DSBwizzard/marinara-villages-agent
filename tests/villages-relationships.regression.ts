@@ -898,8 +898,21 @@ const socialVillage = { ...structuredClone(village), relationshipContext: social
 const morning = new Date(now);
 morning.setHours(8, 0, 0, 0);
 const plans = socialPlanCandidates(socialVillage, morning);
-assert.equal(plans.length, 1);
-const plan = plans[0]!;
+assert.ok(
+  plans.length > 1 && plans.length <= 6,
+  "Code offers bounded feasible choices for System, not one preferred meeting",
+);
+assert.ok(plans.every((plan) => socialPlanValid(socialVillage, plan, morning)));
+const neutralSocial = structuredClone(socialVillage);
+set("Rosa", "Ives", 0, 0, neutralSocial.relationshipContext!);
+set("Ives", "Rosa", 0, 0, neutralSocial.relationshipContext!);
+assert.deepEqual(
+  socialPlanCandidates(neutralSocial, morning),
+  plans,
+  "Friendship scores do not arbitrarily exclude feasible meetings",
+);
+const plan = plans.find((plan) => plan.kind === "meeting")!;
+assert.ok(plan);
 assert.ok(socialPlanValid(socialVillage, plan, morning));
 socialState.socialPlans.push(plan);
 const duringMeeting = new Date(morning);

@@ -983,7 +983,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             !state.villagers.some((resident) => asWishCheckActors(job).includes(resident.characterId))
           : job?.kind === "mail"
             ? !state.venueMail.some((mail) => mail.id === job.subjectId)
-            : job?.kind !== "story" && !state.villagers.some((resident) => resident.characterId === job?.subjectId);
+            : job?.kind !== "story" &&
+              job?.kind !== "starting-ties" &&
+              !state.villagers.some((resident) => resident.characterId === job?.subjectId);
       if (
         !job ||
         retired ||

@@ -31,6 +31,7 @@ import type { registerInitialWish } from "./wishes/wish-initial.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
 export interface ResidentAgendaPorts {
+  queueScheduleInfluence?(characterId: string): Promise<void>;
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
   reportFoundingProgress: typeof reportFoundingProgress;
@@ -99,14 +100,19 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         ? await reserveInitialWishAllowance(characterId, villageNow())
         : undefined;
     await reportFoundingProgress(village.seed, { stage: "lore" }, characterId);
+    const native = villager.scheduleInfluence?.enabled
+      ? await readNativeScheduleSnapshot(villageNow(), [characterId])
+      : null;
     const context = {
+      semanticVersion: 2 as const,
       card: effectiveCard,
       characterId,
       wishAttemptId: initialWishAttemptId,
       allowInitialWish: !!initialWishAttemptId,
       playerRole: village.playerRole,
       playerPersonaName: village.playerPersonaName,
-      schedule: null,
+      schedule: native?.schedules.find((row) => row.characterId === characterId) ?? null,
+      influenceSettings: villager.scheduleInfluence,
       influenceHints: villager.scheduleInfluence?.enabled ? villager.agenda?.scheduleInfluenceSnapshot?.unresolved : [],
       village: village.name,
       setting: agendaSetting,
@@ -330,6 +336,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       now,
     });
     return village.villagers.map((resident) => ({
+      canInterpretSchedule: resident.agenda?.routineProfile?.semanticVersion === 2,
       characterId: resident.characterId,
       name: resident.cardSnapshot.name,
       missing: false,
@@ -418,6 +425,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       });
       resident.ingestSchedule = resident.scheduleInfluence.enabled;
     });
+    await ports.queueScheduleInfluence?.(characterId);
     await refreshVillagerRemaps(await readVillageState(), villageNow(), characterId);
   }
   return {

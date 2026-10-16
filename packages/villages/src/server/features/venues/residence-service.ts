@@ -104,9 +104,18 @@ export function createResidences(ports: ResidencePorts) {
     characterValue: unknown,
     approved: boolean,
     actor: "player" | "villager",
+    operationId?: string,
   ): Promise<VillageSnapshot> {
     const characterId = residenceCharacterId(characterValue);
     await mutateVillageState((state) => {
+      if (operationId) {
+        const fingerprint = JSON.stringify([characterId, approved, actor]);
+        const prior = state.semanticRequestReceipts?.[operationId];
+        if (prior && prior !== fingerprint) throw conflict("That residence decision ID belongs to another request.");
+        if (prior) return;
+        state.semanticRequestReceipts ??= {};
+        state.semanticRequestReceipts[operationId] = fingerprint;
+      }
       const residence = state.residences.find((entry) => entry.characterId === characterId);
       if (!residence || residence.status !== "pending" || residence.proposedVenueId.length === 0) {
         throw badRequest("That villager has no pending residence change.");

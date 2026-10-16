@@ -46,9 +46,16 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
       VILLAGE_SHARED_SETTING_RULE,
       `Write a compact founding plan for ${context.card.name} in ${context.village}. Return JSON only.`,
       "JSON keys: routine (one sentence), wishes (zero or one objects with wish, intensity 1–3, need: {subject, action, policy: lasting or recurring}), palette (objects with activity, venue, zoneId, flexible, essential, duration in minutes, parts 0–3), days (seven arrays of eight palette indexes), rhythm (zero or more objects with startMinute, endMinute, activity palette index).",
+      context.semanticVersion === 2
+        ? 'Each Wish also needs criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the original goal, and neutralWording:true after checking neutral wording without player directions. Action predicates:item-added,item-removed,trace-resolved. Never classify solely by an isolated keyword.'
+        : "",
       'Palette field types: activity is a string; venue is an integer; flexible and essential are booleans; duration is numeric minutes; parts is an array of daypart indexes. The key is exactly "venue"; optional zoneId must be a saved Zone identifier, never a label.',
       "Palette: 6–16 specific, ordinary activities in this village, independent of wishes. Include flexible:true only on optional free-time activities; never on sleep, meals, work, or commitments. Venue 0 is the assigned living space; otherwise use only a numbered supplied public place. Never invent venue numbers, unlisted destinations, assets, vehicles, employers, institutions or obligations. Authored identity is not proof that its original-world possessions or job exist here. Activity should read after 'Right now you are'.",
       'Rhythm schema example (syntax only): {"startMinute":1320,"endMinute":360,"activity":0}. The key is exactly "activity", an integer palette index. Omit all rest windows with rhythm:[] when appropriate.',
+      context.influenceSettings?.enabled && context.schedule
+        ? "Also return scheduleInfluence:{rhythms:[{weekday,startMinute,endMinute}],busy:[{weekday,part,free}],interests:[exact palette activity],entities:[exact allowed venue ID]}. Interpret rest, busy/free and interests semantically from this authorized imported schedule; do not import world assets or private facts. Schedule data: " +
+          JSON.stringify(context.schedule)
+        : "",
       "Days: exactly seven arrays in Monday–Sunday order. Each has eight palette indexes: two alternatives for 00–06, 06–12, 12–18, 18–24. Code builds varied days locally. Describe rest explicitly in rhythm, including overnight windows if appropriate. Do not assume human sleep, eating, employment or physiology.",
       context.allowInitialWish === false || context.activeWishes.length
         ? "Do not add wishes; return wishes:[] and preserve the existing wishes."

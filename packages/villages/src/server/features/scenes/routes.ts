@@ -27,7 +27,7 @@ import {
   retrySceneChangeInterpretation,
   sendVenueTurn,
 } from "./venue-session.js";
-import { dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
+import { continueSceneChange, dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
 import { activeVenueSession, touchVenueSession } from "./live-session.js";
 import { deleteAllVenueVisits, deleteVenueVisit, listVenueVisitSummaries, readVenueVisit } from "./archive.js";
 import type { FastifyInstance } from "fastify";
@@ -212,6 +212,24 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
         return await dismissSceneNotice(readChatId(request.params.id), readChatId(request.params.noticeId));
       } catch (error) {
         return fail(reply, error, "saving notice dismissal");
+      }
+    },
+  );
+  app.post<{ Params: { id: string; submissionId: string }; Body: { domain: string } }>(
+    "/rooms/:id/changes/:submissionId/continue",
+    { bodyLimit: 2048 },
+    async (request, reply) => {
+      try {
+        const domain = request.body?.domain;
+        if (!["memories", "relationships", "wishes", "projects"].includes(domain))
+          throw badRequest("Choose a saved domain.");
+        return await continueSceneChange(
+          readChatId(request.params.id),
+          readChatId(request.params.submissionId),
+          domain as "memories" | "relationships" | "wishes" | "projects",
+        );
+      } catch (error) {
+        return fail(reply, error, "continuing after a failed semantic update");
       }
     },
   );

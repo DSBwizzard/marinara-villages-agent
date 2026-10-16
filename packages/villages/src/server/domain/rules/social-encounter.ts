@@ -62,26 +62,33 @@ export function readEncounter(value: unknown, entry: SocialOutboxEntry, village:
   if (new Set(lines.map((line) => line.speakerId)).size < 2) return null;
   // The model cites local indexes; convert only within this saved encounter, never into an archive.
   const proposed = asRecord(raw.relationshipReview);
-  const { review, rejections } = parseRelationshipProposals(proposed, entry.id, lines, village, (row, kind) => {
-    if (kind === "disclosures") throw new Error("Offscreen encounters cannot disclose information to the player.");
-    if (kind === "changes" && (!actors.includes(String(row.fromId)) || !actors.includes(String(row.toId))))
-      throw new Error("An offscreen encounter cannot involve an absent actor.");
-    if (
-      kind === "permissions" &&
-      (!actors.includes(String(row.controllerId)) || !actors.includes(String(row.visitorId)))
-    )
-      throw new Error("An offscreen encounter cannot involve an absent actor.");
-    const indices = Array.isArray(row.evidence) ? row.evidence : [];
-    if (
-      !indices.length ||
-      indices.some((index) => !Number.isInteger(index) || Number(index) < 0 || Number(index) >= lines.length)
-    )
-      throw new Error("Invalid social encounter citation.");
-    return { ...row, lineIds: indices.map((index) => lines[Number(index)]!.id) };
-  });
+  const { review, rejections } = parseRelationshipProposals(
+    proposed,
+    entry.id,
+    lines,
+    village,
+    (row, kind) => {
+      if (kind === "disclosures") throw new Error("Offscreen encounters cannot disclose information to the player.");
+      if (kind === "changes" && (!actors.includes(String(row.fromId)) || !actors.includes(String(row.toId))))
+        throw new Error("An offscreen encounter cannot involve an absent actor.");
+      if (
+        kind === "permissions" &&
+        (!actors.includes(String(row.controllerId)) || !actors.includes(String(row.visitorId)))
+      )
+        throw new Error("An offscreen encounter cannot involve an absent actor.");
+      const indices = Array.isArray(row.evidence) ? row.evidence : [];
+      if (
+        !indices.length ||
+        indices.some((index) => !Number.isInteger(index) || Number(index) < 0 || Number(index) >= lines.length)
+      )
+        throw new Error("Invalid social encounter citation.");
+      return { ...row, lineIds: indices.map((index) => lines[Number(index)]!.id) };
+    },
+    raw.semanticVersion === 2,
+  );
   for (const fromId of actors)
     for (const toId of actors)
-      if (fromId !== toId && substantiveContact(lines, fromId, toId))
+      if (raw.semanticVersion !== 2 && fromId !== toId && substantiveContact(lines, fromId, toId))
         review.changes.push({
           id: entry.id + ":contact:" + fromId + ":" + toId,
           fromId,
@@ -95,6 +102,16 @@ export function readEncounter(value: unknown, entry: SocialOutboxEntry, village:
           contact: true,
         });
   return {
+    ...(raw.semanticVersion === 2
+      ? {
+          memoryChanges: raw.memoryChanges,
+          semanticProvenance: {
+            version: 2 as const,
+            sourceHash: String(raw.semanticSourceHash),
+            interpretedAt: entry.at,
+          },
+        }
+      : {}),
     id: entry.id,
     at: entry.at,
     venueId: venue.id,

@@ -147,6 +147,13 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
               )
               .digest("hex")
           : undefined,
+        {
+          inputTokens:
+            (typeof model.fitContext === "function"
+              ? model.fitContext(messages, { maxTokens: tokens }).estimatedTokensBefore
+              : undefined) ?? Buffer.byteLength(JSON.stringify(messages), "utf8"),
+          outputTokens: tokens,
+        },
       ).catch((error) => {
         try {
           villagesLogger().warn(

@@ -41,8 +41,9 @@ export async function coordinatedCompletion<T>(
   fingerprint: string,
   work: (signal?: AbortSignal) => Promise<T>,
   legacyFingerprint?: string,
+  reservation?: { inputTokens: number; outputTokens: number },
 ): Promise<T> {
-  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work, legacyFingerprint);
+  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work, legacyFingerprint, reservation);
 }
 export async function rejectVenueCompletion(
   ...args: Parameters<VenueCoordinatorService["rejectVenueCompletion"]>

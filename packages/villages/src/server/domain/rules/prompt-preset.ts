@@ -1,3 +1,4 @@
+import { readSemanticWishCriteria } from "./wish-criteria.js";
 import type {
   TownMapFit,
   VillageAgenda,
@@ -1471,6 +1472,9 @@ export function coerceWish(entry: unknown, id: string, at: string): VillageWish 
   return {
     id,
     wish,
+    ...(asRecord(raw.semanticCriteria).semanticVersion === 2 && asRecord(raw.semanticCriteria).goal === wish
+      ? { semanticCriteria: readSemanticWishCriteria(raw.semanticCriteria, wish) }
+      : {}),
     size: wishSize(raw.size),
     conditionRevision:
       Number.isSafeInteger(raw.conditionRevision) && (raw.conditionRevision as number) >= 0

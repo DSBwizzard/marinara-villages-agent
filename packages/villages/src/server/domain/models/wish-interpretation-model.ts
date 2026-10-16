@@ -4,6 +4,7 @@ import type { VillageWishClaimContext } from "./wish-claim-model.js";
 import type { VillageVenueEvent } from "./world.js";
 
 export type WishCriteria = {
+  semanticVersion?: 2;
   conditionRevision?: number;
   conditionAt?: string;
   kind: "conversation" | "transfer" | "action" | "complex";
@@ -16,6 +17,7 @@ export type WishCriteria = {
 };
 export type WishReceipt = VillageVenueEvent & { completedProject?: boolean };
 export type WishInterpretationContext = VillageWishClaimContext & {
+  semanticCriteria?: WishCriteria;
   knowledge?: ReturnType<typeof wishCheckKnowledge>;
   knowledgeByWish?: Record<string, ReturnType<typeof wishCheckKnowledge>>;
   currentReceiptIds?: string[];

@@ -121,6 +121,7 @@ import {
 import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex } from "../rules/village-clock.js";
 import { coerceWishActivities, coerceWishLifecycle } from "../rules/wish-coercion.js";
 import { WISH_SYSTEM_VERSION, wishSize } from "../rules/wish-definition.js";
+import { readSemanticWishCriteria } from "../rules/wish-criteria.js";
 import { coerceWishKnowledge, resetLegacyWishRecords } from "../rules/wish-journal.js";
 import { shortWishText, wishPolicy, routineRevision } from "../rules/wish-policy.js";
 
@@ -325,6 +326,9 @@ function coerceWish(value: unknown): VillageWish | null {
   return {
     id: asTrimmedString(raw.id) || randomVillageSeed(),
     wish,
+    ...(asRecord(raw.semanticCriteria).semanticVersion === 2 && asRecord(raw.semanticCriteria).goal === wish
+      ? { semanticCriteria: readSemanticWishCriteria(raw.semanticCriteria, wish) }
+      : {}),
     // Clamped rather than dropped. The number only decides how loudly a wish is
     // written and in what order, so a model that answers with 0 or 9 has said
     // something usable badly, not something unusable.
@@ -2230,6 +2234,27 @@ export function coerceVillageState(value: unknown): VillageState {
     opportunities: coerceOpportunities(raw.opportunities),
     scheduledEvents: coerceScheduledEvents(raw.scheduledEvents),
     relationships: coerceRelationships(raw.relationships),
+    ...(raw.semanticRequestReceipts
+      ? {
+          semanticRequestReceipts: Object.fromEntries(
+            Object.entries(asRecord(raw.semanticRequestReceipts)).filter(([, value]) => typeof value === "string"),
+          ) as Record<string, string>,
+        }
+      : {}),
+    ...(asRecord(raw.semanticStartingTies).sourceHash
+      ? { semanticStartingTies: structuredClone(raw.semanticStartingTies) as VillageState["semanticStartingTies"] }
+      : {}),
+    ...(raw.semanticContinuations
+      ? {
+          semanticContinuations: Object.fromEntries(
+            Object.entries(asRecord(raw.semanticContinuations)).filter(
+              ([, value]) =>
+                Array.isArray(value) &&
+                value.every((domain) => ["memories", "relationships", "wishes", "projects"].includes(String(domain))),
+            ),
+          ) as VillageState["semanticContinuations"],
+        }
+      : {}),
     socialOutbox: Array.isArray(raw.socialOutbox)
       ? (structuredClone(raw.socialOutbox) as VillageState["socialOutbox"])
       : [],

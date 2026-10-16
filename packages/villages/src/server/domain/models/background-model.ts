@@ -3,7 +3,16 @@ import type { WorkFailure } from "../rules/work-failure.js";
 import type { BackgroundCompletion } from "./background-completion-model.js";
 import type { VillageState } from "./world.js";
 
-export type BackgroundKind = "story" | "agenda" | "translation" | "wish" | "wish-check" | "mail" | "adaptation";
+export type BackgroundKind =
+  | "schedule-influence"
+  | "starting-ties"
+  | "story"
+  | "agenda"
+  | "translation"
+  | "wish"
+  | "wish-check"
+  | "mail"
+  | "adaptation";
 export type BackgroundStatus = "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
 export type BackgroundSummary = {
   id: string;

@@ -60,7 +60,11 @@ export function zoneEventScene(
     ...rotate(far).slice(0, 1),
     ...nearby,
   ];
-  const offered = [...new Map(candidates.map((person) => [person.characterId, person])).values()].slice(0, 4);
+  const plannedZones = new Set(scene.semanticIntent?.timeline.map((step) => step.zoneId).filter(Boolean));
+  const required = remote.filter((person) => plannedZones.has(contactPosition(scene, person.characterId)));
+  const offered = [
+    ...new Map([...required, ...candidates].map((person) => [person.characterId, person])).values(),
+  ].slice(0, Math.max(4, required.length));
   const cast = scene.participants.filter((person) => scene.activeIds.includes(person.characterId));
   for (const person of offered) if (!cast.some((entry) => entry.characterId === person.characterId)) cast.push(person);
   return {
@@ -202,21 +206,24 @@ export function routeZoneEvents(
   scene: VenueScene,
   parsed: { lines: VenueReplyLine[]; heardPlayerBy: string[] },
   moves: ContactMove[],
+  playerMoves: readonly { zoneId: string; segment: number }[] = [],
 ) {
   const venue = scene.contactGeneration?.venue;
   if (!venue || !Array.isArray(raw.segments)) return;
   const ids = [
     ...new Set([...(scene.sceneAttendance?.occupants ?? []).map((person) => person.characterId), ...scene.activeIds]),
   ].filter((id) => !scene.departedIds?.includes(id));
-  const playerZone = scene.zoneId ?? "exterior";
+  const playerZoneAt = (index: number) =>
+    playerMoves.findLast((move) => move.segment <= index)?.zoneId ?? scene.zoneId ?? "exterior";
   const position = (id: string, index: number) =>
     id === "player"
-      ? playerZone
+      ? playerZoneAt(index)
       : (moves.find((move) => move.characterId === id && move.segment !== undefined && move.segment <= index)?.zoneId ??
         contactPosition(scene, id));
   const inZones = (zones: string[], index: number) => ids.filter((id) => zones.includes(position(id, index)));
   parsed.heardPlayerBy = [];
   parsed.lines.forEach((line, index) => {
+    const playerZone = playerZoneAt(index);
     const row = asRecord((raw.segments as unknown[])[index]);
     const sound = row.kind === "sound" || row.soundEvent === true;
     if (sound && moves.some((move) => move.segment === index))

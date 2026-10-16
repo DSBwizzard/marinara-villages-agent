@@ -270,7 +270,11 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
     ];
   });
   const essential = ordinary
-    .filter((entry) => /\b(?:sleep|rest|meal|breakfast|lunch|dinner|eat|wash|bathe)\b/iu.test(entry.activity))
+    .filter((entry) =>
+      agenda.routineProfile?.semanticVersion === 2
+        ? entry.essential === true && !entry.commitmentId
+        : /\b(?:sleep|rest|meal|breakfast|lunch|dinner|eat|wash|bathe)\b/iu.test(entry.activity),
+    )
     .map((entry) => ({
       ...entry,
       startMinute: Math.max(from, entry.startMinute),
