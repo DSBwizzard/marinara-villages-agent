@@ -17,7 +17,9 @@ export function pipelineOnlyChanges(paths) {
       (path) =>
         isDocumentation(path) ||
         path === ".github/workflows/ci.yml" ||
-        /^scripts\/ci-(?:validation|reuse|policy)\.mjs$/.test(path) ||
+        /^scripts\/ci-(?:validation|reuse|policy|evidence)\.mjs$/.test(path) ||
+        path === "scripts/release.mjs" ||
+        /^tests\/fixtures\/(?:release-driver|ci-validation)\.mjs$/.test(path) ||
         /^scripts\/(?:select-tests|test-dependencies)\.mjs$/.test(path) ||
         path === "tests/villages-pipeline.regression.mjs",
     )
