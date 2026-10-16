@@ -1,3 +1,4 @@
+import { validDecisionEvidence } from "./decision-candidates.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -158,6 +159,7 @@ export function projectProposals(batch: InterpretationBatch): ProjectSpeechPropo
   return batch.results.flatMap((result, index) => {
     const check = batch.checks[index],
       facts = asRecord(check.facts);
+    if (!validDecisionEvidence(check, result)) return [];
     const kind = facts.kind as ProjectSpeechProposal["kind"];
     if (!["approve", "commit", "requirements"].includes(result.outcome)) return [];
     const conflicting = batch.results.some(
@@ -184,12 +186,7 @@ export function projectProposals(batch: InterpretationBatch): ProjectSpeechPropo
             return { lineId: line?.id ?? "", quote: asTrimmedString(row.quote) };
           })
         : check.evidence
-            .filter(
-              (line) =>
-                line.current &&
-                line.speakerId === facts.actorId &&
-                (result.source === "decisions" || result.evidenceIds.includes(line.id)),
-            )
+            .filter((line) => line.current && line.speakerId === facts.actorId && result.evidenceIds.includes(line.id))
             .map((line) => ({ lineId: line.id, quote: line.content }));
     if (
       !citations.length ||
@@ -245,7 +242,12 @@ export function projectProposals(batch: InterpretationBatch): ProjectSpeechPropo
           lineId: item.lineId.startsWith("draft:") ? item.lineId.slice(6) : item.lineId,
         })),
         checklist,
-        contextual: { version: 1 as const, source: result.source, checkId: batch.traces[index].id },
+        contextual: {
+          version: 1 as const,
+          source: result.source,
+          checkId: batch.traces[index].id,
+          ...(result.source === "decisions" ? { decisionEvidenceVersion: 1 as const } : {}),
+        },
       },
     ];
   });

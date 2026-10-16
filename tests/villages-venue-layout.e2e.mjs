@@ -91,9 +91,9 @@ try {
       await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
       const editor = page.locator(".marinara-capability-villages-project-finish-visit");
       await editor.getByLabel("Physical form", { exact: true }).fill("A tent, or a mat beneath a tree");
-      await editor.getByLabel("Entrance appearance", { exact: true }).fill("A sheltered patch beneath a tree.");
+      await editor.getByLabel("Exterior appearance", { exact: true }).fill("A sheltered patch beneath a tree.");
       await expect(editor.getByRole("button", { name: "Open Venue", exact: true })).toBeDisabled();
-      if (layout === "exterior") await editor.getByRole("button", { name: "Use Entrance only", exact: true }).click();
+      if (layout === "exterior") await editor.getByRole("button", { name: "Use Exterior only", exact: true }).click();
       if (layout === "common" || layout === "both") {
         await editor.getByRole("button", { name: "Add Zone", exact: true }).click();
         await editor.getByLabel("Zone name", { exact: true }).first().fill("Workshop");

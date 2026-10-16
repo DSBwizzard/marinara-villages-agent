@@ -1,3 +1,5 @@
+import { createVillageClock } from "../adapters/time/clock-service.js";
+import { configureVillageClock } from "../adapters/time/clock-gate.js";
 import { createFoundingProgress } from "../features/founding/founding-progress-service.js";
 import { configureFoundingProgress } from "../features/founding/founding-progress.js";
 import { createScenarioImprint } from "../features/founding/scenario-imprint-service.js";
@@ -5,7 +7,7 @@ import { configureScenarioImprint } from "../features/founding/scenario-imprint.
 import { createCompactFounding } from "../features/founding/founding-compact-service.js";
 import { configureCompactFounding } from "../features/founding/founding-compact.js";
 import { createFoundingDrafts } from "../features/founding/founding-drafts-service.js";
-import { configureFoundingDrafts } from "../features/founding/founding-drafts.js";
+import { configureFoundingDrafts, suggestStartingVenues } from "../features/founding/founding-drafts.js";
 import { createVillageBootstrap } from "../features/founding/village-bootstrap-service.js";
 import { configureVillageBootstrap } from "../features/founding/village-bootstrap.js";
 import { loadEngineImageStyleSupport } from "../adapters/engine/image-style-profiles.js";
@@ -63,14 +65,12 @@ import { recordInterpretationRouting } from "../features/generation/interpretati
 import { configureInterpretation, interpretChecks } from "../features/generation/interpretation.js";
 import { createInterpretation } from "../features/generation/interpretation-service.js";
 import { createSystemInterpretation } from "../features/generation/system-interpretation-service.js";
-import { resolveVillagesDecisionBackend } from "../adapters/engine/decisions-adapter.js";
+import { evaluateVillagesDecisions, decisionAdapterStatus } from "../adapters/engine/decisions-adapter.js";
 import { coordinatedOptionalCompletion, venueInterpretationSettings } from "../jobs/venue-coordinator.js";
 import { interpretProjectDraft } from "../features/projects/project-checks.js";
 import { finalizeProjectDiagnostics } from "../features/projects/project-checks.js";
 import { saveInterpretationContext } from "../features/generation/interpretation-evidence.js";
 import { writeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
-import { stopInterpretationComparisons } from "../features/generation/interpretation-diagnostics.js";
-import { scheduleSystemComparisons } from "../features/generation/interpretation-diagnostics.js";
 import { venueCheckpoint } from "../jobs/venue-coordinator.js";
 import { recoverVenueOperations } from "../jobs/venue-coordinator.js";
 import { coordinateVenue } from "../jobs/venue-coordinator.js";
@@ -99,7 +99,7 @@ import { interpretRoomReply } from "../features/scenes/room-interpretation.js";
 import { wishFingerprint } from "../domain/rules/wish-interpretation-rules.js";
 import { rejectVenueCompletion } from "../jobs/venue-coordinator.js";
 import { venueOperationSignal } from "../adapters/operations/operation-context.js";
-import { venueOperationInput } from "../adapters/operations/operation-context.js";
+import { venueExplicitRetry, venueOperationInput } from "../adapters/operations/operation-context.js";
 import { venueOperationId } from "../adapters/operations/operation-context.js";
 import { refreshZoneParticipants } from "../features/scenes/live-session.js";
 import { createSceneWriting } from "../features/scenes/writing-service.js";
@@ -257,7 +257,12 @@ import { generateVillageTownMap } from "../features/media/town-map-image.js";
 import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.js";
 import { createSpriteManager } from "../features/media/sprite-manager-service.js";
 import { configureSpriteManager } from "../features/media/sprite-manager.js";
-import { generateVillageImage, resolveVillageImageConnectionId } from "../features/media/image-generation.js";
+import {
+  generateVillageImage,
+  resolveVillageImageConnectionId,
+  resolveVillageImageEditing,
+} from "../features/media/image-generation.js";
+import { readZonePictureReference } from "../adapters/engine/zone-picture-reference.js";
 import { createResidentSignatures } from "../features/residents/resident-signature-service.js";
 import { configureResidentSignatures } from "../features/residents/resident-signature.js";
 import { prepareSignatureImage } from "../features/residents/signature-image.js";
@@ -304,6 +309,8 @@ import {
   readVillageState,
   readVillageAuthority,
 } from "../features/world/village-store.js";
+import { configureFoundingSuggestions } from "../features/founding/founding-suggestions.js";
+import { createFoundingSuggestions } from "../features/founding/founding-suggestions-service.js";
 import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
 import { createTownMapGeneration } from "../jobs/town-map-service.js";
 import { configureVenueCoordinator } from "../jobs/venue-coordinator.js";
@@ -319,6 +326,10 @@ import { configurePrivateSpacePreparation } from "../jobs/private-space-preparat
 import { createPrivateSpacePreparation } from "../jobs/private-space-service.js";
 import { readVillageLore } from "../adapters/engine/lorebooks.js";
 import { villagesLanguageModels } from "../adapters/models/language-models.js";
+import { requireHost } from "../adapters/engine/runtime-host.js";
+import { villageNow } from "../adapters/time/clock-gate.js";
+import { createSpinoffs } from "../features/scenes/spinoff-service.js";
+import { configureSpinoffs } from "../features/scenes/spinoffs.js";
 import { reportFoundingProgress } from "../features/founding/founding-progress.js";
 import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
 import { createModelCompletions } from "../features/generation/completion-service.js";
@@ -368,8 +379,23 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseBackgroundContext = configureBackgroundContext(background);
   const operations = createVenueOperationContext(villagesLogger);
   const releaseOperations = configureVenueOperationContext(operations);
-  const releaseSceneRepository = configureSceneRepository(
-    createSceneRepository({ villagesDocuments, mutateDocument: createDocumentMutator(villagesDocuments) }),
+  const sceneRepository = createSceneRepository({
+    villagesDocuments,
+    mutateDocument: createDocumentMutator(villagesDocuments),
+  });
+  const releaseSceneRepository = configureSceneRepository(sceneRepository);
+  const releaseSpinoffs = configureSpinoffs(
+    createSpinoffs({
+      repository: sceneRepository,
+      readVillageState,
+      mutateVillageState,
+      persistence: () => requireHost().persistence,
+      models: villagesLanguageModels,
+      connectionId: () => villagesConnectionIdFor("narration"),
+      now: villageNow,
+      busy: hasVenueOperation,
+      parseJson: (text) => requireHost().json.parseJsonish(text),
+    }),
   );
   const releaseInterpretationEvidence = configureInterpretationEvidence(
     createInterpretationEvidence({
@@ -400,6 +426,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseUsageMeter = configureUsageMeter(
     createUsageMeter({
       readUsageLedger,
+      quoteUsageRate,
+      villagesConnectionIdFor,
       resetLedger: resetUsageLedgerPeriod,
       saveRate: saveLedgerRate,
       saveGroup: saveLedgerGroup,
@@ -420,9 +448,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseInterpretationDiagnostics = configureInterpretationDiagnostics(
     createInterpretationDiagnostics({
       villagesDocuments,
-      outsideVenueOperation: operations.outsideVenueOperation,
       mutateDocument: createDocumentMutator(villagesDocuments),
-      systemInterpretations,
     }),
   );
   const releaseDebug = configureRuntimeDebug(
@@ -509,8 +535,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseInterpretation = configureInterpretation(
     createInterpretation({
-      resolveVillagesDecisionBackend,
+      evaluateVillagesDecisions,
+      decisionAdapterStatus,
       trackUsage,
+      backgroundCalls: background.backgroundCalls,
+      backgroundSetting: background.backgroundSetting,
+      readInterpretationSettings,
       venueOperationSignal,
       coordinatedOptionalCompletion,
       venueCheckpoint,
@@ -555,8 +585,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     projectSocialActivities,
     reconcileSocialPlans,
   });
+  const villageRepository = createVillageRepository(villagesDocuments);
+  const releaseClock = configureVillageClock(createVillageClock(villageRepository));
   const releaseVillageState = configureVillageStateService(
-    createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
+    createVillageStateService(villageRepository, worldRelationships),
   );
   const releaseFoundingProgress = configureFoundingProgress(
     createFoundingProgress({ readVillageState, mutateVillageState }),
@@ -641,6 +673,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSceneWriting = configureSceneWriting(
     createSceneWriting({
+      venueCheckpoint,
+      venueExplicitRetry,
       refreshZoneParticipants,
       readEffectiveVillagerCard,
       readVillageLore,
@@ -689,6 +723,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       venueOperationId,
       venueOperationSignal,
       venueOperationSnapshot,
+      venueOperationInput,
       venueRefusal,
       venueRequestMetrics,
       mutateDocument,
@@ -702,8 +737,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       recoverVenueOperations,
       rejectVenueCompletion,
       venueCheckpoint,
-      scheduleSystemComparisons,
-      stopInterpretationComparisons,
       writeInterpretationDiagnostics,
       saveInterpretationContext,
       completeWithRoom,
@@ -929,6 +962,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseLocationImages = configureLocationImages(
     createLocationImages({
+      resolveVillageImageEditing,
+      readZonePictureReference,
+      buildVillageSnapshot,
       readVillageState,
       mutateVillageState,
       assertVenueImageAccess,
@@ -942,6 +978,14 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseZoneEdits = configureVenueZoneEdits(
     createVenueZoneEdits({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
+  );
+  const releaseFoundingSuggestions = configureFoundingSuggestions(
+    createFoundingSuggestions({
+      villagesDocuments,
+      mutateDocument: createDocumentMutator(villagesDocuments),
+      suggestStartingVenues,
+      villagesLogger,
+    }),
   );
   const releaseTownMap = configureTownMapGeneration(
     createTownMapGeneration({
@@ -1036,6 +1080,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseUsageMeter();
     releaseCoordinator();
     releaseInterpretationSettings();
+    releaseFoundingSuggestions();
     releaseTownMap();
     releaseZoneEdits();
     releaseSignatures();
@@ -1070,6 +1115,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseFoundingProgress();
     releaseWritingSettings();
     releaseVillageState();
+    releaseClock();
     releaseRelationships();
     releaseRelationshipSocial();
     releaseRelationshipStore();
@@ -1091,6 +1137,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseInterpretationDiagnostics();
     releaseUsage();
     releaseSceneRepository();
+    releaseSpinoffs();
     releaseOperations();
     releaseBackgroundContext();
     releaseGallery();

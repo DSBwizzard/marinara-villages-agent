@@ -2,7 +2,6 @@ import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { PreparationScreenController } from "./screen-contracts.js";
 import { AgentConnections } from "../settings/SettingsPanels.js";
-import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 
 export function PreparationScreen({ controller }: { controller: PreparationScreenController }) {
   const { preparationProblem, retryPreparation, screen, snapshot } = controller;
@@ -145,7 +144,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
               <p className={`${ELEMENT_TAG}-error`} role="alert">
                 {preparation.error}
               </p>
-              <VillagesBurstPreview request={request} action="founding" />
+
               <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => void retryPreparation()}>
                 Retry preparation
               </button>

@@ -1,10 +1,12 @@
+import { calendarAt } from "../../../shared/helpers/zoned-date.js";
+import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import type { SocialPlan } from "../models/relationship-types.js";
 import type { VillageState } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { relationshipFor, relationshipZoneController } from "./relationship-rules.js";
 import { evaluateZoneAccess } from "./venue-access.js";
 import { canOccupyZone, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
-import { routineRevision } from "./wish-policy.js";
+import { routineRevision, routineRevisionMatches } from "./wish-policy.js";
 
 export function canEnter(
   village: VillageState,
@@ -71,13 +73,7 @@ export function socialPlanValid(
       agenda = actor?.agenda;
     if (
       !agenda ||
-      !canEnter(
-        village,
-        plan.venueId,
-        plan.zoneId,
-        actorId,
-        new Date(new Date(plan.dateKey + "T00:00:00").setMinutes(plan.startMinute)),
-      )
+      !canEnter(village, plan.venueId, plan.zoneId, actorId, calendarAt(now, plan.dateKey, plan.startMinute))
     )
       return false;
     const blocks = agendaBlocksFor({ ...agenda, socialActivities: [] }, actor!.ingestSchedule !== false, now);
@@ -85,8 +81,7 @@ export function socialPlanValid(
     for (const block of blocks.filter(
       (entry) => entry.endMinute > plan.startMinute && entry.startMinute < plan.endMinute,
     )) {
-      if (block.startMinute > covered || !block.flexible || block.status === "offline" || block.status === "dnd")
-        return false;
+      if (block.startMinute > covered || !flexibleAgendaBlock(block)) return false;
       covered = Math.max(covered, block.endMinute);
     }
     return covered >= plan.endMinute;
@@ -112,12 +107,7 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
       const bBlocks = agendaBlocksFor({ ...b.agenda, socialActivities: [] }, b.ingestSchedule !== false, now);
       for (const left of aBlocks)
         for (const right of bBlocks) {
-          if (
-            !left.flexible ||
-            !right.flexible ||
-            [left.status, right.status].some((status) => status === "dnd" || status === "offline")
-          )
-            continue;
+          if (!flexibleAgendaBlock(left) || !flexibleAgendaBlock(right)) continue;
           const startMinute = Math.max(left.startMinute, right.startMinute, minute + 15),
             endMinute = Math.min(left.endMinute, right.endMinute, startMinute + 60);
           if (endMinute - startMinute < 30 || (!meeting && left.venueId !== right.venueId)) continue;
@@ -129,13 +119,7 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
                 (meeting || venue.id !== left.venueId) &&
                 zone.kind !== "exterior" &&
                 actorIds.every((actorId) =>
-                  canEnter(
-                    village,
-                    venue.id,
-                    zone.id,
-                    actorId,
-                    new Date(new Date(dateKey + "T00:00:00").setMinutes(startMinute)),
-                  ),
+                  canEnter(village, venue.id, zone.id, actorId, calendarAt(now, dateKey, startMinute)),
                 ),
             );
           if (!location) continue;
@@ -181,7 +165,6 @@ export function projectSocialActivities(village: VillageState, now = new Date())
         ...plan,
         wishId: plan.id,
         baseRevision: plan.revisions[actorId]!,
-        reason: plan.reason,
       });
     }
   }
@@ -227,7 +210,7 @@ export function socialContinuationValid(
     !zoneClosed(village, venue, zone) &&
     plan.actorIds.every((id) => {
       const person = village.villagers.find((actor) => actor.characterId === id);
-      return !!person?.agenda && routineRevision(person.agenda) === plan.revisions[id];
+      return !!person?.agenda && routineRevisionMatches(person.agenda, plan.revisions[id]!);
     })
   );
 }

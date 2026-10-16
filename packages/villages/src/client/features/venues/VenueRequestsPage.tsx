@@ -13,124 +13,151 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
     requestEdits,
     setRequestEdits,
     settingsError,
-    snapshot,
   } = ports;
+  const venueId = ports.housingVenueId;
+  const snapshot = venueId
+    ? {
+        ...ports.snapshot,
+        venueRequests: [],
+        upgradeRequests: [],
+        residences: ports.snapshot.residences.filter(
+          (entry) => entry.proposedVenueId === venueId || entry.venueId === venueId,
+        ),
+      }
+    : ports.snapshot;
   return (
     <div className={`${ELEMENT_TAG}-overlay`}>
       <div className={`${ELEMENT_TAG}-overlay-head`}>
         <h2 className={`${ELEMENT_TAG}-panel-title`}>Venue Requests</h2>
       </div>
-      <p className={`${ELEMENT_TAG}-macro-help`}>
-        Villagers can ask for places in conversation. Accepting a request starts a New Venue Project; place its
-        blueprint on the map, find a willing Builder, and work through the Project phases.
-      </p>
-      {snapshot.venueRequests.length === 0 ? (
-        <p className={`${ELEMENT_TAG}-empty`}>Nobody has requested a new place.</p>
-      ) : (
-        <ul className={`${ELEMENT_TAG}-notices`}>
-          {snapshot.venueRequests.map((entry) => {
-            const draft = requestEdits[entry.id] ?? entry.venueDraft;
-            const edit = (patch: Partial<typeof draft>) =>
-              setRequestEdits((current) => ({ ...current, [entry.id]: { ...draft, ...patch } }));
-            return (
-              <li
+      {venueId ? (
+        <div className={`${ELEMENT_TAG}-row`}>
+          <strong>
+            Housing requests ·{" "}
+            {snapshot.settings.venues.find((venue) => venue.id === venueId)?.name ?? "Venue unavailable"}
+          </strong>
+          <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => ports.setHousingVenueId?.("")}>
+            Show all requests
+          </button>
+        </div>
+      ) : null}
+      {!venueId ? (
+        <>
+          <p className={`${ELEMENT_TAG}-macro-help`}>
+            Villagers can ask for places in conversation. Accepting a request starts a New Venue Project; place its
+            blueprint on the map, find a willing Builder, and work through the Project phases.
+          </p>
+          {snapshot.venueRequests.length === 0 ? (
+            <p className={`${ELEMENT_TAG}-empty`}>Nobody has requested a new place.</p>
+          ) : (
+            <ul className={`${ELEMENT_TAG}-notices`}>
+              {snapshot.venueRequests.map((entry) => {
+                const draft = requestEdits[entry.id] ?? entry.venueDraft;
+                const edit = (patch: Partial<typeof draft>) =>
+                  setRequestEdits((current) => ({ ...current, [entry.id]: { ...draft, ...patch } }));
+                return (
+                  <li
+                    key={entry.id}
+                    className={`${ELEMENT_TAG}-notice-row`}
+                    data-villager-request={"request:" + entry.id}
+                    tabIndex={-1}
+                  >
+                    <div className={`${ELEMENT_TAG}-field`}>
+                      <strong>{entry.requesterName || "A villager"}</strong>
+                      {entry.requestQuote ? <p>“{entry.requestQuote}”</p> : null}
+                      <span className={`${ELEMENT_TAG}-hint`}>
+                        {` · ${entry.source === "chat" ? "Conversation" : "Village life"}`}
+                      </span>
+                      <input
+                        className={`${ELEMENT_TAG}-notice-input`}
+                        value={draft.name}
+                        maxLength={snapshot.settings.maxVenueNameLength}
+                        aria-label={`Requested place name from ${entry.requesterName || "villager"}`}
+                        onChange={(event) => edit({ name: event.target.value })}
+                      />
+                      <select
+                        className={`${ELEMENT_TAG}-notice-input`}
+                        value={draft.classes[0] ?? "community"}
+                        aria-label={`Requested place class from ${entry.requesterName || "villager"}`}
+                        onChange={(event) => edit({ classes: [event.target.value as (typeof draft.classes)[number]] })}
+                      >
+                        <option value="residence">Residence</option>
+                        <option value="community">Community</option>
+                        <option value="workplace">Workplace</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <textarea
+                        className={`${ELEMENT_TAG}-textarea`}
+                        value={draft.description ?? ""}
+                        maxLength={1000}
+                        aria-label={`Requested place description from ${entry.requesterName || "villager"}`}
+                        onChange={(event) => edit({ description: event.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className={`${ELEMENT_TAG}-button`}
+                        disabled={busy || !draft.name.trim()}
+                        onClick={() => void generateRequestDescription(entry, draft)}
+                      >
+                        Generate description draft
+                      </button>
+                      <div className={`${ELEMENT_TAG}-row`}>
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-button`}
+                          disabled={
+                            busy || !draft.name.trim() || draft.classes.length === 0 || !draft.description?.trim()
+                          }
+                          onClick={() => void decideVenueRequest(entry, true)}
+                        >
+                          {draft.name !== entry.venueDraft.name ||
+                          JSON.stringify(draft.classes) !== JSON.stringify(entry.venueDraft.classes)
+                            ? "Send counteroffer"
+                            : "Start planning project"}
+                        </button>
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-button`}
+                          disabled={busy}
+                          onClick={() => void decideVenueRequest(entry, false)}
+                        >
+                          Deny
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <h3 className={`${ELEMENT_TAG}-panel-title`}>Home upgrade requests</h3>
+          {snapshot.upgradeRequests.length === 0 ? (
+            <p className={`${ELEMENT_TAG}-hint`}>No home upgrades requested.</p>
+          ) : (
+            snapshot.upgradeRequests.map((entry) => (
+              <div
                 key={entry.id}
                 className={`${ELEMENT_TAG}-notice-row`}
-                data-villager-request={"request:" + entry.id}
+                data-villager-request={"upgrade:" + entry.id}
                 tabIndex={-1}
               >
-                <div className={`${ELEMENT_TAG}-field`}>
-                  <strong>{entry.requesterName || "A villager"}</strong>
-                  {entry.requestQuote ? <p>“{entry.requestQuote}”</p> : null}
-                  <span className={`${ELEMENT_TAG}-hint`}>
-                    {` · ${entry.source === "chat" ? "Conversation" : "Village life"}`}
-                  </span>
-                  <input
-                    className={`${ELEMENT_TAG}-notice-input`}
-                    value={draft.name}
-                    maxLength={snapshot.settings.maxVenueNameLength}
-                    aria-label={`Requested place name from ${entry.requesterName || "villager"}`}
-                    onChange={(event) => edit({ name: event.target.value })}
-                  />
-                  <select
-                    className={`${ELEMENT_TAG}-notice-input`}
-                    value={draft.classes[0] ?? "gathering"}
-                    aria-label={`Requested place class from ${entry.requesterName || "villager"}`}
-                    onChange={(event) => edit({ classes: [event.target.value as (typeof draft.classes)[number]] })}
-                  >
-                    <option value="residence">Residence</option>
-                    <option value="gathering">Gathering</option>
-                    <option value="workplace">Workplace</option>
-                    <option value="other">Other</option>
-                  </select>
-                  <textarea
-                    className={`${ELEMENT_TAG}-textarea`}
-                    value={draft.description ?? ""}
-                    maxLength={1000}
-                    aria-label={`Requested place description from ${entry.requesterName || "villager"}`}
-                    onChange={(event) => edit({ description: event.target.value })}
-                  />
+                <span>{entry.detail}</span>
+                {([true, false] as const).map((approved) => (
                   <button
+                    key={String(approved)}
                     type="button"
                     className={`${ELEMENT_TAG}-button`}
-                    disabled={busy || !draft.name.trim()}
-                    onClick={() => void generateRequestDescription(entry, draft)}
+                    disabled={busy}
+                    onClick={() => void decideHomeUpgrade(entry, approved)}
                   >
-                    Generate description draft
+                    {approved ? "Approve upgrade" : "Deny"}
                   </button>
-                  <div className={`${ELEMENT_TAG}-row`}>
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy || !draft.name.trim() || draft.classes.length === 0 || !draft.description?.trim()}
-                      onClick={() => void decideVenueRequest(entry, true)}
-                    >
-                      {draft.name !== entry.venueDraft.name ||
-                      JSON.stringify(draft.classes) !== JSON.stringify(entry.venueDraft.classes)
-                        ? "Send counteroffer"
-                        : "Start planning project"}
-                    </button>
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy}
-                      onClick={() => void decideVenueRequest(entry, false)}
-                    >
-                      Deny
-                    </button>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <h3 className={`${ELEMENT_TAG}-panel-title`}>Home upgrade requests</h3>
-      {snapshot.upgradeRequests.length === 0 ? (
-        <p className={`${ELEMENT_TAG}-hint`}>No home upgrades requested.</p>
-      ) : (
-        snapshot.upgradeRequests.map((entry) => (
-          <div
-            key={entry.id}
-            className={`${ELEMENT_TAG}-notice-row`}
-            data-villager-request={"upgrade:" + entry.id}
-            tabIndex={-1}
-          >
-            <span>{entry.detail}</span>
-            {([true, false] as const).map((approved) => (
-              <button
-                key={String(approved)}
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={busy}
-                onClick={() => void decideHomeUpgrade(entry, approved)}
-              >
-                {approved ? "Approve upgrade" : "Deny"}
-              </button>
-            ))}
-          </div>
-        ))
-      )}
+                ))}
+              </div>
+            ))
+          )}
+        </>
+      ) : null}
       <h3 className={`${ELEMENT_TAG}-panel-title`}>Resident move requests</h3>
       {snapshot.residences.filter((entry) => entry.status !== "current").length === 0 ? (
         <p className={`${ELEMENT_TAG}-hint`}>No moves pending.</p>
@@ -149,10 +176,24 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                 tabIndex={-1}
               >
                 <span>{`${name} → ${target}`}</span>
+                {ports.openPlace && snapshot.settings.venues.find((venue) => venue.id === entry.proposedVenueId) ? (
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-button`}
+                    onClick={() =>
+                      ports.openPlace!(snapshot.settings.venues.find((venue) => venue.id === entry.proposedVenueId)!)
+                    }
+                  >
+                    View Venue
+                  </button>
+                ) : null}
                 {entry.status === "moving" ? (
                   <>
                     <span className={`${ELEMENT_TAG}-hint`}>
-                      Move due {new Date(entry.completesAt ?? "").toLocaleString()}
+                      Move due{" "}
+                      {new Date(entry.completesAt ?? "").toLocaleString(undefined, {
+                        timeZone: snapshot.clock?.timeZone || snapshot.village.timeZone,
+                      })}
                     </span>
                     <button
                       type="button"

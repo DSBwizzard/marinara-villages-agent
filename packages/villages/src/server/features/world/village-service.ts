@@ -1,3 +1,6 @@
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { calendarReplay } from "../../domain/rules/clock-recovery.js";
+import { assertVillageClockWrite, villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type {
@@ -119,8 +122,9 @@ export function createWorldCoordination({
   async function reconcileVillage(
     options: { forceStory?: boolean; now?: Date; actionId?: string; expectedAttempt?: number } = {},
   ): Promise<VillageSnapshot> {
+    await assertVillageClockWrite();
     const forced = options.forceStory === true;
-    const now = options.now ?? new Date();
+    const now = options.now ?? villageNow();
     let recorded = await readVillageState();
     if (!isVillageFounded(recorded)) return buildVillageSnapshot(now);
     if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready")
@@ -140,7 +144,12 @@ export function createWorldCoordination({
       reconcileProjectLifecycles(state, now);
     });
     recorded = await readVillageState();
-    const moment = deriveVillageMoment({ foundedAt: recorded.foundedAt, seed: recorded.seed, now });
+    const moment = deriveVillageMoment({
+      foundedAt: recorded.foundedAt,
+      seed: recorded.seed,
+      timeZone: recorded.timeZone || undefined,
+      now,
+    });
     const previousThrough = recorded.simulatedThrough || recorded.foundedAt || moment.instant;
     const previousMs = Date.parse(previousThrough);
     const currentMs = Date.parse(moment.instant);
@@ -219,6 +228,7 @@ export function createWorldCoordination({
       if (discoveries.length) state.chronicle = [...discoveries, ...state.chronicle];
     });
 
+    if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
     // Discover optional paid work only after deterministic advancement has committed.
     await respondDueVenueMail(now);
     // Initial space preparation retains the founding generation path; begin it only after local advancement.
@@ -236,7 +246,15 @@ export function createWorldCoordination({
     const dateKey = localDateKey(now);
     const remainingSocialEvents =
       storyAllowance(village.storyPace, village.seed, dateKey) -
-      village.happenings.filter((entry) => localDateKey(new Date(entry.occurredAt)) === dateKey).length;
+      village.happenings.filter(
+        (entry) =>
+          localDateKey(
+            new ZonedDate(
+              entry.occurredAt,
+              now instanceof ZonedDate ? now.zone : Intl.DateTimeFormat().resolvedOptions().timeZone,
+            ),
+          ) === dateKey,
+      ).length;
     const activeSocialPlan =
       !forced && village.storyPace !== "off" && remainingSocialEvents > 0
         ? village.relationshipContext?.socialPlans.find(
@@ -365,14 +383,21 @@ export function createWorldCoordination({
         (state.storyPace !== "off" &&
           (state.lastCreativeDate < input.dateKey ||
             (input.socialPlanId && socialContinuationValid(state, input.socialPlanId, input.socialPlan))) &&
-          localDateKey(new Date(state.simulatedThrough)) <= input.dateKey)),
+          localDateKey(
+            new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+          ) <= input.dateKey)),
     apply(state, input, proposal) {
       const { forced, dateKey, opportunity, moment } = input;
-      const now = new Date(input.now);
+      const now = new ZonedDate(input.now, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 
       if (!forced && (state.storyPace === "off" || (!input.socialPlanId && state.lastCreativeDate >= dateKey))) return;
       const dailyAllowance = storyAllowance(state.storyPace, state.seed, dateKey);
-      const used = state.happenings.filter((entry) => localDateKey(new Date(entry.occurredAt)) === dateKey).length;
+      const used = state.happenings.filter(
+        (entry) =>
+          localDateKey(
+            new ZonedDate(entry.occurredAt, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+          ) === dateKey,
+      ).length;
       const offeredPlan = input.context.social?.candidates.some((plan) => plan.id === proposal.social?.planId);
       const allowance = forced
         ? 3
@@ -490,7 +515,7 @@ export function createWorldCoordination({
     const deed = boundText(params.deed, MAX_CHRONICLE_LENGTH);
     if (deed.length === 0) return;
     const village = await readVillageState();
-    const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: new Date() });
+    const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: villageNow() });
     const { happenings } = await proposeReaction(
       {
         village: village.name,
@@ -561,7 +586,7 @@ export function createWorldCoordination({
     for (const resident of village.villagers) names.set(resident.characterId, resident.cardSnapshot.name);
     const person = (id: string) => ({ id, name: names.get(id) ?? "Former resident" });
     const residents = village.villagers.map((resident) => person(resident.characterId));
-    const now = Date.now();
+    const now = villageNow().getTime();
     const durable = village.chronicle
       .filter((entry) => entry.kind !== "tick")
       .map((entry) => {

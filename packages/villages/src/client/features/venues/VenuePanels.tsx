@@ -105,7 +105,7 @@ export function VenueZoneEditor({
   );
 }
 
-export const VENUE_CLASS_CHOICES: VenueClass[] = ["residence", "workplace", "gathering", "other"];
+export const VENUE_CLASS_CHOICES: VenueClass[] = ["residence", "workplace", "community", "other"];
 
 export function VenueDraftFields({
   draft,

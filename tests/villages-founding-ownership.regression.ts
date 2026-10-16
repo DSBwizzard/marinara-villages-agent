@@ -45,7 +45,7 @@ function fixture(name: string) {
       addedAt: stamp,
       cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: stamp },
     })),
-    venues: [{ id: "same-venue", name: "Hall", form: "Station", classes: ["gathering"] }],
+    venues: [{ id: "same-venue", name: "Hall", form: "Station", classes: ["community"] }],
   });
   for (const resident of state.villagers)
     resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);

@@ -951,77 +951,6 @@ export function renderHomesBlock(homes: readonly VillageHomeLine[], playerLabel:
   return ["Where people live:", ...lines].join("\n");
 }
 
-/**
- * The Engine's four availability tokens translated into the words a person would
- * use for them.
- *
- * The tokens are a machine vocabulary about reachability, and handing `dnd` to
- * a model and hoping is how a villager ends up cheerfully available during
- * their own shift. These say the same thing in terms of a person's day, which
- * is the register an answer has to be written in.
- *
- * They live here rather than beside the translation prompt they were first
- * written for, because they are now prompt vocabulary in two places at once:
- * the translator says what an hour is like to be spent, and the villager's own
- * prompt says whether this is a good moment to be talking at all. One wording,
- * read from one table, so the two can never drift into disagreeing about
- * whether somebody is free.
- */
-const STATUS_WORDS: Record<string, string> = {
-  offline: "asleep or away from everyone",
-  dnd: "busy, and not to be interrupted",
-  idle: "between things, and easy to interrupt",
-  online: "free, and out and about",
-};
-
-/** The words for one availability token, or "" when the Engine did not write one. */
-export function describeStatus(status: string): string {
-  return STATUS_WORDS[status.trim().toLowerCase()] ?? "";
-}
-
-/**
- * Whether the Engine said this hour belongs to something that is not you.
- *
- * Two of the four tokens are answers about OWNERSHIP and two are answers about
- * mood. `offline` says the hour is sleep or somewhere else entirely, and `dnd`
- * says it belongs to whatever the person is doing; `idle` and `online` are
- * degrees of freedom, and somebody merely idle is easy to interrupt rather than
- * hard to. Only the first two are worth telling a villager to defend.
- *
- * The token arrives in Engine metadata the village does not own, so it is read
- * case-blind and an unrecognised token is NOT committed — a village that treated
- * every unknown word as a closed door would be rude about an hour nobody said
- * anything about. That is also why the comparison is written out here rather
- * than derived from the words in `STATUS_WORDS`: the sentence is a description
- * and this is a decision, and matching on prose is how the two get coupled.
- *
- * Read from one function so the two prompts that need the distinction cannot
- * drift: the villager's own, which states it as a fact about the hour, and the
- * narrator's, which says it beside the resident's name.
- */
-export function isCommittedStatus(status: string): boolean {
-  const token = status.trim().toLowerCase();
-  return token === "offline" || token === "dnd";
-}
-
-/**
- * The line that turns a committed hour from a description into a fact.
- *
- * Without it the availability is one clause among many: a model reads "you are
- * busy, and not to be interrupted" as a circumstance it may choose to speak
- * around, and the villager cheerfully helps with the enquiry they were supposed
- * to be too deep in a shift for. The decision this file implements is that
- * availability is FIRM — the village says they are not available, and a player
- * who talks to them anyway has interrupted them, which is a thing the villager
- * is entitled to answer as such. It does not tell anybody to refuse, be rude or
- * cut the conversation short: it tells them what happened, and leaves the manner
- * to the character.
- *
- * Stated once and used by both blocks that need it, because the two would
- * otherwise drift into two different accounts of the same interruption.
- */
-const INTERRUPTED_LINE = "Anybody talking to you now is interrupting you, and it shows in how you answer.";
-
 /** Render the shared compressed complete day. Equivalent neighbors merge while
  * distinct destinations, Zones and commitments retain their times. Identity and
  * Scene-writing instructions are supplied separately and remain unchanged.
@@ -1029,14 +958,11 @@ const INTERRUPTED_LINE = "Anybody talking to you now is interrupting you, and it
 export function renderDoingBlock(input: {
   activity: string;
   routineSummary: string;
-  status: string;
   today: readonly VillageDayBlock[];
 }): string {
   const activity = input.activity.trim();
   const summary = input.routineSummary.trim();
   if (activity.length === 0 && summary.length === 0 && input.today.length === 0) return "";
-  const availability = describeStatus(input.status);
-  const committed = isCommittedStatus(input.status);
   // The hour they are in, so the sentence at the top can say how long they have
   // had it. Read off the plan rather than worked out here: which block a minute
   // falls in is decided once, by `dayPlan`, and a second answer to it here would
@@ -1048,8 +974,6 @@ export function renderDoingBlock(input: {
   return [
     "## What you are doing",
     activity.length > 0 ? `Right now you are ${activity}${until.length > 0 ? ` until ${until}` : ""}.` : "",
-    availability.length > 0 ? `You are ${availability}.` : "",
-    committed ? INTERRUPTED_LINE : "",
     summary,
     plan.length > 0 ? `Your day: ${plan}.` : "",
   ]
@@ -1323,25 +1247,8 @@ function presentPersonLine(person: VillagePresentPerson): string {
  * wish either, including the two new ones: the way to keep a wish unspoken is to
  * not talk about it, and the shortest route to a villager blurting it out is a
  * sentence at the end of the prompt telling them not to.
- * `interrupted` is the firm half of the availability decision, and it is a
- * parameter of this function rather than a block of its own because of what a
- * macro can and cannot do: a village whose prompt box was stored before a
- * macro existed never renders that macro again, so a new section would reach
- * exactly the players who set the village up after this shipped and nobody else.
- * Riding inside a block every prompt already carries puts the sentence in front
- * of every villager instead.
- *
- * It goes directly under the heading, above the branch's own instructions, and
- * that placement is doing work: recency gives the last line of a prompt the most
- * weight, and this is the one thing in the prompt that contradicts what the
- * villager would rather do with the turn. It does not tell them to refuse, to be
- * curt, or to end the conversation — it tells them what just happened to them and
- * leaves the manner to the character, which is the difference between a firm
- * answer and a scripted one. The three branches share the sentence because it is
- * the same fact in all three: an errand, a claim about a favour, and an ordinary
- * hello are all things somebody was interrupted for.
  */
-export function renderModeBlock(mode: VillageChatMode, interrupted = false): string {
+export function renderModeBlock(mode: VillageChatMode): string {
   let lines: string[];
   if (mode === "ask") {
     lines = [
@@ -1363,8 +1270,7 @@ export function renderModeBlock(mode: VillageChatMode, interrupted = false): str
       "This is an ordinary conversation. Talk the way you would talk to somebody who lives here: take it wherever it goes, say what is on your mind, and let the two of you land on whatever you land on.",
     ];
   }
-  if (!interrupted) return lines.join("\n");
-  return [lines[0], INTERRUPTED_LINE, ...lines.slice(1)].join("\n");
+  return lines.join("\n");
 }
 
 /**
@@ -1406,12 +1312,12 @@ export function buildPromptValues(input: {
    * Written out rather than named as a type because the same facts are carried by
    * `VillagePromptContext.routine` and `remap` and only become this shape at the
    * edge — see `doingFor`, which is where the village's translation, the village's
-   * own summary, the availability that came with them and the whole of today are
+   * own summary and the whole of today are
    * resolved into one answer. The Engine's words are not among the inputs, and
    * neither is anything that needs a clock: the plan arrives with the hour
    * already marked.
    */
-  doing: { activity: string; routineSummary: string; status: string; today: readonly VillageDayBlock[] };
+  doing: { activity: string; routineSummary: string; today: readonly VillageDayBlock[] };
   /**
    * What this villager wishes for, or null when they have not been written for.
    *

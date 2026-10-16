@@ -48,6 +48,10 @@ export type Job = BackgroundInput & {
   owner: string;
   attempt: number;
   steps: Step[];
+  optionalAttempts?: Record<
+    string,
+    { status: "dispatching" | "complete" | "unknown"; elapsedMs: number; result?: unknown }
+  >;
   settings: Record<string, unknown>;
   result?: unknown;
   hasResult: boolean;

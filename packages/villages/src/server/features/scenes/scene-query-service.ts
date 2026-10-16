@@ -29,6 +29,21 @@ export function createSceneQueryService({ readSession, readVillageState, village
             submission.privateOwnerIdAtTurn ?? session.privateOwnerId,
           )
         : undefined);
+    const playerSources = session.lines.filter(
+      (line) =>
+        line.role === "user" &&
+        (line.id === submission.liveProposals?.playerLineId ||
+          (line.attentionEvidence && submission.replyLineIds?.includes(line.id))),
+    );
+    const playerMessagesByActor = Object.fromEntries(
+      [...new Set(playerSources.flatMap((line) => line.heardBy))].map((actor) => [
+        actor,
+        playerSources
+          .filter((line) => line.heardBy.includes(actor))
+          .map((line) => line.content)
+          .join("\n"),
+      ]),
+    );
     return {
       sessionId,
       venueId: session.placeId,
@@ -36,6 +51,7 @@ export function createSceneQueryService({ readSession, readVillageState, village
       submissionId,
       mode: submission.mode,
       message: submission.message,
+      ...(submission.attention || submission.zoneEventsVersion === 1 ? { playerMessagesByActor } : {}),
       at: submission.at ?? "",
       areaAtTurn: submission.areaAtTurn ?? session.area,
       activeIdsAtTurn: [
@@ -57,7 +73,11 @@ export function createSceneQueryService({ readSession, readVillageState, village
           ),
         )
         .filter(
-          (line) => !line.contactHidden && !line.contactReport && line.kind !== "side" && line.kind !== "whisper",
+          (line) =>
+            (!line.contactHidden || line.attentionEvidence) &&
+            !line.contactReport &&
+            line.kind !== "side" &&
+            line.kind !== "whisper",
         ),
       lines: session.lines.filter((line) =>
         submission.replyLineIds?.length

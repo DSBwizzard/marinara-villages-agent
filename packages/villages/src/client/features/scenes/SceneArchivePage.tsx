@@ -147,15 +147,18 @@ export function renderSceneArchivePage(ports: SceneArchivePagePorts) {
                         >
                           {renderVillagesMarkdown(line.content, `venue-${visit.id}-${index}-`)}
                         </span>
-                        <span className={`${ELEMENT_TAG}-story-meta`}>
-                          Heard by:{" "}
-                          {line.heardBy
-                            ?.map(
-                              (id) =>
-                                openArchivedVisit.participants.find((person) => person.characterId === id)?.name ?? id,
-                            )
-                            .join(", ") || "no one"}
-                        </span>
+                        {line.heardBy ? (
+                          <span className={`${ELEMENT_TAG}-story-meta`}>
+                            Heard by:{" "}
+                            {line.heardBy
+                              ?.map(
+                                (id) =>
+                                  openArchivedVisit.participants.find((person) => person.characterId === id)?.name ??
+                                  id,
+                              )
+                              .join(", ") || "no one"}
+                          </span>
+                        ) : null}
                       </span>
                     </li>
                   ))}

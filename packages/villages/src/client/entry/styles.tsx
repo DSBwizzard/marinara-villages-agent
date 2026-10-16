@@ -1560,9 +1560,9 @@ const VILLAGES_STYLES = `
   thing that shrinks on a narrow tab — the override that used to spread Leave and
   Send across two rows went with them.
 */
-.${ELEMENT_TAG}-composer-row { display: flex; }
+.${ELEMENT_TAG}-composer-row { display: flex; flex-wrap: wrap; }
 /* Textarea scrollbar widths must not resize its sibling scope or the mode menu. */
-.${ELEMENT_TAG}-scene-scope { flex: 0 0 min(7rem, 30%); min-width: 0; max-width: 30%; margin: 0 .375rem 0 0; align-self: center; font-size: .625rem; line-height: 1.3; color: var(--muted-foreground); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.${ELEMENT_TAG}-scene-scope { flex: 0 0 100%; min-width: 0; max-width: 100%; margin: 0 0 .375rem; align-self: center; font-size: .625rem; line-height: 1.3; color: var(--muted-foreground); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .${ELEMENT_TAG}-composer-row > .${ELEMENT_TAG}-scene-scope + .${ELEMENT_TAG}-chat-input { flex: 1 1 0; }
 .${ELEMENT_TAG}-contact-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .${ELEMENT_TAG}-contact-controls > select { flex: 1 1 130px; min-width: 0; max-width: 100%; }
@@ -3484,7 +3484,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo-card, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo-card { display: flex; flex: 0 0 auto; flex-direction: column; width: clamp(3.5rem, 6cqw, 5rem); gap: .1rem; padding: .18rem; box-sizing: border-box; border-radius: .1rem; background: #faf4e7; box-shadow: 0 3px 8px #0009; transform-origin: center; transition: transform 160ms ease-out; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo-card { width: clamp(4rem, 17cqw, 5.25rem); }
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; background: #201e29; overflow: visible; }
-.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo img, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo img, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-name, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: .58rem; font-weight: 700; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin[data-kind="person"] { max-width: 7rem; }
 .${ELEMENT_TAG}-stage[data-mobile="true"][data-mobile-gesturing="true"] .${ELEMENT_TAG}-pin-photo-card { transition: none; }
@@ -3535,7 +3535,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin[data-kind="place"] { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; overflow: visible; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-card { display: flex; flex-direction: column; gap: .1rem; width: 4rem; padding: .18rem; box-sizing: border-box; border-radius: .1rem; background: #faf4e7; color: #30261c; box-shadow: 0 3px 8px #0009; transform-origin: center; transition: transform 160ms ease-out; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; background: #201e29; }
-.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .55rem; font-weight: 700; }
 .${ELEMENT_TAG}-pin-photo-empty { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: #e8dfc9; font-size: 1.5rem; }
 .${ELEMENT_TAG}-pin-placement-error { position: absolute; z-index: 15; left: .5rem; bottom: .5rem; margin: 0; max-width: calc(100% - 1rem); padding: .4rem .6rem; border-radius: .5rem; background: #261a19e8; color: white; font-size: .75rem; pointer-events: none; }
@@ -3821,7 +3821,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .villages-layout-choice { font: inherit; border: 1px solid #65799c; border-radius: .5rem; padding: .5rem; color: #f3f5ff; background: #192c4c; min-height: 44px; cursor: pointer; }
 .villages-layout-fields p { font-size: .75rem; }
 .${ELEMENT_TAG}-stage[data-compact-photos="true"][data-photo-pins="true"] .${ELEMENT_TAG}-pin-photo-card { width: 5.5rem; }
-.${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-photo img { object-fit: contain; }
+.${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-photo img { object-fit: cover; }
 .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-photo { overflow: hidden; }
 .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-holder:has(.${ELEMENT_TAG}-pin:hover), .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-holder:focus-within { z-index: 7; }
 @media (hover: hover) { .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin:hover .${ELEMENT_TAG}-pin-photo-card { transform: scale(1) !important; } }
@@ -3852,6 +3852,37 @@ a chat is the moment this tab stops being a picture of a village and starts
   .${ELEMENT_TAG}-founding-role-fields textarea { min-height: 8rem; }
 }
 ${VILLAGES_FORGING_STYLES}
+/* One Venue profile, shared by map, People, Scenes, Requests and Settings. */
+.${ELEMENT_TAG}-venue-profile { box-sizing:border-box; max-width: 64rem; margin-inline: auto; width: 100%; background:var(--background); }
+.${ELEMENT_TAG}-venue-profile h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
+.${ELEMENT_TAG}-venue-profile button, .${ELEMENT_TAG}-venue-profile input, .${ELEMENT_TAG}-venue-profile select { max-width: 100%; }
+.${ELEMENT_TAG}-venue-sections { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-bottom: 1px solid var(--border); }
+.${ELEMENT_TAG}-venue-sections button { min-height: 2.75rem; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted-foreground); font: inherit; cursor: pointer; }
+.${ELEMENT_TAG}-venue-sections button[aria-pressed="true"] { border-bottom-color: var(--primary); color: var(--foreground); }
+.${ELEMENT_TAG}-venue-profile-body { width: 100%; max-width: 44rem; margin-inline: auto; }
+.${ELEMENT_TAG}-venue-profile-image { display:block; width:100%; max-height:26rem; object-fit:contain; border-radius:.6rem; margin-bottom:1rem; }
+.${ELEMENT_TAG}-venue-primary { display:block; width:100%; padding:.8rem; margin:.75rem 0; border:1px solid var(--border); border-radius:.6rem; background:var(--primary); color:var(--primary-foreground,var(--background)); font:inherit; cursor:pointer; }
+.${ELEMENT_TAG}-venue-section { display:flex; flex-direction:column; align-items:flex-start; gap:.6rem; padding:1rem 0; border-bottom:1px solid var(--border); }
+.${ELEMENT_TAG}-venue-section p { margin:.25rem 0; }
+.${ELEMENT_TAG}-venue-section > label { display:grid; gap:.4rem; width:100%; }
+.${ELEMENT_TAG}-venue-section input, .${ELEMENT_TAG}-venue-section select { width:100%; box-sizing:border-box; }
+.${ELEMENT_TAG}-venue-zone-details { padding:1rem; background:var(--popover); border:1px solid var(--border); border-radius:.75rem; }
+.${ELEMENT_TAG}-venue-zone-heading { display:flex; justify-content:space-between; align-items:start; gap:.75rem; flex-wrap:wrap; margin-bottom:1rem; }
+.${ELEMENT_TAG}-venue-zone-heading small { display:block; }
+.${ELEMENT_TAG}-zone-picture-freeze { display:flex; align-items:center; gap:.5rem; min-height:44px; width:fit-content; margin-bottom:.25rem; cursor:pointer; }
+.${ELEMENT_TAG}-zone-picture-freeze input { width:1.15rem; height:1.15rem; margin:0; }
+.${ELEMENT_TAG}-venue-assignments { margin:0; padding:0; list-style:none; width:100%; }
+.${ELEMENT_TAG}-venue-assignments li { display:flex; flex-wrap:wrap; justify-content:space-between; gap:.6rem; padding:.7rem 0; border-bottom:1px solid var(--border); }
+.${ELEMENT_TAG}-venue-layout { position:relative; display:flex; flex-direction:column; gap:2rem; padding:1rem 1rem 1rem 0; margin-bottom:1rem; }
+.${ELEMENT_TAG}-venue-layout > svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.${ELEMENT_TAG}-venue-layout path { fill:none; stroke:var(--muted-foreground); stroke-width:1.5; }
+.${ELEMENT_TAG}-venue-layout path[data-selected="true"] { stroke:var(--primary); }
+.${ELEMENT_TAG}-venue-layout-level { display:flex; flex-wrap:wrap; justify-content:center; gap:1rem; }
+.${ELEMENT_TAG}-venue-layout button { z-index:1; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; width:min(12rem,calc((100% - 1rem) / 2)); max-width:100%; min-height:4rem; overflow-wrap:anywhere; padding:.65rem; border:1px solid var(--border); border-radius:.6rem; background:var(--popover); color:var(--foreground); font:inherit; cursor:pointer; }
+.${ELEMENT_TAG}-venue-layout button[aria-pressed="true"] { border-color:var(--primary); outline:2px solid var(--primary); outline-offset:2px; }
+.${ELEMENT_TAG}-venue-profile input[type="file"] { display:block; width:100%; margin-top:.4rem; }
+.${ELEMENT_TAG}-venue-profile [hidden] { display:none !important; }
+.${ELEMENT_TAG}-venue-profile .${ELEMENT_TAG}-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 `;
 
 export function syncVillagesStyles() {

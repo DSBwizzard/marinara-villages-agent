@@ -9,7 +9,6 @@ import type { FoundingScreenController } from "./screen-contracts.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import { AgentConnections } from "../settings/SettingsPanels.js";
-import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 import {
   FoundingPersonaSelector,
   FoundingVillagerPicker,
@@ -19,6 +18,8 @@ import {
 import { FoundingField, FoundingHelp, CircumstanceInput } from "./FoundingField.js";
 import { venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
 import { FoundingWorkspace } from "./villages-founding-workspace";
+import { QuickStartVenues } from "./QuickStartVenues.js";
+import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-workspace-state";
 import { DEFAULT_PLAYER_ROLE, PlayerRoleFields, PlayerRoleSummary, playerRoleProblem } from "./villages-player-role.js";
 import { ResidentFoundingEditors } from "./villages-resident-founding.js";
@@ -200,7 +201,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       (setupWorkspace.paused
         ? undefined
         : setupVenues.find((venue) => venue.presentation.x === null || venue.presentation.y === null));
-    const setupIssues = foundingVenueIssues(setupVenues, snapshot?.isFounded ?? false);
+    const quickStart = !snapshot?.isFounded && setupWorkspace.mode === "quick";
+    const setupIssues = foundingVenueIssues(setupVenues, snapshot?.isFounded ?? false, quickStart);
     const openIssue = (issue: FoundingIssue) => {
       setSelectedSetupVenueId(issue.venueId);
       setSetupFocusIssue(issue);
@@ -331,7 +333,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           <h1>Forging the Village</h1>
         </header>
         <main className="villages-forging-body" data-step={setupStep}>
-          <div hidden={setupStep !== 0}>
+          <div hidden={setupStep !== 1}>
             <div className="villages-forging-columns">
               <section className="villages-forging-card">
                 <h3 aria-label="You">You</h3>
@@ -423,11 +425,41 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </section>
             </div>
           </div>
-          {setupStep === 1 ? (
+          {setupStep === 0 ? (
             <>
               <div className="villages-place-panels">
                 <section className="villages-forging-card">
                   <h3>Place</h3>
+                  <FoundingField
+                    title="Village timezone"
+                    help="Suggested from the computer running Marinara Engine. This choice stays with your village; daylight saving follows the selected timezone."
+                  >
+                    <select
+                      aria-label="Village timezone"
+                      disabled={!!snapshot?.isFounded || busy}
+                      value={
+                        controller.setupTimeZone || snapshot?.clock?.timeZone || snapshot?.village.timeZone || "UTC"
+                      }
+                      onChange={(event) => controller.setSetupTimeZone?.(event.target.value)}
+                    >
+                      {Array.from(
+                        new Set([
+                          snapshot?.clock?.timeZone || snapshot?.village.timeZone || "UTC",
+                          controller.setupTimeZone || "",
+                          ...(typeof Intl.supportedValuesOf === "function"
+                            ? Intl.supportedValuesOf("timeZone")
+                            : ["UTC", "America/Los_Angeles", "America/New_York", "Europe/London", "Asia/Tokyo"]),
+                        ]),
+                      )
+                        .filter(Boolean)
+                        .sort()
+                        .map((zone) => (
+                          <option key={zone} value={zone}>
+                            {zone.replaceAll("_", " ")}
+                          </option>
+                        ))}
+                    </select>
+                  </FoundingField>
                   <FoundingField
                     title="Village name"
                     error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
@@ -697,46 +729,110 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             </section>
           ) : null}
           {setupStep === 3 ? (
-            <FoundingWorkspace
-              venues={setupVenues}
-              people={wizardVillagers}
-              selectedId={selectedSetupVenueId}
-              placementId={nextPin?.id ?? null}
-              state={setupWorkspace}
-              map={
+            <>
+              {!snapshot?.isFounded ? (
                 <>
-                  {map(true)}
-                  {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
+                  <h2>Starting Venues</h2>
+                  <div className="villages-quick-switch" role="group" aria-label="Venue setup mode">
+                    <button
+                      type="button"
+                      aria-pressed={quickStart}
+                      onClick={() => setSetupWorkspace((state) => ({ ...state, mode: "quick" }))}
+                    >
+                      Quick Start
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={!quickStart}
+                      onClick={() => setSetupWorkspace((state) => ({ ...state, mode: "advanced" }))}
+                    >
+                      Advanced
+                    </button>
+                  </div>
                 </>
-              }
-              existing={snapshot?.isFounded ?? false}
-              mapReady={mapReady}
-              issues={setupIssues}
-              focusIssue={setupFocusIssue}
-              imageTarget={setupImageTarget}
-              imageBusy={setupVenueBusy}
-              suggestionsBusy={setupSuggestionsBusy}
-              suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
-              saveError={draftSaveError || undefined}
-              onState={setSetupWorkspace}
-              onSelect={(venue) => {
-                setSelectedSetupVenueId(venue.id);
-                setMovingSetupVenueId(null);
-                setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
-              }}
-              onContinue={() => {
-                const next = setupVenues.find(
-                  (venue) => venue.presentation.x === null || venue.presentation.y === null,
-                );
-                setSelectedSetupVenueId(next?.id ?? null);
-                setMovingSetupVenueId(next?.id ?? null);
-                setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
-              }}
-              onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
-              onDraft={() => void suggestSetupVenues()}
-              onGenerate={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
-              onUpload={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
-            />
+              ) : null}
+              {quickStart ? (
+                <QuickStartVenues
+                  venues={setupVenues}
+                  people={wizardVillagers}
+                  setting={setupSetting}
+                  selectedId={selectedSetupVenueId}
+                  state={setupWorkspace}
+                  busy={setupSuggestionsBusy}
+                  imageBusy={setupVenueBusy}
+                  suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
+                  suggestionsKey={setupSuggestionsKey}
+                  focusIssue={setupFocusIssue}
+                  saveError={draftSaveError || undefined}
+                  problem={setupProblem || undefined}
+                  map={
+                    <>
+                      {map(true)}
+                      {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
+                    </>
+                  }
+                  onState={setSetupWorkspace}
+                  onSelect={(venue) => {
+                    setSelectedSetupVenueId(venue.id);
+                    setSetupFocusIssue(null);
+                    setMovingSetupVenueId(null);
+                    setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
+                  }}
+                  onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
+                  onGenerate={(venueId) => void suggestSetupVenues({ quickStart: true, venueId })}
+                  onArrange={() => {
+                    setSetupVenues((venues) => arrangeQuickStartVenues(venues, true));
+                    setSetupMapReviewed(false);
+                  }}
+                  onMove={(venue) => {
+                    setSelectedSetupVenueId(venue.id);
+                    setMovingSetupVenueId(venue.id);
+                    setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
+                  }}
+                />
+              ) : (
+                <FoundingWorkspace
+                  venues={setupVenues}
+                  people={wizardVillagers}
+                  selectedId={selectedSetupVenueId}
+                  placementId={nextPin?.id ?? null}
+                  state={setupWorkspace}
+                  map={
+                    <>
+                      {map(true)}
+                      {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
+                    </>
+                  }
+                  existing={snapshot?.isFounded ?? false}
+                  mapReady={mapReady}
+                  issues={setupIssues}
+                  focusIssue={setupFocusIssue}
+                  imageTarget={setupImageTarget}
+                  imageBusy={setupVenueBusy}
+                  suggestionsBusy={setupSuggestionsBusy}
+                  suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
+                  saveError={draftSaveError || undefined}
+                  onState={setSetupWorkspace}
+                  onSelect={(venue) => {
+                    setSelectedSetupVenueId(venue.id);
+                    setMovingSetupVenueId(null);
+                    setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
+                  }}
+                  onContinue={() => {
+                    const next = setupVenues.find(
+                      (venue) => venue.presentation.x === null || venue.presentation.y === null,
+                    );
+                    setSelectedSetupVenueId(next?.id ?? null);
+                    setMovingSetupVenueId(next?.id ?? null);
+                    setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
+                  }}
+                  onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
+                  onDraft={() => void suggestSetupVenues()}
+                  onGenerate={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
+                  onUpload={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
+                />
+              )}
+            </>
           ) : null}
           {setupStep === 4 ? (
             <>
@@ -919,12 +1015,18 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               setValidatedFields((fields) => [
                 ...new Set([
                   ...fields,
-                  "persona",
-                  "role",
-                  "villagers",
-                  "connections",
-                  ...setupFoundingVillagerIds.map((id) => "backstory:" + id),
-                  ...(setupStep >= 1 ? ["place-name", "place-setting", "place-circumstance"] : []),
+                  "place-name",
+                  "place-setting",
+                  "place-circumstance",
+                  ...(setupStep >= 1
+                    ? [
+                        "persona",
+                        "role",
+                        "villagers",
+                        "connections",
+                        ...setupFoundingVillagerIds.map((id) => "backstory:" + id),
+                      ]
+                    : []),
                 ]),
               ]);
               if (setupStep === 3 && setupIssues.length) {
@@ -948,7 +1050,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     ? "Continue to Venues"
                     : setupStep === 1
                       ? "Continue to Map"
-                      : "Continue to place"}
+                      : "Continue to People"}
           </button>
         </footer>
       </div>

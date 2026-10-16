@@ -1,3 +1,4 @@
+import { withVillageClockCommit } from "../time/clock-gate.js";
 import { createActivationBinding } from "./activation-scope.js";
 import { pipelineStorage } from "../observability/metrics-context.js";
 import type {
@@ -83,6 +84,12 @@ export function createRuntimeConnections(next: CapabilityRuntimeHost) {
           return (...args: unknown[]) => {
             if (key === "getById" || key === "list") pipelineStorage("reads");
             if (key === "create" || key === "update") pipelineStorage("writes");
+            const input = args[0] as { id?: string } | undefined;
+            if (
+              (key === "create" || key === "update" || key === "delete" || key === "remove") &&
+              input?.id !== "villages-ai-usage"
+            )
+              return withVillageClockCommit(() => value.apply(target, args));
             return value.apply(target, args);
           };
         },

@@ -19,6 +19,11 @@ const rows = new Map([
   ],
 ]);
 const documents = {
+  async create(input) {
+    const row = { ...structuredClone(input), revision: 1 };
+    rows.set(input.id, row);
+    return structuredClone(row);
+  },
   async getById(_package, id) {
     return structuredClone(rows.get(id) ?? null);
   },

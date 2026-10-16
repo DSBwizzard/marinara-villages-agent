@@ -27,6 +27,7 @@ export function useFoundingState() {
   const [setupStep, setSetupStep] = useState(0);
 
   const [setupName, setSetupName] = useState("");
+  const [setupTimeZone, setSetupTimeZone] = useState("");
 
   const [setupSetting, setSetupSetting] = useState("");
 
@@ -161,6 +162,8 @@ export function useFoundingState() {
     setSetupStep,
     setupName,
     setSetupName,
+    setupTimeZone,
+    setSetupTimeZone,
     setupSetting,
     setSetupSetting,
     setupFoundingReason,

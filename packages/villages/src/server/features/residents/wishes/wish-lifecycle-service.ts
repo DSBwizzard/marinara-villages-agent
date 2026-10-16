@@ -1,3 +1,6 @@
+import { ZonedDate } from "../../../../shared/helpers/zoned-date.js";
+import { calendarReplay } from "../../../domain/rules/clock-recovery.js";
+import { villageNow } from "../../../adapters/time/clock-gate.js";
 import type { Handler } from "../../../domain/models/background-model.js";
 import type { wishAttemptClocks, readWishAttemptClock } from "./wish-attempt-clocks.js";
 import { villagerCardFromSnapshot } from "../../../adapters/engine/catalog.js";
@@ -101,7 +104,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         const wish = resident?.agenda?.wishes.find((item) => item.id === wishId);
         if (!resident?.agenda || !wish?.learnedAt) throw notFound("That discovered wish is not active.");
         resident.agenda.wishes = resident.agenda.wishes.filter((item) => item.id !== wishId);
-        removeWishActivities(resident, wishId, new Date());
+        removeWishActivities(resident, wishId, villageNow());
         setWishJournalStatus(state, characterId, wishId, "retired");
         if (resident.wishLifecycle) {
           const need = resident.wishLifecycle.needs.find((need) => need.id === wish.need?.id);
@@ -118,6 +121,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     let id: string | undefined;
     await mutateVillageState((state) => {
       id = undefined;
+      if (calendarReplay(state, now)) return;
       const resident = state.villagers.find((entry) => entry.characterId === characterId);
       if (!resident || resident.wishLifecycle?.attempt) return;
       registerInitialWish(resident, now);
@@ -126,7 +130,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     return id;
   }
 
-  async function correctResidentWish(characterId: string, wishId: string, now = new Date()): Promise<void> {
+  async function correctResidentWish(characterId: string, wishId: string, now = villageNow()): Promise<void> {
     const outcome = await readWishOutcome(characterId, wishId);
     if (!outcome || outcome.kind !== "fulfilled")
       throw notFound("That completed wish is not in this villager's record.");
@@ -214,7 +218,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
   async function generateWish(input: { state: VillageState; characterId: string; now: string }): Promise<WishAttempt> {
     const state = structuredClone(input.state),
       characterId = input.characterId,
-      now = new Date(input.now);
+      now = new ZonedDate(input.now, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
     const resident = state.villagers.find((entry) => entry.characterId === characterId)!;
     const job = resident.wishLifecycle!.attempt!;
     if (job.stage === "reserved") job.calls = 0;
@@ -244,7 +248,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
             'Propose at most ONE personal desire grounded in the complete authored character, or none. Their circumstances may change; their personality, voice, and values are not rewritten by the village. Do not prescribe a visible tell or recurring gesture. JSON only: {"wish":null} or {"wish":{"wish":"...","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}}}. Also return matchedNeedId (exact supplied known id, or empty for a new need) and certain (false if uncertain). Match the same unmet need, not merely the same object; acquiring, repairing and using differ. Do not change a matched recurrence policy. ' +
             (job.resetRefill
               ? "This is a one-time Wish replacement only. Omit adjustment and routineIdea; do not change the routine. "
-              : "You may optionally return adjustment:{slot,activity,reason,venueId,zoneId} using only a supplied future free-time slot and saved destination IDs. You may optionally include ONE routineIdea:{activity,venueId,zoneId,flexible:true} for an ordinary future optional activity; it establishes no asset, job or physical fact. ") +
+              : "You may optionally return adjustment:{slot,activity,venueId,zoneId} using only a supplied future free-time slot and saved destination IDs. You may optionally include ONE routineIdea:{activity,venueId,zoneId,flexible:true} for an ordinary future optional activity; it establishes no asset, job or physical fact. ") +
             " Never invent people, places, physical changes, injuries, debts, emergencies, or an object already owned. Wishes are personal interests, not player errands. Lasting achievements stay settled; recurring ordinary needs may return only after seven fulfilled days. Active wishes must not repeat. No suitable wish is a valid quiet day.",
         },
         {
@@ -380,7 +384,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       const owner = state.villagers.find((entry) => entry.characterId === input.characterId)!;
       if (!result.resetRefill && owner.agenda && result.routineIdea)
         addRoutineIdea(owner.agenda, result.routineIdea, owner, state);
-      const committedAt = (readWishAttemptClock(input.id) ?? (() => new Date()))();
+      const committedAt = (readWishAttemptClock(input.id) ?? (() => villageNow()))();
       const attempt = structuredClone(result);
       // A deliberate retry consumes the current allowance, even when its paid proposal was saved on an earlier day.
       if (context.retrying || attempt.resetRefill) {
@@ -486,9 +490,15 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     let work: { characterId: string; id: string }[] = [];
     await mutateVillageState((state) => {
       work = [];
+      if (calendarReplay(state, now)) return;
       if (state.foundingPreparation && state.foundingPreparation.status !== "ready") return;
       const dateKey = agendaDateKey(now),
-        moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now }),
+        moment = deriveVillageMoment({
+          foundedAt: state.foundedAt,
+          seed: state.seed,
+          timeZone: state.timeZone || undefined,
+          now,
+        }),
         phaseKey = `${dateKey}:${moment.dayPhase}`;
       // The migration records intent locally; reservation owns every finite replacement exactly once.
       state.wishResetPending = state.wishResetPending.filter((characterId) => {
@@ -581,6 +591,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
   }
 
   async function reconcileWishLifecycle(now: Date, background = true, clock?: () => Date): Promise<void> {
+    if (calendarReplay(await readVillageState(), now)) return;
     try {
       await flushWishOutcomes();
     } catch (error) {

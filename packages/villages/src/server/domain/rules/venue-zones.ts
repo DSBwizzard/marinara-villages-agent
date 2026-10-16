@@ -1,3 +1,4 @@
+import { legacyContactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type {
   VillageState,
   VillageVenue,
@@ -125,6 +126,7 @@ export function canOccupyZone(
   return zone.kind === "staff" ? !!venue.workerIds?.includes(actorId) : venueResidentIds(venue).includes(actorId);
 }
 export function canInviteToZone(venue: VillageVenue, zone: VillageVenueZone, actorId: string): boolean {
+  if (zone.closed) return false;
   if (venue.access) return mayInvite(venue, zone, actorId);
   if (zone.kind === "private-residence") return zone.ownerId === actorId && venueResidentIds(venue).includes(actorId);
   if (zone.kind === "staff") return !!venue.workerIds?.includes(actorId);
@@ -349,6 +351,15 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
         name: zones[index]!.name,
         seen: zones[index]!.seen || (adapter.seen && !priorAdapter?.seen),
       };
+  }
+  // Legacy occupancy adapters can provision a previously implicit personal/staff area.
+  // Materialize that existing legacy behavior only; authored layoutVersion=1 maps are never inferred.
+  if (venue.layoutVersion !== 1 && zones.some((zone) => zone.connectedTo !== undefined)) {
+    const ids = new Set(zones.map((zone) => zone.id));
+    for (const zone of zones) {
+      if (zone.connectedTo === undefined) zone.connectedTo = legacyContactNeighborIds(zones, zone.id);
+      else zone.connectedTo = zone.connectedTo.filter((id) => ids.has(id));
+    }
   }
   venue.zones = zones;
   venue.baseClasses ??= [...(venue.classes ?? ["other"])];

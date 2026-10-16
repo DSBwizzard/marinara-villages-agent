@@ -7,7 +7,6 @@ import {
   type ExplorationRow,
   MobileSheet,
   NoticesButton,
-  VenuePreview,
 } from "../../features/exploration/villages-exploration";
 import { AvatarFace } from "../../features/residents/ResidentPanels.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -30,7 +29,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     navigationView,
     openMenu,
     openPerson,
-    openPlaceId,
+    openPlace,
     placingProjectId,
     portraits,
     savedPins,
@@ -48,7 +47,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     settingsError,
     snapshot,
     townMapImage,
-    venueExplorationActions,
   } = controller;
 
   const explorationNavigation = (
@@ -74,7 +72,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       data-mobile={mobile ? "true" : "false"}
     >
       <div className={`${ELEMENT_TAG}-home-bar`}>
-        <HomeDateWeather weather={snapshot?.village.weather ?? ""} />
+        <HomeDateWeather weather={snapshot?.village.weather ?? ""} village={snapshot?.village} />
         {!mobile && !placingProjectId ? explorationNavigation : null}
         <span className={`${ELEMENT_TAG}-home-bar-actions`}>
           <NoticesButton
@@ -174,13 +172,12 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
             ) : null}
           </MapStage>
         </div>
-        {!placingProjectId && snapshot && (exploreSheet || openPlaceId)
+        {!placingProjectId && snapshot && exploreSheet
           ? (() => {
               const venues = snapshot.settings.venues;
-              const venue = venues.find((entry) => entry.id === openPlaceId);
               const selectVenue = (entry: VillageVenue) => {
                 setExploreSheet(null);
-                setOpenPlaceId(entry.id);
+                openPlace(entry);
               };
               const placeRows: ExplorationRow[] = venues.map((entry) => ({
                 id: entry.id,
@@ -210,35 +207,19 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                   },
                 };
               });
-              const title =
-                exploreSheet?.tab === "places" ? "Places" : exploreSheet?.tab === "people" ? "People" : venue?.name;
+              const title = exploreSheet.tab === "places" ? "Places" : "People";
               if (!title) return null;
               const rows = exploreSheet?.tab === "people" ? peopleRows : placeRows;
               const Panel = mobile ? MobileSheet : DesktopPanel;
               return (
                 <Panel title={title} onClose={closeExploration}>
-                  {exploreSheet ? (
-                    <BrowseList
-                      rows={rows}
-                      label={title}
-                      disabled={busy}
-                      search={explorationSearch[exploreSheet.tab]}
-                      onSearch={(value) =>
-                        setExplorationSearch((current) => ({ ...current, [exploreSheet.tab]: value }))
-                      }
-                    />
-                  ) : venue ? (
-                    <VenuePreview
-                      image={savedPins.find((pin) => pin.id === venue.id)?.image ?? venue.presentation.image?.url}
-                      type={
-                        venue.classes
-                          .map((value) => (value === "other" ? "Venue" : value[0].toUpperCase() + value.slice(1)))
-                          .join(" · ") || "Venue"
-                      }
-                      disabled={busy}
-                      actions={venueExplorationActions(venue)}
-                    />
-                  ) : null}
+                  <BrowseList
+                    rows={rows}
+                    label={title}
+                    disabled={busy}
+                    search={explorationSearch[exploreSheet.tab]}
+                    onSearch={(value) => setExplorationSearch((current) => ({ ...current, [exploreSheet.tab]: value }))}
+                  />
                 </Panel>
               );
             })()

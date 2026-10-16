@@ -28,7 +28,7 @@ function deferred() {
   });
   return { promise, resolve };
 }
-const hall = () => venueDraft({ name: "Hall", description: "A public meeting place", classes: ["gathering"] }, null);
+const hall = () => venueDraft({ name: "Hall", description: "A public meeting place", classes: ["community"] }, null);
 function fixture(name: string) {
   let state = defaultVillageState();
   state.name = name;

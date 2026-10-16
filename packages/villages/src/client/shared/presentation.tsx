@@ -311,7 +311,18 @@ export const VILLAGE_PULSE_MS = 60_000;
  */
 export const SHOW_CATCHING_UP_AFTER_MS = 700;
 
-function clockLabel(now: Date): string {
+function clockLabel(now: Date, timeZone?: string): string {
+  if (timeZone) {
+    try {
+      return (
+        new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", timeZone }).format(now) +
+        " · " +
+        new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", timeZone }).format(now)
+      );
+    } catch {
+      /* Legacy snapshots may not name an IANA zone. */
+    }
+  }
   return `${CLOCK_DATE.format(now)} · ${CLOCK_TIME.format(now)}`;
 }
 
@@ -322,17 +333,21 @@ function clockLabel(now: Date): string {
  * tick produces a different string once a minute and React skips the other
  * fifty-nine renders instead of redrawing the tab every second for nothing.
  *
- * ponytail: this reads the DEVICE clock, which is the same thing as the
- * village's own clock only while the village derives it from real time. If the
- * village ever keeps time of its own, this has to read the snapshot again.
+ * The server snapshot and saved village timezone are authoritative. A local
+ * monotonic timer animates between snapshots; the browser clock is not authority.
  */
-function useRealClock(): string {
-  const [label, setLabel] = useState(() => clockLabel(new Date()));
+function useRealClock(village?: VillageSnapshot["village"], paused = false): string {
+  const [label, setLabel] = useState(() => clockLabel(new Date(village?.instant || Date.now()), village?.timeZone));
   useEffect(() => {
-    const timer = setInterval(() => setLabel(clockLabel(new Date())), 1000);
+    const epoch = Date.parse(village?.instant ?? "");
+    const base = Number.isFinite(epoch) ? epoch : Date.now();
+    const began = performance.now();
+    const update = () =>
+      setLabel(clockLabel(new Date(base + (paused ? 0 : performance.now() - began)), village?.timeZone));
+    update();
+    const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
-  }, []);
-
+  }, [village?.instant, village?.timeZone, paused]);
   return label;
 }
 
@@ -343,8 +358,8 @@ function useRealClock(): string {
  * nothing else — putting the hook in the view would redraw the whole tab, map
  * included, every time the minute turned over.
  */
-function MobileHudClock() {
-  const [date, time] = useRealClock().split(" · ");
+function MobileHudClock({ village, paused }: { village?: VillageSnapshot["village"]; paused?: boolean }) {
+  const [date, time] = useRealClock(village, paused).split(" · ");
   return (
     <span className={`${ELEMENT_TAG}-mobile-clock`}>
       <span>{date}</span>
@@ -353,10 +368,18 @@ function MobileHudClock() {
   );
 }
 
-export function HomeDateWeather({ weather }: { weather: string }) {
+export function HomeDateWeather({
+  weather,
+  village,
+  paused,
+}: {
+  weather: string;
+  village?: VillageSnapshot["village"];
+  paused?: boolean;
+}) {
   return (
     <span className={`${ELEMENT_TAG}-mobile-datetime`}>
-      <MobileHudClock />
+      <MobileHudClock village={village} paused={paused} />
       <span role="img" aria-label={`Weather: ${weather || "unknown"}`} title={weather || "Weather unavailable"}>
         {weatherEmoji(weather)}
       </span>

@@ -1,10 +1,13 @@
+import { readTurnTimings } from "../../shared/turn-timing.js";
 import { useState } from "react";
 
 export function SavedChangesDiagnostics({
   sceneId,
   api,
+  onError,
 }: {
   sceneId: string;
+  onError?: (message: string) => void;
   api: <T>(path: string, init?: RequestInit) => Promise<T>;
 }) {
   const [page, setPage] = useState<{ nextCursor: string; hasMore: boolean; [key: string]: unknown } | null>(null);
@@ -15,8 +18,11 @@ export function SavedChangesDiagnostics({
     try {
       setPage(await api(`/rooms/${encodeURIComponent(sceneId)}/changes?limit=10&cursor=${encodeURIComponent(cursor)}`));
       setError("");
+      onError?.("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Saved changes are unavailable.");
+      const message = cause instanceof Error ? cause.message : "Saved changes are unavailable.";
+      setError(message);
+      onError?.(message);
     } finally {
       setBusy(false);
     }
@@ -40,7 +46,7 @@ export function SavedChangesDiagnostics({
           Next saved records
         </button>
       ) : null}
-      {error ? <p role="status">{error}</p> : null}
+      {error && !onError ? <p role="status">{error}</p> : null}
       {page ? (
         <pre
           style={{
@@ -51,7 +57,7 @@ export function SavedChangesDiagnostics({
             fontSize: ".75rem",
           }}
         >
-          {JSON.stringify(page, null, 2)}
+          {JSON.stringify({ ...page, currentTabTiming: readTurnTimings(sceneId) }, null, 2)}
         </pre>
       ) : null}
     </details>

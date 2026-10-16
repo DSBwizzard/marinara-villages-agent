@@ -27,6 +27,44 @@ export class WorkFailureError extends Error {
     super(failure.message);
   }
 }
+
+/** Public summaries contain fixed validation vocabulary, never model/provider text or evidence. */
+export function workFailureSummary(failure: WorkFailure): string {
+  const stages: Record<string, string> = {
+    "proposal-witnesses": "The proposal has missing or invalid resident witnesses.",
+    "proposal-evidence": "A citation is unavailable or was not witnessed by every affected resident.",
+    "proposal-memory-version": "A referenced memory is missing, obsolete or changed.",
+    "proposal-context": "Proposal evidence exceeds the verification context limit.",
+    "proposal-budget": "System verification has insufficient output budget.",
+    "proposal-count": "More than 16 proposals need verification.",
+    "proposal-provider": "System verification failed during the model request.",
+    "proposal-rejected": "System rejected the proposal as unsupported by its evidence.",
+    "proposal-unresolved": "System could not determine whether the evidence supports the proposal.",
+    "proposal-result": "System returned a missing, duplicate or invalid verification result.",
+  };
+  if (stages[failure.stage]) return stages[failure.stage];
+  if (failure.stage === "metadata") {
+    const shape =
+      /^Error: Malformed (memory|Wish|relationship) proposal: ((?:memories|wishes|changes|permissions|disclosures)(?:\[\d{1,2}\]\.(?:kind|text|category|subjectCharacterIds|knownByCharacterIds|evidence|actorId|wishId|intent|fromId|toId|dimension|strength|direction|reason|lineIds|controllerId|visitorId|venueId|zoneId|action|ordinary|disclosed))? must be (?:a nonempty string|an array|a boolean|an array with at most 16 rows))$/u.exec(
+        failure.message,
+      );
+    if (shape) return shape[2] + ".";
+  }
+  const causes: Record<WorkFailure["cause"], string> = {
+    empty_output: "The model returned no answer.",
+    output_limit: "The response reached its output limit.",
+    invalid_json: "The response was not valid JSON.",
+    missing_result: "Required response metadata is missing or invalid.",
+    duplicate_result: "The response contains duplicate results.",
+    unsupported_outcome: "System could not verify the proposal against its evidence.",
+    invalid_citation: "The proposal cites unavailable or unwitnessed evidence.",
+    provider_exception: "The model request failed.",
+    unknown_request: "The model request outcome is unknown.",
+    storage_application: "The saved update could not be applied to storage.",
+    insufficient_budget: "The request exceeds the available budget.",
+  };
+  return causes[failure.cause];
+}
 export function completionFailure(
   answer: { content: string | null; finishReason?: string },
   stage: string,

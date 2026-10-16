@@ -46,6 +46,11 @@ function fixture(label: string, decisionsEnabled: boolean) {
     ],
   ]);
   const documents = {
+    async create(input: any) {
+      const row = { ...structuredClone(input), revision: 1 };
+      records.set(input.id, row);
+      return structuredClone(row);
+    },
     async getById(_packageId: string, id: string) {
       return structuredClone(records.get(id) ?? null);
     },

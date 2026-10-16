@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createHash } from "node:crypto";
 import type { DocumentSlot, mutateDocument } from "../../adapters/storage/document-store.js";
@@ -56,12 +57,12 @@ export function createRelationshipStore(ports: RelationshipStorePorts) {
       return;
     const { reconcileSocialPlans } = await import("../../domain/rules/social-rules.js");
     const previous = JSON.stringify(current);
-    reconcileRelationships(current, village);
-    reconcileSocialPlans({ ...village, relationshipContext: current });
+    reconcileRelationships(current, village, villageNow().getTime());
+    reconcileSocialPlans({ ...village, relationshipContext: current }, villageNow());
     if (JSON.stringify(current) === previous) return;
     await mutateRelationships(village.seed, (state) => {
-      reconcileRelationships(state, village);
-      reconcileSocialPlans({ ...village, relationshipContext: state });
+      reconcileRelationships(state, village, villageNow().getTime());
+      reconcileSocialPlans({ ...village, relationshipContext: state }, villageNow());
     });
   }
 

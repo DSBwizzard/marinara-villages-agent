@@ -192,12 +192,13 @@ try {
     await page.getByRole("button", { name: "Back to People" }).click();
     await page.getByRole("button", { name: /Feddy The Mill/ }).click();
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
-    await page.getByRole("button", { name: "Visit", exact: true }).click();
+    await page.getByRole("button", { name: "Visit venue", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
     const notices = page.getByRole("button", { name: "1 village notice" });
     await expect(notices).toBeVisible();
     // Fresh notices open after rendering; clicking during that effect would race and close the panel.
     await expect(notices).toHaveAttribute("aria-expanded", "true");
+    await page.getByRole("textbox", { name: "Message at The Mill" }).fill("Unsaved Scene draft");
     await page.getByRole("button", { name: /Previous/ }).click();
     const reader = page.getByRole("region", { name: "Current paragraph" });
     const retainedReader = await reader.elementHandle();
@@ -206,17 +207,18 @@ try {
       node.scrollTop = 20;
     });
     const readingScroll = await reader.evaluate((node) => node.scrollTop);
-    await page.getByRole("textbox", { name: "Message at The Mill" }).fill("Unsaved Scene draft");
     await page.getByRole("button", { name: /View Wish update: Wish discovery/ }).click();
     await expect(profile).toBeVisible();
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true, "Scene reader stays mounted");
     await expect(profile.locator('[data-wish-id="swim"]')).toBeFocused();
     await profile.getByRole("button", { name: "Back to Scene" }).click();
-    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
-    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveValue("Unsaved Scene draft");
+    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveCount(0);
     await expect(reader).toHaveText(readingText);
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true);
     assert.equal(await reader.evaluate((node) => node.scrollTop), readingScroll);
+    while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+      await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveValue("Unsaved Scene draft");
     assert.equal(writes, 2, "The only writes are explicit retirement and Scene entry");
     assert.deepEqual(errors, []);
     await page.close();

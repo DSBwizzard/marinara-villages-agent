@@ -11,11 +11,13 @@ import {
 } from "../packages/villages/src/server/features/settings/usage-meter.js";
 import { trackUsage, quoteUsageRate } from "../packages/villages/src/server/adapters/models/usage-ledger.js";
 import { usageDollars, usageNativeCost } from "../packages/villages/src/server/adapters/models/usage-accounting.js";
+import { openRouterRate } from "../packages/villages/src/server/adapters/models/provider-pricing.js";
 const originalFetch = globalThis.fetch;
 const originalNow = Date.now;
 let failExchange = false,
   failPricing = false;
 const records = new Map<string, any>();
+let connectionName = "";
 let pricingReads = 0,
   paidCalls = 0;
 const table = {
@@ -63,6 +65,7 @@ globalThis.fetch = async (input, init) => {
       JSON.stringify([
         {
           id: "link",
+          name: connectionName,
           provider: "google",
           model: "gemini-test",
           baseUrl: "https://jp.linkapi.ai/v1beta",
@@ -71,6 +74,23 @@ globalThis.fetch = async (input, init) => {
         { id: "picture", provider: "custom", model: "image-test", baseUrl: "https://api.linkapi.ai/v1" },
       ]),
     );
+  if (url === "https://openrouter.ai/api/v1/models") {
+    if (failPricing) throw new Error("pricing offline");
+    return new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "openai/test",
+            pricing: { prompt: "0.000001", completion: "0.000004", input_cache_read: "0.0000001", web_search: "0.01" },
+          },
+          { id: "image/test", pricing: { prompt: "0.000001", completion: "0.000004", image: "0.1" } },
+          { id: "discount/test", pricing: { prompt: "0.000001", completion: "0.000004", discount: "0.2" } },
+          { id: "invalid/test", pricing: { prompt: "0.000001", completion: "0.000004", input_cache_read: "NaN" } },
+          { id: "auto", pricing: { prompt: "-1", completion: "-1" } },
+        ],
+      }),
+    );
+  }
   if (url === "https://linkapi.ai/api/pricing") {
     if (failPricing) throw new Error("pricing offline");
     pricingReads++;
@@ -130,9 +150,31 @@ async function main() {
       'time() ? tier("base", p * 1) : tier("base", p * 2)',
     ])
       assert.equal(parseLinkApiExpression(text), null, text);
+    const router = await openRouterRate("custom", "openai/test", "https://openrouter.ai/api/v1");
+    assert.equal(
+      usageDollars({ promptTokens: 100, completionTokens: 10, cachedPromptTokens: 20 }, router, "openrouter"),
+      0.000122,
+    );
+    assert.equal(await openRouterRate("openrouter", "openai/test", "https://proxy.test"), null);
+    assert.equal(await openRouterRate("openrouter", "image/test", ""), null);
+    assert.equal(await openRouterRate("openrouter", "auto", ""), null);
+    assert.equal(await openRouterRate("openrouter", "discount/test", ""), null, "unapplied discounts stay unknown");
+    assert.equal(await openRouterRate("openrouter", "invalid/test", ""), null);
     const first = await quoteUsageRate("link", "gemini-test");
     assert.equal(first.rate, null, "model alone cannot identify the token group");
     assert.equal(first.groups.length, 2);
+    assert.equal((await linkApiQuote("gemini-test", "", "SYSTEM LinkAPI - Official (1.6x)")).rate?.group, "gemini");
+    assert.equal(
+      (await linkApiQuote("gemini-test", "gemini", "Narration cheap (0.5x)")).rate?.group,
+      "cheap",
+      "name supersedes an old group",
+    );
+    assert.equal(
+      (await linkApiQuote("gemini-test", "", "cheapish 0.5x")).rate,
+      null,
+      "no substring or multiplier guesses",
+    );
+    assert.equal((await linkApiQuote("gemini-test", "", "gemini cheap")).rate, null, "conflicting names stay unknown");
     const details = await readUsageMeter();
     assert.equal(details.models.length, 2, "configured models visible before first use");
     assert.ok(!JSON.stringify(details).includes("NEVER COPY THIS"));
@@ -184,14 +226,19 @@ async function main() {
       "unknown TTL cannot guess a cache-write price",
     );
     assert.equal((await readExchangeRate())?.yuanPerDollar, 8);
-    const saved = records.get("villages-ai-usage").data;
-    const lifetime = saved.all.requests;
     await resetUsagePeriod();
     const reset = await readUsageMeter();
     assert.equal(reset.totals.yuan, 0);
     assert.deepEqual(reset.requests, []);
-    assert.equal(records.get("villages-ai-usage").data.all.requests, lifetime);
+    assert.equal(records.get("villages-ai-usage").data.all.requests, 0, "reset also clears lifetime pricing history");
     assert.equal((await quoteUsageRate("link", "gemini-test")).group, "cheap");
+    connectionName = "Narration - Discounted (0.5x)";
+    Date.now = () => originalNow() + 31_000;
+    assert.equal(
+      (await quoteUsageRate("link", "gemini-test")).rate?.group,
+      "cheap",
+      "renamed connections refresh automatically",
+    );
     assert.equal(pricingReads, 1, "polling uses a shared metadata cache");
     assert.equal(paidCalls, 1, "pricing and reset never dispatch paid generation");
     const legacy = records.get("villages-ai-usage").data;
@@ -208,6 +255,7 @@ async function main() {
     assert.equal(withoutFx.exchangeRate, null);
     Date.now = () => originalNow() + 3 * 86400_000;
     failPricing = true;
+    assert.equal(await openRouterRate("openrouter", "openai/test", ""), null, "expired router prices are not reused");
     assert.equal((await linkApiQuote("gemini-test", "cheap")).rate, null, "expired prices never silently reused");
     console.log("LinkAPI pricing, tiers, group selection, native CNY accounting, USD conversion and reset passed");
   } finally {

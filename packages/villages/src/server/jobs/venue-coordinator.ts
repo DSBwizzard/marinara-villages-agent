@@ -44,8 +44,10 @@ export async function coordinatedCompletion<T>(
 ): Promise<T> {
   return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work, legacyFingerprint);
 }
-export async function rejectVenueCompletion(): Promise<void> {
-  return coordinatorBinding.get().rejectVenueCompletion();
+export async function rejectVenueCompletion(
+  ...args: Parameters<VenueCoordinatorService["rejectVenueCompletion"]>
+): Promise<void> {
+  return coordinatorBinding.get().rejectVenueCompletion(...args);
 }
 export async function coordinateVenue<T>(
   sessionId: string,

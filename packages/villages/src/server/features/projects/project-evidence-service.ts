@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageProject, VillageState } from "../../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
@@ -103,7 +104,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
             {
               id: `unavailable:${sessionId}:${submissionId}:${lineId}`,
               kind: "unavailable",
-              at: new Date().toISOString(),
+              at: villageNow().toISOString(),
               sourceId: lineId || submissionId || sessionId,
             },
             "The selected saved visit or turn is unavailable.",
@@ -253,7 +254,10 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         )
       )
         return fail("That spoken line was already used as Project proof.");
-      const named = `${turn.message} ${line.content}`.toLocaleLowerCase().includes(project.title.toLocaleLowerCase());
+      const playerMessage = turn.playerMessagesByActor
+        ? (turn.playerMessagesByActor[line.speakerId] ?? "")
+        : turn.message;
+      const named = `${playerMessage} ${line.content}`.toLocaleLowerCase().includes(project.title.toLocaleLowerCase());
       const contextual =
         context &&
         (turn.contextLines.some(
@@ -457,16 +461,19 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         )
           continue;
         const input = { lineId: line.id };
+        const playerMessage = turn.playerMessagesByActor
+          ? (turn.playerMessagesByActor[line.speakerId] ?? "")
+          : turn.message;
         const context =
           turn.projectContexts.some((entry) => entry.projectId === project.id) ||
-          `${turn.message} ${line.content}`.toLocaleLowerCase().includes(project.title.toLocaleLowerCase());
+          `${playerMessage} ${line.content}`.toLocaleLowerCase().includes(project.title.toLocaleLowerCase());
         if (
           !turn.contextualInterpretation &&
           context &&
           flow.phase === "approval" &&
           flow.affectedIds.includes(line.speakerId) &&
           (/\b(?:i approve|i agree|you have my permission)\b/iu.test(speech) ||
-            (/\b(?:approve|permission|consent|agree|okay with)\b/iu.test(turn.message) &&
+            (/\b(?:approve|permission|consent|agree|okay with)\b/iu.test(playerMessage) &&
               /\b(?:yes|okay|fine)\b/iu.test(speech)))
         )
           await tryRecord(project.id, { ...input, kind: "approval" });
@@ -554,7 +561,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         );
       if (flow.sources.some((entry) => entry.requirementId === requirementId))
         throw conflict("This supply already has a selected source.");
-      const at = new Date().toISOString();
+      const at = villageNow().toISOString();
       const evidenceId = `recorded:${project.id}:${requirementId}:${venue.id}:${zone?.id ?? "legacy"}:${requirement.title}`;
       flow.sources.push({
         requirementId,
@@ -600,7 +607,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         throw conflict("Choose a matching, uncommitted supply acquired before this revision.");
       if (flow.sources.some((entry) => entry.requirementId === requirementId))
         throw conflict("This requirement already has a source.");
-      const at = new Date().toISOString();
+      const at = villageNow().toISOString();
       const sourceId = `reallocated:${projectId}:${requirementId}:${held.id}`;
       held.assignedRequirementId = requirementId;
       flow.sources.push({

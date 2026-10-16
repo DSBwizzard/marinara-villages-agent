@@ -1,3 +1,4 @@
+import { calendarDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageAgenda, VillageState, VillageVillager } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { influenceSettings, routineDay, validateRoutineDay } from "./owned-routine.js";
@@ -11,7 +12,7 @@ export function planRoutineDays(state: VillageState, now: Date): void {
     if (!agenda?.routineProfile) continue;
     agenda.plannedDays ??= {};
     for (let offset = 0; offset < 7; offset++) {
-      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12),
+      const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12),
         key = agendaDateKey(date);
       if (agenda.activeDay?.dateKey === key) {
         agenda.plannedDays[key] = agenda.activeDay.blocks;
@@ -67,7 +68,6 @@ export function planRoutineDays(state: VillageState, now: Date): void {
               venueId: "",
               zoneId: undefined,
               activity: "Taking care of their own affairs",
-              status: "idle" as const,
               flexible: true,
             }
           : block;
@@ -112,7 +112,6 @@ export function keepAgendaPlaces(state: VillageState): void {
                   ...part,
                   venueId: "",
                   activity: "Taking it easy at home",
-                  reason: "The previous place is unavailable",
                 }
               : part,
           ),
@@ -123,7 +122,7 @@ export function keepAgendaPlaces(state: VillageState): void {
     if (villager.agenda.activeDay) {
       villager.agenda.activeDay.blocks = villager.agenda.activeDay.blocks.map((part) =>
         part.venueId && !publicIds.has(part.venueId)
-          ? { ...part, venueId: "", activity: "Taking it easy at home", reason: "The previous place is unavailable" }
+          ? { ...part, venueId: "", activity: "Taking it easy at home" }
           : part,
       );
     }

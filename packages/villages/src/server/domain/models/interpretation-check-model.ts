@@ -11,7 +11,7 @@ export type InterpretationEvidence = {
 };
 export type InterpretationCheck = {
   id: string;
-  domain: "room" | "project" | "wish";
+  domain: "room" | "project" | "wish" | "attention";
   question: string;
   outcomes: { id: string; statement: string }[];
   evidence: InterpretationEvidence[];

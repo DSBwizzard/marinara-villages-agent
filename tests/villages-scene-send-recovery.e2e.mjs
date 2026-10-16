@@ -1,5 +1,7 @@
+import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -11,9 +13,10 @@ const browser = await chromium.launch({
   ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 try {
+  await mkdir(".build-tmp/scene-status", { recursive: true });
   for (const mobile of [false, true]) {
     const page = await browser.newPage({
-      viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+      viewport: mobile ? { width: 390, height: 620 } : { width: 1440, height: 900 },
       hasTouch: mobile,
     });
     const errors = [];
@@ -30,6 +33,7 @@ try {
       startedAt: now,
       lastActivityAt: now,
       status: "active",
+      memoryMode: "live",
       sceneRevision: 0,
       activeIds: ["mara"],
       participants: residents.slice(0, 1).map(({ characterId, name }) => ({ characterId, name, doing: "listening" })),
@@ -51,6 +55,8 @@ try {
     let failure = null;
     let loseSuccessResponse = false;
     let hideReads = false;
+    let loseOperationRead = false;
+    let staleRecovery = null;
     const turns = [];
     const settingsWrites = [];
     await page.route("**/api/villages**", async (route) => {
@@ -60,8 +66,31 @@ try {
       if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) {
         if (hideReads) return route.fulfill({ status: 503, json: { error: "Read unavailable" } });
         value = { session: active ? session : null };
+        if (path.endsWith("/rooms/active") && staleRecovery) {
+          value = { session: staleRecovery };
+          staleRecovery = null;
+        }
+      } else if (path.endsWith("/changes")) {
+        value = {
+          changes: [],
+          notices: [],
+          dismissedNoticeIds: [],
+          processingSummary: { pending: 0, failed: 0, rejected: 1 },
+          unresolved: [
+            {
+              submissionId: "opening",
+              domain: "memories",
+              status: "rejected",
+              at: now,
+              reason: "The suggested memory had no witnessed evidence.",
+            },
+          ],
+          nextCursor: "0:0",
+          hasMore: false,
+        };
       } else if (/\/rooms\/[^/]+\/operations?/.test(path)) {
         if (hideReads) return route.fulfill({ status: 503, json: { error: "Read unavailable" } });
+        if (loseOperationRead) return route.fulfill({ status: 404, json: { error: "Operation unavailable" } });
         value = { operation: session.operation };
       } else if (path.includes("/rooms/archive/")) {
         if (hideReads) return route.fulfill({ status: 503, json: { error: "Read unavailable" } });
@@ -97,6 +126,7 @@ try {
           }
           return route.fulfill({ status: 400, json: { error: "Bad Request", message: "Invalid request details" } });
         }
+        const beforeSuccess = structuredClone(session);
         session.lines.push(
           { id: "player-" + turns.length, role: "user", speakerId: "", name: "", content: input.message, at: now },
           {
@@ -113,6 +143,26 @@ try {
         session.sceneRevision++;
         session.operation = null;
         if (loseSuccessResponse) {
+          if (loseSuccessResponse === "delayed") {
+            const completed = structuredClone(session);
+            Object.assign(session, beforeSuccess);
+            session.operation = {
+              id: input.submissionId,
+              kind: "turn",
+              status: "running",
+              stage: "turn-reply",
+              attemptId: "late",
+            };
+            hideReads = true;
+            setTimeout(() => {
+              hideReads = false;
+            }, 2800);
+            setTimeout(() => {
+              Object.assign(session, completed);
+            }, 4500);
+          }
+          if (loseSuccessResponse === "late") staleRecovery = beforeSuccess;
+          if (loseSuccessResponse === "operation") loseOperationRead = true;
           loseSuccessResponse = false;
           return route.abort("failed");
         }
@@ -145,9 +195,7 @@ try {
     await send.click();
     await expect(composer).toBeEnabled();
     await expect(composer).toHaveValue("Original draft");
-    await expect(page.locator(`.${tag}-room-error`).filter({ hasText: "Invalid request details" })).toContainText(
-      "Invalid request details",
-    );
+    await expectSceneError(page, "Invalid request details");
     assert.equal(turns.length, 1, "no automatic resend");
     await expect(page.getByText("Original draft", { exact: true }).and(page.locator(":not(textarea)"))).toHaveCount(0);
     await composer.fill("Revised draft");
@@ -176,9 +224,7 @@ try {
     failure = "normal";
     await composer.fill("Reload draft");
     await send.click();
-    await expect(page.locator(`.${tag}-room-error`).filter({ hasText: "Invalid request details" })).toContainText(
-      "Invalid request details",
-    );
+    await expectSceneError(page, "Invalid request details");
     await expect(composer).toHaveValue("Reload draft");
     await expect(composer).toBeEnabled();
     await load();
@@ -197,7 +243,7 @@ try {
     // The preflight is async while the composer still looks enabled. Wait for
     // the failed POST and its recovery UI before testing an explicit resend.
     await expect.poll(() => turns.length).toBe(beforeUnreadable + 1);
-    await expect(page.locator("." + tag + "-room-error")).toContainText("Invalid request details");
+    await expectSceneError(page, "Invalid request details");
     await expect(composer).toBeEnabled();
     await expect(composer).toHaveValue("Unreadable recovery draft");
     await expect(
@@ -209,12 +255,45 @@ try {
     await expect(composer).toBeEnabled();
     assert.equal(turns.at(-1).retryOfAttemptId, "failed-attempt");
 
-    loseSuccessResponse = true;
-    await composer.fill("Successful lost response");
-    await send.click();
-    await expect(composer).toHaveValue("");
-    await expect(composer).toBeEnabled();
-    assert.equal(session.submissions.filter((entry) => entry.id === turns.at(-1).submissionId).length, 1);
+    for (const lost of [true, "late", "operation", "delayed"]) {
+      loseSuccessResponse = lost;
+      const message = "Successful lost response " + lost;
+      await composer.fill(message);
+      const beforeLost = turns.length;
+      await send.click();
+      await expect.poll(() => turns.length).toBe(beforeLost + 1);
+      if (lost === "delayed") {
+        const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
+        await expect(chip).toBeVisible();
+        await expect(page.getByRole("button", { name: "Check saved reply", exact: true })).toHaveCount(0);
+        const panel = await openSceneErrors(page);
+        await expect(panel).toContainText("Reply connection interrupted");
+        await expect(panel).toContainText("The suggested memory had no witnessed evidence.");
+        const canvas = page.locator(`.${tag}-chat`);
+        const screen = page.locator(`.${tag}-room-screen`);
+        const canvasBox = await canvas.boundingBox();
+        const screenBox = await screen.boundingBox();
+        assert.ok(Math.abs(canvasBox.y - screenBox.y) < 2, "recovery never shifts the Scene canvas");
+        const inputBox = await page.locator(`.${tag}-chat-vn`).boundingBox();
+        assert.ok(
+          inputBox.y + inputBox.height <= screenBox.y + screenBox.height + 1,
+          "dialogue dock stays inside the visible Scene",
+        );
+        await page.screenshot({ path: `.build-tmp/scene-status/recovery-${mobile ? "mobile" : "desktop"}.png` });
+        await expect(page.getByRole("button", { name: "Check saved reply", exact: true })).toHaveCount(0, {
+          timeout: 12000,
+        });
+        await closeSceneErrors(page);
+        const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+        if (await next.isEnabled()) await next.click();
+      }
+      await expect(composer).toBeEnabled();
+      await expect(composer).toHaveValue("");
+      await expect(page.locator("." + tag + "-room-error")).toHaveCount(0);
+      assert.equal(session.submissions.filter((entry) => entry.id === turns.at(-1).submissionId).length, 1);
+      assert.equal(turns.length, beforeLost + 1, "recovery never resends a completed turn");
+      loseOperationRead = false;
+    }
 
     // Reach General settings with no active Scene, then verify persistence.
     active = false;

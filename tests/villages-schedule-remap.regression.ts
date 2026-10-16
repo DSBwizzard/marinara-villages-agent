@@ -51,7 +51,6 @@ async function main() {
   } = await import("../packages/villages/src/server/domain/rules/native-remap.js");
   const {
     coerceWish,
-    describeStatus,
     renderDoingBlock,
     MAX_REMAP_HERE_LENGTH,
     MAX_REMAP_SLOT_LENGTH,
@@ -129,14 +128,14 @@ async function main() {
   });
   const blocks = remapBlocks(week);
   assert.deepEqual(
-    blocks.map((entry) => [entry.day, entry.time, entry.activity, entry.status]),
+    blocks.map((entry) => [entry.day, entry.time, entry.activity]),
     [
-      ["Monday", "05:00-08:00", "checking the hives", "dnd"],
-      ["Monday", "22:00-06:00", "asleep", "offline"],
-      ["Tuesday", "00:00-23:59", "checking the hives", "idle"],
-      ["Wednesday", "whenever", "mending the fence", ""],
+      ["Monday", "05:00-08:00", "checking the hives"],
+      ["Monday", "22:00-06:00", "asleep"],
+      ["Tuesday", "00:00-23:59", "checking the hives"],
+      ["Wednesday", "whenever", "mending the fence"],
     ],
-    "one entry per block, in weekday order, with the Engine's own day, hour range, sentence and status untouched",
+    "one entry per block, in weekday order, with the Engine's own day, hour range, sentence untouched; Conversation status excluded",
   );
   assert.equal(
     blocks.filter((entry) => entry.activity === "checking the hives").length,
@@ -544,10 +543,10 @@ async function main() {
     signature,
     "while a sentence that really changed is a different question, since the words for that block change with it",
   );
-  assert.notEqual(
+  assert.equal(
     remapSignature({ ...context, blocks: [{ ...blocks[0]!, status: "online" }, ...blocks.slice(1)] }),
     signature,
-    "and so is the same block at a different availability",
+    "Conversation availability does not change a translation",
   );
   assert.notEqual(
     remapSignature(withBlock({ time: "05:00-09:00" })),
@@ -1008,8 +1007,8 @@ async function main() {
     !brief.includes("h a week"),
     "while the hours a phrase eats in a week are NOT sent, because that framing is what produced a glossary",
   );
-  assert.ok(brief.includes("busy, and not to be interrupted"), "the status is said in words a person would use");
-  assert.ok(brief.includes("asleep or away from everyone"));
+  assert.ok(!brief.includes("busy, and not to be interrupted"), "Conversation status never enters the prompt");
+  assert.ok(!brief.includes("asleep or away from everyone"));
   assert.ok(brief.includes("mending the fence"), "and a block with no status is still translated");
   assert.ok(
     brief.trimEnd().endsWith(`Write their week as it happens in Willowbrook.`),
@@ -1090,27 +1089,6 @@ async function main() {
     "a villager with no week is not sent a week section with nothing in it",
   );
 
-  // ── The availability, in words two prompts share ──────────────────────────
-  // One table, read by the translation prompt and by the villager's own prompt, so
-  // the two can never drift into disagreeing about whether somebody is free. The
-  // lookup is forgiving because the tokens arrive in Engine metadata the village
-  // does not own and cannot assume the shape of.
-  assert.equal(describeStatus("dnd"), "busy, and not to be interrupted");
-  assert.equal(
-    describeStatus(" DND "),
-    "busy, and not to be interrupted",
-    "read case-blind, since the token is not ours",
-  );
-  assert.equal(describeStatus("offline"), "asleep or away from everyone");
-  assert.equal(describeStatus("idle"), "between things, and easy to interrupt");
-  assert.equal(describeStatus("online"), "free, and out and about");
-  assert.equal(describeStatus(""), "", "an hour the Engine said nothing about is left unsaid");
-  assert.equal(
-    describeStatus("napping"),
-    "",
-    "and so is a token the village has never been taught, rather than printing it",
-  );
-
   // ── The log line ──────────────────────────────────────────────────────────
   assert.equal(
     describeRemap(bound),
@@ -1128,7 +1106,8 @@ async function main() {
   assert.ok(!clientSource.includes("Marinara schedule</h4>"), "the authoritative translation comparison is retired");
   assert.ok(clientSource.includes("villager.agenda?.activeDay?.blocks"), "today reads the frozen active agenda");
   assert.ok(clientSource.includes("villager.agenda?.week?.[day.weekday]"), "future days read the village week");
-  assert.ok(clientSource.includes("part.reason"), "each agenda block explains why");
+  assert.ok(!clientSource.includes("part.reason"), "agenda cards omit reason captions");
+  assert.ok(!clientSource.includes("part.status"), "agenda cards omit Conversation availability");
   assert.ok(clientSource.includes("setAgendaScheduleIngestion"), "schedule ingestion can be changed per villager");
   assert.ok(clientSource.includes("agendaUpdatePending(villager)"), "pending changes are labelled for tomorrow");
   assert.ok(clientSource.includes("Schedule influence enabled"), "optional influence is visible beside the agenda");
@@ -1196,16 +1175,15 @@ async function main() {
   const pilotBlock = agendaAt(pilotAgenda as any, 360, now)!;
   const pilotDoing = {
     activity: pilotBlock.activity,
-    status: pilotBlock.status,
     routineSummary: pilotAgenda.routineSummary,
     today: agendaDayPlan(pilotAgenda as any, 360, now),
     restOfWeek: [],
   };
   assert.equal(pilotDoing.activity, "at home", "the active Villages agenda decides the activity");
-  assert.equal(pilotDoing.status, "dnd", "availability comes from the same active agenda block");
+  assert.ok(!("status" in pilotDoing), "availability does not enter Scene context");
   assert.equal(pilotDoing.routineSummary, "An ordinary village day.");
   assert.equal(pilotDoing.today.length, 4, "the Village agenda retains its complete active day");
-  assert.equal(pilotDoing.today[1]?.reason, "To prepare for the day");
+  assert.ok(!("reason" in pilotDoing.today[1]!), "agenda projections omit legacy reasons");
   const currentSceneDoing = renderDoingBlock(pilotDoing);
   assert.ok(currentSceneDoing.includes("at home"));
   assert.ok(!currentSceneDoing.includes("Halcyon"), "current Scene writing receives Village-owned activity");

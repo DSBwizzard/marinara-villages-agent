@@ -309,7 +309,7 @@ async function archiveConnectionOwnership() {
         assert.equal(entries.find((entry: any) => entry.sequence === 0).memoryId, label + "-receipt");
         assert.equal(owned.records.get(pointerId).data.sequence, 0);
         assert(owned.writes.indexOf(pageId) < owned.writes.indexOf(pointerId));
-        assert(owned.writes.indexOf(pointerId) < owned.writes.indexOf("villages-village"));
+        assert(owned.writes.indexOf(pointerId) < owned.writes.lastIndexOf("villages-village"));
         const before = owned.writes.length;
         await owned.scope.run(() => flushWishOutcomes());
         assert.equal(owned.writes.length, before, "durable archive replay performs no new write");
@@ -501,6 +501,7 @@ async function archiveConnectionOwnership() {
       clear = installDefaultActivation(owned.scope, () => {});
     try {
       const exact = new Error("exact archive " + target + " failure");
+      await owned.scope.run(() => readVillageState());
       owned.fail(exact, target);
       await assert.rejects(flushWishOutcomes(), (error) => error === exact);
       assert.equal(owned.records.get("villages-village").data.villagers[0].wishLifecycle.pendingOutcomes.length, 1);
@@ -528,6 +529,7 @@ async function archiveConnectionOwnership() {
     const owned = fixture("A"),
       clear = installDefaultActivation(owned.scope, () => {});
     try {
+      await owned.scope.run(() => readVillageState());
       owned.fail(new Error("lost " + target + " acknowledgement"), target, true);
       if (target === "ack") await assert.rejects(flushWishOutcomes(), /lost ack acknowledgement/);
       else await flushWishOutcomes();

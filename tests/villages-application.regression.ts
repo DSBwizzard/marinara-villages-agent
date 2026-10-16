@@ -13,7 +13,6 @@ const shutdownOrder = [
   "background",
   "routes",
   "coordinator",
-  "comparisons",
   "decisions",
   "map",
   "runtime",
@@ -38,7 +37,6 @@ function fixture(failure = "", cleanupFailures: string[] = []) {
     configureRuntime: () => start("runtime"),
     startTownMapGeneration: () => start("map"),
     configureDecisions: () => start("decisions"),
-    stopInterpretationComparisons: cleanup("comparisons"),
     async readRuntimeDebug() {
       events.push("read:debug");
       if (failure === "debug") throw admissionError;
@@ -89,11 +87,11 @@ async function main() {
     runtime: [],
     map: ["runtime"],
     decisions: ["map", "runtime"],
-    recover: ["coordinator", "comparisons", "decisions", "map", "runtime"],
-    routes: ["coordinator", "comparisons", "decisions", "map", "runtime"],
-    background: ["routes", "coordinator", "comparisons", "decisions", "map", "runtime"],
-    refresh: ["background", "routes", "coordinator", "comparisons", "decisions", "map", "runtime"],
-    progress: ["refresh", "background", "routes", "coordinator", "comparisons", "decisions", "map", "runtime"],
+    recover: ["coordinator", "decisions", "map", "runtime"],
+    routes: ["coordinator", "decisions", "map", "runtime"],
+    background: ["routes", "coordinator", "decisions", "map", "runtime"],
+    refresh: ["background", "routes", "coordinator", "decisions", "map", "runtime"],
+    progress: ["refresh", "background", "routes", "coordinator", "decisions", "map", "runtime"],
     private: shutdownOrder.slice(1),
   };
   for (const [failure, expected] of Object.entries(failedAdmissions)) {

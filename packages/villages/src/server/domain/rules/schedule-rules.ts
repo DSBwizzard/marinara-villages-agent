@@ -3,15 +3,6 @@ export type NativeRoutine = {
   routineSummary: string;
   /** What this character is doing right now, or "" outside every block. */
   activity: string;
-  /**
-   * The Engine's availability for the block covering right now, or "" outside
-   * every block.
-   *
-   * See `NativeDayBlock` for why this is worth carrying: it is the only thing in
-   * a schedule that is about AUTONOMY rather than about nouns, and reading only
-   * the activity threw away the half that says whether this hour is theirs.
-   */
-  status: string;
   /** 0-100, or null when the schedule did not carry one. */
   talkativeness: number | null;
   /** The Monday this schedule was generated for, so the freshest one can win. */
@@ -55,7 +46,7 @@ export type NativeRoutine = {
    */
   blocks: readonly NativeDayBlock[];
 };
-export type NativeDayBlock = { time: string; activity: string; status: string };
+export type NativeDayBlock = { time: string; activity: string };
 export type NativeWeekSchedule = {
   characterId: string;
   /** The Monday this schedule was generated for. "" when the Engine wrote none. */

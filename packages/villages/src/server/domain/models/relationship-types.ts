@@ -52,6 +52,7 @@ export type RelationshipEdge = {
   familiarity: number;
   lastContactAt: string;
   decayAnchorAt: string;
+  decayTimerAt?: string;
   knowledgeBlockedUntilContact: boolean;
   decayThrough: number;
   decayAmount: number;
@@ -123,6 +124,7 @@ export type SocialEncounter = {
   review: RelationshipReview;
 };
 export type RelationshipState = {
+  clockShiftMs?: number;
   noticeSequence: number;
   version: 1;
   seed: string;

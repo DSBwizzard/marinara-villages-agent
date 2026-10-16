@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { observePrivateInterior } from "../../domain/rules/private-interior.js";
@@ -52,6 +53,21 @@ export function createVenueZoneEdits({
       venue = village.venues.find((entry) => entry.id === venueId),
       zone = venue && resolveVenueZone(venue, zoneId);
     if (!venue || !zone) throw notFound("That zone is no longer here.");
+    if (zone.kind === "exterior" && "name" in row && row.name !== "Exterior")
+      throw badRequest("Exterior is always named Exterior.");
+    // A label change does not change the space, reveal its interior, or need resident approval.
+    if (Object.keys(row).length === 1 && "name" in row) {
+      const name = venueFieldText(row.name, "", MAX_VENUE_NAME_LENGTH).trim();
+      if (!name) throw badRequest("Give the zone a name.");
+      await mutateVillageState((state) => {
+        const currentVenue = state.venues.find((entry) => entry.id === venueId);
+        const current = currentVenue && resolveVenueZone(currentVenue, zoneId);
+        if (!current) throw notFound("That zone is no longer here.");
+        if (current.kind === "exterior") throw badRequest("Exterior is always named Exterior.");
+        current.name = name;
+      });
+      return buildVillageSnapshot();
+    }
     if (zone.kind !== "exterior" && !zone.seen && !(venue.occupancy.playerHome && zone.kind === "shared-residence"))
       throw conflict("Visit this zone before editing it.");
     if (["staff", "restricted"].includes(zone.kind) && !zoneControllerIds(venue, zone).length)
@@ -84,9 +100,9 @@ export function createVenueZoneEdits({
         items: venueStringList(scene.items, current.state.items),
         publicFacts: venueStringList(scene.publicFacts, current.state.publicFacts),
         features: venueFeatures(scene.features, current.state.features),
-        updatedAt: new Date().toISOString(),
+        updatedAt: villageNow().toISOString(),
       };
-      observePrivateInterior(current, new Date().toISOString());
+      observePrivateInterior(current, villageNow().toISOString());
     });
     return buildVillageSnapshot();
   }
@@ -171,7 +187,7 @@ export function createVenueZoneEdits({
           requiredIds,
           approvedIds: requiredIds.includes("player") ? ["player"] : [],
           declined: false,
-          createdAt: new Date().toISOString(),
+          createdAt: villageNow().toISOString(),
         },
       ].slice(-8);
     });
@@ -214,7 +230,7 @@ export function createVenueZoneEdits({
       if (!proposal.requiredIds.every((id) => proposal.approvedIds.includes(id))) return;
       const applied = {
         ...proposal.proposed,
-        state: { ...proposal.proposed.state, updatedAt: new Date().toISOString() },
+        state: { ...proposal.proposed.state, updatedAt: villageNow().toISOString() },
       };
       if (proposal.zoneId) {
         const zone = resolveVenueZone(venue, proposal.zoneId);

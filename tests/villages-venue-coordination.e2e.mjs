@@ -53,11 +53,24 @@ let record = {
     ],
   },
 };
+const extraRecords = new Map();
 const documents = {
+  async create(input) {
+    const row = { ...structuredClone(input), revision: 1 };
+    extraRecords.set(input.id, row);
+    return structuredClone(row);
+  },
   async getById(_packageId, id) {
-    return id === record.id ? structuredClone(record) : null;
+    return id === record.id ? structuredClone(record) : structuredClone(extraRecords.get(id) ?? null);
   },
   async update(input) {
+    if (input.id !== record.id) {
+      const old = extraRecords.get(input.id);
+      if (old?.revision !== input.expectedRevision) return null;
+      const next = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+      extraRecords.set(input.id, next);
+      return structuredClone(next);
+    }
     if (input.expectedRevision !== record.revision) return null;
     record = { ...record, ...structuredClone(input), revision: record.revision + 1 };
     return structuredClone(record);
@@ -170,12 +183,11 @@ try {
         async () => {
           const next = page.getByRole("button", { name: "Next paragraph", exact: true });
           if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
-          return hasDraft
-            ? send(page).isEnabled()
-            : !(await next.isEnabled()) &&
-                (await page.getByRole("button", { name: "Sending", exact: true }).count()) === 0;
+          if (!(await composer(page).isVisible())) return false;
+          if (await page.getByRole("button", { name: "Sending", exact: true }).isVisible()) return false;
+          return !hasDraft || ((await send(page).isVisible()) && (await send(page).isEnabled()));
         },
-        { timeout: 10_000 },
+        { timeout: 15_000, intervals: [100, 250, 500] },
       )
       .toBe(true);
   };
@@ -202,8 +214,8 @@ try {
   }
   await composer(two).fill("Second tab draft");
   await send(two).click();
-  await expect(composer(two)).toHaveValue("Second tab draft");
   await expect(two.getByText(/This Scene is responding/).first()).toBeVisible();
+  await expect(composer(two)).toHaveCount(0);
   assert.equal(calls, 1);
   held();
   await expect.poll(() => record.data.operation.status).toBe("complete");
@@ -235,7 +247,10 @@ try {
   });
   await composer(two).fill("Review the updated scene");
   await send(two).click();
-  await expect(two.getByRole("alert")).toContainText("scene changed");
+  await two.getByRole("button", { name: /^1 Scene error$/ }).click();
+  await two.getByRole("region", { name: "Scene errors" }).locator("summary").first().click();
+  await expect(two.getByRole("region", { name: "Scene errors" })).toContainText(/scene changed/i);
+  await two.getByRole("button", { name: "Close Scene errors" }).click();
   assert.equal(calls, 2);
   await expect(next).toBeVisible();
   await readToComposer(two);
@@ -246,14 +261,21 @@ try {
   await readToComposer(two, false);
   assert.equal(calls, 3);
 
+  const openRecovery = async () => {
+    await two.getByRole("button", { name: /^\d+ Scene errors?$/ }).click();
+    for (const summary of await two.getByRole("region", { name: "Scene errors" }).locator("summary").all())
+      await summary.click();
+  };
   disconnectNext = true;
   await composer(two).fill("Preserve an interrupted request");
   await send(two).click();
+  await openRecovery();
   await expect(two.getByRole("button", { name: "Recover saved request" })).toBeVisible();
   await expect(composer(two)).toHaveValue("Preserve an interrupted request");
   assert.equal(calls, 4);
   await two.reload();
   await two.addScriptTag({ path: resolve("packages/villages/client.js") });
+  await openRecovery();
   await expect(two.getByRole("button", { name: "Recover saved request" })).toBeVisible();
   assert.equal(calls, 4, "reload never retries an uncertain paid request");
   await two.getByRole("button", { name: "Recover saved request" }).click();

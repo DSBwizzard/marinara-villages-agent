@@ -121,6 +121,10 @@ try {
         if (scenario.label === "steward") await screenshot(page, "settings-" + width);
         await page.getByRole("button", { name: "Run setup again" }).click();
       } else {
+        await page.getByLabel("Village name", { exact: true }).fill("Harbor village");
+        await page.getByLabel("Place and world", { exact: true }).fill("A fishing village on sea cliffs.");
+        await page.getByLabel("Starting circumstances", { exact: true }).fill("Neighbors arrived with damaged boats.");
+        await page.getByRole("button", { name: "Continue to People", exact: true }).click();
         await page.getByRole("button", { name: /Ada.*Change/ }).click();
         await page
           .getByRole("dialog", { name: "Choose Persona" })
@@ -129,6 +133,7 @@ try {
         await page.locator("summary").filter({ hasText: "Connections · Ready" }).click();
         await expect(page.getByLabel("System", { exact: true })).toBeVisible();
       }
+      if (scenario.founded) await page.getByRole("button", { name: "Continue to People", exact: true }).click();
       await expect(page.locator('.villages-forging-steps [aria-current="step"]')).toHaveAttribute(
         "aria-label",
         "People",

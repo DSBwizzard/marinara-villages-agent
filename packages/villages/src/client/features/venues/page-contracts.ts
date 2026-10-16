@@ -2,6 +2,9 @@ import type { VenueRequest, VillageSnapshot } from "../../../shared/contracts/vi
 
 /** Inputs consumed by renderVenueRequestsPage; assembled by the shell. */
 export type VenueRequestsPagePorts = {
+  readonly housingVenueId?: string;
+  readonly setHousingVenueId?: (id: string) => void;
+  readonly openPlace?: (place: import("../../../shared/contracts/village.js").VillageVenue) => void;
   readonly busy: boolean;
   readonly generateRequestDescription: (entry: VenueRequest, draft: VenueRequest["venueDraft"]) => Promise<void>;
   readonly decideHomeUpgrade: (entry: { id: string }, approved: boolean) => Promise<void>;

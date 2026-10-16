@@ -2,26 +2,14 @@
   "schemaVersion": 1,
   "capabilityApi": {
     "major": 1,
-    "minor": 14
+    "minor": 66
   },
   "builtAgainst": {
-    "engineVersion": "2.4.6",
-    "engineCommit": "e0313a33caef973e645616419d11894f4d8c434e"
+    "engineVersion": "2.5.0",
+    "engineCommit": "bcc50689fd3885cc4ce7884f25cb2296f8fe400e"
   },
   "privateEngineImports": [],
-  "privateEngineRuntimeImports": [
-    {
-      "source": "server/adapters/engine/decisions-adapter.ts",
-      "modules": [
-        "services/decision/decision-default.js",
-        "services/storage/connections.storage.js",
-        "services/storage/app-settings.storage.js"
-      ],
-      "testedBuilds": [
-        "ead04150a132"
-      ]
-    }
-  ],
+  "privateEngineRuntimeImports": [],
   "publicEngineRuntimeImports": [
     {
       "source": "server/adapters/engine/image-style-profiles.ts",

@@ -1,4 +1,9 @@
-import type { ArchiveVisitSummary, RoomRecordEvent, SceneView } from "../../../shared/contracts/village.js";
+import type {
+  ArchiveVisitSummary,
+  RoomRecordEvent,
+  SceneView,
+  SceneChangeIssue,
+} from "../../../shared/contracts/village.js";
 import type { SceneComposerMode } from "../../shared/types.js";
 import { useRef, useState } from "react";
 import { useSceneReadingSession } from "./reading-session.js";
@@ -53,9 +58,7 @@ export function useScenesState(isFounded?: boolean) {
 
   const [roomChangeStatus, setRoomChangeStatus] = useState({ pending: 0, failed: 0, rejected: 0 });
 
-  const [roomUnresolvedChanges, setRoomUnresolvedChanges] = useState<
-    { submissionId: string; domain: string; reason?: string }[]
-  >([]);
+  const [roomUnresolvedChanges, setRoomUnresolvedChanges] = useState<SceneChangeIssue[]>([]);
 
   const [debugDiscardEnabled, setDebugDiscardEnabled] = useState(false);
 

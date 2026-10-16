@@ -14,7 +14,8 @@ export function roomInterpretationChecks(
   scene: VenueScene,
   village: VillageState,
   message: string,
-  draft: Pick<VenueLine, "speakerId" | "content" | "kind" | "heardBy">[],
+  draft: (Pick<VenueLine, "speakerId" | "content" | "kind" | "heardBy"> &
+    Partial<Pick<VenueLine, "role" | "attentionEvidence">>)[],
   key: string,
   heardPlayerBy: string[] = scene.activeIds,
   targetVenueId?: string,
@@ -36,7 +37,7 @@ export function roomInterpretationChecks(
   ];
   const history = scene.lines.filter(
     (line) =>
-      !line.contactHidden &&
+      (!line.contactHidden || line.attentionEvidence) &&
       !line.contactReport &&
       (!line.zoneId || line.zoneId === scene.zoneId) &&
       line.kind !== "side" &&
@@ -65,6 +66,21 @@ export function roomInterpretationChecks(
         ? [{ id: "player-input", speakerId: "player", name: "Player", content: message }]
         : []),
       ...draft.flatMap((line, index) =>
+        line.attentionEvidence && line.heardBy.includes(actor)
+          ? [
+              {
+                id: `draft:${index}`,
+                speakerId: line.role === "user" ? "player" : "__venue_scene__",
+                name: line.role === "user" ? "Player" : "Sound",
+                content: line.content,
+                kind: line.kind,
+                current: true,
+              },
+            ]
+          : [],
+      ),
+      ...draft.flatMap((line, index) =>
+        line.attentionEvidence ||
         line.kind === "side" ||
         line.kind === "whisper" ||
         (line.kind === "narration" && scene.contactGeneration && !scene.contactGeneration.localIds.includes(actor)) ||
@@ -192,7 +208,8 @@ export async function interpretRoomReply(
   scene: VenueScene,
   village: VillageState,
   message: string,
-  draft: Pick<VenueLine, "speakerId" | "content" | "kind" | "heardBy">[],
+  draft: (Pick<VenueLine, "speakerId" | "content" | "kind" | "heardBy"> &
+    Partial<Pick<VenueLine, "role" | "attentionEvidence">>)[],
   key: string,
   heardPlayerBy: string[] = scene.activeIds,
   routing?: unknown,

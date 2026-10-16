@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { StartingTie } from "../../domain/models/relationship-types.js";
 import { asRecord } from "../../domain/rules/coerce.js";
@@ -131,7 +132,7 @@ export function createRelationships(ports: RelationshipPorts) {
             edge.trust = relationshipScore(edge.trust + tie.trust);
             if (tie.established) {
               edge.familiarity = Math.max(1, edge.familiarity);
-              edge.lastContactAt ||= new Date().toISOString();
+              edge.lastContactAt ||= villageNow().toISOString();
               const playerKey = relationshipKey(tie.fromId, "player");
               (state.edges[playerKey] ??= neutralRelationship(tie.fromId, "player")).knowledgeBlockedUntilContact =
                 true;
@@ -162,7 +163,7 @@ export function createRelationships(ports: RelationshipPorts) {
           const edge = (state.edges[relationshipKey(fromId, toId)] ??= neutralRelationship(fromId, toId));
           edge.warmth = Number(raw.warmth);
           edge.trust = Number(raw.trust);
-          edge.lastContactAt ||= new Date().toISOString();
+          edge.lastContactAt ||= villageNow().toISOString();
           const playerKey = relationshipKey(fromId, "player");
           (state.edges[playerKey] ??= neutralRelationship(fromId, "player")).knowledgeBlockedUntilContact = true;
         }

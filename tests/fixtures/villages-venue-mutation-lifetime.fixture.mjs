@@ -67,10 +67,10 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     seed.settings.setting = "A";
     seed.settings.venues[0].id = "venue / A";
     const draft = structuredClone(seed.settings.venues[0]);
-    if (options.create) Object.assign(draft, { id: "new draft", name: " New Café ", classes: ["gathering"] });
+    if (options.create) Object.assign(draft, { id: "new draft", name: " New Café ", classes: ["community"] });
     const entry = {
       id: "request / A",
-      venueDraft: { name: "Fallback name", classes: ["gathering"], description: "Fallback description" },
+      venueDraft: { name: "Fallback name", classes: ["community"], description: "Fallback description" },
     };
     const overrides = { unrelated: { name: "Keep", classes: ["other"], description: "Keep" } };
     if (!options.fallback)
@@ -161,7 +161,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
           assert.equal(f.requests[0].method, create ? "POST" : "PUT");
           assert.deepEqual(f.requests[0].body, {
             name: f.draft.name,
-            ...(create ? { classes: ["gathering"] } : {}),
+            ...(create ? { classes: ["community"] } : {}),
             description: f.draft.description,
           });
           await f.reply(0, { fail });

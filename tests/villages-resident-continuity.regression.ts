@@ -238,6 +238,7 @@ async function setupPersistence() {
                 venues: input.venues.map((venue: any) => ({
                   ...venue,
                   layout: "common",
+                  connections: [["exterior", "common:base"]],
                   commonName: "Common Space",
                   commonPurpose: "Conversation",
                   commonDescription: "A table",
@@ -267,7 +268,7 @@ async function setupPersistence() {
       form: "Room in the observatory",
       description: "A corridor doorway.",
       category: id === "hall" ? "public-center" : "house",
-      classes: [id === "hall" ? "gathering" : "residence"],
+      classes: [id === "hall" ? "community" : "residence"],
       layoutVersion: 1,
       layout: "common",
       spaces: [
@@ -276,7 +277,7 @@ async function setupPersistence() {
           name: "Room",
           purpose: "Conversation",
           description: "A table",
-          venueClass: id === "hall" ? "gathering" : "residence",
+          venueClass: id === "hall" ? "community" : "residence",
         },
       ],
       privateSpaces: [],
@@ -290,7 +291,7 @@ async function setupPersistence() {
       foundingResidentContexts: { aqua: context },
       venues: input.venues.map((venue) => ({
         ...venue,
-        venueClass: venue.id === "hall" ? "gathering" : "residence",
+        venueClass: venue.id === "hall" ? "community" : "residence",
         residentCharacterId: venue.occupancy.residentCharacterId ?? "",
       })),
     };
@@ -302,9 +303,9 @@ async function setupPersistence() {
     assert.equal((await suggestStartingVenues(suggestionInput)).venues.length, 3);
     assert.equal(requests, 1, "resident context uses the existing suggestion request");
     for (const [mode, error] of [
-      ["missing-venues", /readable Venue suggestions/],
+      ["missing-venues", /readable (?:set of )?Venue suggestions/],
       ["blank", /empty Venue reply/],
-      ["malformed", /invalid JSON for Venue suggestions/],
+      ["malformed", /invalid JSON for Venue suggestions|complete, readable set of Venue suggestions/],
       ["unsupported-json", /rejected JSON mode.*No fallback request was made/],
       ["truncated", /ran out of output room/],
       ["max_tokens", /ran out of output room/],

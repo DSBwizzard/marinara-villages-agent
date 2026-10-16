@@ -7,6 +7,7 @@ import type { VillageState, VillageVenueImage } from "../../domain/models/world.
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractFoundingVenueReply } from "../../domain/rules/founding-venue-reply.js";
 import {
   LOCATION_IMAGE_WIDTH,
   LOCATION_IMAGE_HEIGHT,
@@ -72,6 +73,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
 
   async function suggestStartingVenues(value: unknown): Promise<{ venues: FoundingVenueSuggestion[] }> {
     const input = record(value);
+    const quickStart = input.mode === "quick-start";
+    if (input.mode !== undefined && !quickStart) throw badRequest("Choose a valid Venue suggestion mode.");
     const setting = asTrimmedString(input.setting);
     const circumstances = asTrimmedString(input.foundingDetails);
     if (!setting || setting.length > 1200 || !circumstances || circumstances.length > 2000)
@@ -80,15 +83,22 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     if (
       rows.length < 3 ||
       new Set(rows.map((row) => row.id)).size !== rows.length ||
-      rows.filter((row) => row.venueClass === "gathering").length !== 1 ||
-      rows.some((row) => row.venueClass === "gathering" && row.residentCharacterId) ||
+      rows.filter((row) => row.venueClass === "community").length !== 1 ||
+      rows.some((row) => row.venueClass === "community" && row.residentCharacterId) ||
       rows.filter((row) => row.venueClass === "residence" && !row.residentCharacterId).length !== 1 ||
-      rows.some((row) => !["residence", "gathering"].includes(row.venueClass))
+      rows.some((row) => !["residence", "community"].includes(row.venueClass))
     )
-      throw badRequest("Include one living space per person and one Gathering Place.");
+      throw badRequest("Include one living space per person and one Community Place.");
     const residents = rows.filter((row) => row.residentCharacterId).map((row) => row.residentCharacterId);
     if (residents.length !== rows.length - 2 || new Set(residents).size !== residents.length)
       throw badRequest("Assign a different villager to each starting living space.");
+    const targetId = asTrimmedString(input.targetVenueId);
+    if (targetId && (!quickStart || !rows.some((row) => row.id === targetId)))
+      throw badRequest("Choose a required starting Venue to regenerate.");
+    const requestedRows = targetId ? rows.filter((row) => row.id === targetId) : rows;
+    const worldFacts = coerceWorldFacts(input.worldFacts);
+    const scenario = coerceScenarioImprint(input.scenarioImprint);
+    const villageName = asTrimmedString(input.villageName).slice(0, 80);
     const contexts = readFoundingResidentContexts(input.foundingResidentContexts, residents);
     const cards = (await Promise.all(residents.map(findVillagerCard))).map((card) =>
       card ? { ...card, foundingContext: contexts[card.id] } : null,
@@ -98,7 +108,14 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const loreBudget = readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET);
     const lore = await readVillageLore(
       readSelectedLorebookIds(input.selectedLorebookIds ?? []),
-      [setting, circumstances, ...cards.map((card) => card!.name)].join("\n"),
+      [
+        villageName,
+        setting,
+        circumstances,
+        ...worldFacts,
+        ...(scenario?.worldFacts ?? []),
+        ...cards.map((card) => card!.name),
+      ].join("\n"),
       undefined,
       loreBudget,
     );
@@ -112,12 +129,19 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           text: [
             "Suggest the required starting Venues for this shared-life setting. These are editable drafts, not saved facts.",
             "A village may be indoors or already established. Living spaces may be rooms, cells, bunks, apartments, tents, or buildings. Follow the player's setting; do not assume cottages.",
+            "A Residence can take literally any physical form supported by the context: a dumpster, apartment, house, train car, stolen hearse, or something else. Fit its spaces to that form; spaces need not be separate rooms. Respect a supplied nonempty physical form when suggesting its spaces.",
             "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
-            "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Gathering Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
+            "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Community Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
+            ...(quickStart
+              ? [
+                  "Quick Start: EVERY Residence MUST have layout both, with a complete Common Space and Private Space. The Community venue MUST have layout common and no Private Space. Do not return common-only or private-only Residences.",
+                ]
+              : []),
             "For villager Private Space suggest only names and structural purposes; never descriptions, images, objects or resident secrets. For the player's included Private Space also supply privateDescription: a short visible physical description. Identify the player's residence by its absent residentCharacterId.",
-            'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"player residence only"}]}.',
+            'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"player residence only","connections":[["exterior","common:base"]]}]}.',
+            'Return one JSON object with a "venues" array, using double-quoted keys and escaped string values. No commentary, reasoning, Markdown fences, alternative answers, or trailing commas.',
             "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 100 characters, form/purpose at most 240 and descriptions at most 1000.",
-            `Return exactly ${rows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Do not omit the player's living space or the Gathering Place.`,
+            `Return exactly ${requestedRows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Return only the requested template rows.`,
           ].join("\n"),
         },
         { text: persona ? `Player Persona: ${persona.name}\n${persona.identity}` : "" },
@@ -127,15 +151,19 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       JSON.stringify({
         setting,
         circumstances,
+        villageName,
+        worldFacts,
+        scenario,
         venues: rows,
         responseTemplate: {
-          venues: rows.map((row) => ({
+          venues: requestedRows.map((row) => ({
             id: row.id,
             name: "",
             venueType: "",
             form: "",
             description: "",
-            layout: row.venueClass === "gathering" ? "common" : "common|private|both",
+            layout: row.venueClass === "community" ? "common" : quickStart ? "both" : "common|private|both",
+            connections: [],
             commonName: "",
             commonPurpose: "",
             commonDescription: "",
@@ -164,16 +192,18 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest(
         "The System model returned an empty Venue reply. Your draft is unchanged; check the connection's output and thinking settings, then explicitly retry.",
       );
-    const payload = extractJsonObject(content);
+    const payload = extractFoundingVenueReply(content);
     if (!payload)
       throw badRequest(
-        "The System model returned invalid JSON for Venue suggestions. Your draft is unchanged; choose a System connection supporting JSON responses, then explicitly retry.",
+        "The System reply did not contain one complete, readable set of Venue suggestions. Your draft is unchanged. Try generating again; if this repeats, check the System model’s response format and output limit.",
       );
     return {
       venues: parseFoundingVenueSuggestions(
         payload,
-        rows.map((row) => row.id),
-        rows,
+        requestedRows.map((row) => row.id),
+        requestedRows,
+        quickStart,
+        true,
       ),
     };
   }
@@ -197,7 +227,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                 : "Exterior only"
               : undefined,
           areas: venue.zones?.map((zone) => ({ id: zone.id, name: zone.name, kind: zone.kind })),
-          venueClass: venue.classes?.includes("gathering") ? "gathering" : "residence",
+          venueClass: venue.classes?.includes("community") ? "community" : "residence",
           residentCharacterId: venue.occupancy.residentCharacterId,
         })),
       ).map(async (row) => {

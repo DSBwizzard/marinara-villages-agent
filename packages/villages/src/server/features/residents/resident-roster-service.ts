@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
@@ -44,7 +45,7 @@ export function createResidentRoster({
     }
 
     if (!alreadyResident) {
-      const addedAt = new Date().toISOString();
+      const addedAt = villageNow().toISOString();
       await mutateVillageState((state) => {
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
         if (state.villagers.length >= MAX_VILLAGERS) {
@@ -117,7 +118,7 @@ export function createResidentRoster({
             project.lifecycle.workOrder &&
             !project.lifecycle.workOrder.pausedAt
           ) {
-            const now = new Date();
+            const now = villageNow();
             project.lifecycle.workOrder.remainingMs = Math.max(
               0,
               Date.parse(project.lifecycle.workOrder.completesAt) - now.getTime(),
@@ -132,7 +133,7 @@ export function createResidentRoster({
       state.residences = state.residences.filter((move) => move.characterId !== characterId);
       for (const venue of state.venues) {
         if (venueResidentIds(venue).includes(characterId)) {
-          const at = new Date().toISOString();
+          const at = villageNow().toISOString();
           venue.zones ??= venueZones(venue);
           venue.layoutVersion = 1;
           const personal = venue.privateSpaces?.filter((space) => space.ownerId === characterId) ?? [];

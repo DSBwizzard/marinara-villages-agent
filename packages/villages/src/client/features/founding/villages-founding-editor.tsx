@@ -1,7 +1,13 @@
+import { SpaceConnections } from "../../shared/SpaceConnections.js";
 import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { draftZonePolicy, FoundingZoneFields, foundingZoneProblem } from "./villages-founding-zones";
+import {
+  draftZonePolicy,
+  FoundingConnections,
+  FoundingZoneFields,
+  foundingZoneProblem,
+} from "./villages-founding-zones";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export function SceneryStyleFields({
@@ -40,7 +46,6 @@ export function SceneryStyleFields({
           />
         </label>
       ) : null}
-      <p>Used for future map and venue images. Existing artwork stays as it is.</p>
     </fieldset>
   );
 }
@@ -72,6 +77,7 @@ export function VenueLayoutFields({
     const area = {
       ...personalSpaceDraft(),
       id: "zone:" + createVillagesClientId(),
+      connectedTo: ["exterior"],
       name: "New Zone",
       purpose: "",
       venueClass: role,
@@ -102,12 +108,13 @@ export function VenueLayoutFields({
   return (
     <fieldset className="villages-scenery-fields villages-layout-fields">
       <legend>Zones</legend>
-      <p>Entrance · Unrestricted, 24/7. Every Venue includes this arrival and departure point.</p>
+      <FoundingConnections venue={venue} onPatch={onChange} />
+      <p>Exterior · Unrestricted, 24/7. Every Venue includes this arrival and departure point.</p>
       <button
         type="button"
         onClick={() => onChange({ ...venue, layoutVersion: 1, layout: "exterior", spaces: [], privateSpaces: [] })}
       >
-        Use Entrance only
+        Use Exterior only
       </button>
       <p>
         {(venue.spaces?.length ?? 0) + (venue.privateSpaces?.length ?? 0)} additional Zones. Each has its own use,
@@ -191,6 +198,7 @@ export function BaseZoneFields({
       ...personalSpaceDraft(),
       id: "base:" + createVillagesClientId(),
       ownerId: undefined,
+      connectedTo: ["exterior"],
       name: personal ? "Private Space" : "Common Space",
       venueClass: role,
       kind: (personal
@@ -210,6 +218,17 @@ export function BaseZoneFields({
   return (
     <section>
       <p>Change the base layout through this Renovation. Further zones belong to Upgrades. Capacity is separate.</p>
+      <SpaceConnections
+        editableIds={zones.map((zone) => zone.id)}
+        spaces={[
+          { id: "exterior", name: "Exterior", kind: "exterior" as const, connectedTo: [] },
+          ...zones,
+          ...(venue.zones?.filter((zone) => zone.upgradeId) ?? []),
+        ]}
+        onChange={(rows) =>
+          onChange(rows.filter((zone) => zones.some((draft) => draft.id === zone.id)) as typeof zones)
+        }
+      />
       {zones.map((zone) => (
         <fieldset key={zone.id}>
           <legend>{zone.name}</legend>
@@ -611,7 +630,7 @@ export function FoundingVenueEditor({
       !venue.name.trim() || !venue.form?.trim()
         ? "Add a Venue name and physical form."
         : !venue.description.trim()
-          ? "Describe the Entrance appearance."
+          ? "Describe the Exterior appearance."
           : foundingZoneProblem(venue)
             ? foundingZoneProblem(venue)
             : !venue.occupancy.playerHome && residence && !owner
@@ -716,16 +735,16 @@ export function FoundingVenueEditor({
                 </select>
               </label>
             ) : (
-              <p>{venue.occupancy.playerHome ? "Assigned to you" : "Community Gathering Place"}</p>
+              <p>{venue.occupancy.playerHome ? "Assigned to you" : "Community Place"}</p>
             )}
           </div>
           {!existing ? <VenueLayoutFields compact venue={venue} drafts={zoneDrafts} onChange={onPatch} /> : null}
           <div className="villages-forging-zone-grid">
             <section>
-              <h4>Entrance · Unrestricted, 24/7</h4>
+              <h4>Exterior · Unrestricted, 24/7</h4>
               <p>The entrance and approach, including corridors for indoor Venues.</p>
               <label>
-                Entrance appearance
+                Exterior appearance
                 <textarea
                   aria-label="Exterior description"
                   maxLength={1000}

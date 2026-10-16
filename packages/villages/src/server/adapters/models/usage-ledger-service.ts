@@ -7,6 +7,7 @@ import type { villagesDocuments, villagesLogger } from "../engine/runtime-host.j
 import type { backgroundCalls } from "../operations/background-context.js";
 import type { venueDebugContext } from "../operations/operation-context.js";
 import type { linkApiQuote, readExchangeRate } from "./linkapi-pricing.js";
+import { openRouterRate } from "./provider-pricing.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 
@@ -16,6 +17,7 @@ import {
   day,
   tally,
   catalogRate,
+  billingProvider,
   usageNativeCost,
   usageDollars,
   catalog,
@@ -125,7 +127,7 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
           rows: Array.isArray(listed)
             ? listed.map((raw) => {
                 const row = raw as Record<string, unknown>;
-                return { id: row.id, provider: row.provider, model: row.model, baseUrl: row.baseUrl };
+                return { id: row.id, name: row.name, provider: row.provider, model: row.model, baseUrl: row.baseUrl };
               })
             : [],
         };
@@ -135,7 +137,10 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
     }
     const row = connections.rows.find((row) => row.id === connectionId);
     return {
-      provider: String(row?.provider ?? ""),
+      name: String(row?.name ?? ""),
+      provider: ["custom", "image_generation"].includes(String(row?.provider))
+        ? billingProvider(String(row?.provider), String(row?.baseUrl ?? "")) || String(row?.provider ?? "")
+        : String(row?.provider ?? ""),
       model: model || String(row?.model ?? ""),
       baseUrl: String(row?.baseUrl ?? ""),
     };
@@ -143,29 +148,39 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
 
   async function resolveRate(connectionId: string, info: Awaited<ReturnType<typeof identity>>, ledger: Ledger) {
     const override = ledger.overrides[connectionId + ":" + info.model];
-    const link = isLinkApi(info.baseUrl) ? await linkApiQuote(info.model, ledger.linkApiGroups[connectionId]) : null;
-    const raw = override ?? link?.rate ?? catalogRate(info.provider, info.model, info.baseUrl);
+    const link = isLinkApi(info.baseUrl)
+      ? await linkApiQuote(info.model, ledger.linkApiGroups[connectionId], info.name)
+      : null;
+    const raw =
+      override ??
+      link?.rate ??
+      catalogRate(info.provider, info.model, info.baseUrl) ??
+      (await openRouterRate(info.provider, info.model, info.baseUrl));
     const fx = raw?.currency === "CNY" ? await readExchangeRate() : null;
     return {
       rate: raw ? { ...raw, ...(fx ? { yuanPerDollar: fx.yuanPerDollar } : {}) } : null,
       groups: link?.groups ?? [],
-      group: ledger.linkApiGroups[connectionId] ?? link?.rate?.group ?? "",
+      group: link?.rate?.group ?? ledger.linkApiGroups[connectionId] ?? "",
       isLinkApi: isLinkApi(info.baseUrl),
       note: override ? "Manual override" : (link?.note ?? (raw ? "Reviewed provider price" : "No recognized price")),
     };
   }
 
   async function trackUsage<T>(
-    meta: { connectionId?: string; model?: string; purpose?: UsagePurpose; stage?: string },
+    meta: { connectionId?: string; model?: string; purpose?: UsagePurpose; stage?: string; capability?: "decisions" },
     work: () => Promise<T>,
   ): Promise<T> {
     const id = randomUUID(),
       connectionId = meta.connectionId ?? "";
     let request: UsageRequest | undefined;
     try {
-      const info = await identity(connectionId, meta.model ?? "");
+      const info = meta.capability
+        ? { name: "", model: "", provider: "", baseUrl: "" }
+        : await identity(connectionId, meta.model ?? "");
       const ledger = coerce((await villagesDocuments().getById(VILLAGES_PACKAGE_ID, DOC))?.data);
-      const pricing = await resolveRate(connectionId, info, ledger);
+      const pricing = meta.capability
+        ? { rate: undefined, note: "Engine capability attempt; billed requests, usage and cost unavailable" }
+        : await resolveRate(connectionId, info, ledger);
       request = {
         id,
         owner,
@@ -202,6 +217,8 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
     try {
       const result = await work();
       if (request) {
+        const resultModel = (result as { model?: unknown } | null)?.model;
+        if (meta.capability && typeof resultModel === "string" && resultModel.trim()) request.model = resultModel;
         const raw = (result as { usage?: Record<string, unknown> } | null)?.usage;
         const usage = raw
           ? (Object.fromEntries(
@@ -233,6 +250,7 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
       if (!saved || saved.status !== "running") return;
       Object.assign(saved, {
         status,
+        model: request.model,
         usage,
         finishedAt: new Date().toISOString(),
         dollars: status === "complete" ? usageDollars(usage, saved.rate, saved.provider) : null,
@@ -268,6 +286,9 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
       totals: ledger.period,
       today: ledger.days[day(new Date().toISOString())] ?? empty(),
       purposes: ledger.purposes,
+      connections: ledger.connections,
+      connectionHistoryComplete:
+        Object.values(ledger.connections).reduce((sum, total) => sum + total.requests, 0) === ledger.period.requests,
       running: ledger.requests.filter((r) => r.status === "running").length,
       requests: details ? ledger.requests.filter((r) => (r.periodId ?? "initial") === ledger.periodId).reverse() : [],
       models: details ? await usageModels(ledger) : [],
@@ -285,6 +306,10 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
       ledger.periodId = randomUUID();
       ledger.period = empty();
       ledger.purposes = {};
+      ledger.all = empty();
+      ledger.days = {};
+      ledger.connections = {};
+      ledger.requests = [];
     });
     lastFailure = "";
     return readUsageLedger();
@@ -328,7 +353,9 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
     const info = await identity(connectionId, model);
     const ledger = coerce((await villagesDocuments().getById(VILLAGES_PACKAGE_ID, DOC))?.data);
     return {
-      ...info,
+      provider: info.provider,
+      model: info.model,
+      baseUrl: info.baseUrl,
       ...(await resolveRate(connectionId, info, ledger)),
     };
   }

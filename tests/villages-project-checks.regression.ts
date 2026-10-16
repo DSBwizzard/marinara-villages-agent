@@ -159,7 +159,12 @@ function batch(outcome: string, source: "system" | "decisions" = "system", detai
     ],
   };
 }
-for (const source of ["system", "decisions"] as const) {
+assert.equal(
+  projectProposals(batch("commit", "decisions")).length,
+  0,
+  "Legacy unbound Decision proposals cannot apply",
+);
+for (const source of ["system"] as const) {
   const proposal = projectProposals(batch("commit", source))[0];
   assert.equal(proposal.citations[0].quote, draft[0].content);
   assert.equal(
@@ -181,7 +186,7 @@ assert.equal(
   null,
   "A miss requires System, not denial",
 );
-const ambiguous = batch("commit", "decisions");
+const ambiguous = batch("commit", "system");
 ambiguous.checks.push({ ...checks[0], id: "other", facts: { ...(checks[0].facts as any), projectId: "other" } });
 ambiguous.results.push({ ...ambiguous.results[0] });
 ambiguous.traces.push({ ...ambiguous.traces[0], id: "other" });

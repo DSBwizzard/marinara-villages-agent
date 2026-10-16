@@ -10,22 +10,11 @@ export function VillagesRuntimeDebug() {
     verbose: boolean;
     effective: boolean;
     engineEnabled: boolean;
-    showUsageMeter?: boolean;
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
-    const visibility = (event: Event) =>
-      setSettings((current) =>
-        current
-          ? {
-              ...current,
-              showUsageMeter: (event as CustomEvent<boolean>).detail,
-            }
-          : current,
-      );
-    window.addEventListener("villages-usage-visibility", visibility);
     void request<{ verbose: boolean; effective: boolean; engineEnabled: boolean }>("/debug/runtime", {
       signal: controller.signal,
     })
@@ -35,7 +24,6 @@ export function VillagesRuntimeDebug() {
       });
     return () => {
       controller.abort();
-      window.removeEventListener("villages-usage-visibility", visibility);
     };
   }, []);
   const save = async (verbose: boolean) => {
@@ -57,41 +45,12 @@ export function VillagesRuntimeDebug() {
       <label>
         <input
           type="checkbox"
-          checked={settings?.showUsageMeter !== false}
-          disabled={!settings || saving}
-          onChange={async (event) => {
-            setSaving(true);
-            try {
-              const next = await request<typeof settings>("/debug/runtime", {
-                method: "PATCH",
-                body: JSON.stringify({ showUsageMeter: event.currentTarget.checked }),
-              });
-              setSettings(next);
-              window.dispatchEvent(
-                new CustomEvent("villages-usage-visibility", { detail: next?.showUsageMeter !== false }),
-              );
-            } catch (cause) {
-              setError(messageFrom(cause, "Usage display setting could not be saved."));
-            } finally {
-              setSaving(false);
-            }
-          }}
-        />{" "}
-        Show AI usage meter
-      </label>
-      <label>
-        <input
-          type="checkbox"
           checked={settings?.verbose ?? false}
           disabled={!settings || saving}
           onChange={(event) => void save(event.currentTarget.checked)}
         />{" "}
         Verbose runtime logging
       </label>
-      <p className={ELEMENT_TAG + "-status"}>
-        Print Villages prompts, replies, routing, and error details to the server terminal. Output includes conversation
-        text and private Scene context.
-      </p>
       {settings ? (
         <p className={ELEMENT_TAG + "-status"} role="status">
           Terminal logging: {settings.effective ? "on" : "off"}
@@ -422,11 +381,6 @@ export function VillageWritingSettings() {
   return (
     <div className={ELEMENT_TAG + "-field"}>
       <span className={ELEMENT_TAG + "-label"}>Additional writing guidance</span>
-      <p className={ELEMENT_TAG + "-empty"}>
-        Optionally guide scene presentation. Narration follows your prose preferences; each resident keeps their own
-        personality, voice, and mannerisms from their character card. Scene facts and your choices remain in charge.
-        Leave this empty for Villages&apos; own scene writing. Saved changes apply to the next generated venue turn.
-      </p>
       {view ? (
         <>
           <textarea

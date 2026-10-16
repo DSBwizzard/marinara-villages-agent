@@ -98,10 +98,10 @@ const work = venue("bank", ["workplace"]);
 work.workerIds = ["a", "b"];
 const combined = venue("combined", ["residence", "workplace"]);
 combined.residentIds = ["b"];
-const park = venue("park", ["gathering"]);
+const park = venue("park", ["community"]);
 park.zones = readCreationPrivateZones(
   [{ id: "restricted:greenhouse", name: "Greenhouse", purpose: "Keep seedlings", controllerIds: ["a", "b"] }],
-  ["gathering"],
+  ["community"],
 );
 state.venues = [home, own, work, combined, park, venue("other", ["other"])];
 const migrated = coerceVillageState(state);
@@ -147,6 +147,27 @@ assert.ok(prompt.length <= 4000);
 assert.match(prompt, /Pixel art/);
 assert.match(prompt, /Complete short lore/);
 assert.doesNotMatch(prompt, /Too big/);
+const longScenery = sceneryPrompt(
+  [
+    "Wide, empty exterior view of the copper-roofed inn.",
+    "Approved description: " + "Copper roof and stone walls. ".repeat(200),
+    "Occupant context: " + "Books and quiet corners. ".repeat(200),
+    "Show the entrance and approach; no people or lettering.",
+  ],
+  ["Optional lore " + "L".repeat(4000)],
+  "Watercolor " + "S".repeat(589),
+);
+assert.ok(longScenery.length <= 4000, "long authored context fits without rejecting image generation");
+assert.match(longScenery, /Wide, empty exterior view of the copper-roofed inn\./);
+assert.match(longScenery, /Approved description: Copper roof and stone walls/);
+assert.match(longScenery, /Occupant context: Books and quiet corners/);
+assert.match(longScenery, /Show the entrance and approach; no people or lettering\./);
+assert.ok(longScenery.includes("Watercolor " + "S".repeat(589)), "the full chosen art style is preserved");
+assert.doesNotMatch(longScenery, /Optional lore/);
+assert.equal(
+  sceneryPrompt(["Entrance"], ["Short lore"], "Pixel art"),
+  sceneryPrompt(["Entrance"], [], "Pixel art") + "\nShort lore",
+);
 migrated.venues[0]!.imageContext = { useAssignedVillagerContext: false, useVisualLore: false };
 assert.equal(sceneryCharacterContext(migrated, migrated.venues[0]!), "");
 assert.match(sceneryCharacterContext(migrated, migrated.venues[0]!, "a"), /Careful/);
@@ -263,7 +284,7 @@ async function main() {
     assert.equal(
       (await readVillageState()).venues[4]!.playerInvitations!.length,
       1,
-      "gathering controllers can issue saved room invitations",
+      "community controllers can issue saved room invitations",
     );
     const owner = view.venues.find((v) => v.id === "own")!.zones!.find((z) => z.id === "private:player")!;
     assert.equal(owner.description, "My journal and hammock");
@@ -515,10 +536,14 @@ async function privateInteriorLifecycle() {
     readVillageVisualLore: async () => "",
     generateVillageImage: async (input: any) => {
       draws++;
+      assert.ok(input.prompt.length <= 4000);
       assert.match(input.prompt, /newly personalized interior/);
-      assert.match(input.prompt, /Unseen keepsake/);
+      if (draws === 1) {
+        assert.match(input.prompt, /Unseen keepsake/);
+        assert.match(input.prompt, /garden-facing window/);
+      } else assert.match(input.prompt, /Large established physical item/);
       assert.match(input.prompt, /Shared architecture/);
-      assert.match(input.prompt, /garden-facing window/);
+      assert.match(input.prompt, /no people, no animals, no text/);
       assert.doesNotMatch(input.prompt, /FEATURE_SENTINEL/);
       throw new Error("Synthetic image failure");
     },
@@ -540,10 +565,10 @@ async function privateInteriorLifecycle() {
   bedroom.state.items = Array.from({ length: 24 }, () => "Large established physical item ".repeat(8).slice(0, 240));
   await assert.rejects(
     () => images.generateVillageLocationImage("bungalow", undefined, undefined, "", false, "bedroom"),
-    /too long/,
-    "oversized saved interiors fail before another image request",
+    /Synthetic image failure/,
+    "oversized saved interiors fit the prompt and reach the image provider",
   );
-  assert.equal(draws, 1);
+  assert.equal(draws, 2);
   const priorRoom = structuredClone(bedroom);
   bedroom.state.condition = "Existing damage";
   bedroom.roomSpecification = "A new garden-facing window";

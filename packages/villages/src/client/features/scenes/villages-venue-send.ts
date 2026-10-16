@@ -10,6 +10,7 @@ type SceneSendInput = {
   mode?: string;
   targetId?: string;
   contact?: { kind?: string; boundaryZoneId?: string };
+  attentionChoice?: { id: string; zoneId: string };
 };
 type SavedSceneRequest = {
   id: string;
@@ -36,7 +37,9 @@ export function sceneResend(
     prior.mode === input.mode &&
     (prior.targetId || "") === (input.targetId || "") &&
     prior.contact?.kind === input.contact?.kind &&
-    prior.contact?.boundaryZoneId === input.contact?.boundaryZoneId;
+    prior.contact?.boundaryZoneId === input.contact?.boundaryZoneId &&
+    prior.attentionChoice?.id === input.attentionChoice?.id &&
+    prior.attentionChoice?.zoneId === input.attentionChoice?.zoneId;
   if (same) return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
   if (saved.kind !== "turn" || prior.mode !== "chat" || input.mode !== "chat")
     throw new Error("Recover the saved request before changing this message or mode. Your edits are preserved.");

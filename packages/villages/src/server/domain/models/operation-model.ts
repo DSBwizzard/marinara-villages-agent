@@ -1,7 +1,15 @@
 import type { InterpretationSettings } from "../rules/interpretation-policy.js";
 import type { WorkFailure } from "../rules/work-failure.js";
 
+export type VenueTiming = {
+  attemptId: string;
+  startedAt: string;
+  completedAt?: string;
+  elapsedMs?: number;
+  stages: { stage: string; elapsedMs: number; reused: boolean }[];
+};
 export type VenueOperation = {
+  timing?: VenueTiming;
   failure?: WorkFailure;
   interpretationSettings?: InterpretationSettings;
   optionalAttempts?: Record<

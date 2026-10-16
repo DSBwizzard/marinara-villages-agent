@@ -1,7 +1,7 @@
 import { asRecord } from "./coerce.js";
 
-export type InterpretationSettings = { decisionsEnabled: boolean; compareSystem: boolean };
+export type InterpretationSettings = { decisionsEnabled: boolean };
 export function coerceInterpretationSettings(value: unknown): InterpretationSettings {
   const raw = asRecord(value);
-  return { decisionsEnabled: raw.decisionsEnabled === true, compareSystem: raw.compareSystem !== false };
+  return { decisionsEnabled: raw.decisionsEnabled === true };
 }

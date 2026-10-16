@@ -34,7 +34,7 @@ export function useProjectsController({
     selection.current = { selectedId, draftType };
   }, [selectedId, draftType]);
   const [name, setName] = useState("");
-  const [venueClass, setVenueClass] = useState<VenueClass>("gathering");
+  const [venueClass, setVenueClass] = useState<VenueClass>("community");
   const [description, setDescription] = useState("");
   const [venueId, setVenueId] = useState("");
   const [changeKind, setChangeKind] = useState<"class" | "capacity" | "layout" | "upgrade" | "remove-upgrade">(
@@ -43,7 +43,7 @@ export function useProjectsController({
   const [baseZoneDrafts, setBaseZoneDrafts] = useState<
     import("../../../shared/contracts/village.js").VillageZoneDraft[]
   >([]);
-  const [baseClasses, setBaseClasses] = useState<VenueClass[]>(["gathering"]);
+  const [baseClasses, setBaseClasses] = useState<VenueClass[]>(["community"]);
   const [upgradeTarget, setUpgradeTarget] = useState("");
   const [capacity, setCapacity] = useState(2);
   const [slot, setSlot] = useState(0);
@@ -58,12 +58,12 @@ export function useProjectsController({
     setSelectedId("");
     setDraftType("");
     setName("");
-    setVenueClass("gathering");
+    setVenueClass("community");
     setDescription("");
     setVenueId("");
     setChangeKind("upgrade");
     setBaseZoneDrafts([]);
-    setBaseClasses(["gathering"]);
+    setBaseClasses(["community"]);
     setUpgradeTarget("");
     setCapacity(2);
     setSlot(0);
@@ -175,7 +175,7 @@ export function useProjectsController({
   useEffect(() => {
     setBaseZoneDrafts(JSON.parse(selectedBaseZones));
   }, [selectedBaseZones]);
-  const selectedBaseClasses = JSON.stringify(selectedVenue?.baseClasses ?? selectedVenue?.classes ?? ["gathering"]);
+  const selectedBaseClasses = JSON.stringify(selectedVenue?.baseClasses ?? selectedVenue?.classes ?? ["community"]);
   useEffect(() => {
     setBaseClasses(JSON.parse(selectedBaseClasses) as VenueClass[]);
   }, [selectedVenue?.id, selectedBaseClasses]);
@@ -397,6 +397,36 @@ export function useProjectsController({
   };
 
   return {
+    startRenovation: (venue: VillageVenue) => {
+      const existing = active.find((entry) => entry.kind === "renovation");
+      if (existing) {
+        setSelectedId(existing.id);
+        return true;
+      }
+      if (
+        draftType === "renovation" &&
+        venueId &&
+        venueId !== venue.id &&
+        !window.confirm("Replace the current renovation draft with a plan for this Venue?")
+      )
+        return false;
+      if (venueId !== venue.id) {
+        setName("");
+        setDescription("");
+        setChangeKind("upgrade");
+        setCapacity(venue.residenceCapacity ?? 1);
+        setSlot(0);
+        setExtraBeds(0);
+        setUpgradeMode("replace");
+        setUpgradeClass("");
+        setUpgradeTarget("");
+        setUpgradeZones([]);
+      }
+      setSelectedId("");
+      setDraftType("renovation");
+      setVenueId(venue.id);
+      return true;
+    },
     setSelectedId,
     draftType,
     setDraftType,
@@ -449,7 +479,7 @@ export function useProjectsController({
     setOpeningPersonality,
     openingLore,
     setOpeningLore,
-    busy,
+    busy: busy,
     error,
     active,
     project,

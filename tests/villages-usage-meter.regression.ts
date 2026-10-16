@@ -31,9 +31,14 @@ globalThis.fetch = async (input) => {
   if (String(input).includes("/api/connections"))
     return new Response(
       JSON.stringify([
-        { id: "paid", provider: "google", model: "gemini-2.5-flash-lite" },
+        {
+          id: "paid",
+          provider: "custom",
+          model: "gemini-2.5-flash-lite",
+          baseUrl: "https://generativelanguage.googleapis.com",
+        },
         { id: "picture", provider: "custom", model: "image" },
-        { id: "claude", provider: "anthropic", model: "claude-sonnet-4-5" },
+        { id: "claude", provider: "custom", model: "claude-sonnet-4-5", baseUrl: "https://api.anthropic.com" },
       ]),
     );
   imageCalls++;
@@ -103,6 +108,19 @@ const release = configureVillagesRuntime({
 } as any);
 async function main() {
   try {
+    assert.equal(catalogRate("custom", "claude-opus-4-6", "https://api.anthropic.com/v1")?.input, 5);
+    assert.equal(
+      catalogRate("custom", "gemini-2.5-flash-lite", "https://generativelanguage.googleapis.com")?.input,
+      0.1,
+    );
+    assert.equal(catalogRate("custom", "gpt-5-mini", "https://api.openai.com/v1")?.input, 0.25);
+    assert.equal(catalogRate("custom", "gpt-5-mini", "http://api.openai.com/v1"), null);
+    const deep = (at: string) => catalogRate("custom", "deepseek-flash", "https://api.deepseek.com", new Date(at));
+    assert.equal(deep("2026-10-15T02:00:00Z")?.input, 0.3);
+    assert.equal(deep("2026-10-15T04:00:00Z")?.input, 0.15);
+    assert.equal(deep("2026-10-17T02:00:00Z")?.input, 0.15);
+    assert.equal(deep("2026-10-01T02:00:00Z")?.input, 0.15, "Chinese public holiday is off peak");
+    assert.equal(deep("2027-01-01T02:00:00Z"), null, "unreviewed holiday years stay unknown");
     const rate = catalogRate("google", "gemini-2.5-flash-lite")!;
     assert.equal(catalogRate("openrouter", "gemini-2.5-flash-lite"), null);
     assert.equal(catalogRate("google", "gemini-2.5-flash-lite", "https://proxy.test"), null);
@@ -149,6 +167,11 @@ async function main() {
     await running;
     const first = await readUsageMeter();
     assert.equal(first.totals.tokens, 130);
+    assert.equal(
+      first.totals.dollars,
+      (70 * 0.1 + 30 * 0.01 + 30 * 0.4) / 1e6,
+      "custom Google includes reasoning output",
+    );
     assert.equal(first.totals.unknown, 0);
     assert.ok(!JSON.stringify([...records.values()]).includes("DO NOT STORE THIS"));
     await saveUsageRate("paid", "gemini-2.5-flash-lite", { input: 2, output: 8, cached: 0.2 });
@@ -163,13 +186,47 @@ async function main() {
     await model.chatComplete([], {});
     missing = false;
     assert.equal((await readUsageMeter()).totals.unknown, 2);
-    const all = records.get("villages-ai-usage").data.all.requests;
+    records.set("villages-connections", {
+      data: { systemConnectionId: "paid", narrationConnectionId: "claude", imageConnectionId: "picture" },
+    });
+    const selected = (await readUsageMeter()).selectedConnections;
+    assert.deepEqual(
+      selected.map((row) => row.connectionId),
+      ["paid", "claude", "picture"],
+    );
+    const savedConnections = structuredClone((await readUsageMeter()).connections);
+    delete records.get("villages-ai-usage").data.connections;
+    assert.deepEqual(
+      (await readUsageMeter()).connections,
+      savedConnections,
+      "legacy rows reconstruct connection costs",
+    );
+    assert.equal((await readUsageMeter()).connectionHistoryComplete, true);
+    records.get("villages-connections").data.narrationConnectionId = "paid";
+    assert.equal(
+      (await readUsageMeter()).selectedConnections[1].connectionId,
+      "paid",
+      "selection changes follow settings",
+    );
+    records.get("villages-connections").data.imageConnectionId = "__villages_image_disabled__";
+    assert.equal((await readUsageMeter()).selectedConnections[2].connectionId, null);
+    const connectionSettings = structuredClone(records.get("villages-connections"));
     await resetUsagePeriod();
     assert.equal((await readUsageMeter()).totals.requests, 0);
-    assert.equal(records.get("villages-ai-usage").data.all.requests, all);
+    assert.equal(records.get("villages-ai-usage").data.all.requests, 0);
+    assert.deepEqual(records.get("villages-ai-usage").data.days, {});
+    assert.deepEqual(records.get("villages-ai-usage").data.requests, []);
+    assert.deepEqual(records.get("villages-connections"), connectionSettings);
     await assert.rejects(saveUsageRate("paid", "x", { input: -1, output: 2 }));
     for (let i = 0; i < 202; i++) await model.chatComplete([], {});
     assert.equal((await readUsageMeter()).requests.length, 200);
+    assert.equal(
+      (await readUsageMeter()).connections.paid.requests,
+      202,
+      "connection totals survive request truncation",
+    );
+    delete records.get("villages-ai-usage").data.connections;
+    assert.equal((await readUsageMeter()).connectionHistoryComplete, false, "truncated legacy history is flagged");
 
     const directBefore = calls;
     const direct = await villagesLanguageModels().resolve(null);
@@ -187,7 +244,8 @@ async function main() {
     await pending;
     assert.equal((await readUsageMeter()).totals.tokens, 0, "a pre-reset request cannot bill the new display period");
     assert.equal((await readUsageMeter()).totals.requests, 0);
-    assert.ok(records.get("villages-ai-usage").data.all.requests > all);
+    assert.equal(records.get("villages-ai-usage").data.all.requests, 0);
+    assert.deepEqual((await readUsageMeter()).connections, {});
 
     await saveUsageRate("picture", "image", { input: 0, output: 0, perRequest: 0.04 });
     await villageEngineJson("/api/characters/avatar-generation", { body: { connectionId: "picture" } });

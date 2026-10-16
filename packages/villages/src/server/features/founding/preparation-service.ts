@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { conflict, safeFailureMessage } from "../../domain/rules/errors.js";
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
@@ -240,7 +241,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       marker.error = "";
       marker.attempt = undefined;
       marker.stage = "queued";
-      marker.stageStartedAt = new Date().toISOString();
+      marker.stageStartedAt = villageNow().toISOString();
     });
     if (!admitted) return buildVillageSnapshot();
     const unfinished = requested.villagers

@@ -301,8 +301,8 @@ try {
     await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
     let editor = page.locator(".marinara-capability-villages-project-finish-visit");
     await editor.getByLabel("Physical form", { exact: true }).fill("A retained canvas shelter");
-    await editor.getByLabel("Entrance appearance", { exact: true }).fill("Canvas in morning light.");
-    await editor.getByRole("button", { name: "Use Entrance only", exact: true }).click();
+    await editor.getByLabel("Exterior appearance", { exact: true }).fill("Canvas in morning light.");
+    await editor.getByRole("button", { name: "Use Exterior only", exact: true }).click();
     await editor.getByRole("button", { name: "Generate image", exact: true }).click();
     await expect.poll(() => requests.length).toBe(1);
     await page.getByRole("button", { name: "Back to menu", exact: true }).click();

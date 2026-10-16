@@ -36,7 +36,7 @@ const { applyVillageVenueDecision } = createVenueRequests({
   queueVenueCounteroffer,
 });
 const at = "2026-09-22T12:00:00.000Z";
-const core = { name: "The Glasshouse", classes: ["gathering"] as ["gathering"] };
+const core = { name: "The Glasshouse", classes: ["community"] as ["community"] };
 const venue = (name: string): VillageVenue => {
   const draft = venueRequestDraft({ ...core, name });
   return {
@@ -63,7 +63,7 @@ state.villagers.push({
 } as VillageVillager);
 state.noticeboard.push({ author: "Rosa", text: "Could we have somewhere to grow herbs?" });
 
-assert.deepEqual(readVenueRequestCore({ name: "", classes: ["gathering"] }), null);
+assert.deepEqual(readVenueRequestCore({ name: "", classes: ["community"] }), null);
 assert.deepEqual(readVenueRequestCore({ name: "Glasshouse", classes: ["unknown"] }), null);
 assert.deepEqual(readVenueRequestCore(core), core);
 assert.deepEqual(normalizeVillageSnapshot({ settings: { venues: [] }, venueRequests: undefined }).venueRequests, []);
@@ -153,7 +153,7 @@ assert.equal(persisted.venues.length, 0, "approval begins planning without creat
 assert.equal(persisted.projects[0]?.kind, "new-venue");
 assert.equal(persisted.projects[0]?.status, "draft");
 assert.equal(persisted.projects[0]?.lifecycle?.phase, "concept");
-assert.deepEqual(persisted.projects[0]?.venueDraft?.classes, ["gathering"]);
+assert.deepEqual(persisted.projects[0]?.venueDraft?.classes, ["community"]);
 assert.equal(persisted.projects[0]?.venueDraft?.description, "A shared glasshouse for herbs.");
 assert.match(persisted.chronicle[0]?.text ?? "", /accepted Rosa's request to plan/u);
 assert.throws(() => applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse.", new Date(at)));

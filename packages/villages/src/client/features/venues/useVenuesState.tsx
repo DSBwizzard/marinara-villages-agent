@@ -15,6 +15,9 @@ export function useVenuesState() {
   const [venueId, setVenueId] = useState<string | null>(null);
 
   const [venuePage, setVenuePage] = useState<"view" | "edit" | "proposal">("view");
+  const [venueSection, setVenueSection] = useState<"about" | "zones" | "manage">("about");
+  const [venueReturnTo, setVenueReturnTo] = useState<"home" | "menu" | "room" | "person">("home");
+  const [housingVenueId, setHousingVenueId] = useState("");
 
   const [venueZoneKey, setVenueZoneKey] = useState("exterior");
 
@@ -69,6 +72,12 @@ export function useVenuesState() {
     venueId,
     setVenueId,
     venuePage,
+    venueSection,
+    venueReturnTo,
+    setVenueReturnTo,
+    housingVenueId,
+    setHousingVenueId,
+    setVenueSection,
     setVenuePage,
     venueZoneKey,
     setVenueZoneKey,

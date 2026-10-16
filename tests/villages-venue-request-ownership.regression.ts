@@ -22,7 +22,7 @@ import {
 import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
 
 const stamp = "2026-10-06T12:00:00.000Z";
-const core = { name: "Glasshouse", classes: ["gathering"] as ["gathering"] };
+const core = { name: "Glasshouse", classes: ["community"] as ["community"] };
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => {

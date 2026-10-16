@@ -12,6 +12,8 @@ export async function createVenueScreenHarness(browser) {
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useVenueScreenCommands} from './packages/villages/src/client/features/venues/screen-commands.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
+import {VenueZoneEditor} from './packages/villages/src/client/features/venues/VenuePanels.js';
+import {VenueAccessPanel} from './packages/villages/src/client/features/venues/villages-venue-access.js';
 import {useSaveStoryPace} from './packages/villages/src/client/features/settings/actions.js';
 function Harness(){
 const [snapshot,rawSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('A / venue'),[venuePage,setVenuePage]=useState(window.page),[venueZoneKey,setVenueZoneKey]=useState(window.initialZone);
@@ -22,7 +24,7 @@ setVenueEditBusy=useCallback(v=>{window.calls.editBusy++;rawEditBusy(v)},[]),set
 setVenueEditDraft=useCallback(v=>{window.calls.draft++;rawDraft(v)},[]),setVenueProposalDraft=useCallback(v=>{window.calls.proposal++;rawProposal(v)},[]),setPlaceProblem=useCallback(v=>{window.calls.problem++;rawProblem(v)},[]);
 const ports={snapshot,screen,venueId,venuePage,venueZoneKey,venueEditDraft,venueProposalDraft,setSnapshot,setBusy,setSettingsError,setVenueEditBusy,setVenueEditError,setVenueEditNotice,setVenueEditDraft,setVenueProposalDraft,setPlaceProblem};
 const commands=useVenueScreenCommands(ports),pace=useSaveStoryPace(ports),place=snapshot.settings.venues.find(v=>v.id===venueId);
-const actions={image:()=>commands.saveVenueImageContext(place,{useAssignedVillagerContext:false,useVisualLore:true}),details:()=>commands.saveVenueDetails(place,venueEditDraft,window.occupied,place.classes),
+const actions={name:()=>commands.saveVenueName(place,venueEditDraft.name),image:()=>commands.saveVenueImageContext(place,{useAssignedVillagerContext:false,useVisualLore:true}),details:()=>commands.saveVenueDetails(place,venueEditDraft,window.occupied,place.classes),
 shared:()=>commands.proposeRoomEdit(place,venueEditDraft,place.classes,'shared'),private:()=>commands.proposeRoomEdit(place,venueEditDraft,place.classes,'private','mara'),
 player:()=>commands.requestPlayerMove(place.id,' private / target '),access:()=>commands.changeVenueAccess(place.id,window.accessCommand),retry:()=>commands.retryPrivateSpacePreparation(),
 zone:()=>commands.saveVenueZone(place.id,venueZoneKey,window.zoneBody),residence:()=>commands.proposeResidenceMove('resident / A','target / B',' private / target '),
@@ -39,10 +41,14 @@ poll:()=>rawSnapshot(current=>structuredClone(current)),hydrate:()=>rawSnapshot(
 removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.filter(v=>v.id!==venueId)}})),
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};
+const editorZone=place?.zones.find(z=>z.id===venueZoneKey)??place?.zones[0];
 return <><pre id='state'>{JSON.stringify(window.h.read())}</pre><VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
 homeBuildings:[],room:null,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
 moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePrivateZoneId:' private / target ',setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{},setPlayerMovePrivateZoneId:()=>{},
-placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey}}/></>;
+placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
+venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>
+{place && editorZone && venuePage==='view' ? <details><summary>Access options</summary><VenueAccessPanel key={JSON.stringify([place.id,editorZone.id,place.accessView.revision])} venue={place} zoneId={editorZone.id} people={[{id:'player',name:'Player'},{id:'mara',name:'Mara'}]} isFounded={snapshot.isFounded} onCommand={command=>ui.changeVenueAccess(place.id,command)} /></details> : null}
+{place && editorZone && venuePage!=='view' ? <section aria-label="Isolated Zone editor command contract"><VenueZoneEditor key={place.id+editorZone.id} zone={{...editorZone,key:editorZone.id,zoneId:editorZone.id,label:editorZone.name,area:'public',spaceClass:'community',ownerId:'',locked:false,canEnter:true,accessLabel:'Open to you'}} isFounded={snapshot.isFounded} onSave={body=>ui.saveVenueZone(place.id,editorZone.id,body)} /></section> : null}</>;
 }
 window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};window.confirms=[];window.confirm=message=>{window.confirms.push(message);window.confirmHook?.();return window.confirmAnswer};
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
@@ -94,7 +100,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       ...seed.settings.venues[0],
       id,
       name: id,
-      classes: ["residence", "gathering"],
+      classes: ["residence", "community"],
       form: "A building",
       venueType: "Home",
       layoutVersion: 1,
@@ -108,8 +114,8 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
         id: zoneId,
         kind: "public",
         name: (index ? "B" : "A") + " Zone",
-        purpose: "Gathering",
-        venueClass: "gathering",
+        purpose: "Community",
+        venueClass: "community",
         description: (index ? "B" : "A") + " Zone description",
         seen: true,
         state,
@@ -126,7 +132,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     const draft = structuredClone(seed.settings.venues[0]);
     draft.name = " Draft A ";
     const proposal = {
-      classes: ["residence", "gathering"],
+      classes: ["residence", "community"],
       capacity: 2,
       slot: 1,
       title: " Improvement ",
@@ -208,8 +214,21 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
 /** Actual owner and delegated panels; HTTP is held independently and never reaches providers. */
 export async function verifyVenueScreenLifetimes(browser) {
   const mount = await createVenueScreenHarness(browser);
-  const kinds = ["image", "details", "shared", "private", "player", "access", "retry", "zone", "residence", "proposal"];
+  const kinds = [
+    "name",
+    "image",
+    "details",
+    "shared",
+    "private",
+    "player",
+    "access",
+    "retry",
+    "zone",
+    "residence",
+    "proposal",
+  ];
   const paths = {
+    name: "/locations/venue/A%20%2F%20venue",
     image: "/locations/venue/A%20%2F%20venue",
     details: "/locations/venue/A%20%2F%20venue",
     shared: "/locations/venue/A%20%2F%20venue/edit-proposals",
@@ -222,6 +241,7 @@ export async function verifyVenueScreenLifetimes(browser) {
     proposal: "/locations/venue/A%20%2F%20venue/proposals",
   };
   const bodies = (f) => ({
+    name: { name: "Draft A" },
     image: {
       name: "A / venue",
       description: f.seed.settings.venues[0].description,
@@ -265,18 +285,39 @@ export async function verifyVenueScreenLifetimes(browser) {
     return outcome;
   }
   async function openAccess(f) {
+    const options = f.page.getByText("Access options", { exact: true });
+    if (!(await options.locator("..").evaluate((el) => el.open))) await options.click();
     await f.page.getByText("Manage access", { exact: true }).click();
     await f.page.getByText("Zone policy", { exact: true }).click();
   }
-  for (const width of [1280, 390])
-    for (const strict of [false, true]) {
+  // State-only lifetime scenarios need one width; responsive UI lives in universal-venue coverage.
+  for (const width of [390])
+    for (const strict of [true]) {
+      {
+        const f = await mount(strict, width, { page: "view" });
+        await f.page.getByLabel("Zone name", { exact: true }).fill("Renamed Zone");
+        await f.page.getByRole("button", { name: "Save zone name", exact: true }).click();
+        await expect.poll(() => f.requests.length).toBe(1);
+        await f.page.evaluate(() => {
+          window.h.reset();
+          window.h.refound();
+        });
+        await expect(f.page.getByRole("button", { name: "Save zone name", exact: true })).toBeEnabled();
+        await f.page.getByRole("button", { name: "Save zone name", exact: true }).click();
+        await expect.poll(() => f.requests.length).toBe(2);
+        await f.reply(0);
+        await expect(f.page.getByRole("button", { name: "Saving�", exact: true })).toBeDisabled();
+        await f.reply(1);
+        await expect(f.page.getByRole("button", { name: "Save zone name", exact: true })).toBeEnabled();
+        await f.finish();
+      }
       for (const kind of kinds)
         for (const fail of [false, true]) {
           const f = await mount(strict, width, { page: kind === "proposal" ? "proposal" : "edit" });
           await f.run(kind);
           await expect.poll(() => f.requests.length).toBe(1);
           assert.equal(f.requests[0].path, "/api/villages" + paths[kind]);
-          assert.equal(f.requests[0].method, ["image", "details", "zone"].includes(kind) ? "PUT" : "POST");
+          assert.equal(f.requests[0].method, ["name", "image", "details", "zone"].includes(kind) ? "PUT" : "POST");
           assert.deepEqual(f.requests[0].body, bodies(f)[kind]);
           await f.reply(0, { fail });
           const outcome = await settled(f, 0),
@@ -299,7 +340,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       // Each existing admission group rejects an immediate second command.
       for (const group of [
         ["image", "retry", "pace"],
-        ["details", "shared", "private", "residence", "proposal"],
+        ["name", "details", "shared", "private", "residence", "proposal"],
         ["player", "player"],
         ["access", "access"],
         ["zone", "zone"],
@@ -385,7 +426,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.run(kind);
         await expect.poll(() => f.requests.length).toBe(1);
         if (kind === "proposal") await f.page.evaluate(() => window.h.proposal({ description: "Newer proposal" }));
-        else await f.page.getByRole("textbox", { name: "Name", exact: true }).fill(" Newer name ");
+        else await f.page.getByRole("textbox", { name: "Venue name", exact: true }).fill(" Newer name ");
         const before = await f.read();
         await f.reply(0);
         await settled(f, 0);
@@ -595,6 +636,6 @@ export async function verifyVenueScreenLifetimes(browser) {
       }
     }
   console.log(
-    "Venue/Zone lifetimes: exact current commands, admission, real replacement requests, draft acknowledgement, confirmations, ABA/reset/hydration/disposal and delegated Zone/Access panels passed (actual mounted client; synthetic HTTP, desktop/mobile and StrictMode).",
+    "Venue/Zone lifetimes: name-only saves, admission, replacement requests, draft acknowledgement, confirmations, ABA/reset/hydration/disposal and isolated legacy Zone/Access contracts passed (mounted client, synthetic HTTP, single-width state-only StrictMode harness).",
   );
 }

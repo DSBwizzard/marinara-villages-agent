@@ -1,6 +1,6 @@
 import type { VillageVenue, VillageVenueClass, VillageVenueImprovement, VillageVenueSpace } from "../models/world.js";
 
-export const VENUE_CLASSES: readonly VillageVenueClass[] = ["residence", "workplace", "gathering", "other"];
+export const VENUE_CLASSES: readonly VillageVenueClass[] = ["residence", "workplace", "community", "other"];
 export const MAX_VENUE_CLASSES = 2;
 export const MAX_VENUE_IMPROVEMENTS = 2;
 export const MAX_VENUE_RESIDENTS = 4;

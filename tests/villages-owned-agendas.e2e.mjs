@@ -114,6 +114,9 @@ try {
     await expect(page.getByText("Interest: Reading", { exact: true })).toBeVisible();
     await expect(page.getByText(/waits for an existing generation request/)).toBeVisible();
     await expect(page.getByText("Reading by the window", { exact: true })).toBeVisible();
+    await expect(page.getByText("An ordinary day", { exact: true })).toHaveCount(0);
+    for (const label of ["Online", "Available", "Busy", "Offline", "Away"])
+      await expect(page.getByText(label, { exact: true })).toHaveCount(0);
     await expect(page.getByText("Marinara schedule", { exact: true })).toHaveCount(0);
     assert.equal(paid, 0);
     assert.equal(patches.length, 2);

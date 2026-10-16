@@ -1,5 +1,6 @@
 import type { VenueClass, VillageVenue, VillageVenueImage } from "../../shared/contracts/village.js";
 import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
+import type { SpeechDelivery } from "../../shared/helpers/scene-speech.js";
 import type { VillagesMarkdownNode } from "./villages-inline-markdown";
 
 export type SetupMapSource = "existing" | "generate" | "upload";
@@ -248,7 +249,7 @@ export type IdentityPreview = IdentityChoice & {
 
 /** One line attached to a Scene paragraph instead of becoming a separate step. */
 export type VillagesWalkAside = {
-  register: "side" | "whisper";
+  register: "side" | "whisper" | "shout";
   /** The words, with the tag taken off. */
   text: string;
   /** The listener, on a whisper. Absent when the villager did not name one. */
@@ -275,6 +276,7 @@ export type RoomStep = {
   text: string;
   asides: Array<VillagesWalkAside & { speakerId?: string; name?: string; expression?: string; gazeAt?: string }>;
   register?: VillageBeatRegister;
+  delivery?: SpeechDelivery;
   expression?: string;
   gazeAt?: string;
 };

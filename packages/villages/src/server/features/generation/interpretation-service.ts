@@ -1,13 +1,19 @@
-import type { resolveVillagesDecisionBackend } from "../../adapters/engine/decisions-adapter.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
+import type { evaluateVillagesDecisions, decisionAdapterStatus } from "../../adapters/engine/decisions-adapter.js";
 import type { trackUsage } from "../../adapters/models/usage-ledger.js";
 import type { venueOperationSignal } from "../../adapters/operations/operation-context.js";
 import type { InterpretationCheck, InterpretationResult } from "../../domain/models/interpretation-check-model.js";
 import type { InterpretationBatch, InterpretationTrace } from "../../domain/models/interpretation-model.js";
-import { asRecord } from "../../domain/rules/coerce.js";
 import {
-  boundInterpretationEvidence,
-  interpretationPayload,
-} from "../../domain/rules/interpretation-evidence-rules.js";
+  boundDecisionResult,
+  decisionCandidates,
+  validDecisionEvidence,
+} from "../../domain/rules/decision-candidates.js";
+import { measureModel } from "../../adapters/observability/pipeline-metrics.js";
+import type { backgroundCalls, backgroundSetting } from "../../adapters/operations/background-context.js";
+import type { readInterpretationSettings } from "../settings/interpretation-settings.js";
+import { asRecord } from "../../domain/rules/coerce.js";
+import { boundInterpretationEvidence } from "../../domain/rules/interpretation-evidence-rules.js";
 import { fingerprint, readDecisionInterpretation } from "../../domain/rules/interpretation-rules.js";
 import type { routeInterpretationChecks } from "../../domain/rules/interpretation-routing.js";
 import type {
@@ -18,8 +24,12 @@ import type {
 import type { writeInterpretationDiagnostics } from "./interpretation-diagnostics.js";
 import type { systemInterpretations } from "./system-interpretation.js";
 export type InterpretationPorts = {
-  resolveVillagesDecisionBackend: typeof resolveVillagesDecisionBackend;
+  evaluateVillagesDecisions: typeof evaluateVillagesDecisions;
+  decisionAdapterStatus: typeof decisionAdapterStatus;
   trackUsage: typeof trackUsage;
+  backgroundCalls: typeof backgroundCalls;
+  backgroundSetting: typeof backgroundSetting;
+  readInterpretationSettings: typeof readInterpretationSettings;
   venueOperationSignal: typeof venueOperationSignal;
   coordinatedOptionalCompletion: typeof coordinatedOptionalCompletion;
   venueCheckpoint: typeof venueCheckpoint;
@@ -31,8 +41,12 @@ export type InterpretationPorts = {
 /** Interpretation checkpoints and their deferred work use one application's connections. */
 export function createInterpretation(ports: InterpretationPorts) {
   const {
-    resolveVillagesDecisionBackend,
+    evaluateVillagesDecisions,
+    decisionAdapterStatus,
     trackUsage,
+    backgroundCalls,
+    backgroundSetting,
+    readInterpretationSettings,
     venueOperationSignal,
     coordinatedOptionalCompletion,
     venueCheckpoint,
@@ -52,11 +66,16 @@ export function createInterpretation(ports: InterpretationPorts) {
     ) => Promise<InterpretationResult[]> = systemInterpretations,
   ): Promise<InterpretationBatch> {
     checks = checks.map(boundInterpretationEvidence);
-    const settings = venueInterpretationSettings();
+    const background = backgroundCalls.getStore();
+    const settings = background
+      ? await backgroundSetting("interpretation-settings", readInterpretationSettings)
+      : venueInterpretationSettings();
+    const signal = background?.signal ?? venueOperationSignal();
+    const optional = background ? background.optionalCompletion : coordinatedOptionalCompletion;
     return venueCheckpoint(
       stage,
       bindCallback(async () => {
-        const startedAt = new Date().toISOString();
+        const startedAt = villageNow().toISOString();
         const traces: InterpretationTrace[] = checks.map((check) => ({
           id: `${stage}:${check.id}`,
           question: check.question,
@@ -69,58 +88,40 @@ export function createInterpretation(ports: InterpretationPorts) {
           startedAt,
         }));
         if (sceneId) await writeInterpretationDiagnostics(sceneId, traces).catch(() => {});
-        const eligible = checks.filter((check) => check.decisionEligible !== false);
-        if (settings.decisionsEnabled && eligible.length) {
-          const outcome = await coordinatedOptionalCompletion(
-            `decisions:${fingerprint(eligible)}`,
-            bindCallback(async (signal) => {
-              const backend = await resolveVillagesDecisionBackend(signal);
-              signal.throwIfAborted();
-              if (!backend) return { reason: "No usable Engine Decision model" };
-              if (backend.deferPreGeneration) return { reason: "Engine defers this reasoning model; using System" };
-              if (
-                !Number.isFinite(backend.calibration?.defaultThreshold) ||
-                backend.calibration.defaultThreshold < 0 ||
-                backend.calibration.defaultThreshold > 1
-              )
-                return { reason: "Invalid backend calibration" };
-              const wire = interpretationPayload(eligible);
-              if (!wire.fits)
-                return { reason: "Essential evidence is unavailable or exceeds the bounded checking allowance" };
-              const state = {
-                ...wire.payload,
-                checks: wire.payload.checks.map(({ outcomes: _outcomes, ...check }) => check),
-              };
-              // Do not let Engine truncation remove the very evidence establishing permission.
-              if (JSON.stringify(state).length > backend.maxStateTokens * 3)
-                return { reason: "Essential evidence exceeds the Decision context budget" };
-              const questions = eligible.flatMap((check, index) =>
-                check.outcomes.map((option, optionIndex) => ({
-                  id: `${index}:${optionIndex}`,
-                  instructions: option.statement,
-                })),
-              );
-              if (questions.length > 32 || questions.some((question) => question.instructions.length > 500))
-                return { reason: "This batch exceeds the bounded Decision allowance" };
-              const answers = await trackUsage(
-                { model: backend.model, purpose: "checks", stage: "decisions" },
-                bindCallback(() => backend.ask(state, questions)),
-              );
-              return {
-                reason: answers ? "" : "Decision model supplied no usable answer",
-                model: backend.model,
-                threshold: backend.calibration.defaultThreshold,
-                scores: answers ? Object.fromEntries(answers) : {},
-              };
-            }),
+        const candidates = new Map(checks.map((check) => [check, decisionCandidates(check)]));
+        const eligible = checks.filter((check) => candidates.get(check));
+        if (settings.decisionsEnabled && eligible.length && (await decisionAdapterStatus()).available) {
+          const questions = eligible.flatMap((check, index) =>
+            candidates.get(check)!.map((candidate, option) => ({
+              id: `${index}:${option}`,
+              question: candidate.question,
+            })),
           );
+          const outcome =
+            questions.length <= 32
+              ? await optional?.(
+                  `decisions:v1:${fingerprint(eligible)}`,
+                  bindCallback(async (signal) => {
+                    const result = await measureModel(() =>
+                      trackUsage(
+                        { capability: "decisions", purpose: "checks", stage: "decisions" },
+                        bindCallback(() =>
+                          evaluateVillagesDecisions({ messages: [], questions, signal, debugMode: false }),
+                        ),
+                      ),
+                    );
+                    signal.throwIfAborted();
+                    return result;
+                  }),
+                )
+              : undefined;
           for (const [index, check] of checks.entries()) {
             const decisionIndex = eligible.indexOf(check);
             const selected =
-              decisionIndex >= 0 && outcome && outcome.threshold !== undefined && outcome.scores
+              decisionIndex >= 0 && outcome && outcome.threshold !== undefined && outcome.answers
                 ? readDecisionInterpretation(
                     check,
-                    new Map(Object.entries(outcome.scores)),
+                    new Map(Object.entries(outcome.answers)),
                     outcome.threshold,
                     decisionIndex,
                   )
@@ -131,30 +132,28 @@ export function createInterpretation(ports: InterpretationPorts) {
               model: outcome?.model,
               threshold: outcome?.threshold,
               scores:
-                decisionIndex >= 0 && outcome?.scores
+                decisionIndex >= 0 && outcome?.answers
                   ? Object.fromEntries(
                       check.outcomes.map((option, optionIndex) => [
                         option.id,
-                        outcome.scores![`${decisionIndex}:${optionIndex}`],
+                        outcome.answers![`${decisionIndex}:${optionIndex}`],
                       ]),
                     )
                   : undefined,
-              reason:
-                outcome?.reason ||
-                (selected ? "" : "Missing, conflicting, or unresolved Decisions answer; using System"),
+              reason: selected ? "" : "Missing, conflicting, or unresolved Decisions answer; using System",
             };
-            if (selected)
-              traces[index].result = {
-                outcome: selected,
-                source: "decisions",
-                evidenceIds: check.evidence.filter((line) => line.current).map((line) => line.id),
-                reason: "",
-              };
+            if (selected) {
+              const candidate = candidates.get(check)!.find((item) => item.outcome === selected)!;
+              const result = boundDecisionResult(check, candidate);
+              if (validDecisionEvidence(check, result)) traces[index].result = result;
+              else traces[index].decisions.reason = "Decision evidence or outcome requires System validation";
+            }
           }
         }
         for (const [index, check] of checks.entries())
-          if (settings.decisionsEnabled && check.decisionEligible === false)
-            traces[index].decisions.reason = check.decisionReason || "Open-ended extraction uses System";
+          if (settings.decisionsEnabled && !candidates.get(check))
+            traces[index].decisions.reason =
+              check.decisionReason || "Complete witnessed evidence does not fit a narrow Decision; using System";
         // Independently positive alternatives for one actor are contradictory targets, not permission for every room.
         for (const [index, check] of checks.entries()) {
           const actor = asRecord(check.facts).actorId;
@@ -180,7 +179,7 @@ export function createInterpretation(ports: InterpretationPorts) {
         if (pending.length) {
           const native = await venueCheckpoint(
             `${stage}-system`,
-            bindCallback(() => nativeResolver(pending, venueOperationSignal())),
+            bindCallback(() => nativeResolver(pending, signal)),
           );
           for (const [index, check] of checks.entries()) {
             const result = native[pending.findIndex((item) => item.id === check.id)];
@@ -190,6 +189,7 @@ export function createInterpretation(ports: InterpretationPorts) {
             }
           }
         }
+        signal?.throwIfAborted();
         if (sceneId) await writeInterpretationDiagnostics(sceneId, traces).catch(() => {});
         return { results: traces.map((trace) => trace.result), traces, settings, checks };
       }),
@@ -206,7 +206,7 @@ export function createInterpretation(ports: InterpretationPorts) {
       system: { status: "not-requested", reason },
       result: { outcome: "none", source: "system", evidenceIds: [], reason },
       applied: "Skipped by narration routing; no interpretation request",
-      startedAt: new Date().toISOString(),
+      startedAt: villageNow().toISOString(),
     }));
     for (const check of selection.checks)
       traces.push({
@@ -223,7 +223,7 @@ export function createInterpretation(ports: InterpretationPorts) {
           reason: selection.reasons.get(check.id) ?? "",
         },
         applied: "Selected for verification",
-        startedAt: new Date().toISOString(),
+        startedAt: villageNow().toISOString(),
       });
     if (traces.length) await writeInterpretationDiagnostics(sceneId, traces);
   }

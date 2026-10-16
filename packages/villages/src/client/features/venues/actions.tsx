@@ -5,9 +5,10 @@ import { destinationPlaces, freshRowKey } from "../../shared/presentation.js";
 import type { MenuPage } from "../../shared/types.js";
 import { venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-exploration.js";
-import { type SetStateAction, useCallback } from "react";
+import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
 
 export function useOpenVenue(ports: {
+  openPlace: (place: VillageVenue) => void;
   explorationOrigin: React.RefObject<HTMLElement>;
   explorationReturnTab: React.RefObject<ExplorationTab>;
   setExploreSheet: React.Dispatch<SetStateAction<ExplorationSheet>>;
@@ -23,24 +24,31 @@ export function useOpenVenue(ports: {
     explorationReturnTab,
     setExploreSheet,
     setMovePrivateZoneId,
-    setOpenPlaceId,
     setPlayerMovePrivateZoneId,
-    setScreen,
+    openPlace,
   } = ports;
-  return useCallback((place: VillageVenue) => {
-    setPlayerMovePrivateZoneId("");
-    setMovePrivateZoneId("");
-    setExploreSheet(null);
-    if (!(document.activeElement instanceof HTMLHeadingElement)) {
-      explorationReturnTab.current = "map";
-      explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    }
-    setOpenPlaceId(place.id);
-    setScreen("home");
-  }, []);
+  return useCallback(
+    (place: VillageVenue) => {
+      setPlayerMovePrivateZoneId("");
+      setMovePrivateZoneId("");
+      setExploreSheet(null);
+      if (!(document.activeElement instanceof HTMLHeadingElement)) {
+        explorationReturnTab.current = "map";
+        explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      }
+      openPlace(place);
+    },
+    [openPlace],
+  );
 }
 
 export function useLeaveVenue(ports: {
+  screen?: string;
+  venueId?: string | null;
+  element?: HTMLElement;
+  explorationOrigin?: React.RefObject<HTMLElement>;
+  explorationReturnTab?: React.RefObject<ExplorationTab>;
+  venueReturnTo?: "home" | "menu" | "room" | "person";
   setExploreSheet: React.Dispatch<SetStateAction<ExplorationSheet>>;
   setOpenPlaceId: React.Dispatch<SetStateAction<string>>;
   setScreen: React.Dispatch<
@@ -71,7 +79,32 @@ export function useLeaveVenue(ports: {
     setVenueProposalDraft,
     setVenueZoneKey,
   } = ports;
+  const focusSelector = useRef("");
+  useLayoutEffect(() => {
+    if (ports.screen !== "home" || !focusSelector.current) return;
+    const element = ports.element;
+    if (!element) return;
+    const restore = () => {
+      if (!focusSelector.current) return true;
+      const target = element.querySelector<HTMLElement>(focusSelector.current);
+      if (!target) return false;
+      target.focus({ preventScroll: true });
+      focusSelector.current = "";
+      return true;
+    };
+    if (restore()) return;
+    // Map pins arrive after the image has loaded and its geometry has been measured.
+    const observer = new MutationObserver(() => {
+      if (restore()) observer.disconnect();
+    });
+    observer.observe(element, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [ports.screen, ports.element]);
   return useCallback(() => {
+    const pinId =
+      ports.explorationReturnTab?.current === "map"
+        ? ports.venueId
+        : ports.explorationOrigin?.current?.getAttribute("data-pin-id");
     setExploreSheet(null);
     setVenueId(null);
     setVenuePage("view");
@@ -79,8 +112,12 @@ export function useLeaveVenue(ports: {
     setVenueEditDraft(null);
     setVenueProposalDraft(null);
     setOpenPlaceId(null);
-    setScreen("home");
-  }, []);
+    setScreen(ports.venueReturnTo ?? "home");
+    if (!ports.venueReturnTo || ports.venueReturnTo === "home")
+      focusSelector.current = pinId
+        ? `[data-pin-id="${CSS.escape(pinId)}"]`
+        : `[data-explore-tab="${ports.explorationReturnTab?.current ?? "map"}"]`;
+  }, [ports.venueReturnTo, ports.venueId]);
 }
 
 export function useAddVenue(ports: { setVenueEditDraft: React.Dispatch<SetStateAction<VillageVenue>> }) {
@@ -242,14 +279,14 @@ export function useDecideVenueRequest(ports: {
   snapshot: VillageSnapshot;
   requestEdits: Record<
     string,
-    { name: string; classes: Array<"residence" | "workplace" | "gathering" | "other">; description: string }
+    { name: string; classes: Array<"residence" | "workplace" | "community" | "other">; description: string }
   >;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setRequestEdits: React.Dispatch<
     SetStateAction<
       Record<
         string,
-        { name: string; classes: Array<"residence" | "workplace" | "gathering" | "other">; description: string }
+        { name: string; classes: Array<"residence" | "workplace" | "community" | "other">; description: string }
       >
     >
   >;

@@ -1,0 +1,40 @@
+# Scene response recovery
+
+Scene turns request JSON-object responses. The current Engine interface forwards the requested format but does not advertise whether a selected endpoint enforces strict schemas. Villages does not switch arbitrary connections to strict-schema mode or issue fallback requests.
+
+The Scene extractor accepts a single object with optional surrounding prose or a Markdown fence. It can remove trailing commas after complete values and encode literal newlines, carriage returns and tabs inside strings. It never guesses quotation boundaries, supplies values or closes incomplete dialogue. Multiple objects, duplicate keys, missing collection members and mismatched delimiters are rejected. Recovered objects still pass the ordinary Scene, witness and effect validation. Existing recovery of complete narration preceding truncated metadata remains available; duplicate tail keys are refused.
+
+On parser rejection, the draft and explicit-retry rules remain unchanged. No automatic paid repair request is made. Private package document villages-rejected-responses (kind private-diagnostics) keeps the latest five rejected replies across Scenes, each with at most 24,000 characters of redacted response text (head and tail for larger responses), syntax-error detail, model/connection identity, finish reason and Scene/operation/attempt/stage identities. Prompts and connection configuration are excluded. This bounded record is server-only, is overwritten as failures accumulate, and has no public route or model-prompt consumer. It persists across restart until replaced or the package's saved data is reset; it has no time-based expiry. Redaction is defense in depth, not a guarantee that story text contains no private information.
+
+Sound-witness validation uses the same bounded private rejection record. Invalid sound metadata reports a structural reason such as fragment-count, fragment-id or fragment-emission separately from unsupported hearing. These failures describe generated metadata, not a restriction on the player's vocabulary or ordinary dialogue. Acoustic responses receive one complete JSON illustration using the current fragment IDs instead of the ordinary examples that omit sound metadata. This reduces conflicting format guidance without relaxing witness checks or adding a repair call.
+
+Player physical sounds cite their completed narration through `attentionWitnesses.segment`; `acousticEvents` describes separate resident-generated sounds. The syntax illustration includes completed sound narration and its exact indexes, including mixed speech/sound inputs and scenes with no local residents. A missing or invalid sound narration reference reports that the generated reply did not link the sound to its action; the turn remains unapplied. This does not establish a provider's compliance rate.
+
+Diagnostics are best effort and cannot make a rejected response replayable. A diagnostics write failure leaves the original rejection intact and logs only a generic warning. Provider-free regression fixtures cover syntax recovery, ambiguous refusals, bounded retention, public recovery summaries and explicit-only request recovery. These checks do not establish a provider's JSON-conformance rate.
+
+
+## Lost turn connections
+
+A failed connection can outlive the browser request while the server finishes a turn. Villages retains the submission identity and reconciles saved receipts using reads only. It checks while visible for up to one minute, then offers Check saved reply; returning to the page or reconnecting also checks. A missing operation is not proof of success. Matching saved receipts establish completion; matching failed operations establish failure. Clarifications must match both the submitted text and submission identity. No reconciliation read sends a turn or buys another interpretation.
+
+Late replies preserve newer composer edits, including edits with the same text, and retain the reading position. Pending reconciliation allows draft editing but blocks submission until the outcome is established. Confirmed failures retain the draft and the existing explicit retry controls.
+
+## Hearing evidence and sound presentation
+
+Remote memories cite the exact audible speech fragments. The full player input remains local-only. A full-input citation can be normalized only when one understood speech fragment exactly covers the complete input and every proposed knower understood it. Partial speech, private thoughts, unseen actions and unsupported claims remain subject to strict rejection. Residents know their authored words; this does not give them surrounding unseen narration. Historical rejected receipts are not rewritten or retried on upgrade.
+
+Offscreen sound projections stay anonymous and appear beside their originating event. Inserting a projection remaps citations, resident movement timing, and side/whisper anchors together. Local visible sound narration does not receive an extra projection. Ordinary clanks and mechanical movement default to ordinary delivery in generation instructions; exceptional delivery is reserved for explicitly extreme events. This instruction improves guidance but does not establish provider compliance or infer acoustic success from prose.
+
+## Effect metadata validation
+
+Compact replies may omit unused relationship arrays. Supplied rows still require their documented fields: `ordinary` and `disclosed` are booleans, while `reason` is a separate grounded explanation. Invalid rows retain the accepted dialogue and fail only their own domain; validation identifies the field and required type.
+
+Canonical decimal citation strings such as `"0"` are normalized to current segment indexes before captured player speech is inserted and references are remapped. Supplied earlier evidence IDs take precedence. Signed, fractional, padded and out-of-range strings are not guessed, clamped or discarded. Witness checks still require every affected resident to have perceived every citation.
+
+System verification records why it stopped: invalid witnesses/evidence, changed memory references, context/output budget, request failure, incomplete results, or unsupported evidence. Scene error details show fixed, safe causes and field paths rather than provider output, private evidence or witness identities. Replay never buys a new interpretation; interpretation retries remain explicit. Existing historical failed payloads are not rewritten by installation.
+
+## Response timings
+
+Replies remain checked before display. Private saved diagnostics include bounded per-execution server timings, checkpoint reuse and the existing provider request metrics. Stage spans may nest and must not be summed as total response time. The current browser tab retains at most twenty send-origin timing records for response receipt, recovery and display; these contain IDs and durations only and clear with the tab session. Historical transcript reads do not create send timings. Progress reads expose plain operation stages without initiating model work.
+
+Acoustic prompts omit redundant routing-span fields and unused recap output while retaining exact sources, eligible sound/word listeners, witness checks and output limits. No model, reasoning setting, paid retry policy or permission timing is changed. Provider-free tests measure structural behavior and call counts; actual provider latency improvements require separately authorized observation.

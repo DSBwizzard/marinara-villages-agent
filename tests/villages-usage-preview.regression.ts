@@ -109,7 +109,7 @@ const state = coerceVillageState({
   wishSystemVersion: 3,
   seed: "seed",
   setting: "Village",
-  venues: [{ id: "park", name: "Park", classes: ["gathering"], form: "Park" }],
+  venues: [{ id: "park", name: "Park", classes: ["community"], form: "Park" }],
   villagers: [
     {
       characterId: "a",

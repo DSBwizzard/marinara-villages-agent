@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
@@ -83,7 +84,7 @@ export function createResidences(ports: ResidencePorts) {
         characterId,
         status: "pending",
         proposedVenueId,
-        requestedAt: new Date().toISOString(),
+        requestedAt: villageNow().toISOString(),
         requestedBy,
         villagerDecision: "pending",
       };
@@ -154,7 +155,7 @@ export function createResidences(ports: ResidencePorts) {
   async function completeVillageResidence(
     characterValue: unknown,
     force = false,
-    now = new Date(),
+    now = villageNow(),
     queueAdaptation = true,
   ): Promise<VillageSnapshot> {
     const characterId = residenceCharacterId(characterValue);
@@ -392,7 +393,7 @@ export function createResidences(ports: ResidencePorts) {
         currentVenue?.layoutVersion === 1
           ? [...new Map([...current.state.features, ...features].map((feature) => [feature.id, feature])).values()]
           : features;
-      current.state.updatedAt = new Date().toISOString();
+      current.state.updatedAt = villageNow().toISOString();
       current.adaptationPending = false;
     },
   };

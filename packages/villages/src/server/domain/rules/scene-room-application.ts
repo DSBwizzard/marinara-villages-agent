@@ -1,3 +1,4 @@
+import { validDecisionEvidence } from "./decision-candidates.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -27,6 +28,10 @@ export function applyInterpretedRoomEvents(
     trace.applied =
       result.outcome === "unresolved" ? "Unresolved; no new permission or movement was inferred" : "No new room event";
     if (["none", "unresolved"].includes(result.outcome)) continue;
+    if (!validDecisionEvidence(batch.checks[index], result)) {
+      trace.applied = "Rejected: Decision evidence is missing or changed";
+      continue;
+    }
     if (!venue || !zone || zoneClosed(village, venue, zone) || !canInviteToZone(venue, zone, actor)) {
       trace.applied = "Rejected: current Zone authority or availability did not validate";
       continue;

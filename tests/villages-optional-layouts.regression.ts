@@ -71,7 +71,7 @@ function draft(layout: string, role = "residence", owner = "a") {
               ownerId: owner,
               name: "Private Space",
               purpose: "A sleeping chamber occupying the selected interior",
-              controllerIds: role === "other" || role === "gathering" ? ["a"] : [],
+              controllerIds: role === "other" || role === "community" ? ["a"] : [],
             },
           ]
         : [],
@@ -85,7 +85,7 @@ function place(layout: string, role = "residence", owner = "a"): VillageVenue {
   return coerceVillageState({ wishSystemVersion: 3, venues: [parsed] }).venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
-  for (const role of ["residence", "workplace", "gathering", "other"]) {
+  for (const role of ["residence", "workplace", "community", "other"]) {
     const venue = place(layout, role, role === "residence" ? "a" : "");
     const expected =
       1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both");
@@ -274,6 +274,7 @@ async function main() {
       baseZones: [
         {
           id: "common:shelter",
+          connectedTo: ["exterior"],
           name: "Common Space",
           kind: "shared-residence",
           venueClass: "residence",
@@ -328,6 +329,7 @@ async function main() {
       baseZones: [
         {
           id: "private:nook",
+          connectedTo: ["exterior"],
           name: "Sleeping nook",
           kind: "private-residence",
           venueClass: "residence",
@@ -377,6 +379,7 @@ async function main() {
         zones: [
           {
             name: "Vacant chamber",
+            connectedTo: ["exterior"],
             description: "",
             purpose: "Sleeping chamber",
             kind: "private-residence",

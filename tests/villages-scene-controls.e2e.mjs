@@ -1,3 +1,4 @@
+import { openSceneErrors } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -72,15 +73,33 @@ try {
         ],
         submissions: [],
       };
+      fixture.venueRequests = [
+        {
+          id: "request",
+          requesterName: "Mara",
+          venueDraft: { name: "Workshop", category: "destination", classes: ["workplace"] },
+        },
+      ];
       let turns = 0;
+      let failDecisionSave = true;
       await page.route("**/api/villages**", async (route) => {
         const path = new URL(route.request().url()).pathname;
         let value = fixture;
         if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
-        else if (path.endsWith("/interpretation-settings"))
+        else if (
+          path.endsWith("/interpretation-settings") &&
+          route.request().method() === "PATCH" &&
+          failDecisionSave
+        ) {
+          failDecisionSave = false;
+          return route.fulfill({ status: 500, json: { error: "Server could not persist the Decisions setting." } });
+        } else if (path.endsWith("/interpretation-settings"))
           value = { settings: { decisionsEnabled: false, compareSystem: true }, status: { available: false } };
         else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
-        else if (path.endsWith("/rooms/turn")) {
+        else if (path.endsWith("/rooms/end")) {
+          session.status = "closed";
+          value = { session, recordEvents: [] };
+        } else if (path.endsWith("/rooms/turn")) {
           turns++;
           const { message } = route.request().postDataJSON();
           session.lines.push({ id: "player", role: "user", speakerId: "", name: "", content: message, at: now });
@@ -119,16 +138,17 @@ try {
       await composer.fill("Tea sounds perfect.");
       await page.getByRole("button", { name: "Previous paragraph" }).click();
       await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("Rain taps");
-      await expect(composer).toHaveValue("Tea sounds perfect.");
-      await expect(send).toBeDisabled();
+      await expect(composer).toHaveCount(0);
+      await expect(send).toHaveCount(0);
       await page.getByRole("button", { name: "History", exact: true }).click();
       await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
-      await composer.fill("A draft while reading history.");
-      await expect(send).toBeDisabled();
+      await expect(composer).toHaveCount(0);
+      await expect(send).toHaveCount(0);
       await page.getByRole("button", { name: "Hide history" }).click();
       await page.getByRole("button", { name: "Next paragraph" }).click();
       await expect(send).toBeEnabled();
+      await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
       for (const mode of ["Say / Do", "Move", "Contact", "Conclude"])
         await expect(page.getByRole("menuitemradio", { name: mode, exact: true })).toBeVisible();
@@ -142,9 +162,66 @@ try {
       assert.equal(await dock.getByRole("button", { name: /Mailbox|Projects|Proposals/ }).count(), 0);
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
       await expect(page.getByRole("switch", { name: "Use Decisions" })).toBeVisible();
+      const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
+      await decisionSwitch.click();
+      await expect(page.getByRole("button", { name: "1 Scene error", exact: true })).toBeVisible();
+      await expect(page.getByText("The switch could not be saved.", { exact: false })).toHaveCount(0);
+      const settingsErrors = await openSceneErrors(page);
+      await expect(settingsErrors).toContainText("Server could not persist the Decisions setting.");
+      await page.keyboard.press("Escape");
+      await expect(settingsErrors).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Close Scene settings" })).toBeVisible();
+      await openSceneErrors(page);
+      const closeSettings = page.getByRole("button", { name: "Close Scene settings" });
+      await closeSettings.focus();
+      await closeSettings.press("Enter");
+      await expect(page.getByRole("button", { name: "1 Scene error", exact: true })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
+      await decisionSwitch.click();
+      await expect(page.getByRole("button", { name: "1 Scene error", exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "Close Scene settings" }).click();
 
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      const draftBeforeVenue = await composer.inputValue();
+      await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
+      const venueProfile = page.locator("." + tag + "-venue-profile");
+      await expect(venueProfile).toBeVisible();
+      for (const section of ["About", "Zones", "Manage"]) {
+        await page
+          .getByRole("navigation", { name: "Venue sections" })
+          .getByRole("button", { name: section, exact: true })
+          .click();
+        await expect(venueProfile).toBeVisible();
+      }
+      await venueProfile.getByRole("button", { name: "Back to Scene", exact: true }).click();
+      await expect(composer).toHaveValue(draftBeforeVenue);
+      if (home) {
+        await page.getByRole("button", { name: "Venue actions" }).click();
+        await page.getByRole("menuitem", { name: "View Mailbox" }).click();
+        const mailbox = page.getByRole("dialog", { name: "Mailbox", exact: true });
+        await expect(mailbox.getByRole("button", { name: "Review request" })).toBeEnabled();
+        await mailbox.getByRole("button", { name: "Close", exact: true }).click();
+      }
+
+      for (const menu of ["Projects", "Proposals"]) {
+        await page.getByRole("button", { name: "Venue actions" }).click();
+        await page.getByRole("menuitem", { name: menu, exact: true }).click();
+        await expect(page.locator("." + tag + "-room-screen")).toBeHidden();
+        await expect(page.locator("." + tag + "-home")).toHaveCount(0);
+        await page.getByRole("button", { name: "Back to menu", exact: true }).click();
+        await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+        await expect(composer).toHaveValue(draftBeforeVenue);
+      }
+
       if (mobile) {
+        // The retained Scene remeasures after returning from a menu.
+        await page.evaluate(
+          () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        );
         const baseline = await images.evaluateAll((nodes) =>
           nodes.map((node) => {
             const { x, y, width, height } = node.getBoundingClientRect();
@@ -250,6 +327,10 @@ try {
         });
       await composer.fill("Ready to send.");
       await send.click();
+      await expect.poll(() => turns).toBe(1);
+      await expect(page.getByRole("region", { name: "Current paragraph" })).toBeVisible();
+      while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
+        await page.getByRole("button", { name: "Next paragraph" }).click();
       await expect(composer).toHaveValue("");
       assert.equal(turns, 1);
       if (count === 4) {
@@ -266,7 +347,9 @@ try {
         );
       } else {
         await page.getByRole("button", { name: "Venue actions" }).click();
-        await page.getByRole("menuitem", { name: "Proposals", exact: true }).click();
+        await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
+        await page.getByRole("button", { name: "Venue actions" }).click();
+        await page.getByRole("menuitem", { name: "Return to map", exact: true }).click();
         await expect(host).not.toHaveAttribute("data-scene-play", "");
         assert.equal(await host.evaluate((el) => el.style.getPropertyValue("--villages-scene-canvas-height")), "");
       }

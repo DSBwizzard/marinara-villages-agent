@@ -15,6 +15,12 @@ import { assertVenueOwnership } from "../packages/villages/src/server/adapters/o
 
 const records = new Map<string, any>();
 const documents = {
+  async create(input: any) {
+    if (records.has(input.id)) throw new Error("duplicate document");
+    const row = { ...structuredClone(input), revision: 1 };
+    records.set(input.id, row);
+    return structuredClone(row);
+  },
   async getById(_packageId: string, id: string) {
     return structuredClone(records.get(id) ?? null);
   },
@@ -392,6 +398,29 @@ async function main() {
       () => coordinateVenue("validation", "expired", "turn", {}, 0, undefined, () => paid()),
       (error: any) => error.statusCode === 410,
     );
+    seed("spinoff-owned");
+    row("spinoff-owned").data.spinoff = { status: "running" };
+    await assert.rejects(
+      () =>
+        coordinateVenue("spinoff-owned", "blocked", "turn", {}, 0, undefined, async () =>
+          assert.fail("a Village turn must not run while Engine owns its spinoff"),
+        ),
+      /spinoff/,
+    );
+    seed("timed");
+    await coordinateVenue("timed", "timed-turn", "turn", {}, 0, undefined, async () => {
+      await venueCheckpoint("reply", async () => "saved");
+      await venueCheckpoint("reply", async () => assert.fail("completed checkpoint must be reused"));
+      row("timed").data.submissions.push({ id: "timed-turn" });
+    });
+    const timing = row("timed").data.submissions[0].timing;
+    assert(timing.elapsedMs >= 0);
+    assert(timing.startedAt && timing.completedAt && timing.attemptId);
+    assert.deepEqual(
+      timing.stages.map((stage: any) => stage.reused),
+      [false, true],
+    );
+    assert(timing.stages.every((stage: any) => stage.elapsedMs >= 0));
     console.log("villages-venue-coordinator: ok");
   } finally {
     release();

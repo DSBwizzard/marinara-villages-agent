@@ -1,7 +1,9 @@
+import { observeVillageClock, resolveVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import {
   recordExistingProjectSource,
   recordProjectSpokenEvidence,
 } from "../packages/villages/src/server/features/projects/project-evidence.js";
+import { fixtureLocalAttention, fixtureAcousticModel } from "./fixtures/villages-attention.fixture.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
@@ -34,7 +36,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import {
   enterVenue,
   greetVenue,
-  sendVenueTurn,
+  sendVenueTurn as sendVenueTurnRaw,
   moveVenueZone,
   endVenueSession,
   recoverVenueSceneWork,
@@ -49,11 +51,48 @@ import { buildVillageSnapshot } from "../packages/villages/src/server/features/w
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
+// Legacy writer fixtures exercise current Zone routing with their admitted v1 writing contract.
+// The sparse/packaged suites cover newly admitted reference-only writing.
+async function sendVenueTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {
+  const row = records.get("villages-venue-visit-" + input.sessionId);
+  const scene = row?.data;
+  if (
+    scene &&
+    (!scene.operation || scene.operation.status === "complete") &&
+    scene.operation?.id !== input.submissionId
+  ) {
+    scene.operation = {
+      id: input.submissionId,
+      kind: "turn",
+      status: "complete",
+      input: {
+        message: input.message,
+        mode: input.mode,
+        targetId: input.targetId,
+        ...(input.contact ? { contact: input.contact } : {}),
+        ...(input.attentionChoice ? { attentionChoice: input.attentionChoice } : {}),
+        interactionScopeVersion: 6,
+        writingContractVersion: 1,
+      },
+      token: "fixture-admission",
+      attemptId: "fixture-admission",
+      stage: "admission",
+      startedAt: new Date().toISOString(),
+      sceneRevision: scene.sceneRevision,
+      snapshot: null,
+      checkpoints: {},
+      attempts: {},
+      error: "",
+    };
+  }
+  return sendVenueTurnRaw(input);
+}
+
 const now = new Date(),
   stamp = now.toISOString(),
   dateKey = agendaDateKey(now),
   weekday = now.toLocaleDateString("en-US", { weekday: "long" });
-function venue(id: string, classes: VillageVenue["classes"] = ["gathering"]): VillageVenue {
+function venue(id: string, classes: VillageVenue["classes"] = ["community"]): VillageVenue {
   return {
     id,
     name: id,
@@ -143,8 +182,8 @@ home.playerInvitations = [
 old.venues = [cafe, home];
 old.narrativeItems = [{ venueId: "cafe", zoneId: "exterior", itemName: "made-up flower" }];
 old.villagers = [
-  villager("chef", "cafe", "gathering"),
-  villager("guest", "cafe", "gathering"),
+  villager("chef", "cafe", "community"),
+  villager("guest", "cafe", "community"),
   villager("resident", "home", "private:resident", "Sleeping"),
 ];
 const migrated = coerceVillageState(old);
@@ -154,8 +193,8 @@ assert.deepEqual(
   "migration is repeatable",
 );
 assert.equal(migrated.narrativeItems[0]!.zoneId, "exterior", "narrative item boundaries persist");
-assert.deepEqual(migrated.venues[0]!.baseClasses, ["gathering"]);
-assert.ok(resolveVenueZone(migrated.venues[0]!, "gathering")!.state.items.includes("legacy bench"));
+assert.deepEqual(migrated.venues[0]!.baseClasses, ["community"]);
+assert.ok(resolveVenueZone(migrated.venues[0]!, "community")!.state.items.includes("legacy bench"));
 assert.equal(migrated.venues[1]!.playerInvitations![0]!.zoneId, "private:resident");
 assert.equal(resolveVenueZone(migrated.venues[1]!, "private:resident")!.seen, true);
 assert.equal(
@@ -166,7 +205,7 @@ assert.equal(chooseAgendaZone(migrated.venues[1]!, "resident", "Sleeping").id, "
 assert.equal(chooseAgendaZone(migrated.venues[1]!, "guest", "Sleeping", "private:resident").id, "exterior");
 const cap = structuredClone(migrated);
 const capped = cap.venues[0]!;
-capped.baseClasses = ["gathering"];
+capped.baseClasses = ["community"];
 capped.improvements = [
   {
     id: "kitchen",
@@ -179,7 +218,7 @@ capped.improvements = [
   },
   null,
 ];
-assert.deepEqual(effectiveVenueClasses(capped), ["gathering", "workplace"]);
+assert.deepEqual(effectiveVenueClasses(capped), ["community", "workplace"]);
 assert.throws(
   () =>
     draftRenovationProject(cap, "cafe", {
@@ -211,7 +250,7 @@ playerHome.venues[1]!.occupancy.residentCharacterId = null;
 playerHome.venues[1]!.occupancy.playerHome = true;
 assert.throws(
   () =>
-    draftRenovationProject(playerHome, "home", { title: "Convert", detail: "Remove the home", classes: ["gathering"] }),
+    draftRenovationProject(playerHome, "home", { title: "Convert", detail: "Remove the home", classes: ["community"] }),
   /Residents must move/,
 );
 const discovery = structuredClone(migrated);
@@ -223,7 +262,7 @@ discovery.venues[0]!.improvements![0] = {
   approvedAt: stamp,
 };
 discovery.venues[0]!.zones!.push({
-  ...defaultVenueSpace("gathering", "Hidden zone details"),
+  ...defaultVenueSpace("community", "Hidden zone details"),
   id: "unseen-zone",
   name: "Unseen room",
   kind: "public",
@@ -292,120 +331,138 @@ const release = configureVillagesRuntime({
   },
   languageModels: {
     async resolveForRequest() {
-      return {
-        model: "fixture",
-        maxOutputTokens: 4096,
-        fitContext(messages: any[], options: any) {
-          return { messages, ...options };
-        },
-        async chatComplete(messages: any[]) {
-          if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
-            const checks = fixtureInterpretationChecks(messages[1].content);
-            return {
-              content: JSON.stringify({
-                results: checks.map((check: any) => {
-                  const current = check.evidence.filter((line: any) => line.current && line.speakerId === "chef");
-                  const text = current.map((line: any) => line.content).join(" ");
-                  const outcome =
-                    check.facts.zoneId === "stock" && text === "Come into the stockroom with me now."
-                      ? "invite-now"
-                      : check.facts.zoneId === "stock" && text === "Come back tomorrow and visit the stockroom."
-                        ? "invite-later"
-                        : "none";
-                  return {
-                    id: check.id,
-                    outcome,
-                    evidenceIds: current.map((line: any) => line.id),
-                    reason: "Labeled stockroom fixture",
-                  };
+      return fixtureAcousticModel(
+        {
+          model: "fixture",
+          maxOutputTokens: 4096,
+          fitContext(messages: any[], options: any) {
+            return { messages, ...options };
+          },
+          async chatComplete(messages: any[]) {
+            const attention = fixtureLocalAttention(messages);
+            if (attention) return attention;
+            if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
+              const checks = fixtureInterpretationChecks(messages[1].content);
+              return {
+                content: JSON.stringify({
+                  results: checks.map((check: any) => {
+                    const current = check.evidence.filter((line: any) => line.current && line.speakerId === "chef");
+                    const text = current.map((line: any) => line.content).join(" ");
+                    const outcome =
+                      check.facts.zoneId === "stock" && text === "Come into the stockroom with me now."
+                        ? "invite-now"
+                        : check.facts.zoneId === "stock" && text === "Come back tomorrow and visit the stockroom."
+                          ? "invite-later"
+                          : "none";
+                    return {
+                      id: check.id,
+                      outcome,
+                      evidenceIds: current.map((line: any) => line.id),
+                      reason: "Labeled stockroom fixture",
+                    };
+                  }),
                 }),
-              }),
-              finishReason: "stop",
-            };
-          }
-          paidCalls++;
-          if (nominatedMovement)
-            return {
-              content: JSON.stringify({
-                heardPlayerBy: [],
-                segments: [{ kind: "narration", text: "Use Move to change Zones.", heardBy: [] }],
-                movementIntent: nominatedMovement,
-                // Invented social effects on a movement candidate must never be applied.
-                memoryChanges: [{ kind: "durable", text: "Unwarranted movement memory" }],
-                relationshipChanges: { changes: [{ fromId: "chef", toId: "player", strength: "major" }] },
-              }),
-              finishReason: "stop",
-            };
-          if (replyGate) {
-            const gate = replyGate;
-            replyGate = null;
-            signalReplyStarted?.();
-            await gate;
-          }
-          lastPrompt = messages.map((message) => message.content).join("\n");
-          const audience = (lastPrompt.match(/The residents currently here are: ([^.]*)\./)?.[1] ?? "")
-            .split(", ")
-            .filter(Boolean);
-          if (response === "depart-chef") {
-            const quote = "I am heading out of the Venue now.";
-            return {
-              content: JSON.stringify({
-                heardPlayerBy: audience,
-                segments: [{ kind: "dialogue", speakerId: "chef", text: quote, heardBy: audience }],
-                departures: [{ speakerId: "chef", quote }],
-              }),
-              finishReason: "stop",
-            };
-          }
-          if (response === "project-builder" || response === "project-plan" || response === "project-handoff")
-            return {
-              content: JSON.stringify({
-                heardPlayerBy: audience,
-                segments: [
-                  {
-                    kind: "dialogue",
-                    speakerId: "chef",
-                    text:
-                      response === "project-builder"
-                        ? "I will build Timber Workshop."
-                        : response === "project-plan"
-                          ? "Structure: timber; Equipment: not needed; Finish: not needed."
-                          : "Here is timber for Timber Workshop.",
-                    heardBy: audience,
-                  },
-                ],
-              }),
-              finishReason: "stop",
-            };
-          const quote =
-            response === "invite-later"
-              ? "Come back tomorrow and visit the stockroom."
-              : "Come into the stockroom with me now.";
-          return {
-            content: JSON.stringify(
-              response !== "ordinary"
-                ? {
-                    heardPlayerBy: audience,
-                    segments: [{ kind: "dialogue", speakerId: inviterId, text: quote, heardBy: audience }],
-                    invitation: {
-                      speakerId: inviterId,
-                      venueId: "cafe",
-                      zoneId: "stock",
-                      scope: "shared",
-                      timing: response === "invite-later" ? "later" : "now",
-                      accompanies: true,
-                      quote,
+                finishReason: "stop",
+              };
+            }
+            paidCalls++;
+            if (nominatedMovement)
+              return {
+                content: JSON.stringify({
+                  heardPlayerBy: [],
+                  segments: [{ kind: "narration", text: "Use Move to change Zones.", heardBy: [] }],
+                  movementIntent: nominatedMovement,
+                  // Invented social effects on a movement candidate must never be applied.
+                  memoryChanges: [{ kind: "durable", text: "Unwarranted movement memory" }],
+                  relationshipChanges: { changes: [{ fromId: "chef", toId: "player", strength: "major" }] },
+                }),
+                finishReason: "stop",
+              };
+            if (replyGate) {
+              const gate = replyGate;
+              replyGate = null;
+              signalReplyStarted?.();
+              await gate;
+            }
+            lastPrompt = messages.map((message) => message.content).join("\n");
+            const audience = (lastPrompt.match(/The residents currently here are: ([^.]*)\./)?.[1] ?? "")
+              .split(", ")
+              .filter(Boolean);
+            if (response === "depart-chef") {
+              const quote = "I am heading out of the Venue now.";
+              return {
+                content: JSON.stringify({
+                  heardPlayerBy: audience,
+                  segments: [{ kind: "dialogue", speakerId: "chef", text: quote, heardBy: audience }],
+                  departures: [{ speakerId: "chef", quote }],
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (response === "project-builder" || response === "project-plan" || response === "project-handoff")
+              return {
+                content: JSON.stringify({
+                  heardPlayerBy: audience,
+                  segments: [
+                    {
+                      kind: "dialogue",
+                      speakerId: "chef",
+                      text:
+                        response === "project-builder"
+                          ? "I will build Timber Workshop."
+                          : response === "project-plan"
+                            ? "Structure: timber; Equipment: not needed; Finish: not needed."
+                            : "Here is timber for Timber Workshop.",
+                      heardBy: audience,
                     },
-                  }
-                : {
-                    heardPlayerBy: audience,
-                    segments: [{ kind: "narration", text: "The moment continues quietly.", heardBy: audience }],
-                  },
-            ),
-            finishReason: "stop",
-          };
+                  ],
+                }),
+                finishReason: "stop",
+              };
+            const quote =
+              response === "invite-later"
+                ? "Come back tomorrow and visit the stockroom."
+                : "Come into the stockroom with me now.";
+            return {
+              content: JSON.stringify(
+                response !== "ordinary"
+                  ? {
+                      heardPlayerBy: audience,
+                      segments: [{ kind: "dialogue", speakerId: inviterId, text: quote, heardBy: audience }],
+                      invitation: {
+                        speakerId: inviterId,
+                        venueId: "cafe",
+                        zoneId: "stock",
+                        scope: "shared",
+                        timing: response === "invite-later" ? "later" : "now",
+                        accompanies: true,
+                        quote,
+                      },
+                    }
+                  : {
+                      heardPlayerBy: audience,
+                      segments: [
+                        ...(messages[1]?.content === 'I whisper to chef: "A private stockroom conversation"'
+                          ? [
+                              {
+                                kind: "dialogue",
+                                speakerId: "player",
+                                text: "A private stockroom conversation",
+                                delivery: "whisper",
+                                targetId: "chef",
+                              },
+                            ]
+                          : []),
+                        { kind: "narration", text: "The moment continues quietly.", heardBy: audience },
+                      ],
+                    },
+              ),
+              finishReason: "stop",
+            };
+          },
         },
-      };
+        records,
+      );
     },
   },
 } as Parameters<typeof configureVillagesRuntime>[0]);
@@ -423,17 +480,25 @@ async function finishProject(projectId: string) {
 
 async function sceneAttendanceChecks() {
   const original = structuredClone(await readVillageState());
+  // This fixture intentionally jumps to an agenda boundary. Keep the real clock
+  // authority and explicitly accept both test-only changes, as the user would.
+  delete original.clock;
+  async function acceptFixtureClock() {
+    const clock = await observeVillageClock();
+    if (clock?.paused) await resolveVillageClock(clock.revision, "accept");
+  }
   const beforeBoundary = new Date(now);
   beforeBoundary.setHours(15, 59, 50, 0);
   mock.timers.enable({ apis: ["Date"], now: beforeBoundary.getTime() });
   try {
+    await acceptFixtureClock();
     await mutateVillageState((state) => {
       state.venues[0]!.workerIds = ["chef", "resident"];
       state.villagers.push(villager("late", "home", "exterior"));
       const locations = [
         ["cafe", "exterior", "home", "exterior"],
-        ["cafe", "gathering", "cafe", "exterior"],
-        ["cafe", "stock", "cafe", "gathering"],
+        ["cafe", "community", "cafe", "exterior"],
+        ["cafe", "stock", "cafe", "community"],
         ["home", "exterior", "cafe", "exterior"],
       ];
       state.villagers.forEach((person, index) => {
@@ -493,7 +558,7 @@ async function sceneAttendanceChecks() {
     await villagesRoutes(collector as any);
     const callsBeforeProjection = paidCalls;
     const preservedScene = structuredClone(scene);
-    const browserResponse = await routeHandlers.get("get /rooms/active")!({}, {});
+    const browserResponse = await routeHandlers.get("get /rooms/active")!({ method: "GET", url: "/rooms/active" }, {});
     assert.equal(browserResponse.session.sceneAttendance, undefined, "route responses hide the whole-Venue snapshot");
     assert.doesNotMatch(JSON.stringify(browserResponse), /captured activity resident/);
     assert.equal(scene.sceneAttendance!.occupants.length, 3, "projection cannot mutate durable attendance");
@@ -506,7 +571,10 @@ async function sceneAttendanceChecks() {
       data: { ...structuredClone(scene), id: archiveId, status: "closed", endedAt: stamp },
     });
     try {
-      const archiveResponse = await routeHandlers.get("get /rooms/archive/:id")!({ params: { id: archiveId } }, {});
+      const archiveResponse = await routeHandlers.get("get /rooms/archive/:id")!(
+        { method: "GET", url: "/rooms/archive/" + archiveId, params: { id: archiveId } },
+        {},
+      );
       assert.equal(
         archiveResponse.visit.sceneAttendance,
         undefined,
@@ -546,7 +614,7 @@ async function sceneAttendanceChecks() {
     await snapshotReplyStarted;
     mock.timers.setTime(beforeBoundary.getTime() + 70_000);
     await mutateVillageState((state) => {
-      state.villagers[0]!.agenda!.activeDay!.blocks[1]!.zoneId = "gathering";
+      state.villagers[0]!.agenda!.activeDay!.blocks[1]!.zoneId = "community";
     });
     assert.deepEqual((await activeVenueSession())!.activeIds, ["chef"], "an admitted reply retains its Scene audience");
     resumeSnapshotReply();
@@ -557,7 +625,7 @@ async function sceneAttendanceChecks() {
       sent.session.lines.every((line) => !line.heardBy.includes("late")),
       "later arrivals cannot witness speech",
     );
-    scene = await moveVenueZone(scene.id, "gathering");
+    scene = await moveVenueZone(scene.id, "community");
     assert.equal(scene.id, entered.id, "Zone movement continues the same Scene");
     assert.deepEqual(scene.activeIds, ["guest"], "first entry into a Zone uses Scene-start positions");
     scene = await moveVenueZone(scene.id, "exterior");
@@ -587,7 +655,7 @@ async function sceneAttendanceChecks() {
       "an empty Zone does not end a Scene with residents in other Zones",
     );
     response = "ordinary";
-    scene = await moveVenueZone(scene.id, "gathering");
+    scene = await moveVenueZone(scene.id, "community");
     assert.deepEqual(scene.activeIds, ["guest"]);
     scene = await moveVenueZone(scene.id, "exterior");
     assert.deepEqual(scene.activeIds, [], "Zone movement cannot resurrect a resident who left the Scene");
@@ -626,6 +694,7 @@ async function sceneAttendanceChecks() {
   } finally {
     response = "ordinary";
     mock.timers.reset();
+    await acceptFixtureClock();
     await mutateVillageState((state) => Object.assign(state, structuredClone(original)));
   }
 }
@@ -653,13 +722,13 @@ async function currentProjectZoneChecks() {
     initializeVenueAccess(shop);
     shop.access!.managerIds = ["chef"];
     fresh.venues = [shop];
-    fresh.villagers = [villager("chef", "cafe", "gathering"), villager("guest", "cafe", "gathering")];
+    fresh.villagers = [villager("chef", "cafe", "community"), villager("guest", "cafe", "community")];
     await mutateVillageState((current) => Object.assign(current, fresh));
-    visit = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "gathering")).id);
+    visit = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "community")).id);
     let state = await readVillageState();
     await mutateVillageState((current) => {
       resolveVenueZone(current.venues[0]!, "stock")!.state.items.push("timber");
-      resolveVenueZone(current.venues[0]!, "gathering")!.state.items.push("timber");
+      resolveVenueZone(current.venues[0]!, "community")!.state.items.push("timber");
     });
     await createNewVenueProject({
       name: "Timber Workshop",
@@ -719,7 +788,7 @@ async function currentProjectZoneChecks() {
         state.progressTasks.find((task) => task.definition.owner.id === timberProjectId)!.receipts,
       ),
       stock: [...resolveVenueZone(state.venues[0]!, "stock")!.state.items],
-      floor: [...resolveVenueZone(state.venues[0]!, "gathering")!.state.items],
+      floor: [...resolveVenueZone(state.venues[0]!, "community")!.state.items],
     };
     await assert.rejects(recordExistingProjectSource(timberProjectId, stockSource), /restricted or closed zone/);
     state = await readVillageState();
@@ -728,7 +797,7 @@ async function currentProjectZoneChecks() {
         sources: state.projects.find((entry) => entry.id === timberProjectId)!.lifecycle!.sources,
         receipts: state.progressTasks.find((task) => task.definition.owner.id === timberProjectId)!.receipts,
         stock: resolveVenueZone(state.venues[0]!, "stock")!.state.items,
-        floor: resolveVenueZone(state.venues[0]!, "gathering")!.state.items,
+        floor: resolveVenueZone(state.venues[0]!, "community")!.state.items,
       },
       beforeRestrictedSource,
       "discovering stock does not grant authority or mutate stock/progress",
@@ -776,7 +845,7 @@ async function currentProjectZoneChecks() {
     state = await readVillageState();
     assert.equal(resolveVenueZone(state.venues[0]!, "stock")!.state.items.includes("timber"), false);
     assert.ok(
-      resolveVenueZone(state.venues[0]!, "gathering")!.state.items.includes("timber"),
+      resolveVenueZone(state.venues[0]!, "community")!.state.items.includes("timber"),
       "current Project handoff and replay leave another Zone's identical item intact",
     );
     assert.ok(
@@ -793,7 +862,7 @@ async function currentProjectZoneChecks() {
     );
   } finally {
     response = "ordinary";
-    if (visit) await endVenueSession(visit.id);
+    if (visit) await discardVenueVisitDebug(visit.id);
     await mutateVillageState((current) => Object.assign(current, structuredClone(original)));
   }
 }
@@ -809,7 +878,16 @@ async function main() {
         title: "Kitchen",
         description: "A working kitchen",
         classContribution: "workplace",
-        zones: [{ name: "stock", kind: "staff", venueClass: "workplace", description: "A quiet stockroom." }],
+        zones: [
+          {
+            id: "stock",
+            connectedTo: ["community"],
+            name: "stock",
+            kind: "staff",
+            venueClass: "workplace",
+            description: "A quiet stockroom.",
+          },
+        ],
       },
     });
     let state = await readVillageState(),
@@ -831,16 +909,16 @@ async function main() {
       resolveVenueZone(shop, "stock")!.preparation = { status: "ready" };
       shop.workerIds = ["chef"];
       const block = current.villagers[0]!.agenda!.activeDay!.blocks[0]!;
-      block.zoneId = "gathering";
+      block.zoneId = "community";
     });
     state = await readVillageState();
     shop = state.venues[0]!;
-    assert.deepEqual(shop.classes, ["gathering", "workplace"]);
+    assert.deepEqual(shop.classes, ["community", "workplace"]);
     assert.equal(canOccupyZone(shop, resolveVenueZone(shop, "stock")!, "chef"), true);
     assert.equal(canOccupyZone(shop, resolveVenueZone(shop, "stock")!, "guest"), false);
     await sceneAttendanceChecks();
     await assert.rejects(() => enterVenue("cafe", undefined, "", undefined, "stock"), /invitation/);
-    let visit = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "gathering")).id);
+    let visit = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "community")).id);
     assert.deepEqual(visit.activeIds, ["chef", "guest"]);
     await assert.rejects(
       () => enterVenue("cafe", undefined, "", undefined, "exterior"),
@@ -876,7 +954,7 @@ async function main() {
       targetId: "guest",
       submissionId: "unauthorized",
     });
-    assert.equal(unauthorized.session.zoneId, "gathering");
+    assert.equal(unauthorized.session.zoneId, "community");
     await assert.rejects(() => moveVenueZone(visit.id, "stock"), /invitation/);
     inviterId = "chef";
     response = "ordinary";
@@ -907,7 +985,7 @@ async function main() {
       targetId: "chef",
       submissionId: "invite-stock",
     });
-    assert.equal(invited.session.zoneId, "gathering", "permission alone does not move the player");
+    assert.equal(invited.session.zoneId, "community", "permission alone does not move the player");
     assert.equal(invited.session.entryOffers?.[0]?.zoneId, "stock");
     const accepted = await moveVenueZone(visit.id, "stock");
     assert.deepEqual(
@@ -918,12 +996,12 @@ async function main() {
     response = "ordinary";
     await sendVenueTurn({
       sessionId: visit.id,
-      message: "A private stockroom conversation",
+      message: 'I whisper to chef: "A private stockroom conversation"',
       mode: "chat",
       targetId: "chef",
       submissionId: "stock-talk",
     });
-    await moveVenueZone(visit.id, "gathering");
+    await moveVenueZone(visit.id, "community");
     await sendVenueTurn({
       sessionId: visit.id,
       message: "Back on the cafe floor",
@@ -931,10 +1009,13 @@ async function main() {
       targetId: "",
       submissionId: "back-floor",
     });
-    assert.doesNotMatch(
-      lastPrompt,
-      /A private stockroom conversation/,
-      "the floor's new audience does not see the stockroom transcript",
+    const privateEvidence = JSON.parse(lastPrompt.match(/Earlier evidence: ([^\n]+)/)![1]).find(
+      (line: any) => line.text === "A private stockroom conversation",
+    );
+    assert.deepEqual(
+      privateEvidence?.heardBy,
+      ["chef"],
+      "private history remains attributed only to its actual witness",
     );
     const back = await moveVenueZone(visit.id, "stock");
     assert.equal(back.id, visit.id, "movement keeps the visit");
@@ -955,7 +1036,7 @@ async function main() {
     );
     state = await readVillageState();
     assert.ok(resolveVenueZone(state.venues[0]!, "stock")!.state.items.includes("cup"));
-    assert.equal(resolveVenueZone(state.venues[0]!, "gathering")!.state.items.includes("cup"), false);
+    assert.equal(resolveVenueZone(state.venues[0]!, "community")!.state.items.includes("cup"), false);
     await endVenueSession(visit.id);
     await assert.rejects(
       () => enterVenue("cafe", undefined, "", undefined, "stock"),
@@ -967,7 +1048,7 @@ async function main() {
       true,
       "discovery does not imply entry permission",
     );
-    visit = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "gathering")).id);
+    visit = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "community")).id);
     response = "invite-later";
     await sendVenueTurn({
       sessionId: visit.id,
@@ -981,7 +1062,7 @@ async function main() {
     const future = await enterVenue("cafe", undefined, "", undefined, "stock");
     assert.ok(future.grantedZoneIds?.includes("stock"));
     await endVenueSession(future.id);
-    const recoveringMove = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "gathering")).id);
+    const recoveringMove = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "community")).id);
     await mutateVillageState((current) => {
       current.venues
         .find((entry) => entry.id === "cafe")!
@@ -1007,10 +1088,56 @@ async function main() {
     assert.equal(recoveredMove.zoneId, "stock", "saved invitation authorizes completing the interrupted scene commit");
     assert.equal(paidCalls, callsBeforeMoveRecovery, "movement recovery spends no model calls");
     assert.equal(recoveredMove.operation?.status, "complete");
-    assert.equal(recoveredMove.submissions.filter((turn) => turn.movement).length, 1);
-    const recoveredTransition = recoveredMove.submissions.at(-1)!.movement!;
-    assert.equal(recoveredMove.lines.filter((line) => line.id === recoveredTransition.transitionLineId).length, 1);
-    assert.deepEqual(recoveredMove.submissions.at(-1)!.activeIdsAfterTurn, recoveredMove.activeIds);
+    assert.equal(recoveredMove.submissions.filter((turn) => turn.movement).length, 0);
+    assert.equal(recoveredMove.submissions.length, recoveringMove.submissions.length);
+    assert.deepEqual(recoveredMove.lines, recoveringMove.lines, "navigation adds no narration or reactions");
+    assert.equal(recoveredMove.navigationReceipts?.length, 1);
+    const publicZoneId = recoveringMove.zoneId!;
+    const receipt = recoveredMove.navigationReceipts![0]!;
+    const beforeFreeNavigation = structuredClone(recoveredMove);
+    let navigated = recoveredMove;
+    for (let index = 0; index < 11; index++) {
+      navigated = await moveVenueZone(
+        navigated.id,
+        index % 2 === 0 ? publicZoneId : "stock",
+        navigated.sceneRevision,
+        undefined,
+        `free-move-${index}`,
+      );
+    }
+    assert.equal(navigated.submissions.length, beforeFreeNavigation.submissions.length);
+    assert.deepEqual(navigated.lines, beforeFreeNavigation.lines);
+    assert.deepEqual(navigated.sceneAttendance, beforeFreeNavigation.sceneAttendance);
+    assert.equal(paidCalls, callsBeforeMoveRecovery, "unlimited navigation makes no provider calls");
+    assert.equal(
+      (await moveVenueZone(navigated.id, "stock", 0, undefined, receipt.id)).zoneId,
+      publicZoneId,
+      "stale completed replay returns current location",
+    );
+    await assert.rejects(
+      () => moveVenueZone(navigated.id, "exterior", navigated.sceneRevision, undefined, receipt.id),
+      /different Zone/,
+    );
+    const committed = records.get(`villages-venue-visit-${navigated.id}`)!;
+    committed.data.operation.status = "interrupted";
+    committed.data.operation.error = "completion save interrupted";
+    const receiptCount = navigated.navigationReceipts!.length;
+    navigated = await moveVenueZone(navigated.id, publicZoneId, 0, committed.data.operation.attemptId, "free-move-10");
+    assert.equal(navigated.operation?.status, "complete", "post-commit recovery settles the saved navigation");
+    assert.equal(navigated.navigationReceipts!.length, receiptCount, "post-commit recovery adds no navigation");
+    assert.deepEqual(navigated.lines, beforeFreeNavigation.lines);
+    assert.equal(paidCalls, callsBeforeMoveRecovery);
+    await assert.rejects(
+      () => moveVenueZone(navigated.id, "exterior", 0, undefined, "new-stale-navigation"),
+      /scene changed/i,
+    );
+    navigated = await moveVenueZone(
+      navigated.id,
+      "stock",
+      navigated.sceneRevision,
+      undefined,
+      "return-for-written-test",
+    );
     const capturedAttendance = structuredClone(recoveredMove.sceneAttendance);
     const callsBeforeWrittenMove = paidCalls;
     let written = await sendVenueTurn({
@@ -1019,7 +1146,7 @@ async function main() {
       mode: "chat",
       targetId: "",
       submissionId: "written-exterior",
-      expectedSceneRevision: recoveredMove.sceneRevision,
+      expectedSceneRevision: navigated.sceneRevision,
     });
     assert.equal(paidCalls, callsBeforeWrittenMove + 1, "Say / Do uses one local reply, not a movement operation");
     assert.equal(written.session.zoneId, "stock", "written movement cannot change Zone");
@@ -1046,7 +1173,7 @@ async function main() {
     assert.equal(mixed.session.zoneId, "stock", "mixed prose also stays local");
     await discardVenueVisitDebug(written.session.id);
     let candidate = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "exterior")).id);
-    nominatedMovement = { zoneId: "gathering", quote: "I drift into Common Space" };
+    nominatedMovement = { zoneId: "community", quote: "I drift into Common Space" };
     const beforeNomination = paidCalls;
     written = await sendVenueTurn({
       sessionId: candidate.id,
@@ -1060,6 +1187,33 @@ async function main() {
     assert.equal(written.session.submissions.at(-1)!.movement, undefined);
     nominatedMovement = null;
     candidate = written.session;
+    const legacyRecord = records.get(`villages-venue-visit-${candidate.id}`)!;
+    legacyRecord.data.operation = {
+      ...legacyRecord.data.operation,
+      id: "legacy-written-move",
+      kind: "turn",
+      status: "interrupted",
+      error: "",
+      input: { message: "I walk to Common Space", mode: "chat", targetId: "" },
+      snapshot: structuredClone(candidate),
+      checkpoints: {},
+      attempts: {},
+    };
+    const beforeLegacyRecovery = paidCalls;
+    await recoverVenueSceneWork();
+    candidate = (await activeVenueSession())!;
+    assert.equal(candidate.zoneId, publicZoneId, "an older admitted written move retains its recovery contract");
+    assert.equal(candidate.submissions.filter((turn) => turn.id === "legacy-written-move").length, 1);
+    candidate = await moveVenueZone(candidate.id, "exterior", candidate.sceneRevision, undefined, "after-legacy-move");
+    const replayedLegacy = await sendVenueTurn({
+      sessionId: candidate.id,
+      submissionId: "legacy-written-move",
+      message: "I walk to Common Space",
+      mode: "chat",
+      targetId: "",
+    });
+    assert.equal(replayedLegacy.session.zoneId, "exterior", "legacy turn replay cannot move the player back");
+    assert.equal(paidCalls, beforeLegacyRecovery, "legacy recovery and replay make no provider calls");
     await endVenueSession(candidate.id);
     await sendVenueTurn({
       sessionId: visit.id,
@@ -1095,7 +1249,7 @@ async function main() {
     });
     state = await readVillageState();
     assert.equal(zoneClosed(state, state.venues[0]!, resolveVenueZone(state.venues[0]!, "stock")!), true);
-    assert.equal(zoneClosed(state, state.venues[0]!, resolveVenueZone(state.venues[0]!, "gathering")!), false);
+    assert.equal(zoneClosed(state, state.venues[0]!, resolveVenueZone(state.venues[0]!, "community")!), false);
     await finishProject(project.id);
     state = await readVillageState();
     assert.equal(state.venues[0]!.improvements![0]!.id, upgrade.id);
@@ -1109,7 +1263,7 @@ async function main() {
       draftRenovationProject(copy, "cafe", {
         title: "Convert",
         detail: "Remove work",
-        classes: ["gathering"],
+        classes: ["community"],
         slot: 0,
         improvement: null,
       });
@@ -1128,6 +1282,8 @@ async function main() {
         classContribution: "workplace",
         zones: [
           {
+            id: "workshop",
+            connectedTo: ["community"],
             name: "Workshop floor",
             kind: "public",
             venueClass: "workplace",
@@ -1163,7 +1319,7 @@ async function main() {
         (entry) => entry.zone.id === "stock" && entry.zone.state.items.includes("cup"),
       ),
     );
-    assert.deepEqual(state.venues[0]!.classes, ["gathering"]);
+    assert.deepEqual(state.venues[0]!.classes, ["community"]);
     assert.equal(await activeVenueSession(), null);
     const privateVisit = await enterVenue("home", undefined, "", undefined, "private:resident");
     const afterPrivateEntry = await readVillageState();

@@ -1,6 +1,15 @@
 import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
 import type { LocationImageService } from "./location-image-service.js";
 const binding = createActivationBinding<LocationImageService>("Villages location-image service is not configured.");
+export async function personalizeZoneOnEntry(...args: Parameters<LocationImageService["personalizeZoneOnEntry"]>) {
+  return binding.get().personalizeZoneOnEntry(...args);
+}
+export async function setZonePictureFrozen(...args: Parameters<LocationImageService["setZonePictureFrozen"]>) {
+  return binding.get().setZonePictureFrozen(...args);
+}
+export async function retryZonePicture(...args: Parameters<LocationImageService["retryZonePicture"]>) {
+  return binding.get().retryZonePicture(...args);
+}
 export function configureLocationImages(service: LocationImageService): () => void {
   return binding.configure(bindActivationService(service));
 }

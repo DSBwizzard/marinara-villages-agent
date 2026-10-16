@@ -71,7 +71,7 @@ async function main() {
   currentBuild.venues = Array.from({ length: 15 }, (_, i) => venue(i));
   draftNewVenueProject(currentBuild, { name: "Workshop", classes: ["workplace"], description: "An adaptable room." });
   assert.equal(villageVenueUsage(currentBuild).total, 16, "current drafts reserve one place");
-  assert.throws(() => assertCanAddVillageVenue(currentBuild, ["gathering"]), /maximum 16/);
+  assert.throws(() => assertCanAddVillageVenue(currentBuild, ["community"]), /maximum 16/);
   draftRenovationProject(currentBuild, currentBuild.venues[0]!.id, {
     title: "Room Renovation",
     detail: "Adjust the existing residence.",
@@ -111,13 +111,13 @@ async function main() {
         kind: "venue",
         status: "pending",
         requesterCharacterId: "rosa",
-        venueDraft: { name: "Original", classes: ["gathering"] },
+        venueDraft: { name: "Original", classes: ["community"] },
       } as any,
     ];
     queueVenueCounteroffer(
       requestState,
       "request",
-      { name: "Counter", classes: ["gathering"] },
+      { name: "Counter", classes: ["community"] },
       "A shared room.",
       new Date(currentBuild.setupAt),
     );
@@ -191,7 +191,7 @@ async function main() {
     await createNewVenueProject({
       name: "New shared room",
       description: "A room for shared activities.",
-      venueClass: "gathering",
+      venueClass: "community",
     });
     let state = await readVillageState();
     assert.equal(villageVenueUsage(state).total, 16, "a concept reserves its future Venue");

@@ -49,7 +49,6 @@ export function coerceWishActivities(value: unknown): WishActivity[] {
           venueId: shortWishText(raw.venueId),
           zoneId: shortWishText(raw.zoneId) || undefined,
           activity: shortWishText(raw.activity, 240),
-          reason: shortWishText(raw.reason, 240),
           baseRevision: shortWishText(raw.baseRevision),
         },
       ];

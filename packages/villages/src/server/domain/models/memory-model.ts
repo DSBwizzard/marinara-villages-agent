@@ -2,6 +2,7 @@ import type { ResponseDiagnostics } from "../rules/response-diagnostics.js";
 import type { RelationshipEvidenceLine } from "./relationship-types.js";
 
 export type LiveExchangeProposals = {
+  evidenceFingerprints?: Record<string, string>;
   responseDiagnostics?: ResponseDiagnostics;
   version: 1;
   memoryChanges: unknown;

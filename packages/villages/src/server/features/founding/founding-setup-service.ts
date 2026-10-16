@@ -1,3 +1,5 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
+import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageSnapshot, VillageState, VillageVenue } from "../../domain/models/world.js";
@@ -78,6 +80,7 @@ export function createFoundingSetup({
     foundingCharacterIds?: unknown;
     foundingResidentContexts?: unknown;
     name?: unknown;
+    timeZone?: unknown;
     setting?: unknown;
     foundingReason?: unknown;
     foundingDetails?: unknown;
@@ -98,6 +101,8 @@ export function createFoundingSetup({
     homeBuildingNames?: unknown;
   }): Promise<VillageSnapshot> {
     const name = readVillageName(input.name);
+    if (input.timeZone !== undefined && !validTimeZone(input.timeZone))
+      throw badRequest("Choose a valid village timezone.");
     const setting = readVillageSetting(input.setting);
     if (setting.length === 0) throw badRequest("Describe the place and world before founding.");
     const foundingReason = asTrimmedString(input.foundingReason);
@@ -120,6 +125,8 @@ export function createFoundingSetup({
     }
     const village = await readVillageState();
     const founding = !isVillageFounded(village);
+    if (!founding && input.timeZone !== undefined && input.timeZone !== village.timeZone)
+      throw badRequest("The village timezone is fixed after founding.");
     const playerRole = playerRoleForSetup(village.playerRole, input.playerRole, founding);
     validateFirstDayDescription(foundingDetails, founding);
     if (!founding)
@@ -279,6 +286,9 @@ export function createFoundingSetup({
       state.playerRole = playerRole;
       state.name = name;
       state.setting = setting;
+      if (!founding && input.timeZone !== undefined && input.timeZone !== state.timeZone)
+        throw badRequest("The village timezone is fixed after founding.");
+      if (founding && typeof input.timeZone === "string") state.timeZone = input.timeZone;
       state.foundingReason = foundingReason;
       state.foundingDetails = foundingDetails;
       state.foundingGuidance = foundingGuidance;
@@ -291,7 +301,7 @@ export function createFoundingSetup({
         state.townMapImage = townMap.image;
         state.townMapCanvasWidth = townMap.size?.width ?? TOWN_MAP_EXPECTED_WIDTH;
         state.townMapCanvasHeight = townMap.size?.height ?? TOWN_MAP_EXPECTED_HEIGHT;
-        state.townMapImageSetAt = townMap.image.length > 0 ? new Date().toISOString() : "";
+        state.townMapImageSetAt = townMap.image.length > 0 ? villageNow().toISOString() : "";
         state.townMapView = townMap.view;
       }
       // Written on every setup, like the name and the setting: the wizard is the
@@ -318,7 +328,7 @@ export function createFoundingSetup({
       state.homeBuildingNames = readHomeBuildingNames(input.homeBuildingNames ?? state.homeBuildingNames);
       // The stamp that closes the wizard. Written here and nowhere else, so a
       // village can only become founded by coming through this flow.
-      state.setupAt = new Date().toISOString();
+      state.setupAt = villageNow().toISOString();
       if (founding) state.progressEngineVersion = 1;
       if (founding)
         state.foundingPreparation = {
@@ -329,7 +339,7 @@ export function createFoundingSetup({
           error: "",
           phase: "venues",
           stage: "lore",
-          stageStartedAt: new Date().toISOString(),
+          stageStartedAt: villageNow().toISOString(),
         };
       // Only a village with nowhere to send anybody needs places invented; a
       // second run must not throw away places the player has since renamed or
@@ -342,7 +352,7 @@ export function createFoundingSetup({
           cardSnapshot: {
             ...snapshotFromCard(card, 1),
           },
-          addedAt: new Date().toISOString(),
+          addedAt: villageNow().toISOString(),
           agenda: unwrittenVillageAgenda(state.venues, card.name),
           completedWishes: [],
           ingestSchedule: false,
