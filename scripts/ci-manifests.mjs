@@ -124,6 +124,23 @@ export class GitHubEvidence {
   async discover(policyDigest) {
     const env = this.environment;
     const ids = [];
+    // A merge push indexes the already tested PR head, rather than its old base tree.
+    if (/^[a-f0-9]{40}$/.test(env.VILLAGES_CI_HEAD ?? "")) {
+      let head = env.VILLAGES_CI_HEAD;
+      if (env.GITHUB_EVENT_NAME === "push") {
+        const commit = this.api("git/commits/" + head);
+        if (commit.parents?.length === 2) head = commit.parents[1].sha;
+      }
+      const checks = this.api("commits/" + head + "/check-runs?per_page=100").check_runs;
+      const gate = checks.find(
+        (check) =>
+          check.name === "package-parity" &&
+          check.status === "completed" &&
+          ["success", "failure"].includes(check.conclusion),
+      );
+      const id = gate?.details_url?.match(/\/actions\/runs\/(\d+)/)?.[1];
+      if (id && String(id) !== String(env.GITHUB_RUN_ID)) ids.push(id);
+    }
     // One latest PR attempt (including failure) and one integrated base replace history scans.
     if (env.GITHUB_HEAD_REF) {
       const runs = this.api(
