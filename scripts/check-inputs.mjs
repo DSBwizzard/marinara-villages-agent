@@ -1,10 +1,19 @@
 import { build } from "esbuild";
 import ts from "typescript";
+import { builtinModules } from "node:module";
 import { readFile } from "node:fs/promises";
 import { resolve, relative, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const portable = (path) => path.replaceAll("\\", "/");
+const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/, "")));
+// Keep the file-read analysis below, but never narrow runtime I/O or unknown package loaders to a guessed path.
+const unknownRuntimeInput = (module) =>
+  /^(?:node:)?(?:fs(?:\/promises)?|child_process|module|vm|worker_threads)$/.test(module) ||
+  (!module.startsWith(".") &&
+    !module.startsWith("/") &&
+    module !== "@marinara-engine/shared" &&
+    !builtins.has(module.replace(/^node:/, "")));
 
 /** Bundler inputs plus fixture reads; unresolved dependencies widen the input set. */
 export async function checkInputGraph(entries, catalog, root = process.cwd()) {
@@ -124,6 +133,7 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
           }
           if (ts.isImportDeclaration(node) && ts.isStringLiteralLike(node.moduleSpecifier)) {
             const module = node.moduleSpecifier.text;
+            if (unknownRuntimeInput(module)) uncertain = true;
             if (/^(?:node:)?(?:path|url)$/.test(module)) {
               const named = node.importClause?.namedBindings;
               if (named && ts.isNamedImports(named))
@@ -195,6 +205,13 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
         }
         const extra = new Set();
         function visit(node) {
+          if (
+            ts.isExportDeclaration(node) &&
+            node.moduleSpecifier &&
+            ts.isStringLiteralLike(node.moduleSpecifier) &&
+            unknownRuntimeInput(node.moduleSpecifier.text)
+          )
+            uncertain = true;
           if (ts.isCallExpression(node)) {
             const name = node.expression.getText(sf).split(".").pop();
             const identifier = ts.isIdentifier(node.expression) ? node.expression.text : null;
@@ -218,7 +235,10 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
               (identifier && bundlerNames.has(identifier))
             )
               uncertain = true;
-            if (node.expression.kind === ts.SyntaxKind.ImportKeyword && !ts.isStringLiteralLike(node.arguments[0]))
+            if (
+              node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+              (!ts.isStringLiteralLike(node.arguments[0]) || unknownRuntimeInput(node.arguments[0].text))
+            )
               uncertain = true;
           }
           if (
