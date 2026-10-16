@@ -89,6 +89,8 @@ Use `node scripts/select-tests.mjs` for affected owners/consumers and `node scri
 
 Staging/main PRs for the same head serialize each platform job before a runner is allocated. The next job consumes the first job's evidence when inputs match, rather than launching a duplicate full matrix. Different maintained inputs still require their own coverage. Per-PR workflow concurrency continues to cancel superseded commits.
 
+Pipeline-only and documentation-only promotions to main retain their focused coverage. Product promotions to main, explicit `--release`, and manual full workflows still require complete integration.
+
 Do focused local diagnosis and use CI for the complete integration run. Do not run a duplicate full local inventory while CI validates the same candidate. Keep applicable pinned, provider-free Engine acceptance as separate package evidence.
 
 Use the maintained release command from the frozen candidate checkout with Node matching CI:

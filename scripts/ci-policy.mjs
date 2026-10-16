@@ -26,10 +26,15 @@ export function pipelineOnlyChanges(paths) {
   );
 }
 import { selectAffectedTests } from "./select-tests.mjs";
-export function ciTestPlan(paths, inventory, consumers = new Map(), { release = false, secondary = false } = {}) {
+export function ciTestPlan(
+  paths,
+  inventory,
+  consumers = new Map(),
+  { release = false, forceFull = false, secondary = false } = {},
+) {
   const available = inventory.filter((test) => test.group !== "engine");
-  const documentationOnly = !release && paths.every(isDocumentation);
-  const pipelineOnly = !release && pipelineOnlyChanges(paths);
+  const documentationOnly = !forceFull && paths.every(isDocumentation);
+  const pipelineOnly = !forceFull && !documentationOnly && pipelineOnlyChanges(paths);
   let tests = documentationOnly
     ? []
     : pipelineOnly
@@ -40,7 +45,8 @@ export function ciTestPlan(paths, inventory, consumers = new Map(), { release = 
     (!tests.length ||
       tests.length === available.length ||
       paths.some((path) => !isDocumentation(path) && !selectAffectedTests([path], available, consumers).length));
-  const full = release || (!pipelineOnly && (paths.some(platformSensitive) || unknown));
+  const full =
+    forceFull || (!documentationOnly && !pipelineOnly && (release || paths.some(platformSensitive) || unknown));
   if (full) tests = available.map((test) => test.path);
   else if (secondary && !documentationOnly) {
     const changedTests = paths.filter((path) => available.some((test) => test.path === path));
@@ -54,14 +60,14 @@ export function ciTestPlan(paths, inventory, consumers = new Map(), { release = 
     pipelineOnly,
     tests,
     browser: available.some((test) => tests.includes(test.path) && test.group === "browser"),
-    reason: release
-      ? "explicit integration/release"
-      : documentationOnly
-        ? "documentation"
-        : full
-          ? "broad or unknown impact"
-          : pipelineOnly
-            ? "pipeline"
+    reason: documentationOnly
+      ? "documentation"
+      : pipelineOnly
+        ? "pipeline"
+        : release || forceFull
+          ? "explicit integration/release"
+          : full
+            ? "broad or unknown impact"
             : secondary
               ? "portability and changed tests"
               : "affected owners/consumers",

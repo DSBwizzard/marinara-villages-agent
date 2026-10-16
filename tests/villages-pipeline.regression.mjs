@@ -369,6 +369,20 @@ assert.ok(
 assert.equal(needsBrowserPreparation({ full: false, browser: true, reused: false, prepared: "false" }), true);
 assert.equal(ciTestPlan([oneOwner], ciInventory, new Map(), { secondary: true }).tests.length, 4);
 assert.equal(ciTestPlan(["docs/guide.md"], ciInventory).tests.length, 0);
+for (const secondary of [false, true]) {
+  const mainPipeline = ciTestPlan(["scripts/ci-policy.mjs"], ciInventory, new Map(), { release: true, secondary });
+  assert.equal(mainPipeline.full, false, "Main promotion keeps pipeline-only changes focused");
+  assert.equal(mainPipeline.tests.length, 4);
+  assert.equal(mainPipeline.browser, false);
+  const explicitFull = ciTestPlan(["scripts/ci-policy.mjs"], ciInventory, new Map(), {
+    release: true,
+    forceFull: true,
+    secondary,
+  });
+  assert.equal(explicitFull.full, true, "Explicit full/manual release requests still run full coverage");
+  assert.equal(explicitFull.tests.length, ciInventory.length);
+}
+assert.equal(ciTestPlan(["docs/guide.md"], ciInventory, new Map(), { release: true }).browser, false);
 for (const paths of [
   ["package-lock.json"],
   ["scripts/build-villages.mjs"],

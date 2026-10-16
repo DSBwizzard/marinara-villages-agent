@@ -18,11 +18,8 @@ const paths =
   base && !/^0+$/.test(base)
     ? git("diff", "--name-only", base, "HEAD", "--").split(/\r?\n/).filter(Boolean)
     : ["scripts/unknown-base"];
-const release =
-  args.includes("--release") ||
-  process.env.GITHUB_REF === "refs/heads/main" ||
-  process.env.GITHUB_BASE_REF === "main" ||
-  process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
+const forceFull = args.includes("--release") || process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
+const release = forceFull || process.env.GITHUB_REF === "refs/heads/main" || process.env.GITHUB_BASE_REF === "main";
 const reproducible =
   release ||
   paths.includes("scripts/unknown-base") ||
@@ -41,7 +38,7 @@ const shared = paths.some(
 );
 // Test-to-test imports matter when reusing evidence after a test-only correction.
 const consumers = await testConsumers(inventory, root, { expandBundles: shared });
-const plan = ciTestPlan(paths, inventory, consumers, { release, secondary: args.includes("--platform") });
+const plan = ciTestPlan(paths, inventory, consumers, { release, forceFull, secondary: args.includes("--platform") });
 const { full, documentationOnly, tests: expected } = plan;
 const preparation = {
   runId: process.env.GITHUB_RUN_ID,
