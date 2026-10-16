@@ -14,9 +14,14 @@ import {
   ciTestPlan,
 } from "../scripts/ci-policy.mjs";
 import { isDocumentation } from "../scripts/change-scope.mjs";
-import { assertReusableCi } from "../scripts/ci-reuse.mjs";
+import { assertReusableCi, reusableCi } from "../scripts/ci-reuse.mjs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { evidenceDigest, reusableTests } from "../scripts/ci-evidence.mjs";
+import { releaseOptions, promotionStatus, assertPublishedRelease } from "../scripts/release.mjs";
 import { selectAffectedTests } from "../scripts/select-tests.mjs";
 import { validationInputs } from "../scripts/validation-inputs.mjs";
+import { releaseDriverFixture } from "./fixtures/release-driver.mjs";
+import { ciValidationFixture } from "./fixtures/ci-validation.mjs";
 
 const invoked = [];
 const stopped = await scheduleTests(
@@ -114,47 +119,213 @@ assert.equal(isDocumentation("packages/villages/AGENTS.mjs"), false);
 assert.equal(needsBrowserPreparation({ full: true, reused: false, prepared: "false" }), true);
 assert.equal(needsBrowserPreparation({ full: true, reused: true, prepared: "false" }), false);
 assert.equal(needsBrowserPreparation({ full: true, reused: false, prepared: "true" }), false);
+const repository = "example/villages";
 const ciContext = {
+  repository,
   run: {
     id: 5,
+    run_attempt: 1,
     event: "pull_request",
     status: "completed",
     conclusion: "success",
     path: ".github/workflows/ci.yml",
     head_sha: "head",
+    head_repository: { full_name: repository },
+  },
+  job: {
+    name: "validate",
+    status: "completed",
+    conclusion: "success",
+    steps: [{ name: "Validate maintained source and package", conclusion: "success" }],
   },
   receipt: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     passed: true,
     runId: 5,
+    runAttempt: 1,
+    job: "validate",
     platform: "linux",
     node: "v24.11.0",
     full: true,
     completeInventory: true,
     sourceRevision: "head",
-    inputDigest: "inputs",
-    inputs: [],
-    inventory: ["a"],
+    inputsUnchanged: true,
+    requestedInventory: ["a"],
     tests: [{ path: "a", code: 0 }],
   },
   testedCommit: { sha: "head", tree: { sha: "tree" } },
-  tree: "tree",
-  current: { digest: "inputs", inputs: [] },
-  inventory: ["a"],
   platform: "linux",
   node: "v24.11.0",
-  full: true,
 };
 assert.equal(assertReusableCi(ciContext), ciContext.receipt);
 const mergedContext = {
   ...ciContext,
-  base: "base",
-  run: { ...ciContext.run, pull_requests: [] },
   receipt: { ...ciContext.receipt, sourceRevision: "tested-merge" },
-  testedCommit: { sha: "tested-merge", tree: { sha: "tree" }, parents: [{ sha: "base" }, { sha: "head" }] },
+  testedCommit: { sha: "tested-merge", parents: [{ sha: "base" }, { sha: "head" }] },
 };
 assert.equal(assertReusableCi(mergedContext), mergedContext.receipt, "Closed PR links are not provenance");
-assert.throws(() => assertReusableCi({ ...mergedContext, base: "wrong-base" }));
+assert.throws(() =>
+  assertReusableCi({
+    ...mergedContext,
+    testedCommit: { sha: "tested-merge", parents: [{ sha: "other" }, { sha: "base" }] },
+  }),
+);
+for (const event of ["pull_request", "push", "workflow_dispatch"])
+  assert.equal(
+    assertReusableCi({ ...ciContext, run: { ...ciContext.run, event, conclusion: "failure" } }),
+    ciContext.receipt,
+    "Successful jobs survive unrelated workflow failures and promotion event changes",
+  );
+const failedJob = {
+  ...ciContext,
+  job: {
+    ...ciContext.job,
+    conclusion: "failure",
+    steps: [{ name: "Validate maintained source and package", conclusion: "failure" }],
+  },
+  receipt: { ...ciContext.receipt, passed: false },
+};
+assert.equal(assertReusableCi(failedJob), failedJob.receipt, "A failed full run retains its successful suite evidence");
+for (const changed of [
+  { node: "v24.12.0" },
+  { platform: "win32" },
+  { run: { ...ciContext.run, run_attempt: 2 } },
+  { run: { ...ciContext.run, head_repository: { full_name: "fork/villages" } } },
+  { receipt: { ...ciContext.receipt, inputsUnchanged: false } },
+  { receipt: { ...ciContext.receipt, schemaVersion: 1 } },
+  { job: { ...ciContext.job, status: "in_progress" } },
+  { receipt: { ...ciContext.receipt, tests: [{ path: "unrequested", code: 0 }] } },
+])
+  assert.throws(() => assertReusableCi({ ...ciContext, ...changed }));
+
+const evidenceInventory = ["tests/a.regression.ts", "tests/b.regression.ts", "tests/c.regression.ts"].map((path) => ({
+  path,
+  group: "regression",
+}));
+const evidenceInputs = [
+  { path: "packages/villages/src/client/main.ts", sha256: "product" },
+  ...evidenceInventory.map((test) => ({ path: test.path, sha256: "old" })),
+];
+const evidence = {
+  ...ciContext.receipt,
+  inputs: evidenceInputs,
+  inputDigest: evidenceDigest(evidenceInputs),
+  tests: evidenceInventory.map((test) => ({ ...test, code: 0 })),
+};
+const inputsAfter = (path) => ({
+  inputs: evidenceInputs.map((input) => (input.path === path ? { ...input, sha256: "new" } : input)),
+});
+const dependencyMap = new Map([["tests/a.regression.ts", ["tests/a.regression.ts", "tests/c.regression.ts"]]]);
+assert.equal(
+  reusableTests(evidence, { inputs: evidenceInputs }, evidenceInventory, dependencyMap, { full: true }).length,
+  3,
+);
+assert.deepEqual(
+  reusableTests(evidence, inputsAfter("tests/a.regression.ts"), evidenceInventory, dependencyMap, { full: true }).map(
+    (test) => test.path,
+  ),
+  ["tests/b.regression.ts"],
+  "Rerun a changed test and tests importing it, retaining unrelated passes",
+);
+assert.equal(
+  reusableTests(evidence, inputsAfter("packages/villages/src/client/main.ts"), evidenceInventory, dependencyMap).length,
+  0,
+);
+assert.equal(
+  reusableTests({ ...evidence, full: false }, { inputs: evidenceInputs }, evidenceInventory, dependencyMap, {
+    full: true,
+  }).length,
+  0,
+  "Focused receipts cannot establish release coverage",
+);
+assert.equal(
+  reusableTests({ ...evidence, inputDigest: "forged" }, { inputs: evidenceInputs }, evidenceInventory, dependencyMap)
+    .length,
+  0,
+);
+assert.equal(
+  reusableTests(evidence, inputsAfter("tests/a.regression.ts"), evidenceInventory, new Map()).length,
+  0,
+  "Unknown consumers invalidate reuse",
+);
+assert.equal(
+  reusableTests(
+    evidence,
+    { inputs: [...evidenceInputs, { path: "tests/helper.mjs", sha256: "new" }] },
+    evidenceInventory,
+    dependencyMap,
+  ).length,
+  0,
+);
+assert.equal(
+  reusableTests(
+    {
+      ...evidence,
+      tests: [
+        { path: evidenceInventory[0].path, code: 1 },
+        { path: evidenceInventory[1].path, code: 0, skipped: true },
+        { path: evidenceInventory[2].path, code: 0 },
+      ],
+    },
+    { inputs: evidenceInputs },
+    evidenceInventory,
+    dependencyMap,
+  ).length,
+  1,
+  "Only completed successful suites survive a failed run",
+);
+const candidate = "a".repeat(40);
+const releaseArgs = ["--version", "1.2.3", "--candidate", candidate, "--staging-pr", "10", "--main-pr", "11"];
+assert.equal(releaseOptions(releaseArgs).merge, undefined, "Read-only release status is the default");
+assert.throws(() => releaseOptions([...releaseArgs, "--merge"]));
+assert.throws(() => releaseOptions([...releaseArgs, "--publish"]));
+assert.throws(() => releaseOptions([...releaseArgs, "--timeout-minutes", "0"]));
+assert.equal(
+  releaseOptions([...releaseArgs, "--merge", "--acceptance", "acceptance.json", "--publish", "--notes", "notes.md"])
+    .publish,
+  true,
+);
+const promotion = {
+  headRefOid: candidate,
+  baseRefName: "main",
+  state: "OPEN",
+  statusCheckRollup: ["validate", "validate-windows", "package-parity"].map((name) => ({
+    name,
+    status: "COMPLETED",
+    conclusion: "SUCCESS",
+  })),
+};
+assert.equal(promotionStatus(promotion, "main", candidate), true);
+assert.equal(
+  promotionStatus({ ...promotion, statusCheckRollup: promotion.statusCheckRollup.slice(0, 2) }, "main", candidate),
+  false,
+);
+assert.equal(
+  promotionStatus(
+    { ...promotion, statusCheckRollup: [...promotion.statusCheckRollup, { name: "other", status: "IN_PROGRESS" }] },
+    "main",
+    candidate,
+  ),
+  false,
+);
+assert.throws(() => promotionStatus({ ...promotion, headRefOid: "changed" }, "main", candidate));
+assert.throws(() =>
+  promotionStatus(
+    { ...promotion, statusCheckRollup: [{ name: "validate", conclusion: "FAILURE" }] },
+    "main",
+    candidate,
+  ),
+);
+const published = {
+  tag_name: "v1.2.3",
+  draft: false,
+  prerelease: false,
+  published_at: "2026-10-16",
+  assets: [{ name: "villages-1.2.3.zip", state: "uploaded", digest: "sha256:archive" }],
+};
+assertPublishedRelease(published, candidate, "1.2.3", "archive", candidate);
+assert.throws(() => assertPublishedRelease(published, candidate, "1.2.3", "different", candidate));
+assert.throws(() => assertPublishedRelease({ ...published, draft: true }, candidate, "1.2.3", "archive", candidate));
 assert.equal(pipelineOnlyChanges(["scripts/ci-reuse.mjs", ".github/workflows/ci.yml", "DEVELOPMENT.md"]), true);
 for (const path of [
   "scripts/run-tests.mjs",
@@ -198,6 +369,20 @@ assert.ok(
 assert.equal(needsBrowserPreparation({ full: false, browser: true, reused: false, prepared: "false" }), true);
 assert.equal(ciTestPlan([oneOwner], ciInventory, new Map(), { secondary: true }).tests.length, 4);
 assert.equal(ciTestPlan(["docs/guide.md"], ciInventory).tests.length, 0);
+for (const secondary of [false, true]) {
+  const mainPipeline = ciTestPlan(["scripts/ci-policy.mjs"], ciInventory, new Map(), { release: true, secondary });
+  assert.equal(mainPipeline.full, false, "Main promotion keeps pipeline-only changes focused");
+  assert.equal(mainPipeline.tests.length, 4);
+  assert.equal(mainPipeline.browser, false);
+  const explicitFull = ciTestPlan(["scripts/ci-policy.mjs"], ciInventory, new Map(), {
+    release: true,
+    forceFull: true,
+    secondary,
+  });
+  assert.equal(explicitFull.full, true, "Explicit full/manual release requests still run full coverage");
+  assert.equal(explicitFull.tests.length, ciInventory.length);
+}
+assert.equal(ciTestPlan(["docs/guide.md"], ciInventory, new Map(), { release: true }).browser, false);
 for (const paths of [
   ["package-lock.json"],
   ["scripts/build-villages.mjs"],
@@ -207,9 +392,7 @@ for (const paths of [
   assert.equal(ciTestPlan(paths, ciInventory).full, true);
 assert.equal(ciTestPlan([oneOwner], ciInventory, new Map(), { release: true }).tests.length, ciInventory.length);
 assert.equal(ciTestPlan([domain], ciInventory, new Map([[domain, [ciInventory[7].path]]])).tests.length, 1);
-for (const changed of [{ tree: "changed" }, { node: "v24.12.0" }, { platform: "win32" }, { inventory: ["missing"] }])
-  assert.throws(() => assertReusableCi({ ...ciContext, ...changed }));
-assert.throws(() => assertReusableCi({ ...ciContext, run: { ...ciContext.run, conclusion: "failure" } }));
+
 const candidates = [
   { path: "tests/privacy.regression.ts", group: "regression" },
   { path: "tests/other.e2e.mjs", group: "browser" },
@@ -241,6 +424,87 @@ assert.match(omitted.stderr, /outside the selected files\/group: scene\/exit/);
 
 const directory = await mkdtemp(join(tmpdir(), "villages-pipeline-"));
 try {
+  await releaseDriverFixture(join(directory, "release"));
+  await ciValidationFixture(join(directory, "validation"));
+  const originalEnv = { ...process.env };
+  try {
+    Object.assign(process.env, {
+      GITHUB_EVENT_NAME: "push",
+      GITHUB_REF: "refs/heads/main",
+      GH_TOKEN: "fixture",
+      GITHUB_REPOSITORY: repository,
+      GITHUB_RUN_ID: "6",
+      VILLAGES_CI_FRESH: "false",
+    });
+    const bytes = Buffer.from("validated package");
+    const archiveHash = (await import("node:crypto")).createHash("sha256").update(bytes).digest("hex");
+    const name = process.platform === "win32" ? "validate-windows" : "validate";
+    const modernReceipt = {
+      ...evidence,
+      sourceRevision: "head",
+      platform: process.platform,
+      node: process.version,
+      job: name,
+      requestedInventory: evidenceInventory.map((test) => test.path),
+      runAttempt: 1,
+    };
+    const run = {
+      ...ciContext.run,
+      conclusion: "failure",
+      html_url: "https://github.com/example/villages/actions/runs/5",
+    };
+    let downloads = 0;
+    const execute = (command, args) => {
+      assert.equal(command, "gh");
+      if (args[0] === "api") {
+        const path = args[1].slice(("repos/" + repository + "/").length);
+        if (path === "actions/workflows/ci.yml/runs?per_page=20") return JSON.stringify({ workflow_runs: [run] });
+        if (path === "actions/runs/5/artifacts")
+          return JSON.stringify({ artifacts: [{ id: 7, name: "villages-" + name, expired: false }] });
+        if (path === "actions/runs/5/attempts/1/jobs?per_page=100")
+          return JSON.stringify({ jobs: [{ ...ciContext.job, name }] });
+        if (path === "git/commits/head") return JSON.stringify(ciContext.testedCommit);
+        throw Error("Unexpected fixture API: " + path);
+      }
+      assert.deepEqual(args.slice(0, 3), ["run", "download", "5"]);
+      downloads++;
+      const destination = args[args.indexOf("--dir") + 1];
+      mkdirSync(join(destination, ".build-tmp"), { recursive: true });
+      mkdirSync(join(destination, "artifacts"), { recursive: true });
+      writeFileSync(join(destination, ".build-tmp/ci-validation.json"), JSON.stringify(modernReceipt));
+      writeFileSync(
+        join(destination, ".build-tmp/package-build.json"),
+        JSON.stringify({ sourceRevision: "head", version: "1.2.3", sha256: archiveHash }),
+      );
+      writeFileSync(join(destination, "artifacts/villages-1.2.3.zip"), bytes);
+      return "";
+    };
+    const context = {
+      current: { inputs: evidenceInputs },
+      inventory: evidenceInventory,
+      consumers: dependencyMap,
+      full: true,
+      root: directory,
+      execute,
+    };
+    const imported = await reusableCi(context);
+    assert.equal(imported.tests.length, 3, "A successful platform imports evidence despite another platform's failure");
+    assert.equal(downloads, 1);
+    const corrected = await reusableCi({ ...context, current: inputsAfter("tests/a.regression.ts") });
+    assert.deepEqual(
+      corrected.tests.map((test) => test.path),
+      ["tests/b.regression.ts"],
+    );
+    assert.equal(downloads, 1, "Immutable artifact downloads are reused within the job");
+    await writeFile(join(directory, ".build-tmp/ci-reuse/7/artifacts/villages-1.2.3.zip"), "corrupt");
+    assert.equal(await reusableCi(context), null, "Corrupt archives fall back to current validation");
+    process.env.VILLAGES_CI_FRESH = "true";
+    assert.equal(await reusableCi(context), null, "Explicit fresh validation ignores all prior evidence");
+  } finally {
+    for (const name of Object.keys(process.env)) if (!(name in originalEnv)) delete process.env[name];
+    Object.assign(process.env, originalEnv);
+  }
+
   const fixture = join(directory, "inputs");
   await mkdir(join(fixture, ".github/workflows"), { recursive: true });
   execFileSync("git", ["init", fixture], { stdio: "ignore" });

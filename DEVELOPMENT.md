@@ -29,7 +29,7 @@ npm test -- --filter=venue-access
 
 During feedback, a clearly labeled preview may use static checks and explicit affected regression/browser selections plus relevant packaged acceptance. Shared helpers require coverage of affected consumers; unknown impact requires broader validation.
 
-CI uses affected-owner and consumer tests for ordinary product changes through `npm run validate:ci`; it does not run the complete inventory for a small known change. Static checks, builds and package verification remain required. Documentation-only changes verify the package without browser setup. CI-only changes run the four pipeline/portability suites. Secondary CI runs portability suites and explicitly changed tests, broadening for platform-sensitive changes. Unknown impact, build/dependency/Engine-boundary changes, main promotion and explicit manual/full release validation run complete integration. Coverage receipts distinguish focused and complete results; focused results cannot establish full release readiness. A staging merge reuses successful PR evidence only for the identical tested tree, maintained inputs, Node/platform, required coverage and archive bytes, with fresh builds/package checks. Immutable merge parents establish provenance after PR closure. Missing or mismatched evidence runs the currently required coverage. Development pushes/draft PRs use focused checks under applicable local authorization.
+CI uses affected-owner and consumer tests for ordinary product changes through `npm run validate:ci`; it does not run the complete inventory for a small known change. Static checks, builds and package verification remain required. Documentation-only changes verify the package without browser setup. CI-only changes run the four pipeline/portability suites. Secondary CI runs portability suites and explicitly changed tests, broadening for platform-sensitive changes. Unknown impact, build/dependency/Engine-boundary changes, main promotion and explicit manual/full release validation run complete integration. Coverage receipts distinguish focused and complete results; focused results cannot establish full release readiness. PR validation and staging/main promotion reuse authenticated per-platform CI evidence when maintained inputs, Node/platform and package bytes match. A failure in another platform or suite does not discard successful suites. Known test-only edits rerun the edited suites and their dependency consumers; product, harness, dependency and workflow edits invalidate reuse. Full release coverage must originate in full-validation receipts and cover the entire current inventory. Every invocation performs fresh static/build/package checks; missing or mismatched proof runs the required tests. `--fresh` (or the manual workflow's `fresh` input) requests new execution. Receipts retain per-suite origins and distinguish complete, focused and failing coverage. Reproducibility may be reused only with matching inputs and archive bytes. Development pushes/draft PRs use focused checks under applicable local authorization.
 
 When a complete local or release check is explicitly required:
 
@@ -84,3 +84,25 @@ New villages follow Engine's default profile; explicit choices store only the pr
 The runner defaults to four total workers and two browser workers. Use --jobs=1 for a serial comparison or --browser-jobs=1 to reduce pressure. Maintained resource ownership permits isolated tests to overlap even after edits; unknown suites stay exclusive. Local runs stop after the first failure; CI keeps going for diagnostics. Unexecuted tests never count as passing. Reports record exact coverage, outcomes and wall time. A per-checkout lock prevents overlapping builders/runners; inspect interrupted owners before recovery.
 
 Use `node scripts/select-tests.mjs` for affected owners/consumers and `node scripts/run-tests.mjs browser --case=settings/package` for a named scenario. Settings, Venue layout and Scene action scenarios expose cases in the inventory. Real layout checks retain desktop/mobile coverage; state-only fixtures run once per StrictMode variant. Source tooling can be refreshed on an idle clean managed task with `node scripts/task-tooling.mjs --apply`; it uses normal Git integration and preserves uncommitted work. Private preview orchestration remains outside product Git.
+
+## Release a validated candidate
+
+Staging/main PRs for the same head serialize each platform job before a runner is allocated. The next job consumes the first job's evidence when inputs match, rather than launching a duplicate full matrix. Different maintained inputs still require their own coverage. Per-PR workflow concurrency continues to cancel superseded commits.
+
+Pipeline-only and documentation-only promotions to main retain their focused coverage. Product promotions to main, explicit `--release`, and manual full workflows still require complete integration.
+
+Do focused local diagnosis and use CI for the complete integration run. Do not run a duplicate full local inventory while CI validates the same candidate. Keep applicable pinned, provider-free Engine acceptance as separate package evidence.
+
+Use the maintained release command from the frozen candidate checkout with Node matching CI:
+
+```sh
+node scripts/release.mjs --version 0.7.3 --candidate <full-commit> --staging-pr <number> --main-pr <number> --wait
+```
+
+The default only reports readiness and records a local checkpoint under `.build-tmp/releases/`. The process waits without model polling and prints status changes. A failing check stops it; fix the failure, freeze the new candidate and resume with its identity. CI proves full coverage on main; promotion does not start another local full run.
+
+After explicit authorization for staging/main merges, add `--merge --acceptance <verification.json>`. The command verifies both platform receipts, exact archive bytes and matching successful pinned Engine package acceptance before merging staging, then main. Branch protections and matching-head checks remain enforced.
+
+Numbered publication additionally requires `--publish --notes <release-notes.md>`. It creates a draft, uploads the verified archive, checks its GitHub digest, publishes, and verifies the immutable tag/asset identity. Existing different bytes or tags are rejected. Repeating the same command verifies remote state and skips completed mutations. The published checkpoint contains the next patch target for workflow bookkeeping; it does not modify private review worlds or machine-specific release coordination.
+
+A per-candidate operation lock rejects concurrent invocations. After an interrupted process, inspect its recorded PID and checkpoint before recovering a stale lock; never remove a live process's lock.
