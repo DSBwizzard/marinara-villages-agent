@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile, mkdir, rename, copyFile, open, unlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { resolve, relative, isAbsolute, join } from "node:path";
+import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { validationInputs } from "./validation-inputs.mjs";
-import { testInventory } from "./test-inventory.mjs";
-import { assertReusableCi } from "./ci-reuse.mjs";
+import { preparedCandidate, assertAcceptance } from "./prepare-release.mjs";
+import { GitHubEvidence } from "./ci-manifests.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const required = ["validate", "validate-windows", "package-parity"];
@@ -16,7 +16,7 @@ export function releaseOptions(args) {
   const options = {};
   for (let index = 0; index < args.length; index++) {
     const key = args[index];
-    if (["--wait", "--merge", "--publish"].includes(key)) options[key.slice(2)] = true;
+    if (["--wait", "--merge", "--publish", "--dry-run"].includes(key)) options[key.slice(2)] = true;
     else if (
       [
         "--version",
@@ -43,6 +43,7 @@ export function releaseOptions(args) {
     throw Error("Timeout must be between zero and 1440 minutes");
   if (options.publish && (!options.merge || !options.notes)) throw Error("--publish requires --merge and --notes");
   if (options.merge && !options.acceptance) throw Error("--merge requires matching packaged --acceptance evidence");
+  if (options["dry-run"] && (options.merge || options.publish)) throw Error("--dry-run cannot merge or publish");
   return options;
 }
 
@@ -77,8 +78,16 @@ export function assertPublishedRelease(release, candidate, version, archiveHash,
 /** One resumable process owns waiting and promotion; no model polling or repeated full local runs. */
 export async function runRelease(
   options,
-  { root = process.cwd(), ghExecutable = "gh", execute = execFileSync, sleep = delay, status = console.log } = {},
+  {
+    root = process.cwd(),
+    ghExecutable = "gh",
+    execute = execFileSync,
+    sleep = delay,
+    status = console.log,
+    github,
+  } = {},
 ) {
+  const invoked = Date.now();
   const gh = (...args) =>
     execute(ghExecutable, args, { cwd: root, encoding: "utf8", windowsHide: true, timeout: 60000 }).trim();
   const json = (...args) => JSON.parse(gh(...args));
@@ -98,6 +107,7 @@ export async function runRelease(
         repository,
         stage,
         ...extra,
+        elapsedMs: Date.now() - invoked,
         updatedAt: new Date().toISOString(),
       };
       await writeFile(statePath + ".tmp", JSON.stringify(state, null, 2) + "\n");
@@ -112,7 +122,7 @@ export async function runRelease(
         "--repo",
         repository,
         "--json",
-        "number,headRefOid,baseRefName,state,isDraft,statusCheckRollup,mergeCommit,url",
+        "number,headRefOid,headRefName,baseRefName,state,isDraft,statusCheckRollup,mergeCommit,url",
       );
     const started = Date.now();
     let last;
@@ -133,102 +143,89 @@ export async function runRelease(
       if (Date.now() - started >= options.timeout) throw Error("Release wait timed out; resume the same command");
       await sleep(Math.min(15000, options.timeout - (Date.now() - started)));
     }
-    if (!options.merge) return save("validated", { pullRequests: prs.map((pr) => pr.url) });
     assert.equal(git("rev-parse", "HEAD"), options.candidate, "Use the frozen candidate checkout");
     assert.equal(git("status", "--porcelain"), "", "Commit maintained changes before promotion");
-    const build = JSON.parse(await readFile(join(root, ".build-tmp/package-build.json"), "utf8"));
-    assert.equal(build.version, options.version);
-    assert.equal(build.sourceRevision, options.candidate);
-    assert.match(build.sourceDigest, /^[a-f0-9]{64}$/);
+    const evidence =
+      github ??
+      new GitHubEvidence({
+        root,
+        repository,
+        execute: (command, args, settings) => execute(ghExecutable, args, settings),
+      });
+    const runIds = [
+      ...new Set(
+        prs[1].statusCheckRollup
+          .filter((check) => check.name === "package-parity" && check.conclusion === "SUCCESS")
+          .map((check) => check.detailsUrl?.match(/\/actions\/runs\/(\d+)/)?.[1])
+          .filter(Boolean),
+      ),
+    ].slice(0, 2);
+    let prepared;
+    const failures = [];
+    for (const runId of runIds) {
+      try {
+        prepared = await preparedCandidate({ root, runId, github: evidence, version: options.version });
+        break;
+      } catch (error) {
+        failures.push(error.message);
+      }
+    }
+    if (!prepared) {
+      // Missing/expired schema-3 proof triggers candidate preparation, never relaxed publication.
+      if (!github) {
+        const branch = prs[1].headRefName;
+        assert.ok(branch, "Candidate branch missing");
+        const head = api("git/ref/heads/" + encodeURIComponent(branch));
+        assert.equal(head.object.sha, options.candidate, "Preparation branch moved");
+        gh("workflow", "run", "ci.yml", "--repo", repository, "--ref", branch, "-f", "mode=prepare");
+        const state = await save("preparing", { reason: failures.join("; ") || "No complete candidate manifest" });
+        status("Candidate preparation started: " + (failures.join("; ") || "missing CI proof"));
+        if (!options.wait) return state;
+        let dispatched;
+        while (Date.now() - started < options.timeout) {
+          const rows = api(
+            "actions/workflows/ci.yml/runs?event=workflow_dispatch&branch=" +
+              encodeURIComponent(branch) +
+              "&per_page=1",
+          ).workflow_runs;
+          dispatched = rows.find(
+            (run) => run.head_sha === options.candidate && Date.parse(run.created_at) >= invoked - 5000,
+          );
+          if (dispatched?.status === "completed") break;
+          await sleep(15000);
+        }
+        assert.equal(
+          dispatched?.conclusion,
+          "success",
+          "Candidate preparation failed or timed out; inspect CI diagnostics",
+        );
+        prepared = await preparedCandidate({
+          root,
+          runId: dispatched.id,
+          github: new GitHubEvidence({
+            root,
+            repository,
+            execute: (command, args, settings) => execute(ghExecutable, args, settings),
+          }),
+          version: options.version,
+        });
+      }
+      if (!prepared) throw Error("Missing complete prepared candidate: " + failures.join("; "));
+    }
+    const build = prepared.build;
+    const archive = resolve(root, build.retainedArchivePath);
+    if (options.acceptance)
+      assertAcceptance(JSON.parse(await readFile(resolve(root, options.acceptance), "utf8")), build);
+    if (options["dry-run"]) {
+      assert.ok(options.acceptance, "--dry-run requires matching --acceptance for the complete publication rehearsal");
+      return save("rehearsed", { archiveSha256: build.sha256, runId: prepared.run.id, gameplayTestsExecuted: 0 });
+    }
+    if (!options.merge)
+      return save("validated", { pullRequests: prs.map((pr) => pr.url), archiveSha256: build.sha256 });
     if (options.publish)
       assert.ok((await readFile(resolve(root, options.notes), "utf8")).trim(), "Release notes are required");
-    const archive = resolve(root, build.retainedArchivePath);
-    const path = relative(join(root, "artifacts"), archive);
-    assert.ok(path && !path.startsWith("..") && !isAbsolute(path), "Release archive must belong to this checkout");
-    assert.equal(hash(await readFile(archive)), build.sha256);
-    const acceptance = JSON.parse(await readFile(resolve(root, options.acceptance), "utf8"));
-    assert.equal(acceptance.passed, true);
-    assert.equal(acceptance.package.archiveHash, build.sha256);
-    assert.equal(acceptance.package.sourceDigest, build.sourceDigest);
-    assert.match(acceptance.image, /^sha256:[a-f0-9]{64}$/);
     const current = await validationInputs(root);
-    const inventory = (await testInventory(pathToFileURL(resolve(root) + "/")))
-      .filter((test) => test.group !== "engine")
-      .map((test) => test.path);
-    // Multiple PR workflows can attach identically named checks to the same candidate.
-    const verifyEvidence = async (platform, runId) => {
-      const name = platform === "linux" ? "validate" : "validate-windows";
-      const run = api("actions/runs/" + runId);
-      assert.equal(run.head_sha, options.candidate);
-      const artifactName = "villages-" + name;
-      const artifact = api("actions/runs/" + runId + "/artifacts").artifacts.find(
-        (asset) => asset.name === artifactName && !asset.expired,
-      );
-      assert.ok(artifact, "Missing CI artifact");
-      const evidence = join(directory, String(artifact.id));
-      await mkdir(evidence, { recursive: true });
-      // Artifact IDs are immutable. A resumed command reads the same verified artifact.
-      const receiptPath = join(evidence, ".build-tmp/ci-validation.json");
-      try {
-        await readFile(receiptPath);
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-        gh("run", "download", runId, "--repo", repository, "--name", artifactName, "--dir", evidence);
-      }
-      const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
-      const jobs = api("actions/runs/" + runId + "/attempts/" + run.run_attempt + "/jobs?per_page=100").jobs;
-      assertReusableCi({
-        run,
-        receipt,
-        testedCommit: api("git/commits/" + receipt.sourceRevision),
-        job: jobs.find((job) => job.name === name),
-        repository,
-        platform,
-        node: process.version,
-      });
-      assert.equal(receipt.passed, true);
-      assert.equal(receipt.full, true);
-      assert.equal(receipt.completeInventory, true);
-      assert.equal(receipt.reproducible, true);
-      assert.equal(receipt.inputDigest, current.digest);
-      assert.deepEqual(receipt.inputs, current.inputs);
-      assert.equal(receipt.tests.length, inventory.length);
-      assert.ok(
-        inventory.every((path) =>
-          receipt.tests.some((test) => test.path === path && test.code === 0 && !test.skipped && !test.signal),
-        ),
-      );
-      const packageReceipt = JSON.parse(await readFile(join(evidence, ".build-tmp/package-build.json"), "utf8"));
-      assert.equal(packageReceipt.sha256, build.sha256);
-      assert.equal(packageReceipt.sourceDigest, build.sourceDigest);
-      assert.equal(
-        hash(await readFile(join(evidence, "artifacts", "villages-" + options.version + ".zip"))),
-        build.sha256,
-      );
-    };
-    for (const platform of ["linux", "win32"]) {
-      const name = platform === "linux" ? "validate" : "validate-windows";
-      const runIds = [
-        ...new Set(
-          prs[1].statusCheckRollup
-            .filter((check) => check.name === name)
-            .map((check) => check.detailsUrl?.match(/\/actions\/runs\/(\d+)/)?.[1])
-            .filter(Boolean),
-        ),
-      ].slice(0, 4);
-      let verified = false;
-      const failures = [];
-      for (const runId of runIds) {
-        try {
-          await verifyEvidence(platform, runId);
-          verified = true;
-          break;
-        } catch (error) {
-          failures.push(error.message);
-        }
-      }
-      assert.ok(verified, "Missing complete authenticated " + name + " evidence: " + failures.join("; "));
-    }
+    assert.equal(current.digest, prepared.manifest.inputDigest, "Source changed before promotion");
     for (let index = 0; index < prs.length; index++) {
       const pr = readPr(String(prs[index].number));
       assert.ok(promotionStatus(pr, index === 0 ? "staging" : "main", options.candidate));

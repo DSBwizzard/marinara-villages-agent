@@ -1,99 +1,116 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { executeValidation } from "../../scripts/ci-validation.mjs";
+import { validationInputs } from "../../scripts/validation-inputs.mjs";
+import { checkKeys, environmentFor, fingerprint } from "../../scripts/ci-checks.mjs";
+import AdmZip from "adm-zip";
 
 export async function ciValidationFixture(root) {
   await mkdir(join(root, "scripts"), { recursive: true });
   await mkdir(join(root, "tests"), { recursive: true });
   await mkdir(join(root, ".build-tmp"), { recursive: true });
   execFileSync("git", ["init", root], { stdio: "ignore" });
-  execFileSync(
-    "git",
-    [
-      "-C",
-      root,
-      "-c",
-      "user.name=Fixture",
-      "-c",
-      "user.email=fixture@example.invalid",
-      "commit",
-      "--allow-empty",
-      "-m",
-      "fixture",
+  await writeFile(join(root, "tests/a.regression.mjs"), "// test fixture");
+  const archive = new AdmZip();
+  archive.addFile("manifest.json", Buffer.from(JSON.stringify({ version: "1.2.3", files: [] })));
+  const bytes = archive.toBuffer();
+  const build = {
+    version: "1.2.3",
+    sourceDigest: "d".repeat(64),
+    sourceRevision: "a".repeat(40),
+    sha256: fingerprint(bytes),
+  };
+  const snapshot = await validationInputs(root);
+  const toolchain = {
+    node: process.version.slice(1),
+    arch: process.arch,
+    runners: { linux: "ubuntu-24.04", win32: "windows-2025" },
+  };
+  const target = environmentFor(toolchain);
+  const blueprint = {
+    inputDigest: snapshot.digest,
+    policyDigest: "e".repeat(64),
+    toolchain,
+    catalog: [],
+    specs: [
+      { id: "static:lint", kind: "static", script: "lint", inputs: [] },
+      { id: "build", kind: "build", inputs: [] },
+      { id: "package", kind: "package", inputs: [] },
+      { id: "reproducibility", kind: "reproducibility", inputs: [] },
+      {
+        id: "test:tests/a.regression.mjs",
+        kind: "test",
+        path: "tests/a.regression.mjs",
+        group: "regression",
+        inputs: [],
+      },
     ],
-    { stdio: "ignore" },
-  );
-  for (const name of [
-    "ci-validation",
-    "ci-reuse",
-    "ci-evidence",
-    "ci-policy",
-    "validation-inputs",
-    "test-inventory",
-    "test-resources",
-    "change-scope",
-    "select-tests",
-    "test-dependencies",
-  ])
-    await copyFile(new URL("../../scripts/" + name + ".mjs", import.meta.url), join(root, "scripts", name + ".mjs"));
-  await writeFile(join(root, "tests/a.regression.mjs"), "// fixture\n");
-  await writeFile(join(root, ".build-tmp/npm.mjs"), "// static fixture passes\n");
-  await writeFile(
-    join(root, "scripts/build-villages.mjs"),
-    [
-      'import {writeFileSync,mkdirSync} from "node:fs";',
-      'import {execFileSync} from "node:child_process";',
-      'mkdirSync("artifacts",{recursive:true});',
-      'writeFileSync("artifacts/villages-1.2.3.zip","package");',
-      'writeFileSync(".build-tmp/package-build.json",JSON.stringify({version:"1.2.3",sourceRevision:execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim(),sha256:"fixture"}));',
-    ].join("\n"),
-  );
-  await writeFile(join(root, "scripts/verify-package.mjs"), "// package fixture passes\n");
-  await writeFile(join(root, "scripts/verify-build.mjs"), "// reproducibility fixture passes\n");
-  await writeFile(
-    join(root, "scripts/run-tests.mjs"),
-    [
-      'import {writeFileSync,mkdirSync} from "node:fs";',
-      'if(process.env.CI_FIXTURE_BLOCKED==="true")throw Error("Blocked before tests");',
-      'mkdirSync(".build-tmp/test-results",{recursive:true});',
-      'const results=process.argv.slice(2).filter(arg=>arg.startsWith("--test=")).map(arg=>({path:arg.slice(7),code:process.env.CI_FIXTURE_FAIL==="true"?1:0}));',
-      'const report=".build-tmp/test-results/"+Date.now()+".json";',
-      'writeFileSync(report,JSON.stringify({group:"review",cases:[],results}));',
-      'writeFileSync(".build-tmp/test-results/review-latest.json",JSON.stringify({report}));',
-      "if(results.some(test=>test.code!==0))process.exitCode=1;",
-    ].join("\n"),
-  );
-  const env = {
+  };
+  const specs = checkKeys(blueprint, target);
+  const plan = {
+    schemaVersion: 3,
+    sourceRevision: "a".repeat(40),
+    blueprint,
+    platforms: { [process.platform]: { environment: target, pending: specs, reused: [] } },
+  };
+  const environment = {
     ...process.env,
-    CI: "true",
-    VILLAGES_CI_BASE: "",
-    VILLAGES_CI_FRESH: "true",
     GITHUB_RUN_ID: "123",
     GITHUB_RUN_ATTEMPT: "1",
-    GITHUB_JOB: "validate",
-    CI_FIXTURE_FAIL: "false",
-    CI_FIXTURE_BLOCKED: "false",
-    npm_execpath: join(root, ".build-tmp/npm.mjs"),
+    GITHUB_JOB: process.platform === "linux" ? "validate" : "validate-windows",
+    npm_execpath: "npm-fixture",
+    VILLAGES_CI_FRESH: "false",
   };
-  const run = (extra) =>
-    spawnSync(process.execPath, ["scripts/ci-validation.mjs", "--release"], {
-      cwd: root,
-      env: { ...env, ...extra },
-      encoding: "utf8",
-    });
-  const receipt = async () => JSON.parse(await readFile(join(root, ".build-tmp/ci-validation.json"), "utf8"));
-  const passed = run({});
-  assert.equal(passed.status, 0, passed.stderr);
-  assert.equal((await receipt()).completeInventory, true);
-  assert.equal((await receipt()).reproducible, true);
-  const failed = run({ CI_FIXTURE_FAIL: "true" });
-  assert.equal(failed.status, 1);
-  assert.equal((await receipt()).passed, false);
-  assert.equal((await receipt()).tests[0].code, 1, "Failed suites are retained honestly");
-  assert.equal((await receipt()).reproducible, false, "A failed test run cannot claim reproducibility");
-  assert.equal(run({}).status, 0);
-  assert.equal(run({ CI_FIXTURE_BLOCKED: "true" }).status, 1);
-  assert.equal((await receipt()).tests.length, 0, "A stale passing report cannot become fresh test evidence");
-  assert.equal((await receipt()).completeInventory, false);
+  let mode = "pass",
+    counter = 0;
+  const calls = [];
+  const execute = async (command, args) => {
+    calls.push(args);
+    if (args[0] === "scripts/build-villages.mjs") {
+      await mkdir(join(root, "artifacts"), { recursive: true });
+      await writeFile(join(root, "artifacts/villages-1.2.3.zip"), bytes);
+      await writeFile(join(root, ".build-tmp/package-build.json"), JSON.stringify(build));
+    }
+    if (args[0] === "scripts/run-tests.mjs") {
+      if (mode === "blocked") throw Error("Blocked before tests");
+      await mkdir(join(root, ".build-tmp/test-results"), { recursive: true });
+      const report = ".build-tmp/test-results/" + ++counter + ".json";
+      await writeFile(
+        join(root, report),
+        JSON.stringify({
+          group: "review",
+          cases: [],
+          results: [{ path: "tests/a.regression.mjs", code: mode === "fail" ? 1 : 0 }],
+        }),
+      );
+      await writeFile(join(root, ".build-tmp/test-results/review-latest.json"), JSON.stringify({ report }));
+    }
+  };
+  const run = () => executeValidation({ root, plan, execute, environment });
+  const passed = await run();
+  assert.equal(passed.coverageComplete, true);
+  assert.equal(passed.executedAllTests, true);
+  mode = "fail";
+  const failed = await run();
+  assert.equal(failed.coverageComplete, false);
+  assert.equal(failed.checks.find((check) => check.id.startsWith("test:")).code, 1);
+  mode = "blocked";
+  const blocked = await run();
+  assert.equal(blocked.coverageComplete, false);
+  assert.ok(!blocked.checks.some((check) => check.id.startsWith("test:")), "A stale report cannot become new proof");
+  const reused = passed.checks.map((proof) => ({ ...proof, from: { artifact: { id: 7 }, build } }));
+  plan.platforms[process.platform] = { environment: target, pending: [], reused };
+  const before = calls.length;
+  const warm = await executeValidation({ root, plan, execute, environment, github: { file: async () => bytes } });
+  assert.equal(warm.coverageComplete, true);
+  assert.equal(warm.executedAllTests, false);
+  assert.equal(calls.length, before, "Warm validation runs no static/build/gameplay checks");
+  assert.equal(
+    JSON.parse(await readFile(join(root, ".build-tmp/ci-validation.json"), "utf8")).checks.filter(
+      (check) => check.executed,
+    ).length,
+    0,
+  );
 }

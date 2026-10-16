@@ -12,7 +12,7 @@ export async function validationInputs(root = process.cwd()) {
     .split("\0")
     .filter(
       (path) =>
-        /^(packages\/|sources\/|scripts\/|tests\/|\.github\/workflows\/|package(?:-lock)?\.json$|tsconfig\.|eslint\.|engine-boundary\.json$)/.test(
+        /^(packages\/|sources\/|scripts\/|tests\/|\.github\/workflows\/|\.prettier|\.npmrc$|\.gitattributes$|package(?:-lock)?\.json$|tsconfig\.|eslint\.|engine-boundary\.json$)/.test(
           path,
         ) &&
         !/\.(?:md|txt)$/.test(path) &&
