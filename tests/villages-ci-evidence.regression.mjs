@@ -183,6 +183,37 @@ try {
   await writeFile(join(root, ".build-tmp/ci-artifacts/7.zip"), "corrupt");
   const fresh = new GitHubEvidence({ root, repository: "example/villages", execute: () => bytes });
   assert.deepEqual(await fresh.jsonFile(artifact, "proof.json"), { passed: true });
+  const discovery = new GitHubEvidence({
+    root,
+    repository: "example/villages",
+    environment: {
+      VILLAGES_CI_HEAD: "a".repeat(40),
+      VILLAGES_CI_BASE: "b".repeat(40),
+      GITHUB_HEAD_REF: "candidate",
+      GITHUB_RUN_ID: "14",
+    },
+  });
+  discovery.api = (path) => {
+    if (path.startsWith("actions/")) return { workflow_runs: [{ id: 14 }, { id: 12 }] };
+    return {
+      check_runs: [
+        {
+          name: "package-parity",
+          status: "completed",
+          conclusion: "success",
+          details_url: "https://github.com/example/villages/actions/runs/" + (path.includes("b".repeat(40)) ? 13 : 11),
+        },
+      ],
+    };
+  };
+  const attempted = [];
+  discovery.coverage = async (id) => {
+    attempted.push(String(id));
+    if (String(id) !== "13") throw Error("Unavailable earlier attempt");
+    return { manifest: { integrated: true } };
+  };
+  assert.deepEqual(await discovery.discover("policy"), [{ manifest: { integrated: true } }]);
+  assert.deepEqual(attempted, ["11", "12", "13"], "Unavailable attempts must not hide the integrated baseline");
   console.log("Per-check invalidation, version reuse, provenance, toolchain and tamper rejection passed.");
 } finally {
   await rm(root, { recursive: true, force: true });

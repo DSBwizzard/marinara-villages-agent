@@ -202,12 +202,13 @@ export class GitHubEvidence {
       if (run && String(run.id) !== String(env.GITHUB_RUN_ID)) ids.push(run.id);
     }
     const results = [];
-    for (const id of [...new Set(ids)].slice(0, 2)) {
+    for (const id of [...new Set(ids)]) {
       try {
         results.push(await this.coverage(id, policyDigest));
       } catch (error) {
         console.error("CI baseline unavailable: " + error.message.split("\n")[0]);
       }
+      if (results.length === 2) break;
     }
     return results;
   }

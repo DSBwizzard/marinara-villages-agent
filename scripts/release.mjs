@@ -127,6 +127,23 @@ export async function runRelease(
     const started = Date.now();
     let last;
     let prs;
+    let preparationStarted = false;
+    let preparationRunId;
+    const ensurePreparation = async (reason) => {
+      if (preparationStarted) return;
+      const branch = prs[1].headRefName;
+      assert.ok(branch, "Candidate branch missing");
+      const head = api("git/ref/heads/" + encodeURIComponent(branch));
+      assert.equal(head.object.sha, options.candidate, "Preparation branch moved");
+      const active = api(
+        "actions/workflows/ci.yml/runs?head_sha=" + options.candidate + "&per_page=5",
+      ).workflow_runs.find((run) => run.head_sha === options.candidate && run.status !== "completed");
+      if (!active) gh("workflow", "run", "ci.yml", "--repo", repository, "--ref", branch, "-f", "mode=prepare");
+      preparationStarted = true;
+      preparationRunId = active?.id;
+      await save("preparing", { reason, runId: active?.id });
+      status(active ? "Waiting for active candidate preparation" : "Candidate preparation started: " + reason);
+    };
     while (true) {
       prs = [readPr(options["staging-pr"]), readPr(options["main-pr"])];
       const ready = prs.map((pr, index) => promotionStatus(pr, index === 0 ? "staging" : "main", options.candidate));
@@ -138,6 +155,8 @@ export async function runRelease(
         last = current;
       }
       if (ready.every(Boolean)) break;
+      if (prs.some((pr) => required.some((name) => !(pr.statusCheckRollup ?? []).some((check) => check.name === name))))
+        await ensurePreparation("Missing required CI checks");
       const state = await save("waiting", { pullRequests: prs.map((pr) => pr.url) });
       if (!options.wait) return state;
       if (Date.now() - started >= options.timeout) throw Error("Release wait timed out; resume the same command");
@@ -175,22 +194,24 @@ export async function runRelease(
       if (!github) {
         const branch = prs[1].headRefName;
         assert.ok(branch, "Candidate branch missing");
-        const head = api("git/ref/heads/" + encodeURIComponent(branch));
-        assert.equal(head.object.sha, options.candidate, "Preparation branch moved");
-        gh("workflow", "run", "ci.yml", "--repo", repository, "--ref", branch, "-f", "mode=prepare");
+        await ensurePreparation(failures.join("; ") || "No complete candidate manifest");
         const state = await save("preparing", { reason: failures.join("; ") || "No complete candidate manifest" });
         status("Candidate preparation started: " + (failures.join("; ") || "missing CI proof"));
         if (!options.wait) return state;
         let dispatched;
         while (Date.now() - started < options.timeout) {
-          const rows = api(
-            "actions/workflows/ci.yml/runs?event=workflow_dispatch&branch=" +
-              encodeURIComponent(branch) +
-              "&per_page=1",
-          ).workflow_runs;
+          const rows = preparationRunId
+            ? [api("actions/runs/" + preparationRunId)]
+            : api(
+                "actions/workflows/ci.yml/runs?event=workflow_dispatch&branch=" +
+                  encodeURIComponent(branch) +
+                  "&per_page=1",
+              ).workflow_runs;
           dispatched = rows.find(
-            (run) => run.head_sha === options.candidate && Date.parse(run.created_at) >= invoked - 5000,
+            (run) =>
+              run.head_sha === options.candidate && (preparationRunId || Date.parse(run.created_at) >= invoked - 5000),
           );
+          if (dispatched) preparationRunId = dispatched.id;
           if (dispatched?.status === "completed") break;
           await sleep(15000);
         }

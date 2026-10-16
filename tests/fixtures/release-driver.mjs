@@ -48,6 +48,7 @@ export async function releaseDriverFixture(root) {
   const prs = [10, 11].map((number, index) => ({
     number,
     headRefOid: candidate,
+    headRefName: "candidate",
     baseRefName: index === 0 ? "staging" : "main",
     state: "OPEN",
     isDraft: false,
@@ -58,6 +59,8 @@ export async function releaseDriverFixture(root) {
   let tag;
   const commands = [];
   let waiting = false;
+  let absent = false;
+  let activePreparation = false;
   const run = {
     id: 5,
     run_attempt: 1,
@@ -74,7 +77,17 @@ export async function releaseDriverFixture(root) {
     if (args[0] === "repo") return "example/villages";
     if (args[0] === "pr") {
       const pr = prs.find((pr) => String(pr.number) === args[2]);
-      if (args[1] === "view") return send(waiting ? { ...pr, statusCheckRollup: [] } : pr);
+      if (args[1] === "view")
+        return send(
+          waiting
+            ? {
+                ...pr,
+                statusCheckRollup: absent
+                  ? []
+                  : checks.map((check) => ({ ...check, status: "IN_PROGRESS", conclusion: null })),
+              }
+            : pr,
+        );
       assert.equal(args[1], "merge");
       assert.ok(args.includes("--match-head-commit"));
       if (pr.number === 11) assert.equal(prs[0].state, "MERGED", "Staging merges before main");
@@ -101,8 +114,12 @@ export async function releaseDriverFixture(root) {
       } else throw Error("Unexpected release operation");
       return "";
     }
+    if (args[0] === "workflow") return "";
     assert.equal(args[0], "api");
     const path = args[1].slice("repos/example/villages/".length);
+    if (path === "git/ref/heads/candidate") return send({ object: { sha: candidate } });
+    if (path.startsWith("actions/workflows/ci.yml/runs?head_sha="))
+      return send({ workflow_runs: activePreparation ? [{ id: 6, head_sha: candidate, status: "in_progress" }] : [] });
     if (path === "actions/runs/4") return send({ ...run, id: 4 });
     if (path === "actions/runs/4/artifacts") return send({ artifacts: [] });
     if (path === "actions/runs/5") return send(run);
@@ -212,6 +229,30 @@ export async function releaseDriverFixture(root) {
   });
   assert.equal(waitingResult.stage, "validated");
   assert.equal(sleeps, 1, "The release process owns waiting");
+  for (const active of [false, true]) {
+    waiting = true;
+    absent = true;
+    activePreparation = active;
+    const before = commands.filter((args) => args[1] === "workflow").length;
+    let missingSleeps = 0;
+    assert.equal(
+      (
+        await runRelease(releaseOptions([...args, "--wait"]), {
+          ...deps,
+          sleep: async () => {
+            if (++missingSleeps === 2) waiting = false;
+          },
+        })
+      ).stage,
+      "validated",
+    );
+    assert.equal(
+      commands.filter((args) => args[1] === "workflow").length - before,
+      active ? 0 : 1,
+      "Absent contexts start preparation once and reuse an active exact-head run",
+    );
+  }
+  absent = false;
   const authorized = releaseOptions([
     ...args,
     "--merge",
