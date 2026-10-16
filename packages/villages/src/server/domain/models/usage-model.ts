@@ -40,6 +40,7 @@ export type Ledger = {
   period: Totals;
   days: Record<string, Totals>;
   purposes: Partial<Record<UsagePurpose, Totals>>;
+  connections: Record<string, Totals>;
   overrides: Record<string, UsageRate>;
   linkApiGroups: Record<string, string>;
 };

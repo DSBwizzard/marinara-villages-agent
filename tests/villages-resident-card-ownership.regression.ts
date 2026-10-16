@@ -191,9 +191,9 @@ assert.deepEqual(color.state.villagers[0]!.remapFailure, retainedFailure);
 
 const prose = fixture("Prose");
 prose.card.description = "Changed authored prose";
-const firstVenue = venueDraft({ name: "First Venue", description: "A gathering place", classes: ["gathering"] }, null);
+const firstVenue = venueDraft({ name: "First Venue", description: "A community place", classes: ["community"] }, null);
 const retryVenue = venueDraft(
-  { name: "Retry Venue", description: "A changed gathering place", classes: ["gathering"] },
+  { name: "Retry Venue", description: "A changed community place", classes: ["community"] },
   null,
 );
 prose.state.venues = [firstVenue];

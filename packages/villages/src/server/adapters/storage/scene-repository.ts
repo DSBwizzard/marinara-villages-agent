@@ -1,7 +1,8 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { coerceActive, coerceSession } from "../../domain/decoding/scene-codec.js";
 import type { ActiveVenue, VenueScene } from "../../domain/models/scene-model.js";
-import { notFound } from "../../domain/rules/errors.js";
+import { notFound, conflict } from "../../domain/rules/errors.js";
+import { spinoffLocksScene } from "../../domain/models/spinoff-model.js";
 import { applySceneMutation } from "../../domain/rules/scene-mutation.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 import { ACTIVE_ID, SESSION_PREFIX, activeSlot, sessionSlot } from "./scene-slots.js";
@@ -23,6 +24,15 @@ export function createSceneRepository({ villagesDocuments, mutateDocument }: Sce
   }
 
   async function changeSession(id: string, change: (session: VenueScene) => void): Promise<VenueScene> {
+    return changeSpinoffSession(id, (session) => {
+      if (spinoffLocksScene(session.spinoff))
+        throw conflict("Finish or discard your spinoff before continuing in Villages.");
+      change(session);
+    });
+  }
+
+  /** Explicit ownership port for spinoff lifecycle writes, never normal Scene commands. */
+  async function changeSpinoffSession(id: string, change: (session: VenueScene) => void): Promise<VenueScene> {
     let result: VenueScene | null = null;
     await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (session) => {
       const changed = applySceneMutation(session, id, change);
@@ -40,6 +50,6 @@ export function createSceneRepository({ villagesDocuments, mutateDocument }: Sce
       }
     });
   }
-  return { readActive, readSession, changeSession, clearActivePointer };
+  return { readActive, readSession, changeSession, changeSpinoffSession, clearActivePointer };
 }
 export type SceneRepository = ReturnType<typeof createSceneRepository>;

@@ -4,10 +4,10 @@ import {
   createActivationScope,
   installDefaultActivation,
   type ActivationScope,
+  activationScope as activationScopeForSpinoff,
 } from "../adapters/engine/activation-scope.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import { readRuntimeDebug } from "../adapters/observability/runtime-debug.js";
-import { stopInterpretationComparisons } from "../features/generation/interpretation-diagnostics.js";
 import { recoverVenueSceneWork } from "../features/scenes/venue-session.js";
 import { startProgressRecovery } from "../features/scenes/progress.js";
 import { readVillageState } from "../features/world/village-store.js";
@@ -18,11 +18,14 @@ import { startVillageRefreshScheduler } from "../jobs/village-refresh-scheduler.
 import { villagesRoutes } from "./routes.js";
 import { configureVillagesRuntime } from "./runtime.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
+import type { SceneOriginProvider } from "@marinara-engine/shared";
+import { spinoffs } from "../features/scenes/spinoffs.js";
 import type { FastifyPluginAsync } from "fastify";
 
 export type ActivationContext = {
   app?: { db?: unknown };
   api: {
+    registerSceneOrigin?(provider: SceneOriginProvider): () => void | Promise<void>;
     runtime: CapabilityRuntimeHost;
     registerPrivilegedRoutes(
       routes: FastifyPluginAsync,
@@ -34,10 +37,10 @@ export type ActivationContext = {
 type Cleanup = () => void | Promise<void>;
 /** Assembly ports keep lifecycle tests independent of Engine and providers. */
 export interface ApplicationServices {
+  registerSpinoffs?(api: ActivationContext["api"]): Cleanup;
   configureRuntime(runtime: CapabilityRuntimeHost): Cleanup;
   startTownMapGeneration(): Cleanup;
-  configureDecisions(context: { app?: { db?: unknown } }): Cleanup;
-  stopInterpretationComparisons: Cleanup;
+  configureDecisions(runtime: CapabilityRuntimeHost): Cleanup;
   readRuntimeDebug(): Promise<unknown>;
   warnRuntimeDebug(error: unknown): void;
   recoverVenueSceneWork(): Promise<unknown>;
@@ -50,10 +53,23 @@ export interface ApplicationServices {
   readVillageState(): Promise<unknown>;
 }
 const applicationServices: ApplicationServices = {
+  registerSpinoffs: (api) => {
+    if (!api.registerSceneOrigin) throw new Error("Spinoffs require Engine scene origins (Capability API 1.66).");
+    const scope = activationScopeForSpinoff();
+    const provider = spinoffs().provider;
+    return api.registerSceneOrigin(
+      scope
+        ? {
+            getContext: scope.bind(provider.getContext),
+            claim: scope.bind(provider.claim!),
+            release: scope.bind(provider.release!),
+          }
+        : provider,
+    );
+  },
   configureRuntime: configureVillagesRuntime,
   startTownMapGeneration,
   configureDecisions: configureDecisionsAdapter,
-  stopInterpretationComparisons,
   readRuntimeDebug,
   warnRuntimeDebug(error) {
     villagesLogger().warn("[villages] runtime logging settings could not be read: %s", String(error));
@@ -95,11 +111,7 @@ export async function startVillagesApplication(
   );
 }
 
-async function assembleApplication(
-  { api, app }: ActivationContext,
-  services: ApplicationServices,
-  scope?: ActivationScope,
-) {
+async function assembleApplication({ api }: ActivationContext, services: ApplicationServices, scope?: ActivationScope) {
   const cleanups: Cleanup[] = [];
   const defaultRegistration: { clear?: () => void } = {};
   let stopping: Promise<void> | undefined;
@@ -127,11 +139,11 @@ async function assembleApplication(
   try {
     cleanups.push(services.configureRuntime(api.runtime));
     cleanups.push(services.startTownMapGeneration());
-    cleanups.push(services.configureDecisions({ app }));
-    cleanups.push(services.stopInterpretationComparisons);
+    cleanups.push(services.configureDecisions(api.runtime));
     await services.readRuntimeDebug().catch(services.warnRuntimeDebug);
     cleanups.push(services.stopVenueCoordinator);
     await services.recoverVenueSceneWork();
+    if (services.registerSpinoffs) cleanups.push(services.registerSpinoffs(api));
     cleanups.push(await api.registerPrivilegedRoutes(services.routes, { prefix: "/api/villages" }));
     // Started only once the routes are up, so a package that failed to activate
     // never leaves a timer behind pointing at a village nobody can reach.

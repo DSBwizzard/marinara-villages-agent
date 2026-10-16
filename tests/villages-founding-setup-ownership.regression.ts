@@ -40,7 +40,7 @@ function input(name: string) {
       form: "A room",
       description: "A welcoming doorway",
       category: id === "hall" ? "public-center" : "house",
-      classes: [id === "hall" ? "gathering" : "residence"],
+      classes: [id === "hall" ? "community" : "residence"],
       layoutVersion: 1,
       layout: "common",
       spaces: [
@@ -49,7 +49,7 @@ function input(name: string) {
           name: "Shared room",
           purpose: "Conversation",
           description: "A table",
-          venueClass: id === "hall" ? "gathering" : "residence",
+          venueClass: id === "hall" ? "community" : "residence",
         },
       ],
       privateSpaces: [],
@@ -62,7 +62,7 @@ function fixture(name: string) {
   const state = defaultVillageState();
   const card = readVillagerCard({ id: "same", comment: "", data: { name, description: `Private card ${name}` } });
   const proposal = venueDraft(
-    { id: "proposed", name: `${name} garden`, classes: ["gathering"], form: "Garden", description: "A quiet garden" },
+    { id: "proposed", name: `${name} garden`, classes: ["community"], form: "Garden", description: "A quiet garden" },
     null,
   );
   const calls: string[] = [],
@@ -190,12 +190,12 @@ function fixture(name: string) {
 }
 
 // Exercise the real HTTP entry and setup coordinator with provider-free ports.
-for (const invalid of ["exterior-residence", "missing-purpose", "gathering-private", "owned-gathering"]) {
+for (const invalid of ["exterior-residence", "missing-purpose", "community-private", "owned-community"]) {
   const api = fixture(invalid),
     payload = input(invalid);
   if (invalid === "exterior-residence") Object.assign(payload.venues[0]!, { layout: "exterior", spaces: [] });
   if (invalid === "missing-purpose") payload.venues[0]!.spaces[0]!.purpose = "";
-  if (invalid === "gathering-private")
+  if (invalid === "community-private")
     Object.assign(payload.venues[2]!, {
       layout: "both",
       privateSpaces: [
@@ -204,12 +204,12 @@ for (const invalid of ["exterior-residence", "missing-purpose", "gathering-priva
           name: "Bedroom",
           purpose: "Rest",
           description: "Bed",
-          venueClass: "gathering",
+          venueClass: "community",
           ownerId: "player",
         },
       ],
     });
-  if (invalid === "owned-gathering") Object.assign(payload.venues[2]!.spaces[0]!, { ownerId: "player" });
+  if (invalid === "owned-community") Object.assign(payload.venues[2]!.spaces[0]!, { ownerId: "player" });
   const dispose = configureFoundingSetup(api.service),
     server = Fastify();
   registerFoundingRoutes(server);
@@ -269,7 +269,7 @@ assert.deepEqual(
   await suggestions.service.draftVenueDescriptions({
     setting: "Observatory",
     selectedLorebookIds: ["book"],
-    venues: [{ id: "hall", name: "Hall", classes: ["gathering"] }],
+    venues: [{ id: "hall", name: "Hall", classes: ["community"] }],
   }),
   { descriptions: { hall: "Suggestions description" } },
 );

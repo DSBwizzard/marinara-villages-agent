@@ -1,3 +1,5 @@
+import { readConnectionIds } from "../../domain/rules/space-connections.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type {
   VillageProject,
   VillageState,
@@ -43,7 +45,7 @@ export function draftNewVenueProject(
   if (active(state, "new-venue")) throw conflict("Finish the current New Venue before starting another.");
   if (sameName(state, name)) throw conflict("That Venue name is already in use or reserved.");
   assertCanAddVillageVenue(state, classes as VillageVenue["classes"]);
-  const at = new Date().toISOString();
+  const at = villageNow().toISOString();
   const project: VillageProject = {
     id: requestId || randomUUID(),
     kind: "new-venue",
@@ -154,6 +156,7 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
       return {
         id,
         name,
+        connectedTo: raw.connectedTo === undefined ? existingArea?.connectedTo : readConnectionIds(raw.connectedTo),
         preserveDescription: !description && !!existingArea,
         roomSpecification: ["private-residence", "staff", "restricted"].includes(kind)
           ? boundText(raw.roomSpecification ?? (description || existingArea?.roomSpecification), 1000)
@@ -191,8 +194,9 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
         const existing = requestedId
           ? venueZones(venue).find((entry) => entry.id === requestedId && entry.upgradeId === improvement.id)
           : undefined;
-        if (requestedId && !existing) throw badRequest("A modified zone must belong to this Upgrade.");
-        const id = existing?.id ?? randomUUID(),
+        if (requestedId && !existing && venueZones(venue).some((entry) => entry.id === requestedId))
+          throw badRequest("A modified zone must belong to this Upgrade.");
+        const id = existing?.id ?? (requestedId || randomUUID()),
           name = boundText(zone.name, MAX_VENUE_NAME_LENGTH).trim(),
           description = boundText(zone.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
         if (
@@ -211,6 +215,7 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
           id,
           name,
           description,
+          connectedTo: zone.connectedTo === undefined ? existing?.connectedTo : readConnectionIds(zone.connectedTo),
           preserveDescription: !description && !!existing,
           roomSpecification: ["private-residence", "staff", "restricted"].includes(String(zone.kind))
             ? boundText(zone.roomSpecification ?? (description || existing?.roomSpecification), 1000)
@@ -293,7 +298,7 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
       ...(improvement?.zones ?? []).flatMap((zone) => zone.controllerIds ?? []),
     ]),
   ].filter((id) => id !== "player");
-  const at = new Date().toISOString();
+  const at = villageNow().toISOString();
   const project: VillageProject = {
     id: randomUUID(),
     kind: "renovation",

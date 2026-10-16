@@ -12,11 +12,25 @@ export function readSceneryStyle(value: unknown): string {
   return value.trim();
 }
 export function sceneryPrompt(required: string[], optional: string[], style = ""): string {
-  const base = [...required, VILLAGE_SHARED_SETTING_RULE, style ? `Art style for this scenery: ${style}.` : ""]
+  const framing = [VILLAGE_SHARED_SETTING_RULE, style ? `Art style for this scenery: ${style}.` : ""]
     .filter(Boolean)
     .join("\n");
-  if (base.length > 4000) throw badRequest("The scenery descriptions are too long for an image prompt.");
-  let prompt = base;
+  const parts = required.filter(Boolean);
+  const budget = 4000 - framing.length - parts.length;
+  // Keep short scene instructions intact and share the remaining room between long descriptions.
+  let low = 0;
+  let high = Math.max(0, budget);
+  while (low < high) {
+    const limit = Math.ceil((low + high) / 2);
+    if (parts.reduce((length, part) => length + Math.min(part.length, limit), 0) <= budget) low = limit;
+    else high = limit - 1;
+  }
+  let prompt = [
+    ...parts.map((part) =>
+      part.length <= low ? part : part.slice(0, Math.max(0, low - 1)).replace(/[\uD800-\uDBFF]$/u, "") + "…",
+    ),
+    framing,
+  ].join("\n");
   for (const part of optional) if (part && prompt.length + part.length + 1 <= 4000) prompt += "\n" + part;
   return prompt;
 }
@@ -73,6 +87,9 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
   const ids = ownerId ? [ownerId] : [...(venue.residentIds ?? []), ...(venue.workerIds ?? [])];
   return JSON.stringify([
     zoneId,
+    village.zonePictureEpoch ?? 0,
+    zone?.pictureRevision ?? 0,
+    zone?.freezePicture ?? false,
     village.sceneryArtStyle,
     village.sceneryStyleProfileId ?? null,
     village.setting,

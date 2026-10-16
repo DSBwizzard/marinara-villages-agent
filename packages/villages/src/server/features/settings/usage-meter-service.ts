@@ -1,13 +1,17 @@
 import type {
   readUsageLedger,
+  quoteUsageRate,
   resetUsagePeriod as resetLedger,
   saveLinkApiGroup as saveGroup,
   saveUsageRate as saveRate,
 } from "../../adapters/models/usage-ledger.js";
+import type { villagesConnectionIdFor } from "./connections.js";
 import type { previewBackgroundJobs } from "../../jobs/background-work.js";
 
 export interface UsageMeterPorts {
   readUsageLedger: typeof readUsageLedger;
+  quoteUsageRate: typeof quoteUsageRate;
+  villagesConnectionIdFor: typeof villagesConnectionIdFor;
   resetLedger: typeof resetLedger;
   saveRate: typeof saveRate;
   saveGroup: typeof saveGroup;
@@ -17,6 +21,8 @@ export interface UsageMeterPorts {
 /** Current settings composition owns explicit ports; construction starts no work. */
 export function createUsageMeter({
   readUsageLedger,
+  quoteUsageRate,
+  villagesConnectionIdFor,
   resetLedger,
   saveRate,
   saveGroup,
@@ -25,6 +31,15 @@ export function createUsageMeter({
   async function withBursts(ledger: Awaited<ReturnType<typeof readUsageLedger>>, details = true) {
     return {
       ...ledger,
+      selectedConnections: details
+        ? await Promise.all(
+            (["system", "narration", "image"] as const).map(async (role) => {
+              const connectionId = await villagesConnectionIdFor(role);
+              const quote = connectionId ? await quoteUsageRate(connectionId, "") : null;
+              return { role, connectionId, ...quote };
+            }),
+          )
+        : [],
       bursts: details
         ? (await previewBackgroundJobs())
             .filter((job) => !["completed", "obsolete"].includes(job.status))

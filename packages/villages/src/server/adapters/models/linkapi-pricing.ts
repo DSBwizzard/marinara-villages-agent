@@ -87,7 +87,7 @@ async function metadata(): Promise<Metadata | null> {
 
 /** A deliberately narrow parser, never eval. Unsupported rules stay unknown. */
 
-export async function linkApiQuote(model: string, chosenGroup = "") {
+export async function linkApiQuote(model: string, chosenGroup = "", connectionName = "") {
   const data = await metadata();
   if (!data) return { rate: null, groups: [], note: "LinkAPI public prices unavailable" };
   const rows = data.table.data.filter((row) => row.model_name === model);
@@ -96,11 +96,23 @@ export async function linkApiQuote(model: string, chosenGroup = "") {
   const groups = (Array.isArray(row.enable_groups) ? row.enable_groups : [])
     .filter((group): group is string => typeof group === "string" && amount(data.table.group_ratio[group]))
     .map((id) => ({ id, label: data.table.usable_group?.[id] || id, multiplier: data.table.group_ratio[id] }));
-  const group = chosenGroup
-    ? groups.find((group) => group.id === chosenGroup)
-    : groups.length === 1
-      ? groups[0]
-      : undefined;
+  // Match whole group names, never an arbitrary multiplier or a partial name.
+  const words = connectionName.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const contains = (text: string) => {
+    const parts = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    return parts.length > 0 && words.some((_, i) => parts.every((part, j) => words[i + j] === part));
+  };
+  const named = groups.filter((group) => contains(group.id) || contains(group.label));
+  const group =
+    named.length === 1
+      ? named[0]
+      : named.length > 1
+        ? undefined
+        : chosenGroup
+          ? groups.find((group) => group.id === chosenGroup)
+          : groups.length === 1
+            ? groups[0]
+            : undefined;
   if (!group) return { rate: null, groups, note: "Choose the group assigned to this connection's LinkAPI token" };
   const price = modelPrice(row);
   if (!price) return { rate: null, groups, note: "LinkAPI billing rule needs a manual price" };

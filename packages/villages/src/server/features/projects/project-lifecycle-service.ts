@@ -1,3 +1,6 @@
+import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
+import { validateConnections } from "../../domain/rules/space-connections.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageProject, VillageVenue } from "../../domain/models/world.js";
 import { prepareRenovatedPrivateInterior } from "../../domain/rules/private-interior.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
@@ -107,7 +110,7 @@ export function createProjectLifecycle({
       )
         throw conflict("That spot overlaps another Venue. Choose another place.");
       assertCanAddVillageVenue(state, project.venueDraft?.classes, project.id);
-      const at = new Date().toISOString();
+      const at = villageNow().toISOString();
       const shell = worksite(project, x, y, at);
       state.venues.push(shell);
       project.venueId = shell.id;
@@ -148,7 +151,7 @@ export function createProjectLifecycle({
         )
       )
         return;
-      const at = new Date();
+      const at = villageNow();
       state.venueMail.push({
         id: randomUUID(),
         projectId: id,
@@ -199,7 +202,7 @@ export function createProjectLifecycle({
       project.participantIds = [...new Set([...project.participantIds, residentId])];
       if (flow.phase === "construction") {
         if (!flow.workOrder?.pausedAt) throw conflict("Construction is not paused.");
-        const at = new Date();
+        const at = villageNow();
         flow.workOrder.startsAt = at.toISOString();
         flow.workOrder.completesAt = new Date(at.getTime() + flow.workOrder.remainingMs).toISOString();
         flow.workOrder.pausedAt = "";
@@ -252,7 +255,7 @@ export function createProjectLifecycle({
         });
       }
       flow.blockedReason = "";
-      project.updatedAt = new Date().toISOString();
+      project.updatedAt = villageNow().toISOString();
     });
   }
 
@@ -266,7 +269,7 @@ export function createProjectLifecycle({
         !categories.every((category) => flow.requirements.some((entry) => entry.category === category))
       )
         throw conflict("Ask the Builder for a complete requirements list first.");
-      flow.requirementsAcceptedAt = new Date().toISOString();
+      flow.requirementsAcceptedAt = villageNow().toISOString();
       {
         flow.recordedItems = state.venues.flatMap((venue) =>
           venueZones(venue).flatMap((zone) =>
@@ -316,7 +319,7 @@ export function createProjectLifecycle({
       const entry = flow.requirements.find((row) => row.id === requirementId && row.needed);
       if (!entry || !entry.carriedAt) throw conflict("Obtain this supply in a Village visit before delivering it.");
       if (entry.deliveredAt) return;
-      entry.deliveredAt = new Date().toISOString();
+      entry.deliveredAt = villageNow().toISOString();
       project.updatedAt = entry.deliveredAt;
       recordProjectProgress(state, project, `delivered:${requirementId}`, {
         id: `project:${id}:delivered:${requirementId}`,
@@ -328,7 +331,7 @@ export function createProjectLifecycle({
     });
   }
 
-  async function startProjectConstruction(id: string, now = new Date()): Promise<void> {
+  async function startProjectConstruction(id: string, now = villageNow()): Promise<void> {
     await mutateVillageState((state) => {
       const project = projectFor(state, id),
         flow = project.lifecycle;
@@ -382,8 +385,8 @@ export function createProjectLifecycle({
       const project = projectFor(state, id);
       if (project.lifecycle.phase !== "construction" || project.status !== "building")
         throw conflict("Start construction before using the debug completion action.");
-      if (project.lifecycle.workOrder) project.lifecycle.workOrder.completesAt = new Date().toISOString();
-      finishConstruction(state, project, new Date().toISOString());
+      if (project.lifecycle.workOrder) project.lifecycle.workOrder.completesAt = villageNow().toISOString();
+      finishConstruction(state, project, villageNow().toISOString());
     });
   }
 
@@ -445,7 +448,7 @@ export function createProjectLifecycle({
         if (newAffected.length)
           throw conflict("The affected residents or workers changed. Renew the Renovation approvals before opening.");
       }
-      const at = new Date().toISOString();
+      const at = villageNow().toISOString();
       const applyOpening = () => {
         if (project.kind === "new-venue") {
           const form = boundText(row.form, 240).trim();
@@ -568,6 +571,8 @@ export function createProjectLifecycle({
               if (index >= 0) venue.zones[index] = zone;
               else venue.zones.push(zone);
             }
+          venue.zones = applyConnectionEdits(venue.zones, [...(change.baseZones ?? []), ...nextDrafts]);
+          validateConnections(venue.zones);
           venue.playerInvitations = venue.playerInvitations?.filter(
             (invitation) => !retired.some((zone) => zone.id === invitation.zoneId),
           );
@@ -636,9 +641,11 @@ export function createProjectLifecycle({
           const zone = asRecord(value);
           return {
             ...zone,
-            id: venueZones(venue).some((entry) => entry.id === zone.id && entry.upgradeId === upgrade.id)
-              ? zone.id
-              : undefined,
+            id:
+              typeof zone.id === "string" &&
+              !venueZones(venue).some((entry) => entry.id === zone.id && entry.upgradeId !== upgrade.id)
+                ? zone.id
+                : undefined,
           };
         });
         body.improvement = upgrade;
@@ -663,7 +670,7 @@ export function createProjectLifecycle({
       project.participantIds = [];
       project.status = "active";
       project.progress = 0;
-      project.updatedAt = new Date().toISOString();
+      project.updatedAt = villageNow().toISOString();
       for (const mail of state.venueMail.filter(
         (entry) => entry.projectId === id && entry.status === "awaiting-villagers",
       )) {
@@ -687,7 +694,7 @@ export function createProjectLifecycle({
       if (flow.affectedIds.every((id) => flow.approvals.some((entry) => entry.residentId === id))) return;
       flow.phase = "approval";
       renewProjectApprovalProgress(state, project);
-      project.updatedAt = new Date().toISOString();
+      project.updatedAt = villageNow().toISOString();
     });
   }
 

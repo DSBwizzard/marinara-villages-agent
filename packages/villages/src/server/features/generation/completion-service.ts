@@ -1,3 +1,4 @@
+import { isVillageClockError } from "../../adapters/time/clock-gate.js";
 import type { inferredPurpose, withUsagePurpose } from "../../adapters/models/usage-ledger.js";
 import type { readRuntimeDebug, runtimeDebug } from "../../adapters/observability/runtime-debug.js";
 import type { BackgroundCompletion } from "../../domain/models/background-completion-model.js";
@@ -114,6 +115,7 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                     : (operationSignal ?? options.signal),
               })
               .catch((error) => {
+                if (isVillageClockError(error)) throw error;
                 if (!options.responseFormat || operationSignal?.aborted || options.signal?.aborted) throw error;
                 const message = safeFailureMessage(error);
                 const unsupported =

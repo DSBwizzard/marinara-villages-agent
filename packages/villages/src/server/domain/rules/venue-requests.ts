@@ -9,7 +9,7 @@ export function readVenueRequestCore(value: unknown): VenueRequestCore | null {
   const raw = value as Record<string, unknown>;
   if (typeof raw.name !== "string" || !Array.isArray(raw.classes)) return null;
   const name = raw.name.trim();
-  const validClasses = ["residence", "gathering", "workplace", "other"];
+  const validClasses = ["residence", "community", "workplace", "other"];
   if (!name || name.length > MAX_VENUE_NAME_LENGTH || raw.classes.length < 1 || raw.classes.length > 2) return null;
   if (raw.classes.some((value) => typeof value !== "string" || !validClasses.includes(value))) return null;
   if (new Set(raw.classes).size !== raw.classes.length) return null;

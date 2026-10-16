@@ -23,7 +23,9 @@ export function selectRoomEventChecks(
     const target = candidates.length === 1 ? selected : uncertain;
     for (const check of candidates) {
       const prior = check.evidence.filter((line) => !line.current && line.id !== "player-input");
-      const player = check.evidence.filter((line) => line.id === "player-input");
+      const player = check.evidence.filter(
+        (line) => line.id === "player-input" || (line.current && line.speakerId === "player"),
+      );
       const pinned = new Set(check.essentialEvidenceIds ?? []);
       const context = [...prior.filter((line) => pinned.has(line.id)), ...prior.slice(-2)];
       target.set(check.id, {
@@ -148,7 +150,10 @@ export function selectRoomEventChecks(
     if (!controlled.length) continue;
     if (checks.some((check) => asRecord(check.facts).actorId === actor && selected.has(check.id))) continue;
     const sample = controlled[0];
-    const request = sample.evidence.find((line) => line.id === "player-input")?.content ?? "";
+    const request = sample.evidence
+      .filter((line) => line.id === "player-input" || (line.current && line.speakerId === "player"))
+      .map((line) => line.content)
+      .join("\n");
     const own = sample.evidence.filter((line) => line.current && line.speakerId === actor && line.kind !== "narration");
     for (const line of own) {
       const pending = controlled.filter((check) => scene.pendingRoomQuestions?.includes(check.question));

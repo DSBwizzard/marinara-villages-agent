@@ -320,7 +320,7 @@ async function main() {
   assert.equal(second.nextCursor, "2:3:0");
   const third = await read.service.readSceneChanges("same", second.nextCursor, 1);
   assert.equal(third.hasMore, false);
-  assert.match(third.unresolved[0]!.reason, /explicitly retry interpretation/);
+  assert.match(third.unresolved[0]!.reason, /Required response metadata is missing or invalid/);
   assert.equal((await read.service.readSceneChanges("same", third.nextCursor)).changes.length, 0);
   assert(
     !read.calls.includes("world") && !read.calls.includes("mutate") && !read.calls.some((x) => x.startsWith("replay:")),

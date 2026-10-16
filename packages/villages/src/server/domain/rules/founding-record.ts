@@ -151,7 +151,7 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
     : playerHome || characterId
       ? ["residence"]
       : record.category === "public-center"
-        ? ["gathering"]
+        ? ["community"]
         : ["other"];
   const capacity =
     Number.isInteger(record.residenceCapacity) &&

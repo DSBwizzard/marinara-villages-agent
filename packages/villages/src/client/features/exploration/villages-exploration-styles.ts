@@ -45,7 +45,7 @@ export const EXPLORATION_STYLES = `
 .${P}-explore-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-polaroid.${P}-pin-photo-card { width: 56px; flex: 0 0 auto; padding: 3px; gap: 2px; box-sizing: border-box; border: 1px solid var(--explore-border); border-radius: 2px; background: var(--explore-paper); color: var(--explore-ink); box-shadow: 0 3px 8px var(--explore-photo-shadow); transform: none; transition: none; }
 .${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-polaroid .${P}-pin-photo { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1 / 1; background: var(--explore-empty); overflow: visible; }
-.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-polaroid .${P}-pin-photo img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
+.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-polaroid .${P}-pin-photo img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
 .${P}-explore-polaroid .${P}-pin-photo svg { width: 24px; height: 24px; color: var(--explore-muted); }
 .${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-polaroid .${P}-pin-name { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 600; line-height: 12px; color: var(--explore-ink); }
 .${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-marker[data-selected="true"] .${P}-explore-polaroid.${P}-pin-photo-card { box-shadow: 0 0 0 2px var(--explore-selected), 0 3px 8px var(--explore-photo-shadow); }

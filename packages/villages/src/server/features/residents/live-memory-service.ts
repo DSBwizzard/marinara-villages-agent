@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { DomainProcessing } from "../../domain/models/exchange-model.js";
 
 import type { LiveEvidenceContext, LiveExchangeProposals } from "../../domain/models/memory-model.js";
@@ -20,7 +21,7 @@ import { settleStandingAccess } from "../../domain/rules/venue-access.js";
 
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 
-import { metadataFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
+import { metadataFailure, WorkFailureError, coerceWorkFailure } from "../../domain/rules/work-failure.js";
 
 import { captureRelationshipKnowledge } from "../../domain/rules/relationship-knowledge.js";
 
@@ -76,7 +77,26 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           proposals?.responseDiagnostics,
         ),
       );
-    if (proposals.memoryChanges.length > 16) throw new Error("Too many memory proposals");
+    if (
+      proposals.memoryChanges.some((value) =>
+        ["rejected", "unresolved"].includes(String(asRecord(value).systemVerification)),
+      )
+    )
+      throw new WorkFailureError(
+        coerceWorkFailure(
+          asRecord(
+            proposals.memoryChanges.find((value) =>
+              ["rejected", "unresolved"].includes(String(asRecord(value).systemVerification)),
+            ),
+          ).systemVerificationFailure,
+        ) ?? {
+          cause: "unsupported_outcome",
+          stage: "interpretation",
+          message:
+            "Consequential memory proposal was not supported by System; explicitly retry Memories interpretation",
+        },
+      );
+    if (proposals.memoryChanges.length > 16) throw new WorkFailureError(metadataFailure("Too many memory proposals"));
     if (!proposals.memoryChanges.length) return { reason: "No memory changes proposed", receiptIds: [] };
     const { byId } = context ?? createLiveEvidenceContext(scene, proposals);
     const at = turn.at!;
@@ -100,8 +120,12 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           try {
             const row = asRecord(value),
               kind = row.kind;
-            if (!["passing", "durable", "reinforce", "supersede"].includes(String(kind)))
+            if (typeof kind !== "string" || !["passing", "durable", "reinforce", "supersede"].includes(kind))
               throw new Error("Invalid memory kind");
+            if (row.systemVerification === "rejected" || row.systemVerification === "unresolved")
+              throw new Error(
+                "System verification " + row.systemVerification + "; explicitly retry Memories interpretation",
+              );
             const text = typeof row.text === "string" ? row.text.trim() : "";
             if (text.length > MAX_MEMORY_LENGTH) throw new Error("Memory exceeds the saved text limit");
             const subjects = ids(row.subjectCharacterIds),
@@ -280,6 +304,23 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           proposals?.responseDiagnostics,
         ),
       );
+    const unverified = asRecord(proposals.relationshipChanges).changes;
+    if (
+      Array.isArray(unverified) &&
+      unverified.some((value) => ["rejected", "unresolved"].includes(String(asRecord(value).systemVerification)))
+    )
+      throw new WorkFailureError(
+        coerceWorkFailure(
+          asRecord(
+            unverified.find((value) => ["rejected", "unresolved"].includes(String(asRecord(value).systemVerification))),
+          ).systemVerificationFailure,
+        ) ?? {
+          cause: "unsupported_outcome",
+          stage: "interpretation",
+          message:
+            "Consequential relationship proposal was not supported by System; explicitly retry Relationships interpretation",
+        },
+      );
     const raw = asRecord(proposals.relationshipChanges),
       lines = (context ?? createLiveEvidenceContext(scene, proposals)).lines;
     const village = await readVillageState();
@@ -353,13 +394,13 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         receiptIds.length,
         ...[...fresh.review.changes, ...fresh.review.permissions, ...fresh.review.disclosures].map((row) => row.id),
       );
-      applyRelationshipReview(state, fresh.review, authority, scene.id, turn.at);
+      applyRelationshipReview(state, fresh.review, authority, scene.id, turn.at, villageNow().getTime());
       for (const id of receiptIds) {
         const receipt = state.receipts[id];
         if (!receipt || receipt.noticeSequence) continue;
         receipt.sceneId = scene.id;
         receipt.submissionId = turn.id;
-        receipt.committedAt = new Date().toISOString();
+        receipt.committedAt = villageNow().toISOString();
         receipt.noticeSequence = ++state.noticeSequence;
       }
       captureRelationshipKnowledge(state, authority);

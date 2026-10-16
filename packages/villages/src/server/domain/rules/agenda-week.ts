@@ -1,5 +1,7 @@
+import { calendarDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageRemap, VillageVenue } from "../models/world.js";
 import { lookupRemap, remapBlockKey } from "./native-remap.js";
+import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { routineDay } from "./owned-routine.js";
 import { type NativeWeekSchedule, parseBlockRange } from "./schedule-rules.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -11,14 +13,7 @@ export function flexibleAgendaInterval(blocks: readonly VillageAgendaBlock[], st
   for (const row of blocks
     .filter((row) => row.endMinute > start && row.startMinute < end)
     .sort((a, b) => a.startMinute - b.startMinute)) {
-    if (
-      row.startMinute > covered ||
-      !row.flexible ||
-      row.status === "dnd" ||
-      row.status === "offline" ||
-      row.commitmentId
-    )
-      return false;
+    if (row.startMinute > covered || !flexibleAgendaBlock(row)) return false;
     covered = Math.max(covered, row.endMinute);
   }
   return covered >= end;
@@ -27,30 +22,11 @@ export function flexibleAgendaInterval(blocks: readonly VillageAgendaBlock[], st
 export const agendaDateKey = (at: Date): string =>
   `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
 
-const status = (value: unknown): VillageAgendaBlock["status"] =>
-  value === "online" || value === "idle" || value === "dnd" || value === "offline" ? value : "idle";
-
-const reasonFor = (activity: string): string =>
-  /sleep|rest/i.test(activity)
-    ? "To rest"
-    : /eat|meal|breakfast|dinner/i.test(activity)
-      ? "To eat"
-      : "Part of their daily life";
-
-const block = (
-  startMinute: number,
-  endMinute: number,
-  venueId: string,
-  activity: string,
-  reason?: string,
-  availability?: unknown,
-): VillageAgendaBlock => ({
+const block = (startMinute: number, endMinute: number, venueId: string, activity: string): VillageAgendaBlock => ({
   startMinute,
   endMinute,
   venueId,
   activity,
-  reason: reason?.trim() || reasonFor(activity),
-  status: status(availability),
 });
 
 /** A complete, varied week exists before any model or schedule is consulted. */
@@ -67,8 +43,6 @@ export function workingAgendaWeek(
           endMinute: 1440,
           venueId: "",
           activity: "Taking care of their own affairs",
-          reason: "",
-          status: "idle",
           flexible: true,
         },
       ],
@@ -127,18 +101,11 @@ export function completeAgendaWeek(
               : "";
           return [
             {
-              ...block(
-                start as number,
-                end as number,
-                venueId,
-                activity,
-                typeof row.reason === "string" ? row.reason.slice(0, 240) : "",
-                row.status,
-              ),
+              ...block(start as number, end as number, venueId, activity),
               zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
               ...(row.essential === true ? { essential: true } : {}),
               ...(typeof row.commitmentId === "string" ? { commitmentId: row.commitmentId } : {}),
-              flexible: row.flexible === true && (row.status === "online" || row.status === "idle"),
+              flexible: row.flexible === true,
               ...(typeof row.sourceTime === "string" ? { sourceTime: row.sourceTime } : {}),
             },
           ];
@@ -208,11 +175,9 @@ export function scheduleInformedWeek(
             end,
             move?.venueId ?? villageBlock?.venueId ?? "",
             translated || villageBlock?.activity || "Taking care of ordinary things",
-            villageBlock?.reason,
-            entry.status,
           ),
           sourceTime: entry.time,
-          flexible: move?.flexible === true && entry.status !== "dnd" && entry.status !== "offline",
+          flexible: move?.flexible === true,
           zoneId:
             move?.zoneId ??
             (move?.venueId && move.venueId !== villageBlock?.venueId ? undefined : villageBlock?.zoneId),
@@ -271,7 +236,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
     ordinary = ordinary.flatMap((entry) => {
       const start = Math.max(entry.startMinute, adjustment.startMinute),
         end = Math.min(entry.endMinute, adjustment.endMinute);
-      if (start >= end || !entry.flexible || entry.status === "dnd" || entry.status === "offline") return [entry];
+      if (start >= end || !flexibleAgendaBlock(entry)) return [entry];
       return [
         ...(entry.startMinute < start ? [{ ...entry, endMinute: start }] : []),
         {
@@ -281,7 +246,6 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
           venueId: adjustment.venueId,
           zoneId: adjustment.zoneId,
           activity: adjustment.activity,
-          reason: adjustment.reason,
           commitmentId: adjustment.wishId,
           flexible: false,
         },
@@ -291,8 +255,8 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
   }
   const work = agenda.projectWork;
   if (!work) return ordinary;
-  const dayStart = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
-  const dayEnd = new Date(at.getFullYear(), at.getMonth(), at.getDate() + 1).getTime();
+  const dayStart = calendarDate(at, at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+  const dayEnd = calendarDate(at, at.getFullYear(), at.getMonth(), at.getDate() + 1).getTime();
   const start = Math.max(dayStart, Date.parse(work.startsAt));
   const end = Math.min(dayEnd, Date.parse(work.endsAt));
   if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return ordinary;
@@ -324,9 +288,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
         venueId: work.venueId,
         zoneId: work.zoneId ?? "exterior",
         activity: "Build the agreed venue",
-        reason: "Committed project work order",
         commitmentId: work.projectId,
-        status: "online",
       });
     workBlocks.push(breakBlock);
     cursor = Math.max(cursor, breakBlock.endMinute);
@@ -338,9 +300,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
       venueId: work.venueId,
       zoneId: work.zoneId ?? "exterior",
       activity: "Build the agreed venue",
-      reason: "Committed project work order",
       commitmentId: work.projectId,
-      status: "online",
     });
   return [...remaining, ...workBlocks].sort((left, right) => left.startMinute - right.startMinute);
 }

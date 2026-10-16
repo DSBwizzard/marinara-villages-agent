@@ -192,7 +192,7 @@ try {
     await page.getByRole("button", { name: "Back to People" }).click();
     await page.getByRole("button", { name: /Feddy The Mill/ }).click();
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
-    await page.getByRole("button", { name: "Visit", exact: true }).click();
+    await page.getByRole("button", { name: "Visit venue", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
     const notices = page.getByRole("button", { name: "1 village notice" });
     await expect(notices).toBeVisible();

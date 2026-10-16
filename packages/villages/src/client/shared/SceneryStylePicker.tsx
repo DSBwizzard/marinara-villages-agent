@@ -47,9 +47,7 @@ export function SceneryStylePicker({
         ) : null}
         <option value="@custom">Custom description</option>
       </select>
-      {failed ? (
-        <small>Engine styles could not be loaded. Reopen this page to retry, or use a custom description.</small>
-      ) : null}
+      {failed ? <small>Styles unavailable</small> : null}
     </>
   );
 }

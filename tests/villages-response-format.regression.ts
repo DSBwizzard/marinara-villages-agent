@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
+import {
+  boundedRejectedText,
+  privateRejectedText,
+  REJECTED_RESPONSE_TEXT_LIMIT,
+} from "../packages/villages/src/server/domain/rules/rejected-response.js";
 import { createHash } from "node:crypto";
-import { coordinateVenue, rejectVenueCompletion } from "../packages/villages/src/server/jobs/venue-coordinator.js";
+import {
+  coordinateVenue,
+  rejectVenueCompletion,
+  readVenueOperation,
+} from "../packages/villages/src/server/jobs/venue-coordinator.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
@@ -30,6 +39,8 @@ async function main() {
   const rows = new Map<string, any>([
     ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", data: state, revision: 1 }],
   ]);
+  let failDiagnostics = false;
+  let conflictDiagnostics = false;
   const documents = {
     async getById(_p: string, id: string) {
       return structuredClone(rows.get(id) ?? null);
@@ -43,6 +54,13 @@ async function main() {
       return structuredClone(row);
     },
     async update(input: any) {
+      if (input.id === "villages-rejected-responses") {
+        if (failDiagnostics) throw Error("fixture diagnostic failure");
+        if (conflictDiagnostics) {
+          conflictDiagnostics = false;
+          return null;
+        }
+      }
       const old = rows.get(input.id);
       if (!old || old.revision !== input.expectedRevision) return null;
       const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
@@ -242,11 +260,71 @@ async function main() {
     await assert.rejects(
       coordinateVenue("legacy-paid", "legacy-paid", "turn", {}, 0, "old", async () => {
         await completeWithRoom(model as any, legacyMessages, 3000, jsonOptions);
-        await rejectVenueCompletion();
+        await rejectVenueCompletion({ model: "fixture", connectionId: "fixture", reason: "invalid-json" });
         throw Error("fixture validation rejection");
       }),
       /fixture validation rejection/,
     );
+    const diagnostic = rows.get("villages-rejected-responses").data.entries.at(-1);
+    assert.equal(diagnostic.content, "not JSON");
+    assert.equal(diagnostic.reason, "invalid-json");
+    assert.equal(diagnostic.model, "fixture");
+    assert.equal(diagnostic.sceneId, "legacy-paid");
+    assert.equal(diagnostic.syntaxError, "No JSON object found");
+    assert.equal(diagnostic.finishReason, "stop");
+    assert.equal(diagnostic.responseLength, 8);
+    assert.ok(diagnostic.attemptId && diagnostic.operationId && diagnostic.capturedAt);
+    assert.ok(boundedRejectedText("x".repeat(50_000)).length <= REJECTED_RESPONSE_TEXT_LIMIT);
+    assert.ok(!privateRejectedText("Bearer abc.def api_key=private-secret").includes("private-secret"));
+    assert.ok(!privateRejectedText("Bearer abc.def").includes("abc.def"));
+    assert.ok(
+      !JSON.stringify(await readVenueOperation("legacy-paid")).includes("not JSON"),
+      "public recovery summary never exposes rejected text",
+    );
+    for (let index = 0; index < 7; index++) {
+      const id = "diagnostic-bound-" + index;
+      makeLegacy(id, "rejected");
+      await assert.rejects(
+        coordinateVenue(id, id, "turn", {}, 0, "old", async () => {
+          await completeWithRoom(model as any, legacyMessages, 3000, jsonOptions);
+          await rejectVenueCompletion({ model: "fixture", connectionId: "fixture", reason: "invalid-json" });
+          throw Error("diagnostic fixture");
+        }),
+        /diagnostic fixture/,
+      );
+    }
+    assert.equal(
+      rows.get("villages-rejected-responses").data.entries.length,
+      5,
+      "diagnostics bounded globally across Scenes",
+    );
+    assert.equal(rows.get("villages-rejected-responses").data.entries[0].sceneId, "diagnostic-bound-2");
+    const capture = async (id: string) => {
+      makeLegacy(id, "rejected");
+      await assert.rejects(
+        coordinateVenue(id, id, "turn", {}, 0, "old", async () => {
+          await completeWithRoom(model as any, legacyMessages, 3000, jsonOptions);
+          await rejectVenueCompletion({ model: "fixture", connectionId: "fixture", reason: "invalid-json" });
+          throw Error("diagnostic fixture");
+        }),
+        /diagnostic fixture/,
+      );
+    };
+    conflictDiagnostics = true;
+    await Promise.all([capture("concurrent-diagnostic-a"), capture("concurrent-diagnostic-b")]);
+    const concurrent = rows.get("villages-rejected-responses").data.entries;
+    assert.ok(concurrent.some((entry: any) => entry.sceneId === "concurrent-diagnostic-a"));
+    assert.ok(concurrent.some((entry: any) => entry.sceneId === "concurrent-diagnostic-b"));
+    assert.equal(concurrent.length, 5);
+    failDiagnostics = true;
+    await capture("diagnostic-write-failed");
+    failDiagnostics = false;
+    assert.equal(
+      rows.get("villages-venue-visit-diagnostic-write-failed").data.operation.attempts["turn:0:" + formatHash].status,
+      "rejected",
+    );
+    assert.equal(rows.get("villages-rejected-responses").data.entries.length, 5);
+    const afterDiagnosticFixtures = calls;
     const paidAttempts = rows.get("villages-venue-visit-legacy-paid").data.operation.attempts;
     assert.equal(paidAttempts["turn:0:" + formatHash].status, "rejected", "rejection targets the exact paid retry");
     assert.equal(
@@ -254,7 +332,7 @@ async function main() {
       "complete",
       "legacy response is not incorrectly rejected",
     );
-    assert.equal(calls - beforePaid, 1);
+    assert.equal(afterDiagnosticFixtures - beforePaid, 11);
     await assert.rejects(
       coordinateVenue(
         "legacy-paid",
@@ -268,7 +346,11 @@ async function main() {
       ),
       (error: any) => error.code === "OPERATION_INTERRUPTED",
     );
-    assert.equal(calls - beforePaid, 1, "free recovery neither replays invalid retry output nor dispatches again");
+    assert.equal(
+      calls,
+      afterDiagnosticFixtures,
+      "free recovery neither replays invalid retry output nor dispatches again",
+    );
     for (const [content, finish, cause] of [
       ["No entries yet — Events is empty.", "stop", "invalid_json"],
       ["", "stop", "empty_output"],
@@ -345,7 +427,7 @@ async function main() {
       social,
       memory: [{ text: "A private fact was invented", who: ["Ada"], private: true }],
       notices: [{ author: "Ada", text: "A notice was invented" }],
-      venueRequests: [{ who: "Ada", name: "Unrequested hall", classes: ["gathering"] }],
+      venueRequests: [{ who: "Ada", name: "Unrequested hall", classes: ["community"] }],
       featureEdits: [{ who: "Ada", venueId: "park", featureId: "wall", text: "An invented change" }],
       lapsed: [{ who: "Ada", wish: "An invented loss" }],
     });

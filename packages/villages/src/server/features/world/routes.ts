@@ -1,3 +1,4 @@
+import { resolveVillageClock } from "../../adapters/time/clock-gate.js";
 import { buildVillageCatalog } from "../residents/resident-cards.js";
 import { addNotice, removeNoticeAt } from "../settings/village-settings.js";
 import { fail } from "../../adapters/http/route-support.js";
@@ -32,6 +33,17 @@ export function registerSnapshotCatalogRoutes(engine: FastifyInstance) {
 }
 export function registerWorldMaintenanceRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.post<{ Body: { revision?: unknown; choice?: unknown } }>("/clock/recover", async (request, reply) => {
+    try {
+      const { revision, choice } = request.body ?? {};
+      if (!Number.isSafeInteger(revision) || (choice !== "accept" && choice !== "check"))
+        throw badRequest("Refresh the clock notice and choose an action.");
+      await resolveVillageClock(revision as number, choice);
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "resolving the village clock");
+    }
+  });
   app.post<{ Body: { notice?: unknown } }>("/noticeboard", async (request, reply) => {
     try {
       return await addNotice(request.body?.notice);

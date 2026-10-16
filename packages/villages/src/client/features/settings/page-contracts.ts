@@ -66,7 +66,7 @@ export type VillageSettingsPagePorts = {
   readonly placingMapVenueId: string | null;
   readonly reframingMap: boolean;
   readonly removeVenue: (id: string) => Promise<void>;
-  readonly saveScenerySettings: () => Promise<void>;
+  readonly saveScenerySettings: (automaticZonePictures?: boolean) => Promise<void>;
   readonly saveSettings: () => Promise<void>;
   readonly saveTownMap: () => Promise<void>;
   readonly saveVenue: (draft: VillageVenue) => Promise<void>;

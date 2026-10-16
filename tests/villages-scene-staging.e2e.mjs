@@ -237,7 +237,7 @@ try {
           route.fulfill({
             status: 200,
             contentType: "text/html",
-            body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+            body: '<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:44px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">Menu</button></header><div style="height:calc(100% - 44px)"><marinara-capability-villages></marinara-capability-villages></div>',
           }),
         );
         await target.goto("http://villages.test/");
@@ -265,7 +265,9 @@ try {
       if (count === 1 && width === 1440) {
         failSpriteSave = true;
         await flipSwitch.click();
-        await expect(page.getByRole("alert")).toBeVisible();
+        await page.getByRole("button", { name: /^1 Scene error$/ }).click();
+        await expect(page.getByRole("region", { name: "Scene errors" })).toBeVisible();
+        await page.getByRole("button", { name: "Close Scene errors" }).click();
         await expect(flipSwitch).toBeChecked();
         failSpriteSave = false;
         const otherDevice = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -291,9 +293,7 @@ try {
       await expect(decisionSwitch).toHaveAttribute("aria-checked", "true");
       await expect(page.getByText("Using System fallback", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "0 checks", exact: true }).click();
-      await expect(page.getByRole("checkbox", { name: "Compare with System" })).toBeChecked();
-      await page.getByRole("checkbox", { name: "Compare with System" }).uncheck();
-      await expect.poll(() => interpretationSettings.compareSystem).toBe(false);
+      await expect(page.getByRole("checkbox", { name: "Compare with System" })).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(page.getByRole("region", { name: "Interpretation checks" })).toHaveCount(0);
       const switchBox = await decisionSwitch.boundingBox();
@@ -373,6 +373,14 @@ try {
               ? ["left", "center", "right"]
               : ["left", "left", "right", "right"],
       );
+      // The mobile composer appears only on the last page of the long greeting.
+      const greetingNext = page.getByRole("button", { name: "Next paragraph" });
+      for (
+        let pageIndex = 0;
+        pageIndex < 30 && !(await composer.count()) && (await greetingNext.isEnabled());
+        pageIndex++
+      )
+        await greetingNext.click();
       await composer.fill("Let us make room.");
       await page.getByRole("button", { name: "Send", exact: true }).click();
       const next = page.getByRole("button", { name: "Next paragraph" });

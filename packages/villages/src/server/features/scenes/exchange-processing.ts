@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { pipelineSignal } from "../../adapters/observability/metrics-context.js";
 import {
   type DomainProcessing,
@@ -41,7 +42,7 @@ export async function dispatchExchange(
         failure: undefined,
         ...applied,
         attempts: prior.attempts + 1,
-        updatedAt: new Date().toISOString(),
+        updatedAt: villageNow().toISOString(),
         elapsedMs: Math.round(performance.now() - started),
       };
     } catch (error) {
@@ -54,7 +55,7 @@ export async function dispatchExchange(
             ? error.failure
             : { cause: "storage_application", stage: "application", message: String(error).slice(0, 500) },
         attempts: prior.attempts + 1,
-        updatedAt: new Date().toISOString(),
+        updatedAt: villageNow().toISOString(),
         elapsedMs: Math.round(performance.now() - started),
       };
     }

@@ -59,7 +59,7 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
     const entry = {
       id: "request / A",
       requesterName: "Resident",
-      venueDraft: { name: " Fallback ", classes: ["gathering"], description: "Fallback description" },
+      venueDraft: { name: " Fallback ", classes: ["community"], description: "Fallback description" },
     };
     seed.venueRequests = [entry];
     seed.upgradeRequests = [];
@@ -171,7 +171,7 @@ export async function verifyVenueRequestLifetimes(browser) {
         await f.run("description");
         await expect.poll(() => f.requests.length).toBe(1);
         assert.deepEqual(f.requests[0].body, {
-          venues: [{ id: f.entry.id, name: " Fallback ", classes: ["gathering"] }],
+          venues: [{ id: f.entry.id, name: " Fallback ", classes: ["community"] }],
         });
         await f.reply(0, { missing });
         await f.settle(0);

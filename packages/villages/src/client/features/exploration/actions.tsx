@@ -34,6 +34,11 @@ export function useCloseExploration(ports: {
 }
 
 export function useOpenPlace(ports: {
+  screen?: string;
+  setVenueReturnTo?: React.Dispatch<SetStateAction<"home" | "menu" | "room" | "person">>;
+  setVenueSection?: React.Dispatch<SetStateAction<"about" | "zones" | "manage">>;
+  setVenueEditError?: (error: string) => void;
+  setVenueEditNotice?: (notice: string) => void;
   setExploreSheet: React.Dispatch<SetStateAction<ExplorationSheet>>;
   setOpenPlaceId: React.Dispatch<SetStateAction<string>>;
   setScreen: React.Dispatch<
@@ -64,16 +69,24 @@ export function useOpenPlace(ports: {
     setVenueProposalDraft,
     setVenueZoneKey,
   } = ports;
-  return useCallback((place: VillageVenue) => {
-    setExploreSheet(null);
-    setOpenPlaceId(null);
-    setVenueId(place.id);
-    setVenuePage("view");
-    setVenueZoneKey("exterior");
-    setVenueEditDraft(null);
-    setVenueProposalDraft(null);
-    setScreen("venue");
-  }, []);
+  return useCallback(
+    (place: VillageVenue) => {
+      if (ports.screen === "menu" || ports.screen === "room" || ports.screen === "person" || ports.screen === "home")
+        ports.setVenueReturnTo?.(ports.screen);
+      setExploreSheet(null);
+      setOpenPlaceId(null);
+      setVenueId(place.id);
+      setVenuePage("view");
+      ports.setVenueSection?.("about");
+      setVenueZoneKey("exterior");
+      setVenueEditDraft((current) => (current?.id === place.id ? current : null));
+      ports.setVenueEditError?.("");
+      ports.setVenueEditNotice?.("");
+      setVenueProposalDraft(null);
+      setScreen("venue");
+    },
+    [ports.screen],
+  );
 }
 
 export function useStartMapReplacement(ports: {

@@ -41,43 +41,13 @@ export function createNativeSchedules(ports: NativeSchedulesPorts) {
 
   // Villages — read Marinara's own character schedules, without owning them.
   //
-  // Conversation mode already asks the model to invent a weekly routine for each
-  // character (what they are doing, hour by hour, all seven days) and stores it
-  // on the CHARACTER CARD, at `data.extensions.conversationSchedule`, keyed by
-  // character id rather than by chat. `chats.storage.ts` reads it back with
-  // `readCharacterSchedule(row.data)` and its own comment names the card the
-  // source of truth. Reading it here therefore uses the data exactly as intended —
-  // a villager who already has a life in Conversation mode does not need a second
-  // one invented by the village.
+  // Read activity text and timing as optional preferences for Villages-owned routines.
+  // Engine Conversation availability never crosses this adapter boundary.
   //
   // Card reads are best-effort: a missing or malformed schedule leaves a resident
   // without a native routine, while a failed library read is reported separately.
 
   /** What the village wants to know about one character's existing routine. */
-
-  /**
-   * One block of the Engine's week: an hour range, what it says, and the
-   * availability the Engine assigned to it.
-   *
-   * The `status` is the whole reason this reader has a second half. It is the one
-   * field of a native schedule that is not prose — `online`, `idle`, `dnd` or
-   * `offline`, the same vocabulary the Engine uses for a character's own
-   * availability — and it is the Engine's only statement about a character's
-   * AUTONOMY: whether this hour is theirs, whether they can be interrupted, and
-   * whether they are meant to be reachable at all. A village that reads only the
-   * activity gets the verb and throws away the intent, which is why the status is
-   * carried through to the prompt rather than dropped here.
-   */
-
-  /**
-   * One character's whole week, exactly as the Engine wrote it.
-   *
-   * `readNativeRoutine` answers "what are they doing at this minute" and is what
-   * every prompt has always used. This is the wider read: the same week before it
-   * was narrowed to one minute, which is what a TRANSLATION needs, because
-   * translating one moment at a time would give the same character a different
-   * village life on Tuesday than they had on Monday.
-   */
 
   /** How long a parsed read is reused. The tab polls on open; schedules do not change minute to minute. */
   const CACHE_TTL_MS = 30_000;
@@ -136,15 +106,7 @@ export function createNativeSchedules(ports: NativeSchedulesPorts) {
     return isRecord(value) ? value : null;
   }
 
-  /**
-   * One day's blocks, keeping the status.
-   *
-   * A block is dropped only when it has no time or no activity, because those are
-   * the two fields that make it a block. Its status is NOT required: the Engine
-   * has written schedules without one, and "the Engine did not say" is a real
-   * answer that the translation reads as "take this hour as ordinary" rather than
-   * as "throw the hour away".
-   */
+  /** Read activity and timing only; Conversation availability belongs to Engine. */
   function parseBlocks(value: unknown): NativeDayBlock[] {
     if (!Array.isArray(value)) return [];
     const blocks: NativeDayBlock[] = [];
@@ -153,7 +115,7 @@ export function createNativeSchedules(ports: NativeSchedulesPorts) {
       const time = readString(entry.time);
       const activity = readString(entry.activity);
       if (time.length === 0 || activity.length === 0) continue;
-      blocks.push({ time, activity, status: readString(entry.status) });
+      blocks.push({ time, activity });
     }
     return blocks;
   }
@@ -254,24 +216,6 @@ export function createNativeSchedules(ports: NativeSchedulesPorts) {
   }
 
   /**
-   * A block's hour range as minutes from midnight. The end is left as written, so
-   * a block that ends before it starts ("22:00-06:00") is recognisable as one that
-   * wraps past midnight rather than being silently repaired into nonsense.
-   */
-
-  /**
-   * The block that covers this minute, or null when none does.
-   *
-   * Split out of `activityAt` so that the two things a block carries — what is
-   * happening and whether the hour is theirs — are read from ONE block. Two
-   * lookups would be two chances to pick different blocks, and an activity paired
-   * with another block's availability is a villager who is asleep at their own
-   * shift.
-   */
-
-  /** What a block list says the character is doing at this minute, or "" if it says nothing. */
-
-  /**
    * Every character's WHOLE week, keyed by character id. Never throws, for the
    * same reason the narrower read does not.
    *
@@ -308,7 +252,6 @@ export function createNativeSchedules(ports: NativeSchedulesPorts) {
       routines.set(schedule.characterId, {
         routineSummary: schedule.routineSummary,
         activity: block?.activity ?? "",
-        status: block?.status ?? "",
         talkativeness: schedule.talkativeness,
         weekStart: schedule.weekStart,
         weekday,

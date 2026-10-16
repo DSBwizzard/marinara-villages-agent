@@ -1,5 +1,6 @@
 import { resetVillage } from "../world/village.js";
 import { fail, SETTINGS_BODY_LIMIT, VENUE_IMAGE_BODY_LIMIT } from "../../adapters/http/route-support.js";
+import { requestFoundingSuggestions, readFoundingSuggestions } from "./founding-suggestions.js";
 import { readTownMapGeneration, requestTownMapGeneration } from "../../jobs/town-map-generation.js";
 import { generateVillageTownMap } from "../media/town-map-image.js";
 import { resetVenueSessions } from "../scenes/archive.js";
@@ -74,9 +75,18 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
   });
   app.post<{ Body: unknown }>("/setup/venues/suggest", async (request, reply) => {
     try {
+      const body = request.body as { actionId?: unknown } | null;
+      if (body?.actionId !== undefined) return await requestFoundingSuggestions(request.body);
       return await suggestStartingVenues(request.body);
     } catch (error) {
       return fail(reply, error, "suggesting starting spaces");
+    }
+  });
+  app.get<{ Params: { actionId: string } }>("/setup/venues/suggestions/:actionId", async (request, reply) => {
+    try {
+      return await readFoundingSuggestions(request.params.actionId);
+    } catch (error) {
+      return fail(reply, error, "retrieving Venue suggestions");
     }
   });
   app.post<{ Body: unknown }>("/setup/scenario-imprint/draft", async (request, reply) => {

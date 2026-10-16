@@ -1,3 +1,5 @@
+import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failure.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { ingestSavedProgressEvent } from "../../domain/rules/progress-runtime.js";
 import { physicalVenueEvents } from "../../domain/rules/venue-scene-state.js";
 import type { VenueScene, VenueSubmission, VenueRecordEvent } from "../../domain/models/scene-model.js";
@@ -117,7 +119,7 @@ export function createSceneProgress({
       await changeSession(sessionId, (saved) => {
         const turn = saved.submissions.find((entry) => entry.id === submissionId);
         if (turn) {
-          turn.progressProcessedAt ||= new Date().toISOString();
+          turn.progressProcessedAt ||= villageNow().toISOString();
           turn.progressError = "";
         }
       });
@@ -153,6 +155,15 @@ export function createSceneProgress({
       scene.villageSeed === village.seed &&
       processing.sceneId === scene.id &&
       processing.submissionId === turn.id;
+    const checkFailure = (domain: keyof typeof processing.domains) => {
+      const failure = turn.effectFailures?.[domain];
+      if (failure)
+        throw new WorkFailureError(
+          failure.kind === "metadata"
+            ? metadataFailure(failure.message)
+            : { cause: "missing_result", stage: "interpretation", message: failure.message },
+        );
+    };
     const applyProjects = async () => {
       if (!valid)
         return { status: "rejected" as const, reason: "Village identity changed; saved effects cannot apply" };
@@ -168,6 +179,7 @@ export function createSceneProgress({
           reason: "The physical outcome no longer meets current state restrictions",
         };
       if (turn.physicalOutcomeVersion && turn.action?.happened) await applyProjectPickup(scene.id, turn.id);
+      checkFailure("projects");
       await processSavedProgressSubmission(scene.id, turn.id);
       const current = await readVillageState();
       const receiptIds = current.progressTasks.flatMap((task) =>
@@ -185,6 +197,7 @@ export function createSceneProgress({
       {
         projects: applyProjects,
         wishes: async () => {
+          checkFailure("wishes");
           if (!valid) return { status: "rejected", reason: "Village identity changed" };
           if (
             turn.physicalOutcomeVersion &&
@@ -197,14 +210,18 @@ export function createSceneProgress({
               : { status: "pending", reason: "Waiting for the physical effect and receipt to commit" };
           return processWishExchange(scene, turn.id);
         },
-        memories: async () =>
-          valid
+        memories: async () => {
+          checkFailure("memories");
+          return valid
             ? processLiveMemories(scene, turn.id, evidenceContext)
-            : { status: "rejected", reason: "Village identity changed" },
-        relationships: async () =>
-          valid
+            : { status: "rejected", reason: "Village identity changed" };
+        },
+        relationships: async () => {
+          checkFailure("relationships");
+          return valid
             ? processLiveRelationships(scene, turn.id, evidenceContext)
-            : { status: "rejected", reason: "Village identity changed" },
+            : { status: "rejected", reason: "Village identity changed" };
+        },
       },
       async (domain, result) => {
         updates.set(domain, result);

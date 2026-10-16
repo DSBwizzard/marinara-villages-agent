@@ -1,15 +1,16 @@
-import { extractJsonObject } from "./json-reply.js";
+import { normalizeSceneJson, parseSceneObject } from "./scene-json-syntax.js";
 
-/** Keep complete narration when only trailing metadata was cut off. Never invent or repair JSON values. */
+/** Recover syntax only; complete Scene validation remains the caller's responsibility. */
 export function extractSceneReply(content: string): Record<string, unknown> | null {
-  const complete = extractJsonObject(content);
-  if (complete) return complete;
-  const text = content.trim().replace(/^\x60\x60\x60(?:json)?\s*/u, "");
-  if (!text.startsWith("{")) return null;
-  let depth = 1,
-    quoted = false,
+  // One candidate only. Never choose between competing objects or unwrap a JSON array.
+  const start = content.indexOf("{");
+  if (start < 0 || /[\[\]}]/u.test(content.slice(0, start))) return null;
+  const text = content.slice(start);
+  const stack = ["}"];
+  let quoted = false,
     escaped = false;
   let saved: Record<string, unknown> | null = null;
+  let tailStart = 0;
   for (let index = 1; index < text.length; index++) {
     const char = text[index];
     if (quoted) {
@@ -19,17 +20,22 @@ export function extractSceneReply(content: string): Record<string, unknown> | nu
       continue;
     }
     if (char === '"') quoted = true;
-    else if (char === "{" || char === "[") depth++;
+    else if (char === "{" || char === "[") stack.push(char === "{" ? "}" : "]");
     else if (char === "}" || char === "]") {
-      depth--;
-      if (depth === 0) return null; // A complete malformed object is not a truncation.
-    } else if (char === "," && depth === 1) {
-      try {
-        saved = JSON.parse(text.slice(0, index) + "}");
-      } catch {
-        return null;
+      if (stack.pop() !== char) return null;
+      if (!stack.length) {
+        if (/[{}\[\]]/u.test(text.slice(index + 1))) return null;
+        const candidate = text.slice(0, index + 1);
+        return parseSceneObject(candidate) ?? parseSceneObject(normalizeSceneJson(candidate));
       }
+    } else if (char === "," && stack.length === 1) {
+      // Existing narrow truncation recovery: only fully parsed, unmodified prefix fields.
+      saved = parseSceneObject(text.slice(0, index) + "}");
+      tailStart = index + 1;
     }
   }
-  return saved && Array.isArray(saved.heardPlayerBy) && Array.isArray(saved.segments) ? saved : null;
+  const tailKey = /^\s*("(?:[^"\\]|\\.)*")\s*:/u.exec(text.slice(tailStart));
+  const tail = tailKey ? parseSceneObject("{" + tailKey[1] + ":null}") : null;
+  if (!tail || !saved || Object.keys(tail).some((key) => Object.hasOwn(saved, key))) return null;
+  return saved && Array.isArray(saved.segments) ? saved : null;
 }

@@ -3,6 +3,12 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  "tests/villages-universal-venue.e2e.mjs",
+  "tests/villages-spinoff.regression.ts",
+  "tests/villages-spinoff.e2e.mjs",
+  "tests/villages-spinoff-packaged.regression.ts",
+  "tests/villages-space-sound.regression.ts",
+  "tests/villages-space-connections.e2e.mjs",
   "tests/villages-activation-scope.regression.ts",
   "tests/villages-agenda-movement.regression.ts",
   "tests/villages-application.regression.ts",
@@ -122,10 +128,8 @@ export const isolatedTests = new Set([
   "tests/villages-state-service.regression.ts",
   "tests/villages-town-map-ownership.regression.ts",
   "tests/villages-town-map-review-ownership.regression.ts",
-  "tests/villages-usage-meter.e2e.mjs",
   "tests/villages-usage-meter.regression.ts",
   "tests/villages-usage-ownership.regression.ts",
-  "tests/villages-usage-preview.e2e.mjs",
   "tests/villages-usage-preview.regression.ts",
   "tests/villages-venue-access.regression.ts",
   "tests/villages-venue-capacity.regression.ts",

@@ -1,9 +1,10 @@
+import { SpaceConnections } from "../../shared/SpaceConnections.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import type { SceneView, VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { BaseZoneFields, venueHasCommon, VenueLayoutFields } from "../founding/villages-founding-editor";
 import { FoundingZoneFields, foundingZoneProblem } from "../founding/villages-founding-zones";
-import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 import { VENUE_CLASS_CHOICES } from "../venues/VenuePanels.js";
 import { useEffect, useRef, useState } from "react";
 import type { ProjectsController } from "./useProjectsController.js";
@@ -144,6 +145,28 @@ function RenovationRevisionEditor({
               ))}
             </select>
           </label>
+          {venue ? (
+            <SpaceConnections
+              editableIds={upgrade.zones?.flatMap((zone) => (zone.id ? [zone.id] : [])) ?? []}
+              spaces={[
+                ...(venue.zones ?? []).filter(
+                  (zone) => zone.upgradeId !== upgrade.id && !upgrade.zones?.some((draft) => draft.id === zone.id),
+                ),
+                ...(upgrade.zones ?? []).filter((zone) => !!zone.id).map((zone) => ({ ...zone, id: zone.id! })),
+              ]}
+              onChange={(rows) =>
+                setChange({
+                  ...change,
+                  improvement: {
+                    ...upgrade,
+                    zones: rows.filter((zone) => upgrade.zones?.some((draft) => draft.id === zone.id)) as NonNullable<
+                      typeof upgrade.zones
+                    >,
+                  },
+                })
+              }
+            />
+          ) : null}
           {(upgrade.zones ?? []).map((zone, index) => (
             <section key={zone.id || index}>
               <label>
@@ -268,7 +291,8 @@ function RenovationRevisionEditor({
                   zones: [
                     ...(upgrade.zones ?? []),
                     {
-                      id: "",
+                      id: "zone:" + createVillagesClientId(),
+                      connectedTo: ["exterior"],
                       name: "",
                       description: "",
                       kind: "public",
@@ -454,7 +478,7 @@ export function ProjectsPanelV2({
               <VenueLayoutFields venue={openingVenue} onChange={patchOpeningLayout} onReveal={setOpeningFocusArea} />
             ) : null}
             <label>
-              Entrance appearance
+              Exterior appearance
               <textarea value={exterior} onChange={(event) => setExterior(event.target.value)} />
             </label>
             {openingVenue ? (
@@ -499,7 +523,7 @@ export function ProjectsPanelV2({
           return (
             <section key={area} className={`${ELEMENT_TAG}-project-image`}>
               <h3>
-                {area === "exterior" ? "Entrance" : openingVenue?.spaces?.[0]?.name || "First Zone"} image · optional
+                {area === "exterior" ? "Exterior" : openingVenue?.spaces?.[0]?.name || "First Zone"} image · optional
               </h3>
               {image ? (
                 <img src={image.url} alt={`${area} preview`} />
@@ -514,7 +538,7 @@ export function ProjectsPanelV2({
               >
                 Generate image
               </button>
-              <VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />
+
               <input
                 type="file"
                 accept="image/*"
@@ -771,6 +795,27 @@ export function ProjectsPanelV2({
                         A Venue supports at most two distinct Classes, including its Upgrades. An Upgrade can add zones
                         or improve an existing area.
                       </p>
+                      {selectedVenue ? (
+                        <SpaceConnections
+                          spaces={[
+                            ...(selectedVenue.zones ?? []).filter(
+                              (zone) =>
+                                (!zone.upgradeId || zone.upgradeId !== selectedVenue.improvements?.[slot]?.id) &&
+                                !upgradeZones?.some((draft) => draft.id === zone.id),
+                            ),
+                            ...(upgradeZones ?? [])
+                              .filter((zone) => !!zone.id)
+                              .map((zone) => ({ ...zone, id: zone.id! })),
+                          ]}
+                          onChange={(rows) =>
+                            setUpgradeZones(
+                              rows.filter((zone) => upgradeZones?.some((draft) => draft.id === zone.id)) as NonNullable<
+                                typeof upgradeZones
+                              >,
+                            )
+                          }
+                        />
+                      ) : null}
                       {(upgradeZones ?? []).map((zone, index) => (
                         <section className={ELEMENT_TAG + "-project-card"} key={zone.id ?? index}>
                           <label>
@@ -943,7 +988,7 @@ export function ProjectsPanelV2({
                   <select value={venueClass} onChange={(event) => setVenueClass(event.target.value as VenueClass)}>
                     <option value="residence">Residence</option>
                     <option value="workplace">Workplace</option>
-                    <option value="gathering">Gathering</option>
+                    <option value="community">Community</option>
                     <option value="other">Other</option>
                   </select>
                 </label>
@@ -1014,7 +1059,13 @@ export function ProjectsPanelV2({
                 <h3>Place the blueprint</h3>
                 <p>{project.venueDraft?.description}</p>
                 <p>Choose a clear spot on the Village map. The blueprint marks where this Venue will be built.</p>
-                <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => onPlaceOnMap(project.id)}>
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  disabled={!!room && room.status !== "closed"}
+                  title={room && room.status !== "closed" ? "End the Scene to place on the map" : undefined}
+                  onClick={() => onPlaceOnMap(project.id)}
+                >
                   Place on Village map
                 </button>
               </>
@@ -1225,7 +1276,12 @@ export function ProjectsPanelV2({
                   focused on this site for 24 hours, with normal rest and essential breaks.
                 </p>
                 {flow?.workOrder ? (
-                  <p>Expected completion: {new Date(flow.workOrder.completesAt).toLocaleString()}</p>
+                  <p>
+                    Expected completion:{" "}
+                    {new Date(flow.workOrder.completesAt).toLocaleString(undefined, {
+                      timeZone: snapshot.clock?.timeZone || snapshot.village.timeZone,
+                    })}
+                  </p>
                 ) : null}
                 {flow?.blockedReason ? <p role="status">{flow.blockedReason}</p> : null}
                 {project.status === "blocked"
@@ -1273,7 +1329,7 @@ export function ProjectsPanelV2({
               </p>
             ) : null}
             <footer className={`${ELEMENT_TAG}-project-footer`}>
-              {room?.status === "active" ? (
+              {room && room.status !== "closed" ? (
                 <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onReturn}>
                   Return to current Scene
                 </button>

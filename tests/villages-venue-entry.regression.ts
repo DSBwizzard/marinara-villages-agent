@@ -6,7 +6,7 @@ const venue: VillageVenue = {
   id: "room",
   name: "Common room",
   description: "A shared room",
-  category: "gathering",
+  category: "community",
   presentation: { image: null, x: null, y: null },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   capabilities: [],

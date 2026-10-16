@@ -222,7 +222,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
 }
 try {
   await runCase("founding/saved-zone-selection", verifySavedZoneSelection);
-  for (const { width, height, fontSize, homeCount, chromeHeight = 0 } of [
+  for (const { width, height, fontSize, homeCount, chromeHeight = 44 } of [
     { width: 1366, height: 768, fontSize: 16, homeCount: 3 },
     { width: 1440, height: 650, fontSize: 16, homeCount: 1, chromeHeight: 200 },
     { width: 1917, height: 600, fontSize: 20, homeCount: 1 },
@@ -289,26 +289,38 @@ try {
         return route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({
-            venues: body.venues.map((row, index) => ({
-              id: row.id,
-              name:
-                index === 0
-                  ? "Your living space"
-                  : row.venueClass === "gathering"
-                    ? "Gathering Place"
-                    : `${characters.find((person) => person.id === row.residentCharacterId)?.name}'s living space`,
-              form: "Indoor room",
-              description: "An entrance off the shared corridor.",
-              layout: row.venueClass === "gathering" ? "common" : "both",
-              commonName: "Sitting area",
-              commonPurpose: "Sharing meals",
-              commonDescription: "A table beside a window.",
-              privateName: "Bedroom",
-              privatePurpose: "Personal resting space",
-              privateDescription: row.residentCharacterId ? "" : "A comfortable hammock.",
-            })),
-          }),
+          body: JSON.stringify(
+            ((result) =>
+              body.actionId
+                ? { id: body.actionId, sourceKey: body.sourceKey, status: "complete", result, error: "" }
+                : result)({
+              venues: body.venues.map((row, index) => ({
+                id: row.id,
+                name:
+                  index === 0
+                    ? "Your living space"
+                    : row.venueClass === "community"
+                      ? "Community Place"
+                      : `${characters.find((person) => person.id === row.residentCharacterId)?.name}'s living space`,
+                form: "Indoor room",
+                description: "An entrance off the shared corridor.",
+                layout: row.venueClass === "community" ? "common" : "both",
+                connections:
+                  row.venueClass === "community"
+                    ? [["exterior", "common:base"]]
+                    : [
+                        ["exterior", "common:base"],
+                        ["common:base", "private:base"],
+                      ],
+                commonName: "Sitting area",
+                commonPurpose: "Sharing meals",
+                commonDescription: "A table beside a window.",
+                privateName: "Bedroom",
+                privatePurpose: "Personal resting space",
+                privateDescription: row.residentCharacterId ? "" : "A comfortable hammock.",
+              })),
+            }),
+          ),
         });
       }
       if (path.endsWith("/setup/town-map/generate")) {
@@ -390,7 +402,7 @@ try {
       route.fulfill({
         status: 200,
         contentType: "text/html",
-        body: `<style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header style="height:${chromeHeight}px;overflow:hidden">Engine chrome fixture</header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
+        body: `<style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:${chromeHeight}px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">☰</button></header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
       }),
     );
     await page.goto("http://villages.test/");
@@ -420,9 +432,119 @@ try {
         });
       }
     };
-    await expect(root.locator('.villages-forging-steps [aria-current="step"]')).toHaveAttribute("aria-label", "People");
+    await expect(root.locator('.villages-forging-steps [aria-current="step"]')).toHaveAttribute("aria-label", "Place");
     await expect(root.locator(".villages-forging-steps button")).toHaveCount(0);
     await expect(root.getByRole("heading", { name: "Forging the Village", exact: true })).toBeVisible();
+    await expect(root.getByText("Story direction", { exact: true })).toHaveCount(0);
+    await expect(root.getByLabel("Narrative direction", { exact: true })).toHaveCount(0);
+    await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
+    await expect(root.getByText("Starting circumstance examples")).toHaveCount(0);
+    const circumstance = root.getByLabel("Starting circumstances", { exact: true });
+    await expect(circumstance).toHaveValue("");
+    await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("");
+    if (width === 390 && height === 844) {
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+      const place = root.getByLabel("Place and world", { exact: true });
+      const first = await circumstance.getAttribute("placeholder");
+      const firstPlace = await place.getAttribute("placeholder");
+      const placeHints = new Set([firstPlace]);
+      const circumstanceHints = new Set([first]);
+      assert.match(first, /\bI\b/, "Circumstance hints use first person");
+      for (let tick = 1; tick <= 4; tick++) {
+        await page.clock.fastForward(4000);
+        const circumstanceHint = await circumstance.getAttribute("placeholder");
+        assert.match(circumstanceHint, /\bI\b/, "Circumstance hints use first person");
+        if (tick < 4) {
+          assert.ok(!circumstanceHints.has(circumstanceHint), "Circumstances cycle through four distinct hints");
+          circumstanceHints.add(circumstanceHint);
+        } else assert.equal(circumstanceHint, first, "Circumstances cycle back after four hints");
+        const hint = await place.getAttribute("placeholder");
+        if (tick < 4) {
+          assert.ok(!placeHints.has(hint), "Place cycles through four distinct hints");
+          placeHints.add(hint);
+        } else assert.equal(hint, firstPlace, "Place cycles back after four hints");
+      }
+      await expect(circumstance).toHaveValue("");
+      await expect(place).toHaveValue("");
+      assert.equal(suggestionCalls, 0);
+      assert.equal(imageCalls, 0);
+      await page.clock.resume();
+    }
+    await forward("Continue to People").click();
+    const nameField = root.getByLabel("Village name", { exact: true });
+    await expect(nameField).toBeFocused();
+    await expect(nameField).toHaveAttribute("aria-invalid", "true");
+    await expect(nameField.locator(".. ").getByRole("alert")).toHaveText("Give the village a name.");
+    await expect(root.getByLabel("Place and world", { exact: true }).locator("..").getByRole("alert")).toHaveText(
+      "Describe the place and world.",
+    );
+    await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe the starting circumstances.");
+    await nameField.fill("Willowbrook");
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(nameField).toBeFocused();
+    await expect(circumstance.locator("..").getByRole("alert")).toBeVisible();
+    await forward("Continue to People").click();
+    await expect(root.getByLabel("Place and world", { exact: true })).toBeFocused();
+    await expect(root.getByRole("button", { name: "Help: Village name", exact: true })).toHaveCount(0);
+    const help = root.getByRole("button", { name: "Help: Place and world", exact: true });
+    const panelsHeight = (await root.locator(".villages-place-panels").boundingBox()).height;
+    await help.click();
+    await expect(help).toHaveAttribute("aria-expanded", "true");
+    await expect(root.getByRole("note").filter({ hasText: "surrounding world" })).toBeVisible();
+    assert.equal(
+      (await root.locator(".villages-place-panels").boundingBox()).height,
+      panelsHeight,
+      "Place help floats without expanding panels",
+    );
+    await bounds();
+    await capture("place-help");
+    await help.press("Escape");
+    await expect(help).toBeFocused();
+    await expect(help).toHaveAttribute("aria-expanded", "false");
+    for (const label of ["Starting circumstances"]) {
+      const otherHelp = root.getByRole("button", { name: "Help: " + label, exact: true });
+      await otherHelp.click();
+      await expect(otherHelp).toHaveAttribute("aria-expanded", "true");
+      if (label === "Starting circumstances")
+        await expect(root.getByRole("note")).toHaveText(
+          "Describe the circumstances when you first start playing here. Everyday life, an ongoing situation, or a recent change are all fine.",
+        );
+      assert.equal(
+        (await root.locator(".villages-place-panels").boundingBox()).height,
+        panelsHeight,
+        label + " help floats without expanding panels",
+      );
+      await bounds();
+      await capture(label === "Map" ? "map-help" : "situation-help");
+      await otherHelp.press("Escape");
+      await expect(otherHelp).toBeFocused();
+    }
+    await root
+      .getByLabel("Place and world", { exact: true })
+      .fill("A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.");
+    await forward("Continue to People").click();
+    await expect(circumstance).toBeFocused();
+    await circumstance.fill("We rented the observatory together because ordinary housing was too expensive.");
+    if (width === 390 && height === 844) {
+      const hint = await circumstance.getAttribute("placeholder");
+      await page.clock.fastForward(4100);
+      await expect(circumstance).toHaveValue(
+        "We rented the observatory together because ordinary housing was too expensive.",
+      );
+      assert.equal(await circumstance.getAttribute("placeholder"), hint, "authored text stops placeholder rotation");
+      const place = root.getByLabel("Place and world", { exact: true });
+      const placeHint = await place.getAttribute("placeholder");
+      await page.clock.fastForward(4000);
+      await expect(place).toHaveValue(
+        "A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.",
+      );
+      assert.equal(await place.getAttribute("placeholder"), placeHint, "authored place text stops hint rotation");
+    }
+
+    await expect(root.getByRole("group", { name: "Map source", exact: true })).toHaveCount(0);
+    await capture("place");
+    await forward("Continue to People").click();
+    await expect(root).toHaveAttribute("data-step", "1");
     await expect(root.getByRole("heading", { name: "You", exact: true })).toBeVisible();
     await root.getByRole("button", { name: /Zara.*Change/ }).click();
     const personaDialog = page.getByRole("dialog", { name: "Choose Persona", exact: true });
@@ -430,7 +552,7 @@ try {
     await personaDialog.getByRole("button").filter({ hasText: "Ada" }).click();
     await expect(root.getByText("View Persona details", { exact: true })).toHaveCount(0);
     await root.getByLabel("Role title", { exact: true }).fill(" ");
-    await forward("Continue to place").click();
+    await forward("Continue to Map").click();
     await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toContainText("title");
     await root.getByLabel("Role title", { exact: true }).fill("Harbor Patron");
     await expect(root.getByLabel("Why villagers turn to you", { exact: true })).toHaveCount(0);
@@ -520,7 +642,7 @@ try {
     await expect(choice).not.toHaveAttribute("aria-invalid", "true");
     const roleTitle = root.getByLabel("Role title", { exact: true });
     await roleTitle.fill(" ");
-    await forward("Continue to place").click();
+    await forward("Continue to Map").click();
     await expect(roleTitle).toHaveAttribute("aria-invalid", "true");
     await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toHaveText(
       "Give your village role a title.",
@@ -537,8 +659,8 @@ try {
     );
     await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toHaveCount(0);
     await expect(missingBackstoryNotice).toBeVisible();
-    await forward("Continue to place").click();
-    await expect(root).toHaveAttribute("data-step", "0");
+    await forward("Continue to Map").click();
+    await expect(root).toHaveAttribute("data-step", "1");
     await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
     await expect(missingBackstoryNotice).toHaveCSS("color", "rgb(255, 155, 165)");
     await expect(choice).toHaveAttribute("aria-invalid", "true");
@@ -548,7 +670,7 @@ try {
     await expect(choice).not.toHaveAttribute("aria-invalid", "true");
     await choice.selectOption("village");
     await expect(missingBackstoryNotice).toHaveCount(0);
-    await forward("Continue to place").click();
+    await forward("Continue to Map").click();
     await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
     await bounds();
     await capture("backstory-required");
@@ -657,7 +779,7 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume founding", exact: true }).click();
       await expect(choice).toHaveValue("adapt");
-      await forward("Continue to place").click();
+      await forward("Continue to Map").click();
       await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
       await expect(backstoryEditor.getByLabel("Finn custom place", { exact: true })).toHaveValue("");
       await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
@@ -671,116 +793,6 @@ try {
     assert.equal(imageCalls, 0);
     await bounds();
     await capture("people");
-    await forward("Continue to place").click();
-    await expect(root).toHaveAttribute("data-step", "1");
-    await expect(root.getByText("Story direction", { exact: true })).toHaveCount(0);
-    await expect(root.getByLabel("Narrative direction", { exact: true })).toHaveCount(0);
-    await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
-    await expect(root.getByText("Starting circumstance examples")).toHaveCount(0);
-    const circumstance = root.getByLabel("Starting circumstances", { exact: true });
-    await expect(circumstance).toHaveValue("");
-    await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("");
-    if (width === 390 && height === 844) {
-      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
-      const place = root.getByLabel("Place and world", { exact: true });
-      const first = await circumstance.getAttribute("placeholder");
-      const firstPlace = await place.getAttribute("placeholder");
-      const placeHints = new Set([firstPlace]);
-      const circumstanceHints = new Set([first]);
-      assert.match(first, /\bI\b/, "Circumstance hints use first person");
-      for (let tick = 1; tick <= 4; tick++) {
-        await page.clock.fastForward(4000);
-        const circumstanceHint = await circumstance.getAttribute("placeholder");
-        assert.match(circumstanceHint, /\bI\b/, "Circumstance hints use first person");
-        if (tick < 4) {
-          assert.ok(!circumstanceHints.has(circumstanceHint), "Circumstances cycle through four distinct hints");
-          circumstanceHints.add(circumstanceHint);
-        } else assert.equal(circumstanceHint, first, "Circumstances cycle back after four hints");
-        const hint = await place.getAttribute("placeholder");
-        if (tick < 4) {
-          assert.ok(!placeHints.has(hint), "Place cycles through four distinct hints");
-          placeHints.add(hint);
-        } else assert.equal(hint, firstPlace, "Place cycles back after four hints");
-      }
-      await expect(circumstance).toHaveValue("");
-      await expect(place).toHaveValue("");
-      assert.equal(suggestionCalls, 0);
-      assert.equal(imageCalls, 0);
-      await page.clock.resume();
-    }
-    await forward("Continue to Map").click();
-    const nameField = root.getByLabel("Village name", { exact: true });
-    await expect(nameField).toBeFocused();
-    await expect(nameField).toHaveAttribute("aria-invalid", "true");
-    await expect(nameField.locator(".. ").getByRole("alert")).toHaveText("Give the village a name.");
-    await expect(root.getByLabel("Place and world", { exact: true }).locator("..").getByRole("alert")).toHaveText(
-      "Describe the place and world.",
-    );
-    await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe the starting circumstances.");
-    await nameField.fill("Willowbrook");
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    await expect(nameField).toBeFocused();
-    await expect(circumstance.locator("..").getByRole("alert")).toBeVisible();
-    await forward("Continue to Map").click();
-    await expect(root.getByLabel("Place and world", { exact: true })).toBeFocused();
-    await expect(root.getByRole("button", { name: "Help: Village name", exact: true })).toHaveCount(0);
-    const help = root.getByRole("button", { name: "Help: Place and world", exact: true });
-    const panelsHeight = (await root.locator(".villages-place-panels").boundingBox()).height;
-    await help.click();
-    await expect(help).toHaveAttribute("aria-expanded", "true");
-    await expect(root.getByRole("note").filter({ hasText: "surrounding world" })).toBeVisible();
-    assert.equal(
-      (await root.locator(".villages-place-panels").boundingBox()).height,
-      panelsHeight,
-      "Place help floats without expanding panels",
-    );
-    await bounds();
-    await capture("place-help");
-    await help.press("Escape");
-    await expect(help).toBeFocused();
-    await expect(help).toHaveAttribute("aria-expanded", "false");
-    for (const label of ["Starting circumstances"]) {
-      const otherHelp = root.getByRole("button", { name: "Help: " + label, exact: true });
-      await otherHelp.click();
-      await expect(otherHelp).toHaveAttribute("aria-expanded", "true");
-      if (label === "Starting circumstances")
-        await expect(root.getByRole("note")).toHaveText(
-          "Describe the circumstances when you first start playing here. Everyday life, an ongoing situation, or a recent change are all fine.",
-        );
-      assert.equal(
-        (await root.locator(".villages-place-panels").boundingBox()).height,
-        panelsHeight,
-        label + " help floats without expanding panels",
-      );
-      await bounds();
-      await capture(label === "Map" ? "map-help" : "situation-help");
-      await otherHelp.press("Escape");
-      await expect(otherHelp).toBeFocused();
-    }
-    await root
-      .getByLabel("Place and world", { exact: true })
-      .fill("A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.");
-    await forward("Continue to Map").click();
-    await expect(circumstance).toBeFocused();
-    await circumstance.fill("We rented the observatory together because ordinary housing was too expensive.");
-    if (width === 390 && height === 844) {
-      const hint = await circumstance.getAttribute("placeholder");
-      await page.clock.fastForward(4100);
-      await expect(circumstance).toHaveValue(
-        "We rented the observatory together because ordinary housing was too expensive.",
-      );
-      assert.equal(await circumstance.getAttribute("placeholder"), hint, "authored text stops placeholder rotation");
-      const place = root.getByLabel("Place and world", { exact: true });
-      const placeHint = await place.getAttribute("placeholder");
-      await page.clock.fastForward(4000);
-      await expect(place).toHaveValue(
-        "A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.",
-      );
-      assert.equal(await place.getAttribute("placeholder"), placeHint, "authored place text stops hint rotation");
-    }
-
-    await expect(root.getByRole("group", { name: "Map source", exact: true })).toHaveCount(0);
-    await capture("place");
     await forward("Continue to Map").click();
     await expect(root).toHaveAttribute("data-step", "2");
     assert.deepEqual(
@@ -788,7 +800,7 @@ try {
         .getByRole("list", { name: "Founding phases" })
         .locator("li")
         .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
-      ["People", "Place", "Map", "Venues", "Review"],
+      ["Place", "People", "Map", "Venues", "Review"],
     );
     await expect(root.getByLabel("Village name", { exact: true })).toHaveCount(0);
     const mapDialog = root.getByRole("region", { name: "Map artwork", exact: true });
@@ -1014,8 +1026,6 @@ try {
     await bounds();
     await capture("map-page");
     await forward("Back").click();
-    await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook");
-    await forward("Back").click();
     await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
     if (width === 1366)
       await expect(backstoryEditor.getByLabel("Finn starting background", { exact: true })).toHaveValue(
@@ -1023,10 +1033,13 @@ try {
       );
     else await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
     await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
-    await forward("Continue to place").click();
+    await forward("Back").click();
+    await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook");
+    await forward("Continue to People").click();
     await forward("Continue to Map").click();
     await forward("Continue to Venues").click();
     await expect(root).toHaveAttribute("data-step", "3");
+    await root.getByRole("button", { name: "Advanced", exact: true }).click();
     const phaseHeading = root.locator(".villages-forging-heading");
     await expect(phaseHeading).toBeVisible();
     assert.equal(await phaseHeading.evaluate((element) => getComputedStyle(element).position), "static");
@@ -1115,10 +1128,11 @@ try {
       x: homeCount === 3 ? 0.22 + (i % 3) * 0.28 : 0.22 + (i % 2) * 0.56,
       y: i < (homeCount === 3 ? 3 : 2) ? 0.28 : 0.72,
     }));
-    for (const spot of spots) {
+    for (const [index, spot] of spots.entries()) {
       await canvas.scrollIntoViewIfNeeded();
       const box = await canvas.boundingBox();
       await page.mouse.click(box.x + spot.x * box.width, box.y + spot.y * box.height);
+      await expect(pins).toHaveCount(index + 1);
     }
     await expect(pins).toHaveCount(homeCount + 2);
     await expect(root.locator(".villages-workspace-summary")).toContainText("Ready for review");
@@ -1233,7 +1247,7 @@ try {
     await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveAttribute("placeholder", "Venue name");
     await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveAttribute("placeholder", "Venue form");
     await expect(inspector.locator("header label")).toHaveCount(2);
-    const entranceHelp = inspector.getByRole("button", { name: "Help: Entrance and approach", exact: true });
+    const entranceHelp = inspector.getByRole("button", { name: "Help: Exterior and approach", exact: true });
     await entranceHelp.click();
     await expect(inspector.getByRole("note")).toHaveText(
       "Describe the entrance, approach and visible exterior of this Venue.",
@@ -1520,6 +1534,9 @@ try {
       await inspector
         .getByLabel("Upload interior image", { exact: true })
         .evaluate((input) => input.dispatchEvent(new Event("cancel", { bubbles: true })));
+      // Cancellation restores the picker opener on the next animation frame.
+      // Wait for that restoration before checking a later, unrelated focus event.
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       await expect(inspector.getByRole("button", { name: "Upload image", exact: true })).toBeFocused();
       await inspector.evaluate((dialog) =>
         dialog.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 0, clientY: 0 })),
@@ -1566,10 +1583,12 @@ try {
       await mapView();
       await forward("Back").click();
       await forward("Back").click();
+      await forward("Back").click();
       await root.getByLabel("Village name", { exact: true }).fill("Changed while generating");
       releaseImage();
       await expect(root.getByRole("alert").filter({ hasText: "changed while its image" })).toBeVisible();
       await root.getByLabel("Village name", { exact: true }).fill("Willowbrook");
+      await forward("Continue to People").click();
       await forward("Continue to Map").click();
       await forward("Continue to Venues").click();
       await open(1);
@@ -1585,12 +1604,13 @@ try {
       });
       await forward("Back").click();
       await forward("Back").click();
+      await forward("Back").click();
       await root.getByLabel("Village name", { exact: true }).fill("Willowbrook revised");
       await expect(root.locator(".villages-forging-saved")).toHaveText("Draft not saved");
-      await expect(forward("Continue to Map")).toBeDisabled();
+      await expect(forward("Continue to People")).toBeDisabled();
       await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook revised");
       await forward("Save & exit").click();
-      await expect(root).toHaveAttribute("data-step", "1");
+      await expect(root).toHaveAttribute("data-step", "0");
       await page.evaluate(() => {
         IDBObjectStore.prototype.put = window.draftPut;
       });
@@ -1629,6 +1649,7 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume founding", exact: true }).click();
       await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook revised");
+      await forward("Continue to People").click();
       await forward("Continue to Map").click();
       await forward("Continue to Venues").click();
     }

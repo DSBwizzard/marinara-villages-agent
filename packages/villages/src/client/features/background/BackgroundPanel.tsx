@@ -1,7 +1,6 @@
 import type { BackgroundWork } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { messageFrom } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 import { useState } from "react";
 
 export function BackgroundWorkPanel({
@@ -45,7 +44,6 @@ export function BackgroundWorkPanel({
           ) : null}
           {["failed", "interrupted", "paused"].includes(job.status) ? (
             <>
-              <VillagesBurstPreview request={request} action="retry" args={{ jobId: job.id }} />
               <button
                 type="button"
                 className={ELEMENT_TAG + "-button"}

@@ -2,7 +2,7 @@ import { FoundingHelp } from "./FoundingField.js";
 import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
 import { includeFoundingZone } from "./founding-template.js";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
-import { FoundingZoneFields } from "./villages-founding-zones.js";
+import { FoundingConnections, FoundingZoneFields } from "./villages-founding-zones.js";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
 type Area = "exterior" | "interior" | "private";
@@ -297,7 +297,7 @@ export function FoundingWorkspace({
       ? issues.find((issue) => issue.venueId === selectedId && issue.field === field && issue.zoneId === zoneId)
           ?.message
       : undefined;
-  const gathering = selected?.category === "public-center";
+  const community = selected?.category === "public-center";
   const inclusionControl = (personal: boolean) =>
     selected && (
       <>
@@ -306,7 +306,7 @@ export function FoundingWorkspace({
             <input
               aria-label={`Include ${personal ? "Private" : "Common"} Space`}
               type="checkbox"
-              disabled={locked || gathering}
+              disabled={locked || community}
               checked={personal ? !!selected.privateSpaces?.length : !!selected.spaces?.length}
               onChange={(event) => {
                 const result = includeFoundingZone(
@@ -329,10 +329,10 @@ export function FoundingWorkspace({
             Included
           </label>
           <FoundingHelp label="Included spaces">
-            {gathering
+            {community
               ? personal
-                ? "The starting Gathering Place has no Private Space. It is a neutral meeting spot everyone can enter."
-                : "Required for the starting Gathering Place. Open to everyone · No owner."
+                ? "The starting Community Place has no Private Space. It is a neutral meeting spot everyone can enter."
+                : "Required for the starting Community Place. Open to everyone · No owner."
               : "At least one Common or Private Space is required."}
           </FoundingHelp>
         </div>
@@ -457,6 +457,19 @@ export function FoundingWorkspace({
         ref={inspector}
         className="villages-workspace-inspector villages-founding-dialog villages-workspace-sheet"
         aria-label="Venue editor"
+        onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          const controls = [
+            ...event.currentTarget.querySelectorAll<HTMLElement>(
+              'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]',
+            ),
+          ].filter((control) => control.tabIndex >= 0 && control.getClientRects().length > 0);
+          const index = controls.indexOf(document.activeElement as HTMLElement);
+          if (index < 0 || (event.shiftKey ? index === 0 : index === controls.length - 1)) {
+            event.preventDefault();
+            (event.shiftKey ? controls.at(-1) : controls[0])?.focus();
+          }
+        }}
         aria-modal="true"
         onCancel={(event) => {
           event.preventDefault();
@@ -582,7 +595,7 @@ export function FoundingWorkspace({
                     <>
                       <div className="villages-workspace-box-field">
                         <label className="villages-workspace-caption" htmlFor={tabId + "Exterior-description"}>
-                          Entrance and approach
+                          Exterior and approach
                         </label>
                         <div className="villages-workspace-sheet-summary">
                           <textarea
@@ -596,7 +609,7 @@ export function FoundingWorkspace({
                             aria-invalid={!!fieldProblem("description", "exterior")}
                             onChange={(event) => onPatch({ ...selected, description: event.target.value })}
                           />
-                          <FoundingHelp label="Entrance and approach">
+                          <FoundingHelp label="Exterior and approach">
                             Describe the entrance, approach and visible exterior of this Venue.
                           </FoundingHelp>
                         </div>
@@ -807,6 +820,7 @@ export function FoundingWorkspace({
                 ) : (
                   initialZones(activeTab === "private")
                 )}
+                {!existing ? <FoundingConnections venue={selected} onPatch={onPatch} /> : null}
               </section>
             </div>
             <footer className="villages-workspace-sheet-footer">

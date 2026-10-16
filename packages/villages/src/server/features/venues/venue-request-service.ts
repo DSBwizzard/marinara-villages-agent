@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageState, VillageSnapshot } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { boundText, HOME_BUILDING_ORDER, MAX_VENUE_DESCRIPTION_LENGTH } from "../../domain/rules/prompt-preset.js";
@@ -30,7 +31,7 @@ export function createVenueRequests({
     sourceKey: string,
   ): Promise<void> {
     await mutateVillageState((state) =>
-      queueVillageVenueRequest(state, core, requesterCharacterId, "chat", sourceKey, new Date().toISOString()),
+      queueVillageVenueRequest(state, core, requesterCharacterId, "chat", sourceKey, villageNow().toISOString()),
     );
   }
 
@@ -46,7 +47,7 @@ export function createVenueRequests({
     if (approved && !edits) throw badRequest("A venue request needs a name and Class.");
     if (approved && !description) throw badRequest("Approve a description before creating this venue.");
     await mutateVillageState((state) => {
-      applyVillageVenueDecision(state, requestId, approved, edits, description, new Date());
+      applyVillageVenueDecision(state, requestId, approved, edits, description, villageNow());
     });
     return buildVillageSnapshot();
   }
@@ -79,7 +80,7 @@ export function createVenueRequests({
         kind: "venue-upgrade",
         title: `Upgrade ${venue.name || resident.cardSnapshot.name + "'s home"}`,
         detail: `${resident.cardSnapshot.name} requests ${state.homeBuildingNames[next]}.`,
-        proposedAt: new Date().toISOString(),
+        proposedAt: villageNow().toISOString(),
         sourceOpportunityId: "",
         status: "pending",
         requesterCharacterId: characterId,
@@ -161,7 +162,12 @@ export function createVenueRequests({
       );
     }
     decision.status = approved ? "approved" : "denied";
-    const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now });
+    const moment = deriveVillageMoment({
+      foundedAt: state.foundedAt,
+      seed: state.seed,
+      timeZone: state.timeZone || undefined,
+      now,
+    });
     const who = decision.requesterName || "A villager";
     const text = approved
       ? `The player accepted ${who}'s request to plan ${core.name}. Construction has not begun.`

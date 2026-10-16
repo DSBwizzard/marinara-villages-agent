@@ -88,6 +88,6 @@ export function buildLocationPrompt(
     `Honor these facts and do not invent conflicting architecture, technology or geography. ${village.sceneryArtStyle ? "Background scenery" : "Painted background art"} for a story: no people, no animals, no text, no lettering, no watermark.`,
   ]
     .filter((part) => part.length > 0)
-    .join(" ")
+    .join("\n")
     .trim();
 }

@@ -66,29 +66,29 @@ assert.throws(
   () => parsePlace({ ...residence, privateSpaces: [{ ...residence.privateSpaces![0], description: "" }] }, true),
   /visible Zone/,
 );
-const gathering = newSetupVenue("park", "gathering", 0.7, 0.6);
-gathering.form = "Park";
-gathering.description = "Approach path";
-gathering.spaces![0] = {
-  ...gathering.spaces![0],
+const community = newSetupVenue("park", "community", 0.7, 0.6);
+community.form = "Park";
+community.description = "Approach path";
+community.spaces![0] = {
+  ...community.spaces![0],
   name: "Park grounds",
   purpose: "Conversation",
   description: "Trees and benches",
 };
-const parsedPark = parsePlace(gathering, true);
+const parsedPark = parsePlace(community, true);
 assert.deepEqual(parsedPark.access?.managerIds, []);
 assert.equal(parsedPark.zones?.find((zone) => zone.id === "common:base")?.access?.mode, "public");
 for (const changed of [
-  { ...gathering, classes: ["workplace"] },
-  { ...gathering, layout: "both", privateSpaces: residence.privateSpaces },
-  { ...gathering, spaces: [{ ...gathering.spaces![0], controllerIds: ["player"] }] },
+  { ...community, classes: ["workplace"] },
+  { ...community, layout: "both", privateSpaces: residence.privateSpaces },
+  { ...community, spaces: [{ ...community.spaces![0], controllerIds: ["player"] }] },
   {
-    ...gathering,
-    spaces: [{ ...gathering.spaces![0], access: { ...gathering.spaces![0].access!, mode: "permission-required" } }],
+    ...community,
+    spaces: [{ ...community.spaces![0], access: { ...community.spaces![0].access!, mode: "permission-required" } }],
   },
 ])
   assert.throws(() => parsePlace(changed, true));
-const old = { ...gathering, layout: "both" as const, spaces: [], privateSpaces: residence.privateSpaces };
+const old = { ...community, layout: "both" as const, spaces: [], privateSpaces: residence.privateSpaces };
 const resumed = resumeFoundingVenue(old, {});
 assert.deepEqual(resumed.inactive.private, residence.privateSpaces);
 assert.equal(resumed.venue.privateSpaces?.length, 0);
@@ -125,7 +125,7 @@ assert.throws(() =>
   parseFoundingVenueSuggestions(
     { venues: [{ ...suggestion, layout: "both" }] },
     ["home"],
-    [{ id: "home", venueClass: "gathering" }],
+    [{ id: "home", venueClass: "community" }],
   ),
 );
 assert.equal(

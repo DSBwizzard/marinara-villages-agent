@@ -148,7 +148,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       {
         role: "system",
         content: [
-          "Suggest exactly three alternative names for one shared gathering venue in the authored setting.",
+          "Suggest exactly three alternative names for one shared community venue in the authored setting.",
           VILLAGE_SHARED_SETTING_RULE,
           "These are choices for the same venue, not three separate places. Keep each name short and distinct.",
           "Stay consistent with the setting and established lore. Do not introduce unsupported technology or geography.",

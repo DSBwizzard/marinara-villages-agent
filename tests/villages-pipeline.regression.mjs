@@ -100,6 +100,13 @@ assert.deepEqual(
   ["tests/villages-other.regression.ts"],
 );
 assert.equal(checkPlan(["packages/villages/engine-boundary.json"]).engineTypes, true);
+assert.deepEqual(checkPlan(["sources/engine-public/types/capability-runtime.d.ts"]), {
+  format: [],
+  lint: [],
+  types: false,
+  architecture: false,
+  engineTypes: true,
+});
 assert.equal(fullPlatformValidation(["packages/villages/engine-boundary.json"]), true);
 assert.equal(fullPlatformValidation(["scripts/select-tests.mjs"]), false);
 assert.equal(isDocumentation("README.ts"), false);

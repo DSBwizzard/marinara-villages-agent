@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { ACTIVE_ID, SESSION_KIND, SESSION_PREFIX } from "../../adapters/storage/scene-slots.js";
@@ -133,7 +134,8 @@ export function createSceneArchive({
           pendingProgressTurns(session, village.foundedAt).length === 0,
       )
       .sort((a, b) => b.session.startedAt.localeCompare(a.session.startedAt));
-    const cutoff = Date.now() - retention.value * 86_400_000;
+    const cutoff =
+      villageNow().getTime() - Math.max(0, village.clock?.shiftTotalMs ?? 0) - retention.value * 86_400_000;
     const expired =
       retention.mode === "count"
         ? eligible.slice(retention.value)
@@ -148,7 +150,10 @@ export function createSceneArchive({
   async function resetVenueSessions(): Promise<void> {
     if ((await readActive()).sessionId) throw conflict("Finish the active Scene before starting the village over.");
     const documents = villagesDocuments();
-    const visits = await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND);
+    const visits = [
+      ...(await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND)),
+      ...(await documents.list(VILLAGES_PACKAGE_ID, "spinoff")),
+    ];
     for (const visit of visits)
       if (!(await documents.remove(VILLAGES_PACKAGE_ID, visit.id, visit.revision)))
         throw conflict("A venue archive changed while the village was being reset. Try again.");

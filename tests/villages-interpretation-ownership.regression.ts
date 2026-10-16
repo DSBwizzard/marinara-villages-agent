@@ -10,13 +10,8 @@ import {
   configureInterpretationDiagnostics,
   readInterpretationDiagnostics,
   writeInterpretationDiagnostics,
-  scheduleSystemComparisons,
-  stopInterpretationComparisons,
 } from "../packages/villages/src/server/features/generation/interpretation-diagnostics.js";
-import type {
-  InterpretationBatch,
-  InterpretationTrace,
-} from "../packages/villages/src/server/domain/models/interpretation-model.js";
+import type { InterpretationTrace } from "../packages/villages/src/server/domain/models/interpretation-model.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -24,14 +19,6 @@ function deferred() {
     resolve = done;
   });
   return { promise, resolve };
-}
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
-async function until(ready: () => boolean) {
-  for (let i = 0; i < 300; i++) {
-    if (ready()) return;
-    await tick();
-  }
-  throw new Error("Comparison did not reach its expected checkpoint");
 }
 const trace: InterpretationTrace = {
   id: "access-speech:same-check",
@@ -43,21 +30,6 @@ const trace: InterpretationTrace = {
   result: { source: "decisions", outcome: "allow", evidenceIds: ["current"], reason: "private rationale" },
   applied: "none",
   startedAt: new Date().toISOString(),
-};
-const batch: InterpretationBatch = {
-  traces: [trace],
-  results: [trace.result],
-  settings: { decisionsEnabled: true, compareSystem: true },
-  checks: [
-    {
-      id: trace.id,
-      domain: "room",
-      question: trace.question,
-      evidence: trace.evidence,
-      facts: {},
-      outcomes: [{ id: "allow", statement: "Allow access" }],
-    },
-  ],
 };
 function fixture(name: string) {
   const rows = new Map<string, any>(),
@@ -117,125 +89,46 @@ function fixture(name: string) {
     status: () => rows.get("villages-interpretation-same-scene")?.data.checks[0].comparisonAttempt?.status,
   };
 }
-async function independentComparisons() {
-  const a = fixture("A"),
-    b = fixture("B");
-  await a.service.writeInterpretationDiagnostics("same-scene", [trace]);
-  await b.service.writeInterpretationDiagnostics("same-scene", [trace]);
-  a.conflict();
-  a.service.scheduleSystemComparisons("same-scene", batch);
-  a.service.scheduleSystemComparisons("same-scene", batch);
-  b.service.scheduleSystemComparisons("same-scene", batch);
-  await Promise.all([a.entered.promise, b.entered.promise]);
-  try {
-    assert.equal(a.calls(), 1, "same-owner joins and CAS retries do not dispatch twice");
-    assert.equal(b.calls(), 1, "same-ID worlds each use their own comparison admission");
-    a.service.stopInterpretationComparisons();
-    assert.equal(a.signals[0].aborted, true);
-    assert.equal(b.signals[0].aborted, false);
-    await until(() => a.status() === "unknown");
-    b.gate.resolve();
-    await until(() => b.status() === "complete");
-    a.gate.resolve();
-    await tick();
-    assert.equal(a.status(), "unknown", "a late abort-ignoring reply does not replace the interruption receipt");
-    const diagnosticA = await a.service.readInterpretationDiagnostics("same-scene");
-    const diagnosticB = await b.service.readInterpretationDiagnostics("same-scene");
-    assert.equal(diagnosticA.checks[0].system.status, "unavailable");
-    assert.equal(diagnosticB.checks[0].system.outcome, "allow");
-    assert.doesNotMatch(JSON.stringify(diagnosticA), /private quoted|private rationale|A result/);
-    a.service.scheduleSystemComparisons("same-scene", batch);
-    b.service.scheduleSystemComparisons("same-scene", batch);
-    await tick();
-    await tick();
-    assert.equal(a.calls(), 1, "saved comparison admission never implicitly retries an uncertain paid outcome");
-    assert.equal(b.calls(), 1);
-    await a.service.removeInterpretationDiagnostics("same-scene");
-    assert.equal(a.rows.size, 0);
-    assert.equal(b.rows.size, 1, "removal stays in its own store");
-  } finally {
-    a.service.stopInterpretationComparisons();
-    b.service.stopInterpretationComparisons();
-    a.gate.resolve();
-    b.gate.resolve();
-    await tick();
-  }
-}
-async function sameStoreAdmission() {
-  const world = fixture("shared");
-  const anotherActivation = createInterpretationDiagnostics(world.ports);
-  await world.service.writeInterpretationDiagnostics("same-scene", [trace]);
-  world.service.scheduleSystemComparisons("same-scene", batch);
-  anotherActivation.scheduleSystemComparisons("same-scene", batch);
-  await world.entered.promise;
-  try {
-    await tick();
-    assert.equal(world.calls(), 1, "persisted CAS admission protects same-store overlapping activations");
-    world.gate.resolve();
-    await until(() => world.status() === "complete");
-  } finally {
-    world.service.stopInterpretationComparisons();
-    anotherActivation.stopInterpretationComparisons();
-    world.gate.resolve();
-    await tick();
-  }
-}
-async function scopedCleanup() {
-  const a = fixture("scoped-A"),
-    b = fixture("scoped-B");
-  const ownerA = createActivationScope(),
-    ownerB = createActivationScope();
-  const releaseRuntimeA = ownerA.run(() => configureVillagesRuntime(a.host));
-  const releaseRuntimeB = ownerB.run(() => configureVillagesRuntime(b.host));
-  const releaseA = ownerA.run(() => configureInterpretationDiagnostics(a.service));
-  const releaseB = ownerB.run(() => configureInterpretationDiagnostics(b.service));
-  const clearDefault = installDefaultActivation(ownerB, () => {});
-  try {
-    await ownerA.run(() => writeInterpretationDiagnostics("same-scene", [trace]));
-    await writeInterpretationDiagnostics("same-scene", [trace]);
-    ownerA.run(() => scheduleSystemComparisons("same-scene", batch));
-    scheduleSystemComparisons("same-scene", batch);
-    await Promise.all([a.entered.promise, b.entered.promise]);
-    ownerA.run(() => stopInterpretationComparisons());
-    await until(() => a.status() === "unknown");
-    assert.equal(b.signals[0].aborted, false, "shutdown cannot abort another owner's comparison");
-    releaseA();
-    releaseRuntimeA();
-    releaseA();
-    b.gate.resolve();
-    await until(() => b.status() === "complete");
-    assert.equal((await readInterpretationDiagnostics("same-scene")).checks[0].system.outcome, "allow");
-    await assert.rejects(
-      ownerA.run(() => readInterpretationDiagnostics("same-scene")),
-      /not configured/,
-    );
-    const missing = createActivationScope();
-    assert.throws(() => missing.run(() => scheduleSystemComparisons("same-scene", batch)), /not configured/);
-    missing.dispose();
-    ownerA.dispose();
-    assert.throws(() => ownerA.run(() => stopInterpretationComparisons()), /not configured/);
-    assert.equal(b.calls(), 1);
-  } finally {
-    ownerA.run(() => a.service.stopInterpretationComparisons());
-    ownerB.run(() => stopInterpretationComparisons());
-    a.gate.resolve();
-    b.gate.resolve();
-    await tick();
-    releaseA();
-    releaseB();
-    releaseRuntimeA();
-    releaseRuntimeB();
-    clearDefault();
-    ownerA.dispose();
-    ownerB.dispose();
-  }
-}
-async function main() {
-  await independentComparisons();
-  await sameStoreAdmission();
-  await scopedCleanup();
-  console.log(
-    "Interpretation comparison admission, cancellation, saved receipts and diagnostic privacy are owned per activation.",
-  );
-}
-void main();
+
+const a = fixture("A"),
+  b = fixture("B");
+await a.service.writeInterpretationDiagnostics("same-scene", [trace]);
+await b.service.writeInterpretationDiagnostics("same-scene", [{ ...trace, applied: "B" }]);
+a.conflict();
+await a.service.writeInterpretationDiagnostics("same-scene", [{ ...trace, applied: "A" }]);
+assert.equal((await a.service.readInterpretationDiagnostics("same-scene")).checks[0].applied, "A");
+assert.equal((await b.service.readInterpretationDiagnostics("same-scene")).checks[0].applied, "B");
+const saved = a.rows.get("villages-interpretation-same-scene").data.checks[0];
+saved.comparisonAttempt = { id: "legacy", status: "dispatching", startedAt: "2000-01-01" };
+saved.system = { status: "pending" };
+for (let i = 0; i < 3; i++) await a.service.readInterpretationDiagnostics("same-scene");
+assert.equal(a.calls(), 0, "legacy comparison records never schedule work");
+assert.doesNotMatch(
+  JSON.stringify(await a.service.readInterpretationDiagnostics("same-scene")),
+  /private quoted|private rationale|private Decisions/,
+);
+const ownerA = createActivationScope(),
+  ownerB = createActivationScope();
+const releaseA = ownerA.run(() => configureVillagesRuntime(a.host));
+const releaseB = ownerB.run(() => configureVillagesRuntime(b.host));
+const bindings = [
+  ownerA.run(() => configureInterpretationDiagnostics(a.service)),
+  ownerB.run(() => configureInterpretationDiagnostics(b.service)),
+];
+const clearA = installDefaultActivation(ownerA, () => {});
+const pending = writeInterpretationDiagnostics("same-scene", [{ ...trace, applied: "owned A" }]);
+const clearB = installDefaultActivation(ownerB, () => {});
+await pending;
+assert.equal((await ownerA.run(() => readInterpretationDiagnostics("same-scene"))).checks[0].applied, "owned A");
+assert.equal((await readInterpretationDiagnostics("same-scene")).checks[0].applied, "B");
+await a.service.removeInterpretationDiagnostics("same-scene");
+assert.equal((await a.service.readInterpretationDiagnostics("same-scene")).checks.length, 0);
+assert.equal((await b.service.readInterpretationDiagnostics("same-scene")).checks.length, 1);
+clearA();
+clearB();
+bindings.forEach((release) => release());
+releaseA();
+releaseB();
+ownerA.dispose();
+ownerB.dispose();
+console.log("Interpretation diagnostics ownership, CAS, privacy and inert legacy comparison records: ok");

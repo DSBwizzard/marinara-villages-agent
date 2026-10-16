@@ -528,11 +528,18 @@ async function main() {
 
   const app = Fastify();
   const registrations: Array<{ prefix: string }> = [];
+  let decisionRequests = 0;
   const context = {
     app: { db: { select: () => ({ from: () => ({ where: async () => [] }) }) } },
     api: {
       runtime: {
         logger,
+        decisions: {
+          evaluate: async () => {
+            decisionRequests++;
+            return null;
+          },
+        },
         persistence: {
           documents,
           async listChats() {
@@ -550,6 +557,7 @@ async function main() {
           return false;
         },
       },
+      registerSceneOrigin: () => () => {},
       async registerPrivilegedRoutes(routes: any, options: { prefix: string }) {
         registrations.push(options);
         await app.register(routes, { prefix: options.prefix });
@@ -570,28 +578,18 @@ async function main() {
   const post = (url: string, payload?: any) => app.inject({ method: "POST", url, payload });
   const put = (url: string, payload?: any) => app.inject({ method: "PUT", url, payload });
 
-  if (process.env.VILLAGES_TEST_PACKAGED) {
-    assert.ok(process.env.MARINARA_ENGINE_ROOT, "Packaged compatibility checks require an explicit Engine runtime.");
-    process.argv[1] = join(process.env.MARINARA_ENGINE_ROOT, "packages/server/dist/index.js");
-  }
   const deactivate = await activate(context);
   const originalSettings = await get("/api/villages/interpretation-settings");
   assert.equal(originalSettings.json().settings.decisionsEnabled, false);
-  assert.equal(originalSettings.json().settings.compareSystem, true);
+  assert.equal(originalSettings.json().settings.compareSystem, undefined, "legacy comparison setting is inert");
   const enabled = await app.inject({
     method: "PATCH",
     url: "/api/villages/interpretation-settings",
     payload: { decisionsEnabled: true },
   });
   assert.equal(enabled.json().settings.decisionsEnabled, true);
-  if (process.env.VILLAGES_TEST_PACKAGED) {
-    assert.equal(
-      enabled.json().status.engineBuild,
-      "ead04150a132",
-      "packaged adapter loaded actual compiled Engine modules",
-    );
-    assert.equal(enabled.json().status.reason, "No Engine Decision model is selected");
-  }
+  assert.equal(enabled.json().status.available, true, "activation exposes the supplied public capability");
+  assert.equal(decisionRequests, 0, "configuration and status never probe the selected model");
   const malformed = await app.inject({
     method: "PATCH",
     url: "/api/villages/interpretation-settings",
@@ -608,7 +606,9 @@ async function main() {
     assert.ok(![...documentsByKey.values()].some((row) => row.kind === "chat"));
     await deactivate();
     await app.close();
-    console.log("Villages packaged Decisions adapter: actual Engine modules, storage, no chat, protected routes ok");
+    console.log(
+      "Villages compiled package: synthetic public capability, storage, no model probe, no chat, protected routes ok",
+    );
     return;
   }
 

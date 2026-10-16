@@ -1,3 +1,5 @@
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { canOccupyZone, legacyZoneId, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
@@ -35,19 +37,28 @@ export function createVillageSnapshot({
   privatePreparationRooms,
 }: VillageSnapshotPorts) {
   /** The village as the tab draws it: live library labels and adopted card colors. */
-  async function buildVillageSnapshot(now: Date = new Date()): Promise<VillageSnapshot> {
+  async function buildVillageSnapshot(now: Date = villageNow()): Promise<VillageSnapshot> {
     let village = await readVillageState();
     if (!village.visitMemoryBackfilled && (village.setupAt || village.foundedAt)) {
       village = await readVillageState();
     }
-    if (await rollActiveAgendas(now, village)) village = await readVillageState();
-    const minuteOfDay = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now }).minuteOfDay;
+    const clock = await observeVillageClock();
+    if (clock?.paused) now = villageNow();
+    else if (clock) now = new ZonedDate(now, clock.timeZone);
+    if (!clock?.paused && (await rollActiveAgendas(now, village))) village = await readVillageState();
+    const minuteOfDay = deriveVillageMoment({
+      foundedAt: village.foundedAt,
+      seed: village.seed,
+      timeZone: village.timeZone || undefined,
+      now,
+    }).minuteOfDay;
     const residentIds = village.villagers.map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));
     // Existing residents adopted their cards before colors were captured. Fill only
     // the missing fields once; later card edits still require Apply refresh.
     if (
+      !clock?.paused &&
       village.villagers.some(
         ({ cardSnapshot }) => cardSnapshot.nameColor === undefined || cardSnapshot.dialogueColor === undefined,
       )
@@ -133,6 +144,7 @@ export function createVillageSnapshot({
     });
     return {
       status: "ready",
+      clock,
       progressEngineVersion: village.progressEngineVersion,
       foundingPreparation: village.foundingPreparation
         ? {

@@ -1,3 +1,5 @@
+import { readSceneLayout } from "../rules/scene-layout.js";
+import { savedVenueClassRecord } from "./venue-class-compat.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import type { LiveExchangeProposals } from "../models/memory-model.js";
 import type { VenueOperation } from "../models/operation-model.js";
@@ -15,6 +17,7 @@ import type { VenueActionResult } from "../models/venue-action-model.js";
 import type { WishProposal } from "../models/wish-check-model.js";
 import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
 import { conflict } from "../rules/errors.js";
+import { coercePendingAttention } from "../rules/scene-attention.js";
 import { coerceProjectSpeech } from "../rules/project-interpretation.js";
 import { MAX_CHRONICLE_LENGTH } from "../rules/prompt-preset.js";
 import { sceneRevision } from "../rules/scene-revision.js";
@@ -45,7 +48,15 @@ export function coerceVenueRecollection(value: unknown): VenueRecollection | nul
     : null;
 }
 export function coerceSession(value: unknown): VenueScene {
-  const raw = asRecord(value);
+  const raw = savedVenueClassRecord(value);
+  if (
+    raw.spinoff &&
+    (typeof raw.spinoff !== "object" ||
+      !["prepared", "running", "returned", "resolved"].includes(String(asRecord(raw.spinoff).status)) ||
+      !asRecord(raw.spinoff).id ||
+      !asRecord(raw.spinoff).sessionId)
+  )
+    throw conflict("The saved spinoff is malformed. Its ownership must be recovered before continuing.");
   if (raw.memoryMode && raw.memoryMode !== "live" && raw.status !== "closed")
     throw conflict("This Scene uses a retired memory format; its transcript must be archived before continuing.");
   const participants = Array.isArray(raw.participants)
@@ -74,10 +85,36 @@ export function coerceSession(value: unknown): VenueScene {
             at: asString(row.at),
             zoneId: asTrimmedString(row.zoneId) || undefined,
             ...(row.viaDoorway === true ? { viaDoorway: true } : {}),
+            ...(Array.isArray(row.physicalIdsAfter)
+              ? {
+                  physicalIdsAfter: [
+                    ...new Set(
+                      row.physicalIdsAfter.filter(
+                        (id): id is string => typeof id === "string" && participantIds.has(id),
+                      ),
+                    ),
+                  ],
+                }
+              : {}),
             ...(row.remoteDelivery === "loud" || row.remoteDelivery === "device"
               ? { remoteDelivery: row.remoteDelivery as VenueLine["remoteDelivery"] }
               : {}),
             ...(row.contactHidden === true ? { contactHidden: true } : {}),
+            ...(row.attentionEvidence === true ? { attentionEvidence: true } : {}),
+            ...(asRecord(row.speechSource).version === 3 && Array.isArray(asRecord(row.speechSource).spans)
+              ? { speechSource: structuredClone(row.speechSource) as VenueLine["speechSource"] }
+              : {}),
+            ...(typeof asRecord(row.soundOnly).text === "string" && Array.isArray(asRecord(row.soundOnly).characterIds)
+              ? {
+                  soundOnly: {
+                    text: asTrimmedString(asRecord(row.soundOnly).text).slice(0, 300),
+                    characterIds: (asRecord(row.soundOnly).characterIds as unknown[]).filter(
+                      (id): id is string => typeof id === "string",
+                    ),
+                    player: asRecord(row.soundOnly).player === true,
+                  },
+                }
+              : {}),
             ...(row.contactReport === true ? { contactReport: true } : {}),
             heardBy: Array.isArray(row.heardBy) ? row.heardBy.filter((id): id is string => typeof id === "string") : [],
             ...(row.kind === "narration" || row.kind === "dialogue" || row.kind === "side" || row.kind === "whisper"
@@ -89,6 +126,12 @@ export function coerceSession(value: unknown): VenueScene {
               ? { gazeAt: row.gazeAt as string }
               : {}),
             ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
+            ...(row.delivery === "ordinary" || row.delivery === "whisper" || row.delivery === "shout"
+              ? { delivery: row.delivery as VenueLine["delivery"] }
+              : {}),
+            ...(row.presentation === "main" || row.presentation === "aside"
+              ? { presentation: row.presentation as VenueLine["presentation"] }
+              : {}),
             ...(typeof row.asideFor === "string" ? { asideFor: row.asideFor } : {}),
           };
         })
@@ -96,10 +139,28 @@ export function coerceSession(value: unknown): VenueScene {
     : [];
   return {
     version: 1,
+    ...(raw.spinoff ? { spinoff: structuredClone(raw.spinoff) as VenueScene["spinoff"] } : {}),
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
     ...(raw.processingVersion === 1 ? { processingVersion: 1 as const, villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,
+    navigationReceipts: Array.isArray(raw.navigationReceipts)
+      ? raw.navigationReceipts
+          .map(asRecord)
+          .filter(
+            (row) =>
+              typeof row.id === "string" &&
+              typeof row.originZoneId === "string" &&
+              typeof row.destinationZoneId === "string" &&
+              typeof row.at === "string",
+          )
+          .map((row) => ({
+            id: String(row.id),
+            originZoneId: String(row.originZoneId),
+            destinationZoneId: String(row.destinationZoneId),
+            at: String(row.at),
+          }))
+      : [],
     generationReceipts: Array.isArray(raw.generationReceipts)
       ? (raw.generationReceipts as VenueScene["generationReceipts"])
       : [],
@@ -116,6 +177,9 @@ export function coerceSession(value: unknown): VenueScene {
       : [],
     dismissedZoneIds: Array.isArray(raw.dismissedZoneIds)
       ? raw.dismissedZoneIds.filter((id): id is string => typeof id === "string")
+      : [],
+    pictureEvaluatedZoneIds: Array.isArray(raw.pictureEvaluatedZoneIds)
+      ? raw.pictureEvaluatedZoneIds.filter((id): id is string => typeof id === "string").slice(0, 256)
       : [],
     privateSpaceId: asTrimmedString(raw.privateSpaceId) || undefined,
     zoneGrants: Array.isArray(raw.zoneGrants)
@@ -136,6 +200,7 @@ export function coerceSession(value: unknown): VenueScene {
       ),
     ),
     doorwayContacts: Array.isArray(raw.doorwayContacts) ? (raw.doorwayContacts as DoorwayContact[]) : [],
+    pendingAttention: coercePendingAttention(raw.pendingAttention),
     entryOffers: Array.isArray(raw.entryOffers) ? (raw.entryOffers as VenueScene["entryOffers"]) : [],
     grantedZoneIds: Array.isArray(raw.grantedZoneIds)
       ? raw.grantedZoneIds.filter((id): id is string => typeof id === "string")
@@ -154,7 +219,7 @@ export function coerceSession(value: unknown): VenueScene {
     spaceClass:
       raw.spaceClass === "residence" ||
       raw.spaceClass === "workplace" ||
-      raw.spaceClass === "gathering" ||
+      raw.spaceClass === "community" ||
       raw.spaceClass === "other"
         ? raw.spaceClass
         : undefined,
@@ -169,6 +234,7 @@ export function coerceSession(value: unknown): VenueScene {
     startedAt: asString(raw.startedAt),
     endedAt: asString(raw.endedAt),
     lastActivityAt: asString(raw.lastActivityAt) || asString(raw.startedAt),
+    clockShiftMs: typeof raw.clockShiftMs === "number" && Number.isFinite(raw.clockShiftMs) ? raw.clockShiftMs : 0,
     endReason:
       raw.endReason === "player" ||
       raw.endReason === "scene" ||
@@ -183,6 +249,9 @@ export function coerceSession(value: unknown): VenueScene {
     ...(raw.sceneAttendance && typeof raw.sceneAttendance === "object"
       ? {
           sceneAttendance: {
+            ...(asRecord(raw.sceneAttendance).layout === undefined
+              ? {}
+              : { layout: readSceneLayout(asRecord(raw.sceneAttendance).layout) }),
             capturedAt: asString(asRecord(raw.sceneAttendance).capturedAt) || asString(raw.startedAt),
             occupants: (Array.isArray(asRecord(raw.sceneAttendance).occupants)
               ? (asRecord(raw.sceneAttendance).occupants as unknown[])
@@ -196,7 +265,6 @@ export function coerceSession(value: unknown): VenueScene {
                       name: asTrimmedString(row.name),
                       doing: asString(row.doing),
                       zoneId: asTrimmedString(row.zoneId),
-                      availability: asString(row.availability),
                     },
                   ]
                 : [];
@@ -228,6 +296,7 @@ export function coerceSession(value: unknown): VenueScene {
             const row = asRecord(value);
             return {
               id: asTrimmedString(row.id),
+              ...(row.zoneEventsVersion === 1 ? { zoneEventsVersion: 1 as const } : {}),
               ...(Array.isArray(row.wishProposals) ? { wishProposals: row.wishProposals as WishProposal[] } : {}),
               ...(typeof row.wishProposalError === "string" ? { wishProposalError: row.wishProposalError } : {}),
               ...(coerceExchangeProcessing(row.processing)
@@ -240,6 +309,7 @@ export function coerceSession(value: unknown): VenueScene {
                 : {}),
               ...(row.movement ? { movement: row.movement as VenueSubmission["movement"] } : {}),
               ...(row.contact ? { contact: row.contact as ContactIntent } : {}),
+              ...(row.attention ? { attention: row.attention as VenueSubmission["attention"] } : {}),
               ...(Array.isArray(row.speechIdsAtTurn) ? { speechIdsAtTurn: row.speechIdsAtTurn as string[] } : {}),
               ...(row.contactEvidence
                 ? { contactEvidence: row.contactEvidence as VenueSubmission["contactEvidence"] }
@@ -294,6 +364,13 @@ export function coerceSession(value: unknown): VenueScene {
                   }
                 : {}),
               ...(Array.isArray(row.projectSpeech) ? { projectSpeech: coerceProjectSpeech(row.projectSpeech) } : {}),
+              ...(asRecord(row.speechCapture).version === 3 &&
+              ["captured", "silent"].includes(String(asRecord(row.speechCapture).status))
+                ? { speechCapture: structuredClone(row.speechCapture) as VenueSubmission["speechCapture"] }
+                : {}),
+              ...(row.effectFailures && typeof row.effectFailures === "object"
+                ? { effectFailures: structuredClone(row.effectFailures) as VenueSubmission["effectFailures"] }
+                : {}),
               ...(row.projectInterpretationVersion === 1 ? { projectInterpretationVersion: 1 as const } : {}),
               ...(Object.hasOwn(row, "wishInterpretationProof")
                 ? { wishInterpretationProof: coerceWishApplicationProof(row.wishInterpretationProof) }
@@ -334,6 +411,9 @@ export function coerceSession(value: unknown): VenueScene {
               changeSequence: Math.max(0, Math.floor(Number(row.changeSequence) || 0)),
               ...(Array.isArray(row.wishContexts)
                 ? { wishContexts: row.wishContexts as VenueSubmission["wishContexts"] }
+                : {}),
+              ...(row.timing && typeof row.timing === "object"
+                ? { timing: row.timing as VenueSubmission["timing"] }
                 : {}),
               ...(Array.isArray(row.requestMetrics)
                 ? { requestMetrics: row.requestMetrics as VenueSubmission["requestMetrics"] }

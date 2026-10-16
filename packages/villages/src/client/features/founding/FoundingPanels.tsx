@@ -37,13 +37,13 @@ export const SETUP_MAX_VILLAGER_COUNT = 3;
 
 export function newSetupVenue(
   id: string,
-  venueClass: "residence" | "gathering",
+  venueClass: "residence" | "community",
   x: number,
   y: number,
   playerHome = false,
   index = 1,
 ): SetupVenueDraft {
-  const name = venueClass === "gathering" ? "Gathering Place" : playerHome ? "Your residence" : `Residence ${index}`;
+  const name = venueClass === "community" ? "Community Place" : playerHome ? "Your residence" : `Residence ${index}`;
   const venue: SetupVenueDraft = {
     id,
     name,
@@ -55,7 +55,7 @@ export function newSetupVenue(
     residentIds: [],
     improvements: [null, null],
     description: "",
-    category: venueClass === "gathering" ? "public-center" : "",
+    category: venueClass === "community" ? "public-center" : "",
     presentation: { image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     capabilities: [],
@@ -63,9 +63,9 @@ export function newSetupVenue(
   };
   return {
     ...venue,
-    layout: venueClass === "gathering" ? "common" : "both",
+    layout: venueClass === "community" ? "common" : "both",
     spaces: [startingZone(venue, false)],
-    privateSpaces: venueClass === "gathering" ? [] : [startingZone(venue, true)],
+    privateSpaces: venueClass === "community" ? [] : [startingZone(venue, true)],
   };
 }
 

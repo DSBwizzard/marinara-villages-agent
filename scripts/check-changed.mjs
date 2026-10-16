@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { isEngineBoundary } from "./change-scope.mjs";
 
 export function maintainedCode(path) {
+  // Upstream declarations are hash-pinned; validate them through engineTypes.
+  if (path.startsWith("sources/engine-public/")) return false;
   return (
     (/^(packages\/.*\/src\/|scripts\/|tests\/|sources\/)/.test(path) && /\.(?:[cm]?js|tsx?)$/.test(path)) ||
     /^(eslint\.config\.mjs|tsconfig\.package\.json|packages\/villages\/[^/]+\.mjs|package\.json)$/.test(path)

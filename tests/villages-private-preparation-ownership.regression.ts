@@ -42,14 +42,14 @@ function world(name: string) {
         form: "Station",
         description: "Station door",
         layoutVersion: 1,
-        classes: ["gathering"],
+        classes: ["community"],
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
         residentIds: [],
         presentation: { image: null, x: 0.5, y: 0.5 },
         zones: [
           { ...defaultVenueSpace("other", "Station door"), id: "exterior", name: "Exterior", kind: "exterior" },
           {
-            ...defaultVenueSpace("gathering"),
+            ...defaultVenueSpace("community"),
             id: "same-zone",
             name: "Office",
             kind: "restricted",

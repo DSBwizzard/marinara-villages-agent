@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 
 import { type FoundingProgress } from "../../domain/models/founding-progress-model.js";
@@ -26,7 +27,7 @@ export function createFoundingProgress(ports: FoundingProgressServicePorts) {
       const marker = state.foundingPreparation;
       if (state.seed !== seed || marker?.status !== "pending") return;
       if (residentId && (marker.phase !== "residents" || marker.currentId !== residentId)) return;
-      Object.assign(marker, progress, { stageStartedAt: new Date().toISOString() });
+      Object.assign(marker, progress, { stageStartedAt: villageNow().toISOString() });
     });
   }
 

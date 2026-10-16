@@ -1,17 +1,14 @@
-import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { pinTone, placeSpot, playerDisplayName } from "../../shared/presentation.js";
 import type { MapPin } from "../../shared/types.js";
-import { isHouse, venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
+import { isHouse } from "../../shared/venue.js";
 import { MapStage, PROJECT_BLUEPRINT_IMAGE, TOWN_MAP_FITS } from "../exploration/MapStage.js";
 import { PlayerIdentityEditor, VillageLorebookPicker } from "../founding/FoundingPanels.js";
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
 import { PlayerRoleSummary } from "../founding/villages-player-role.js";
-import { VenueDraftFields } from "../venues/VenuePanels.js";
 import type { VillageSettingsPagePorts } from "./page-contracts.js";
 import { VillageWritingSettings } from "./SettingsPanels.js";
-import { VillagesBurstPreview } from "./villages-burst-preview.js";
 
 export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
   const {
@@ -44,11 +41,9 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     placeCount,
     placingMapVenueId,
     reframingMap,
-    removeVenue,
     saveScenerySettings,
     saveSettings,
     saveTownMap,
-    saveVenue,
     sceneryStyle,
     sceneryStyleProfileId,
     selectedMapVenueId,
@@ -67,28 +62,36 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     setSettingDraft,
     setTownMapDraft,
     setTownMapPick,
-    setVenueEditDraft,
     setVenueSearch,
     setVisualLoreDefault,
     settingDraft,
     settingsError,
     snapshot,
     startMapReplacement,
-    suggestPlaces,
     townMapAdvice,
     townMapImage,
     townMapPick,
     townMapShape,
     townMapSrc,
     townMapZoom,
-    venueEditDraft,
     venueSearch,
-    venuesDraft,
     visualLoreDefault,
   } = ports;
   return (
     <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
+      <p>
+        Village timezone · <strong>{snapshot.clock?.timeZone || snapshot.village.timeZone}</strong>
+      </p>
       <section className={ELEMENT_TAG + "-venue-card"}>
+        <label>
+          <input
+            type="checkbox"
+            disabled={busy}
+            checked={snapshot.settings.automaticZonePictures !== false}
+            onChange={(event) => void saveScenerySettings(event.target.checked)}
+          />
+          Automatic Zone pictures
+        </label>
         <SceneryStyleFields
           value={sceneryStyle}
           profileId={sceneryStyleProfileId}
@@ -120,10 +123,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
       {snapshot ? (
         <section className={`${ELEMENT_TAG}-panel`}>
           <h2 className={`${ELEMENT_TAG}-panel-title`}>Village settings</h2>
-          <p className={`${ELEMENT_TAG}-empty`}>
-            These choices belong to this village. Resident cards shape their voices, and Villages writes each scene
-            around what is happening now. Village knowledge is refreshed for every reply.
-          </p>
 
           <VillageWritingSettings />
 
@@ -183,7 +182,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             />
             {mapReplaceOpen ? (
               <>
-                <p className={ELEMENT_TAG + "-hint"}>{MAP_UPLOAD_GUIDANCE}</p>
                 <div className={ELEMENT_TAG + "-row"}>
                   <button
                     type="button"
@@ -193,7 +191,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
                   >
                     {mapGenerating ? "Generating map…" : "Generate replacement"}
                   </button>
-                  <VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />
+
                   <input
                     className={ELEMENT_TAG + "-file"}
                     type="file"
@@ -366,10 +364,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
           </section>
 
           <div className={`${ELEMENT_TAG}-field`}>
-            <p className={`${ELEMENT_TAG}-empty`}>
-              Revisit the founding setup to update the village as it stands now. Its original starting circumstances
-              stay in the founding record.
-            </p>
             <div className={`${ELEMENT_TAG}-row`}>
               <button
                 type="button"
@@ -379,9 +373,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               >
                 Run setup again
               </button>
-              <span className={`${ELEMENT_TAG}-hint`}>
-                Keeps your villagers, their conversations and anything you have written.
-              </span>
             </div>
           </div>
 
@@ -421,10 +412,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               disabled
               onChange={(event) => setSettingDraft(event.target.value)}
             />
-            <p className={`${ELEMENT_TAG}-macro-help`}>
-              Read-only here. Change the place and world context on Village Beginning in the founding wizard. This
-              description still guides what villagers know about their home.
-            </p>
           </div>
 
           <VillageLorebookPicker
@@ -449,132 +436,36 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               disabled={busy}
               onChange={(event) => setLoreTokenBudgetDraft(Number(event.target.value))}
             />
-            <p className={`${ELEMENT_TAG}-hint`}>
-              Maximum approximate lore tokens in future text generation. Image prompts keep a separate short excerpt.
-            </p>
           </div>
 
-          <section className={`${ELEMENT_TAG}-field`}>
-            <div className={`${ELEMENT_TAG}-row`} style={{ justifyContent: "space-between" }}>
-              <h2 className={`${ELEMENT_TAG}-panel-title`}>Venues</h2>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                onClick={addVenue}
-                disabled={busy || placeCount >= snapshot.settings.maxPlaces}
-              >
-                Propose Venue Project
-              </button>
-            </div>
-            <p className={`${ELEMENT_TAG}-hint`}>
-              Each Venue is one unique place. Its physical form describes its structure; one or two Classes describe
-              what people do there.
-            </p>
+          <section className={ELEMENT_TAG + "-field"}>
+            <h2 className={ELEMENT_TAG + "-panel-title"}>Venues</h2>
+            <button
+              type="button"
+              className={ELEMENT_TAG + "-button"}
+              onClick={addVenue}
+              disabled={busy || placeCount >= snapshot.settings.maxPlaces}
+            >
+              Propose Venue Project
+            </button>
             <input
-              className={`${ELEMENT_TAG}-notice-input`}
+              className={ELEMENT_TAG + "-notice-input"}
               type="search"
               value={venueSearch}
               onChange={(event) => setVenueSearch(event.target.value)}
-              placeholder="Find a Venue by name, physical form, or Class"
+              placeholder="Find a Venue"
               aria-label="Search Venues"
             />
-            <div className={`${ELEMENT_TAG}-notice-add`}>
-              {snapshot.settings.venues
-                .filter((venue) =>
-                  `${venue.name} ${venue.form ?? ""} ${venueClassesFor(venue).join(" ")}`
-                    .toLowerCase()
-                    .includes(venueSearch.toLowerCase()),
-                )
-                .map((venue) => (
-                  <div className={`${ELEMENT_TAG}-notice-row`} key={venue.id}>
-                    <strong>{venue.name || "Unnamed Residence"}</strong>
-                    <span className={`${ELEMENT_TAG}-hint`}>
-                      {[venue.form, venueClassesFor(venue).join(" + ")].filter(Boolean).join(" · ")}
-                    </span>
-                    {venueClassesFor(venue).includes("residence") ? (
-                      <span className={`${ELEMENT_TAG}-hint`}>
-                        {(venue.residentIds?.length ?? Number(Boolean(venue.occupancy.residentCharacterId))) +
-                          Number(venue.occupancy.playerHome)}{" "}
-                        / {venue.residenceCapacity ?? 1} residents
-                      </span>
-                    ) : null}
-                    <div className={`${ELEMENT_TAG}-row`}>
-                      <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openPlace(venue)}>
-                        View Venue
-                      </button>
-                      <button
-                        type="button"
-                        className={`${ELEMENT_TAG}-button`}
-                        onClick={() => setVenueEditDraft(structuredClone(venue))}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className={`${ELEMENT_TAG}-remove`}
-                        onClick={() => void removeVenue(venue.id)}
-                        aria-label={`Delete ${venue.name}`}
-                        disabled={busy}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-            {venueEditDraft ? (
-              <div className={`${ELEMENT_TAG}-field`}>
-                <h3 className={`${ELEMENT_TAG}-panel-title`}>
-                  {snapshot.settings.venues.some((venue) => venue.id === venueEditDraft.id)
-                    ? "Edit Venue"
-                    : "Create Venue"}
-                </h3>
-                <VenueDraftFields
-                  draft={venueEditDraft}
-                  existing={snapshot.settings.venues.some((venue) => venue.id === venueEditDraft.id)}
-                  villagers={snapshot.villagers}
-                  onChange={setVenueEditDraft}
-                />
-                <div className={`${ELEMENT_TAG}-row`}>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={
-                      busy ||
-                      !venueEditDraft.name.trim() ||
-                      !venueClassesFor(venueEditDraft).every((item) =>
-                        venueSpaceFor(venueEditDraft, item).description.trim(),
-                      )
-                    }
-                    onClick={() => void saveVenue(venueEditDraft)}
-                  >
-                    Save Venue
-                  </button>
-                  <VillagesBurstPreview request={request} action="change" args={{ venue: venueEditDraft }} />
-                  <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setVenueEditDraft(null)}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            <div className={`${ELEMENT_TAG}-row`}>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                onClick={() => void suggestPlaces()}
-                disabled={busy}
-              >
-                Suggest Venues
-              </button>
-            </div>
-            {venuesDraft
-              .filter((venue) => !snapshot.settings.venues.some((saved) => saved.id === venue.id))
+            {snapshot.settings.venues
+              .filter((venue) =>
+                (venue.name + " " + (venue.form || "")).toLowerCase().includes(venueSearch.toLowerCase()),
+              )
               .map((venue) => (
-                <div className={`${ELEMENT_TAG}-notice-row`} key={venue.id}>
+                <div className={ELEMENT_TAG + "-notice-row"} key={venue.id}>
                   <strong>{venue.name}</strong>
-                  <span className={`${ELEMENT_TAG}-hint`}>{venue.form}</span>
-                  <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setVenueEditDraft(venue)}>
-                    Review suggestion
+                  <span>{venue.form}</span>
+                  <button type="button" className={ELEMENT_TAG + "-button"} onClick={() => openPlace(venue)}>
+                    View Venue
                   </button>
                 </div>
               ))}
@@ -596,13 +487,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               spellCheck={false}
               onChange={(event) => setKnowledgeDraft(event.target.value)}
             />
-            <p className={`${ELEMENT_TAG}-macro-help`}>
-              What a villager here knows, written as tokens the village fills in for itself: the time, the weather, who
-              else lives here, what is on the noticeboard. Because it is written out fresh on every reply, a villager
-              here is always current — and because it is only these tokens, adding a place or pinning a note reaches
-              every villager without anything being edited here. A resident&apos;s card guides their voice; additional
-              writing guidance is in Village Settings.
-            </p>
+
             <div className={`${ELEMENT_TAG}-macros`}>
               {snapshot.settings.macros.map((macro) => (
                 <button
@@ -616,10 +501,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
                 </button>
               ))}
             </div>
-            <p className={`${ELEMENT_TAG}-macro-help`}>
-              Click a token to drop it in at the cursor of the box. A token with nothing behind it turns into nothing at
-              all, so <code>{"{{lore}}"}</code> can sit in the prompt until there is lore to put there.
-            </p>
           </div>
 
           <PlayerIdentityEditor
@@ -643,17 +524,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             >
               Save settings
             </button>
-            <VillagesBurstPreview
-              request={request}
-              action="change"
-              args={{
-                settings: {
-                  setting: settingDraft,
-                  selectedLorebookIds: lorebookDraft,
-                  loreTokenBudget: loreTokenBudgetDraft,
-                },
-              }}
-            />
+
             <button
               type="button"
               className={`${ELEMENT_TAG}-button`}
@@ -669,8 +540,8 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               personaDraft === snapshot.settings.playerPersonaId &&
               settingDraft === snapshot.settings.setting &&
               JSON.stringify(lorebookDraft) === JSON.stringify(snapshot.settings.selectedLorebookIds)
-                ? "No unsaved settings changes. Save places individually."
-                : "Unsaved settings changes. Save places individually."}
+                ? "No unsaved changes."
+                : "Unsaved changes."}
             </span>
           </div>
         </section>

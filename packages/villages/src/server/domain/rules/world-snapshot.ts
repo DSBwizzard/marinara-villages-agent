@@ -1,3 +1,4 @@
+import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
 import { isPrivateInterior, privateInteriorKey } from "./private-interior.js";
 import type {
@@ -88,7 +89,12 @@ export function projectVillager(
  * are always describing the same instant.
  */
 export function villageMomentView(village: VillageState, now: Date, nextTransitionAt?: string): VillageMomentView {
-  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
+  const moment = deriveVillageMoment({
+    foundedAt: village.foundedAt,
+    seed: village.seed,
+    timeZone: village.timeZone || undefined,
+    now,
+  });
   return {
     name: village.name,
     setting: village.setting,
@@ -108,12 +114,17 @@ export function villageMomentView(village: VillageState, now: Date, nextTransiti
   };
 }
 export function exactSnapshotTransition(village: VillageState, now: Date): string {
-  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
+  const moment = deriveVillageMoment({
+    foundedAt: village.foundedAt,
+    seed: village.seed,
+    timeZone: village.timeZone || undefined,
+    now,
+  });
   const candidates = [Date.parse(moment.nextTransitionAt)];
   const currentMinute = moment.minuteOfDay;
   const addMinute = (minute: number) => {
     if (minute <= currentMinute || minute >= 1440) return;
-    const at = new Date(now);
+    const at = copyDate(now);
     at.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
     candidates.push(at.getTime());
   };
@@ -172,6 +183,7 @@ export function villageSettings(
     selectedLorebookIds: village.selectedLorebookIds,
     sceneryArtStyle: village.sceneryArtStyle,
     sceneryStyleProfileId: village.sceneryStyleProfileId ?? null,
+    automaticZonePictures: village.automaticZonePictures !== false,
     personalizeVenueImagesByDefault: village.personalizeVenueImagesByDefault,
     useVisualLoreByDefault: village.useVisualLoreByDefault,
     loreTokenBudget: village.loreTokenBudget,
@@ -211,6 +223,9 @@ export function villageSettings(
           ...originalZone,
           lastObserved: undefined,
           imageInteriorKey: undefined,
+          picture: undefined,
+          pictureRevision: undefined,
+          pictureRetryAvailable: originalZone.picture?.failed === true,
           preparation: originalZone.preparation
             ? { status: originalZone.preparation.status, error: originalZone.preparation.error }
             : undefined,
@@ -258,6 +273,7 @@ export function villageSettings(
               closed: zoneClosed(village, venue, zone),
               description: "",
               image: null,
+              pictureRetryAvailable: false,
               state: blankState,
               initialImageAttemptedAt: undefined,
               adaptationPending: undefined,
@@ -328,6 +344,8 @@ export function villageSettings(
               controllerIds: undefined,
               lastObserved: undefined,
               imageInteriorKey: undefined,
+              picture: undefined,
+              pictureRevision: undefined,
             },
           })),
       };

@@ -34,9 +34,7 @@ export async function measurePipeline<T>(
     }
   });
 }
-export async function measureModel<T extends { usage?: { promptTokens?: number; completionTokens?: number } }>(
-  run: () => Promise<T>,
-): Promise<T> {
+export async function measureModel<T>(run: () => Promise<T>): Promise<T> {
   if (!active.getStore()) return measurePipeline("model request", {}, () => measureModel(run));
   const metrics = active.getStore(),
     start = performance.now();
@@ -44,7 +42,7 @@ export async function measureModel<T extends { usage?: { promptTokens?: number; 
   try {
     const completion = await run();
     if (metrics) {
-      const usage = completion.usage;
+      const usage = (completion as { usage?: { promptTokens?: number; completionTokens?: number } } | null)?.usage;
       if (Number.isFinite(usage?.promptTokens) && Number.isFinite(usage?.completionTokens)) {
         metrics.reportedInputTokens += usage!.promptTokens!;
         metrics.reportedOutputTokens += usage!.completionTokens!;

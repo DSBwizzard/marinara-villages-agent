@@ -35,12 +35,7 @@ export function readEncounter(value: unknown, entry: SocialOutboxEntry, village:
           (row) => row.startMinute <= minute && row.endMinute > minute,
         );
       // A scheduled social overlay is authoritative only while still valid.
-      return (
-        block?.venueId === venue.id &&
-        (!block.zoneId || block.zoneId === zoneId) &&
-        block.status !== "dnd" &&
-        block.status !== "offline"
-      );
+      return block?.venueId === venue.id && (!block.zoneId || block.zoneId === zoneId);
     })
   )
     return null;

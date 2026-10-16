@@ -13,4 +13,6 @@ export type BackgroundCompletion = ((
 ) => Promise<CapabilityLanguageModelCompletion>) & {
   metadata?: { id: string; kind: string; cause: string; attempt?: number };
   setting?<T>(key: string, create: () => T | Promise<T>): Promise<T>;
+  signal?: AbortSignal;
+  optionalCompletion?<T>(fingerprint: string, work: (signal: AbortSignal) => Promise<T>): Promise<T | undefined>;
 };

@@ -32,16 +32,8 @@ export function useSceneViewport(host: HTMLElement, active: boolean): void {
       const line = number(proseStyle.lineHeight) || 21;
       const pageHeight = number(host.style.getPropertyValue("--villages-reading-page-height")) || 3 * line;
       const card = row.parentElement;
-      const input = host.querySelector<HTMLElement>(`.${tag}-chat-input`);
-      const inputStyle = input ? getComputedStyle(input) : null;
-      // Use a three-line page and a one-line draft, never the current text/draft height.
-      const composer = inputStyle
-        ? 44 +
-          number(inputStyle.paddingTop) +
-          number(inputStyle.paddingBottom) +
-          number(inputStyle.borderTopWidth) +
-          number(inputStyle.borderBottomWidth)
-        : 46;
+      // Keep the character floor stable when the action input mounts or hides.
+      const composer = 46 + 0.75 * number(getComputedStyle(document.documentElement).fontSize);
       const cardStyle = card ? getComputedStyle(card) : null;
       const dockStyle = getComputedStyle(dock);
       set(

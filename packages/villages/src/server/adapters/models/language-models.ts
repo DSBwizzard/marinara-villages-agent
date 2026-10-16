@@ -1,3 +1,4 @@
+import { guardedClockGeneration, assertVillageClockWrite } from "../time/clock-gate.js";
 import { requireHost } from "../engine/runtime-host.js";
 import { bindActivationService } from "../engine/activation-scope.js";
 import { measureModel } from "../observability/pipeline-metrics.js";
@@ -14,11 +15,14 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
       ...model,
       chatComplete: (messages, requestOptions) => {
         requireHost();
-        return trackUsage({ connectionId: model.connectionId, model: model.model }, () => {
-          // A usage claim may await storage; recheck before dispatching the provider.
-          requireHost();
-          return measureModel(() => model.chatComplete(messages, requestOptions));
-        });
+        return guardedClockGeneration(() =>
+          trackUsage({ connectionId: model.connectionId, model: model.model }, async () => {
+            // A usage claim may await storage; recheck before dispatching the provider.
+            requireHost();
+            await assertVillageClockWrite();
+            return measureModel(() => model.chatComplete(messages, requestOptions));
+          }),
+        );
       },
     });
   }

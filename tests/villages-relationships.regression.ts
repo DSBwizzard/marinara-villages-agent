@@ -79,6 +79,14 @@ async function relationshipConnectionOwnership() {
       gate = deferred();
     const village = defaultVillageState();
     village.seed = seed;
+    village.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    village.clock = {
+      revision: 1,
+      trustedAt: new Date().toISOString(),
+      recovery: null,
+      replayUntilDate: "",
+      shiftTotalMs: 0,
+    };
     village.foundedAt = village.setupAt = new Date().toISOString();
     const entry = {
       id: "equal-outbox",
@@ -324,7 +332,7 @@ function resident(id: string): VillageVillager {
     startMinute: 0,
     endMinute: 1440,
     venueId: "park",
-    zoneId: "gathering",
+    zoneId: "community",
     activity: "Reading",
     reason: "Free time",
     status: "online",
@@ -371,7 +379,7 @@ raw.setupAt = stamp;
 raw.visitMemoryBackfilled = true;
 raw.storyPace = "lively";
 const home = venue("home", ["residence"]),
-  park = venue("park", ["gathering"]),
+  park = venue("park", ["community"]),
   shop = venue("shop", ["workplace"]);
 home.residentIds = ["Rosa"];
 home.occupancy.residentCharacterId = "Rosa";
@@ -923,7 +931,7 @@ ends.setHours(Math.floor(plan.endMinute / 60), plan.endMinute % 60);
 committed.villagers[0]!.agenda!.projectWork = {
   projectId: "accepted",
   venueId: "park",
-  zoneId: "gathering",
+  zoneId: "community",
   startsAt: starts.toISOString(),
   endsAt: ends.toISOString(),
 };
@@ -1005,7 +1013,7 @@ async function main() {
       kind: "encounter" as const,
       actorIds: ["Rosa", "Ives"],
       venueId: "park",
-      zoneId: "gathering",
+      zoneId: "community",
       startsAt: stamp,
       endsAt: stamp,
       facts: [],

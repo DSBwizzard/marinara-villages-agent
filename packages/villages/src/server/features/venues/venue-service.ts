@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { isPrivateInterior, privateInteriorKey } from "../../domain/rules/private-interior.js";
 import type {
   VillageSnapshot,
@@ -33,6 +34,7 @@ import { readVenueImageContext } from "../../domain/rules/village-projections.js
 import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
+import { zonePictureBaseline, zonePictureContext } from "../../domain/rules/zone-picture.js";
 export type VillageVenueDeletionDependencies = {
   venueId: string;
   venueName: string;
@@ -270,10 +272,19 @@ export function createVenueCommands({
       if (zoneId) {
         const zone = resolveVenueZone(venue, zoneId);
         if (!zone) throw notFound("That zone no longer exists.");
+        if (onlyIfEmpty && (state.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed))
+          return;
         if (zone.kind !== "exterior" && !zone.seen && !(zone.kind === "shared-residence" && venue.occupancy.playerHome))
           throw conflict("Visit this zone before changing its image.");
         if (!onlyIfEmpty || !zone.image) {
           zone.image = image;
+          zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
+          zone.picture = {
+            base: image,
+            removed: !image,
+            baseline: image ? zonePictureBaseline(zonePictureContext(state, venue, zone)) : undefined,
+          };
+          if (!image) zone.initialImageAttemptedAt = new Date().toISOString();
           if (isPrivateInterior(zone)) zone.imageInteriorKey = image ? privateInteriorKey(zone) : undefined;
         }
       } else if (privateOwnerId) {
@@ -421,7 +432,7 @@ export function createVenueCommands({
     await mutateVillageState((state) => {
       const venue = state.venues.find((row) => row.id === venueId);
       if (!venue) throw notFound("That Venue is no longer here.");
-      applyAccessCommand(venue, command, "player", new Date().toISOString(), [
+      applyAccessCommand(venue, command, "player", villageNow().toISOString(), [
         "player",
         ...state.villagers.map((person) => person.characterId),
       ]);

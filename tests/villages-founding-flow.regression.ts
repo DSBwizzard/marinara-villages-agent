@@ -88,6 +88,20 @@ async function reviewNavigation() {
   assert.equal(reviewed, true, "successful Review navigation incorporates map acknowledgment");
   assert.equal(step, 4);
   assert.equal(problem, "");
+  ports.setupStep = 0;
+  ports.personaDraft = "";
+  goto(1);
+  assert.equal(step, 1, "Place can advance to People before choosing a Persona");
+  ports.setupStep = 1;
+  goto(2);
+  assert.equal(step, 1, "People validates its own required fields before Map");
+  assert.equal(problem, "Choose an available Persona.");
+  ports.setupName = "";
+  goto(2);
+  assert.equal(step, 0, "missing Place fields return to the first tab");
+  assert.equal(problem, "Give the village a name.");
+  ports.setupName = "Village";
+  ports.personaDraft = "player";
   reviewed = false;
   ports.setupMapSrc = "";
   ports.snapshot.isFounded = false;
@@ -101,14 +115,14 @@ async function main() {
   const { savedFoundingStep, SETUP_STEPS } =
     await import("../packages/villages/src/client/features/founding/founding-steps.js");
   for (const [step, expected] of [
-    [0, 0],
-    [1, 1],
+    [0, 1],
+    [1, 0],
     [2, 3],
     [3, 4],
   ])
     assert.equal(savedFoundingStep({ step }), expected);
   for (const [step, phase] of SETUP_STEPS.entries()) assert.equal(savedFoundingStep({ step, phase }), step);
-  assert.equal(savedFoundingStep({ step: NaN }), 0);
+  assert.equal(savedFoundingStep({ step: NaN }), 1);
   assert.equal(savedFoundingStep({ step: 2, mapSource: "none" }), 2);
   assert.equal(savedFoundingStep({ step: 3, mapSource: "none" }), 2);
   assert.equal(savedFoundingStep({ step: 3, phase: "Review", mapSource: "none", mapImage: "cached" }), 4);
@@ -476,7 +490,7 @@ async function main() {
     (await readFile(join(serverRoot, "features/residents/resident-agenda-service.ts"), "utf8")) +
     (await readFile(join(serverRoot, "domain/rules/founding-record.ts"), "utf8"));
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts-service.ts"), "utf8");
-  assert.ok(client.includes('["People", "Place", "Map", "Venues", "Review"]'));
+  assert.ok(client.includes('["Place", "People", "Map", "Venues", "Review"]'));
   assert.ok(client.includes("Place and world"));
   assert.ok(client.includes("Starting circumstances"));
   assert.ok(client.includes("Search lorebooks"));
@@ -614,8 +628,8 @@ async function foundingConnectionOwnership() {
       layout: "exterior",
     },
     {
-      id: "gathering",
-      venueClass: "gathering",
+      id: "community",
+      venueClass: "community",
       residentCharacterId: "",
       name: "Hall",
       form: "Hall",
@@ -739,6 +753,7 @@ async function foundingConnectionOwnership() {
                       ...row,
                       name: `${label} ${row.name}`,
                       layout: "common",
+                      connections: [["exterior", "common:base"]],
                       commonName: "Shared room",
                       commonPurpose: "Conversation",
                       commonDescription: "A table",
@@ -1113,21 +1128,23 @@ async function foundingArchitecturePrompts() {
     areas: Array.from({ length: 5 }, (_, id) => ({ id: String(id), name: "z".repeat(100) })),
   };
   const original = structuredClone(overflowing);
-  await assert.rejects(
-    service.generateFoundingVenueImage({
-      venue: overflowing,
-      area: "interior",
-      setting: "Resort",
-      zoneName: "s".repeat(100),
-      zonePurpose: "p".repeat(240),
-      zoneAppearance: "a".repeat(1000),
-      sceneryArtStyle: "v".repeat(600),
-    }),
-    /too long for an image prompt/,
-  );
-  assert.equal(prompts.length, before, "over-budget required facts send no image request");
-  assert.deepEqual(overflowing, original, "failed generation preserves authored draft");
-  assert.equal(galleryCalls, before, "rejected requests create no gallery result");
+  await service.generateFoundingVenueImage({
+    venue: overflowing,
+    area: "interior",
+    setting: "Resort",
+    zoneName: "s".repeat(100),
+    zonePurpose: "p".repeat(240),
+    zoneAppearance: "a".repeat(1000),
+    sceneryArtStyle: "v".repeat(600),
+  });
+  assert.equal(prompts.length, before + 1, "long authored details still permit an image request");
+  const fitted = prompts.at(-1)!;
+  assert.ok(fitted.length <= 4000);
+  assert.ok(fitted.includes("v".repeat(600)), "the full art style survives prompt fitting");
+  assert.ok(fitted.includes("Venue form defines the whole place"));
+  assert.ok(fitted.includes("Do not invent or show adjoining rooms"));
+  assert.deepEqual(overflowing, original, "prompt fitting preserves the authored draft");
+  assert.equal(galleryCalls, before + 1);
 
   console.log(
     "Founding images: shared architecture across Exterior/Common/player Private; resident Private guard retained.",

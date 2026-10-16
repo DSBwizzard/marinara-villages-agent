@@ -80,7 +80,7 @@ export function createWishProgress(ports: WishProgressPorts) {
     valid: (state, input: WishCheckInput | WishBatchInput) =>
       state.seed === input.seed && batchItems(input).some((item) => !!currentWish(state, item.proposal)),
     async generate(input: WishCheckInput | WishBatchInput): Promise<PreparedWishVerdict | PreparedWishBatch> {
-      const compact = input.contractVersion === 2;
+      const compact = input.contractVersion === 2 || input.contractVersion === 3;
       const all = batchItems(input);
       const state = await readVillageState();
       const ids = compact
@@ -102,6 +102,7 @@ export function createWishProgress(ports: WishProgressPorts) {
         `live:${input.submissionId}`,
         true,
         compact,
+        input.contractVersion === 3,
       );
       await writeInterpretationDiagnostics(input.sceneId, batch.traces);
       const failures: WorkFailure[] = [];
@@ -127,6 +128,7 @@ export function createWishProgress(ports: WishProgressPorts) {
           {
             id: effectId(item.sceneId, item.submissionId, item.proposal),
             verdict: {
+              ...(result.source === "decisions" ? { decision: { check, result } } : {}),
               criteria: facts.criteria as WishCriteria,
               outcome: result.outcome,
               evidenceIds: result.evidenceIds,
@@ -256,7 +258,7 @@ export function createWishProgress(ports: WishProgressPorts) {
               worldState: [],
             };
             const input: WishCheckInput = {
-              contractVersion: 2,
+              contractVersion: 3,
               sceneId,
               submissionId,
               seed: state.seed,
@@ -587,7 +589,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             submissionId: turn.id,
             seed: state.seed,
             items: batchInputs,
-            contractVersion: 2,
+            contractVersion: 3,
           } satisfies WishBatchInput,
         }),
       );

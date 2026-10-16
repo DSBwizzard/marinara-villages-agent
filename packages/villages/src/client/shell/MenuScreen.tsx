@@ -56,6 +56,8 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     openArchivedVisit,
     openMenu,
     openPlace,
+    housingVenueId,
+    setHousingVenueId,
     openSetup,
     openVisit,
     panelMapView,
@@ -156,11 +158,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
         <header className={`${ELEMENT_TAG}-header`}>
           <div>
             <h1 className={`${ELEMENT_TAG}-title`}>{MENU_PAGE_TITLES[menuPage]}</h1>
-            {!mobile ? (
-              <p className={`${ELEMENT_TAG}-subtitle`}>
-                Everything you can change about the village lives here, away from the village itself.
-              </p>
-            ) : null}
           </div>
           <div className={`${ELEMENT_TAG}-actions`}>
             <button
@@ -168,7 +165,11 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               className={`${ELEMENT_TAG}-button`}
               onClick={menuPage !== "index" ? () => setMenuPage("index") : goHome}
             >
-              {menuPage !== "index" ? "Back to menu" : "Back to the village"}
+              {menuPage !== "index"
+                ? "Back to menu"
+                : room && room.status !== "closed"
+                  ? "Back to Scene"
+                  : "Back to the village"}
             </button>
           </div>
           {error ? (
@@ -275,7 +276,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
         ) : menuPage === "general" ? (
           renderGeneralSettingsPage({
             backgroundPanel,
-            busy,
+            busy: busy,
             resetArmed,
             saveCharacterSpeechColors,
             saveSendOnEnter,
@@ -290,7 +291,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
           renderVillageSettingsPage({
             addVenue,
             backgroundPanel,
-            busy,
+            busy: busy,
             discardTownMapDraft,
             framingMap,
             generateReplacementMap,
@@ -386,7 +387,14 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               </section>
             ) : null}
             {menuPage === "noticeboard" && snapshot
-              ? renderNoticeboardPage({ addNotice, busy, noticeDraft, removeNotice, setNoticeDraft, snapshot })
+              ? renderNoticeboardPage({
+                  addNotice,
+                  busy: busy,
+                  noticeDraft,
+                  removeNotice,
+                  setNoticeDraft,
+                  snapshot,
+                })
               : null}
 
             {menuPage === "projects" && snapshot
@@ -406,7 +414,10 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               : null}
             {menuPage === "venueRequests" && snapshot
               ? renderVenueRequestsPage({
-                  busy,
+                  housingVenueId,
+                  setHousingVenueId,
+                  openPlace,
+                  busy: busy,
                   decideVenueRequest,
                   generateRequestDescription,
                   decideHomeUpgrade,
@@ -429,7 +440,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                   archiveTotal,
                   archiveVenueId,
                   archiveVillagerId,
-                  busy,
+                  busy: busy,
                   deleteArchivedVisits,
                   openArchivedVisit,
                   openVisit,

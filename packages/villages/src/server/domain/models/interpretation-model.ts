@@ -13,7 +13,7 @@ export type InterpretationTrace = {
   decisions: {
     status: "off" | "unavailable" | "answered";
     outcome?: string;
-    model?: string;
+    model?: string | null;
     scores?: Record<string, number>;
     threshold?: number;
     reason?: string;

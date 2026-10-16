@@ -107,18 +107,6 @@ try {
           activeIds: ["mara"],
           doorwayContacts: [],
           entryOffers: [],
-          lines: [
-            ...session.lines,
-            {
-              id: "entry",
-              role: "assistant",
-              kind: "narration",
-              speakerId: "__venue_scene__",
-              name: "",
-              content: "You enter the Common Space.",
-              at: now,
-            },
-          ],
         };
         value = { session };
       }
@@ -160,7 +148,7 @@ try {
     assert.deepEqual(submitted.contact, { kind: "call", boundaryZoneId: "common" });
     assert.match(submitted.message, /attention toward Interior entrance/);
     assert.equal(entered, undefined, "an invitation never automatically moves the player");
-    await expect(page.getByRole("button", { name: "Move to Common Space", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Move to Common Space", exact: true })).toHaveCount(0);
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
     await expect(
@@ -182,11 +170,13 @@ try {
     assert.equal(submitted.mode, "contact");
     assert.equal(submitted.targetId, "");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
-    await page.getByRole("button", { name: "Move to Common Space", exact: true }).click();
-    assert.equal(entered, undefined, "the invitation only prepares Move");
-    await expect(page.getByRole("button", { name: "Mode: Move. Choose mode", exact: true })).toBeVisible();
-    await expect(page.getByRole("textbox", { name: "Message at The Mill", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Send", exact: true }).click();
+    while (await next.isEnabled()) await next.click();
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await expect(page.getByLabel("Move to Zone").getByRole("option", { name: /invited/ })).toHaveText(
+      "Interior entrance (invited)",
+    );
+    await page.getByLabel("Move to Zone").selectOption("common");
     await expect.poll(() => entered?.zoneId).toBe("common");
     assert.equal(entered.expectedSceneRevision, 3);
     await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();

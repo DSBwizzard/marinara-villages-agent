@@ -306,6 +306,7 @@ export function VillagerDossier({
               type="button"
               className={`${P}-dossier-inspect`}
               aria-pressed={inspect}
+
               onClick={() => setInspect(!inspect)}
             >
               <DossierIcon name="inspect" />

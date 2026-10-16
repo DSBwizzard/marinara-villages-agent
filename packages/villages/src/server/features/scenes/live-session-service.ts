@@ -1,5 +1,8 @@
+import { captureSceneLayout } from "../../domain/rules/scene-layout.js";
+import { villageNow, observeVillageClock, villageClockShiftMs } from "../../adapters/time/clock-gate.js";
 import { randomUUID } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import { spinoffLocksScene } from "../../domain/models/spinoff-model.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_PREFIX } from "../../adapters/storage/scene-slots.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
@@ -38,16 +41,30 @@ export function createLiveScenes({
   readVillageState,
   mutateVillageState,
 }: LiveScenePorts) {
+  async function alignSceneClock(session: VenueScene): Promise<VenueScene> {
+    if (spinoffLocksScene(session.spinoff)) return session;
+    const total = villageClockShiftMs();
+    if (session.status === "closed" || (session.clockShiftMs ?? 0) === total) return session;
+    return changeSession(session.id, (current) => {
+      const delta = total - (current.clockShiftMs ?? 0);
+      const at = Date.parse(current.lastActivityAt || current.startedAt);
+      if (Number.isFinite(at)) current.lastActivityAt = new Date(at + delta).toISOString();
+      current.clockShiftMs = total;
+    });
+  }
   async function activeVenueSession(): Promise<VenueScene | null> {
     const active = await readActive();
     if (!active.sessionId) return null;
-    const session = await readSession(active.sessionId);
+    let session = await readSession(active.sessionId);
+    if (spinoffLocksScene(session.spinoff)) return session;
+    if ((await observeVillageClock())?.paused) return session;
+    session = await alignSceneClock(session);
     if (session.status === "closed") {
       await clearActivePointer(session.id);
       return null;
     }
     if (hasVenueOperation(session.id)) return session;
-    if (isInactive(session)) {
+    if (isInactive(session, villageNow().getTime())) {
       await interruptInactiveVisit(session.id);
       const latest = await readSession(session.id).catch(() => null);
       return latest?.status === "closed" ? null : latest;
@@ -58,9 +75,9 @@ export function createLiveScenes({
   async function interruptInactiveVisit(id: string): Promise<void> {
     if (hasVenueOperation(id)) return;
     const closed = await changeSession(id, (state) => {
-      if (state.status === "closed" || !isInactive(state) || hasVenueOperation(id)) return;
+      if (state.status === "closed" || !isInactive(state, villageNow().getTime()) || hasVenueOperation(id)) return;
       state.status = "closed";
-      state.endedAt = new Date().toISOString();
+      state.endedAt = villageNow().toISOString();
       state.endReason = "inactivity";
     });
     if (closed.status !== "closed") return;
@@ -72,7 +89,9 @@ export function createLiveScenes({
   }
 
   async function requireLiveVenueSession(id: string): Promise<VenueScene> {
-    let session = await readSession(id);
+    let session = await alignSceneClock(await readSession(id));
+    if (spinoffLocksScene(session.spinoff))
+      throw conflict("Finish or discard your spinoff before continuing in Villages.");
     if (session.status !== "closed" && isInactive(session) && !hasVenueOperation(id)) {
       await interruptInactiveVisit(id);
       session = await readSession(id).catch(() => session);
@@ -99,15 +118,23 @@ export function createLiveScenes({
       if (isInactive(state) && !hasVenueOperation(state.id))
         throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
       if (Date.now() - Date.parse(state.lastActivityAt) >= ACTIVITY_WRITE_MS)
-        state.lastActivityAt = new Date().toISOString();
+        state.lastActivityAt = villageNow().toISOString();
     });
   }
 
   async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
+    if ((await observeVillageClock())?.paused) return session;
     if (!completing && hasVenueOperation(session.id)) return session;
     const village = await readVillageState(),
       venue = village.venues.find((entry) => entry.id === session.placeId);
     if (!venue || session.status === "closed") return session;
+    if (session.sceneAttendance && !session.sceneAttendance.layout) {
+      const captured = await changeSession(session.id, (state) => {
+        if (state.sceneAttendance && !state.sceneAttendance.layout)
+          state.sceneAttendance.layout = captureSceneLayout(venue);
+      });
+      return refreshZoneParticipants(captured, completing);
+    }
     if (venue.access && session.pendingAccessClaim) {
       await mutateVillageState((state) => {
         const current = state.venues.find((row) => row.id === venue.id)!;
@@ -148,7 +175,7 @@ export function createLiveScenes({
               name: "Narration",
               kind: "narration",
               content: `${exit.actor === "player" ? "You" : (state.sceneAttendance?.occupants.find((person) => person.characterId === exit.actor)?.name ?? "A visitor")} leave ${resolveVenueZone(venue, exit.from)?.name ?? "the Zone"} and return to ${resolveVenueZone(venue, exit.to)?.name ?? "Entrance"} because access has ended.`,
-              at: new Date().toISOString(),
+              at: villageNow().toISOString(),
               heardBy: witnesses,
               zoneId: exit.from,
               contactHidden: exit.actor !== "player" && playerPosition !== exit.from && playerPosition !== exit.to,
@@ -210,7 +237,7 @@ export function createLiveScenes({
           name: "",
           role: "assistant",
           heardBy: [],
-          at: new Date().toISOString(),
+          at: villageNow().toISOString(),
         });
       });
       return refreshZoneParticipants(displaced, completing);
@@ -260,7 +287,6 @@ export function createLiveScenes({
           captured.occupants.push({
             ...person,
             zoneId: session.activeIds.includes(person.characterId) ? zoneId : lastZone!,
-            availability: "",
           });
       }
       session = await changeSession(session.id, (state) => {

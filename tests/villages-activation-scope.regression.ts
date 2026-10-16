@@ -28,11 +28,13 @@ function deferred<T = void>() {
   });
   return { promise, resolve };
 }
-function fixture(name: string, compareSystem: boolean) {
+function fixture(name: string, decisionsEnabled: boolean) {
   const reads: string[] = [];
   let onInterpretation: (() => Promise<void>) | undefined;
   const state = defaultVillageState();
   state.name = name;
+  state.timeZone = "UTC";
+  state.clock = { revision: 1, trustedAt: new Date().toISOString(), recovery: null, replayUntilDate: "" };
   const runtime = {
     persistence: {
       documents: {
@@ -40,7 +42,7 @@ function fixture(name: string, compareSystem: boolean) {
           reads.push(id);
           if (id === "villages-interpretation-settings") {
             await onInterpretation?.();
-            return { id, revision: 1, data: { decisionsEnabled: false, compareSystem } };
+            return { id, revision: 1, data: { decisionsEnabled } };
           }
           return id === "villages-village" ? { id, revision: 1, data: structuredClone(state) } : null;
         },
@@ -141,6 +143,7 @@ async function productionHandlers() {
     const application = await startVillagesApplication({
       api: {
         runtime: f.runtime,
+        registerSceneOrigin: () => () => {},
         async registerPrivilegedRoutes(plugin, options) {
           capturedOwner = activationScope();
           await engine.register(plugin, options);
@@ -166,12 +169,12 @@ async function productionHandlers() {
     assert.equal(requireHost(), b.runtime, "direct helpers select the latest successful activation");
     const responseB = await b.engine.inject({ url: "/api/villages/interpretation-settings" });
     assert.equal(responseB.statusCode, 200);
-    assert.equal(responseB.json().settings.compareSystem, true);
+    assert.equal(responseB.json().settings.decisionsEnabled, true);
     resume.resolve();
     const responseA = await paused;
     assert.equal(responseA.statusCode, 200);
     assert.equal(
-      responseA.json().settings.compareSystem,
+      responseA.json().settings.decisionsEnabled,
       false,
       "actual late handler retains its original document store",
     );
@@ -181,6 +184,7 @@ async function productionHandlers() {
       startVillagesApplication({
         api: {
           runtime: fixture("failed-replacement", false).runtime,
+          registerSceneOrigin: () => () => {},
           async registerPrivilegedRoutes() {
             failedOwner = activationScope();
             throw failedSetup;
@@ -208,7 +212,7 @@ async function productionHandlers() {
     await b.application.selfCheck();
     const stillB = await b.engine.inject({ url: "/api/villages/interpretation-settings" });
     assert.equal(stillB.statusCode, 200);
-    assert.equal(stillB.json().settings.compareSystem, true);
+    assert.equal(stillB.json().settings.decisionsEnabled, true);
   } finally {
     await a.application.stop();
     await b?.application.stop();

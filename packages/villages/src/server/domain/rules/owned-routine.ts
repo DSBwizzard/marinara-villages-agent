@@ -1,4 +1,5 @@
 import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
+import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import type { NativeWeekSchedule } from "./schedule-rules.js";
 import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -44,7 +45,7 @@ const record = (value: unknown): Record<string, unknown> =>
 const text = (value: unknown) => (typeof value === "string" ? value.trim().slice(0, 160) : "");
 const dayKey = (at: Date) =>
   `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-const words = (value: string) => value.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [];
+const words = (value: string): string[] => value.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [];
 const commonWords = new Set([
   "home",
   "village",
@@ -229,7 +230,14 @@ export function adoptedProfile(week: Record<string, VillageAgendaBlock[]>): Rout
   const unique = new Map<string, RoutineActivity>();
   for (const weekday of VILLAGE_WEEKDAYS)
     for (const block of week[weekday] ?? []) {
-      const key = JSON.stringify([block.activity, block.venueId, block.zoneId, block.status, block.flexible]);
+      const key = JSON.stringify([
+        block.activity,
+        block.venueId,
+        block.zoneId,
+        block.flexible,
+        block.essential,
+        block.commitmentId,
+      ]);
       const part = Math.min(3, Math.floor(block.startMinute / 360));
       const existing = unique.get(key);
       if (existing) {
@@ -241,7 +249,7 @@ export function adoptedProfile(week: Record<string, VillageAgendaBlock[]>): Rout
         ...activity,
         duration: Math.max(30, Math.min(240, endMinute - startMinute)),
         parts: [part],
-        essential: !block.flexible,
+        essential: block.essential === true || !block.flexible,
       });
     }
   return {
@@ -272,17 +280,14 @@ export function coerceRoutineProfile(value: unknown): RoutineProfile | undefined
       !text(row.activity) ||
       !Array.isArray(row.parts) ||
       !row.parts.length ||
-      row.parts.some((part) => !Number.isInteger(part) || part < 0 || part > 3) ||
-      !["online", "idle", "dnd", "offline"].includes(String(row.status))
+      row.parts.some((part) => !Number.isInteger(part) || part < 0 || part > 3)
     )
       return undefined;
     activities.push({
       activity: text(row.activity),
       venueId: text(row.venueId),
       zoneId: text(row.zoneId) || undefined,
-      reason: text(row.reason),
-      status: row.status as RoutineActivity["status"],
-      flexible: row.flexible === true && ["online", "idle"].includes(String(row.status)),
+      flexible: row.flexible === true,
       essential: row.essential === true,
       duration: Math.max(30, Math.min(240, Number(row.duration) || 90)),
       parts: row.parts as number[],
@@ -382,9 +387,9 @@ export function routineDay(
         const prior = retained[index - 1]!,
           next = retained[index]!;
         const desired =
-          rest.test(prior.activity) && next.flexible
+          rest.test(prior.activity) && flexibleAgendaBlock(next)
             ? preference.endMinute
-            : prior.flexible && rest.test(next.activity)
+            : flexibleAgendaBlock(prior) && rest.test(next.activity)
               ? preference.startMinute
               : undefined;
         if (desired === undefined) continue;
@@ -396,7 +401,7 @@ export function routineDay(
         next.startMinute = boundary;
       }
     return retained.flatMap((block, index) => {
-      if (block.essential || !block.flexible || block.status === "offline" || block.status === "dnd") return [block];
+      if (!flexibleAgendaBlock(block)) return [block];
       const result: VillageAgendaBlock[] = [];
       let minute = block.startMinute,
         step = 0;
@@ -405,7 +410,7 @@ export function routineDay(
           next = choice(part, index + step++);
         const end = Math.min(block.endMinute, (part + 1) * 360, minute + Math.max(30, next.duration));
         result.push(
-          next.flexible
+          flexibleAgendaBlock(next)
             ? { ...block, ...next, startMinute: minute, endMinute: end }
             : { ...block, startMinute: minute, endMinute: end },
         );
@@ -508,7 +513,6 @@ export function validateRoutineDay(
         zoneId: undefined,
         activity: "Taking care of their own affairs",
         flexible: true,
-        status: "idle" as const,
       };
     return { ...block, zoneId: zone.id };
   });
@@ -535,8 +539,6 @@ export function addRoutineIdea(
     activity: text(row.activity),
     venueId: text(row.venueId),
     zoneId: text(row.zoneId) || undefined,
-    reason: "",
-    status: "online",
     flexible: true,
     essential: false,
     duration: 90,
@@ -568,10 +570,8 @@ export function compressAgendaBlocks<
   T extends {
     activity?: string;
     here?: string;
-    reason?: string;
     venueId?: string;
     zoneId?: string;
-    status?: string;
     flexible?: boolean;
     time?: string;
     startMinute?: number;
@@ -581,11 +581,11 @@ export function compressAgendaBlocks<
 >(blocks: readonly T[]): T[] {
   const result: T[] = [];
   for (const original of blocks) {
-    const row = { ...original, reason: "" },
+    const row = { ...original },
       prior = result.at(-1);
     const same =
       prior &&
-      ["activity", "here", "venueId", "zoneId", "status", "flexible", "wishId", "commitmentId"].every(
+      ["activity", "here", "venueId", "zoneId", "essential", "flexible", "wishId", "commitmentId"].every(
         (key) => prior[key as keyof T] === row[key as keyof T],
       );
     const contiguous =
@@ -608,8 +608,6 @@ export function agendaPromptDay(
     here: string;
     venueId?: string;
     zoneId?: string;
-    reason?: string;
-    status?: string;
     flexible?: boolean;
     commitmentId?: string;
     wishId?: string;

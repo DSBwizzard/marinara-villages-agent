@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/Pasta-Devs/Marinara-Engine",
-  "revision": "974faebb683842f5a31be34cee65394d9a47c336",
-  "engineVersion": "2.4.6",
+  "revision": "bcc50689fd3885cc4ce7884f25cb2296f8fe400e",
+  "engineVersion": "2.5.0",
   "capabilityApi": {
     "major": 1,
     "minor": 14
@@ -10,7 +10,7 @@
   "files": [
     {
       "path": "types/achievement.d.ts",
-      "sourceSha256": "7ecbf1a392c19d5ea99da6a16c98cb0d267eefb123a4ea6fbe58d84b81d47852",
+      "sourceSha256": "28f947ed378ec02afeddaab07db69ab8a520122ca6ea472509534c617661b13b",
       "symbols": [
         "AchievementProgress",
         "CapabilityAchievementHost"
@@ -19,13 +19,17 @@
     },
     {
       "path": "types/capability-runtime.d.ts",
-      "sourceSha256": "ecee0d5b0184e7e6c4f3b560d19204319b554034af8f73a3c6e3f44442aee92c",
+      "sourceSha256": "d0d23eaa594d5f3addde8026e59b4be9de58b67cc0e52aaec86fc732812f9b48",
       "symbols": [
         "CapabilityCharacterRecord",
         "CapabilityChatActivityUpdate",
         "CapabilityChatMetadataUpdate",
         "CapabilityChatRecord",
         "CapabilityCreateMessageWithSwipeInput",
+        "CapabilityDecisionHost",
+        "CapabilityDecisionQuestion",
+        "CapabilityDecisionRequest",
+        "CapabilityDecisionResult",
         "CapabilityDocumentRecord",
         "CapabilityDocumentStore",
         "CapabilityDocumentUpdate",
@@ -63,11 +67,11 @@
         "CapabilitySpatialSnapshotStore",
         "CapabilitySpatialSnapshotWrite"
       ],
-      "sha256": "a331356d4f44c84feb8d318b5230bd27fe019b5721ba1968625de6cd609e7cc6"
+      "sha256": "9792e224e224ee8fc862463e59c93d74da652d429ed25f2c90b494ae31adc267"
     },
     {
       "path": "types/chat.d.ts",
-      "sourceSha256": "5e26758375c38c6210d2371ccf8fa46f3ed2aac397fcfffb754dfebd0421b348",
+      "sourceSha256": "3deb9b397f33b1c7d33882c9b1c665ff8891211e5a00969498399df7aea885d9",
       "symbols": [
         "ChatMode",
         "MessageRole"
@@ -76,7 +80,7 @@
     },
     {
       "path": "types/connection.d.ts",
-      "sourceSha256": "b0e57f4284eb84249aeb75500dbc3b7ade284be5355e342cc586c94bcad5bf87",
+      "sourceSha256": "af4083b47789541dc7526c24d7ecfdc0b89b4b4e7c8725c98c570c5c25112256",
       "symbols": [
         "IMAGE_GENERATION_QUALITIES",
         "ImageGenerationQuality"
@@ -85,11 +89,12 @@
     },
     {
       "path": "types/generation-integration.d.ts",
-      "sourceSha256": "30520750ec32a18f9d1660dd5d52c51f59a528c1d6f438a0184a83fa14b87e03",
+      "sourceSha256": "302ca015d788bee71633650feb090c040705b3694fd535b96f743f79c07e9d89",
       "symbols": [
         "CapabilityConnectionFallbackOptions",
         "CapabilityIntegrationHost",
         "CapabilityIntegrationProvider",
+        "CapabilitySpeechTranscribeOptions",
         "ChatCompletionResult",
         "ChatMediaAttachment",
         "ChatMessage",
@@ -116,11 +121,11 @@
         "VideoReferencePublicUploadExpiry",
         "VideoReferencePublicUploadOptions"
       ],
-      "sha256": "c4dbc2fd38bde9e198235c70a2e8eaee156675c5b66395e4946d4a4cc84a01e1"
+      "sha256": "88ed44006285ec9ff95f92ea2418b9946b52c6b159e352dbac35ab121e20c860"
     },
     {
       "path": "types/image-generation-defaults.d.ts",
-      "sourceSha256": "ce1cc0c69c2c6c430558148be34c827864112a119fc8646d12a5ff5b338784ca",
+      "sourceSha256": "98ab1374f8e1d3aaa060c188dc2a1378681be65e1501f68b120fa9f5e5babd7d",
       "symbols": [
         "Automatic1111Defaults",
         "ComfyUiDefaults",
@@ -133,7 +138,7 @@
     },
     {
       "path": "types/prompt.d.ts",
-      "sourceSha256": "d0677a9a410855c7af62506c88905238934af30288ce8607fc3ad854b6f0f804",
+      "sourceSha256": "c61c17d6e0a6606c214ec5cde74b74821765513b53a1c76358d607b78bc007cc",
       "symbols": [
         "GENERATION_PARAMETER_SEND_KEYS",
         "GenerationParameterSendKey",
@@ -143,7 +148,7 @@
     },
     {
       "path": "types/sidecar.d.ts",
-      "sourceSha256": "29a9bd79cb256e45fe64c35d58015ecb2e4b77490b91b33935dc9a9edb988d87",
+      "sourceSha256": "971bbb39512fdc723223df6731497c73b9b6afe6d79312d56a3165d57ee80164",
       "symbols": [
         "SceneIllustrationCharacterPrompt"
       ],
@@ -151,7 +156,7 @@
     },
     {
       "path": "types/spatial-context.d.ts",
-      "sourceSha256": "74489f0d1a4be65b0cfe1e05f9ce5d4ba0ab9a2eebb2f9e6c992a3b46511c88b",
+      "sourceSha256": "3111d2d04a21707d6abce70852a6e1d22ddf862002569ab5aebfeb5328834d9e",
       "symbols": [
         "SpatialContextSnapshot",
         "SpatialSnapshotSource"
@@ -161,6 +166,8 @@
   ],
   "roots": [
     "CapabilityCharacterRecord",
+    "CapabilityDecisionRequest",
+    "CapabilityDecisionResult",
     "CapabilityDocumentStore",
     "CapabilityLanguageModelCompletion",
     "CapabilityLanguageModelHost",
@@ -171,5 +178,22 @@
     "CapabilityResourceHost",
     "CapabilityRuntimeHost",
     "CapabilityRuntimeLogger"
+  ],
+  "supplementalFiles": [
+    {
+      "path": "types/scene.d.ts",
+      "upstreamPath": "packages/shared/src/types/scene.ts",
+      "revision": "bcc50689fd3885cc4ce7884f25cb2296f8fe400e",
+      "capabilityApi": {
+        "major": 1,
+        "minor": 66
+      },
+      "sourceSha256": "8f1bd1cbc25486c389d43b824332603a4cff7dd4737aec258094abdc16a7b15f",
+      "sha256": "8f1bd1cbc25486c389d43b824332603a4cff7dd4737aec258094abdc16a7b15f",
+      "symbols": [
+        "SceneOriginProvider",
+        "SceneOriginEnd"
+      ]
+    }
   ]
 }

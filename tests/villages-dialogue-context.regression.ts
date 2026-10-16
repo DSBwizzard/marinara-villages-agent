@@ -52,7 +52,7 @@ state.venues = [
   {
     id: "camp",
     name: "Camp",
-    classes: ["gathering"],
+    classes: ["community"],
     residentIds: [],
     workerIds: [],
     occupancy: { playerHome: false, residentCharacterId: null },
@@ -179,6 +179,11 @@ const release = configureVillagesRuntime({
       getById: async (_p: any, id: string) =>
         id === "villages-village" ? { id, kind: "village", data: state, revision: 1 } : null,
       list: async () => [],
+      update: async (input: any) => {
+        Object.assign(state, input.data);
+        return { ...input, revision: input.expectedRevision + 1 };
+      },
+      create: async (input: any) => ({ ...input, revision: 1 }),
     },
   },
   languageModels: { resolveForRequest: async () => model },
@@ -191,7 +196,7 @@ async function run() {
       placeName: "Camp",
       zoneId: "exterior",
       area: "outside",
-      spaceClass: "gathering",
+      spaceClass: "community",
       startedAt: stamp,
       memoryMode: "live",
       processingVersion: 1,

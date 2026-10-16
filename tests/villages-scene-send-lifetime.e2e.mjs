@@ -18,7 +18,7 @@ function Harness(){
  const [draft,setDraft]=useState('A draft'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[ended,setEnded]=useState(false);
  const [screen,setScreen]=useState('room'),[mode,setMode]=useState('chat'),[target,setTarget]=useState(''),[snapshot,setSnapshot]=useState(window.snapshot);
  const inFlight=useRef(false),submission=useRef(null),completion=useRef(null),events=useRef(new Set());
- const send=useSendRoom({room,roomBusy:busy,roomDraft:draft,roomEnded:ended,roomMode:mode,roomTargetId:target,roomContactBoundary:'',roomContactKind:'knock',
+ const {sendRoom:send}=useSendRoom({room,roomBusy:busy,roomDraft:draft,roomEnded:ended,roomMode:mode,roomTargetId:target,roomContactBoundary:'',roomContactKind:'knock',
  snapshot,roomCompletionRef:completion,roomSendInFlightRef:inFlight,roomSubmissionIdRef:submission,seenRoomEventIdsRef:events,
  loadSnapshot:async()=>{window.loads++},receiveRoomRecordEvents:noop,setLastSceneEnding:noop,setRoom,setRoomBusy:setBusy,setRoomContactKind:noop,
  setRoomDraft:setDraft,setRoomEnded:setEnded,setRoomError:setError,setRoomGreetingNotice:noop,setRoomMode:setMode,setRoomNotices:noop,

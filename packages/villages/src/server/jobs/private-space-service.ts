@@ -1,3 +1,4 @@
+import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import type { readVillageLore } from "../adapters/engine/lorebooks.js";
 import type { villagesLogger } from "../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../adapters/models/language-models.js";
@@ -66,7 +67,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
   let preparation: Promise<void> | null = null;
   function preparePrivateSpaces(signal?: AbortSignal): Promise<void> {
     if (preparation) return preparation;
-    preparation = prepare(signal).finally(() => {
+    preparation = withVillageClockWork(() => prepare(signal)).finally(() => {
       preparation = null;
     });
     return preparation;

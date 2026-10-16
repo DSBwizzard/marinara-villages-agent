@@ -332,38 +332,3 @@ export function BrowseList({
     </>
   );
 }
-
-export function VenuePreview({
-  image,
-  type,
-  actions,
-  disabled,
-}: {
-  image: string | null | undefined;
-  type: string;
-  actions: { label: string; onSelect: () => void }[];
-  disabled: boolean;
-}) {
-  return (
-    <div className={P + "-explore-preview"}>
-      <div className={P + "-explore-preview-detail"}>
-        <span className={P + "-explore-photo"}>{image ? <img src={image} alt="" /> : <MapIcon name="places" />}</span>
-        <span>{type}</span>
-      </div>
-      <div className={P + "-explore-preview-actions"}>
-        {actions.map((action) => (
-          <button
-            type="button"
-            key={action.label}
-            data-primary={action.label === "Visit"}
-            disabled={disabled}
-            onClick={action.onSelect}
-          >
-            {action.label === "Visit" ? <MapIcon name="visit" /> : null}
-            {action.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}

@@ -60,3 +60,8 @@ export function venueOperationInput(): Record<string, unknown> | undefined {
 export function venueDebugContext(): Record<string, unknown> {
   return operations().venueDebugContext();
 }
+
+/** A recovery model call requires the user to retry this exact saved operation. */
+export function venueExplicitRetry(): boolean {
+  return context.getStore()?.explicitRetry === true;
+}

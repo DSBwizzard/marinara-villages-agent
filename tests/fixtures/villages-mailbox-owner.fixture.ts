@@ -49,7 +49,7 @@ function world(label: string) {
   });
   queueVillageVenueRequest(
     state,
-    { name: `${label} original`, classes: ["gathering"] },
+    { name: `${label} original`, classes: ["community"] },
     "same-resident",
     "chat",
     `${label}-request`,
@@ -62,7 +62,7 @@ function world(label: string) {
   queueVenueCounteroffer(
     state,
     request.id,
-    { name: `${label} counteroffer`, classes: ["gathering"] },
+    { name: `${label} counteroffer`, classes: ["community"] },
     `${label} description`,
     created,
   );

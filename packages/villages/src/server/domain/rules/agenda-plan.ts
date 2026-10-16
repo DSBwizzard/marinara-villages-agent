@@ -105,14 +105,12 @@ export function agendaDayPlan(
       time: `${minuteLabel(entry.startMinute)}-${minuteLabel(entry.endMinute)}`,
       activity: entry.activity,
       here: entry.activity,
-      reason: entry.reason,
       translated: true,
       venueId: entry.venueId,
       zoneId: entry.zoneId,
       wishId: entry.commitmentId ?? "",
       commitmentId: entry.commitmentId,
       flexible: entry.flexible,
-      status: entry.status,
       current: minuteOfDay >= entry.startMinute && minuteOfDay < entry.endMinute,
     };
   });

@@ -131,6 +131,13 @@ async function main() {
   const release = configureVillagesRuntime({
     persistence: {
       documents: {
+        async update(input: any) {
+          Object.assign(state, input.data);
+          return { ...input, revision: input.expectedRevision + 1 };
+        },
+        async create(input: any) {
+          return { ...input, revision: 1 };
+        },
         async getById() {
           return { data: state, revision: 1 };
         },

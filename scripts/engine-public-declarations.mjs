@@ -16,6 +16,7 @@ async function files(dir) {
 }
 if (!args.includes("--refresh") && !args.includes("--check")) {
   const pin = JSON.parse(await readFile(join(output, "pin.json"), "utf8"));
+  pin.files = [...pin.files, ...(pin.supplementalFiles ?? [])];
   for (const file of pin.files)
     if (hash(await readFile(join(output, file.path))) !== file.sha256)
       throw Error("Pinned public declaration changed: " + file.path);
@@ -59,7 +60,13 @@ if (!args.includes("--refresh") && !args.includes("--check")) {
   const oldPin = JSON.parse(await readFile(join(output, "pin.json"), "utf8"));
   const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
   const engineVersion = option("--engine-version") ?? (revision === oldPin.revision ? oldPin.engineVersion : undefined);
-  const capabilityApi = option("--capability-api") ?? (revision === oldPin.revision ? oldPin.capabilityApi : undefined);
+  const apiOption = option("--capability-api");
+  if (apiOption && !/^\d+\.\d+$/u.test(apiOption)) throw Error("--capability-api must be major.minor");
+  const capabilityApi = apiOption
+    ? { major: Number(apiOption.split(".")[0]), minor: Number(apiOption.split(".")[1]) }
+    : revision === oldPin.revision
+      ? oldPin.capabilityApi
+      : undefined;
   if (args.includes("--refresh") && (!engineVersion || !capabilityApi))
     throw Error("A new upstream revision requires --engine-version and --capability-api to keep provenance accurate.");
   const paths = (await files(from)).filter((f) => f.endsWith(".d.ts"));
@@ -109,7 +116,13 @@ if (!args.includes("--refresh") && !args.includes("--check")) {
   if (!cap) throw Error("Missing upstream capability-runtime.d.ts");
   const exported = checker.getExportsOfModule(checker.getSymbolAtLocation(cap));
   const facade = await readFile("sources/package-shared.ts", "utf8");
-  const names = [...facade.matchAll(/export type \{([^}]+)\}/g)].flatMap((m) => m[1].split(",").map((s) => s.trim()));
+  const supplementalSymbols = new Set((oldPin.supplementalFiles ?? []).flatMap((file) => file.symbols));
+  const names = [...facade.matchAll(/export type \{([^}]+)\}/g)].flatMap((m) =>
+    m[1]
+      .split(",")
+      .map((s) => s.trim())
+      .filter((name) => name && !supplementalSymbols.has(name)),
+  );
   for (const name of names) {
     const symbol = exported.find((s) => s.name === name);
     if (!symbol) throw Error("Unknown public root: " + name);
@@ -166,7 +179,7 @@ if (!args.includes("--refresh") && !args.includes("--check")) {
   const prior = (await files(output)).filter((f) => f.endsWith(".d.ts"));
   for (const f of prior) {
     const rel = relative(output, f).split(sep).join("/");
-    if (!outputs.some((o) => o.path === rel)) {
+    if (!outputs.some((o) => o.path === rel) && !(oldPin.supplementalFiles ?? []).some((o) => o.path === rel)) {
       if (!resolve(f).startsWith(output + sep)) throw Error("Invalid output path");
       await unlink(f);
     }

@@ -27,7 +27,7 @@ export function calculatePortraitWanted(ports: {
   return [
     ...(snapshot?.villagers ?? []).map((villager) => villager.characterId),
     ...(pickerOpen ? visibleCatalog.map((entry) => entry.id) : []),
-    ...(screen === "setup" && setupStep === 0 ? (catalog ?? []).map((entry) => entry.id) : []),
+    ...(screen === "setup" && setupStep === 1 ? (catalog ?? []).map((entry) => entry.id) : []),
   ].join("\n");
 }
 export function calculatePersonaPortraitId(ports: {

@@ -1,6 +1,8 @@
+import { calendarDate, calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { CapabilityLanguageModelCompletion } from "@marinara-engine/shared";
 import type { WishActivity, WishAttempt } from "../models/wish-types.js";
 import type { VillageState, VillageVillager, VillageWish } from "../models/world.js";
+import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { agendaBlocksFor, agendaDateKey, flexibleAgendaInterval } from "./agenda-week.js";
 import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -47,13 +49,13 @@ export function wishSlots(resident: VillageVillager, state: VillageState, now: D
   if (!agenda) return [];
   const slots: Slot[] = [];
   for (let offset = 0; offset < 7 && slots.length < 8; offset++) {
-    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
+    const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
     const key = agendaDateKey(date),
       _weekday = VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!;
     const minute = offset === 0 ? now.getHours() * 60 + now.getMinutes() : -1;
     const blocks = agendaBlocksFor(agenda, resident.ingestSchedule !== false, date);
     const opportunities = blocks.flatMap((entry) => {
-      if (!entry.flexible || entry.status === "dnd" || entry.status === "offline") return [];
+      if (!flexibleAgendaBlock(entry)) return [];
       const result: typeof blocks = [];
       let start = Math.max(entry.startMinute, Math.ceil((minute + 1) / 30) * 30);
       while (start + 30 <= entry.endMinute) {
@@ -64,8 +66,22 @@ export function wishSlots(resident: VillageVillager, state: VillageState, now: D
       return result;
     });
     for (const block of opportunities) {
-      const from = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, block.startMinute).getTime();
-      const through = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, block.endMinute).getTime();
+      const from = calendarDate(
+        date,
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        0,
+        block.startMinute,
+      ).getTime();
+      const through = calendarDate(
+        date,
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        0,
+        block.endMinute,
+      ).getTime();
       const work = agenda.projectWork;
       if (work && Date.parse(work.startsAt) < through && Date.parse(work.endsAt) > from) continue;
       if (
@@ -115,7 +131,7 @@ export function proposalActivity(
       !zone ||
       !canOccupyZone(venue, zone, resident.characterId, {
         relationships: state.relationshipContext,
-        at: new Date(new Date(slot.dateKey + "T00:00:00").setMinutes(slot.startMinute)),
+        at: calendarAt(state.timeZone ? new ZonedDate(0, state.timeZone) : new Date(0), slot.dateKey, slot.startMinute),
       }) ||
       zoneClosed(state, venue, zone)
     )
@@ -128,7 +144,6 @@ export function proposalActivity(
     zoneId,
     wishId: wish.id,
     activity: shortWishText(raw.activity, 240),
-    reason: shortWishText(raw.reason, 240) || "A small personal interest",
     baseRevision: routineRevision(resident.agenda),
   };
 }
@@ -143,7 +158,7 @@ export function canApplyWishActivity(
   const today = agendaDateKey(now),
     minute = now.getHours() * 60 + now.getMinutes();
   if (activity.dateKey < today || (activity.dateKey === today && activity.startMinute <= minute)) return false;
-  const date = new Date(`${activity.dateKey}T12:00:00`);
+  const date = calendarAt(now, activity.dateKey, 720);
   if (!flexibleAgendaInterval(agendaBlocksFor(resident.agenda, false, date), activity.startMinute, activity.endMinute))
     return false;
   if (activity.venueId) {
@@ -155,7 +170,7 @@ export function canApplyWishActivity(
       venue.constructionStatus === "worksite" ||
       !canOccupyZone(venue, zone, resident.characterId, {
         relationships: state.relationshipContext,
-        at: new Date(new Date(activity.dateKey + "T00:00:00").setMinutes(activity.startMinute)),
+        at: calendarAt(now, activity.dateKey, activity.startMinute),
       }) ||
       zoneClosed(state, venue, zone)
     )

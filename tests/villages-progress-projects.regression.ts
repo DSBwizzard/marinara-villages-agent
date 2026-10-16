@@ -383,7 +383,7 @@ async function main() {
     }
     await createNewVenueProject({
       name: "Lantern House",
-      venueClass: "gathering",
+      venueClass: "community",
       description: "A hall for evenings.",
     });
     const projectId = (await readVillageState()).projects.find((entry) => entry.kind === "new-venue")!.id;
@@ -511,14 +511,14 @@ async function main() {
     await openFinishedProject(projectId, {
       layoutVersion: 1,
       layout: "both",
-      spaces: [{ venueClass: "gathering", description: "Tables and a hearth." }],
+      spaces: [{ venueClass: "community", description: "Tables and a hearth." }],
       form: "A timber hall",
       exteriorDescription: "Warm windows.",
       interiorDescription: "Tables and a hearth.",
       privateSpaces: [
         {
           id: "restricted:archive",
-          venueClass: "gathering",
+          venueClass: "community",
           name: "Archive",
           purpose: "Store records",
           controllerIds: ["player"],

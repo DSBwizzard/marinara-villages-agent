@@ -14,7 +14,7 @@ Client features own their screens, state and commands; the shell assembles them 
 
 The sections below record successive extraction and correction checkpoints. Earlier remaining-work notes describe those intermediate revisions; later sections record their closure. The source baseline retains the documented logical cancellation and recovery policies. It does not add physical draining of providers that ignore abort, global ordering of independent client snapshot requests, or old-world migration.
 
-Architecture validation includes the complete 129 ordinary regression and 30 mocked-browser targets, repository checks, reproducible package verification, and fresh Windows/Linux source builds with locked dependencies. The three Engine targets are explicitly separate: read-only image contract, Decisions transport with a synthetic local provider, and an actual Engine shell with mocked package requests. Optional Decisions transport requires an audited build; an unsupported build retains the System interpretation path.
+Architecture validation includes the complete 129 ordinary regression and 30 mocked-browser targets, repository checks, reproducible package verification, and fresh Windows/Linux source builds with locked dependencies. The three Engine targets are explicitly separate: read-only image contract, Decisions transport with a synthetic local provider, and an actual Engine shell with mocked package requests. Optional Decisions transport now uses the public capability introduced by Engine PR #7369; a missing capability retains System interpretation.
 
 Isolated packaged checks establish activation, desktop/mobile rendering, graceful restart and volume persistence. Those checks and the mocked suites do not establish automated live gameplay, newly founded-world persistence, private Zone interactions or paid-provider behavior. Hands-on gameplay acceptance complements the automated evidence; publication approval remains separate. Later behavior changes need validation of their actual save, Scene, privacy, admission and recovery effects.
 
@@ -54,7 +54,7 @@ Provider-free tests cover these ordering and failure boundaries, including inter
 
 ## Decisions connection ownership
 
-The Decisions compatibility adapter has an instance factory owning its database, canonical module-load promise, build identity and disposal fence. Its Engine loader and supported-build checks remain unchanged. A separately documented correction prevents old cleanup from clearing replacement configuration or an asynchronous call from switching databases; see [Decisions activation ownership](decisions-activation-ownership.md). Synthetic regressions and independent review cover the adapter's loading/resolution races and fallback boundaries. This is one connection owner, not completion of the application's remaining queue/service ownership.
+The activation-owned Decisions adapter now captures the public capability receiver and disposal fence. Private Engine modules, database access and build whitelists are removed; see [Decisions activation ownership](decisions-activation-ownership.md). Public capability presence gates the optional path, and current evidence/state validation gates effects. Background Wish jobs have their own durable optional-attempt journal and preserve legacy System checkpoints.
 
 ## Activation dispatch ownership
 
@@ -124,13 +124,13 @@ Provider-free tests cover identical character IDs in separate libraries, a pause
 
 Independent review verified all twelve schedule and five gallery function bodies and found no blocking issues. Existing same-instance limitations remain: a late schedule load can refill a reset cache, and a successfully cached gallery folder is not revalidated after deletion or renaming.
 
-## Interpretation comparison ownership
+## Interpretation diagnostics ownership
 
-`features/generation/interpretation-diagnostics-service.ts` owns optional comparison admission and cancellation controllers. Entry provides document access/mutation, execution outside Scene authority and the System comparison interface. The original diagnostic commands and redaction helper retain their bodies, bounded evidence, saved attempt metadata and timeout/abort ordering. Application shutdown calls the supported interface in its originating activation.
+`features/generation/interpretation-diagnostics-service.ts` owns bounded diagnostic documents and their privacy projection. Entry provides activation-owned document access and mutation. Diagnostics record Decisions admission, scores, rejected evidence, System fallback and the applied interpreter without issuing additional model requests.
 
-Provider-free tests cover identical Scene/check identifiers in separate worlds, independent cancellation, same-owner joins, CAS retries and same-store overlapping admission. Persisted claims still prevent duplicate or automatic repeated model calls. An interrupted attempt retains its unknown receipt even when its provider replies late. Access diagnostics retain their existing redaction, and removal/cleanup cannot select another owner's store or controller. This remains a logical cancellation fence; an abort-ignoring provider is not physically drained.
+Provider-free tests cover identical Scene/check identifiers in separate worlds, CAS retries, bounded evidence and access redaction. Removal and cleanup cannot select another owner's store. Legacy comparison records remain readable and inert; their settings, controllers, scheduling and user controls have been removed.
 
-Independent review verified all six original function bodies and document metadata, with no blocking findings. Cancellation after the provider race has resolved can still permit the final diagnostic write; this existing gap is distinct from aborting a pending provider result and is retained by this extraction.
+Scene and background operation owners provide cancellation, request accounting and replay. Optional Decision attempts are persisted independently of purchased System checkpoints. An unknown attempt never redispatches automatically, and a stored System response retains its original interpretation batch for replay.
 
 ## Direct Scene-context callback correction
 

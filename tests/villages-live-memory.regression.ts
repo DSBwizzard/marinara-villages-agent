@@ -1,3 +1,4 @@
+import { applyAcousticWitnesses } from "../packages/villages/src/server/domain/rules/acoustic-witnesses.js";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { createHash } from "node:crypto";
@@ -575,6 +576,11 @@ async function main() {
     );
     saveExchange("wrong-witness", [{ ...memory, knownByCharacterIds: ["b"] }]);
     await processSavedExchange("live", "wrong-witness");
+    const rejectedIssue = (await readSceneChanges("live", "", 50)).unresolved.find(
+      (issue) => issue.submissionId === "wrong-witness" && issue.domain === "memories",
+    );
+    assert.equal(rejectedIssue?.status, "rejected");
+    assert.match(rejectedIssue?.reason ?? "", /not witnessed by everyone/);
     assert.match((await readVenueVisit("live")).submissions.at(-1)!.processing!.domains.memories.reason, /not heard/);
     saveExchange("missing", undefined, { changes: [], permissions: [], disclosures: [] });
     await processSavedExchange("live", "missing");
@@ -606,7 +612,7 @@ async function main() {
     );
     assert.match(
       diagnosticFeed.unresolved.find((change: any) => change.submissionId === "opening-missing")!.reason,
-      /Replay cannot reconstruct/,
+      /Required response metadata is missing or invalid/,
     );
     assert.ok(!JSON.stringify(publicSceneResponse(opening)).includes("requestedOutputTokens"));
     await replaySceneChanges("live");
@@ -860,6 +866,32 @@ async function main() {
         .status,
       "applied",
     );
+
+    // A failed consequential check must stay retryable without a permanent rejection receipt.
+    saveExchange("system-unresolved", [{ ...memory, systemVerification: "unresolved" }]);
+    const beforeVerificationReplay = requests;
+    await processSavedExchange("live", "system-unresolved");
+    assert.equal((await readVenueVisit("live")).submissions.at(-1).processing.domains.memories.status, "failed");
+    assert.equal((await readVillageState()).exchangeReceipts["live:system-unresolved:memory:0"], undefined);
+    await processSavedExchange("live", "system-unresolved");
+    assert.equal(requests, beforeVerificationReplay, "saved verification failure never requests paid recovery");
+    await retrySceneChangeInterpretation("live", "system-unresolved", "memories");
+    assert.equal(requests, beforeVerificationReplay + 1);
+    assert.equal((await readVenueVisit("live")).submissions.at(-1).processing.domains.memories.status, "applied");
+    saveExchange("array-kind", [
+      { ...memory, kind: ["passing"], text: "Never create a durable memory from array kind." },
+    ]);
+    await processSavedExchange("live", "array-kind");
+    assert.equal((await readVillageState()).exchangeReceipts["live:array-kind:memory:0"].status, "rejected");
+    assert(!(await readVillageState()).chronicle.some((entry) => entry.text.includes("array kind")));
+    saveExchange("array-strength", [], {
+      ...emptyRelations,
+      changes: [{ ...positiveRelationship.changes[0], strength: ["major"] }],
+    });
+    await processSavedExchange("live", "array-strength");
+    assert(
+      (await readVenueVisit("live")).submissions.at(-1).processing.domains.relationships.rejectedProposals.length > 0,
+    );
     const updates = await readSceneChanges("live", cursor);
     assert.ok(
       updates.changes.some((change) => change.submissionId === "missing"),
@@ -950,6 +982,84 @@ async function main() {
     );
     records.get("villages-village").data.socialOutbox = [];
 
+    // Actual acoustic output must survive the saved-memory pipeline, with privacy intact.
+    for (const mixed of [false, true]) {
+      const id = mixed ? "doorway-mixed" : "doorway-whole";
+      const text = mixed ? 'I think SECRET. "Can I come in?"' : "Hey Fedster!";
+      const start = mixed ? text.indexOf("Can") : 0;
+      const raw: any = {
+        attentionWitnesses: [{ id: "attention:0", emitted: true, heardBy: ["a"], understoodBy: ["a"] }],
+        acousticReplies: [
+          {
+            segment: 0,
+            delivery: "ordinary",
+            outward: true,
+            heardBy: [],
+            understoodBy: [],
+            playerHeard: true,
+            playerUnderstood: true,
+          },
+        ],
+        memoryChanges: [
+          {
+            kind: "passing",
+            text: "Ada answered the neighbor.",
+            subjectCharacterIds: ["a"],
+            knownByCharacterIds: ["a"],
+            evidence: [mixed ? "attention:0" : "player", 0],
+          },
+        ],
+      };
+      const parsed: any = {
+        heardPlayerBy: [],
+        lines: [{ kind: "dialogue", speakerId: "a", content: "Hello, neighbor!", heardBy: [] }],
+      };
+      const acousticScene: any = {
+        zoneId: "exterior",
+        activeIds: [],
+        sceneAttendance: { occupants: [{ characterId: "a", zoneId: "inside" }] },
+        contactGeneration: {
+          acoustics: true,
+          localIds: [],
+          remoteIds: ["a"],
+          venue: {
+            zones: [
+              { id: "exterior", kind: "exterior", connectedTo: ["inside"] },
+              { id: "inside", kind: "public", connectedTo: ["exterior"] },
+            ],
+          },
+          attention: {
+            fragments: [
+              {
+                id: "attention:0",
+                kind: "speech",
+                start,
+                end: mixed ? text.length - 1 : text.length,
+                zoneIds: ["inside"],
+                wordZoneIds: ["inside"],
+              },
+            ],
+          },
+        },
+      };
+      applyAcousticWitnesses(raw, acousticScene, text, parsed);
+      saveExchange(id, raw.memoryChanges, emptyRelations, { knowers: [], playerText: text });
+      const stored = records.get("villages-venue-visit-live").data;
+      const turn = stored.submissions.at(-1);
+      stored.lines = stored.lines.filter((line: any) => line.id !== id + ":r");
+      const ids = parsed.lines.map((line: any, index: number) => {
+        const lineId = id + ":r" + index;
+        stored.lines.push({ ...line, id: lineId, at });
+        return lineId;
+      });
+      turn.replyLineIds = ids;
+      turn.processing.lineIds = [id + ":p", ...ids];
+      turn.liveProposals.replyLineIds = ids;
+      await processSavedExchange("live", id);
+      const saved = await readVenueVisit("live");
+      assert.equal(saved.submissions.at(-1)!.processing!.domains.memories.status, "applied");
+      assert(!(await readVillageState()).recollections.some((row) => row.text.includes("SECRET")));
+    }
     console.log("villages-live-memory: ok (saved proposal fixtures; not live model accuracy)");
   } finally {
     release();

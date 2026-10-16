@@ -15,7 +15,7 @@ try {
     snapshot.villagers = residents.slice(0, 1);
     snapshot.settings.venues[0].zones = [
       { id: "exterior", name: "Exterior", kind: "exterior", venueClass: "workplace", state: {}, seen: true },
-      { id: "hall", name: "Common Space", kind: "public", venueClass: "gathering", state: {}, seen: true },
+      { id: "hall", name: "Common Space", kind: "public", venueClass: "community", state: {}, seen: true },
     ];
     let scene = {
       id: "actions",
@@ -27,6 +27,7 @@ try {
       sceneRevision: 1,
       status: "active",
       memoryMode: "live",
+      stagingVersion: 1,
       startedAt: now,
       lastActivityAt: now,
       activeIds: ["mara"],
@@ -50,6 +51,8 @@ try {
       lastContact,
       lastLeave,
       moves = 0;
+    let staleMove = true;
+    const navigation = new Map();
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
     const page = await context.newPage();
     const errors = [];
@@ -58,48 +61,40 @@ try {
       route.fulfill({
         status: 200,
         contentType: "text/html",
-        body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+        body: `<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:calc(100% - 180px)}</style><header style="height:180px"></header><marinara-capability-villages></marinara-capability-villages><script>document.querySelector('marinara-capability-villages').capabilityProps={startScene:async()=>null}</script>`,
       }),
     );
     await context.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = snapshot;
-      if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: scene };
+      if (path.endsWith("/spinoffs/active")) value = { spinoff: null };
+      else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: scene };
       else if (path.endsWith("/rooms/zone")) {
         const body = route.request().postDataJSON();
-        if (body.expectedSceneRevision !== scene.sceneRevision)
+        if (staleMove || body.expectedSceneRevision !== scene.sceneRevision) {
+          staleMove = false;
           return route.fulfill({
             status: 409,
             contentType: "application/json",
             body: JSON.stringify({ code: "SCENE_STALE", error: "The Scene changed. Review it before moving." }),
           });
+        }
         moves++;
         scene = {
           ...scene,
           sceneRevision: scene.sceneRevision + 1,
           zoneId: body.zoneId,
           area: "outside",
-          activeIds: [],
-          submissions: [
-            ...scene.submissions,
-            { id: body.operationId, activeIdsAtTurn: ["mara"], activeIdsAfterTurn: [], replyLineIds: ["transition"] },
-          ],
-          lines: [
-            ...scene.lines,
-            {
-              id: "transition",
-              role: "assistant",
-              kind: "narration",
-              speakerId: "__venue_scene__",
-              name: "Narration",
-              content: "You move from Common Space to Exterior.",
-              at: now,
-              heardBy: ["mara"],
-            },
-          ],
+          activeIds: body.zoneId === "hall" ? ["mara"] : [],
+          operation: { id: body.operationId, kind: "move", status: "complete", input: { zoneId: body.zoneId } },
         };
+        navigation.set(body.operationId, scene.operation);
         if (width === 320) return route.abort("failed");
         value = { session: scene };
+      } else if (path.includes("/operations/")) {
+        value = { operation: navigation.get(decodeURIComponent(path.split("/").at(-1))) ?? null };
+      } else if (path.endsWith("/operation")) {
+        value = { operation: scene.operation ?? null };
       } else if (path.endsWith("/rooms/leave")) {
         lastLeave = route.request().postDataJSON();
         scene = { ...scene, status: "closed" };
@@ -119,7 +114,7 @@ try {
               kind: "narration",
               speakerId: "__venue_scene__",
               name: "Narration",
-              content: "No answer.",
+              content: "No answer.\n\n" + "You wait by the quiet doorway. ".repeat(75),
               heardBy: ["mara"],
               at: now,
             },
@@ -134,6 +129,18 @@ try {
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
     await expect(composer).toBeVisible();
     await composer.fill("Keep this draft");
+    await expect(page.getByRole("button", { name: "Start a spinoff", exact: false })).toHaveCount(0);
+    const composerBefore = await composer.boundingBox();
+    assert.ok(composerBefore && composerBefore.y + composerBefore.height <= 844, "text entry fits the host panel");
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Start a spinoff", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Spinoff", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Spinoff", exact: true })).toHaveCount(0);
+    await expect(composer).toHaveValue("Keep this draft");
+    assert.deepEqual(await composer.boundingBox(), composerBefore, "opening and cancelling preserves Scene geometry");
+    if (process.env.VILLAGES_VISUAL_OUTPUT)
+      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "spinoff-cancel-" + width + ".png") });
     await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
     assert.deepEqual(
       await page.getByRole("menu", { name: "Scene mode" }).getByRole("menuitemradio").allTextContents(),
@@ -151,46 +158,89 @@ try {
     });
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await contactStarted;
-    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Move", exact: true })).toBeDisabled();
-    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await expect(composer).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Mode:.*Choose mode/ })).toHaveCount(0);
+    await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
     assert.equal(lastContact.mode, "contact");
     assert.equal(lastContact.contact.kind, "call");
     assert.equal(lastContact.contact.boundaryZoneId, "exterior");
     finishContact();
-    await expect(composer).toBeEnabled();
-    await expect(page.getByLabel("Contact Zone", { exact: true })).toHaveValue("exterior");
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-    while (await next.isEnabled()) await next.click();
+    while (await next.isEnabled()) {
+      await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
+      await expect(composer).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
+      await next.click();
+    }
+    await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
+    await expect(composer).toBeVisible();
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
     const preservedDraft = "Draft survives Zone changes. ".repeat(35);
     await composer.fill(preservedDraft);
-    scene.sceneRevision++;
-    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    const dockAtBottom = async (selector) => {
+      const box = await page.locator(selector).boundingBox();
+      assert.ok(box && Math.abs(box.y + box.height - 844) <= 1, "bottommost control has no padding below it");
+    };
+    await dockAtBottom('[class$="-chat-input"]');
+    if (process.env.VILLAGES_VISUAL_OUTPUT)
+      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-ready-" + width + ".png") });
+    await page.getByRole("button", { name: "Previous paragraph", exact: true }).click();
     await expect(composer).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+    await dockAtBottom('[class$="-chat-vn-card"]');
+    if (process.env.VILLAGES_VISUAL_OUTPUT)
+      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-reading-" + width + ".png") });
+    while (await next.isEnabled()) await next.click();
+    await expect(composer).toHaveValue(preservedDraft);
+    const selectMove = async () => {
+      await page.getByRole("button", { name: /Mode:.*Choose mode/ }).click();
+      await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+      await expect(composer).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
+      await dockAtBottom('[class$="-chat-input"]');
+    };
+    scene.sceneRevision++;
+    const lineCount = scene.lines.length;
+    await selectMove();
+    if (process.env.VILLAGES_VISUAL_OUTPUT)
+      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-move-" + width + ".png") });
     await page.getByLabel("Move to Zone").selectOption("exterior");
-    assert.equal(moves, 0, "selection alone never moves");
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.getByRole("alert").last()).toContainText("Scene changed");
+    await page.getByRole("button", { name: /^1 Scene error$/ }).click();
+    await page.getByRole("region", { name: "Scene errors" }).locator("summary").first().click();
+    await expect(page.getByText(/Scene changed/).last()).toBeVisible();
+    await page.getByRole("button", { name: "Close Scene errors" }).click();
     assert.equal(moves, 0);
     await expect(composer).toHaveCount(0);
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText(
-      "You move from Common Space to Exterior.",
-    );
+    await page.getByLabel("Move to Zone").selectOption("exterior");
+    await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
+    await expect(composer).toHaveValue(preservedDraft);
+    assert.equal(moves, 1);
+    assert.equal(scene.lines.length, lineCount);
+    assert.equal(scene.submissions.length, 0);
+    for (const zoneId of ["hall", "exterior", "hall", "exterior"]) {
+      await selectMove();
+      await page.getByLabel("Move to Zone").selectOption(zoneId);
+      await expect(composer).toHaveValue(preservedDraft);
+      await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
+      await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(zoneId === "hall" ? 1 : 0);
+    }
+    assert.equal(moves, 5, "selection immediately navigates repeatedly without Send");
     await expect(composer).toHaveValue(preservedDraft);
     assert.ok(await composer.evaluate((field) => field.scrollHeight > field.clientHeight));
     await expect(composer).toHaveCSS("overflow-y", "auto");
-    await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
-    assert.equal(moves, 1);
+    const frame = await page.locator('[class$="-chat-input"]').boundingBox();
+    const row = await page.locator('[class$="-composer-row"]').boundingBox();
+    assert.ok(frame && row && frame.width >= row.width - 2, "composer uses full row width");
+    assert.equal(await page.locator("[data-scene-scope]").count(), 0);
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText(
-      "You move from Common Space to Exterior.",
-    );
-    assert.equal(moves, 1);
-    assert.equal(scene.lines.filter((line) => line.id === "transition").length, 1);
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toBeVisible();
+    while (await next.isEnabled()) await next.click();
+    await expect(composer).toBeVisible();
+    await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
+    assert.equal(moves, 5);
+    assert.equal(scene.lines.length, lineCount);
     await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
     await expect(page.getByLabel("Contact Zone")).toHaveValue("");
@@ -210,7 +260,7 @@ try {
     await context.close();
   }
   console.log(
-    "Scene actions browser: four modes, contact targeting, busy/stale/lost-response movement, drafts, restored transitions and optional concluding messages passed",
+    "Scene actions browser: four modes, inline immediate movement, contact targeting, final-paragraph readiness, busy/stale/lost-response navigation, drafts, silent repeated moves and optional concluding messages passed",
   );
 } finally {
   await browser.close();

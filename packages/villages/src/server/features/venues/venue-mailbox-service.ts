@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { applyProjectMailboxDecisions } from "../../domain/rules/project-lifecycle-rules.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
@@ -54,7 +55,7 @@ export function createVenueMailbox({
 
   async function proposePlayerMove(venueId: string, privateZoneId = ""): Promise<void> {
     const id = randomVillageSeed();
-    const at = new Date();
+    const at = villageNow();
     await mutateVillageState((state) => {
       const venue = state.venues.find((entry) => entry.id === venueId);
       if (!venue) throw notFound("That Residence no longer exists.");
@@ -100,7 +101,7 @@ export function createVenueMailbox({
       const slot = (venue.improvements ?? [null, null]).findIndex((entry) => entry === null);
       const chosenSlot = slot >= 0 ? slot : 0;
       const id = randomVillageSeed();
-      const at = new Date();
+      const at = villageNow();
       state.venueMail = [
         ...state.venueMail,
         {
@@ -141,7 +142,7 @@ export function createVenueMailbox({
       if (!mail || !mail.improvement) throw notFound("That improvement request is no longer pending.");
       if (!approved) {
         mail.status = "declined";
-        mail.resolvedAt = new Date().toISOString();
+        mail.resolvedAt = villageNow().toISOString();
         return;
       }
       const title =
@@ -168,11 +169,11 @@ export function createVenueMailbox({
         improvement: { title, description, extraBeds, spaceId: mail.improvement.spaceId },
       });
       mail.status = "approved";
-      mail.resolvedAt = new Date().toISOString();
+      mail.resolvedAt = villageNow().toISOString();
     });
   }
 
-  async function respondDueVenueMail(now = new Date()): Promise<void> {
+  async function respondDueVenueMail(now = villageNow()): Promise<void> {
     const village = await readVillageState();
     const dueMail = village.venueMail.filter(
       (entry) => entry.status === "awaiting-villagers" && Date.parse(entry.dueAt) <= now.getTime(),

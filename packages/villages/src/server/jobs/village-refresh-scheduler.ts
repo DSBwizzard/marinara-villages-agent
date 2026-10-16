@@ -1,3 +1,5 @@
+import { copyDate } from "../../shared/helpers/zoned-date.js";
+import { villageNow } from "../adapters/time/clock-gate.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import type { VillageState } from "../domain/models/world.js";
 import { agendaBlocksFor } from "../domain/rules/agenda-week.js";
@@ -17,7 +19,7 @@ export const REFRESH_SETTLE_MS = 250;
 export const REFRESH_MAX_DELAY_MS = 24 * 60 * 60_000;
 
 function localMinuteDeadline(now: Date, minute: number): number {
-  const deadline = new Date(now);
+  const deadline = copyDate(now);
   deadline.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
   if (deadline.getTime() <= now.getTime()) deadline.setDate(deadline.getDate() + 1);
   return deadline.getTime();
@@ -85,7 +87,7 @@ export function startVillageRefreshScheduler(
     if (stopped) return;
     try {
       const village = await readVillageState();
-      arm(delayMs(new Date(), village));
+      arm(delayMs(villageNow(), village));
     } catch (error) {
       villagesLogger().warn("[villages] could not read the next village deadline: %s", String(error));
       arm(REFRESH_MAX_DELAY_MS);

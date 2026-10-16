@@ -1,5 +1,6 @@
+import { sceneNavigationScreen } from "./navigation.js";
 import { useSettingsDraftSession } from "../features/settings/draft-session.js";
-import type { TownMapView, VillageSnapshot } from "../../shared/contracts/village.js";
+import type { TownMapView, VillageSnapshot, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
 import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
 import { useProgressDiagnostics } from "../features/background/useProgressDiagnostics.js";
@@ -168,7 +169,6 @@ import {
 import { useSettingsState } from "../features/settings/useSettingsState.js";
 import { useKnowledgeCaret } from "../features/settings/workflow-controller.js";
 import {
-  useAddVenue,
   useDecideVenueRequest,
   useLeaveVenue,
   useOpenVenue,
@@ -346,9 +346,16 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // the place decides what is behind the door. See `openVenue`, which is where
   // the other half of that statement lives — a place with one person standing in
   // it never reaches this screen at all.
-  const [screen, setScreen] = useState<
+  const [room, setRoom] = useSceneRecord();
+  const [requestedScreen, setScreen] = useState<
     "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person"
   >("home");
+
+  const screen = sceneNavigationScreen(requestedScreen, !!room && room.status !== "closed");
+  useLayoutEffect(() => {
+    // Returning from a menu must not leave a map request waiting behind the Scene.
+    if (requestedScreen !== screen) setScreen(screen);
+  }, [requestedScreen, screen]);
 
   useSceneViewport(element, screen === "room");
   const {
@@ -371,6 +378,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const {
     venueId,
+    venueSection,
+    setVenueSection,
+    venueReturnTo,
+    setVenueReturnTo,
+    housingVenueId,
+    setHousingVenueId,
     setVenueId,
     venuePage,
     setVenuePage,
@@ -530,6 +543,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSetupStep,
     setupName,
     setSetupName,
+    setupTimeZone,
+    setSetupTimeZone,
     setupSetting,
     setSetupSetting,
     setupFoundingReason,
@@ -644,6 +659,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const setupHomeCount = calculateSetupHomeCount({ setupFoundingVillagerIds });
 
   const setupBeginningSourceKey = calculateSetupBeginningSourceKey({
+    setupName,
+    setupWorldFacts,
+    setupImprint,
     personaDraft,
     personalizeHomes,
     sceneryStyle,
@@ -757,6 +775,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupMapSize,
     setupMapSource,
     setupName,
+    setupTimeZone,
     setupPlayerRole,
     setupResidentContexts,
     setupSetting,
@@ -826,6 +845,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSetupMapSize,
     setSetupMapSource,
     setSetupName,
+    setSetupTimeZone,
     setSetupPlayerRole,
     setSetupProblem,
     setSetupResidentContexts,
@@ -888,6 +908,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useFoundingRosterReconciliation({ catalog, draftReady, screen, setSetupVenues, setupFoundingVillagerIds, snapshot });
 
   const suggestSetupVenues = createFoundingSuggestSetupVenues({
+    setupWorkspace,
+    setSetupWorkspace,
+    persistSetupDraft,
+    setupDraftData,
+    setupName,
+    setupWorldFacts,
+    setupImprint,
     personaDraft,
     selectedResidentContexts,
     setSetupProblem,
@@ -923,22 +950,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const [error, setError] = useState("");
 
   const [busy, setBusy] = useState(false);
-
-  /**
-   * The room the player is standing in, and whether it is on screen.
-   *
-   * A ROOM IS NOT A CONVERSATION, and the two are held apart on purpose: what is
-   * in `conversation` belongs to one villager, is drawn by the villager's own
-   * drawer and is held shut against the map while it is in hand; what is in `room`
-   * belongs to a PLACE — everybody standing in it, and one list of what they all
-   * said, which the village keeps under the place's own id. So a room can be walked
-   * out of and back into with nothing lost and nothing parked, and the two drawers
-   * never have to agree about which of them owns the map.
-   *
-   * `roomOpen` is a flag of its own for the same reason `chatOpen` is: the drawer
-   * is animated by an attribute and a panel that is not there cannot slide.
-   */
-  const [room, setRoom] = useSceneRecord();
 
   /** Accept each server receipt once, regardless of which visit-ending path returned it. */
   const receiveRoomRecordEvents = useReceiveRoomRecordEvents({
@@ -1204,7 +1215,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   // An app reload does not end a Scene. The server owns the one active
   // session; the client restores it instead of opening another conversation.
-  useActiveSceneRestoration({
+  const sceneRestoration = useActiveSceneRestoration({
     isFounded: snapshot?.isFounded,
     room,
     roomEnded,
@@ -1304,6 +1315,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   /** End an active Scene in place; a second press returns the completed scene to the map. */
   const closeRoom = useCloseRoom({
+    onUnknownSceneExit: sceneRestoration.retry,
     isFounded: snapshot?.isFounded,
     leavingRoomPendingRef,
     loadSnapshot,
@@ -1396,7 +1408,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomMoveZoneId,
   });
 
-  const sendRoom = useSendRoom({
+  const { sendRoom, turnRecovery, checkSavedReply, replyPending } = useSendRoom({
+    composerEditVersionRef,
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
@@ -1446,6 +1459,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * enter one of the dedicated editing pages without a model request.
    */
   const openPlace = useOpenPlace({
+    setVenueEditError,
+    setVenueEditNotice,
+    screen,
+    setVenueReturnTo,
+    setVenueSection,
     setExploreSheet,
     setOpenPlaceId,
     setScreen,
@@ -1550,6 +1568,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * Enter opens the place's own action view; otherwise it opens the Common Space.
    */
   const openVenue = useOpenVenue({
+    openPlace,
     explorationOrigin,
     explorationReturnTab,
     setExploreSheet,
@@ -1567,6 +1586,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * so a stale one cannot be drawn for a frame while the map comes back.
    */
   const leaveVenue = useLeaveVenue({
+    screen,
+    venueId,
+    element,
+    explorationOrigin,
+    explorationReturnTab,
+    venueReturnTo,
     setExploreSheet,
     setOpenPlaceId,
     setScreen,
@@ -2029,6 +2054,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupMapSource,
     setupMapSrc,
     setupName,
+    setupTimeZone,
     setupPlayerRole,
     setupSetting,
     setupVenues,
@@ -2077,7 +2103,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // are edited in different places for good reasons: a house is a spot on a map
   // and a destination has a name and Class. Each row saves by its
   // own id, so an older panel cannot replace a newly approved destination.
-  const addVenue = useAddVenue({ setVenueEditDraft });
+  const addVenue = () => {
+    projectsController.setSelectedId("");
+    projectsController.setDraftType("new-venue");
+    openMenu("projects");
+  };
 
   const saveVenue = useSaveVenue({
     openMenu,
@@ -2237,6 +2267,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupZoneDrafts,
   });
   return {
+    sceneRestoration,
     ...venueScreenCommands,
     element,
     addNotice,
@@ -2412,6 +2443,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     selectedResidentContexts,
     selectedSetupVenueId,
     sendRoom,
+    turnRecovery,
+    checkSavedReply,
+    replyPending,
     setAgendaScheduleIngestion,
     setArchiveOffset,
     setArchiveVenueId,
@@ -2537,6 +2571,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupMapSource,
     setupMapSrc,
     setupName,
+    setupTimeZone,
+    setSetupTimeZone,
     setupPlacementError,
     setupPlayerRole,
     setupProblem,
@@ -2578,6 +2614,21 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venueEditNotice,
     venueExplorationActions,
     venueId,
+    venueSection,
+    setVenueSection,
+    planVenueRenovation: (place: VillageVenue) => {
+      if (projectsController.startRenovation(place)) openMenu("projects");
+    },
+    openVenueProject: (id: string) => {
+      openMenu("projects");
+      setFocusedProjectId(id);
+    },
+    housingVenueId,
+    setHousingVenueId,
+    openVenueRequests: (venueId: string) => {
+      setHousingVenueId(venueId);
+      openMenu("venueRequests");
+    },
     venuePage,
     venueProposalDraft,
     venueSearch,

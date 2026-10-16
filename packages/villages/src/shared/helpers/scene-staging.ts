@@ -120,10 +120,12 @@ export function replayStaging(
 
 /** Turn boundaries also reconstruct the cast for player lines and departures. */
 export function stagingBoundaries(
-  lines: readonly { id?: string; role: string }[],
+  lines: readonly { id?: string; role: string; physicalIdsAfter?: string[] }[],
   turns: readonly StagingTurn[],
 ): Map<string, { beforeIds?: string[]; afterIds?: string[] }> {
   const boundaries = new Map<string, { beforeIds?: string[]; afterIds?: string[] }>();
+  for (const line of lines)
+    if (line.id && line.physicalIdsAfter) boundaries.set(line.id, { afterIds: line.physicalIdsAfter });
   const indexes = new Map(lines.flatMap((line, index) => (line.id ? [[line.id, index] as const] : [])));
   for (const turn of turns) {
     const replyIds = (turn.replyLineIds ?? []).filter((id) => indexes.has(id));

@@ -1,3 +1,4 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { SocialEncounter } from "../../domain/models/relationship-types.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
@@ -49,7 +50,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           /* Reject invalid interpretation locally, without a paid repair. */
         }
         if (encounter && current.storyPace !== "off") {
-          applyRelationshipReview(state, encounter.review, current, encounter.id, encounter.at);
+          applyRelationshipReview(state, encounter.review, current, encounter.id, encounter.at, villageNow().getTime());
           state.socialEncounters = [...state.socialEncounters, encounter].slice(-64);
           const minute = new Date(encounter.at).getHours() * 60 + new Date(encounter.at).getMinutes();
           for (const plan of state.socialPlans)

@@ -21,7 +21,6 @@ export type WishActivity = {
   venueId: string;
   zoneId?: string;
   activity: string;
-  reason: string;
   baseRevision: string;
 };
 export type WishOutcome = VillageCompletedWish & {

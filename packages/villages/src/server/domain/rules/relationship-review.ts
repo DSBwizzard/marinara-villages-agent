@@ -63,7 +63,8 @@ export function parseRelationshipReview(
       !ids.has(toId) ||
       fromId === toId ||
       (row.dimension !== "warmth" && row.dimension !== "trust") ||
-      !["minor", "meaningful", "major", "none"].includes(String(row.strength)) ||
+      typeof row.strength !== "string" ||
+      !["minor", "meaningful", "major", "none"].includes(row.strength) ||
       !["increase", "decrease"].includes(String(row.direction))
     )
       throw new Error("Invalid directional relationship decision.");

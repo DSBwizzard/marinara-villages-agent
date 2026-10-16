@@ -75,6 +75,7 @@ async function run() {
   );
   const logs: string[] = [];
   const release = configureVillagesRuntime({
+    persistence: { documents: { getById: async () => null, list: async () => [] } },
     isDebugAgentsEnabled: () => true,
     logger: {
       debugOverride(_enabled: boolean, _format: string, text: string) {

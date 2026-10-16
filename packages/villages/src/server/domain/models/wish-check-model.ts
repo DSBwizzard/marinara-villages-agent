@@ -1,3 +1,4 @@
+import type { InterpretationCheck, InterpretationResult } from "./interpretation-check-model.js";
 import type { WishFactCandidate } from "../rules/wish-journal.js";
 import type { WorkFailure } from "../rules/work-failure.js";
 import type { VenueRecordEvent } from "./scene-model.js";
@@ -32,7 +33,7 @@ export type WishProposal = {
   lineIds: string[];
 };
 export type WishCheckInput = {
-  contractVersion?: 2;
+  contractVersion?: 2 | 3;
   sceneId: string;
   submissionId: string;
   seed: string;
@@ -42,6 +43,7 @@ export type WishCheckInput = {
   context: WishInterpretationContext;
 };
 export type PreparedWishVerdict = {
+  decision?: { check: InterpretationCheck; result: InterpretationResult };
   criteria: WishCriteria;
   outcome: string;
   evidenceIds: string[];
@@ -50,7 +52,7 @@ export type PreparedWishVerdict = {
   receiptIds: string[];
 };
 export type WishBatchInput = {
-  contractVersion?: 2;
+  contractVersion?: 2 | 3;
   sceneId: string;
   submissionId: string;
   seed: string;

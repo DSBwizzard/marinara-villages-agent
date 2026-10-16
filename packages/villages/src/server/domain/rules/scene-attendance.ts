@@ -1,3 +1,4 @@
+import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { agendaAt } from "./agenda-plan.js";
@@ -9,8 +10,14 @@ import { villagerPlaceView } from "./village-projections.js";
 
 export function captureSceneAttendance(village: VillageState, placeId: string, now: Date): SceneAttendance {
   const venue = village.venues.find((entry) => entry.id === placeId)!;
-  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
+  const moment = deriveVillageMoment({
+    foundedAt: village.foundedAt,
+    seed: village.seed,
+    timeZone: village.timeZone || undefined,
+    now,
+  });
   return {
+    layout: captureSceneLayout(venue),
     capturedAt: now.toISOString(),
     occupants: village.villagers.flatMap((villager) => {
       if (villagerPlaceView(village, villager, null, moment.minuteOfDay, now)?.id !== placeId) return [];
@@ -21,7 +28,6 @@ export function captureSceneAttendance(village: VillageState, placeId: string, n
           characterId: villager.characterId,
           name: villager.cardSnapshot.name,
           doing: block?.activity ?? "",
-          availability: block?.status ?? "",
           zoneId: zone.id,
         },
       ];

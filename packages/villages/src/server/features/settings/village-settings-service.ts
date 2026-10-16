@@ -197,10 +197,17 @@ export function createVillageSettings({
   async function setScenerySettings(value: {
     sceneryArtStyle?: unknown;
     sceneryStyleProfileId?: unknown;
+    automaticZonePictures?: unknown;
     personalizeVenueImagesByDefault?: unknown;
     useVisualLoreByDefault?: unknown;
   }): Promise<VillageSnapshot> {
     await mutateVillageState((state) => {
+      if (value.automaticZonePictures !== undefined) {
+        const enabled = readBool(value.automaticZonePictures);
+        if (enabled !== (state.automaticZonePictures !== false))
+          state.zonePictureEpoch = (state.zonePictureEpoch ?? 0) + 1;
+        state.automaticZonePictures = enabled;
+      }
       if (value.sceneryStyleProfileId !== undefined)
         state.sceneryStyleProfileId = readSceneryStyleProfileId(value.sceneryStyleProfileId);
       if (value.sceneryArtStyle !== undefined) state.sceneryArtStyle = readSceneryStyle(value.sceneryArtStyle);

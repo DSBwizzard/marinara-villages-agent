@@ -11,7 +11,12 @@ import { imageTarget } from "../venues/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageTownMapImage, replaceVillageTownMap } from "./town-map-review.js";
 import { setVillageVenueImage } from "../venues/services.js";
-import { generateVillageLocationImage, storeVillageVenueImage } from "./location-image.js";
+import {
+  generateVillageLocationImage,
+  storeVillageVenueImage,
+  setZonePictureFrozen,
+  retryZonePicture,
+} from "./location-image.js";
 import {
   adoptSpriteArtwork,
   importSpriteArtwork,
@@ -85,6 +90,26 @@ export function registerTownMapRoutes(engine: FastifyInstance) {
 }
 export function registerVenueImageRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.post<{ Body: { venueId: string; zoneId: string } }>("/locations/venue/image/retry", async (request, reply) => {
+    try {
+      if (typeof request.body?.zoneId !== "string") return reply.code(400).send({ error: "Choose a Zone." });
+      return await retryZonePicture(readVenueId(request.body.venueId), request.body.zoneId);
+    } catch (error) {
+      return fail(reply, error, "retrying artwork");
+    }
+  });
+  app.patch<{ Body: { venueId: string; zoneId: string; frozen: boolean } }>(
+    "/locations/venue/image/freeze",
+    async (request, reply) => {
+      try {
+        if (typeof request.body?.zoneId !== "string" || typeof request.body?.frozen !== "boolean")
+          return reply.code(400).send({ error: "Choose a Zone and freeze state." });
+        return await setZonePictureFrozen(readVenueId(request.body.venueId), request.body.zoneId, request.body.frozen);
+      } catch (error) {
+        return fail(reply, error, "saving picture preference");
+      }
+    },
+  );
   app.post<{
     Body: {
       venueId?: unknown;
