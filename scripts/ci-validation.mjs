@@ -23,14 +23,14 @@ export async function executeValidation({
   assert.equal(before.digest, plan.blueprint.inputDigest, "Source differs from the prepared validation plan");
   const planned = plan.platforms[platform];
   assert.ok(planned, "Unsupported validation target");
+  const fresh = plan.fresh || environment.VILLAGES_CI_FRESH === "true";
   let target = planned.environment;
-  if (planned.pending.length) {
+  if (planned.pending.length || fresh) {
     assert.equal(process.platform, platform, "Tests cannot execute on the wrong platform");
     target = environmentFor(plan.blueprint.toolchain, platform, environment);
     assert.equal(process.version, target.node, "CI execution must use the pinned Node version");
   }
   const specs = checkKeys(plan.blueprint, target);
-  const fresh = plan.fresh || environment.VILLAGES_CI_FRESH === "true";
   const sameHead =
     planned.pending.length && !fresh && github?.workerProof
       ? await github.workerProof(platform, plan.blueprint.policyDigest)
@@ -151,6 +151,7 @@ export async function executeValidation({
       .filter((spec) => spec.kind === "test")
       .every((spec) => executed.some((check) => check.id === spec.id)),
     missing: missing.map((spec) => spec.id),
+    failure: failure?.message ?? null,
     producer: origin,
     createdAt: new Date().toISOString(),
   };

@@ -41,6 +41,33 @@ export function assertManifestOrigin(manifest, run, commit, job, repository, pol
   return manifest;
 }
 
+export function assertWorkerOrigin(receipt, run, job) {
+  assert.equal(receipt.schemaVersion, 3);
+  assert.equal(String(receipt.producer.runId), String(run.id));
+  assert.equal(receipt.producer.attempt, run.run_attempt);
+  assert.equal(receipt.inputsUnchanged, true);
+  const expected = receipt.environment.platform === "linux" ? "validate" : "validate-windows";
+  assert.equal(job?.name, expected);
+  assert.equal(job.status, "completed");
+  assert.equal(
+    job.steps.find((step) => step.name === "Validate maintained source and package")?.conclusion,
+    receipt.coverageComplete ? "success" : "failure",
+  );
+  for (const proof of receipt.checks) {
+    assertProofOrigin(proof, receipt.environment);
+    if (!proof.executed) continue;
+    assert.equal(String(proof.origin.runId), String(run.id));
+    assert.equal(proof.origin.attempt, run.run_attempt);
+    assert.equal(proof.origin.sourceRevision, receipt.sourceRevision);
+    assert.equal(receipt.executor.platform, receipt.environment.platform, "Check executed on wrong platform");
+    assert.equal(receipt.executor.node, receipt.environment.node, "Check executed on wrong Node");
+    assert.ok(
+      job.labels?.includes(receipt.environment.runner),
+      "Authenticated runner does not match check environment",
+    );
+  }
+}
+
 export class GitHubEvidence {
   constructor({
     root = process.cwd(),
@@ -81,7 +108,11 @@ export class GitHubEvidence {
   async zip(artifact) {
     assert.ok(/^[1-9]\d*$/.test(String(artifact.id)));
     assert.match(artifact.digest ?? "", /^sha256:[a-f0-9]{64}$/, "Artifact lacks authenticated digest");
-    if (this.archives.has(artifact.id)) return this.archives.get(artifact.id);
+    if (this.archives.has(artifact.id)) {
+      const cached = this.archives.get(artifact.id);
+      assert.equal(cached.digest, artifact.digest, "Artifact digest changed within this invocation");
+      return cached.zip;
+    }
     const directory = join(this.root, ".build-tmp/ci-artifacts");
     await mkdir(directory, { recursive: true });
     const path = join(directory, artifact.id + ".zip");
@@ -94,7 +125,7 @@ export class GitHubEvidence {
       await writeFile(path, bytes);
     }
     const zip = new AdmZip(bytes);
-    this.archives.set(artifact.id, zip);
+    this.archives.set(artifact.id, { digest: artifact.digest, zip });
     return zip;
   }
   async file(artifact, path) {
@@ -119,6 +150,12 @@ export class GitHubEvidence {
       this.repository,
       policyDigest,
     );
+    for (const receipt of Object.values(manifest.platforms))
+      assertWorkerOrigin(
+        receipt,
+        run,
+        jobs.find((job) => job.name === receipt.producer.job),
+      );
     return { manifest, run, artifact };
   }
   async discover(policyDigest) {
@@ -200,6 +237,7 @@ export class GitHubEvidence {
       const job = this.api("actions/runs/" + run.id + "/attempts/" + run.run_attempt + "/jobs?per_page=100").jobs.find(
         (job) => job.name === name,
       );
+      assertWorkerOrigin(receipt, run, job);
       assert.equal(job.status, "completed");
       assert.equal(
         job.steps.find((step) => step.name === "Validate maintained source and package")?.conclusion,

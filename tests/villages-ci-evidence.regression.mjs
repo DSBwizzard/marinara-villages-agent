@@ -12,7 +12,7 @@ import {
   environmentFor,
   fingerprint,
 } from "../scripts/ci-checks.mjs";
-import { GitHubEvidence, assertManifestOrigin } from "../scripts/ci-manifests.mjs";
+import { GitHubEvidence, assertManifestOrigin, assertWorkerOrigin } from "../scripts/ci-manifests.mjs";
 const root = await mkdtemp(join(tmpdir(), "villages-ci-proof-"));
 try {
   execFileSync("git", ["init", root], { stdio: "ignore" });
@@ -139,6 +139,30 @@ try {
   const verify = (r = run, j = job) =>
     assertManifestOrigin(manifest, r, { sha: run.head_sha }, j, "example/villages", first.policyDigest);
   verify();
+  const workerReceipt = { ...manifest.platforms.linux, checks: checks.map((check) => ({ ...check, executed: true })) };
+  const workerJob = {
+    name: "validate",
+    status: "completed",
+    labels: [environment.runner],
+    steps: [{ name: "Validate maintained source and package", conclusion: "success" }],
+  };
+  assertWorkerOrigin(workerReceipt, run, workerJob);
+  assert.throws(
+    () =>
+      assertWorkerOrigin({ ...workerReceipt, executor: { platform: "win32", node: environment.node } }, run, workerJob),
+    /platform/,
+  );
+  assert.throws(() => assertWorkerOrigin(workerReceipt, run, { ...workerJob, labels: ["windows-2025"] }), /runner/);
+  assert.throws(() =>
+    assertWorkerOrigin(
+      {
+        ...workerReceipt,
+        checks: workerReceipt.checks.map((check) => ({ ...check, origin: { ...check.origin, runId: 4 } })),
+      },
+      run,
+      workerJob,
+    ),
+  );
   for (const change of [
     { run_attempt: 2 },
     { head_repository: { full_name: "fork/villages" } },
@@ -153,6 +177,7 @@ try {
     artifact = { id: 7, digest: "sha256:" + fingerprint(bytes) };
   const github = new GitHubEvidence({ root, repository: "example/villages", execute: () => bytes });
   assert.deepEqual(await github.jsonFile(artifact, "proof.json"), { passed: true });
+  await assert.rejects(() => github.zip({ ...artifact, digest: "sha256:" + "a".repeat(64) }), /digest changed/);
   const tampered = new GitHubEvidence({ root, repository: "example/villages", execute: () => Buffer.from("tampered") });
   await assert.rejects(() => tampered.zip({ ...artifact, id: 8 }), /digest/);
   await writeFile(join(root, ".build-tmp/ci-artifacts/7.zip"), "corrupt");
