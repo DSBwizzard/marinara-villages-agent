@@ -3,3 +3,10 @@ node_modules/
 /artifacts/
 /catalog/
 /marinara-villages/
+/packages/villages/client.js
+/packages/villages/server.mjs
+/packages/villages/manifest.json
+/packages/villages/agents.json
+/packages/villages/locales/en.json
+# Obsolete capture copies from older local builders are not maintained source.
+/sources/engine/

@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -10,7 +11,7 @@ import {
   mobileMapBox,
   mobileMapGesture,
   mobilePhotoScale,
-} from "../packages/villages/src/engine/packages/client/src/villages-mobile-map.ts";
+} from "../packages/villages/src/client/features/exploration/villages-mobile-map.ts";
 
 const image = { width: 1500, height: 1000 };
 const frame = { width: 360, height: 600 };
@@ -82,24 +83,21 @@ assert.deepEqual(mobileDoorPoint({ left: 0, top: 0, width: 360, height: 600 }, f
   top: 94,
 });
 
-const source = readFileSync(
-  resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    "../packages/villages/src/engine/packages/client/src/villages-package-entry.tsx",
-  ),
-  "utf8",
-);
+const source = clientImplementation();
+assert.ok(source.includes("<VenuePolaroid"));
+assert.ok(source.includes('data-photo-pins="true"'));
+assert.equal(source.includes("-pin-tack"), false);
+assert.equal(source.includes("-pin-photo-tack"), false);
 assert.ok(source.includes("touch-action: none;"));
-assert.ok(source.includes("mobile={mobile && setupStep >= 2}"));
 assert.ok(source.includes("mobile={mobile}"));
-assert.ok(source.includes("className={`${ELEMENT_TAG}-pin-photo`}"));
-assert.ok(source.includes("className={`${ELEMENT_TAG}-pin-photo-card`}"));
 assert.ok(source.includes("data-pin-id={pin.id}"));
 assert.ok(source.includes("selected: openPlaceId === place.id"));
 assert.ok(source.includes('data-selected={pin.selected ? "true" : "false"}'));
 assert.ok(source.includes("focusedPhotoScale("));
 assert.ok(source.includes('data-mobile-gesturing", "true"'));
-assert.ok(source.includes("left: `${picture.left + pin.x * picture.width}px`"));
+assert.ok(
+  source.includes("left: `${picture.left + pin.x * picture.width + (pinOffset?.id === pin.id ? pinOffset.x : 0)}px`"),
+);
 assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)"));
 assert.equal(source.includes('mobileStart="contain"'), false);
 assert.ok(
@@ -108,15 +106,17 @@ assert.ok(
 assert.ok(source.includes("onPlace(round4(x), round4(y), {"));
 assert.ok(source.includes("photoWidth: photoRect?.width"));
 assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-canvas`)"));
-assert.ok(source.includes("aria-label={`Noticeboard (${snapshot?.noticeboard.length ?? 0})`}"));
+assert.ok(source.includes("<NoticesButton"));
 assert.ok(source.includes('aria-label="Events (NYI)"'));
 assert.ok(source.includes("Force Village Update"));
 assert.ok(source.includes("FORCE_VILLAGE_UPDATE_NOTICE"));
-assert.ok(source.includes("bypasses Story pace for one visual Events update"));
+assert.ok(source.includes("bypasses Background events and wishes for one visual Events update"));
 assert.ok(source.includes("data-section={menuSection}"));
 assert.ok(source.includes('onClick={() => openMenu("general")}'));
 assert.ok(source.includes('onClick={() => openMenu("village")}'));
-assert.ok(source.includes('onClick={() => openMenu("story")}'));
+assert.equal(source.includes('onClick={() => openMenu("memories")}'), false);
+assert.ok(source.includes('onClick={() => openMenu("villagers")}'));
+assert.equal(source.includes('onClick={() => openMenu("story")}'), false);
 assert.equal(source.includes("Fit entire map"), false);
 
 console.log("Villages mobile map: bounded pan, anchored pinch, tap threshold, menu bounds, scoped controls ok");

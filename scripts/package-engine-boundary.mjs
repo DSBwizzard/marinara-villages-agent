@@ -107,6 +107,28 @@ export async function assertPackagePrivateImportBoundary({ sourceRoot, boundaryP
     findPackagePrivateEngineImports(sourceRoot),
   ]);
   const expected = boundary.privateEngineImports;
+  const runtimeInventory = boundary.privateEngineRuntimeImports ?? [];
+  const publicRuntimeInventory = boundary.publicEngineRuntimeImports ?? [];
+  const declaredSources = new Set([...runtimeInventory, ...publicRuntimeInventory].map((entry) => entry.source));
+  for (const entry of publicRuntimeInventory) {
+    const source = await readFile(resolve(sourceRoot, entry.source), "utf8");
+    const declaration = source.match(/export const PUBLIC_ENGINE_MODULES = \[([\s\S]*?)\] as const/u);
+    const actualModules = declaration
+      ? [...declaration[1].matchAll(/["']([^"']+)["']/gu)].map((match) => match[1])
+      : [];
+    if (JSON.stringify(actualModules) !== JSON.stringify(entry.modules))
+      throw new Error(`${displayName} public runtime dependency inventory differs`);
+  }
+  for (const file of await listSourceFiles(sourceRoot)) {
+    const source = await readFile(file, "utf8");
+    const name = relative(sourceRoot, file).split(sep).join("/");
+    const computed = [...source.matchAll(/\bimport\s*\(\s*([^)]*)\)/gu)].some(
+      (match) => !/^["'\x60]/u.test(match[1].trim()),
+    );
+    if (computed && !declaredSources.has(name)) {
+      throw new Error(`${displayName} has an unregistered computed runtime import: ${name}`);
+    }
+  }
   const key = (entry) => `${entry.source}\0${entry.specifier}`;
   const actualKeys = new Set(actual.map(key));
   const expectedKeys = new Set(expected.map(key));

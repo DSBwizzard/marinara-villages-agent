@@ -2,11 +2,20 @@
   "schemaVersion": 1,
   "capabilityApi": {
     "major": 1,
-    "minor": 14
+    "minor": 66
   },
   "builtAgainst": {
-    "engineVersion": "2.4.6",
-    "engineCommit": "e0313a33caef973e645616419d11894f4d8c434e"
+    "engineVersion": "2.5.0",
+    "engineCommit": "bcc50689fd3885cc4ce7884f25cb2296f8fe400e"
   },
-  "privateEngineImports": []
+  "privateEngineImports": [],
+  "privateEngineRuntimeImports": [],
+  "publicEngineRuntimeImports": [
+    {
+      "source": "server/adapters/engine/image-style-profiles.ts",
+      "modules": [
+        "@marinara-engine/shared"
+      ]
+    }
+  ]
 }

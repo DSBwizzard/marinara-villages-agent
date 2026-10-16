@@ -8,6 +8,8 @@ const maintainedSourceFiles = [
   "scripts/**/*.{js,mjs}",
   "tests/**/*.{js,mjs,ts,tsx}",
   "eslint.config.mjs",
+  "packages/villages/*.mjs",
+  "sources/package-shared.ts",
 ];
 
 export default tseslint.config(

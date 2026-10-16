@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - staging
@@ -12,24 +13,136 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: villages-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  VILLAGES_CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
+  parallel-work:
+    name: parallel-work
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pull request and staging base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check branch freshness and overlapping Villages PR files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: node scripts/check-parallel-work.mjs
+
   validate:
     name: validate
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: npm
-
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
+      - name: Select validation coverage and prior evidence
+        id: scope
+        run: node scripts/ci-validation.mjs --policy --github-output
+      - name: Install browser test runtime
+        if: steps.scope.outputs.browser == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Validate maintained source and package
+        env:
+          VILLAGES_CI_BROWSER_READY: ${{ steps.scope.outputs.browser }}
+        run: npm run validate:ci
+      - name: Retain validated package and source receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: villages-validate
+          path: |
+            artifacts/
+            .build-tmp/package-build.json
+            .build-tmp/ci-validation.json
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Retain validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-validate
+          path: .build-tmp/test-results/
+          include-hidden-files: true
+          if-no-files-found: ignore
 
-      - name: Run formatting and lint checks
-        run: npm run check
+  validate-windows:
+    name: validate-windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Select platform coverage
+        id: scope
+        shell: pwsh
+        run: |
+          $scope = node scripts/ci-validation.mjs --platform --policy | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Platform policy failed.' }
+          "browser=$($scope.browser.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Install browser test runtime
+        if: steps.scope.outputs.browser == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Validate maintained source and package
+        env:
+          VILLAGES_CI_BROWSER_READY: ${{ steps.scope.outputs.browser }}
+        run: npm run validate:ci -- --platform
+      - name: Retain validated package and source receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: villages-validate-windows
+          path: |
+            artifacts/
+            .build-tmp/package-build.json
+            .build-tmp/ci-validation.json
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Retain validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-validate-windows
+          path: .build-tmp/test-results/
+          include-hidden-files: true
+          if-no-files-found: ignore
+
+  package-parity:
+    name: package-parity
+    needs: [validate, validate-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: villages-*
+          path: .build-tmp/platforms
+      - name: Compare independently built Windows and Linux packages
+        run: node scripts/verify-platform-packages.mjs

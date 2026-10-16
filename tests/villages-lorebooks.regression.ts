@@ -2,22 +2,22 @@ import assert from "node:assert/strict";
 import {
   coerceVillageState,
   defaultVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   coerceSelectedLorebookIds,
   readSelectedLorebookIds,
-  readVillageLore,
-  readVillageVisualLore,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/lorebooks.ts";
-import { buildTownMapPrompt } from "../packages/villages/src/engine/packages/server/src/services/villages/town-map-image.ts";
+} from "../packages/villages/src/server/domain/rules/lore-policy.js";
+import { readVillageLore, readVillageVisualLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
+import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);
-  assert.deepEqual(coerceVillageState({}).selectedLorebookIds, []);
-  assert.deepEqual(coerceVillageState({ selectedLorebookIds: ["world", "world", "missing"] }).selectedLorebookIds, [
-    "world",
-    "missing",
-  ]);
+  assert.deepEqual(coerceVillageState({ wishSystemVersion: 3 }).selectedLorebookIds, []);
+  assert.deepEqual(
+    coerceVillageState({ wishSystemVersion: 3, selectedLorebookIds: ["world", "world", "missing"] })
+      .selectedLorebookIds,
+    ["world", "missing"],
+  );
   assert.deepEqual(readSelectedLorebookIds([" world ", "world"]), ["world"]);
   assert.deepEqual(coerceSelectedLorebookIds("wrong shape"), []);
 
@@ -115,6 +115,11 @@ async function main() {
     assert.ok(!picked.join(" ").includes("secret canal"));
     assert.ok(!picked.join(" ").includes("Never"));
     assert.ok(!picked.join(" ").includes("Oversized"), "oversized entries do not displace selected facts");
+    await assert.rejects(
+      readVillageLore(["world", "missing"], "A harbor village", undefined, 1_600, true),
+      /Selected lorebook missing could not be found/,
+    );
+    assert.equal((await readVillageLore(["world"], "A harbor village", undefined, 200, true)).length, 2);
     assert.equal((await readVillageLore(["world"], "A mountain village")).length, 1);
     entries.world[1]!.keys = ["^harbor$"];
     entries.world[1]!.useRegex = true;
@@ -127,11 +132,13 @@ async function main() {
     );
     const visual = await readVillageVisualLore(["world"], "harbor", 60);
     assert.ok(visual.length <= 60);
-    assert.match(
-      buildTownMapPrompt(undefined, "harbor village", undefined, visual),
-      /Visual details from selected lore/,
+    assert.equal(
+      visual,
+      "Bridge: The bridge is painted blue now.",
+      "relevant entries are complete and precede generic constants",
     );
-    assert.ok(buildTownMapPrompt(undefined, "x".repeat(2_000), undefined, "y".repeat(500)).length <= 4_000);
+    assert.match(buildTownMapPrompt(undefined, "harbor village", visual), /Compatible visual lore/);
+    assert.ok(buildTownMapPrompt(undefined, "x".repeat(2_000), "y".repeat(500)).length <= 4_000);
   } finally {
     globalThis.fetch = originalFetch;
   }

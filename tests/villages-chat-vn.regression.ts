@@ -12,7 +12,7 @@
 // one that counted a whitespace-only paragraph would put a card between the
 // villager's two sentences where they only took a breath.
 import assert from "node:assert/strict";
-import { splitVillagesParagraphs } from "../packages/villages/src/engine/packages/client/src/villages-chat-paragraphs.ts";
+import { splitVillagesParagraphs } from "../packages/villages/src/client/features/scenes/villages-chat-paragraphs.ts";
 
 // Nothing in, nothing out. A card with no paragraph on it is the empty state and
 // not a card holding an empty string.

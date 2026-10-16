@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Villages — proof that the tab's calls carry the Engine's admin secret.
 //
 // Every route this package serves sits behind the Engine's privileged gate, and
@@ -10,10 +11,9 @@
 //
 // The fix is two small functions and the two calls that use them, so both are
 // read out of the client and run here rather than described. A function body is
-// JavaScript here or it is not, and these are written so that it is: the header
-// builder annotates nothing inside itself, and the refusal builder's one type
-// assertion is dropped with the removal checked, so what runs is the code the
-// package ships rather than a paraphrase of it. Neither needs a browser: the
+// JavaScript here or it is not: the header builder annotates nothing inside
+// itself, and TypeScript transpiles the refusal helper and its error class,
+// so what runs is the code the package ships rather than a paraphrase of it. Neither needs a browser: the
 // header builder is a function of `window.localStorage` and the refusal builder
 // is a function of a payload and a status.
 //
@@ -24,12 +24,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { transpileModule, ScriptTarget } from "typescript";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = readFileSync(
-  resolve(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-  "utf8",
-);
+const source = readFileSync(resolve(repoRoot, "packages/villages/src/client/shared/api.tsx"), "utf8");
 
 /* ── The one run of code that answers both questions ─────────────────────── */
 
@@ -77,17 +75,19 @@ assert.ok(hintLiteral, "the tab must still say what to do about a secret it was 
 const hint = JSON.parse(hintLiteral) as string;
 
 /*
-  The sentence has to BE the Engine's, not a second wording of it. The vendored
-  Engine client ships in this repo, so the comparison is made against the very
-  constant the Engine's own panels read out, and a re-worded Engine fails here
-  instead of quietly leaving the tab with stale advice.
+  Compare the advice with the explicitly pinned Engine public-access contract.
+  The fixture records its source revision/hash without retaining an unused copy
+  of the Engine application. Engine upgrades must revalidate this contract.
 */
-const engineSource = readFileSync(resolve(repoRoot, "sources/engine/packages/client/src/lib/api-client.ts"), "utf8");
-const engineHintLiteral = /export const PRIVILEGED_ACCESS_HINT =\s*("(?:[^"\\]|\\.)*");/u.exec(engineSource)?.[1];
-assert.ok(engineHintLiteral, "the Engine's own privileged-access hint must still be readable in the vendored client");
+const engineAccess = JSON.parse(
+  readFileSync(resolve(repoRoot, "sources/engine-public/privileged-access.json"), "utf8"),
+);
+assert.equal(JSON.parse(storageKey), engineAccess.adminSecretStorageKey);
+assert.match(engineAccess.revision, /^[a-f0-9]{40}$/u);
+assert.match(engineAccess.sourceSha256, /^[a-f0-9]{64}$/u);
 assert.equal(
   hint,
-  JSON.parse(engineHintLiteral) as string,
+  engineAccess.privilegedAccessHint,
   "the tab must say exactly what the Engine says, so the refusal reads the same wherever the player meets it",
 );
 
@@ -96,19 +96,18 @@ const buildHeaders = new Function(
   `const ADMIN_SECRET_STORAGE_KEY = ${storageKey};\n${bodyOf(headersStart, hintStart)}`,
 ) as (init?: RequestInit) => Headers;
 
-const refusalSource = bodyOf(refusalStart, requestStart);
-const refusalCode = refusalSource.replace(" as { error?: unknown } | null", "");
-assert.notEqual(
-  refusalCode,
-  refusalSource,
-  "the refusal's type assertion moved; this proof has to run the code the package ships, not a copy of it",
-);
-const buildRefusal = new Function(
-  "payload",
-  "status",
-  "fallback",
-  `const PRIVILEGED_ACCESS_HINT = ${hintLiteral};\n${refusalCode}`,
-) as (payload: unknown, status: number, fallback: string) => Error;
+const errorStart = source.indexOf("class VillageApiError");
+assert.ok(errorStart > hintStart && errorStart < refusalStart);
+// Run the actual class and helper; transpilation preserves structured refusal codes.
+const refusalCode = transpileModule(
+  `const PRIVILEGED_ACCESS_HINT = ${hintLiteral};\n${source.slice(errorStart, source.indexOf("\nfunction ", errorStart))}\n${source.slice(refusalStart, requestStart)}`,
+  { compilerOptions: { target: ScriptTarget.ES2022 } },
+).outputText;
+const buildRefusal = new Function(`${refusalCode}\nreturn requestRefusal;`)() as (
+  payload: unknown,
+  status: number,
+  fallback: string,
+) => Error;
 
 /** Run the builder with `window` standing in for this browser's own. */
 function headersWith(windowValue: unknown, init?: RequestInit): Headers {
@@ -208,12 +207,28 @@ assert.equal(
   "Privileged API is loopback-only",
   "a loopback-only refusal is not about the secret either",
 );
-assert.equal(buildRefusal({ error: "Unauthorized" }, 401, "x").message, "Unauthorized", "only 403 is the gate");
 assert.equal(
-  buildRefusal(null, 500, "The village replied 500.").message,
-  "The village replied 500.",
+  buildRefusal({ error: "Unauthorized" }, 401, "Authentication is required.").message,
+  "Authentication is required.",
+  "generic HTTP labels use the actionable fallback",
+);
+assert.equal(
+  buildRefusal(null, 500, "The server could not complete the request (HTTP 500).").message,
+  "The server could not complete the request (HTTP 500).",
   "a body that was not JSON falls back to the tab's own sentence",
 );
+
+assert.equal(
+  buildRefusal({ error: "Bad Request", message: "Invalid Scene revision", code: "SCENE_STALE" }, 400, "x").message,
+  "Invalid Scene revision",
+);
+assert.equal(
+  (buildRefusal({ error: "Bad Request", message: "Invalid Scene revision", code: "SCENE_STALE" }, 400, "x") as any)
+    .code,
+  "SCENE_STALE",
+);
+assert.equal(buildRefusal({ error: "Package failure", message: " " }, 400, "x").message, "Package failure");
+assert.equal(buildRefusal({ error: { message: "Unreadable" } }, 400, "HTTP 400").message, "HTTP 400");
 
 /* ── Both call sites, and the third one that must not appear ─────────────── */
 

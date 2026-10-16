@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 
-// Load the built custom element at phone size with a small server fixture.
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
@@ -13,31 +12,6 @@ const page = await browser.newPage({ viewport: { width: 375, height: 740 } });
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const now = new Date().toISOString();
-let session = {
-  version: 1,
-  id: "visit-1",
-  placeId: "park",
-  placeName: "The Park",
-  startedAt: now,
-  lastActivityAt: now,
-  endedAt: "",
-  endReason: "",
-  status: "active",
-  activeIds: ["bob"],
-  participants: [{ characterId: "bob", name: "Bob", doing: "sitting" }],
-  lines: [
-    {
-      id: "hello",
-      role: "assistant",
-      speakerId: "bob",
-      name: "Bob",
-      content: "Hello there.",
-      kind: "dialogue",
-      heardBy: ["bob"],
-      at: now,
-    },
-  ],
-};
 const snapshot = {
   status: "ready",
   isFounded: true,
@@ -74,139 +48,203 @@ const snapshot = {
     macros: [],
   },
 };
-let turn = 0;
-let serverExpired = false;
-await page.route("**/api/villages**", async (route) => {
+
+const session = {
+  id: "live",
+  memoryMode: "live",
+  sceneRevision: 1,
+  placeId: "park",
+  placeName: "The Park",
+  startedAt: now,
+  lastActivityAt: now,
+  status: "active",
+  endedAt: "",
+  endReason: "",
+  activeIds: ["bob"],
+  participants: [{ characterId: "bob", name: "Bob", doing: "sitting" }],
+  lines: [
+    {
+      id: "greeting",
+      role: "assistant",
+      speakerId: "bob",
+      name: "Bob",
+      kind: "dialogue",
+      content: "Hello there.",
+      heardBy: ["bob"],
+      at: now,
+    },
+  ],
+};
+const notices = [],
+  dismissed = new Set();
+let pending = true,
+  failed = false,
+  polls = 0,
+  interpretations = 0,
+  replays = 0,
+  closingReviews = 0;
+let failedDomain = "memories";
+const interpretedDomains = [];
+const api = async (route) => {
   const path = new URL(route.request().url()).pathname;
   let value = snapshot;
-  if (path.endsWith("/rooms/active")) value = { session: serverExpired ? null : session, debugDiscardEnabled: true };
-  else if (path.endsWith(`/rooms/archive/${session.id}`))
-    value = { visit: { ...session, status: "closed", endReason: "inactivity" } };
-  else if (path.endsWith("/rooms/activity")) value = { session };
-  else if (path.endsWith("/rooms/turn")) {
-    const body = route.request().postDataJSON();
-    turn += 1;
-    session = {
-      ...session,
-      lines: [
-        ...session.lines,
-        { id: `user-${turn}`, role: "user", speakerId: "", name: "", content: body.message, heardBy: ["bob"], at: now },
-        {
-          id: `reply-${turn}`,
-          role: "assistant",
-          speakerId: "bob",
-          name: "Bob",
-          content: "I hear you.",
-          kind: "dialogue",
-          heardBy: ["bob"],
-          at: now,
-        },
-      ],
+  if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity"))
+    value = { session, debugDiscardEnabled: true };
+  else if (path.endsWith("/changes"))
+    value = {
+      changes: [],
+      notices: notices.filter((n) => !dismissed.has(n.id)),
+      dismissedNoticeIds: [...dismissed],
+      processingSummary: { pending: pending ? 1 : 0, failed: failed ? 1 : 0, rejected: 0 },
+      unresolved: failed
+        ? [
+            {
+              submissionId: "turn",
+              domain: failedDomain,
+              status: "failed",
+              reason: "A citation is unavailable or was not witnessed by every affected resident.",
+            },
+          ]
+        : [],
+      nextCursor: String(++polls) + ":0:0",
+      hasMore: false,
     };
-    const event =
-      body.message === "First memory" || body.message === "Repeat receipt"
-        ? {
-            id: "memory-1",
-            kind: "memory",
-            text: "Bob remembered the first exchange.",
-            detail: "The player promised Bob to repair the bridge.",
-          }
-        : body.message === "Second memory"
-          ? {
-              id: "memory-2",
-              kind: "memory",
-              text: "Bob remembered the second exchange.",
-              detail: "Bob learned that the market opens before sunrise.",
-            }
-          : null;
-    value = { session, verdict: null, action: null, recordEvents: event ? [event] : [] };
-  } else if (path.endsWith("/rooms/end")) {
-    session = { ...session, status: "closed", endedAt: now, endReason: "player" };
-    value = { session };
-  } else if (path.endsWith("/catalog")) value = { characters: [] };
+  else if (path.endsWith("/dismiss")) {
+    assert.equal(path, "/api/villages/rooms/live/notices/dismiss");
+    assert.equal(route.request().method(), "POST");
+    dismissed.add(route.request().postDataJSON().noticeId);
+    value = { dismissed: true };
+  } else if (path.endsWith("/interpret")) {
+    interpretations++;
+    interpretedDomains.push(route.request().postDataJSON().domain);
+    failed = false;
+    value = {};
+  } else if (path.endsWith("/changes/replay")) {
+    replays++;
+    value = {};
+  } else if (path.endsWith("/retry-memory") || path.endsWith("/leave-pending")) {
+    closingReviews++;
+    return route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
+  } else if (path.endsWith("/operation")) value = { operation: null };
+  else if (path.endsWith("/catalog")) value = { characters: [] };
+  else if (path.endsWith("/relationships")) value = { profiles: [], starting: { pending: false, summaries: [] } };
   await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
-});
-await page.route("http://villages.test/", (route) =>
-  route.fulfill({
-    status: 200,
-    contentType: "text/html",
-    body: "<style>html,body{margin:0;width:100%;height:100%}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
-  }),
-);
-
+};
+const html =
+  "<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>";
+async function mount(tab) {
+  await tab.route("**/api/villages**", api);
+  await tab.route("http://villages.test/", (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: html }),
+  );
+  await tab.goto("http://villages.test/");
+  await tab.addScriptTag({ path: resolve("packages/villages/client.js") });
+}
 try {
-  await page.goto("http://villages.test/");
-  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  await mount(page);
   const composer = page.getByRole("textbox", { name: "Message at The Park" });
+  const tray = page.getByRole("button", { name: /village notice/ });
   const stack = page.locator("[aria-label='Village events']");
   await composer.waitFor();
-  const send = async (message) => {
-    await composer.fill(message);
-    await Promise.all([
-      page.waitForResponse((response) => response.url().endsWith("/rooms/turn")),
-      page.getByRole("button", { name: "Send" }).click(),
-    ]);
-  };
-  await send("Ordinary chat");
-  await expect(stack).toHaveCount(0);
-  await send("First memory");
-  await expect(stack).toContainText("Bob remembered the first exchange.");
-  const stackBox = await stack.boundingBox();
-  const controlsBox = await page.locator(".marinara-capability-villages-chat-head").boundingBox();
-  assert.ok(stackBox && controlsBox);
-  assert.ok(stackBox.x >= 0 && stackBox.x + stackBox.width <= 375, "notice fits a phone viewport");
-  assert.ok(stackBox.y >= controlsBox.y + controlsBox.height, "notice sits below venue controls");
-  assert.ok(stackBox.width <= 240, "mobile memory notice stays a compact toast");
-  assert.ok(stackBox.height <= 148, "mobile memory stack stays under twenty percent of the viewport");
-  const memoryTrigger = page.getByRole("button", { name: "View memory: Bob remembered the first exchange." });
-  await memoryTrigger.click();
-  const memoryDialog = page.getByRole("dialog", { name: "Bob remembered the first exchange." });
-  await expect(memoryDialog).toContainText("The player promised Bob to repair the bridge.");
-  const dialogBox = await memoryDialog.boundingBox();
-  assert.ok(dialogBox && dialogBox.x >= 0 && dialogBox.x + dialogBox.width <= 375, "memory dialog fits a phone");
-  await expect(page.getByRole("button", { name: "Close memory" })).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(memoryDialog).toHaveCount(0);
-  await expect(memoryTrigger).toBeFocused();
-  await memoryTrigger.click();
-  await page.locator(".marinara-capability-villages-memory-backdrop").click({ position: { x: 4, y: 4 } });
-  await expect(memoryDialog).toHaveCount(0);
-  await page.getByRole("button", { name: "Dismiss Bob remembered the first exchange." }).click();
-  await expect(stack).toHaveCount(0);
-  await send("Repeat receipt");
-  await expect(stack).toHaveCount(0, "dismissed event ID stays dismissed");
-  await send("Second memory");
-  await expect(stack).toContainText("Bob remembered the second exchange.");
-  await page.getByRole("button", { name: "End visit and leave" }).click();
-  await expect(stack).toHaveCount(0, "notices clear on scene exit");
-
-  // A second device ends this scene while its old desktop tab is left open.
-  session = {
-    ...session,
-    id: "visit-2",
-    status: "active",
-    endedAt: "",
-    endReason: "",
-    lines: session.lines.slice(0, 1),
-  };
-  await page.reload();
-  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-  await composer.waitFor();
   await composer.focus();
-  serverExpired = true;
-  await page.evaluate(() => {
-    const clock = Date.now;
-    Date.now = () => clock() + 50 * 60_000;
+  await expect(page.getByRole("button", { name: /^\d+ Scene errors?$/ })).toHaveCount(0);
+  const shared = {
+    id: "3260cf01-1771-43b8-b72c-c050c713029d:989be974-b9ad-4ed3-9256-8e732575d6fa:relationship:077092eca1d088f3dd4a0440",
+    kind: "wish",
+    text: "Wish shared · Bob",
+    detail: "Plant a garden together.",
+    wishUpdate: { wishId: "garden", state: "revealed" },
+  };
+  notices.push(shared);
+  await expect(tray).toHaveAttribute("aria-expanded", "true");
+  await expect(stack).toContainText(shared.text);
+  await expect(composer).toBeFocused();
+  assert.equal(session.status, "active");
+  const trigger = page.getByRole("button", { name: "View Wish update: " + shared.text });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const detail = page.getByRole("dialog", { name: shared.text });
+  await expect(detail).toContainText(shared.detail);
+  await expect(page.getByRole("button", { name: "Close Wish update" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(detail).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  notices.push({
+    id: "wish-progress",
+    kind: "wish",
+    text: "Wish progressed · Bob",
+    detail: "Plant a garden together. A planting day remains undecided.",
+    wishUpdate: { wishId: "garden", state: "progress" },
   });
-  await page.keyboard.type("X");
-  await expect(composer).toHaveCount(0, "stale composer stops accepting input");
-  await expect(page.getByText(/Interrupted: Inactivity/u)).toBeVisible();
-  assert.equal(turn, 4, "stale input never becomes a turn");
+  pending = false;
+  await expect(stack).toContainText("Wish progressed · Bob");
+  notices.push({ id: "heart", kind: "relationship-up", text: "Bob's warmth toward you increased." });
+  notices.push({ id: "memory", kind: "memory", text: "A memory was forged.", detail: "Saturday planting." });
+  await expect(stack).toContainText("♥");
+  await expect(stack).toContainText("★");
+  notices.push(shared);
+  await expect(page.locator(".marinara-capability-villages-room-star")).toHaveCount(4);
+  await page.getByRole("button", { name: "Dismiss " + shared.text }).click();
+  await expect.poll(() => dismissed.has(shared.id)).toBe(true);
   await page.reload();
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-  await expect(composer).toHaveCount(0, "a phone refresh after expiry opens on the map");
+  await expect(stack).not.toContainText(shared.text);
+  await expect(stack).toContainText("Wish progressed");
+  const fulfilled = {
+    id: "wish-complete",
+    kind: "wish",
+    text: "Wish fulfilled · Bob",
+    detail: "Plant a garden together.",
+    wishUpdate: { wishId: "garden", state: "fulfilled" },
+  };
+  notices.push(fulfilled);
+  await expect(stack).toContainText(fulfilled.text);
+  const second = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await mount(second);
+  await expect(second.locator("[aria-label='Village events']")).toContainText(fulfilled.text);
+  await page.getByRole("button", { name: "Dismiss " + fulfilled.text }).click();
+  await expect(second.locator("[aria-label='Village events']")).not.toContainText(fulfilled.text);
+  await second.close();
+  assert.equal(interpretations, 0, "Wish display, polling, refresh and dismissal add no interpretation requests");
+  assert.equal(closingReviews, 0);
+  mkdirSync("artifacts", { recursive: true });
+  await page.screenshot({ path: "artifacts/live-wish-chips-phone.png" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: "artifacts/live-wish-chips-desktop.png" });
+  failed = true;
+  const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
+  await chip.click();
+  const status = page.getByRole("region", { name: "Scene errors" });
+  await status.locator("summary").filter({ hasText: "memories update failed" }).click();
+  await expect(status).toContainText("A citation is unavailable or was not witnessed by every affected resident");
+  await expect(
+    status.getByRole("button", { name: "Retry memories interpretation · may use model requests" }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 375, height: 740 });
+  await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: "artifacts/memory-cause-desktop.png" });
+  await status.getByRole("button", { name: "Replay saved work · no model request" }).click();
+  await expect.poll(() => replays).toBe(1);
+  assert.equal(interpretations, 0);
+  await status.getByRole("button", { name: "Retry memories interpretation · may use model requests" }).click();
+  await expect.poll(() => interpretations).toBe(1);
+  failedDomain = "projects";
+  failed = true;
+  await expect(chip).toBeVisible();
+  if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
+  await status.locator("summary").filter({ hasText: "projects update failed" }).click();
+  await page.setViewportSize({ width: 375, height: 740 });
+  await page.screenshot({ path: "artifacts/project-recovery-phone.png" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: "artifacts/project-recovery-desktop.png" });
+  await status.getByRole("button", { name: "Retry projects interpretation · may use model requests" }).click();
+  await expect.poll(() => interpretations).toBe(2);
+  assert.deepEqual(interpretedDomains, ["memories", "projects"]);
   assert.deepEqual(errors, []);
-  console.log("villages-room-notices: mobile notices, dismissal, exit clearing, stale input and refresh ok");
+  console.log(
+    "villages-room-notices: live Wish chips, stars/hearts, focus, details, duplicate receipts, refresh, two-tab dismissal, and explicit recovery passed",
+  );
 } finally {
   await browser.close();
 }

@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Villages — proof for the translation of the Engine's weekly schedule into a
 // village's own terms.
 //
@@ -47,25 +48,23 @@ async function main() {
     translateBlock,
     translateRoutine,
     VILLAGE_UNTRANSLATED_ACTIVITY,
-  } = await import("../packages/villages/src/engine/packages/server/src/services/villages/native-remap.ts");
+  } = await import("../packages/villages/src/server/domain/rules/native-remap.js");
   const {
     coerceWish,
-    describeStatus,
+    renderDoingBlock,
     MAX_REMAP_HERE_LENGTH,
     MAX_REMAP_SLOT_LENGTH,
-    MAX_RESIDENT_WEEK_NOTES,
     MAX_ROUTINE_SUMMARY_LENGTH,
     MAX_VENUES,
     MAX_VILLAGER_WISHES,
-    renderDoingBlock,
     remapVenues,
     wishLifetimeDays,
-  } = await import("../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.ts");
-  const { doingFor } = await import("../packages/villages/src/engine/packages/server/src/services/villages/chat.ts");
-  const { renderResidentsBlock } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.ts");
+  } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
+  const { agendaAt, agendaDayPlan } = await import("../packages/villages/src/server/domain/rules/agenda-plan.js");
+  const { buildTickMessages } = await import("../packages/villages/src/server/domain/rules/village-bootstrap-rules.js");
+  const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const { coerceRemap: readStoredRemap } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts");
+    await import("../packages/villages/src/server/domain/decoding/village-codec.js");
 
   const schedule = (days: Record<string, any[]>, weekStart = "2026-09-07") => ({
     characterId: "character-ives",
@@ -74,10 +73,10 @@ async function main() {
     talkativeness: 60,
     days,
   });
-  const venue = (id: string, name: string, purpose = "") => ({
+  const venue = (id: string, name: string, form = "") => ({
     id,
     name,
-    purpose,
+    form,
     category: "public",
     presentation: { image: null, x: 0.5, y: 0.5 },
     occupancy: { playerHome: false, residentCharacterId: null as string | null, homeKind: null as string | null },
@@ -129,14 +128,14 @@ async function main() {
   });
   const blocks = remapBlocks(week);
   assert.deepEqual(
-    blocks.map((entry) => [entry.day, entry.time, entry.activity, entry.status]),
+    blocks.map((entry) => [entry.day, entry.time, entry.activity]),
     [
-      ["Monday", "05:00-08:00", "checking the hives", "dnd"],
-      ["Monday", "22:00-06:00", "asleep", "offline"],
-      ["Tuesday", "00:00-23:59", "checking the hives", "idle"],
-      ["Wednesday", "whenever", "mending the fence", ""],
+      ["Monday", "05:00-08:00", "checking the hives"],
+      ["Monday", "22:00-06:00", "asleep"],
+      ["Tuesday", "00:00-23:59", "checking the hives"],
+      ["Wednesday", "whenever", "mending the fence"],
     ],
-    "one entry per block, in weekday order, with the Engine's own day, hour range, sentence and status untouched",
+    "one entry per block, in weekday order, with the Engine's own day, hour range, sentence untouched; Conversation status excluded",
   );
   assert.equal(
     blocks.filter((entry) => entry.activity === "checking the hives").length,
@@ -544,10 +543,10 @@ async function main() {
     signature,
     "while a sentence that really changed is a different question, since the words for that block change with it",
   );
-  assert.notEqual(
+  assert.equal(
     remapSignature({ ...context, blocks: [{ ...blocks[0]!, status: "online" }, ...blocks.slice(1)] }),
     signature,
-    "and so is the same block at a different availability",
+    "Conversation availability does not change a translation",
   );
   assert.notEqual(
     remapSignature(withBlock({ time: "05:00-09:00" })),
@@ -636,9 +635,9 @@ async function main() {
     "but a place RENAMED is a different question, because the sentence in front of the villager changes with it",
   );
   assert.notEqual(
-    remapSignature(moving({ purpose: "where the grain goes now" })),
+    remapSignature(moving({ form: "a stone watermill beside the river" })),
     signature,
-    "and so is one reworded, since the note is read out beside the name",
+    "and so is one whose physical Form changes, since Form is read out beside the name",
   );
   assert.equal(remapSignature({ ...context, weekStart: "" }), "", "no week at all is no question to answer");
 
@@ -653,58 +652,14 @@ async function main() {
   // moves point at. A wish reworded under the same id leaves every stored tag
   // meaning something; a different wish wearing an old id is not a wish that came
   // back, and the digest is what tells those two apart.
-  assert.notEqual(
-    remapSignature({
-      ...context,
-      wishes: [...context.wishes, wishOf("wish-boat", "the boat patched before winter")],
-    }),
-    signature,
-    "a villager who has come to wish for something new is asking a different question",
-  );
-  assert.notEqual(
-    remapSignature({ ...context, wishes: [{ ...context.wishes[0]!, intensity: 3 }, context.wishes[1]!] }),
-    signature,
-    "so is the same wish weighing more, because the weight is read out beside it",
-  );
-  assert.notEqual(
-    remapSignature({
-      ...context,
-      wishes: [{ ...context.wishes[0]!, tell: "a puddle under the bench" }, context.wishes[1]!],
-    }),
-    signature,
-    "and so is the same wish showing differently, since what gives it away is part of the line the model reads",
-  );
-  assert.notEqual(
-    remapSignature({ ...context, wishes: [{ ...context.wishes[0]!, wish: "the cart seen to" }, context.wishes[1]!] }),
-    signature,
-    "and the same wish reworded under the same id, because a wish is the sentence the villager would say",
-  );
-  assert.equal(
-    remapSignature({
-      ...context,
-      wishes: [{ ...context.wishes[0]!, wish: "  THE   HANDCART MENDED  " }, context.wishes[1]!],
-    }),
-    signature,
-    "while a wish re-spaced or re-capitalised is NOT a new question, which is the normalisation the blocks' " +
-      "sentences are digested under and for the same reason: a difference no reader could see must not cost a " +
-      "model call",
-  );
-  assert.notEqual(
-    remapSignature({ ...context, wishes: [...context.wishes].reverse() }),
-    signature,
-    "and the same two wishes in the other order, because the numbers in the prompt move with the list",
-  );
-  assert.notEqual(
-    remapSignature(manyWishes),
-    signature,
-    "and a villager holding a full list is asking a different question from one holding two",
-  );
-  assert.equal(
-    remapSignature(manyWishes),
-    remapSignature({ ...manyWishes, wishes: manyWishes.wishes.slice(0, MAX_VILLAGER_WISHES) }),
-    "while a wish past the ceiling is not in the question at all: the list the model reads and the list a number " +
-      "is resolved against are the same capped one, so a wish nobody was ever shown cannot make the question new",
-  );
+  for (const wishes of [
+    [],
+    [...context.wishes].reverse(),
+    manyWishes.wishes,
+    [{ ...context.wishes[0]!, wish: "Different wish", intensity: 3, tell: "Different tell" }],
+  ]) {
+    assert.equal(remapSignature({ ...context, wishes }), signature, "wish changes do not invalidate a stable routine");
+  }
   // A wish's dates are the two fields of it that this deliberately ignores, and the
   // reason is the same as the reason the map and the houses are ignored: neither
   // reaches the prompt. A villager handed a translator is told what they wish for,
@@ -1005,7 +960,9 @@ async function main() {
     "which is a list rather than the one paragraph it used to be joined into",
   );
   assert.ok(
-    rules.includes('{"agenda":"...","moves":[{"day":"...","time":"...","here":"...","place":1}]}'),
+    rules.includes(
+      '{"agenda":"...","moves":[{"day":"...","time":"...","here":"...","place":1,"zoneId":"exact zone id"}]}',
+    ),
     "and the JSON shape is sent as itself, on its own line, rather than inside a sentence",
   );
   assert.ok(/(^|\n)\{"agenda"/.test(rules), "starting at the beginning of a line, so it can be copied out");
@@ -1018,36 +975,9 @@ async function main() {
     !brief.includes("2. the hives:"),
     "and the rule and the list are written from one number, so neither can drift from the other",
   );
-  // The second numbered list, and the reason the brief has to carry it at all: a
-  // wish answers a number into a list the model can SEE, and a rule about a number
-  // with no list under it is an invitation to invent one. The two lists are told
-  // apart in words as well as by their headings, because a model handed two numbered
-  // lists of nouns with no line between them will eventually write a week about the
-  // wishes.
-  assert.ok(
-    brief.includes("- the handcart mended — barely on their mind"),
-    "wishes are private context with their weight, without a number assigned to an hour",
-  );
-  assert.ok(
-    brief.includes("- a roof that does not leak (it shows: the bucket under the gap) — often on their mind"),
-    "and a wish with a surface says what gives it away, in brackets beside it, before its weight",
-  );
-  assert.ok(
-    !brief.includes("- the handcart mended (it shows:"),
-    "while a wish with no surface leaves no dangling bracket, which is the same rule the places are written under",
-  );
-  assert.ok(
-    rules.includes("do not turn an hour into a wish, errand, or request"),
-    "and the agenda keeps each hour about an activity",
-  );
-  assert.ok(
-    rules.includes("may subtly influence how they carry out an activity"),
-    "wishes influence the agenda without becoming the activity",
-  );
-  assert.ok(
-    !brief.includes("the handcart mended — often") && !brief.includes("does not leak — barely"),
-    "with each weight bound to the wish it belongs to rather than to the list",
-  );
+  assert.ok(!brief.includes("What is privately on their mind"), "native translations do not carry private wishes");
+  assert.ok(!brief.includes("the handcart mended"), "wish prose is absent from the routine prompt");
+  assert.ok(rules.includes("routine independent of wishes"), "routine translation has a neutral foundation");
   const unwished = buildRemapPrompt({ ...context, wishes: [] });
   assert.ok(
     !unwished[1].content.includes("What is privately on their mind"),
@@ -1077,8 +1007,8 @@ async function main() {
     !brief.includes("h a week"),
     "while the hours a phrase eats in a week are NOT sent, because that framing is what produced a glossary",
   );
-  assert.ok(brief.includes("busy, and not to be interrupted"), "the status is said in words a person would use");
-  assert.ok(brief.includes("asleep or away from everyone"));
+  assert.ok(!brief.includes("busy, and not to be interrupted"), "Conversation status never enters the prompt");
+  assert.ok(!brief.includes("asleep or away from everyone"));
   assert.ok(brief.includes("mending the fence"), "and a block with no status is still translated");
   assert.ok(
     brief.trimEnd().endsWith(`Write their week as it happens in Willowbrook.`),
@@ -1159,27 +1089,6 @@ async function main() {
     "a villager with no week is not sent a week section with nothing in it",
   );
 
-  // ── The availability, in words two prompts share ──────────────────────────
-  // One table, read by the translation prompt and by the villager's own prompt, so
-  // the two can never drift into disagreeing about whether somebody is free. The
-  // lookup is forgiving because the tokens arrive in Engine metadata the village
-  // does not own and cannot assume the shape of.
-  assert.equal(describeStatus("dnd"), "busy, and not to be interrupted");
-  assert.equal(
-    describeStatus(" DND "),
-    "busy, and not to be interrupted",
-    "read case-blind, since the token is not ours",
-  );
-  assert.equal(describeStatus("offline"), "asleep or away from everyone");
-  assert.equal(describeStatus("idle"), "between things, and easy to interrupt");
-  assert.equal(describeStatus("online"), "free, and out and about");
-  assert.equal(describeStatus(""), "", "an hour the Engine said nothing about is left unsaid");
-  assert.equal(
-    describeStatus("napping"),
-    "",
-    "and so is a token the village has never been taught, rather than printing it",
-  );
-
   // ── The log line ──────────────────────────────────────────────────────────
   assert.equal(
     describeRemap(bound),
@@ -1192,21 +1101,16 @@ async function main() {
   const { readFileSync } = await import("node:fs");
   const { dirname, resolve } = await import("node:path");
   const { fileURLToPath } = await import("node:url");
-  const clientSource = readFileSync(
-    resolve(
-      dirname(fileURLToPath(import.meta.url)),
-      "../packages/villages/src/engine/packages/client/src/villages-package-entry.tsx",
-    ),
-    "utf8",
-  );
+  const clientSource = clientImplementation();
   assert.ok(clientSource.includes("Villages agenda</h4>"), "the village agenda is named as the primary plan");
-  assert.ok(clientSource.includes("Marinara schedule</h4>"), "the optional source is available for comparison");
+  assert.ok(!clientSource.includes("Marinara schedule</h4>"), "the authoritative translation comparison is retired");
   assert.ok(clientSource.includes("villager.agenda?.activeDay?.blocks"), "today reads the frozen active agenda");
   assert.ok(clientSource.includes("villager.agenda?.week?.[day.weekday]"), "future days read the village week");
-  assert.ok(clientSource.includes("part.reason"), "each agenda block explains why");
+  assert.ok(!clientSource.includes("part.reason"), "agenda cards omit reason captions");
+  assert.ok(!clientSource.includes("part.status"), "agenda cards omit Conversation availability");
   assert.ok(clientSource.includes("setAgendaScheduleIngestion"), "schedule ingestion can be changed per villager");
   assert.ok(clientSource.includes("agendaUpdatePending(villager)"), "pending changes are labelled for tomorrow");
-  assert.ok(clientSource.includes("Schedule used today"), "schedule usage is visible beside the agenda");
+  assert.ok(clientSource.includes("Schedule influence enabled"), "optional influence is visible beside the agenda");
   assert.ok(clientSource.includes("Personalization needs retry"), "model failure is visible without hiding the agenda");
   assert.ok(
     clientSource.includes("<details") && clientSource.includes("<summary"),
@@ -1230,45 +1134,7 @@ async function main() {
   // village with no spaceship briefed its narrator on somebody's morning in a
   // cockpit.
   //
-  // Both readers are built here out of one real week and read for the noun.
-  // `doingFor` is the villager's, and it is the whole of the composition: the
-  // translation of the present hour, the village's own summary if it has written
-  // one, and the day the hour sits in out of the same table. `renderResidentsBlock`
-  // is the narrator's, and it is built from what that composition produced.
-  const pilotWeek = schedule({
-    Monday: [
-      { time: "05:00-08:00", activity: "piloting the Halcyon", status: "dnd" },
-      { time: "08:00-22:00", activity: "walking the ridge", status: "idle" },
-      { time: "22:00-06:00", activity: "asleep", status: "offline" },
-    ],
-  });
-  const pilotBlocks = remapBlocks(pilotWeek);
-  // The Tuesday slot has to be one the translation was WRITTEN for, so the context
-  // it is resolved against carries that day too. The plan below is still Monday's,
-  // which is what makes the phrase land in `restOfWeek` rather than in the day.
-  const pilot = coerceRemap(
-    {
-      moves: [
-        { day: "Monday", time: "22:00-06:00", here: "asleep in the loft" },
-        { day: "Tuesday", time: "05:00-08:00", here: "mending the fence" },
-      ],
-    },
-    {
-      ...context,
-      blocks: [...pilotBlocks, { day: "Tuesday", time: "05:00-08:00", activity: "walking the ridge", status: "idle" }],
-    },
-    "now",
-  );
-  const pilotRoutine = {
-    routineSummary: "Ives flies the Halcyon most mornings and sleeps in the crew quarters.",
-    activity: "piloting the Halcyon",
-    status: "dnd",
-    talkativeness: 60,
-    weekStart: "2026-09-07",
-    weekday: "Monday",
-    block: pilotWeek.days.Monday![0],
-    blocks: pilotWeek.days.Monday,
-  };
+  // The current Village-owned agenda supplies activity, availability and day.
   const now = new Date();
   const dateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const activeBlocks = [
@@ -1306,34 +1172,56 @@ async function main() {
     generatedAt: "now",
     activeDay: { dateKey, weekday: "Monday", blocks: activeBlocks, scheduleInformed: false },
   };
-  const pilotDoing = doingFor(pilot, pilotRoutine as any, { hour: 6, minute: 0 }, pilotAgenda as any);
+  const pilotBlock = agendaAt(pilotAgenda as any, 360, now)!;
+  const pilotDoing = {
+    activity: pilotBlock.activity,
+    routineSummary: pilotAgenda.routineSummary,
+    today: agendaDayPlan(pilotAgenda as any, 360, now),
+    restOfWeek: [],
+  };
   assert.equal(pilotDoing.activity, "at home", "the active Villages agenda decides the activity");
-  assert.equal(pilotDoing.status, "dnd", "availability comes from the same active agenda block");
+  assert.ok(!("status" in pilotDoing), "availability does not enter Scene context");
   assert.equal(pilotDoing.routineSummary, "An ordinary village day.");
-  assert.equal(pilotDoing.today.length, 4, "the entire active day reaches the prompt");
-  assert.equal(pilotDoing.today[1]?.reason, "To prepare for the day");
-  const villagerBlock = renderDoingBlock(pilotDoing);
-  assert.ok(!villagerBlock.includes("Halcyon"), "native schedule prose never reaches the villager prompt");
-  assert.ok(villagerBlock.includes("Right now you are at home until 08:00."));
-  assert.ok(villagerBlock.includes("To prepare for the day"), "the agenda's reason reaches the prompt");
-  const narratorBlock = renderResidentsBlock([
-    {
-      characterId: "character-ives",
-      name: "Ives",
-      summary: "An apiarist with a ledger.",
-      tags: ["beekeeper"],
-      doing: pilotDoing.activity,
-      status: pilotDoing.status,
-      routine: pilotDoing.routineSummary,
-      week: [],
-      today: pilotDoing.today,
-      agenda: pilotAgenda as any,
-      remembered: [],
-    },
-  ]);
+  assert.equal(pilotDoing.today.length, 4, "the Village agenda retains its complete active day");
+  assert.ok(!("reason" in pilotDoing.today[1]!), "agenda projections omit legacy reasons");
+  const currentSceneDoing = renderDoingBlock(pilotDoing);
+  assert.ok(currentSceneDoing.includes("at home"));
+  assert.ok(!currentSceneDoing.includes("Halcyon"), "current Scene writing receives Village-owned activity");
+  assert.ok(
+    !currentSceneDoing.includes("To prepare for the day"),
+    "current Scene recurring activity omits routine reasons",
+  );
+  function eventsPrompt(doing: string, agenda: Parameters<typeof buildTickMessages>[0]["residents"][number]["agenda"]) {
+    return buildTickMessages({
+      village: "Apiary",
+      setting: "A quiet village",
+      moment: deriveVillageMoment({ foundedAt: now.toISOString(), seed: "schedule-fixture", now }),
+      residents: [
+        { characterId: "character-ives", name: "Ives", summary: "An apiarist with a ledger.", doing, agenda },
+      ],
+      recent: [],
+      venues: [],
+      opportunities: [
+        {
+          id: "routine",
+          kind: "routine",
+          startsAt: now.toISOString(),
+          endsAt: now.toISOString(),
+          actorIds: ["character-ives"],
+          venueId: "",
+          facts: ["An ordinary day at the apiary"],
+        },
+      ],
+      lastSimulatedAt: "",
+      forced: false,
+    })
+      .map((message) => String(message.content))
+      .join("\n");
+  }
+  const narratorBlock = eventsPrompt(pilotDoing.activity, pilotAgenda as any);
+  assert.ok(narratorBlock.includes("Current activity: at home"));
   assert.ok(!narratorBlock.includes("Halcyon"), "native schedule prose never reaches the narrator");
-  assert.ok(narratorBlock.includes("To prepare for the day"), "the narrator also receives the reason");
-  assert.ok(!renderResidentsBlock([]).includes("lives here"));
+  assert.ok(!narratorBlock.includes("To prepare for the day"), "routine reasons are omitted from recurring prompts");
 
   // ── Block-level fidelity ──────────────────────────────────────────────────
   // The thing the whole feature is for, and the one thing a summary cannot prove. A
@@ -1384,52 +1272,12 @@ async function main() {
     "the Engine's string rides beside the village's",
   );
 
-  const hourlyDoing = {
-    activity: hourlyPlan[13]!.here,
-    routineSummary: "",
-    status: "",
-    today: hourlyPlan,
-  };
-  const hourlyVillager = renderDoingBlock(hourlyDoing);
-  for (const block of hourly) {
-    assert.ok(
-      hourlyVillager.includes(`${block.time} minding ${block.activity}`),
-      `the villager's own prompt prints ${block.time} rather than blurring it into a part of the day`,
-    );
-  }
+  const hourlyNarrator = eventsPrompt(hourlyPlan[13]!.here, null);
+  assert.ok(hourlyNarrator.includes("Current activity: minding an hour on the card, number 13"));
   assert.ok(
-    hourlyVillager.includes("Right now you are minding an hour on the card, number 13 until 14:00."),
-    "and says how long the hour they are in has left",
+    !hourlyNarrator.includes("Current activity: minding an hour on the card, number 0"),
+    "current Events uses the selected hour; the complete translation remains in the agenda",
   );
-
-  const hourlyNarrator = renderResidentsBlock([
-    {
-      characterId: "character-ives",
-      name: "Ives",
-      summary: "",
-      tags: [],
-      doing: hourlyPlan[13]!.here,
-      status: "",
-      routine: "",
-      week: Array.from({ length: MAX_RESIDENT_WEEK_NOTES + 3 }, (_unused, index) => `note ${index}`),
-      today: hourlyPlan,
-      agenda: null,
-      remembered: [],
-    },
-  ]);
-  for (const block of hourly) {
-    assert.ok(
-      hourlyNarrator.includes(`${block.time} minding ${block.activity}`),
-      `the narrator is given ${block.time} too, so what it writes can agree with the hour it happens in`,
-    );
-  }
-  assert.ok(
-    hourlyNarrator.includes(
-      `On other days: ${Array.from({ length: MAX_RESIDENT_WEEK_NOTES }, (_unused, index) => `note ${index}`).join("; ")}`,
-    ),
-    "the rest of the week is named, capped, and does not carry today",
-  );
-  assert.ok(!hourlyNarrator.includes(`note ${MAX_RESIDENT_WEEK_NOTES}`), "and the cap on it holds");
 
   // A week whose phrases the plan already says is not repeated back at the
   // narrator: the line is about the days the plan is not.
@@ -1493,8 +1341,9 @@ async function main() {
   // refused them are the same `remap: null`, and until this existed the tab could
   // only report the first. What was needed was something that survives a restart,
   // because the failure happens on a tick nobody is watching.
-  const store = await import("../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts");
+  const store = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
   const refusals = store.coerceVillageState({
+    wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",
     villagers: [
       {
@@ -1516,6 +1365,7 @@ async function main() {
   assert.equal(refusals.villagers[0]!.remap, null, "beside the null that says no translation was written");
 
   const partial = store.coerceVillageState({
+    wishSystemVersion: 3,
     villagers: [
       {
         characterId: "a",
@@ -1570,6 +1420,7 @@ async function main() {
   );
   assert.deepEqual(
     store.coerceVillageState({
+      wishSystemVersion: 3,
       villagers: [{ characterId: "a", cardSnapshot: cardSnapshot("a", "A"), addedAt: "", agenda: null, remap: null }],
     }).villagers[0]!.remapFailure,
     null,
@@ -1698,6 +1549,7 @@ async function main() {
   // second earlier and would silently re-age every wish in the village on every
   // restart.
   const stored = store.coerceVillageState({
+    wishSystemVersion: 3,
     villagers: [
       {
         characterId: "character-ives",

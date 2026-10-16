@@ -1,0 +1,175 @@
+import assert from "node:assert/strict";
+import {
+  DEFAULT_PLAYER_ROLE,
+  readPlayerRole,
+  playerRoleForSetup,
+  assertPlayerRoleLocked,
+  renderPlayerRoleContext,
+  renderPlayerRoleWritingContext,
+} from "../packages/villages/src/server/domain/rules/player-role.js";
+import {
+  DEFAULT_PLAYER_ROLE as CLIENT_DEFAULT,
+  playerRoleProblem,
+} from "../packages/villages/src/client/features/founding/villages-player-role.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import {
+  villageCurrentSetting,
+  villageFoundingSetting,
+} from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { runVillageSetup } from "../packages/villages/src/server/features/founding/founding-setup.js";
+
+async function main() {
+  const custom = {
+    enabled: true,
+    title: "Harbor Patron",
+    explanation: "Neighbors bring me plans because I coordinate harbor repairs.",
+  };
+  const disabled = { ...custom, enabled: false };
+  assert.equal(DEFAULT_PLAYER_ROLE.title, "Project Coordinator");
+  assert.equal(CLIENT_DEFAULT.title, "", "new founding UI asks for a title instead of filling an example");
+  assert.match(playerRoleProblem(CLIENT_DEFAULT), /Give your village role a title/);
+  assert.deepEqual(playerRoleForSetup(null, undefined, true), DEFAULT_PLAYER_ROLE);
+  assert.equal(playerRoleForSetup(null, undefined, false), null);
+  assert.deepEqual(playerRoleForSetup(custom, undefined, false), custom, "older requests preserve the saved role");
+  assert.deepEqual(readPlayerRole({ ...custom, title: " Harbor Patron " }), custom);
+  for (const raw of [
+    null,
+    [],
+    {},
+    { ...custom, enabled: "yes" },
+    { ...custom, title: " " },
+    { ...custom, title: "x".repeat(81) },
+    { ...custom, explanation: "x".repeat(1001) },
+  ])
+    assert.throws(
+      () => readPlayerRole(raw),
+      (error: any) => error.statusCode === 400,
+    );
+  assert.equal(readPlayerRole({ enabled: false, title: "", explanation: "" }).enabled, false);
+  assert.equal(readPlayerRole({ ...custom, title: "x".repeat(80), explanation: "x".repeat(1000) }).title.length, 80);
+  assert.match(playerRoleProblem(disabled), /coordinates construction projects/);
+  assert.throws(() => playerRoleForSetup(null, disabled, true), /coordinates construction projects/);
+  assert.deepEqual(playerRoleForSetup(disabled, disabled, false), disabled, "saved roles stay compatible");
+  assert.equal(playerRoleProblem({ ...custom, explanation: " " }), "");
+  assert.equal(readPlayerRole({ enabled: true, title: "Architect" }).explanation, "");
+  assert.equal(DEFAULT_PLAYER_ROLE.explanation, "");
+  for (const next of [disabled, DEFAULT_PLAYER_ROLE, null])
+    assert.throws(
+      () => playerRoleForSetup(custom, next, false),
+      (error: any) => error.statusCode === 409,
+    );
+  assert.throws(() => playerRoleForSetup(null, custom, false), /fixed at founding/);
+  assertPlayerRoleLocked(custom, { ...custom });
+  assert.equal(defaultVillageState().playerRole, null);
+  assert.equal(coerceVillageState({ wishSystemVersion: 3, setupAt: "2026-09-01T00:00:00Z" }).playerRole, null);
+  const card = {
+    id: "hana",
+    name: "Hana",
+    description: "A direct beekeeper.",
+    personality: "Independent",
+    scenario: "",
+    backstory: "",
+    appearance: "",
+    systemPrompt: "",
+    exampleDialogue: "",
+  } as any;
+  for (const playerRole of [DEFAULT_PLAYER_ROLE, custom, disabled, null]) {
+    const state = coerceVillageState(
+      JSON.parse(
+        JSON.stringify({
+          ...defaultVillageState(),
+          playerRole,
+          setupAt: "2026-09-01T00:00:00Z",
+          playerPersonaId: "robin",
+          playerPersonaName: "Robin",
+          foundingDetails: "The neighbors arrived on Day 1.",
+          setting: "A quiet harbor",
+        }),
+      ),
+    );
+    assert.deepEqual(state.playerRole, playerRole, "role survives saved-state reloads");
+    const roleContext = renderPlayerRoleContext(state);
+    const writingContext = renderPlayerRoleWritingContext(state);
+    if (playerRole?.enabled) {
+      assert.ok(
+        writingContext.includes(JSON.stringify({ title: playerRole.title, explanation: playerRole.explanation })),
+      );
+      assert.ok(!writingContext.includes("look to them to coordinate Projects"));
+      assert.ok(roleContext.includes("look to them to coordinate Projects"), "general role context stays unchanged");
+      assert.match(
+        writingContext,
+        /does not grant access or override resident consent, builder willingness, resources, or Project evidence/,
+      );
+      assert.match(writingContext, /private wishes remain private motivations/);
+      assert.match(writingContext, /ability to disagree or refuse/);
+    } else assert.equal(writingContext, roleContext, "disabled and legacy role framing stays unchanged");
+    const prompt = await currentScenePrompt(state, card, "chat", "Could we plan a workshop?");
+    if (playerRole) {
+      assert.ok(prompt.includes(writingContext));
+      assert.match(
+        prompt,
+        /does not grant access or override resident consent, builder willingness, resources, or Project evidence/,
+      );
+    } else assert.equal(roleContext, "");
+    assert.equal(villageCurrentSetting(state).includes("Harbor Patron"), false, "scenery context excludes the role");
+    assert.equal(villageFoundingSetting(state).includes("Project Coordinator"), false);
+    if (playerRole?.enabled === false) {
+      assert.match(prompt, /ordinary resident/);
+      assert.equal(prompt.includes(custom.explanation), false, "inactive custom role text never reaches the prompt");
+      assert.match(prompt, /Earned relationships and verified history still matter/);
+    }
+  }
+  // Check the public setup service refuses a forged founding edit before any paid work.
+  const state = { ...defaultVillageState(), setupAt: "2026-09-01T00:00:00Z", playerRole: custom };
+  let modelCalls = 0;
+  const release = configureVillagesRuntime({
+    persistence: {
+      documents: {
+        async update(input: any) {
+          Object.assign(state, input.data);
+          return { ...input, revision: input.expectedRevision + 1 };
+        },
+        async create(input: any) {
+          return { ...input, revision: 1 };
+        },
+        async getById() {
+          return { data: state, revision: 1 };
+        },
+      },
+    },
+    languageModels: {
+      async resolveForRequest() {
+        modelCalls += 1;
+        throw new Error("Unexpected generation");
+      },
+    },
+  } as any);
+  try {
+    for (const playerRole of [disabled, null, DEFAULT_PLAYER_ROLE])
+      await assert.rejects(
+        runVillageSetup({
+          name: "Harbor",
+          setting: "Quiet fishing village",
+          foundingReason: "none",
+          foundingDetails: "",
+          playerRole,
+        }),
+        (error: any) => error.statusCode === 409,
+      );
+    assert.equal(modelCalls, 0);
+    assert.deepEqual(state.playerRole, custom);
+  } finally {
+    release();
+  }
+  console.log("Villages player role regressions passed.");
+}
+void main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

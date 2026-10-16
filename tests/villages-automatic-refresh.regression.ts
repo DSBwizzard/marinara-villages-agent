@@ -1,3 +1,5 @@
+import { villageRouteSource } from "./route-source.js";
+import { clientImplementation } from "./client-source.js";
 // Continuous Villages time: exact projection, migration, idempotent restart
 // reconciliation, model-independent progress, and the live unreferenced timer.
 import assert from "node:assert/strict";
@@ -10,48 +12,48 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
-  const routesSource = readFileSync(
-    join(repoRoot, "packages/villages/src/engine/packages/server/src/routes/villages.routes.ts"),
-    "utf8",
-  );
-  const clientSource = readFileSync(
-    join(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-    "utf8",
-  );
-  assert.match(routesSource, /app\.post<[^\n]+>\("\/reconcile"/u);
+  const routesSource = villageRouteSource();
+  const clientSource = clientImplementation();
+  assert.match(routesSource, /"\/reconcile"/u);
   assert.doesNotMatch(routesSource, /"\/tick"/u);
   assert.match(clientSource, /request<VillageSnapshot>\("\/reconcile"/u);
-  const { configureVillagesRuntime } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts")
-  );
-  const { coerceVillageState, mutateVillageState, readVillageState } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/village-store.ts")
-  );
-  const { deriveVillageMoment } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/village-clock.ts")
-  );
+  const { configureVillagesRuntime } = await import(moduleUrl("packages/villages/src/server/entry/runtime.ts"));
   const {
-    reconcileVillage,
-    rollActiveAgendas,
-    setVillageStoryPace,
-    proposeVillageResidence,
-    decideVillageResidence,
-    completeVillageResidence,
-    requestVillageHomeUpgrade,
-    decideVillageHomeUpgrade,
-    updateVillageVenue,
-    projectHomeLines,
-  } = await import(moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/village.ts"));
-  const { workingAgendaWeek } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/agenda-week.ts")
+    startBackgroundWork,
+    settleBackgroundWork,
+    villageBackgroundPresence,
+    backgroundWorkSummaries,
+    retryBackgroundJob,
+  } = await import(moduleUrl("packages/villages/src/server/jobs/background-work.ts"));
+  const { coerceVillageState } = await import(
+    moduleUrl("packages/villages/src/server/domain/decoding/village-codec.ts")
   );
-  const { renderHomesBlock } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.ts")
+  const { mutateVillageState, readVillageState } = await import(
+    moduleUrl("packages/villages/src/server/features/world/village-store.ts")
   );
+  const { deriveVillageMoment } = await import(moduleUrl("packages/villages/src/server/domain/rules/village-clock.ts"));
+  const { reconcileVillage } = await import(moduleUrl("packages/villages/src/server/features/world/village.ts"));
+  const { projectHomeLines } = await import(
+    moduleUrl("packages/villages/src/server/domain/rules/village-projections.ts")
+  );
+  const { requestVillageHomeUpgrade, decideVillageHomeUpgrade } = await import(
+    moduleUrl("packages/villages/src/server/features/venues/venue-requests.ts")
+  );
+  const { proposeVillageResidence, decideVillageResidence, completeVillageResidence } = await import(
+    moduleUrl("packages/villages/src/server/features/venues/residences.ts")
+  );
+  const { clearVillagerAgenda } = await import(
+    moduleUrl("packages/villages/src/server/features/residents/resident-agendas.ts")
+  );
+  const { setVillageStoryPace } = await import(
+    moduleUrl("packages/villages/src/server/features/settings/village-settings.ts")
+  );
+  const { updateVillageVenue } = await import(moduleUrl("packages/villages/src/server/features/venues/services.ts"));
+  const { rollActiveAgendas } = await import("../packages/villages/src/server/features/residents/resident-agendas.ts");
+  const { workingAgendaWeek } = await import(moduleUrl("packages/villages/src/server/domain/rules/agenda-week.ts"));
+  const { renderHomesBlock } = await import(moduleUrl("packages/villages/src/server/domain/rules/prompt-preset.ts"));
   const { REFRESH_MAX_DELAY_MS, REFRESH_MIN_DELAY_MS, startVillageRefreshScheduler, villageSchedulerDelayMs } =
-    await import(
-      moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/village-refresh-scheduler.ts")
-    );
+    await import(moduleUrl("packages/villages/src/server/jobs/village-refresh-scheduler.ts"));
 
   const at = (hour: number, minute: number, second = 0) => new Date(2026, 8, 22, hour, minute, second, 0);
   const before = deriveVillageMoment({ foundedAt: "2026-09-01T00:00:00.000Z", seed: "fixture", now: at(11, 59) });
@@ -85,9 +87,26 @@ async function main() {
   );
   assert.ok(villageSchedulerDelayMs(at(9, 42, 59)) >= REFRESH_MIN_DELAY_MS);
   assert.ok(villageSchedulerDelayMs(at(9, 42, 0)) <= REFRESH_MAX_DELAY_MS);
+  const retainedDeadline = {
+    villagers: [
+      {
+        agenda: {
+          day: [],
+          wishes: [{ size: "larger", learnedAt: at(9, 40).toISOString(), expiresAt: at(9, 43).toISOString() }],
+        },
+      },
+    ],
+    scheduledEvents: [],
+  } as any;
+  assert.equal(
+    villageSchedulerDelayMs(at(9, 42, 30), retainedDeadline),
+    villageSchedulerDelayMs(at(9, 42, 30)),
+    "A retained discovered wish creates no expiry wake",
+  );
   assert.equal(villageSchedulerDelayMs(new Date("bad")), REFRESH_MAX_DELAY_MS);
 
   const migrated = coerceVillageState({
+    wishSystemVersion: 3,
     foundedAt: "2026-09-01T07:00:00.000Z",
     lastHappeningKey: "2:morning",
     refreshClocks: ["morning"],
@@ -110,8 +129,11 @@ async function main() {
   assert.ok(Date.parse(migrated.simulatedThrough) > 0);
   assert.equal(migrated.happenings[0]?.timePrecision, "phase");
   assert.equal(migrated.villagers[0]?.agenda?.day[0]?.startMinute, 300);
-  assert.equal(coerceVillageState({ refreshClocks: [] }).storyPace, "off");
-  assert.equal(coerceVillageState({ refreshClocks: ["morning", "evening"] }).storyPace, "balanced");
+  assert.equal(coerceVillageState({ wishSystemVersion: 3, refreshClocks: [] }).storyPace, "off");
+  assert.equal(
+    coerceVillageState({ wishSystemVersion: 3, refreshClocks: ["morning", "evening"] }).storyPace,
+    "balanced",
+  );
 
   const documentsByKey = new Map<string, any>();
   const documents = {
@@ -145,6 +167,11 @@ async function main() {
   let modelCalls = 0;
   let failModel = false;
   let invalidProposal = false;
+  let storyGate: (() => void) | null = null;
+  let delayStory = false;
+  let agendaMode = false;
+  let failWednesday = false;
+  const agendaRequests: string[] = [];
   const warnings: string[] = [];
   const release = configureVillagesRuntime({
     logger: {
@@ -175,6 +202,31 @@ async function main() {
           },
           async chatComplete(messages: any[]) {
             modelCalls += 1;
+            if (agendaMode) {
+              agendaRequests.push("Write routine profile.");
+              if (failWednesday) throw new Error("Profile unavailable");
+              return {
+                content: JSON.stringify({
+                  routine: "Studying quietly.",
+                  wishes: [],
+                  palette: Array.from({ length: 6 }, (_, i) => ({
+                    activity: "Studying the stars " + i,
+                    venue: 0,
+                    status: "idle",
+                    flexible: true,
+                    duration: 180,
+                    parts: [0, 1, 2, 3],
+                  })),
+                  days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
+                  rhythm: [],
+                }),
+                finishReason: "stop",
+              };
+            }
+            if (delayStory)
+              await new Promise<void>((resolve) => {
+                storyGate = resolve;
+              });
             if (failModel) throw new Error("model unavailable");
             const prompt = String(messages[0]?.content ?? "");
             assert.ok(prompt.includes("This feed has no effect on the village or its residents."));
@@ -217,6 +269,8 @@ async function main() {
     },
   } as any);
 
+  const stopWork = startBackgroundWork();
+  await villageBackgroundPresence("visible-story-fixture", true);
   try {
     const start = new Date("2026-08-20T12:00:00.000Z");
     await mutateVillageState((state) => {
@@ -226,11 +280,39 @@ async function main() {
       state.storyPace = "off";
       state.simulatedThrough = start.toISOString();
       state.lastKnownTimeZone = "Etc/Old";
+      state.villagers = [
+        {
+          characterId: "retained",
+          cardSnapshot: {
+            id: "retained",
+            name: "Retained",
+            capturedAt: start.toISOString(),
+            revision: 1,
+            sourceStatus: "available",
+          },
+          completedWishes: [],
+          agenda: {
+            day: [],
+            generatedAt: start.toISOString(),
+            wishes: [
+              {
+                id: "retained",
+                wish: "Experience swimming",
+                tell: "",
+                intensity: 1,
+                size: "larger",
+                addedAt: start.toISOString(),
+                learnedAt: start.toISOString(),
+                expiresAt: new Date(start.getTime() + 14 * 86400000).toISOString(),
+              },
+            ],
+          },
+        },
+      ] as any;
       state.venues = [
         {
           id: "square",
           name: "Village Square",
-          purpose: "A public meeting place.",
           category: "public",
           presentation: { image: null, x: null, y: null },
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
@@ -245,6 +327,20 @@ async function main() {
     assert.equal(modelCalls, 0, "story pace Off never blocks deterministic reconciliation and spends no model call");
     assert.equal((await readVillageState()).simulatedThrough, later.toISOString());
     assert.equal((await readVillageState()).lastKnownTimeZone, quiet.village.timeZone);
+    const retainedState = await readVillageState();
+    assert.equal(
+      retainedState.villagers[0].agenda!.wishes[0].id,
+      "retained",
+      "Restart catch-up retains discovered larger wishes",
+    );
+    assert.equal(
+      retainedState.wishRefillIntents.retained,
+      undefined,
+      "Retained wishes never queue expiry replacements",
+    );
+    await mutateVillageState((state) => {
+      state.villagers = [];
+    });
     assert.ok(quiet.recap, "a long return receives a layered recap");
     assert.ok((quiet.recap?.summaries.length ?? 0) <= 6);
 
@@ -263,7 +359,10 @@ async function main() {
       state.simulatedThrough = start.toISOString();
     });
     const callsBefore = modelCalls;
+    const queuedCreative = await reconcileVillage({ now: later });
+    await settleBackgroundWork();
     const creative = await reconcileVillage({ now: later });
+    assert.ok(queuedCreative.recap);
     assert.equal(modelCalls, callsBefore + 1, "one planning call covers the active local day");
     assert.equal(creative.happenings[0]?.occurredAt, later.toISOString());
     assert.equal(creative.happenings[0]?.timePrecision, "exact");
@@ -271,13 +370,45 @@ async function main() {
     assert.equal((await readVillageState()).chronicle.length, 0, "visual Events write no memories");
     assert.equal((await readVillageState()).noticeboard.length, 0, "visual Events pin no notices");
     assert.equal((await readVillageState()).venues[0]?.state.condition, "", "visual Events do not edit places");
-    assert.ok(creative.recap, "a month-long return uses the same single planning call and returns a recap");
+    assert.ok(queuedCreative.recap, "a month-long return uses the same single planning call and returns a recap");
     await reconcileVillage({ now: new Date(later.getTime() + 10 * 60_000) });
     assert.equal(modelCalls, callsBefore + 1, "repeated reconciliation on one local day is idempotent");
+
+    // Completed ledger payloads may be pruned; the Village date remains a durable spending floor.
+    for (const [key, record] of documentsByKey)
+      if (record.kind === "background-work" && (record.data as any).kind === "story") documentsByKey.delete(key);
+    const storyDateBeforeRollback = (await readVillageState()).lastCreativeDate;
+    const callsBeforeRollback = modelCalls;
+    const olderDay = new Date(later.getTime() - 2 * 24 * 60 * 60_000);
+    await reconcileVillage({ now: olderDay });
+    await settleBackgroundWork();
+    assert.equal(modelCalls, callsBeforeRollback, "clock rollback cannot reopen an older day after ledger pruning");
+    const rollbackAttempt = (await backgroundWorkSummaries()).find((job) => job.kind === "story")?.attempt ?? 0;
+    await reconcileVillage({
+      now: olderDay,
+      forceStory: true,
+      actionId: "manual-rollback-story",
+      expectedAttempt: rollbackAttempt,
+    });
+    await settleBackgroundWork();
+    assert.equal(modelCalls, callsBeforeRollback + 1, "Write now remains a deliberate action on an earlier date");
+    await reconcileVillage({ now: new Date(later.getTime() + 60 * 60_000) });
+    await settleBackgroundWork();
+    assert.equal(
+      modelCalls,
+      callsBeforeRollback + 1,
+      "returning to an already-written day cannot authorize another request",
+    );
+    assert.equal(
+      (await readVillageState()).lastCreativeDate,
+      storyDateBeforeRollback,
+      "manual work cannot lower the spending floor",
+    );
 
     failModel = true;
     const tomorrow = new Date("2026-09-23T13:00:00.000Z");
     await reconcileVillage({ now: tomorrow });
+    await settleBackgroundWork();
     assert.equal(
       (await readVillageState()).simulatedThrough,
       tomorrow.toISOString(),
@@ -286,12 +417,18 @@ async function main() {
     assert.notEqual((await readVillageState()).lastCreativeDate, "2026-09-23", "a failed story remains retryable");
     failModel = false;
     await reconcileVillage({ now: tomorrow });
+    await settleBackgroundWork();
+    assert.notEqual((await readVillageState()).lastCreativeDate, "2026-09-23", "ordinary ticks do not retry failures");
+    const failed = (await backgroundWorkSummaries()).find((job) => job.kind === "story")!;
+    await retryBackgroundJob(failed.id, failed.attempt, "deliberate-story-retry");
+    await settleBackgroundWork();
     assert.equal((await readVillageState()).lastCreativeDate, "2026-09-23");
 
     invalidProposal = true;
     const invalidDay = new Date("2026-09-24T13:00:00.000Z");
     const happeningsBeforeInvalid = (await readVillageState()).happenings.length;
     await reconcileVillage({ now: invalidDay });
+    await settleBackgroundWork();
     assert.equal(
       (await readVillageState()).happenings.length,
       happeningsBeforeInvalid,
@@ -301,7 +438,17 @@ async function main() {
 
     const concurrentDay = new Date("2026-09-25T13:00:00.000Z");
     const happeningsBeforeConcurrent = (await readVillageState()).happenings.length;
+    const beforeCalls = modelCalls;
+    delayStory = true;
     await Promise.all([reconcileVillage({ now: concurrentDay }), reconcileVillage({ now: concurrentDay })]);
+    for (let i = 0; i < 100 && !storyGate; i++) await sleep(1);
+    assert.ok(storyGate, "real story provider request is held open");
+    assert.equal(modelCalls, beforeCalls + 1, "browser and timer overlap dispatch only one paid story request");
+    await reconcileVillage({ now: concurrentDay });
+    assert.equal(modelCalls, beforeCalls + 1);
+    delayStory = false;
+    storyGate!();
+    await settleBackgroundWork();
     const afterConcurrent = await readVillageState();
     assert.equal(
       afterConcurrent.happenings.length,
@@ -310,9 +457,27 @@ async function main() {
     );
     assert.equal(new Set(afterConcurrent.happenings.map((entry) => entry.id)).size, afterConcurrent.happenings.length);
 
+    await villageBackgroundPresence("visible-story-fixture", false);
+    const beforeReturn = modelCalls;
+    await reconcileVillage({ now: new Date("2026-09-26T13:00:00.000Z") });
+    await settleBackgroundWork();
+    await reconcileVillage({ now: new Date("2026-09-29T13:00:00.000Z") });
+    await settleBackgroundWork();
+    await villageBackgroundPresence("visible-story-fixture", true);
+    await settleBackgroundWork();
+    assert.equal(modelCalls, beforeReturn + 1, "returning replaces missed-day work with only the current story");
+
+    await villageBackgroundPresence("visible-story-fixture", false);
+    const beforeOff = modelCalls;
+    await reconcileVillage({ now: new Date("2026-09-30T13:00:00.000Z") });
+    await settleBackgroundWork();
+    assert.equal(modelCalls, beforeOff, "a pending automatic story waits for visible presence");
     await mutateVillageState((state) => {
       state.storyPace = "off";
     });
+    await villageBackgroundPresence("visible-story-fixture", true);
+    await settleBackgroundWork();
+    assert.equal(modelCalls, beforeOff, "Story pace Off prevents the pending automatic request");
     const stop = startVillageRefreshScheduler({ delayMs: () => 5 });
     await sleep(30);
     stop();
@@ -366,8 +531,36 @@ async function main() {
     assert.equal(await rollActiveAgendas(sunday), true);
     const activeSunday = (await readVillageState()).villagers[0]!.agenda!.activeDay!;
     assert.equal(activeSunday.dateKey, "2026-09-27");
-    assert.equal(activeSunday.scheduleInformed, true);
-    assert.equal(activeSunday.blocks[0]!.activity, "Keeping watch");
+    assert.equal(activeSunday.scheduleInformed, false);
+    assert.notEqual(activeSunday.blocks[0]!.activity, "Keeping watch", "Engine translation no longer owns Sunday");
+
+    // One compact request, deliberate recovery, and deduplicated action IDs.
+    agendaMode = true;
+    failWednesday = true;
+    await Promise.all([
+      clearVillagerAgenda("lina", "same-agenda-action"),
+      clearVillagerAgenda("lina", "same-agenda-action"),
+    ]);
+    await settleBackgroundWork();
+    assert.deepEqual(agendaRequests, ["Write routine profile."]);
+    const agendaFailure = (await backgroundWorkSummaries()).find((job) => job.kind === "agenda")!;
+    assert.equal(agendaFailure.status, "failed");
+    assert.equal(agendaFailure.completedSteps, 0);
+    await reconcileVillage({ now: new Date(2026, 8, 28, 8) });
+    await settleBackgroundWork();
+    assert.equal(agendaRequests.length, 1, "daily ticks cannot retry an unresolved request");
+    failWednesday = false;
+    await Promise.all([
+      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry"),
+      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry"),
+    ]);
+    await settleBackgroundWork();
+    assert.equal(agendaRequests.length, 2);
+    await retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry");
+    await settleBackgroundWork();
+    assert.equal(agendaRequests.length, 2, "lost retry responses do not repeat a successful request");
+    assert.equal((await readVillageState()).villagers[0]!.agenda!.personalizationPending, false);
+    agendaMode = false;
 
     // Housing decisions preserve ownership until the full elapsed day passes.
     await mutateVillageState((state) => {
@@ -391,6 +584,10 @@ async function main() {
           ...state.venues[0]!,
           id: "rosa-home",
           classes: ["residence"],
+          baseClasses: ["residence"],
+          zones: undefined,
+          spaces: undefined,
+          residentIds: undefined,
           name: "",
           description: "Rosa's little house.",
           occupancy: { playerHome: false, residentCharacterId: "housing-resident", homeKind: "small-home" },
@@ -400,6 +597,10 @@ async function main() {
           ...state.venues[0]!,
           id: "empty-venue",
           classes: ["residence"],
+          baseClasses: ["residence"],
+          zones: undefined,
+          spaces: undefined,
+          residentIds: undefined,
           name: "The bakery",
           description: "A small bakery.",
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
@@ -407,11 +608,18 @@ async function main() {
         },
       ];
     });
-    await assert.rejects(() => updateVillageVenue("rosa-home", { presentation: { x: 0.8, y: 0.8 } }), /occupied/u);
+    await assert.rejects(
+      () => updateVillageVenue("rosa-home", { presentation: { x: 0.8, y: 0.8 } }),
+      /only name and description/u,
+    );
     await requestVillageHomeUpgrade("housing-resident", "rosa-home");
     const upgrade = (await readVillageState()).pendingDecisions.find((entry) => entry.kind === "venue-upgrade")!;
     await decideVillageHomeUpgrade(upgrade.id, true);
-    assert.equal((await readVillageState()).venues[0]!.occupancy.homeKind, "medium-home");
+    assert.equal((await readVillageState()).venues[0]!.occupancy.homeKind, "small-home");
+    assert.equal(
+      (await readVillageState()).projects.find((entry) => entry.kind === "renovation")?.lifecycle?.change?.homeKind,
+      "medium-home",
+    );
     await proposeVillageResidence("housing-resident", "empty-venue");
     await decideVillageResidence("housing-resident", false, "villager");
     assert.equal((await readVillageState()).residences.length, 0, "the villager can decline the player's request");
@@ -470,11 +678,9 @@ async function main() {
       false,
     );
     assert.equal(
-      movedState.venues[1]?.privateSpaces
-        ?.find((space) => space.ownerId === "housing-resident")
-        ?.state.items.includes("shared table"),
+      (movedState.venues[1]?.privateSpaces ?? []).some((space) => space.ownerId === "housing-resident"),
       false,
-      "a new private space never copies shared furnishings",
+      "moving without a selected Private Space never creates a room",
     );
     assert.match(
       renderHomesBlock(projectHomeLines(await readVillageState(), new Map()), "Player"),
@@ -491,13 +697,11 @@ async function main() {
       "normal reconciliation completes a villager-requested move after 24 hours",
     );
   } finally {
+    stopWork();
+    await settleBackgroundWork();
     release();
   }
 
-  assert.equal(
-    warnings.some((line) => line.includes("model unavailable")),
-    true,
-  );
   console.log("Villages continuous time regression: exact time, migration, restart, idempotence, failure, timer ok");
 }
 
