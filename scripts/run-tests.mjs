@@ -179,6 +179,8 @@ try {
       },
     });
     const report = {
+      startedAt: new Date(start).toISOString(),
+      completedAt: new Date().toISOString(),
       runId,
       group,
       jobs,
@@ -200,6 +202,13 @@ try {
     await writeFile(
       join(root, `${group}-latest.json`),
       JSON.stringify({ report: join(directory, "report.json") }, null, 2) + "\n",
+    );
+    const slowest = [...results]
+      .filter((row) => row.durationMs)
+      .sort((a, b) => b.durationMs - a.durationMs)
+      .slice(0, 5);
+    console.log(
+      "Slowest suites: " + slowest.map((row) => row.path + " " + (row.durationMs / 1000).toFixed(1) + "s").join(", "),
     );
     console.log(
       `Test report: ${directory}/report.json; wall ${(report.durationMs / 1000).toFixed(1)}s; workers ${jobs}/${browserJobs}`,

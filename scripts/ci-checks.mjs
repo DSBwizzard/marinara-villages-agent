@@ -16,7 +16,7 @@ export function policyKey(snapshot) {
   return fingerprint(
     snapshot.inputs.filter(
       (input) =>
-        /^scripts\/(?:ci-[^/]+|check-inputs|validation-inputs)\.(?:mjs|json)$/.test(input.path) ||
+        /^scripts\/(?:ci-[^/]+|check-inputs|test-inputs|validation-inputs)\.(?:mjs|json)$/.test(input.path) ||
         input.path === ".github/workflows/ci.yml",
     ),
   );
@@ -90,6 +90,7 @@ export async function checkBlueprint(root = process.cwd(), { snapshot, inventory
       path: test.path,
       group: test.group,
       opaque: dependencies?.opaque ?? true,
+      reasons: dependencies?.reasons ?? ["unresolved dependency graph"],
     });
   }
   const definition = await readFile(resolve(root, "packages/villages/package-definition.mjs"), "utf8").catch(() => "");

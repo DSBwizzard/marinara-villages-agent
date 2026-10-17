@@ -28,7 +28,8 @@ function Harness(){
 const browser = await chromium.launch({ headless: true });
 const initial = { id: "A", sceneRevision: 1, status: "active", lines: [], submissions: [] };
 try {
-  for (const width of [390, 1440]) {
+  // Hook state is viewport-independent; packaged layout suites retain desktop/phone coverage.
+  for (const width of [1366]) {
     for (const mode of [
       "receipt",
       "error",
