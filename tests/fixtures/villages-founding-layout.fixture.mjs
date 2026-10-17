@@ -248,7 +248,11 @@ export async function verifyFoundingLayout(group) {
             : "founding/layout/phone";
       if (!wantsCase(caseName)) continue;
       await runCase(caseName, async () => {
-        const context = await browser.newContext({ viewport: { width, height }, hasTouch: width < 600 });
+        const context = await browser.newContext({
+          viewport: { width, height },
+          hasTouch: width < 600,
+          isMobile: width < 600,
+        });
         const page = await context.newPage();
         const errors = [];
         page.on("pageerror", (error) => errors.push(error.message));
@@ -410,7 +414,7 @@ export async function verifyFoundingLayout(group) {
           route.fulfill({
             status: 200,
             contentType: "text/html",
-            body: `<style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:${chromeHeight}px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">☰</button></header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
+            body: `<meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:${chromeHeight}px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">☰</button></header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
           }),
         );
         await page.goto("http://villages.test/");
