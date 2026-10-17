@@ -172,6 +172,15 @@ try {
             result.output += "\nCase coverage verification failed: " + error.message + "\n";
           }
         }
+        try {
+          const coverage = JSON.parse(await readFile(caseReport, "utf8"));
+          result.caseTimings = coverage.timings;
+        } catch (error) {
+          if (error.code !== "ENOENT") {
+            result.code = 1;
+            result.output += "\nInvalid case diagnostics: " + error.message + "\n";
+          }
+        }
         await writeFile(join(directory, test.path.split("/").pop() + ".log"), result.output);
         console.log(`${result.code === 0 ? "PASS" : "FAIL"} ${test.path} (${result.durationMs}ms)`);
         if (result.code !== 0) console.error(result.output.slice(-3500));

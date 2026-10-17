@@ -1,23 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
-import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
-import { chromium, expect as baseExpect } from "@playwright/test";
+import { chromium } from "@playwright/test";
+import { fastExpect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
-const expect = baseExpect.configure({ timeout: 15000 });
-const require = createRequire(import.meta.url);
-const { build } = require("esbuild");
+const expect = fastExpect({ timeout: 15000 });
 mkdirSync(".build-tmp/sprite-manager", { recursive: true });
-await build({
-  entryPoints: [resolve("packages/villages/src/shared/helpers/sprite-framing.ts")],
-  bundle: true,
-  platform: "node",
-  format: "cjs",
-  outfile: resolve(".build-tmp/sprite-manager/pixels.cjs"),
-});
-const { renderSpritePixels, initialSpriteFrame } = require(resolve(".build-tmp/sprite-manager/pixels.cjs"));
+import { renderSpritePixels, initialSpriteFrame } from "../packages/villages/src/shared/helpers/sprite-framing.ts";
 function pngImage(opaque = false, multiple = false) {
   const image = new PNG({ width: multiple ? 192 : 64, height: 96 });
   if (opaque) image.data.fill(255);
@@ -266,9 +257,10 @@ try {
     const feedbackBox = await feedback.boundingBox();
     assert.ok(feedbackBox.height < 60, "confirmation stays compact even on narrow screens");
     await page.locator(".vsm-actions").scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: resolve(`.build-tmp/sprite-manager/confirmation-${viewport.width}x${viewport.height}.png`),
-    });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `confirmation-${viewport.width}x${viewport.height}.png`),
+      });
 
     await page
       .getByRole("group", { name: "Preview screen" })
@@ -346,9 +338,10 @@ try {
       removeSide = page.getByRole("button", { name: /^Remove Side assignment for/ });
     await expect(removeFront).toBeVisible();
     await expect(removeSide).toBeVisible();
-    await page.getByRole("group", { name: "Saved assignments" }).screenshot({
-      path: resolve(`.build-tmp/sprite-manager/assignments-${viewport.width}x${viewport.height}.png`),
-    });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.getByRole("group", { name: "Saved assignments" }).screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `assignments-${viewport.width}x${viewport.height}.png`),
+      });
     await page.getByLabel("Expression name", { exact: true }).fill("Unsaved name");
     await expect(removeFront).toBeDisabled();
     await page.getByRole("button", { name: "Discard changes" }).click();
@@ -409,7 +402,10 @@ try {
       "extra actions push settings down rather than covering them",
     );
     await page.locator(".vsm-more-menu").scrollIntoViewIfNeeded();
-    await page.screenshot({ path: resolve(`.build-tmp/sprite-manager/menu-${viewport.width}x${viewport.height}.png`) });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `menu-${viewport.width}x${viewport.height}.png`),
+      });
     await page.getByRole("button", { name: "Make default" }).click();
     await page.getByLabel("More artwork actions").click();
     await expect(page.getByRole("button", { name: "Make default" })).toBeDisabled();
@@ -449,10 +445,11 @@ try {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "Character library" })).toBeFocused();
     await page.getByRole("heading", { name: "Scene preview", exact: true }).scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: resolve(`.build-tmp/sprite-manager/${viewport.width}x${viewport.height}.png`),
-      fullPage: true,
-    });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${viewport.width}x${viewport.height}.png`),
+        fullPage: true,
+      });
     const actions = page.locator(".vsm-settings > .vsm-actions");
     await expect(actions).toHaveCount(1);
     await expect(page.locator(".vsm-savebar")).toHaveCount(0);
@@ -463,9 +460,10 @@ try {
     const afterScroll = await actions.boundingBox();
     assert.ok(afterScroll.y < beforeScroll.y - 20, "controls scroll away with settings");
     await actions.scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: resolve(`.build-tmp/sprite-manager/controls-${viewport.width}x${viewport.height}.png`),
-    });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `controls-${viewport.width}x${viewport.height}.png`),
+      });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
     assert.equal(overflow, false, "manager fits narrow screens");
     await page.getByRole("button", { name: "← Back to profile" }).click();

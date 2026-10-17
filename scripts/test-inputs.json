@@ -76,5 +76,30 @@
     "sha256": "a9a32ee4323f55293726109621c22f1725a9809067a0033d6d56139d4ef6e9ff",
     "inputs": ["packages/", "sources/", "scripts/"],
     "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-activation-owner.regression.mjs": {
+    "sha256": "10a441ec77c15aeb025212f4ca27c3499443dbbd50fc02995b017ea1275bba92",
+    "inputs": ["packages/villages/src/server/", "sources/"],
+    "note": "Fixed entry bundle replaces the application with an in-memory plugin; no repository loader escapes that server boundary."
+  },
+  "tests/villages-location-image.regression.ts": {
+    "sha256": "b2a74186da814c73da9c3b7417496fdfbfb60a7a238405aa7ef358e3b29ba167",
+    "inputs": ["packages/", "sources/"],
+    "note": "Recursive source audit reads all package source and Engine boundary metadata; imports remain independently inspected."
+  },
+  "tests/villages-remote-access.regression.ts": {
+    "sha256": "ab685ff4b609fb34f236e0c4f6b101b6230420f46b9940cb04dcaf26af1ec89f",
+    "inputs": ["packages/villages/src/client/shared/api.tsx", "sources/engine-public/privileged-access.json"],
+    "note": "TypeScript transpiles a fixed slice of the API source in memory; only the API and privileged-access declaration are read."
+  },
+  "tests/villages-spinoff.e2e.mjs": {
+    "sha256": "ecc01b37c0032adee5646e1ac8f8161ce44ca1b4828886d3ca8251689916a5db",
+    "inputs": ["packages/", "sources/"],
+    "note": "Literal browser harness bundles SpinoffPanel; fetch uses synthetic held browser routes, not repository inputs."
+  },
+  "tests/villages-town-map-image.regression.ts": {
+    "sha256": "c491e90afb9a12f526aa407e7a4ae4c75837a22d33d64fa81c6f0fc9f210bc3a",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Package source/builder audit includes an absent townmap asset assertion; full package prefix binds later additions as well as existing files."
   }
 }
