@@ -217,17 +217,15 @@ try {
   const status = page.getByRole("region", { name: "Scene errors" });
   await status.locator("summary").filter({ hasText: "memories update failed" }).click();
   await expect(status).toContainText("A citation is unavailable or was not witnessed by every affected resident");
-  await expect(
-    status.getByRole("button", { name: "Retry memories interpretation · may use model requests" }),
-  ).toBeVisible();
+  await expect(status.getByRole("button", { name: "Retry memories" })).toBeVisible();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: "artifacts/memory-cause-desktop.png" });
-  await status.getByRole("button", { name: "Replay saved work · no model request" }).click();
+  await status.getByRole("button", { name: "Replay" }).click();
   await expect.poll(() => replays).toBe(1);
   assert.equal(interpretations, 0);
-  await status.getByRole("button", { name: "Retry memories interpretation · may use model requests" }).click();
+  await status.getByRole("button", { name: "Retry memories" }).click();
   await expect.poll(() => interpretations).toBe(1);
   failedDomain = "projects";
   failed = true;
@@ -238,7 +236,7 @@ try {
   await page.screenshot({ path: "artifacts/project-recovery-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: "artifacts/project-recovery-desktop.png" });
-  await status.getByRole("button", { name: "Retry projects interpretation · may use model requests" }).click();
+  await status.getByRole("button", { name: "Retry projects" }).click();
   await expect.poll(() => interpretations).toBe(2);
   assert.deepEqual(interpretedDomains, ["memories", "projects"]);
   assert.deepEqual(errors, []);
