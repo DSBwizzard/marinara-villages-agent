@@ -36,6 +36,19 @@ const plan = {
 assert.deepEqual(planShards(plan), { linux: 3 });
 assert.deepEqual(planShards({ ...plan, platforms: { linux: { pending: specs.slice(0, 3) } } }), { linux: 1 });
 assert.deepEqual(shardAssignments([...specs].reverse(), 3), shardAssignments(specs, 3));
+const onlyPending = specs.slice(1, 5);
+assert.deepEqual(
+  shardAssignments(specs, 3, onlyPending),
+  shardAssignments(specs, 3, [...onlyPending].reverse()),
+  "Pending-only assignment is deterministic",
+);
+for (const spec of onlyPending)
+  assert.equal(
+    shardAssignments(specs, 3, onlyPending).get(spec.id),
+    shardAssignments(onlyPending, 3).get(spec.id),
+    "Reused checks must not consume estimated runner capacity",
+  );
+assert.deepEqual(planShards({ platforms: { linux: { pending: [] } } }), { linux: 1 });
 assert.equal(
   new Set([0, 1, 2].flatMap((index) => shardSpecs(specs, 3, index).map((spec) => spec.id))).size,
   specs.length,

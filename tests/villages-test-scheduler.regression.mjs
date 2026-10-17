@@ -39,4 +39,24 @@ assert.equal(results.at(-1).code, 1);
 assert.equal(results.at(-1).error, "synthetic spawn failure");
 assert.equal(new Set(seen).size, tests.length);
 await assert.rejects(scheduleTests(tests, { jobs: 0, run() {} }), /Invalid worker/);
+const ordered = [
+  { path: "short", group: "regression", parallelSafe: true },
+  { path: "tests/villages-venue-layout.e2e.mjs", group: "browser", parallelSafe: true },
+  { path: "barrier", group: "regression", parallelSafe: false },
+  { path: "tests/villages-sprite-manager.e2e.mjs", group: "browser", parallelSafe: true },
+];
+const starts = [];
+const orderedResults = await scheduleTests(ordered, {
+  jobs: 1,
+  browserJobs: 1,
+  run: async (test) => {
+    starts.push(test.path);
+    return { path: test.path, code: 0 };
+  },
+});
+assert.deepEqual(starts, [ordered[1].path, "short", "barrier", ordered[3].path]);
+assert.deepEqual(
+  orderedResults.map((row) => row.path),
+  ordered.map((row) => row.path),
+);
 console.log("Scheduler bounds, exclusive barriers, complete inventory, ordering and failures passed.");
