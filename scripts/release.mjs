@@ -37,7 +37,8 @@ export function releaseOptions(args) {
   if (!/^\d+\.\d+\.\d+$/.test(options.version ?? "") || !/^[a-f0-9]{40}$/.test(options.candidate ?? ""))
     throw Error("--version and the full --candidate commit are required");
   for (const name of ["staging-pr", "main-pr"])
-    if (!/^[1-9]\d*$/.test(options[name] ?? "")) throw Error("--" + name + " is required");
+    if ((name === "main-pr" || options[name] !== undefined) && !/^[1-9]\d*$/.test(options[name] ?? ""))
+      throw Error("--" + name + " must be a PR number");
   options.timeout = Number(options["timeout-minutes"] ?? 60) * 60000;
   if (!Number.isFinite(options.timeout) || options.timeout <= 0 || options.timeout > 24 * 60 * 60000)
     throw Error("Timeout must be between zero and 1440 minutes");
@@ -124,6 +125,16 @@ export async function runRelease(
         "--json",
         "number,headRefOid,headRefName,baseRefName,state,isDraft,statusCheckRollup,mergeCommit,url",
       );
+    const targets = options["staging-pr"] ? ["staging", "main"] : ["main"];
+    const checkStagingPromotion = (pr) => {
+      if (options["staging-pr"]) return;
+      assert.equal(pr.headRefName, "staging", "Direct promotion must use the staging branch");
+      assert.equal(
+        api("git/ref/heads/staging").object.sha,
+        options.candidate,
+        "Staging moved; freeze and validate the intended promotion again",
+      );
+    };
     const started = Date.now();
     let last;
     let prs;
@@ -131,7 +142,7 @@ export async function runRelease(
     let preparationRunId;
     const ensurePreparation = async (reason) => {
       if (preparationStarted) return;
-      const branch = prs[1].headRefName;
+      const branch = prs.at(-1).headRefName;
       assert.ok(branch, "Candidate branch missing");
       const head = api("git/ref/heads/" + encodeURIComponent(branch));
       assert.equal(head.object.sha, options.candidate, "Preparation branch moved");
@@ -145,11 +156,10 @@ export async function runRelease(
       status(active ? "Waiting for active candidate preparation" : "Candidate preparation started: " + reason);
     };
     while (true) {
-      prs = [readPr(options["staging-pr"]), readPr(options["main-pr"])];
-      const ready = prs.map((pr, index) => promotionStatus(pr, index === 0 ? "staging" : "main", options.candidate));
-      const current = ready
-        .map((value, index) => (index === 0 ? "staging" : "main") + ":" + (value ? "ready" : "waiting"))
-        .join(" ");
+      prs = targets.map((base) => readPr(options[base + "-pr"]));
+      checkStagingPromotion(prs.at(-1));
+      const ready = prs.map((pr, index) => promotionStatus(pr, targets[index], options.candidate));
+      const current = ready.map((value, index) => targets[index] + ":" + (value ? "ready" : "waiting")).join(" ");
       if (current !== last) {
         status(current);
         last = current;
@@ -173,8 +183,9 @@ export async function runRelease(
       });
     const runIds = [
       ...new Set(
-        prs[1].statusCheckRollup
-          .filter((check) => check.name === "package-parity" && check.conclusion === "SUCCESS")
+        prs
+          .at(-1)
+          .statusCheckRollup.filter((check) => check.name === "package-parity" && check.conclusion === "SUCCESS")
           .map((check) => check.detailsUrl?.match(/\/actions\/runs\/(\d+)/)?.[1])
           .filter(Boolean),
       ),
@@ -192,7 +203,7 @@ export async function runRelease(
     if (!prepared) {
       // Missing/expired schema-3 proof triggers candidate preparation, never relaxed publication.
       if (!github) {
-        const branch = prs[1].headRefName;
+        const branch = prs.at(-1).headRefName;
         assert.ok(branch, "Candidate branch missing");
         await ensurePreparation(failures.join("; ") || "No complete candidate manifest");
         const state = await save("preparing", { reason: failures.join("; ") || "No complete candidate manifest" });
@@ -249,13 +260,14 @@ export async function runRelease(
     assert.equal(current.digest, prepared.manifest.inputDigest, "Source changed before promotion");
     for (let index = 0; index < prs.length; index++) {
       const pr = readPr(String(prs[index].number));
-      assert.ok(promotionStatus(pr, index === 0 ? "staging" : "main", options.candidate));
+      checkStagingPromotion(pr);
+      assert.ok(promotionStatus(pr, targets[index], options.candidate));
       if (pr.state !== "MERGED") {
         assert.equal(pr.isDraft, false, "Mark the approved PR ready before merging");
         gh("pr", "merge", String(pr.number), "--repo", repository, "--merge", "--match-head-commit", options.candidate);
       }
       assert.equal(readPr(String(pr.number)).state, "MERGED");
-      await save(index === 0 ? "merged-staging" : "merged-main", { archiveSha256: build.sha256 });
+      await save("merged-" + targets[index], { archiveSha256: build.sha256 });
     }
     if (!options.publish) return save("merged", { archiveSha256: build.sha256 });
     const tagName = "v" + options.version;

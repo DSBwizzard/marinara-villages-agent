@@ -61,6 +61,7 @@ export async function releaseDriverFixture(root) {
   let waiting = false;
   let absent = false;
   let activePreparation = false;
+  let stagingSha = candidate;
   const run = {
     id: 5,
     run_attempt: 1,
@@ -117,7 +118,8 @@ export async function releaseDriverFixture(root) {
     if (args[0] === "workflow") return "";
     assert.equal(args[0], "api");
     const path = args[1].slice("repos/example/villages/".length);
-    if (path === "git/ref/heads/candidate") return send({ object: { sha: candidate } });
+    if (path === "git/ref/heads/candidate" || path === "git/ref/heads/staging")
+      return send({ object: { sha: path.endsWith("staging") ? stagingSha : candidate } });
     if (path.startsWith("actions/workflows/ci.yml/runs?head_sha="))
       return send({ workflow_runs: activePreparation ? [{ id: 6, head_sha: candidate, status: "in_progress" }] : [] });
     if (path === "actions/runs/4") return send({ ...run, id: 4 });
@@ -216,6 +218,30 @@ export async function releaseDriverFixture(root) {
     file: async () => bytes,
   };
   const deps = { root, execute, github, status: () => {} };
+  prs[0].state = "MERGED";
+  prs[1].headRefName = "staging";
+  const direct = args.filter((value, index) => value !== "--staging-pr" && args[index - 1] !== "--staging-pr");
+  assert.equal((await runRelease(releaseOptions(direct), deps)).stage, "validated");
+  stagingSha = "b".repeat(40);
+  await assert.rejects(runRelease(releaseOptions(direct), deps), /Staging moved/);
+  stagingSha = candidate;
+  const beforeMainOnly = commands.length;
+  assert.equal(
+    (await runRelease(releaseOptions([...direct, "--merge", "--acceptance", "acceptance.json"]), deps)).stage,
+    "merged",
+  );
+  assert.deepEqual(
+    commands
+      .slice(beforeMainOnly)
+      .filter((args) => args[0] === "gh" && args[1] === "pr" && args[2] === "merge")
+      .map((args) => args[3]),
+    ["11"],
+  );
+  prs[1].state = "OPEN";
+  prs[1].headRefName = "candidate";
+  await assert.rejects(runRelease(releaseOptions(direct), deps), /staging branch/);
+  prs[0].state = "OPEN";
+  commands.length = 0;
   waiting = true;
   assert.equal((await runRelease(releaseOptions(args), deps)).stage, "waiting");
   assert.ok(!commands.some((args) => args[1] === "merge"), "Status never merges");

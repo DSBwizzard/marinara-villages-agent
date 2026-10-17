@@ -120,3 +120,5 @@ A per-candidate operation lock rejects concurrent invocations. After an interrup
 ## Contribution boundary
 
 Follow [upstream-contribution.md](docs/upstream-contribution.md) for the official Marinara Agents engineering and submission expectations. Local source-only commits and upstream generated catalog commits are deliberately different workflows.
+
+For a normal staging-to-main promotion, open the main PR with head staging and run the maintained release command with --candidate <exact-staging-SHA> and --main-pr <number>, omitting --staging-pr. It verifies the live staging identity before promotion. A moved staging branch requires a newly frozen validated candidate. The older two-PR form remains available for an explicitly authorized frozen release batch; ordinary feature work should integrate into staging first. Merge/publish flags retain their authorization requirements.
