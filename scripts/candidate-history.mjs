@@ -38,11 +38,11 @@ export function candidateRunIds(environment, api) {
     const checks = api("commits/" + env.VILLAGES_CI_BASE + "/check-runs?per_page=100").check_runs;
     const gate = checks.find((check) => check.name === "package-parity" && check.conclusion === "success");
     const id = gate?.details_url?.match(/\/actions\/runs\/(\d+)/)?.[1];
+    const commit = api("git/commits/" + env.VILLAGES_CI_BASE);
     if (id) ids.push(id);
     else {
       // A protected merge can be usable before its push workflow completes.
       // Its PR head supplies discovery only; coverage still authenticates it.
-      const commit = api("git/commits/" + env.VILLAGES_CI_BASE);
       const parent = commit.parents?.length === 2 ? commit.parents[1].sha : null;
       if (/^[a-f0-9]{40}$/.test(parent ?? "")) {
         const parentChecks = api("commits/" + parent + "/check-runs?per_page=100").check_runs;
@@ -52,6 +52,17 @@ export function candidateRunIds(environment, api) {
         const parentId = parentGate?.details_url?.match(/\/actions\/runs\/(\d+)/)?.[1];
         if (parentId) ids.push(parentId);
       }
+    }
+    // A narrow staging receipt need not erase useful earlier Windows proof.
+    // Inspect one prior integrated base, with the same authentication and caps.
+    const previous = commit.parents?.length === 2 ? commit.parents[0].sha : null;
+    if (/^[a-f0-9]{40}$/.test(previous ?? "")) {
+      const previousChecks = api("commits/" + previous + "/check-runs?per_page=100").check_runs;
+      const previousGate = previousChecks.find(
+        (check) => check.name === "package-parity" && check.status === "completed" && check.conclusion === "success",
+      );
+      const previousId = previousGate?.details_url?.match(/\/actions\/runs\/(\d+)/)?.[1];
+      if (previousId) ids.push(previousId);
     }
   }
   if (!ids.length) {
