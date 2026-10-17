@@ -277,7 +277,13 @@ try {
     },
   });
   discovery.api = (path) => {
-    if (path.startsWith("actions/")) return { workflow_runs: [{ id: 14 }, { id: 12 }] };
+    if (path.startsWith("actions/"))
+      return {
+        workflow_runs: [
+          { id: 14, status: "in_progress" },
+          { id: 12, status: "completed", conclusion: "failure" },
+        ],
+      };
     return {
       check_runs: [
         {
@@ -297,6 +303,44 @@ try {
   };
   assert.deepEqual(await discovery.discover("policy"), [{ manifest: { integrated: true } }]);
   assert.deepEqual(attempted, ["11", "12", "13"], "Unavailable attempts must not hide the integrated baseline");
+  const queuedShadow = new GitHubEvidence({
+    root,
+    repository: "example/villages",
+    environment: { GITHUB_HEAD_REF: "candidate", GITHUB_RUN_ID: "20" },
+  });
+  queuedShadow.api = (path) =>
+    path.startsWith("actions/workflows")
+      ? {
+          workflow_runs: [
+            { id: 20, status: "in_progress" },
+            { id: 19, status: "completed", conclusion: "cancelled" },
+            { id: 18, status: "completed", conclusion: "failure" },
+            { id: 17, status: "completed", conclusion: "success" },
+          ],
+        }
+      : { check_runs: [] };
+  const recovered = [];
+  queuedShadow.coverage = async (id) => {
+    recovered.push(id);
+    return { manifest: { from: id } };
+  };
+  assert.deepEqual(await queuedShadow.discover("policy"), [{ manifest: { from: "18" } }, { manifest: { from: "17" } }]);
+  assert.deepEqual(recovered, ["18", "17"], "A cancelled queued correction cannot hide authenticated completed work");
+  const expired = [];
+  queuedShadow.coverage = async (id) => {
+    expired.push(id);
+    if (id === "18") throw Error("Expired earlier artifact");
+    return { manifest: { from: id } };
+  };
+  assert.deepEqual(
+    (await queuedShadow.discover("policy")).map((row) => row.manifest.from),
+    ["17", "19"],
+  );
+  assert.deepEqual(
+    expired,
+    ["18", "17", "19"],
+    "Unavailable completed attempts fall back within a bounded candidate window",
+  );
   console.log("Per-check invalidation, version reuse, provenance, toolchain and tamper rejection passed.");
 } finally {
   await rm(root, { recursive: true, force: true });
