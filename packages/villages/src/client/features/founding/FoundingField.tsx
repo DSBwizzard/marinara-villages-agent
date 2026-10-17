@@ -13,9 +13,43 @@ export function FoundingHelp({ label, children }: { label: string; children: Rea
     const dismissOutside = (event: MouseEvent) => {
       if (!event.composedPath().includes(node)) setOpen(false);
     };
-    // Native clicks distinguish completed taps from cancelled scrolling gestures.
+    // Some Chromium touch gestures complete without a compatibility click.
+    // Track a completed stationary touch, while cancelled/drifting scrolls keep help open.
+    let touch: { id: number; x: number; y: number } | null = null;
+    const down = (event: PointerEvent) => {
+      touch =
+        event.pointerType === "touch" && event.isPrimary
+          ? { id: event.pointerId, x: event.clientX, y: event.clientY }
+          : null;
+    };
+    const move = (event: PointerEvent) => {
+      if (touch?.id === event.pointerId && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10)
+        touch = null;
+    };
+    const cancel = () => {
+      touch = null;
+    };
+    const up = (event: PointerEvent) => {
+      if (
+        touch?.id === event.pointerId &&
+        Math.hypot(event.clientX - touch.x, event.clientY - touch.y) <= 10 &&
+        !event.composedPath().includes(node)
+      )
+        setOpen(false);
+      touch = null;
+    };
     document.addEventListener("click", dismissOutside, true);
-    return () => document.removeEventListener("click", dismissOutside, true);
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("pointercancel", cancel, true);
+    document.addEventListener("pointerup", up, true);
+    return () => {
+      document.removeEventListener("click", dismissOutside, true);
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointercancel", cancel, true);
+      document.removeEventListener("pointerup", up, true);
+    };
   }, [open]);
   return (
     <span

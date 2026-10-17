@@ -4,6 +4,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import AdmZip from "adm-zip";
 import { fingerprint, assertProofOrigin } from "./ci-checks.mjs";
+import { candidateRunIds } from "./candidate-history.mjs";
 
 export function assertManifestOrigin(manifest, run, commit, job, repository, policyDigest) {
   const provenance =
@@ -27,6 +28,7 @@ export function assertManifestOrigin(manifest, run, commit, job, repository, pol
     manifest.ready ? "success" : "failure",
   );
   assert.equal(manifest.inputsUnchanged, true);
+  assert.equal(manifest.validationProfile ?? "qualification", manifest.blueprint?.validationProfile ?? "qualification");
   assert.ok(manifest.platforms && typeof manifest.platforms === "object");
   for (const [platform, receipt] of Object.entries(manifest.platforms)) {
     assert.equal(receipt.environment.platform, platform);
@@ -34,6 +36,7 @@ export function assertManifestOrigin(manifest, run, commit, job, repository, pol
     assert.equal(receipt.inputDigest, manifest.inputDigest);
     assert.equal(receipt.sourceRevision, manifest.sourceRevision);
     assert.equal(receipt.inputsUnchanged, true);
+    assert.equal(receipt.validationProfile ?? "qualification", manifest.validationProfile ?? "qualification");
     assert.equal(String(receipt.producer.runId), String(run.id));
     assert.equal(receipt.producer.attempt, run.run_attempt);
     for (const proof of receipt.checks) assertProofOrigin(proof, receipt.environment);
@@ -159,48 +162,7 @@ export class GitHubEvidence {
     return { manifest, run, artifact };
   }
   async discover(policyDigest) {
-    const env = this.environment;
-    const ids = [];
-    // A merge push indexes the already tested PR head, rather than its old base tree.
-    if (/^[a-f0-9]{40}$/.test(env.VILLAGES_CI_HEAD ?? "")) {
-      let head = env.VILLAGES_CI_HEAD;
-      if (env.GITHUB_EVENT_NAME === "push") {
-        const commit = this.api("git/commits/" + head);
-        if (commit.parents?.length === 2) head = commit.parents[1].sha;
-      }
-      const checks = this.api("commits/" + head + "/check-runs?per_page=100").check_runs;
-      const gate = checks.find(
-        (check) =>
-          check.name === "package-parity" &&
-          check.status === "completed" &&
-          ["success", "failure"].includes(check.conclusion),
-      );
-      const id = gate?.details_url?.match(/\/actions\/runs\/(\d+)/)?.[1];
-      if (id && String(id) !== String(env.GITHUB_RUN_ID)) ids.push(id);
-    }
-    // One latest PR attempt (including failure) and one integrated base replace history scans.
-    if (env.GITHUB_HEAD_REF) {
-      const runs = this.api(
-        "actions/workflows/ci.yml/runs?event=pull_request&branch=" +
-          encodeURIComponent(env.GITHUB_HEAD_REF) +
-          "&per_page=2",
-      ).workflow_runs;
-      const previous = runs.find((run) => String(run.id) !== String(env.GITHUB_RUN_ID));
-      if (previous) ids.push(previous.id);
-    }
-    if (env.VILLAGES_CI_BASE && /^[a-f0-9]{40}$/.test(env.VILLAGES_CI_BASE)) {
-      const checks = this.api("commits/" + env.VILLAGES_CI_BASE + "/check-runs?per_page=100").check_runs;
-      const gate = checks.find((check) => check.name === "package-parity" && check.conclusion === "success");
-      const id = gate?.details_url?.match(/\/actions\/runs\/(\d+)/)?.[1];
-      if (id) ids.push(id);
-    }
-    if (!ids.length) {
-      const branch = env.GITHUB_BASE_REF || env.GITHUB_REF_NAME || "staging";
-      const run = this.api(
-        "actions/workflows/ci.yml/runs?branch=" + encodeURIComponent(branch) + "&status=success&per_page=1",
-      ).workflow_runs[0];
-      if (run && String(run.id) !== String(env.GITHUB_RUN_ID)) ids.push(run.id);
-    }
+    const ids = candidateRunIds(this.environment, (path) => this.api(path));
     const results = [];
     for (const id of [...new Set(ids)]) {
       try {

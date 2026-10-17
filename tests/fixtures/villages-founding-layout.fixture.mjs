@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
 import { chromium } from "@playwright/test";
@@ -10,10 +9,8 @@ import { wantsCase, runCase } from "../../scripts/test-cases.mjs";
 const art = new PNG({ width: 1536, height: 1024 });
 art.data.fill(90);
 const mapImage = "data:image/png;base64," + PNG.sync.write(art).toString("base64");
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const snapshot = {
   status: "ready",
@@ -251,7 +248,11 @@ export async function verifyFoundingLayout(group) {
             : "founding/layout/phone";
       if (!wantsCase(caseName)) continue;
       await runCase(caseName, async () => {
-        const context = await browser.newContext({ viewport: { width, height }, hasTouch: width < 600 });
+        const context = await browser.newContext({
+          viewport: { width, height },
+          hasTouch: width < 600,
+          isMobile: width < 600,
+        });
         const page = await context.newPage();
         const errors = [];
         page.on("pageerror", (error) => errors.push(error.message));
@@ -413,7 +414,7 @@ export async function verifyFoundingLayout(group) {
           route.fulfill({
             status: 200,
             contentType: "text/html",
-            body: `<style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:${chromeHeight}px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">☰</button></header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
+            body: `<meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:${chromeHeight}px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">☰</button></header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
           }),
         );
         await page.goto("http://villages.test/");
@@ -704,6 +705,35 @@ export async function verifyFoundingLayout(group) {
         await expect(outsideField).toBeFocused();
         await helpBackstory.click();
         const outsideHeading = root.getByRole("heading", { name: "Forging the Village", exact: true });
+        const touchTrace = [];
+        await page.exposeFunction("foundingTouchTrace", (event) => {
+          touchTrace.push(event);
+          if (touchTrace.length > 30) touchTrace.shift();
+        });
+        await page.evaluate(() => {
+          window.foundingTouchTraceController = new AbortController();
+          for (const type of [
+            "touchstart",
+            "touchend",
+            "touchcancel",
+            "pointerdown",
+            "pointerup",
+            "pointercancel",
+            "click",
+          ])
+            document.addEventListener(
+              type,
+              (event) =>
+                window.foundingTouchTrace({
+                  type,
+                  target: event.target?.tagName,
+                  label: event.target?.getAttribute?.("aria-label"),
+                  time: event.timeStamp,
+                  trusted: event.isTrusted,
+                }),
+              { capture: true, signal: window.foundingTouchTraceController.signal },
+            );
+        });
         if (width === 390 && height === 844) {
           const body = root;
           await body.evaluate((node) => {
@@ -723,10 +753,46 @@ export async function verifyFoundingLayout(group) {
           await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
           await expect(helpBackstory).toHaveAttribute("aria-expanded", "true");
           await touch.detach();
+          // Chromium suppresses taps while a touch scroll is coasting. Observe
+          // settlement before testing the next independent outside-tap action.
+          await body.evaluate(async (node) => {
+            let previous = node.scrollTop,
+              stable = 0;
+            for (let frame = 0; frame < 120; frame++) {
+              await new Promise((done) => requestAnimationFrame(done));
+              const current = node.scrollTop;
+              stable = Math.abs(current - previous) < 0.1 ? stable + 1 : 0;
+              if (stable >= 3) return;
+              previous = current;
+            }
+            throw Error("Touch scroll did not settle before outside-tap assertion");
+          });
         }
-        if (width < 600) await outsideHeading.tap();
+        if (width === 390 && height === 844) {
+          // Complete the independent native tap through the same gesture API as
+          // the raw touch-scroll probe, avoiding mixed protocol gesture state.
+          await outsideHeading.scrollIntoViewIfNeeded();
+          const box = await outsideHeading.boundingBox();
+          const gesture = await context.newCDPSession(page);
+          try {
+            await gesture.send("Input.synthesizeTapGesture", {
+              x: box.x + box.width / 2,
+              y: box.y + box.height / 2,
+              gestureSourceType: "touch",
+            });
+          } finally {
+            await gesture.detach();
+          }
+        } else if (width < 600) await outsideHeading.tap();
         else await outsideHeading.click();
-        await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+        try {
+          await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+        } catch (error) {
+          console.error("Founding native gesture events: " + JSON.stringify(touchTrace));
+          throw error;
+        } finally {
+          await page.evaluate(() => window.foundingTouchTraceController.abort());
+        }
         await helpBackstory.click();
         const roleHelp = root.getByRole("button", { name: "Help: Role Title", exact: true });
         await roleHelp.click();
