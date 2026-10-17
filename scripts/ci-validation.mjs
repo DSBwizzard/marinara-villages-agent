@@ -40,7 +40,7 @@ export async function executeValidation({
   const coverage = assembleChecks(specs, [...planned.reused, ...sameHead], { fresh });
   const proofs = new Map(coverage.reused.map((proof) => [proof.id, { ...proof, executed: false }]));
   const shardCount = workerCount(plan, platform);
-  const assigned = shardSpecs(specs, shardCount, shardIndex);
+  const assigned = shardSpecs(specs, shardCount, shardIndex, planned.pending);
   const assignedIds = new Set(assigned.map((spec) => spec.id));
   const pending = coverage.pending.filter((spec) => assignedIds.has(spec.id));
 
@@ -108,7 +108,11 @@ export async function executeValidation({
     for (const id of ["package", "reproducibility"]) {
       const spec = pending.find((spec) => spec.id === id);
       if (!spec) continue;
-      const code = await run([id === "package" ? "scripts/verify-package.mjs" : "scripts/verify-build.mjs"]);
+      const code = await run(
+        id === "package"
+          ? ["scripts/verify-package.mjs"]
+          : ["scripts/verify-build.mjs", "--prior-sha=" + build.sha256, "--prior-input=" + before.digest],
+      );
       record(spec, code);
       if (code !== 0) throw Error(id + " failed");
     }
@@ -204,6 +208,7 @@ async function main(args) {
         checkKeys(plan.blueprint, plan.platforms[platform].environment),
         workerCount(plan, platform),
         Number(args.find((arg) => arg.startsWith("--shard="))?.slice(8) ?? 0),
+        plan.platforms[platform].pending,
       ).map((spec) => spec.id),
     );
     const pending = plan.platforms[platform].pending.filter((spec) => assignedIds.has(spec.id));

@@ -33,7 +33,7 @@ export async function checkBlueprint(
   const paths = [...catalog.keys()];
   const common = paths.filter((path) => /^(package(?:-lock)?\.json$|tsconfig\.|\.npmrc$|\.gitattributes$)/.test(path));
   const harness = paths.filter((path) =>
-    /^scripts\/(?:run-tests|test-(?:scheduler|inventory|resources|cases)|checkout-operation|check-inputs|ci-checks)\.mjs$/.test(
+    /^scripts\/(?:run-tests|test-(?:scheduler|costs|inventory|resources|cases)|checkout-operation|check-inputs|ci-checks)\.mjs$/.test(
       path,
     ),
   );

@@ -1,3 +1,5 @@
+import { testCost } from "./test-costs.mjs";
+
 /** Keep local feedback conservative; allow one additional browser on capable CI hosts. */
 export function browserWorkerLimit({ jobs, ci, cpuCount, memoryBytes, freeMemoryBytes }) {
   const capable = ci && cpuCount >= 4 && memoryBytes >= 8 * 1024 ** 3 && freeMemoryBytes >= 4 * 1024 ** 3;
@@ -15,7 +17,22 @@ export async function scheduleTests(tests, { jobs = 4, browserJobs = 2, failFast
     browserJobs > jobs
   )
     throw new Error("Invalid worker limits");
-  const pending = tests.map((test, index) => ({ test, index }));
+  // Reorder only within safe segments. Unknown/exclusive suites retain their
+  // barrier position, and results retain the requested inventory order.
+  const pending = [];
+  let segment = [];
+  const flush = () => {
+    pending.push(...segment.sort((a, b) => testCost(b.test) - testCost(a.test) || a.index - b.index));
+    segment = [];
+  };
+  tests.forEach((test, index) => {
+    if (test.parallelSafe) segment.push({ test, index });
+    else {
+      flush();
+      pending.push({ test, index });
+    }
+  });
+  flush();
   const active = new Map();
   const results = new Array(tests.length);
   let failed = false;

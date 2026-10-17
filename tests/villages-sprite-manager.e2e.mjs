@@ -223,13 +223,8 @@ try {
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
     });
     async function openManager() {
-      if (viewport.width === 1917) {
-        await page.getByRole("button", { name: /^Villagers \(/ }).click();
-        await page.getByRole("button", { name: "Open Mara profile" }).click();
-      } else {
-        await expect.poll(() => page.evaluate(() => !!window.featureController?.snapshot)).toBe(true);
-        await page.evaluate(() => window.featureController.openPerson({ actorId: "mara", returnTo: "menu" }));
-      }
+      await expect.poll(() => page.evaluate(() => !!window.featureController?.snapshot)).toBe(true);
+      await page.evaluate(() => window.featureController.openPerson({ actorId: "mara", returnTo: "menu" }));
       await page
         .getByRole("button", { name: /Manage sprites ·/ })
         .first()
@@ -238,10 +233,7 @@ try {
       await expect(page.getByRole("heading", { name: "Mara’s Sprite Manager" })).toBeFocused();
     }
     await page.goto("http://villages.test/");
-    if (viewport.width === 1917) {
-      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await page.getByRole("button", { name: "More" }).click();
-    } else await page.addScriptTag({ content: residentsBundle });
+    await page.addScriptTag({ content: residentsBundle });
     await openManager();
     await expect(page.getByText(/No sprites assigned yet/)).toBeVisible();
     await page.getByLabel("Upload sprite images").setInputFiles([
