@@ -1,3 +1,9 @@
+/** Keep local feedback conservative; allow one additional browser on capable CI hosts. */
+export function browserWorkerLimit({ jobs, ci, cpuCount, memoryBytes, freeMemoryBytes }) {
+  const capable = ci && cpuCount >= 4 && memoryBytes >= 8 * 1024 ** 3 && freeMemoryBytes >= 4 * 1024 ** 3;
+  return Math.min(jobs, capable ? 3 : 2);
+}
+
 /** Resource ownership controls concurrency; unclassified suites retain an exclusive barrier. */
 export async function scheduleTests(tests, { jobs = 4, browserJobs = 2, failFast = false, run }) {
   if (
