@@ -477,7 +477,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </FoundingField>
                   <FoundingField
                     title="Place and world"
-                    help="Describe the place, surrounding world, and ongoing conditions. It can already be established."
                     error={
                       validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""
                     }
