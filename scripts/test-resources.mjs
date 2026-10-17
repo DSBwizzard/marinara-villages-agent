@@ -3,6 +3,18 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  // Reviewed: child-process-local mocks, read-only bundles and distinct suite outputs.
+  "tests/villages-attention.e2e.mjs",
+  "tests/villages-automatic-refresh.regression.ts",
+  "tests/villages-ci-profiles.regression.mjs",
+  "tests/villages-clock-recovery.e2e.mjs",
+  "tests/villages-doorway-continuity.e2e.mjs",
+  "tests/villages-founding-flow.regression.ts",
+  "tests/villages-location-image.regression.ts",
+  "tests/villages-reset-errors.e2e.mjs",
+  "tests/villages-scene-navigation.e2e.mjs",
+  "tests/villages-speech-presentation.e2e.mjs",
+  "tests/villages-town-map-image.regression.ts",
   // Reviewed: fixed domain inputs and process-local fake runtime/document stores;
   // these suites open no provider, port, shared output or real saved world.
   "tests/villages-attention-sources.regression.ts",

@@ -4,7 +4,8 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { testInventory } from "./test-inventory.mjs";
-import { scheduleTests } from "./test-scheduler.mjs";
+import { availableParallelism, totalmem, freemem } from "node:os";
+import { browserWorkerLimit, scheduleTests } from "./test-scheduler.mjs";
 import { caseMatches } from "./test-cases.mjs";
 
 const args = process.argv.slice(2);
@@ -24,7 +25,11 @@ if (reuse && process.env.CI === "true") throw Error("Local feedback receipts can
 if (args.includes("--fail-fast") && args.includes("--keep-going")) throw new Error("Choose fail-fast or keep-going");
 const failFast = args.includes("--fail-fast") || (!args.includes("--keep-going") && process.env.CI !== "true");
 const jobs = Number(args.find((arg) => arg.startsWith("--jobs="))?.slice(7) ?? 4);
-const browserJobs = Number(args.find((arg) => arg.startsWith("--browser-jobs="))?.slice(15) ?? Math.min(2, jobs));
+const host = { cpuCount: availableParallelism(), memoryBytes: totalmem(), freeMemoryBytes: freemem() };
+const browserJobs = Number(
+  args.find((arg) => arg.startsWith("--browser-jobs="))?.slice(15) ??
+    browserWorkerLimit({ jobs, ci: process.env.CI === "true", ...host }),
+);
 for (const arg of args) {
   if (
     arg !== group &&
@@ -106,6 +111,9 @@ try {
       !process.env.VILLAGES_VISUAL_OUTPUT
         ? await (await import("./feedback-proof.mjs")).feedbackProof(process.cwd(), tests)
         : null;
+    console.log(
+      `WORKERS total=${jobs} browsers=${browserJobs} cpus=${host.cpuCount} memoryGiB=${(host.memoryBytes / 1024 ** 3).toFixed(1)} freeGiB=${(host.freeMemoryBytes / 1024 ** 3).toFixed(1)}`,
+    );
     const progress = join(directory, "progress.jsonl");
     let firstFailure = false;
     const results = await scheduleTests(tests, {
@@ -253,6 +261,7 @@ try {
       group,
       jobs,
       browserJobs,
+      host: { ...host, freeMemoryAtEnd: freemem() },
       failFast,
       cases,
       durationMs: Date.now() - start,
