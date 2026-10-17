@@ -296,6 +296,7 @@ export function BrowseList({
       <label className={P + "-explore-search"}>
         <span className={P + "-sr-only"}>Search {label.toLowerCase()}</span>
         <input
+          autoComplete="off"
           type="search"
           value={search}
           onChange={(event) => onSearch(event.target.value)}

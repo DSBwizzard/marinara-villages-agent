@@ -1,5 +1,6 @@
+import { foundingFixture } from "./founding-browser.fixture.mjs";
+const foundingBundle = await foundingFixture();
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
 import { chromium } from "@playwright/test";
@@ -9,11 +10,11 @@ import { wantsCase, runCase } from "../../scripts/test-cases.mjs";
 
 const art = new PNG({ width: 1536, height: 1024 });
 art.data.fill(90);
-const mapImage = "data:image/png;base64," + PNG.sync.write(art).toString("base64");
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const generatedArt = new PNG({ width: 1536, height: 1024 });
+generatedArt.data.fill(110);
+const mapImage = "data:image/png;base64," + PNG.sync.write(generatedArt).toString("base64");
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const snapshot = {
   status: "ready",
@@ -56,7 +57,8 @@ const personas = [
 const lorebooks = Array.from({ length: 60 }, (_, index) => ({
   id: `lore-${index + 1}`,
   name: `Lorebook ${index + 1}`,
-  enabled: true,
+  enabled: index !== 1,
+  hiddenFromLibrary: index === 2,
 }));
 const personaPreview = {
   id: "ada",
@@ -183,11 +185,11 @@ createRoot(document.getElementById('root')).render(<Harness/>);
       .getByRole("tab", { name: id.startsWith("private") ? "Private Space" : "Common Space", exact: true })
       .click();
     await selector.selectOption(id);
-    await expect(page.getByLabel("Zone name", { exact: true })).toHaveCount(1);
-    await expect(page.getByLabel("Zone name", { exact: true })).toHaveValue(id);
-    await page.getByLabel("Zone name", { exact: true }).fill("Named " + id);
-    await page.getByLabel("Zone appearance", { exact: true }).fill("Described " + id);
-    await page.getByLabel("Zone used for", { exact: true }).fill("Edited " + id);
+    await expect(page.getByLabel("Zone Name", { exact: true })).toHaveCount(1);
+    await expect(page.getByLabel("Zone Name", { exact: true })).toHaveValue(id);
+    await page.getByLabel("Zone Name", { exact: true }).fill("Named " + id);
+    await page.getByLabel("Zone Appearance", { exact: true }).fill("Described " + id);
+    await page.getByLabel("Zone Used For", { exact: true }).fill("Edited " + id);
   }
   await page.getByRole("tab", { name: "Common Space", exact: true }).click();
   await selector.selectOption("common-a");
@@ -197,7 +199,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
   await expect(selector).toHaveValue("private-a");
   await page.getByRole("button", { name: "Review second Private" }).evaluate((button) => button.click());
   await expect(selector).toHaveValue("private-b");
-  await expect(page.getByLabel("Zone used for", { exact: true })).toBeFocused();
+  await expect(page.getByLabel("Zone Used For", { exact: true })).toBeFocused();
   const saved = await page.evaluate(() => window.savedVenue);
   assert.equal(saved.name, "Saved residence", "space header edits preserve Venue name");
   assert.deepEqual(
@@ -214,7 +216,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
   );
   await page.getByRole("button", { name: "Remove Zone", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Exterior", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Exterior description", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Exterior Description", { exact: true })).toBeVisible();
   await context.close();
   console.log(
     "Existing-world inspector: multiple saved Common/Private IDs, independent edits and exact Review focus (isolated React fixture).",
@@ -250,7 +252,11 @@ export async function verifyFoundingLayout(group) {
             : "founding/layout/phone";
       if (!wantsCase(caseName)) continue;
       await runCase(caseName, async () => {
-        const context = await browser.newContext({ viewport: { width, height }, hasTouch: width < 600 });
+        const context = await browser.newContext({
+          viewport: { width, height },
+          hasTouch: width < 600,
+          isMobile: width < 600,
+        });
         const page = await context.newPage();
         const errors = [];
         page.on("pageerror", (error) => errors.push(error.message));
@@ -412,12 +418,12 @@ export async function verifyFoundingLayout(group) {
           route.fulfill({
             status: 200,
             contentType: "text/html",
-            body: `<style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:${chromeHeight}px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">☰</button></header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
+            body: `<meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:${chromeHeight}px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">☰</button></header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
           }),
         );
         await page.goto("http://villages.test/");
         if (width === 390 && height === 844) await page.clock.install();
-        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await page.addScriptTag({ content: foundingBundle });
         let root = page.locator(".villages-forging-v2");
         const forward = (name) => root.getByRole("button", { name, exact: true });
         const bounds = async () => {
@@ -452,46 +458,31 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByLabel("Narrative direction", { exact: true })).toHaveCount(0);
         await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
         await expect(root.getByText("Starting circumstance examples")).toHaveCount(0);
-        const circumstance = root.getByLabel("Starting circumstances", { exact: true });
+        const circumstance = root.getByLabel("Starting Scenario", { exact: true });
         await expect(circumstance).toHaveValue("");
-        await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("");
-        if (width === 390 && height === 844) {
-          await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
-          const place = root.getByLabel("Place and world", { exact: true });
-          const first = await circumstance.getAttribute("placeholder");
-          const firstPlace = await place.getAttribute("placeholder");
-          const placeHints = new Set([firstPlace]);
-          const circumstanceHints = new Set([first]);
-          assert.match(first, /\bI\b/, "Circumstance hints use first person");
-          for (let tick = 1; tick <= 4; tick++) {
-            await page.clock.fastForward(4000);
-            const circumstanceHint = await circumstance.getAttribute("placeholder");
-            assert.match(circumstanceHint, /\bI\b/, "Circumstance hints use first person");
-            if (tick < 4) {
-              assert.ok(!circumstanceHints.has(circumstanceHint), "Circumstances cycle through four distinct hints");
-              circumstanceHints.add(circumstanceHint);
-            } else assert.equal(circumstanceHint, first, "Circumstances cycle back after four hints");
-            const hint = await place.getAttribute("placeholder");
-            if (tick < 4) {
-              assert.ok(!placeHints.has(hint), "Place cycles through four distinct hints");
-              placeHints.add(hint);
-            } else assert.equal(hint, firstPlace, "Place cycles back after four hints");
-          }
-          await expect(circumstance).toHaveValue("");
-          await expect(place).toHaveValue("");
-          assert.equal(suggestionCalls, 0);
-          assert.equal(imageCalls, 0);
-          await page.clock.resume();
-        }
+        assert.equal(await circumstance.evaluate((node) => getComputedStyle(node).resize), "none");
+        await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("");
+        await expect(root.getByLabel("Village Name", { exact: true })).toHaveAttribute(
+          "placeholder",
+          "Crystalwood Heights",
+        );
+        await expect(root.getByLabel("Setting", { exact: true })).toHaveAttribute(
+          "placeholder",
+          "A seaside resort on a sheltered coast in a present-day world without magic.",
+        );
+        await expect(circumstance).toHaveAttribute(
+          "placeholder",
+          "The resort is preparing for its annual festival, but visitors are scarce and several buildings need repairs.",
+        );
         await forward("Continue to People").click();
-        const nameField = root.getByLabel("Village name", { exact: true });
+        const nameField = root.getByLabel("Village Name", { exact: true });
         await expect(nameField).toBeFocused();
         await expect(nameField).toHaveAttribute("aria-invalid", "true");
         await expect(nameField.locator(".. ").getByRole("alert")).toHaveText("Give the village a name.");
-        await expect(root.getByLabel("Place and world", { exact: true }).locator("..").getByRole("alert")).toHaveText(
-          "Describe the place and world.",
+        await expect(root.getByLabel("Setting", { exact: true }).locator("..").getByRole("alert")).toHaveText(
+          "Describe the setting.",
         );
-        await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe the starting circumstances.");
+        await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe the starting scenario.");
         await nameField.fill("Willowbrook");
         await page.evaluate(
           () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
@@ -499,33 +490,137 @@ export async function verifyFoundingLayout(group) {
         await expect(nameField).toBeFocused();
         await expect(circumstance.locator("..").getByRole("alert")).toBeVisible();
         await forward("Continue to People").click();
-        await expect(root.getByLabel("Place and world", { exact: true })).toBeFocused();
-        await expect(root.getByRole("button", { name: "Help: Village name", exact: true })).toHaveCount(0);
-        const panelsHeight = (await root.locator(".villages-place-panels").boundingBox()).height;
-        await expect(root.getByRole("button", { name: "Help: Place and world", exact: true })).toHaveCount(0);
+        await expect(root.getByLabel("Setting", { exact: true })).toBeFocused();
+        await expect(root.getByRole("button", { name: "Help: Village Name", exact: true })).toHaveCount(0);
+
         await expect(root.getByRole("note").filter({ hasText: "surrounding world" })).toHaveCount(0);
         await bounds();
         await capture("place-fields");
-        for (const label of ["Starting circumstances"]) {
-          const otherHelp = root.getByRole("button", { name: "Help: " + label, exact: true });
-          await otherHelp.click();
-          await expect(otherHelp).toHaveAttribute("aria-expanded", "true");
-          if (label === "Starting circumstances")
-            await expect(root.getByRole("note")).toHaveText(
-              "Describe the circumstances when you first start playing here. Everyday life, an ongoing situation, or a recent change are all fine.",
-            );
-          assert.equal(
-            (await root.locator(".villages-place-panels").boundingBox()).height,
-            panelsHeight,
-            label + " help floats without expanding panels",
-          );
+        for (const [label, text] of [
+          ["Village Timezone", "Villages runs on real-time. Select the timezone you wish for Villages' clock to use."],
+          [
+            "Setting",
+            "A Village is wherever your community lives - a town, spaceship, dumpster, shopping mall, or undeveloped land. Describe its permanent details and critical facts about the wider world, time period, and important world-building rules.",
+          ],
+          [
+            "Starting Scenario",
+            "Describe life in the Village when play begins, including any ongoing events or problems. These conditions can change through play.",
+          ],
+        ]) {
+          const help = root.getByRole("button", { name: "Help: " + label, exact: true });
+          const labelBox = await help.locator("..").locator("..").locator("label").boundingBox();
+          const helpBox = await help.boundingBox();
+          assert.ok(Math.abs(helpBox.x - labelBox.x - labelBox.width) < 8, label + " help follows its label");
+          await help.click();
+          await expect(help).toHaveAttribute("aria-expanded", "true");
+          await expect(root.getByRole("note")).toHaveText(text);
           await bounds();
-          await capture(label === "Map" ? "map-help" : "situation-help");
-          await otherHelp.press("Escape");
-          await expect(otherHelp).toBeFocused();
+          await capture(label === "Setting" ? "setting-help" : "scenario-help");
+          await help.press("Escape");
+          await expect(help).toBeFocused();
+          await expect(root.getByRole("note")).toHaveCount(0);
         }
+        const loreCard = root.getByRole("region", { name: "Village Lorebooks", exact: true });
+        await expect(loreCard.getByRole("heading", { name: "Village Lorebooks", exact: true })).toHaveCount(1);
+        await expect(loreCard.locator("details, summary")).toHaveCount(0);
+        const loreHelp = loreCard.getByRole("button", { name: "Help: Village Lorebooks", exact: true });
+        const loreLabelBox = await loreCard.getByRole("heading").boundingBox();
+        const loreHelpBox = await loreHelp.boundingBox();
+        assert.ok(
+          Math.abs(loreHelpBox.x - loreLabelBox.x - loreLabelBox.width) < 8,
+          "Lorebook help follows its top-level title",
+        );
+        await loreHelp.click();
+        await expect(loreCard.getByRole("note")).toHaveText(
+          "Selected lorebooks enrich your Village with information for places, stories, village life and image generation.",
+        );
+        await loreHelp.press("Escape");
+        const loreBudget = root.getByLabel("Lorebook Token Budget", { exact: true });
+        await expect(loreBudget).toHaveValue("1600");
+        await expect(loreBudget).toHaveAttribute("autocomplete", "off");
+        await expect(root.getByLabel("Village Name", { exact: true })).toHaveAttribute("autocomplete", "off");
+        await expect(loreBudget).toHaveAttribute("type", "text");
+        await expect(loreBudget).toHaveAttribute("inputmode", "numeric");
+        await loreBudget.fill("800");
+        await expect(loreBudget).toHaveValue("800");
+        await loreBudget.fill("");
+        await expect(loreBudget).toHaveValue("");
+        await expect(loreBudget).toHaveAttribute("placeholder", "1600");
+        const budgetHelp = root.getByRole("button", { name: "Help: Lorebook Token Budget", exact: true });
+        await budgetHelp.click();
+        await expect(root.getByRole("note")).toContainText(
+          "Maximum tokens lorebooks can use in any lorebook-enabled prompt.",
+        );
+        await budgetHelp.press("Escape");
+        const chooseLore = loreCard.getByRole("button", { name: "Choose Village Lorebooks", exact: true });
+        await chooseLore.click();
+        const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
+        const loreSearch = loreDialog.getByRole("searchbox", { name: "Search Lorebooks", exact: true });
+        await expect(loreSearch).toBeFocused();
+        await loreSearch.fill("Lorebook 60");
+        await loreDialog.getByRole("checkbox", { name: "Lorebook 60", exact: true }).check();
+        await loreDialog.getByRole("button", { name: "Close Choose Lorebooks", exact: true }).click();
+        await expect(chooseLore).toBeFocused();
+        await expect(loreCard.getByRole("button", { name: "Remove Lorebook 60", exact: true })).toHaveCount(0);
+        await chooseLore.click();
+        await loreSearch.fill("Lorebook 60");
+        await expect(loreDialog.getByRole("checkbox", { name: "Lorebook 60", exact: true })).not.toBeChecked();
+        await loreDialog.getByRole("checkbox", { name: "Lorebook 60", exact: true }).check();
+        await capture("lorebook-picker");
+        await loreDialog.getByRole("button", { name: "Done", exact: true }).click();
+        const editLore = loreCard.getByRole("button", { name: "Choose Village Lorebooks", exact: true });
+        await expect(editLore).toBeFocused();
+        await expect(loreCard.getByText("Lorebook 60", { exact: true })).toBeVisible();
+        await loreBudget.fill("0");
+        await expect(loreBudget).not.toHaveAttribute("aria-invalid", "true");
+        await expect(loreBudget.locator("..").getByRole("alert")).toHaveCount(0);
+        await loreBudget.fill("");
+        await expect(loreBudget).toHaveValue("");
+        await expect(loreBudget).not.toHaveAttribute("aria-invalid", "true");
+        if (process.env.VILLAGES_SCREENSHOT_DIR) {
+          await loreCard.locator("..").screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `lorebook-card-${width}x${height}-${fontSize}.png`),
+          });
+        }
+        await editLore.click();
+        await expect(loreDialog.getByRole("checkbox", { name: "Lorebook 60", exact: true })).toHaveCount(0);
+        await loreSearch.fill("Lorebook 60");
+        await expect(loreDialog.getByRole("checkbox", { name: "Lorebook 60", exact: true })).toBeChecked();
+        await loreDialog.getByRole("checkbox", { name: "Lorebook 60", exact: true }).uncheck();
+        await loreSearch.press("Escape");
+        await expect(editLore).toBeFocused();
+        await expect(loreCard.getByText("Lorebook 60", { exact: true })).toBeVisible();
+        await editLore.click();
+        await loreSearch.fill("Lorebook 60");
+        await expect(loreDialog.getByRole("checkbox", { name: "Lorebook 60", exact: true })).toBeChecked();
+        await loreDialog.getByRole("checkbox", { name: "Lorebook 60", exact: true }).uncheck();
+        await loreDialog.getByRole("button", { name: "Done", exact: true }).click();
+        await expect(chooseLore).toBeFocused();
+        await expect(loreCard.getByRole("button", { name: "Remove Lorebook 60", exact: true })).toHaveCount(0);
+        await expect(chooseLore).toBeVisible();
+        if (width === 1366) {
+          await chooseLore.click();
+          await expect(loreDialog.getByRole("checkbox", { name: /^Lorebook 2\b/u })).toBeDisabled();
+          await expect(loreDialog.getByRole("checkbox", { name: "Lorebook 3", exact: true })).toHaveCount(0);
+          for (let number = 4; number <= 27; number++) {
+            await loreDialog.getByRole("checkbox", { name: "Lorebook " + number, exact: true }).check();
+          }
+          await expect(loreDialog.getByText("24 / 24", { exact: true })).toBeVisible();
+          await expect(loreDialog.getByRole("checkbox", { name: "Lorebook 28", exact: true })).toBeDisabled();
+          await loreDialog.getByRole("checkbox", { name: "Lorebook 4", exact: true }).uncheck();
+          await expect(loreDialog.getByRole("checkbox", { name: "Lorebook 28", exact: true })).toBeEnabled();
+          await loreDialog.getByRole("button", { name: "Done", exact: true }).click();
+          while (await loreCard.getByRole("button", { name: /^Remove / }).count()) {
+            await loreCard
+              .getByRole("button", { name: /^Remove / })
+              .first()
+              .click();
+          }
+        }
+        assert.equal(imageCalls, 0, "Lorebook selection does not generate images");
+        await bounds();
         await root
-          .getByLabel("Place and world", { exact: true })
+          .getByLabel("Setting", { exact: true })
           .fill(
             "A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.",
           );
@@ -543,7 +638,7 @@ export async function verifyFoundingLayout(group) {
             hint,
             "authored text stops placeholder rotation",
           );
-          const place = root.getByLabel("Place and world", { exact: true });
+          const place = root.getByLabel("Setting", { exact: true });
           const placeHint = await place.getAttribute("placeholder");
           await page.clock.fastForward(4000);
           await expect(place).toHaveValue(
@@ -562,10 +657,10 @@ export async function verifyFoundingLayout(group) {
         await personaDialog.getByPlaceholder("Search Personas").fill("patient");
         await personaDialog.getByRole("button").filter({ hasText: "Ada" }).click();
         await expect(root.getByText("View Persona details", { exact: true })).toHaveCount(0);
-        await root.getByLabel("Role title", { exact: true }).fill(" ");
+        await root.getByLabel("Role Title", { exact: true }).fill(" ");
         await forward("Continue to Map").click();
         await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toContainText("title");
-        await root.getByLabel("Role title", { exact: true }).fill("Harbor Patron");
+        await root.getByLabel("Role Title", { exact: true }).fill("Harbor Patron");
         await expect(root.getByLabel("Why villagers turn to you", { exact: true })).toHaveCount(0);
         const selectResidents = async (names) => {
           await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
@@ -608,12 +703,41 @@ export async function verifyFoundingLayout(group) {
         await helpBackstory.click();
         await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
         await helpBackstory.click();
-        const outsideField = root.getByLabel("Role title", { exact: true });
+        const outsideField = root.getByLabel("Role Title", { exact: true });
         await outsideField.click();
         await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
         await expect(outsideField).toBeFocused();
         await helpBackstory.click();
         const outsideHeading = root.getByRole("heading", { name: "Forging the Village", exact: true });
+        const touchTrace = [];
+        await page.exposeFunction("foundingTouchTrace", (event) => {
+          touchTrace.push(event);
+          if (touchTrace.length > 30) touchTrace.shift();
+        });
+        await page.evaluate(() => {
+          window.foundingTouchTraceController = new AbortController();
+          for (const type of [
+            "touchstart",
+            "touchend",
+            "touchcancel",
+            "pointerdown",
+            "pointerup",
+            "pointercancel",
+            "click",
+          ])
+            document.addEventListener(
+              type,
+              (event) =>
+                window.foundingTouchTrace({
+                  type,
+                  target: event.target?.tagName,
+                  label: event.target?.getAttribute?.("aria-label"),
+                  time: event.timeStamp,
+                  trusted: event.isTrusted,
+                }),
+              { capture: true, signal: window.foundingTouchTraceController.signal },
+            );
+        });
         if (width === 390 && height === 844) {
           const body = root;
           await body.evaluate((node) => {
@@ -633,12 +757,48 @@ export async function verifyFoundingLayout(group) {
           await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
           await expect(helpBackstory).toHaveAttribute("aria-expanded", "true");
           await touch.detach();
+          // Chromium suppresses taps while a touch scroll is coasting. Observe
+          // settlement before testing the next independent outside-tap action.
+          await body.evaluate(async (node) => {
+            let previous = node.scrollTop,
+              stable = 0;
+            for (let frame = 0; frame < 120; frame++) {
+              await new Promise((done) => requestAnimationFrame(done));
+              const current = node.scrollTop;
+              stable = Math.abs(current - previous) < 0.1 ? stable + 1 : 0;
+              if (stable >= 3) return;
+              previous = current;
+            }
+            throw Error("Touch scroll did not settle before outside-tap assertion");
+          });
         }
-        if (width < 600) await outsideHeading.tap();
+        if (width === 390 && height === 844) {
+          // Complete the independent native tap through the same gesture API as
+          // the raw touch-scroll probe, avoiding mixed protocol gesture state.
+          await outsideHeading.scrollIntoViewIfNeeded();
+          const box = await outsideHeading.boundingBox();
+          const gesture = await context.newCDPSession(page);
+          try {
+            await gesture.send("Input.synthesizeTapGesture", {
+              x: box.x + box.width / 2,
+              y: box.y + box.height / 2,
+              gestureSourceType: "touch",
+            });
+          } finally {
+            await gesture.detach();
+          }
+        } else if (width < 600) await outsideHeading.tap();
         else await outsideHeading.click();
-        await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+        try {
+          await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+        } catch (error) {
+          console.error("Founding native gesture events: " + JSON.stringify(touchTrace));
+          throw error;
+        } finally {
+          await page.evaluate(() => window.foundingTouchTraceController.abort());
+        }
         await helpBackstory.click();
-        const roleHelp = root.getByRole("button", { name: "Help: Role title", exact: true });
+        const roleHelp = root.getByRole("button", { name: "Help: Role Title", exact: true });
         await roleHelp.click();
         await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
         await expect(roleHelp).toHaveAttribute("aria-expanded", "true");
@@ -647,11 +807,11 @@ export async function verifyFoundingLayout(group) {
         await choice.selectOption("village");
         const editBackstory = finnCard.getByRole("button", { name: "Edit Finn backstory", exact: true });
         const backstoryEditor = root.getByRole("dialog", { name: "Finn’s backstory", exact: true });
-        const past = backstoryEditor.getByLabel("Backstory for this village", { exact: true });
+        const past = backstoryEditor.getByLabel("Backstory for This Village", { exact: true });
         const missingBackstoryNotice = finnCard.getByRole("alert");
         await expect(missingBackstoryNotice).toHaveCount(0);
         await expect(choice).not.toHaveAttribute("aria-invalid", "true");
-        const roleTitle = root.getByLabel("Role title", { exact: true });
+        const roleTitle = root.getByLabel("Role Title", { exact: true });
         await roleTitle.fill(" ");
         await forward("Continue to Map").click();
         await expect(roleTitle).toHaveAttribute("aria-invalid", "true");
@@ -793,7 +953,7 @@ export async function verifyFoundingLayout(group) {
             db.close();
           });
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume founding", exact: true }).click();
           await expect(choice).toHaveValue("adapt");
           await forward("Continue to Map").click();
@@ -819,7 +979,7 @@ export async function verifyFoundingLayout(group) {
             .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
           ["Place", "People", "Map", "Venues", "Review"],
         );
-        await expect(root.getByLabel("Village name", { exact: true })).toHaveCount(0);
+        await expect(root.getByLabel("Village Name", { exact: true })).toHaveCount(0);
         const mapDialog = root.getByRole("region", { name: "Map artwork", exact: true });
         await expect(mapDialog).toBeVisible();
         const stylePicker = mapDialog.getByLabel("Scenery style preset", { exact: true });
@@ -830,7 +990,7 @@ export async function verifyFoundingLayout(group) {
         await stylePicker.selectOption("engine-paint");
         await expect(stylePicker).toHaveValue("engine-paint");
         await expect(mapDialog.getByRole("button", { name: "Help: Map", exact: true })).toHaveCount(0);
-        for (const label of ["Map details"]) {
+        for (const label of ["Map Details"]) {
           const mapHelp = mapDialog.getByRole("button", { name: "Help: " + label, exact: true });
           const panelHeight = (await mapDialog.boundingBox()).height;
           await mapHelp.click();
@@ -876,8 +1036,8 @@ export async function verifyFoundingLayout(group) {
         await bounds();
         await capture("map-dialog");
         await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
-        await expect(mapDialog.getByText("Based on your Place and world description.", { exact: true })).toHaveCount(0);
-        const mapDetails = mapDialog.getByLabel("Map details", { exact: true });
+        await expect(mapDialog.getByText("Based on your Setting description.", { exact: true })).toHaveCount(0);
+        const mapDetails = mapDialog.getByLabel("Map Details", { exact: true });
         await expect(mapDetails).toHaveValue("");
         const mapHints = [
           "An inn beside the river, with homes around a central square.",
@@ -908,14 +1068,14 @@ export async function verifyFoundingLayout(group) {
           await mapDetails.fill("");
           await page.clock.resume();
         }
-        await mapDialog.getByRole("button", { name: "Help: Map details", exact: true }).click();
+        await mapDialog.getByRole("button", { name: "Help: Map Details", exact: true }).click();
         await expect(mapDialog.getByRole("note")).toHaveText(
           "Describe what you want shown, arranged, or left out of the artwork.",
         );
         await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
         await expect(mapDialog.getByRole("note")).toHaveCount(0);
         await capture("map-details");
-        const customStyle = mapDialog.getByLabel("Scenery style description", { exact: true });
+        const customStyle = mapDialog.getByLabel("Scenery Style Description", { exact: true });
         await expect(customStyle).toHaveCount(0);
         await stylePicker.selectOption("@custom");
         await expect(customStyle).toBeVisible();
@@ -938,7 +1098,7 @@ export async function verifyFoundingLayout(group) {
         await expect(customStyle).toHaveCount(0);
         assert.equal(mapCalls, 0, "Changing custom style visibility makes no generation requests");
         await mapDialog.getByText("More options", { exact: true }).click();
-        await expect(mapDialog.getByText("Things to avoid", { exact: true })).toBeVisible();
+        await expect(mapDialog.getByText("Things to Avoid", { exact: true })).toBeVisible();
         for (const name of ["Roads and paths", "Structures", "Water"]) {
           await expect(mapDialog.getByLabel(name, { exact: true })).toHaveCount(0);
         }
@@ -981,7 +1141,7 @@ export async function verifyFoundingLayout(group) {
         await assertMapFooter();
         assert.equal(mapCalls, 0, "browsing map choices never generates artwork");
         await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
-        await mapDialog.getByLabel("Map details", { exact: true }).fill("Keep this authored map detail.");
+        await mapDialog.getByLabel("Map Details", { exact: true }).fill("Keep this authored map detail.");
         await forward("Save & exit").click();
         await expect(root.getByText(/Resume: Map/)).toBeVisible();
         if (width === 1366) {
@@ -1010,11 +1170,11 @@ export async function verifyFoundingLayout(group) {
           });
         }
         await page.reload();
-        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await page.addScriptTag({ content: foundingBundle });
         await expect(root.getByText(/Resume: Map/)).toBeVisible();
         await root.getByRole("button", { name: "Resume founding", exact: true }).click();
         await expect(root).toHaveAttribute("data-step", "2");
-        await expect(mapDialog.getByLabel("Map details", { exact: true })).toHaveValue(
+        await expect(mapDialog.getByLabel("Map Details", { exact: true })).toHaveValue(
           "Keep this authored map detail.",
         );
         await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
@@ -1066,7 +1226,7 @@ export async function verifyFoundingLayout(group) {
         else await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
         await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
         await forward("Back").click();
-        await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook");
+        await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Willowbrook");
         await forward("Continue to People").click();
         await forward("Continue to Map").click();
         await forward("Continue to Venues").click();
@@ -1109,8 +1269,8 @@ export async function verifyFoundingLayout(group) {
         await expect(root.locator("[data-venue-id]")).toHaveCount(homeCount + 2);
         await expect(forward("Review village")).toBeDisabled();
         await root.locator("[data-venue-id]").first().click();
-        await expect(inspector.getByLabel("Venue name", { exact: true })).toBeVisible();
-        await expect(inspector.getByLabel("Exterior description", { exact: true })).toBeVisible();
+        await expect(inspector.getByLabel("Venue Name", { exact: true })).toBeVisible();
+        await expect(inspector.getByLabel("Exterior Description", { exact: true })).toBeVisible();
         await expect(root.getByRole("dialog", { name: "Venue editor", exact: true })).toHaveCount(1);
         const initialActions = await inspector.locator(".villages-workspace-image-actions > button").all();
         assert.equal(initialActions.length, 3);
@@ -1180,7 +1340,7 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("dialog", { name: "Venue editor" })).toBeVisible();
         if (width === 1366) {
           // Resume a legacy modal checkpoint using current authored fields and retained prohibited Zone data.
-          await inspector.getByLabel("Venue name", { exact: true }).fill("Legacy current edit");
+          await inspector.getByLabel("Venue Name", { exact: true }).fill("Legacy current edit");
           await mapView();
           await forward("Save & exit").click();
           await page.evaluate(async () => {
@@ -1221,10 +1381,10 @@ export async function verifyFoundingLayout(group) {
             db.close();
           });
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
           await expect(root.getByText(/generation request was interrupted and may have been billed/)).toHaveCount(0);
-          await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("Legacy current edit");
+          await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue("Legacy current edit");
           await open(homeCount + 1);
           await zone("Private");
           await expect(inspector.getByText(/previous draft and images are kept/)).toBeVisible();
@@ -1235,7 +1395,7 @@ export async function verifyFoundingLayout(group) {
         await expect(inspector.getByRole("region", { name: "Details needed before Review", exact: true })).toHaveCount(
           0,
         );
-        await inspector.getByLabel("Venue name", { exact: true }).fill("Autosaved name");
+        await inspector.getByLabel("Venue Name", { exact: true }).fill("Autosaved name");
         await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
         if (narrow) {
           const returnButton = inspector.getByRole("button", { name: "Done", exact: true });
@@ -1248,22 +1408,22 @@ export async function verifyFoundingLayout(group) {
           await page.keyboard.press("Escape");
           await expect(pins.first()).toBeFocused();
           await open();
-          await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("Autosaved name");
+          await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue("Autosaved name");
         }
-        await inspector.getByLabel("Venue name", { exact: true }).fill("My observatory quarters");
-        await inspector.getByLabel("Physical form", { exact: true }).fill("Converted observatory room");
+        await inspector.getByLabel("Venue Name", { exact: true }).fill("My observatory quarters");
+        await inspector.getByLabel("Physical Form", { exact: true }).fill("Converted observatory room");
         await expect(inspector.getByLabel("Venue Type", { exact: true })).toHaveCount(0);
         await expect(inspector.getByLabel("Assigned villager", { exact: true })).toHaveCount(0);
         await zone("Exterior");
         await inspector
-          .getByLabel("Exterior description", { exact: true })
+          .getByLabel("Exterior Description", { exact: true })
           .fill("A blue door beside the telescope corridor.");
-        await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveCount(0);
+        await expect(inspector.getByLabel("Zone Used For", { exact: true })).toHaveCount(0);
         await expect(inspector.locator(".villages-workspace-photo")).toHaveCount(0);
-        const formBox = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
+        const formBox = await inspector.getByLabel("Physical Form", { exact: true }).boundingBox();
         const tabsBox = await inspector.getByRole("tablist").boundingBox();
         assert.ok(formBox.y + formBox.height <= tabsBox.y, "Venue identity precedes zone tabs");
-        await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("My observatory quarters");
+        await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue("My observatory quarters");
         await expect(inspector.getByRole("button", { name: "Close Venue editor" })).toHaveCount(0);
         await expect(inspector.getByRole("button", { name: "Edit Venue name" })).toHaveCount(0);
         await expect(inspector.getByRole("button", { name: "Edit Physical form" })).toHaveCount(0);
@@ -1272,26 +1432,29 @@ export async function verifyFoundingLayout(group) {
           await inspector
             .locator("header textarea")
             .evaluateAll((fields) => fields.map((field) => field.getAttribute("aria-label"))),
-          ["Venue name", "Physical form"],
+          ["Venue Name", "Physical Form"],
         );
-        await expect(inspector.getByLabel("Exterior description", { exact: true })).toHaveAttribute(
+        await expect(inspector.getByLabel("Exterior Description", { exact: true })).toHaveAttribute(
           "placeholder",
-          "Zone appearance",
+          "Zone Appearance",
         );
-        await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveAttribute("placeholder", "Venue name");
-        await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveAttribute(
+        await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveAttribute("placeholder", "Venue Name");
+        await expect(inspector.getByLabel("Physical Form", { exact: true })).toHaveAttribute(
           "placeholder",
-          "Venue form",
+          "Venue Form",
         );
         await expect(inspector.locator("header label")).toHaveCount(2);
-        const entranceHelp = inspector.getByRole("button", { name: "Help: Exterior and approach", exact: true });
+        const entranceHelp = inspector.getByRole("button", { name: "Help: Exterior and Approach", exact: true });
         await entranceHelp.click();
         await expect(inspector.getByRole("note")).toHaveText(
           "Describe the entrance, approach and visible exterior of this Venue.",
         );
         await entranceHelp.press("Escape");
         const formHelp = inspector.getByRole("button", { name: "Help: Form", exact: true });
-        const beforeHelp = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
+        const formLabel = await formHelp.locator("..").locator("..").locator("label").boundingBox();
+        const formButton = await formHelp.boundingBox();
+        assert.ok(Math.abs(formButton.x - formLabel.x - formLabel.width) < 8, "Form help follows its label");
+        const beforeHelp = await inspector.getByLabel("Physical Form", { exact: true }).boundingBox();
         await expect(formHelp).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
         await expect(formHelp).toHaveCSS("border-top-width", "0px");
         await expect(formHelp.locator("span")).toHaveCSS("border-radius", "50%");
@@ -1314,16 +1477,16 @@ export async function verifyFoundingLayout(group) {
           "footer ignores extra inherited bottom spacing",
         );
         await inspector.evaluate((el) => el.style.removeProperty("padding-bottom"));
-        const descriptionBeforeHelp = await inspector.getByLabel("Exterior description", { exact: true }).boundingBox();
+        const descriptionBeforeHelp = await inspector.getByLabel("Exterior Description", { exact: true }).boundingBox();
         await formHelp.click();
         await expect(inspector.getByRole("note")).toBeVisible();
         assert.deepEqual(
-          await inspector.getByLabel("Exterior description", { exact: true }).boundingBox(),
+          await inspector.getByLabel("Exterior Description", { exact: true }).boundingBox(),
           descriptionBeforeHelp,
           "help floats without shifting description",
         );
         assert.deepEqual(
-          await inspector.getByLabel("Physical form", { exact: true }).boundingBox(),
+          await inspector.getByLabel("Physical Form", { exact: true }).boundingBox(),
           beforeHelp,
           "floating help does not shift fields",
         );
@@ -1334,44 +1497,44 @@ export async function verifyFoundingLayout(group) {
         await capture("venue-details");
         await zone("Common");
         await expect(
-          inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone name", { exact: true }),
+          inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone Name", { exact: true }),
         ).toBeVisible();
         await expect(
-          inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone appearance", { exact: true }),
+          inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone Appearance", { exact: true }),
         ).toBeVisible();
         await expect(inspector.locator(".villages-workspace-zone-fields").getByRole("textbox")).toHaveCount(3);
         await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(0)).toHaveAttribute(
           "aria-label",
-          "Zone name",
+          "Zone Name",
         );
         await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(0)).toHaveAttribute(
           "placeholder",
-          "Zone name",
+          "Zone Name",
         );
         await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(1)).toHaveAttribute(
           "aria-label",
-          "Zone used for",
+          "Zone Used For",
         );
         await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(2)).toHaveAttribute(
           "aria-label",
-          "Zone appearance",
+          "Zone Appearance",
         );
-        await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveAttribute(
+        await expect(inspector.getByLabel("Zone Used For", { exact: true })).toHaveAttribute(
           "placeholder",
-          "Zone purpose",
+          "Zone Purpose",
         );
-        await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("My observatory quarters");
-        await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveValue("Converted observatory room");
-        await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
+        await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue("My observatory quarters");
+        await expect(inspector.getByLabel("Physical Form", { exact: true })).toHaveValue("Converted observatory room");
+        await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveCount(1);
         await expect(inspector.locator(".villages-workspace-sheet-body > header")).toBeVisible();
         assert.equal(
-          await inspector.getByLabel("Zone used for", { exact: true }).evaluate((el) => el.tagName),
+          await inspector.getByLabel("Zone Used For", { exact: true }).evaluate((el) => el.tagName),
           "TEXTAREA",
         );
         await expect(inspector.getByRole("button", { name: "Edit Zone used for" })).toHaveCount(0);
         await expect(inspector.getByText("Access", { exact: true })).toHaveCount(0);
         await expect(inspector.getByRole("button", { name: "Help: Zone access" })).toHaveCount(0);
-        await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("My observatory quarters");
+        await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue("My observatory quarters");
         const commonHeaderBox = await inspector.locator(".villages-workspace-zone-fields").boundingBox();
         const commonTabsBox = await inspector.getByRole("tablist").boundingBox();
         assert.ok(commonTabsBox.y + commonTabsBox.height <= commonHeaderBox.y, "Common tab precedes its space fields");
@@ -1390,50 +1553,50 @@ export async function verifyFoundingLayout(group) {
           el.scrollTop = 0;
         });
         const commonInclude = await inspector.getByLabel("Include Common Space", { exact: true }).boundingBox();
-        const commonName = await inspector.getByLabel("Zone name", { exact: true }).boundingBox();
+        const commonName = await inspector.getByLabel("Zone Name", { exact: true }).boundingBox();
         assert.ok(commonInclude.y < commonName.y, "Included precedes Common Zone name");
         await capture("venue-common-sheet");
         await inspector
-          .getByLabel("Zone appearance", { exact: true })
+          .getByLabel("Zone Appearance", { exact: true })
           .fill("A quiet sitting room overlooking the sea.");
-        await inspector.getByLabel("Zone used for", { exact: true }).fill("Relaxing together");
+        await inspector.getByLabel("Zone Used For", { exact: true }).fill("Relaxing together");
         await zone("Private");
         await expect(
-          inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone name", { exact: true }),
+          inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone Name", { exact: true }),
         ).toBeVisible();
         await expect(
-          inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone appearance", { exact: true }),
+          inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone Appearance", { exact: true }),
         ).toBeVisible();
         await expect(inspector.locator(".villages-workspace-zone-fields").getByRole("textbox")).toHaveCount(3);
         await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(0)).toHaveAttribute(
           "aria-label",
-          "Zone name",
+          "Zone Name",
         );
         await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(0)).toHaveAttribute(
           "placeholder",
-          "Zone name",
+          "Zone Name",
         );
         await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(1)).toHaveAttribute(
           "aria-label",
-          "Zone used for",
+          "Zone Used For",
         );
         await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(2)).toHaveAttribute(
           "aria-label",
-          "Zone appearance",
+          "Zone Appearance",
         );
-        await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveAttribute(
+        await expect(inspector.getByLabel("Zone Used For", { exact: true })).toHaveAttribute(
           "placeholder",
-          "Zone purpose",
+          "Zone Purpose",
         );
-        await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
-        await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("My observatory quarters");
+        await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveCount(1);
+        await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue("My observatory quarters");
         const privateInclude = await inspector.getByLabel("Include Private Space", { exact: true }).boundingBox();
-        const privateName = await inspector.getByLabel("Zone name", { exact: true }).boundingBox();
+        const privateName = await inspector.getByLabel("Zone Name", { exact: true }).boundingBox();
         assert.ok(privateInclude.y < privateName.y, "Included precedes Private Zone name");
         await capture("venue-private-sheet");
-        await inspector.getByLabel("Zone appearance", { exact: true }).fill("My hammock and traveling journal.");
+        await inspector.getByLabel("Zone Appearance", { exact: true }).fill("My hammock and traveling journal.");
         await inspector.getByLabel("Include Private Space", { exact: true }).uncheck();
-        await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(0);
+        await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveCount(0);
         await zone("Common");
         await inspector.getByLabel("Include Common Space", { exact: true }).click();
         await expect(inspector.getByLabel("Include Common Space", { exact: true })).toBeChecked();
@@ -1442,23 +1605,23 @@ export async function verifyFoundingLayout(group) {
         await mapView();
         await forward("Save & exit").click();
         await page.reload();
-        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await page.addScriptTag({ content: foundingBundle });
         await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
         await open();
         await zone("Private");
         await expect(inspector.getByLabel("Include Private Space", { exact: true })).not.toBeChecked();
         await inspector.getByLabel("Include Private Space", { exact: true }).check();
-        await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveValue(
+        await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveValue(
           "My hammock and traveling journal.",
         );
-        await inspector.getByLabel("Zone appearance", { exact: true }).fill("");
+        await inspector.getByLabel("Zone Appearance", { exact: true }).fill("");
         await mapView();
         await expect(forward("Review village")).toBeDisabled();
         await open();
         await zone("Private");
-        await expect(inspector.getByLabel("Zone appearance", { exact: true })).toBeVisible();
+        await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toBeVisible();
         await expect(forward("Review village")).toBeDisabled();
-        await inspector.getByLabel("Zone appearance", { exact: true }).fill("My hammock and traveling journal.");
+        await inspector.getByLabel("Zone Appearance", { exact: true }).fill("My hammock and traveling journal.");
         await open(homeCount + 1);
         await zone("Common");
         await expect(inspector.getByLabel("Include Common Space", { exact: true })).toBeChecked();
@@ -1466,19 +1629,19 @@ export async function verifyFoundingLayout(group) {
         await zone("Private");
         await expect(inspector.getByLabel("Include Private Space", { exact: true })).not.toBeChecked();
         await expect(inspector.getByLabel("Include Private Space", { exact: true })).toBeDisabled();
-        await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(0);
+        await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveCount(0);
         await open(1);
         await zone("Private");
-        await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(0);
-        await expect(inspector.getByLabel("Room specification", { exact: true })).toBeVisible();
+        await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveCount(0);
+        await expect(inspector.getByLabel("Room Specification", { exact: true })).toBeVisible();
         await inspector
-          .getByLabel("Room specification", { exact: true })
+          .getByLabel("Room Specification", { exact: true })
           .fill("A small bedroom with a garden-facing window.");
         await expect(inspector.getByText(/will personalize this interior/)).toBeVisible();
         await expect(inspector.getByRole("button", { name: "Generate image", exact: true })).toHaveCount(0);
         await inspector.getByLabel("Include Private Space", { exact: true }).uncheck();
         await inspector.getByLabel("Include Private Space", { exact: true }).check();
-        await expect(inspector.getByLabel("Room specification", { exact: true })).toHaveValue(
+        await expect(inspector.getByLabel("Room Specification", { exact: true })).toHaveValue(
           "A small bedroom with a garden-facing window.",
         );
         await capture("resident-room-specification");
@@ -1491,12 +1654,12 @@ export async function verifyFoundingLayout(group) {
           await expect.poll(() => !!releaseSuggestion).toBe(true);
           await open();
           await zone("Exterior");
-          await inspector.getByLabel("Physical form", { exact: true }).fill("Authored during suggestion");
+          await inspector.getByLabel("Physical Form", { exact: true }).fill("Authored during suggestion");
           releaseSuggestion();
           await mapView();
           await expect(forward("Suggest names & descriptions")).toBeEnabled();
           await open();
-          await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveValue(
+          await expect(inspector.getByLabel("Physical Form", { exact: true })).toHaveValue(
             "Authored during suggestion",
           );
         }
@@ -1554,11 +1717,11 @@ export async function verifyFoundingLayout(group) {
           await expect(root.getByRole("alert").filter({ hasText: "Optional image unavailable" })).toBeVisible();
           await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
           await expect.poll(() => !!releaseImage).toBe(true);
-          await expect(inspector.getByLabel("Zone appearance", { exact: true })).toBeDisabled();
+          await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toBeDisabled();
           await expect(forward("Save & exit")).toBeDisabled();
           await open();
           await zone("Exterior");
-          await expect(inspector.getByLabel("Physical form", { exact: true })).toBeEnabled();
+          await expect(inspector.getByLabel("Physical Form", { exact: true })).toBeEnabled();
           releaseImage();
           await expect(forward("Save & exit")).toBeEnabled();
           await open(1);
@@ -1594,12 +1757,12 @@ export async function verifyFoundingLayout(group) {
             dialog.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 0, clientY: 0 })),
           );
           await expect(inspector).toBeVisible();
-          await inspector.getByLabel("Zone appearance", { exact: true }).focus();
+          await inspector.getByLabel("Zone Appearance", { exact: true }).focus();
           await page.evaluate(() => {
             window.dispatchEvent(new Event("focus"));
             return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           });
-          await expect(inspector.getByLabel("Zone appearance", { exact: true })).toBeFocused();
+          await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toBeFocused();
           const smallPreview = inspector.getByRole("button", { name: "View image", exact: true });
           const previewBox = await smallPreview.boundingBox();
           const actionsBox = await inspector.locator(".villages-workspace-image-actions").boundingBox();
@@ -1636,10 +1799,10 @@ export async function verifyFoundingLayout(group) {
           await forward("Back").click();
           await forward("Back").click();
           await forward("Back").click();
-          await root.getByLabel("Village name", { exact: true }).fill("Changed while generating");
+          await root.getByLabel("Village Name", { exact: true }).fill("Changed while generating");
           releaseImage();
           await expect(root.getByRole("alert").filter({ hasText: "changed while its image" })).toBeVisible();
-          await root.getByLabel("Village name", { exact: true }).fill("Willowbrook");
+          await root.getByLabel("Village Name", { exact: true }).fill("Willowbrook");
           await forward("Continue to People").click();
           await forward("Continue to Map").click();
           await forward("Continue to Venues").click();
@@ -1657,10 +1820,10 @@ export async function verifyFoundingLayout(group) {
           await forward("Back").click();
           await forward("Back").click();
           await forward("Back").click();
-          await root.getByLabel("Village name", { exact: true }).fill("Willowbrook revised");
+          await root.getByLabel("Village Name", { exact: true }).fill("Willowbrook revised");
           await expect(root.locator(".villages-forging-saved")).toHaveText("Draft not saved");
           await expect(forward("Continue to People")).toBeDisabled();
-          await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook revised");
+          await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Willowbrook revised");
           await forward("Save & exit").click();
           await expect(root).toHaveAttribute("data-step", "0");
           await page.evaluate(() => {
@@ -1692,15 +1855,15 @@ export async function verifyFoundingLayout(group) {
             });
             db.close();
           });
-          await root.getByLabel("Village name", { exact: true }).fill("Unsaved competing choice");
+          await root.getByLabel("Village Name", { exact: true }).fill("Unsaved competing choice");
           await expect(root.getByRole("alert").filter({ hasText: "This draft changed in another tab" })).toBeVisible();
           await forward("Save & exit").click();
-          await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Unsaved competing choice");
+          await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Unsaved competing choice");
           await competingTab.close();
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume founding", exact: true }).click();
-          await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook revised");
+          await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Willowbrook revised");
           await forward("Continue to People").click();
           await forward("Continue to Map").click();
           await forward("Continue to Venues").click();
@@ -1718,7 +1881,7 @@ export async function verifyFoundingLayout(group) {
           );
           await expect(artworkDialog.getByText("More options", { exact: true })).toBeVisible();
           await capture("map-artwork-options");
-          await root.getByLabel("Map details", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
+          await root.getByLabel("Map Details", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
           await root.getByRole("button", { name: "Generate map", exact: true }).click();
           await expect.poll(() => !!releaseMap).toBe(true);
           await forward("Continue to Venues").click();
@@ -1746,7 +1909,7 @@ export async function verifyFoundingLayout(group) {
           // Reload while the provider is still drawing: the resumed draft only reads status.
           await forward("Save & exit").click();
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
           await expect(
             root.getByText(/Waiting for map artwork|Image generation can take several minutes|Creating map artwork/),
@@ -1757,6 +1920,8 @@ export async function verifyFoundingLayout(group) {
           failMapStatus = false;
           releaseMap();
           await root.getByRole("button", { name: "Check map status", exact: true }).click();
+          // The status request is asynchronous; old uploaded artwork is still visible while it runs.
+          await expect(root.getByRole("img", { name: /^Map of / })).toHaveAttribute("src", mapImage);
           await expect(
             root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }),
           ).toHaveCount(0);
@@ -1771,7 +1936,7 @@ export async function verifyFoundingLayout(group) {
           await capture("artwork-spaces");
           await forward("Save & exit").click();
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
           await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
           assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
@@ -1783,10 +1948,10 @@ export async function verifyFoundingLayout(group) {
             [1536, 1024],
           );
           await expect(root.getByText(/\d+ × \d+ pixels/)).toHaveCount(0);
-          await expect(root.getByLabel("Map details", { exact: true })).toHaveValue(
+          await expect(root.getByLabel("Map Details", { exact: true })).toHaveValue(
             "One floor; bedrooms east, telescope hall west.",
           );
-          await root.getByLabel("Map details", { exact: true }).fill("Same map with updated guidance.");
+          await root.getByLabel("Map Details", { exact: true }).fill("Same map with updated guidance.");
           await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
           await expect(root.getByText(/Your inputs changed/)).toHaveCount(0);
           await expect(root.getByRole("button", { name: "Use this saved artwork", exact: true })).toHaveCount(0);
@@ -1826,7 +1991,7 @@ export async function verifyFoundingLayout(group) {
           await forward("Save & exit").click();
           await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
           await forward("Back").click();
           await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
@@ -1877,7 +2042,7 @@ export async function verifyFoundingLayout(group) {
               db.close();
             }, legacyStep);
             await page.reload();
-            await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+            await page.addScriptTag({ content: foundingBundle });
             await expect(
               root.getByText(new RegExp("Resume: " + (legacyStep === 2 ? "Venues" : "Review"))),
             ).toBeVisible();
@@ -1916,6 +2081,7 @@ export async function verifyFoundingLayout(group) {
           assert.match(foundingPayload.foundingResidentContexts.finn.villageBackstory, /always been guardian/);
         }
         assert.equal(foundingPayload.playerRole.explanation, "");
+        assert.equal(foundingPayload.loreTokenBudget, 0, "a cleared budget continues with zero");
         assert.deepEqual(
           Object.keys(foundingPayload.foundingResidentContexts).sort(),
           foundingPayload.foundingCharacterIds.slice().sort(),

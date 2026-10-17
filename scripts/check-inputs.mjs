@@ -109,7 +109,8 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
     let opaque = false,
       payload = false;
     const reasons = new Set(),
-      declaredInputs = new Set();
+      declaredInputs = new Set(),
+      declarations = new Map();
     const pending = [...found],
       queued = new Set(pending);
     for (const file of pending) {
@@ -455,7 +456,7 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
             !path.split("/").includes(".."),
         );
       if (reviewed) {
-        inputs.add("scripts/test-inputs.json");
+        declarations.set(file, { sha256: contract.sha256, inputs: [...new Set(contract.inputs)].sort() });
         for (const path of paths)
           if (contract.inputs.some((scope) => path === scope || (scope.endsWith("/") && path.startsWith(scope)))) {
             inputs.add(path);
@@ -490,7 +491,14 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
         }
     }
     if (opaque) for (const path of broad) inputs.add(path);
-    return { inputs, opaque, payload, reasons: [...reasons], resolved: [...found] };
+    return {
+      inputs,
+      opaque,
+      payload,
+      reasons: [...reasons],
+      resolved: [...found],
+      declarations: [...declarations].sort(([a], [b]) => a.localeCompare(b)),
+    };
   }
   for (let index = 0; index < entries.length; index += 4) {
     const settled = await Promise.all(entries.slice(index, index + 4).map(async (path) => [path, await inspect(path)]));

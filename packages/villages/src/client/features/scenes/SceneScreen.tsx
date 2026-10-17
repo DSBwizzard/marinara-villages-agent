@@ -346,6 +346,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             <>
               <label className={ELEMENT_TAG + "-row"}>
                 <input
+                  autoComplete="off"
                   type="checkbox"
                   checked={spriteFlipDraft ?? snapshot?.settings.spriteCardFlipEnabled !== false}
                   disabled={spriteFlipSaving}

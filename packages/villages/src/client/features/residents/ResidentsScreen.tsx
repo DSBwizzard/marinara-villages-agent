@@ -277,6 +277,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                   <div className={`${ELEMENT_TAG}-agenda-actions`}>
                     <label className={`${ELEMENT_TAG}-agenda-switch`}>
                       <input
+                        autoComplete="off"
                         type="checkbox"
                         checked={villager.ingestSchedule}
                         disabled={busy}
@@ -313,6 +314,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                     }).map(([key, label]) => (
                       <label key={key} className={ELEMENT_TAG + "-agenda-switch"}>
                         <input
+                          autoComplete="off"
                           type="checkbox"
                           checked={villager.scheduleInfluence?.categories[key] !== false}
                           disabled={busy || !villager.ingestSchedule}

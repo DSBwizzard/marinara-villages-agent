@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot as fixture, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const browser = await chromium.launch({ headless: true, ...(existsSync(chrome) ? { executablePath: chrome } : {}) });
+const browser = await chromium.launch({ headless: true });
 const prefix = "marinara-capability-villages";
 try {
   for (const width of [1366, 390, 320]) {

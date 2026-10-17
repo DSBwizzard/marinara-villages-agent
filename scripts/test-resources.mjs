@@ -3,6 +3,30 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  "tests/villages-build-reproducibility.regression.mjs",
+  "tests/villages-sprite-entry.e2e.mjs",
+  // Reviewed: child-process-local mocks, read-only bundles and distinct suite outputs.
+  "tests/villages-attention.e2e.mjs",
+  "tests/villages-automatic-refresh.regression.ts",
+  "tests/villages-ci-profiles.regression.mjs",
+  "tests/villages-clock-recovery.e2e.mjs",
+  "tests/villages-doorway-continuity.e2e.mjs",
+  "tests/villages-founding-flow.regression.ts",
+  "tests/villages-location-image.regression.ts",
+  "tests/villages-reset-errors.e2e.mjs",
+  "tests/villages-scene-navigation.e2e.mjs",
+  "tests/villages-speech-presentation.e2e.mjs",
+  "tests/villages-town-map-image.regression.ts",
+  // Reviewed: fixed domain inputs and process-local fake runtime/document stores;
+  // these suites open no provider, port, shared output or real saved world.
+  "tests/villages-attention-sources.regression.ts",
+  "tests/villages-attention.regression.ts",
+  "tests/villages-clock-recovery.regression.ts",
+  "tests/villages-interpretation.regression.ts",
+  "tests/villages-project-interpretation.regression.ts",
+  "tests/villages-wish-interpretation.regression.ts",
+  "tests/villages-scene-json-hardening.regression.ts",
+  "tests/villages-feedback-proof.regression.mjs",
   "tests/villages-founding-phone-layout.e2e.mjs",
   "tests/villages-founding-compact-layout.e2e.mjs",
   "tests/villages-settings-requests.e2e.mjs",

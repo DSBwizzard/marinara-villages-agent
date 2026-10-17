@@ -44,6 +44,7 @@ export function RosterScreen({ controller }: { controller: RosterScreenControlle
           ) : null}
           <div className={`${ELEMENT_TAG}-directory-tools`}>
             <input
+              autoComplete="off"
               type="search"
               value={rosterSearch}
               onChange={(event) => setRosterSearch(event.target.value)}
@@ -70,6 +71,7 @@ export function RosterScreen({ controller }: { controller: RosterScreenControlle
             {pickerOpen ? (
               <div className={`${ELEMENT_TAG}-field`}>
                 <input
+                  autoComplete="off"
                   className={`${ELEMENT_TAG}-search`}
                   type="search"
                   value={search}

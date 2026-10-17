@@ -133,7 +133,7 @@ export function ResidentFoundingEditors({
         >
           {editing.value.historyMode === "village" ? (
             <FoundingField
-              title="Backstory for this village"
+              title="Backstory for This Village"
               error={
                 attempted
                   ? !editing.value.villageBackstory?.trim()
@@ -143,7 +143,8 @@ export function ResidentFoundingEditors({
               }
             >
               <textarea
-                aria-label="Backstory for this village"
+                autoComplete="off"
+                aria-label="Backstory for This Village"
                 rows={4}
                 maxLength={1200}
                 value={editing.value.villageBackstory ?? ""}
@@ -155,7 +156,7 @@ export function ResidentFoundingEditors({
           ) : null}
           {editing.value.storyRole !== "unspecified" || editing.value.background || editing.value.customDescription ? (
             <div className="villages-legacy-background">
-              <FoundingField title="Existing story position" error={attempted ? problems?.storyRole : ""}>
+              <FoundingField title="Existing Story Position" error={attempted ? problems?.storyRole : ""}>
                 <select
                   aria-label={person.name + " place in the Village's story"}
                   value={editing.value.storyRole}
@@ -177,8 +178,9 @@ export function ResidentFoundingEditors({
                 </select>
               </FoundingField>
               {editing.value.storyRole === "custom" ? (
-                <FoundingField title="Describe their place here" error={attempted ? problems?.customDescription : ""}>
+                <FoundingField title="Describe Their Place Here" error={attempted ? problems?.customDescription : ""}>
                   <textarea
+                    autoComplete="off"
                     aria-label={person.name + " custom place"}
                     rows={2}
                     maxLength={240}
@@ -190,8 +192,9 @@ export function ResidentFoundingEditors({
                 </FoundingField>
               ) : null}
               {editing.value.background ? (
-                <FoundingField title="Existing starting note" error={attempted ? problems?.background : ""}>
+                <FoundingField title="Existing Starting Note" error={attempted ? problems?.background : ""}>
                   <textarea
+                    autoComplete="off"
                     aria-label={person.name + " starting background"}
                     rows={3}
                     maxLength={1200}

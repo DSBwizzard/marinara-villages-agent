@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, expect } from "@playwright/test";
@@ -55,10 +54,8 @@ syncVillagesStyles();
   format: "iife",
   jsx: "automatic",
 });
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 try {
   for (const viewport of [
@@ -184,12 +181,12 @@ try {
       await edit.click();
       const sheet = page.getByRole("dialog");
       await expect(sheet).toBeVisible();
-      await expect(sheet.getByLabel("Physical form", { exact: true })).toHaveValue("Converted hearse");
+      await expect(sheet.getByLabel("Physical Form", { exact: true })).toHaveValue("Converted hearse");
       await expect(sheet.getByLabel("Exterior appearance", { exact: true })).toBeHidden();
       await sheet.locator('[data-quick-area="exterior"] summary').click();
       await expect(sheet.getByLabel("Exterior appearance", { exact: true })).toHaveCount(1);
       await expect(sheet.getByLabel("Exterior appearance", { exact: true })).toBeVisible();
-      await sheet.getByLabel("Venue name", { exact: true }).fill("My Last Ride");
+      await sheet.getByLabel("Venue Name", { exact: true }).fill("My Last Ride");
       await capture("residence");
       await sheet.locator('[data-quick-area="exterior"] summary').click();
       const common = sheet.locator('[data-quick-area="common"]');
@@ -218,7 +215,7 @@ try {
       const savedRows = await page.evaluate(() => window.quickState.venues);
       await sheet.getByRole("button", { name: "Regenerate this Venue", exact: true }).click();
       await expect(sheet.getByRole("button", { name: "Regenerate this Venue", exact: true })).toBeEnabled();
-      await expect(sheet.getByLabel("Venue name", { exact: true })).toHaveValue("My Last Ride");
+      await expect(sheet.getByLabel("Venue Name", { exact: true })).toHaveValue("My Last Ride");
       await expect(common.getByLabel("Name", { exact: true })).toHaveValue("My cabin");
       assert.deepEqual(
         (await page.evaluate(() => window.quickState.venues)).slice(1),
@@ -241,7 +238,7 @@ try {
       await page.getByRole("button", { name: "Edit Buster’s residence", exact: true }).click();
       await sheet.locator('[data-quick-area="private"] summary').click();
       await expect(sheet.getByLabel("Appearance", { exact: true })).toBeHidden();
-      await expect(sheet.getByLabel("Room specification", { exact: true })).toBeVisible();
+      await expect(sheet.getByLabel("Room Specification", { exact: true })).toBeVisible();
       await expect(sheet.getByText(/interior is prepared after founding/)).toBeVisible();
       await sheet.getByRole("button", { name: "Save changes", exact: true }).click();
       await page.getByRole("button", { name: "Advanced", exact: true }).click();

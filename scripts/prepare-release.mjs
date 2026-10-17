@@ -5,16 +5,33 @@ import { validationInputs } from "./validation-inputs.mjs";
 import { policyKey, assertCoverage, supportedPlatforms, fingerprint } from "./ci-checks.mjs";
 import { GitHubEvidence } from "./ci-manifests.mjs";
 import { restorePackage } from "./ci-package.mjs";
+import { checkBlueprint } from "./ci-checks.mjs";
+import { requireValidationProfile } from "./ci-validation-profile.mjs";
 
 /** Authenticate complete current coverage and restore the exact prepared bytes. Never rebuild here. */
-export async function preparedCandidate({ root = process.cwd(), runId, github, version } = {}) {
+export async function preparedCandidate({
+  root = process.cwd(),
+  runId,
+  github,
+  version,
+  requiredProfile = "qualification",
+} = {}) {
   const before = await validationInputs(root);
   const { manifest, run } = await github.coverage(runId, policyKey(before));
   assert.equal(manifest.ready, true, "Candidate preparation is incomplete");
   assert.equal(manifest.inputDigest, before.digest, "Prepared candidate has stale maintained inputs");
   assert.equal(manifest.blueprint.inputDigest, before.digest);
   assert.equal(manifest.blueprint.policyDigest, policyKey(before));
-  for (const platform of supportedPlatforms) assertCoverage(manifest.platforms[platform], manifest.blueprint);
+  const profile = manifest.validationProfile ?? "qualification";
+  requireValidationProfile(profile, requiredProfile);
+  // Reconstruct required membership from this source and policy; ready/profile
+  // flags cannot turn a missing Windows check into release qualification.
+  const canonical = await checkBlueprint(root, {
+    snapshot: before,
+    validationProfile: profile,
+    changedPaths: manifest.blueprint.changedPaths,
+  });
+  for (const platform of supportedPlatforms) assertCoverage(manifest.platforms[platform], canonical);
   const artifact = manifest.candidate;
   assert.ok(artifact, "Prepared package artifact missing");
   const live = github.api("actions/artifacts/" + artifact.id);

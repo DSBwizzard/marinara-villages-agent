@@ -101,6 +101,7 @@ export function calculateSetupMapGenerationKey(ports: {
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
   setupLorebookDraft: string[];
+  setupLoreTokenBudgetDraft: number;
   setupMapNegativePrompt: string;
   setupMapPrompt: string;
   setupSetting: string;
@@ -112,6 +113,7 @@ export function calculateSetupMapGenerationKey(ports: {
     sceneryStyle,
     sceneryStyleProfileId,
     setupLorebookDraft,
+    setupLoreTokenBudgetDraft,
     setupMapNegativePrompt,
     setupMapPrompt,
     setupSetting,
@@ -122,6 +124,7 @@ export function calculateSetupMapGenerationKey(ports: {
     setting: setupSetting.trim(),
     worldFacts: snapshot?.isFounded ? setupWorldFacts : null,
     lorebooks: setupLorebookDraft,
+    loreBudget: setupLoreTokenBudgetDraft,
     artStyle: sceneryStyle,
     styleProfileId: sceneryStyleProfileId,
     useVisualLore: mapVisualLore,

@@ -21,6 +21,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setupDraftData: ReturnType<typeof useFoundingSetupDraftData>;
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
+  readonly setupLoreTokenBudgetDraft: FoundingState["setupLoreTokenBudgetDraft"];
   readonly setupMapGenerationKey: string;
   readonly setupMapNegativePrompt: FoundingState["setupMapNegativePrompt"];
   readonly setupMapPrompt: FoundingState["setupMapPrompt"];
@@ -41,6 +42,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
       setSetupProblem,
       setupDraftData,
       setupLorebookDraft,
+      setupLoreTokenBudgetDraft,
       setupMapGenerationKey,
       setupMapNegativePrompt,
       setupMapPrompt,
@@ -81,6 +83,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
             setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt ? undefined : setupMapNegativePrompt,
           setting: setupSetting,
           selectedLorebookIds: setupLorebookDraft,
+          loreTokenBudget: setupLoreTokenBudgetDraft,
           sceneryArtStyle: sceneryStyle,
           sceneryStyleProfileId,
           useVisualLore: mapVisualLore,
@@ -164,6 +167,7 @@ export function createFoundingGenerateSetupImage(ports: {
   readonly setupImageTargetRef: FoundingState["setupImageTargetRef"];
   readonly setupImprint: FoundingState["setupImprint"];
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
+  readonly setupLoreTokenBudgetDraft: FoundingState["setupLoreTokenBudgetDraft"];
   readonly setupName: FoundingState["setupName"];
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
@@ -197,6 +201,7 @@ export function createFoundingGenerateSetupImage(ports: {
       setupImageTargetRef,
       setupImprint,
       setupLorebookDraft,
+      setupLoreTokenBudgetDraft,
       setupName,
       setupSetting,
       setupVenuesRef,
@@ -269,6 +274,7 @@ export function createFoundingGenerateSetupImage(ports: {
           scenarioImprint: snapshot?.isFounded ? setupImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
           selectedLorebookIds: setupLorebookDraft,
+          loreTokenBudget: setupLoreTokenBudgetDraft,
         }),
       });
       if (

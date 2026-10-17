@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { chromium, expect } from "@playwright/test";
 import { build } from "esbuild";
 const bundle = await build({
@@ -15,10 +14,8 @@ const bundle = await build({
   format: "iife",
   jsx: "automatic",
 });
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 try {
   for (const width of [1280, 390, 320]) {

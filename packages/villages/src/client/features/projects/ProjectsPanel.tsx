@@ -57,11 +57,15 @@ function RenovationRevisionEditor({
       </p>
       <label>
         Project name
-        <input value={title} onChange={(event) => setTitle(event.target.value)} />
+        <input autoComplete="off" value={title} onChange={(event) => setTitle(event.target.value)} />
       </label>
       <label>
         Reviewed change
-        <textarea value={change.detail} onChange={(event) => setChange({ ...change, detail: event.target.value })} />
+        <textarea
+          autoComplete="off"
+          value={change.detail}
+          onChange={(event) => setChange({ ...change, detail: event.target.value })}
+        />
       </label>
       {change.classes ? (
         <label>
@@ -69,6 +73,7 @@ function RenovationRevisionEditor({
           {VENUE_CLASS_CHOICES.map((role) => (
             <label key={role}>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={change.classes!.includes(role)}
                 onChange={(event) =>
@@ -89,6 +94,7 @@ function RenovationRevisionEditor({
         <label>
           Residential capacity
           <input
+            autoComplete="off"
             type="number"
             min={1}
             max={4}
@@ -110,6 +116,7 @@ function RenovationRevisionEditor({
           <label>
             Upgrade title
             <input
+              autoComplete="off"
               value={upgrade.title}
               onChange={(event) => setChange({ ...change, improvement: { ...upgrade, title: event.target.value } })}
             />
@@ -117,6 +124,7 @@ function RenovationRevisionEditor({
           <label>
             Upgrade description
             <textarea
+              autoComplete="off"
               value={upgrade.description}
               onChange={(event) =>
                 setChange({ ...change, improvement: { ...upgrade, description: event.target.value } })
@@ -172,6 +180,7 @@ function RenovationRevisionEditor({
               <label>
                 Zone name
                 <input
+                  autoComplete="off"
                   value={zone.name}
                   onChange={(event) =>
                     setChange({
@@ -189,6 +198,7 @@ function RenovationRevisionEditor({
               <label>
                 Zone description
                 <textarea
+                  autoComplete="off"
                   value={zone.description}
                   onChange={(event) =>
                     setChange({
@@ -460,6 +470,7 @@ export function ProjectsPanelV2({
             <label>
               Venue Type
               <input
+                autoComplete="off"
                 value={openingVenueType}
                 maxLength={100}
                 placeholder="Bakery, church, campsite…"
@@ -469,6 +480,7 @@ export function ProjectsPanelV2({
             <label>
               Physical form
               <input
+                autoComplete="off"
                 value={form}
                 onChange={(event) => setForm(event.target.value)}
                 placeholder="What is this place, physically?"
@@ -479,7 +491,7 @@ export function ProjectsPanelV2({
             ) : null}
             <label>
               Exterior appearance
-              <textarea value={exterior} onChange={(event) => setExterior(event.target.value)} />
+              <textarea autoComplete="off" value={exterior} onChange={(event) => setExterior(event.target.value)} />
             </label>
             {openingVenue ? (
               <FoundingZoneFields
@@ -493,6 +505,7 @@ export function ProjectsPanelV2({
             ) : null}
             <label>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={openingPersonality}
                 onChange={(event) => setOpeningPersonality(event.target.checked)}
@@ -500,7 +513,12 @@ export function ProjectsPanelV2({
               Use assigned villagers’ personality for images
             </label>
             <label>
-              <input type="checkbox" checked={openingLore} onChange={(event) => setOpeningLore(event.target.checked)} />
+              <input
+                autoComplete="off"
+                type="checkbox"
+                checked={openingLore}
+                onChange={(event) => setOpeningLore(event.target.checked)}
+              />
               Use selected visual lore
             </label>
             {target?.classes?.includes("residence") ? (
@@ -540,6 +558,7 @@ export function ProjectsPanelV2({
               </button>
 
               <input
+                autoComplete="off"
                 type="file"
                 accept="image/*"
                 aria-label={`Upload ${area} image`}
@@ -568,6 +587,7 @@ export function ProjectsPanelV2({
                 <label>
                   Upload final zone image
                   <input
+                    autoComplete="off"
                     type="file"
                     accept="image/*"
                     disabled={busy}
@@ -708,6 +728,7 @@ export function ProjectsPanelV2({
                       {VENUE_CLASS_CHOICES.map((item) => (
                         <label key={item}>
                           <input
+                            autoComplete="off"
                             type="checkbox"
                             checked={baseClasses.includes(item)}
                             onChange={(event) =>
@@ -733,6 +754,7 @@ export function ProjectsPanelV2({
                     <label>
                       Capacity
                       <input
+                        autoComplete="off"
                         type="number"
                         min={1}
                         max={4}
@@ -821,6 +843,7 @@ export function ProjectsPanelV2({
                           <label>
                             Zone name
                             <input
+                              autoComplete="off"
                               value={zone.name}
                               onChange={(event) =>
                                 setUpgradeZones((current) =>
@@ -866,6 +889,7 @@ export function ProjectsPanelV2({
                             <label>
                               Used for
                               <input
+                                autoComplete="off"
                                 value={zone.purpose ?? ""}
                                 maxLength={240}
                                 onChange={(event) =>
@@ -906,6 +930,7 @@ export function ProjectsPanelV2({
                               {snapshot.villagers.map((person) => (
                                 <label key={person.characterId}>
                                   <input
+                                    autoComplete="off"
                                     type="checkbox"
                                     checked={zone.controllerIds?.includes(person.characterId) ?? false}
                                     onChange={(event) =>
@@ -931,6 +956,7 @@ export function ProjectsPanelV2({
                           <label>
                             Description
                             <textarea
+                              autoComplete="off"
                               value={zone.description}
                               onChange={(event) =>
                                 setUpgradeZones((current) =>
@@ -973,6 +999,7 @@ export function ProjectsPanelV2({
                     <label>
                       Extra beds
                       <input
+                        autoComplete="off"
                         type="number"
                         min={0}
                         max={3}
@@ -996,6 +1023,7 @@ export function ProjectsPanelV2({
               <label>
                 {draftType === "new-venue" ? "Venue name" : "Project name"}
                 <input
+                  autoComplete="off"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   placeholder="Give this place a name"
@@ -1003,7 +1031,11 @@ export function ProjectsPanelV2({
               </label>
               <label>
                 What would this {draftType === "new-venue" ? "place" : "change"} be like in the Village?
-                <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
+                <textarea
+                  autoComplete="off"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                />
               </label>
               <button
                 type="button"

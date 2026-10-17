@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { checkInputGraph, definitionBehavior } from "./check-inputs.mjs";
 import { validationInputs } from "./validation-inputs.mjs";
 import { testInventory } from "./test-inventory.mjs";
+import { platformSpecs } from "./ci-validation-profile.mjs";
 
 export const fingerprint = (value) =>
   createHash("sha256")
@@ -16,20 +17,23 @@ export function policyKey(snapshot) {
   return fingerprint(
     snapshot.inputs.filter(
       (input) =>
-        /^scripts\/(?:ci-[^/]+|check-inputs|test-inputs|validation-inputs)\.(?:mjs|json)$/.test(input.path) ||
+        /^scripts\/(?:ci-[^/]+|change-scope|check-inputs|validation-inputs)\.(?:mjs|json)$/.test(input.path) ||
         input.path === ".github/workflows/ci.yml",
     ),
   );
 }
 
-export async function checkBlueprint(root = process.cwd(), { snapshot, inventory } = {}) {
+export async function checkBlueprint(
+  root = process.cwd(),
+  { snapshot, inventory, validationProfile = "qualification", changedPaths = null } = {},
+) {
   snapshot ??= await validationInputs(root);
   inventory ??= (await testInventory(pathToFileURL(resolve(root) + "/"))).filter((test) => test.group !== "engine");
   const catalog = new Map(snapshot.inputs.map((input) => [input.path, input.sha256]));
   const paths = [...catalog.keys()];
   const common = paths.filter((path) => /^(package(?:-lock)?\.json$|tsconfig\.|\.npmrc$|\.gitattributes$)/.test(path));
   const harness = paths.filter((path) =>
-    /^scripts\/(?:run-tests|test-(?:scheduler|inventory|resources|cases)|checkout-operation|check-inputs|ci-checks)\.mjs$/.test(
+    /^scripts\/(?:run-tests|test-(?:scheduler|costs|inventory|resources|cases)|checkout-operation|check-inputs|ci-checks)\.mjs$/.test(
       path,
     ),
   );
@@ -91,13 +95,30 @@ export async function checkBlueprint(root = process.cwd(), { snapshot, inventory
       group: test.group,
       opaque: dependencies?.opaque ?? true,
       reasons: dependencies?.reasons ?? ["unresolved dependency graph"],
+      scopeDigest: fingerprint(dependencies?.declarations ?? []),
     });
   }
   const definition = await readFile(resolve(root, "packages/villages/package-definition.mjs"), "utf8").catch(() => "");
   catalog.set("$definition-behavior", fingerprint(definitionBehavior(definition)));
   const policyDigest = policyKey(snapshot);
   const toolchain = JSON.parse(await readFile(resolve(root, "scripts/ci-toolchain.json"), "utf8"));
-  return { schemaVersion: 1, inputDigest: snapshot.digest, catalog: [...catalog], policyDigest, specs, toolchain };
+  const platformPolicy = JSON.parse(
+    await readFile(resolve(root, "scripts/ci-platform-policy.json"), "utf8").catch((error) => {
+      if (error.code === "ENOENT") return "{}";
+      throw error;
+    }),
+  );
+  return {
+    schemaVersion: 1,
+    inputDigest: snapshot.digest,
+    catalog: [...catalog],
+    policyDigest,
+    specs,
+    toolchain,
+    validationProfile,
+    changedPaths,
+    platformPolicy,
+  };
 }
 
 export function checkKeys(blueprint, environment) {
@@ -109,12 +130,13 @@ export function checkKeys(blueprint, environment) {
   )
     throw Error("Incompatible validation toolchain/platform");
   const catalog = new Map(blueprint.catalog);
-  return blueprint.specs.map((spec) => ({
+  return platformSpecs(blueprint, environment.platform).map((spec) => ({
     ...spec,
     key: fingerprint({
       schema: 3,
       policy: blueprint.policyDigest,
       id: spec.id,
+      scopeDigest: spec.scopeDigest,
       environment,
       inputs: spec.inputs.map((path) => [path, catalog.get(path) ?? "missing"]),
     }),
@@ -138,6 +160,8 @@ export function assembleChecks(specs, proofs, { fresh = false } = {}) {
 }
 
 export function assertCoverage(receipt, blueprint) {
+  if ((receipt.validationProfile ?? "qualification") !== (blueprint.validationProfile ?? "qualification"))
+    throw Error("Coverage validation profile does not match");
   if (
     receipt.schemaVersion !== 3 ||
     receipt.policyDigest !== blueprint.policyDigest ||
@@ -167,7 +191,11 @@ export function assertProofOrigin(proof, environment) {
     !/^[1-9]\d*$/.test(String(origin.runId)) ||
     !Number.isSafeInteger(origin.attempt) ||
     origin.attempt < 1 ||
-    origin.job !== (environment.platform === "linux" ? "validate" : "validate-windows") ||
+    ![
+      environment.platform === "linux" ? "validate" : "validate-windows",
+      `browser-${environment.platform}-1`,
+      `browser-${environment.platform}-2`,
+    ].includes(origin.job) ||
     !/^[a-f0-9]{40}$/.test(origin.sourceRevision ?? "") ||
     origin.platform !== environment.platform ||
     origin.node !== environment.node ||

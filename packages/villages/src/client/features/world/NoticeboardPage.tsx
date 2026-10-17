@@ -42,6 +42,7 @@ export function renderNoticeboardPage(ports: NoticeboardPagePorts) {
       )}
       <div className={`${ELEMENT_TAG}-notice-add`}>
         <input
+          autoComplete="off"
           className={`${ELEMENT_TAG}-notice-input`}
           type="text"
           value={noticeDraft}

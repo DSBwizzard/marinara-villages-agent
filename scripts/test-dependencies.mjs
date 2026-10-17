@@ -10,11 +10,15 @@ export async function testConsumers(inventory, root = process.cwd(), options = {
   const key = JSON.stringify([root, snapshot.digest, entries]);
   if (!graphs.has(key)) graphs.set(key, checkInputGraph(entries, snapshot.inputs, root));
   const result = new Map();
-  for (const [test, info] of await graphs.get(key))
+  const scopes = new Map();
+  Object.defineProperty(result, "scopes", { value: scopes });
+  for (const [test, info] of await graphs.get(key)) {
+    scopes.set(test, info.declarations ?? []);
     for (const path of info.inputs) {
       if (!result.has(path)) result.set(path, []);
       result.get(path).push(test);
     }
+  }
   return result;
 }
 import { readFile, stat } from "node:fs/promises";

@@ -365,6 +365,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             readSelectedLorebookIds(input.selectedLorebookIds ?? []),
             `${setting}\n${row.name}\n${row.form}\n${areaDescription}\n${character}`,
             900,
+            readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET),
           );
     const prompt = sceneryPrompt(
       [

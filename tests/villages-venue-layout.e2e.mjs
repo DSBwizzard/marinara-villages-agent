@@ -1,16 +1,13 @@
 import assert from "node:assert/strict";
 // Test cases: venues/layout/exterior, venues/layout/common, venues/layout/private, venues/layout/both, venues/screen-lifetimes
 import { runCase, wantsCase } from "../scripts/test-cases.mjs";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 import { verifyVenueScreenLifetimes } from "./fixtures/villages-venue-screen-lifetime.fixture.mjs";
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 try {
   for (const width of [1366, 390])
@@ -96,9 +93,9 @@ try {
       if (layout === "exterior") await editor.getByRole("button", { name: "Use Exterior only", exact: true }).click();
       if (layout === "common" || layout === "both") {
         await editor.getByRole("button", { name: "Add Zone", exact: true }).click();
-        await editor.getByLabel("Zone name", { exact: true }).first().fill("Workshop");
-        await editor.getByLabel("Zone used for", { exact: true }).first().fill("Making things");
-        await editor.getByLabel("Zone appearance", { exact: true }).first().fill("A canvas workshop.");
+        await editor.getByLabel("Zone Name", { exact: true }).first().fill("Workshop");
+        await editor.getByLabel("Zone Used For", { exact: true }).first().fill("Making things");
+        await editor.getByLabel("Zone Appearance", { exact: true }).first().fill("A canvas workshop.");
         await editor
           .getByLabel(/^Zone role/)
           .first()
@@ -106,9 +103,9 @@ try {
       }
       if (layout === "private" || layout === "both") {
         await editor.getByRole("button", { name: "Add personal Zone", exact: true }).click();
-        await editor.getByLabel("Zone name", { exact: true }).last().fill("Sleeping alcove");
-        await editor.getByLabel("Zone used for", { exact: true }).last().fill("Sleeping");
-        await editor.getByLabel("Room specification", { exact: true }).fill("A quiet canvas sleeping alcove.");
+        await editor.getByLabel("Zone Name", { exact: true }).last().fill("Sleeping alcove");
+        await editor.getByLabel("Zone Used For", { exact: true }).last().fill("Sleeping");
+        await editor.getByLabel("Room Specification", { exact: true }).fill("A quiet canvas sleeping alcove.");
         await expect(editor.getByText(/The interior is prepared privately from this specification/)).toBeVisible();
       }
       await editor.getByRole("button", { name: "Open Venue", exact: true }).click();

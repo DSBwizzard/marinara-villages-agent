@@ -1,6 +1,6 @@
 import { cloneElement, type ReactElement, type ReactNode, useId, useRef, useState, useEffect } from "react";
 
-/** Field help stays beside its label or input; it never changes the input's accessible name. */
+/** Field help stays beside its label; it never changes the input's accessible name. */
 export function FoundingHelp({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const id = useId(),
@@ -13,9 +13,43 @@ export function FoundingHelp({ label, children }: { label: string; children: Rea
     const dismissOutside = (event: MouseEvent) => {
       if (!event.composedPath().includes(node)) setOpen(false);
     };
-    // Native clicks distinguish completed taps from cancelled scrolling gestures.
+    // Some Chromium touch gestures complete without a compatibility click.
+    // Track a completed stationary touch, while cancelled/drifting scrolls keep help open.
+    let touch: { id: number; x: number; y: number } | null = null;
+    const down = (event: PointerEvent) => {
+      touch =
+        event.pointerType === "touch" && event.isPrimary
+          ? { id: event.pointerId, x: event.clientX, y: event.clientY }
+          : null;
+    };
+    const move = (event: PointerEvent) => {
+      if (touch?.id === event.pointerId && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10)
+        touch = null;
+    };
+    const cancel = () => {
+      touch = null;
+    };
+    const up = (event: PointerEvent) => {
+      if (
+        touch?.id === event.pointerId &&
+        Math.hypot(event.clientX - touch.x, event.clientY - touch.y) <= 10 &&
+        !event.composedPath().includes(node)
+      )
+        setOpen(false);
+      touch = null;
+    };
     document.addEventListener("click", dismissOutside, true);
-    return () => document.removeEventListener("click", dismissOutside, true);
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("pointercancel", cancel, true);
+    document.addEventListener("pointerup", up, true);
+    return () => {
+      document.removeEventListener("click", dismissOutside, true);
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointercancel", cancel, true);
+      document.removeEventListener("pointerup", up, true);
+    };
   }, [open]);
   return (
     <span
@@ -52,14 +86,12 @@ export function FoundingHelp({ label, children }: { label: string; children: Rea
 export function FoundingField({
   title,
   help,
-  helpPlacement = "label",
   optional = false,
   error,
   children,
 }: {
   title: ReactNode;
   help?: ReactNode;
-  helpPlacement?: "label" | "input";
   optional?: boolean;
   error?: string;
   children: ReactElement<{ id?: string; "aria-describedby"?: string; "aria-invalid"?: boolean }>;
@@ -73,9 +105,7 @@ export function FoundingField({
           {title}
           {optional ? <small>Optional</small> : null}
         </label>
-        {help && helpPlacement === "label" ? (
-          <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp>
-        ) : null}
+        {help ? <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp> : null}
       </div>
       {cloneElement(children, {
         id,
@@ -86,9 +116,6 @@ export function FoundingField({
             }
           : {}),
       })}
-      {help && helpPlacement === "input" ? (
-        <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp>
-      ) : null}
       {error ? (
         <p id={errorId} role="alert" data-founding-problem tabIndex={-1}>
           {error}
@@ -105,5 +132,5 @@ export function CircumstanceInput({ examples, ...props }: { examples: string[] }
     const timer = setInterval(() => setExample((index) => (index + 1) % examples.length), 4000);
     return () => clearInterval(timer);
   }, [props.value, examples]);
-  return <textarea {...props} placeholder={examples[example % examples.length]} />;
+  return <textarea autoComplete="off" {...props} placeholder={examples[example % examples.length]} />;
 }

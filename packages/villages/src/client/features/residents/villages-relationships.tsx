@@ -200,6 +200,7 @@ export function VillagesRelationships({
                   </p>
                   <label>
                     <input
+                      autoComplete="off"
                       type="checkbox"
                       checked={acknowledge}
                       onChange={(event) => setAcknowledge(event.target.checked)}
@@ -249,6 +250,7 @@ export function VillagesRelationships({
                     ?.filter((tie) => `${tie.fromId}:${tie.toId}` === selected)
                     .map((tie) => (
                       <form
+                        autoComplete="off"
                         key={`${selected}:${tie.warmth}:${tie.trust}`}
                         className="villages-relationship-editor"
                         onSubmit={(event) => {
@@ -266,6 +268,7 @@ export function VillagesRelationships({
                         <label>
                           Warmth
                           <input
+                            autoComplete="off"
                             name="warmth"
                             type="number"
                             min={-100}
@@ -278,6 +281,7 @@ export function VillagesRelationships({
                         <label>
                           Trust
                           <input
+                            autoComplete="off"
                             name="trust"
                             type="number"
                             min={-100}

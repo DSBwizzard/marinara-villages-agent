@@ -4,8 +4,9 @@
     "inputs": ["packages/villages/src/server/"]
   },
   "tests/client-source.ts": {
-    "sha256": "18c8d5fefbaa5905c9ba70c987e1719bd6cd1adce3e66fc5129dd2e04f5bb8e4",
-    "inputs": ["packages/", "sources/"]
+    "sha256": "8fcef36e8553254fcf7c7405dd45809ec5fbfb474c21b80f5669bae3f2b8bc54",
+    "inputs": ["packages/villages/src/client/", "packages/villages/src/shared/", "sources/"],
+    "note": "Traversal is explicitly confined to canonical client/shared/source roots; complete client traversal remains covered."
   },
   "packages/villages/src/server/adapters/engine/image-style-profiles.ts": {
     "sha256": "36868b72018bff28b0e66dcdff27427b18d923aed30189f142f789bc46bd26e1",
@@ -28,54 +29,59 @@
     "note": "Optional sharp consumes decoded or derived image buffers, never repository paths."
   },
   "tests/villages-public-client.regression.ts": {
-    "sha256": "44981e323e12e74804e9239ed2a095b15f38eb0a8d2679d8e71c323eb1830e80",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "sha256": "1a57ff3b3894575480795495ae46d3cbee1d89ba63e480cf8ba008f78260226e",
+    "inputs": ["packages/villages/src/client/"],
+    "note": "Recursively scans the complete client source prefix, including future prohibited estimator/re-enablement files; does not follow imports."
   },
   "tests/villages-connections.regression.ts": {
     "sha256": "fe050e8a3073cb24308d3d9ec1aa58db805ee93a577a01a5cb81b405f05fca85",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "inputs": [
+      "packages/villages/src/server/",
+      "packages/villages/src/shared/",
+      "sources/",
+      "packages/villages/engine-boundary.json"
+    ],
+    "note": "Fixed source or packaged server activation and server structural reads; generated payload graph independently retains builder/definition inputs."
   },
   "tests/villages-founding-flow.regression.ts": {
-    "sha256": "1ee756161c617311eab4e153e7cf4162bdb71ba97c4705731fb0331c948df03c",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "sha256": "6529f0f525dce35fc7784c4771deaf9e0393f0ee66ae4e404e01942e4bedcb60",
+    "inputs": ["packages/villages/", "sources/"],
+    "note": "Whole-client structure, server behavior, definition and dynamically named package JPEG assets; retain package breadth."
   },
   "tests/villages-automatic-refresh.regression.ts": {
     "sha256": "715baa4541f9707704e7c1b4d69ba58ca43a105c223a227b02beb4d62202a9e1",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "inputs": ["packages/villages/src/server/", "packages/villages/src/shared/", "sources/"],
+    "note": "Own dynamic imports are fixed server modules; independently inspected client-source and route helpers retain their complete scopes."
   },
   "tests/villages-settings-drift.regression.ts": {
     "sha256": "89cfa657318c011f000422d25ef2fe67afa4d2fb50a6e8780112a484a9300d81",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "inputs": ["packages/villages/src/server/domain/models/world.ts"],
+    "note": "Own dynamic reader reads world.ts; independently inspected client-source retains complete client traversal."
   },
   "tests/villages-signatures.regression.ts": {
     "sha256": "bc27d5741fdccf0ed9aa03fa7de33b1fba717330119f665941b4012590ae449d",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "inputs": ["packages/villages/src/server/", "packages/villages/src/shared/", "sources/"],
+    "note": "Server/shared imports and in-memory gallery/storage; optional sharp consumes supplied image buffers."
   },
   "tests/villages-sprite-manager.regression.ts": {
     "sha256": "4988189d0834a6d41f3339caf2e18db1038b0a422a976076e36e053da23bb199",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "inputs": ["packages/villages/src/server/", "packages/villages/src/shared/", "sources/"],
+    "note": "Server/shared imports and in-memory gallery/storage; optional sharp consumes supplied image buffers."
   },
   "tests/villages-clock-packaged.regression.ts": {
     "sha256": "6e7e1327e34a5d32d1ab9130743c4748c235e31daef3c1e605b64c863a4f15e3",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "inputs": ["packages/villages/src/server/", "packages/villages/src/shared/", "sources/"],
+    "note": "Extracts and executes archive-identical server payload; retain all recovery assertions and generated server/builder dependencies."
   },
   "tests/villages-spinoff-packaged.regression.ts": {
     "sha256": "3e4a18097ddec443f17132ebfd96fd3eeb747c4d9c5c1c99fe51149165166016",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "inputs": ["packages/villages/src/server/", "packages/villages/src/shared/", "sources/"],
+    "note": "Extracts and executes archive-identical server payload; retain all HTTP/state assertions and generated server/builder dependencies."
   },
   "tests/villages-zone-events-packaged.regression.ts": {
     "sha256": "2353ab32cb6962dcd47dc948fb0fb33c721d252badfa1061f1ad972da26487e2",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+    "inputs": ["packages/villages/src/server/", "packages/villages/src/shared/", "sources/"],
+    "note": "Extracts and executes archive-identical server payload; retain payload equality, HTTP/recovery assertions and generated server/builder dependencies."
   },
   "tests/villages-activation-owner.regression.mjs": {
     "sha256": "10a441ec77c15aeb025212f4ca27c3499443dbbd50fc02995b017ea1275bba92",
@@ -84,8 +90,8 @@
   },
   "tests/villages-location-image.regression.ts": {
     "sha256": "b2a74186da814c73da9c3b7417496fdfbfb60a7a238405aa7ef358e3b29ba167",
-    "inputs": ["packages/", "sources/"],
-    "note": "Recursive source audit reads all package source and Engine boundary metadata; imports remain independently inspected."
+    "inputs": ["packages/villages/src/", "packages/villages/engine-boundary.json", "sources/"],
+    "note": "Recursively audits all package source and Engine boundary for image-generation paths; do not reduce to media modules."
   },
   "tests/villages-remote-access.regression.ts": {
     "sha256": "ab685ff4b609fb34f236e0c4f6b101b6230420f46b9940cb04dcaf26af1ec89f",
@@ -93,13 +99,13 @@
     "note": "TypeScript transpiles a fixed slice of the API source in memory; only the API and privileged-access declaration are read."
   },
   "tests/villages-spinoff.e2e.mjs": {
-    "sha256": "ecc01b37c0032adee5646e1ac8f8161ce44ca1b4828886d3ca8251689916a5db",
-    "inputs": ["packages/", "sources/"],
-    "note": "Literal browser harness bundles SpinoffPanel; fetch uses synthetic held browser routes, not repository inputs."
+    "sha256": "b7cd64814831e6ead16d888bc2cf20b8a7d7ff54bdabcf3136f2210074060b92",
+    "inputs": ["packages/villages/src/client/", "packages/villages/src/shared/", "sources/"],
+    "note": "Literal SpinoffPanel harness uses mocked network routes; retain conservative whole client/shared/source inputs."
   },
   "tests/villages-town-map-image.regression.ts": {
-    "sha256": "c491e90afb9a12f526aa407e7a4ae4c75837a22d33d64fa81c6f0fc9f210bc3a",
-    "inputs": ["packages/", "sources/", "scripts/"],
-    "note": "Package source/builder audit includes an absent townmap asset assertion; full package prefix binds later additions as well as existing files."
+    "sha256": "d93eded0ef68dffc7cec81abdd50ef818423f6889c88cd79026369e058ab7239",
+    "inputs": ["packages/villages/", "sources/"],
+    "note": "Whole-package definition/source audit and absent asset assertion retain future package additions; no unrelated scripts are read."
   }
 }

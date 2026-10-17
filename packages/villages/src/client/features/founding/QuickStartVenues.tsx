@@ -85,8 +85,8 @@ export function QuickStartVenues({
       : undefined;
     if (section) section.open = true;
     const labels: Partial<Record<FoundingIssue["field"], string>> = {
-      name: "Venue name",
-      form: "Physical form",
+      name: "Venue Name",
+      form: "Physical Form",
       description: "Exterior appearance",
       "zone-name": "Name",
       "zone-purpose": "Used for",
@@ -130,6 +130,7 @@ export function QuickStartVenues({
               <label>
                 Name
                 <input
+                  autoComplete="off"
                   aria-label="Name"
                   value={zone.name ?? ""}
                   maxLength={100}
@@ -139,6 +140,7 @@ export function QuickStartVenues({
               <label>
                 Used for
                 <textarea
+                  autoComplete="off"
                   aria-label="Used for"
                   value={zone.purpose ?? ""}
                   rows={2}
@@ -149,9 +151,10 @@ export function QuickStartVenues({
               {hidden ? (
                 <>
                   <label>
-                    Room specification · optional
+                    Room Specification · optional
                     <textarea
-                      aria-label="Room specification"
+                      autoComplete="off"
+                      aria-label="Room Specification"
                       value={zone.roomSpecification ?? ""}
                       rows={3}
                       maxLength={1000}
@@ -164,6 +167,7 @@ export function QuickStartVenues({
                 <label>
                   Appearance
                   <textarea
+                    autoComplete="off"
                     aria-label="Appearance"
                     value={zone.description}
                     rows={3}
@@ -311,18 +315,20 @@ export function QuickStartVenues({
             ) : null}
             <fieldset disabled={busy || imageBusy}>
               <label>
-                Venue name
+                Venue Name
                 <input
-                  aria-label="Venue name"
+                  autoComplete="off"
+                  aria-label="Venue Name"
                   maxLength={100}
                   value={selected.name}
                   onChange={(event) => onPatch({ ...selected, name: event.target.value })}
                 />
               </label>
               <label>
-                Physical form
+                Physical Form
                 <input
-                  aria-label="Physical form"
+                  autoComplete="off"
+                  aria-label="Physical Form"
                   maxLength={240}
                   value={selected.form ?? ""}
                   onChange={(event) => onPatch({ ...selected, form: event.target.value })}
@@ -338,6 +344,7 @@ export function QuickStartVenues({
                 <label>
                   Exterior appearance
                   <textarea
+                    autoComplete="off"
                     aria-label="Exterior appearance"
                     rows={3}
                     maxLength={1000}

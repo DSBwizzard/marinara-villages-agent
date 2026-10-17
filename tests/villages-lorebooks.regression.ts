@@ -5,6 +5,8 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   coerceSelectedLorebookIds,
+  readLoreTokenBudget,
+  coerceLoreTokenBudget,
   readSelectedLorebookIds,
 } from "../packages/villages/src/server/domain/rules/lore-policy.js";
 import { readVillageLore, readVillageVisualLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
@@ -21,6 +23,14 @@ async function main() {
   assert.deepEqual(readSelectedLorebookIds([" world ", "world"]), ["world"]);
   assert.deepEqual(coerceSelectedLorebookIds("wrong shape"), []);
 
+  assert.equal(defaultVillageState().loreTokenBudget, 1600);
+  assert.equal(readLoreTokenBudget(0), 0);
+  assert.equal(readLoreTokenBudget(100), 100);
+  assert.equal(coerceLoreTokenBudget(0), 0);
+  assert.equal(coerceVillageState({ wishSystemVersion: 3, loreTokenBudget: 0 }).loreTokenBudget, 0);
+  assert.throws(() => readLoreTokenBudget(-1));
+  assert.throws(() => readLoreTokenBudget(1.5));
+  assert.throws(() => readLoreTokenBudget(3201));
   const originalFetch = globalThis.fetch;
   let bridge = "The old stone bridge crosses the harbor.";
   const books = [
@@ -121,9 +131,22 @@ async function main() {
     );
     assert.equal((await readVillageLore(["world"], "A harbor village", undefined, 200, true)).length, 2);
     assert.equal((await readVillageLore(["world"], "A mountain village")).length, 1);
-    entries.world[1]!.keys = ["^harbor$"];
+    assert.deepEqual(await readVillageLore(["world"], "harbor", undefined, 0), []);
+    assert.equal(await readVillageVisualLore(["world"], "harbor", 360, 0), "");
+    entries.world[1]!.keys = ["harbor"];
+    Object.assign(entries.world[1]!, {
+      selective: true,
+      secondaryKeys: ["absent"],
+      selectiveLogic: "and_all",
+      caseSensitive: true,
+      matchWholeWords: true,
+    });
     entries.world[1]!.useRegex = true;
-    assert.equal((await readVillageLore(["world"], "A harbor village")).length, 1);
+    assert.equal(
+      (await readVillageLore(["world"], "A HARBORSIDE village")).length,
+      2,
+      "only primary keys govern matching; secondary/regex/case/whole-word options are ignored",
+    );
     assert.equal((await readVillageLore(["world"], "harbor")).length, 2);
     bridge = "The bridge is painted blue now.";
     assert.ok(
@@ -138,7 +161,7 @@ async function main() {
       "relevant entries are complete and precede generic constants",
     );
     assert.match(buildTownMapPrompt(undefined, "harbor village", visual), /Compatible visual lore/);
-    assert.ok(buildTownMapPrompt(undefined, "x".repeat(2_000), "y".repeat(500)).length <= 4_000);
+    assert.throws(() => buildTownMapPrompt(undefined, "x".repeat(2_000), "y".repeat(500)), /4,000-character allowance/);
   } finally {
     globalThis.fetch = originalFetch;
   }

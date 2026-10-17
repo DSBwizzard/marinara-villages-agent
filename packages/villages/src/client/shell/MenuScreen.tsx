@@ -9,7 +9,7 @@ import { renderNoticeboardPage } from "../features/world/NoticeboardPage.js";
 import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsPage.js";
 import { renderMenuIndexPage } from "../features/settings/MenuIndexPage.js";
 import type { MenuScreenController } from "./menu-contracts.js";
-import { VillagesRuntimeDebug } from "../features/settings/SettingsPanels.js";
+import { VillagesRuntimeDebug } from "../features/settings/RuntimeDebug.js";
 import { renderVillageSettingsPage } from "../features/settings/VillageSettingsPage.js";
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {

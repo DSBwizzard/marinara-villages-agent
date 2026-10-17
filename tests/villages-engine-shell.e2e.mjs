@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
+import { readFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -11,9 +11,6 @@ const output = resolve(process.env.VILLAGES_VISUAL_OUTPUT ?? "artifacts/warm-eng
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync("C:/Program Files/Google/Chrome/Application/chrome.exe")
-    ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" }
-    : {}),
 });
 const manifest = JSON.parse(readFileSync("packages/villages/manifest.json", "utf8"));
 try {
