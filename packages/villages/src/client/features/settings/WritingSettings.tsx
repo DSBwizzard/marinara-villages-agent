@@ -138,7 +138,7 @@ export function VillageWritingSettings() {
       {busy ? <span className={ELEMENT_TAG + "-hint"}>Saving…</span> : null}
       {saved && !busy ? (
         <span className={ELEMENT_TAG + "-hint"} role="status">
-          Saved for the next venue turn.
+          Saved
         </span>
       ) : null}
       {error ? (
