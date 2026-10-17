@@ -1,3 +1,4 @@
+import { openingActive } from "../../domain/rules/opening-project.js";
 import { completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
 import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
 import { acousticFragment, bindAcousticPlan } from "../../domain/rules/scene-acoustics.js";
@@ -884,6 +885,8 @@ export function createSceneCommands({
     const village = await readVillageState(),
       place = village.venues.find((entry) => entry.id === placeId);
     if (!place) throw notFound("That place is not in this village.");
+    if (!existing && village.opening?.stage === "gathering" && placeId !== village.opening.communityVenueId)
+      throw conflict("Begin at the Community gathering, or skip the opening in Projects.");
     const classes = venueClasses(place),
       spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
     if (!classes.includes(spaceClass) && !requestedZoneId) throw badRequest("That Venue has no such space.");
@@ -914,8 +917,52 @@ export function createSceneCommands({
         () => moveVenueZoneOnce(existing.id, zone.id),
       );
     }
-    const id = randomUUID();
+    const gathering = village.opening?.stage === "gathering" && village.opening.communityVenueId === placeId;
+    const id = gathering && village.opening!.gatheringSceneId ? village.opening!.gatheringSceneId : randomUUID();
+    if (gathering)
+      await mutateVillageState((state) => {
+        if (state.seed !== village.seed || state.opening?.stage !== "gathering")
+          throw conflict("The opening changed. Refresh the Village.");
+        state.opening.gatheringSceneId ||= id;
+        if (state.opening.gatheringSceneId !== id) throw conflict("The gathering is already starting.");
+      });
+    if (gathering) {
+      const prior = await readSession(id).catch((error) => {
+        if (error instanceof VillagesRequestError && error.statusCode === 404) return null;
+        throw error;
+      });
+      if (prior) {
+        if (prior.villageSeed !== village.seed || prior.placeId !== placeId)
+          throw conflict("The saved gathering belongs to another Village.");
+        if (prior.status === "closed" || prior.endedAt) {
+          await mutateVillageState((state) => {
+            if (
+              state.seed === village.seed &&
+              state.opening?.gatheringSceneId === id &&
+              state.opening.stage === "gathering"
+            )
+              state.opening.stage = "conversations";
+          });
+          return prior;
+        }
+        await mutateDocument(ACTIVE_ID, activeSlot, (active) => {
+          if (active.sessionId && active.sessionId !== id) throw conflict("Finish the active Scene first.");
+          active.sessionId = id;
+          active.placeId = placeId;
+        });
+        return refreshZoneParticipants(prior);
+      }
+    }
     const sceneAttendance = captureSceneAttendance(village, placeId, villageNow());
+    if (gathering)
+      sceneAttendance.occupants = village.villagers
+        .filter((resident) => village.opening!.residentIds.includes(resident.characterId))
+        .map((resident) => ({
+          characterId: resident.characterId,
+          name: resident.cardSnapshot.name,
+          doing: "at the Community gathering",
+          zoneId: zone.id,
+        }));
     const entryAccessContext = {
       sceneId: id,
       at: new Date(sceneAttendance.capturedAt),
@@ -983,6 +1030,7 @@ export function createSceneCommands({
     if (participants.length > 4)
       throw conflict("Five residents occupy this Zone. Edit their agendas before starting a Scene.");
     const session: VenueScene = {
+      openingGatheringId: gathering ? village.opening!.id : undefined,
       pendingAccessClaim: initialPermissionId,
       version: 1,
       sceneRevision: 0,
@@ -1019,6 +1067,7 @@ export function createSceneCommands({
       recap: "",
     };
     await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => {
+      if (gathering && value.id) return;
       Object.assign(value, session);
     });
     await mutateDocument(ACTIVE_ID, activeSlot, (active) => {
@@ -1151,6 +1200,9 @@ export function createSceneCommands({
         );
         state.submissions.push({
           id: "greeting",
+          openingContext: reply.openingContext,
+          openingSignal: reply.openingSignal,
+          zoneIdAtTurn: state.zoneId,
           mode: "chat",
           message: "",
           targetId: "",
@@ -2234,6 +2286,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           ]),
         ].filter((id) => !reply.departures.includes(id)),
         replyLineIds,
+        openingContext: reply.openingContext,
+        openingSignal: reply.openingSignal,
         projectContexts: reply.projectContexts,
         projectInterpretationVersion: 1 as const,
         projectSpeech: reply.projectSpeech.map((proposal) => ({
@@ -2724,7 +2778,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   }
 
   async function applyVenueRequests(session: VenueScene, submission: VenueSubmission): Promise<void> {
-    if (submission.venueRequestSignal) {
+    if (submission.venueRequestSignal && !openingActive(await readVillageState())) {
       const signal = submission.venueRequestSignal;
       const spoken = session.lines.find(
         (line) =>
@@ -3030,7 +3084,16 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         villagesLogger().warn("[villages] deferred Scene recovery: %s", String(error)),
       );
     }
-    return closeLiveScene(await readSession(id));
+    const closed = await closeLiveScene(await readSession(id));
+    await mutateVillageState((state) => {
+      if (
+        state.seed === closed.villageSeed &&
+        state.opening?.stage === "gathering" &&
+        state.opening.gatheringSceneId === id
+      )
+        state.opening.stage = "conversations";
+    });
+    return closed;
   }
 
   async function closeVenueSessionWithReceipts(id: string, expectedSceneRevision?: number, retryOfAttemptId?: string) {

@@ -1,3 +1,4 @@
+import { applyOpeningExchange } from "../../domain/rules/opening-project.js";
 import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failure.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { ingestSavedProgressEvent } from "../../domain/rules/progress-runtime.js";
@@ -139,9 +140,29 @@ export function createSceneProgress({
     );
   }
 
+  async function processOpeningSignal(scene: VenueScene, turn: VenueSubmission, projectStatus?: string): Promise<void> {
+    if (!turn.openingSignal || turn.openingProcessedAt) return;
+    const state = await readVillageState();
+    const physical = turn.physicalOutcomeVersion || turn.requestMode === "act" || turn.mode === "act";
+    if (
+      turn.openingSignal.kind === "first-use" &&
+      physical &&
+      !physicalVenueEvents(state).some(
+        (event) => event.id === `venue-chat:${scene.id}:${turn.id}` && event.actionReceipt?.happened,
+      ) &&
+      projectStatus !== "rejected"
+    )
+      return;
+    await mutateVillageState((state) => applyOpeningExchange(state, scene, turn));
+    await changeSession(scene.id, (saved) => {
+      const entry = saved.submissions.find((entry) => entry.id === turn.id);
+      if (entry) entry.openingProcessedAt ||= villageNow().toISOString();
+    });
+  }
   async function applySavedExchange(sessionId: string, submissionId: string): Promise<void> {
     const scene = await readSession(sessionId);
     const turn = scene.submissions.find((entry) => entry.id === submissionId);
+    if (turn?.openingSignal && turn.openingSignal.kind !== "first-use") await processOpeningSignal(scene, turn);
     if (turn?.accessEvents?.length) await applySavedAccessEvents(scene, turn);
     if (turn?.invitationSignal) await recordSpokenInvitation(scene, turn.invitationSignal);
     if (turn?.movement) return;
@@ -234,6 +255,8 @@ export function createSceneProgress({
         });
       },
     );
+    if (valid && turn.openingSignal?.kind === "first-use")
+      await processOpeningSignal(scene, turn, updates.get("projects")?.status ?? processing.domains.projects.status);
     const recordEvents = await receiptForTurn(scene, turn, false);
     if (updates.size)
       await changeSession(scene.id, (saved) => {

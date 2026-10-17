@@ -1,3 +1,4 @@
+import { readOpeningProposal } from "./opening-project.js";
 import type { VillagerCard } from "../models/catalog-model.js";
 import type {
   VillageAgenda,
@@ -29,6 +30,7 @@ type PaletteEntry = {
 };
 
 export type CompactFoundingContext = {
+  openingProposal?: boolean;
   wishAttemptId?: string;
   playerRole?: VillagePlayerRole | null;
   playerPersonaName?: string;
@@ -46,7 +48,11 @@ export type CompactFoundingContext = {
   influenceHints?: readonly string[];
 };
 
-export type CompactFoundingResult = { agenda: VillageAgenda; moves: VillageRemapMove[] };
+export type CompactFoundingResult = {
+  agenda: VillageAgenda;
+  moves: VillageRemapMove[];
+  openingProposal?: import("../../../shared/contracts/opening.js").OpeningProposal;
+};
 
 const compactKey = (activity: string): string => activity.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 
@@ -202,6 +208,9 @@ export function parseCompactFounding(
       source: "village",
       generatedAt: at,
     },
+    openingProposal: context.openingProposal
+      ? readOpeningProposal(payload.openingProposal, context.characterId ?? context.card.id)
+      : undefined,
     moves: [],
   };
 }

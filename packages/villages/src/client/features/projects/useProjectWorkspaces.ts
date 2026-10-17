@@ -15,6 +15,7 @@ export type ProjectRevisionDraft = {
 };
 
 type ProjectDraft = {
+  venueSeeded?: boolean;
   form: string;
   openingVenueType: string;
   openingSpaces: NonNullable<VillageVenue["spaces"]>;
@@ -58,6 +59,33 @@ function emptyDraft(snapshot: VillageSnapshot | null): ProjectDraft {
   };
 }
 
+/** Seed existing physical places once without replacing later player edits or pending operations. */
+function seedEstablishedDraft(draft: ProjectDraft, key: string, snapshot: VillageSnapshot | null): ProjectDraft {
+  const project = snapshot?.projects.find((entry) => `project:${entry.id}` === key);
+  const venue =
+    project?.opening?.established && snapshot?.settings.venues.find((entry) => entry.id === project.venueId);
+  if (!venue || draft.venueSeeded) return draft;
+  const spaces = structuredClone(venue.spaces ?? []);
+  const privateSpaces = structuredClone(venue.privateSpaces ?? []);
+  return {
+    ...draft,
+    venueSeeded: true,
+    form: draft.form || venue.form || "",
+    openingVenueType: draft.openingVenueType || venue.venueType || "",
+    exterior: draft.exterior || venue.description,
+    interior: draft.interior || spaces[0]?.description || "",
+    openingLayout:
+      draft.openingLayout ??
+      venue.layout ??
+      (spaces.length ? (privateSpaces.length ? "both" : "common") : privateSpaces.length ? "private" : "exterior"),
+    openingCommonClass: draft.openingCommonClass ?? spaces[0]?.venueClass,
+    openingSpaces: draft.openingSpaces.length ? draft.openingSpaces : spaces,
+    openingPrivateSpaces: draft.openingPrivateSpaces.length ? draft.openingPrivateSpaces : privateSpaces,
+    exteriorImage: draft.exteriorImage ?? venue.presentation.image,
+    interiorImage: draft.interiorImage ?? spaces[0]?.image ?? null,
+  };
+}
+
 /** One application owns every Project workspace, including work on a hidden Project. */
 export function useProjectWorkspaces(key: string, snapshot: VillageSnapshot | null) {
   const [drafts, setDrafts] = useState<Record<string, ProjectDraft>>({});
@@ -83,12 +111,12 @@ export function useProjectWorkspaces(key: string, snapshot: VillageSnapshot | nu
       owner.current = false;
     };
   }, []);
-  const draft = drafts[key] ?? emptyDraft(snapshot);
+  const draft = seedEstablishedDraft(drafts[key] ?? emptyDraft(snapshot), key, snapshot);
   function field<K extends keyof ProjectDraft>(name: K) {
     return (value: React.SetStateAction<ProjectDraft[K]>) => {
       if (!lifetime.current.current || epoch.current !== generation) return;
       setDrafts((current) => {
-        const previous = current[key] ?? emptyDraft(snapshot);
+        const previous = seedEstablishedDraft(current[key] ?? emptyDraft(snapshot), key, snapshot);
         const next =
           typeof value === "function" ? (value as (old: ProjectDraft[K]) => ProjectDraft[K])(previous[name]) : value;
         return { ...current, [key]: { ...previous, [name]: next } };

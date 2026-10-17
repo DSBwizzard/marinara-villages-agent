@@ -112,6 +112,8 @@ export function quietContactReply(text: string, localIds: string[]) {
     effectFailures: {} as NonNullable<import("../models/scene-model.js").VenueSubmission["effectFailures"]>,
     interpretationRouting: undefined,
     roomEvents: undefined,
+    openingContext: undefined as import("../models/scene-model.js").VenueSubmission["openingContext"],
+    openingSignal: undefined as import("./opening-project.js").OpeningSignal | undefined,
     projectContexts: [],
     projectSpeech: [],
     sceneChange: null,

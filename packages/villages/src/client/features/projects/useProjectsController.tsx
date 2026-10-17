@@ -114,7 +114,7 @@ export function useProjectsController({
   const active = (snapshot?.projects ?? []).filter(
     (entry) => (entry.kind === "new-venue" || entry.kind === "renovation") && entry.lifecycle?.phase !== "complete",
   );
-  const project = active.find((entry) => entry.id === selectedId) ?? null;
+  const project = snapshot?.projects.find((entry) => entry.id === selectedId) ?? null;
   const flow = project?.lifecycle;
   const target = snapshot?.settings.venues.find((entry) => entry.id === project?.venueId);
   const selectedVenue = snapshot?.settings.venues.find((entry) => entry.id === venueId);
@@ -397,7 +397,13 @@ export function useProjectsController({
   };
 
   return {
+    openingAction: async (action: "accept" | "decline" | "skip", residentId?: string) => {
+      const next = await run("/projects/opening", { action, residentId, openingId: snapshot?.opening?.id });
+      if (next?.opening?.projectId) setSelectedId(next.opening.projectId);
+      return next;
+    },
     startRenovation: (venue: VillageVenue) => {
+      if (snapshot?.opening && !["complete", "ended"].includes(snapshot.opening.stage)) return false;
       const existing = active.find((entry) => entry.kind === "renovation");
       if (existing) {
         setSelectedId(existing.id);

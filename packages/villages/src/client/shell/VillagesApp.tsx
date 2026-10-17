@@ -1,3 +1,4 @@
+import { OpeningReminder } from "./OpeningReminder.js";
 import { useEffect } from "react";
 import type { useVillageController as ControllerFactory } from "./useVillageController.js";
 import { ELEMENT_TAG } from "../shared/constants.js";
@@ -56,6 +57,7 @@ function VillageContent({ controller }: { controller: ReturnType<typeof useVilla
   }, [loadSnapshot]);
   return (
     <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <OpeningReminder controller={controller} />
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
         <VillageScreen controller={controller} />
       </div>

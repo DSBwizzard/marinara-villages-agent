@@ -1,3 +1,4 @@
+import { openingSceneDirection, readOpeningSignal } from "../../domain/rules/opening-project.js";
 import {
   playerSpeechCapture,
   materializePlayerSpeech,
@@ -469,6 +470,7 @@ export function createSceneWriting({
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         VENUE_SCENE_WRITING_FOUNDATION,
+        openingSceneDirection(village, session),
         venueWritingDirection(village.narrationStyle, player.name),
         venueAdditionalWritingGuidance(village.narrationStyle),
         mode === "greet"
@@ -1195,6 +1197,10 @@ export function createSceneWriting({
       ),
       interpretationRouting: raw?.interpretationRouting as unknown,
       roomEvents: raw?.roomEvents as unknown,
+      openingContext: (village.opening
+        ? { stage: village.opening.stage, projectId: village.opening.projectId }
+        : undefined) as import("../../domain/models/scene-model.js").VenueSubmission["openingContext"],
+      openingSignal: readOpeningSignal(raw?.openingSignal),
       projectContexts,
       contactIntent:
         !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")

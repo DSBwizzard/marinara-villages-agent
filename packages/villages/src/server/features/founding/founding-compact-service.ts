@@ -44,6 +44,9 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
         ? ""
         : wishGenerationDirection(selectWishSize(context.wishAttemptId ?? context.characterId ?? context.card.name)),
       VILLAGE_SHARED_SETTING_RULE,
+      context.openingProposal
+        ? 'Also return openingProposal:{name,description,situation,venueClass:"workplace|community|other",established:boolean,provenance,work,firstUse}. Prepare this resident’s own modest Project idea, grounded in their identity, founding history, setting, lore and existing places. It must produce a distinct new playable Venue, not duplicate a supplied Venue. The place may already exist in lore: preserve that history and its working condition. situation is the broad concern or interest this resident can mention at the gathering without pitching the solution. provenance states supporting setting facts; for a new place explain its setting fit. work describes useful preparation or coordination appropriate to twelve real hours, not necessarily construction. Never invent defects, lost access, ownership, supplies, promises or consent to justify work. Prefer a bounded plan achievable with ordinary coordination and available finite resources. firstUse is an observable intended use, not a prescribed future event. Do not assume human bodies, builders by profession, fixed characters or a particular plot. All proposal fields must be suitable for a public pitch: no secrets, private motives or undisclosed personal history. This is an unspoken idea, not a Wish or commitment.'
+        : "",
       `Write a compact founding plan for ${context.card.name} in ${context.village}. Return JSON only.`,
       "JSON keys: routine (one sentence), wishes (zero or one objects with wish, intensity 1–3, need: {subject, action, policy: lasting or recurring}), palette (objects with activity, venue, zoneId, flexible, essential, duration in minutes, parts 0–3), days (seven arrays of eight palette indexes), rhythm (zero or more objects with startMinute, endMinute, activity palette index).",
       'Palette field types: activity is a string; venue is an integer; flexible and essential are booleans; duration is numeric minutes; parts is an array of daypart indexes. The key is exactly "venue"; optional zoneId must be a saved Zone identifier, never a label.',
@@ -78,7 +81,8 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
     });
-    const requested = Math.min(model.maxOutputTokens ?? 4_000, 4_000);
+    const outputLimit = context.openingProposal ? 5_000 : 4_000;
+    const requested = Math.min(model.maxOutputTokens ?? outputLimit, outputLimit);
     if (requested < 1_500) throw new Error("The System model has too little output room for a complete founding plan.");
     const fitted = fitVenueWritingMessages(
       model,

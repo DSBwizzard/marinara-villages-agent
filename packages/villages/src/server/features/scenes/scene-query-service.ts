@@ -103,10 +103,12 @@ export function createSceneQueryService({ readSession, readVillageState, village
       const session = coerceSession(record.data);
       if (session.processingVersion === 1 && session.villageSeed !== village.seed) return [];
       return session.submissions
-        .filter((turn) =>
-          turn.processing
-            ? unfinishedExchange(turn.processing)
-            : pendingProgressTurns(session, village.foundedAt).includes(turn),
+        .filter(
+          (turn) =>
+            (turn.openingSignal && !turn.openingProcessedAt) ||
+            (turn.processing
+              ? unfinishedExchange(turn.processing)
+              : pendingProgressTurns(session, village.foundedAt).includes(turn)),
         )
         .map((turn) => ({
           sessionId: session.id,

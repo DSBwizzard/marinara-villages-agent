@@ -1123,6 +1123,14 @@ export type VillageProjectLifecycle = {
 };
 
 export type VillageProject = {
+  opening?: {
+    version: 1;
+    established: boolean;
+    provenance: string;
+    work: string;
+    firstUse: string;
+    durationMs: number;
+  };
   id: string;
   title: string;
   venueId: string;
@@ -1208,6 +1216,7 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  opening?: import("../rules/opening-project.js").OpeningRecord;
   visitMemoryBackfilled?: boolean;
   wishSystemVersion: number;
   /** Prepared residents awaiting their one-time, finite post-reset Wish attempt. */
@@ -1854,6 +1863,7 @@ export type VillageMomentView = {
 type ClientVisibleSnapshot<T extends import("../../../shared/contracts/village.js").VillageSnapshot> = T;
 
 export type VillageSnapshot = ClientVisibleSnapshot<{
+  opening?: import("../../../shared/contracts/opening.js").OpeningView;
   clock?: import("../../../shared/contracts/clock.js").VillageClockView;
   relationshipStartingPending?: boolean;
   backgroundWork: import("./background-model.js").BackgroundSummary[];
