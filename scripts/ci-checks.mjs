@@ -16,7 +16,7 @@ export function policyKey(snapshot) {
   return fingerprint(
     snapshot.inputs.filter(
       (input) =>
-        /^scripts\/(?:ci-[^/]+|check-inputs|test-inputs|validation-inputs)\.(?:mjs|json)$/.test(input.path) ||
+        /^scripts\/(?:ci-[^/]+|check-inputs|validation-inputs)\.(?:mjs|json)$/.test(input.path) ||
         input.path === ".github/workflows/ci.yml",
     ),
   );
@@ -91,6 +91,7 @@ export async function checkBlueprint(root = process.cwd(), { snapshot, inventory
       group: test.group,
       opaque: dependencies?.opaque ?? true,
       reasons: dependencies?.reasons ?? ["unresolved dependency graph"],
+      scopeDigest: fingerprint(dependencies?.declarations ?? []),
     });
   }
   const definition = await readFile(resolve(root, "packages/villages/package-definition.mjs"), "utf8").catch(() => "");
@@ -115,6 +116,7 @@ export function checkKeys(blueprint, environment) {
       schema: 3,
       policy: blueprint.policyDigest,
       id: spec.id,
+      scopeDigest: spec.scopeDigest,
       environment,
       inputs: spec.inputs.map((path) => [path, catalog.get(path) ?? "missing"]),
     }),

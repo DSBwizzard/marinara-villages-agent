@@ -105,6 +105,25 @@ try {
     "Stale reviewed scopes fail broad",
   );
   await writeFile(join(root, "tests/scoped-helper.mjs"), files["tests/scoped-helper.mjs"]);
+  const declarations = JSON.parse(files["scripts/test-inputs.json"]);
+  declarations["tests/scoped-helper.mjs"].inputs = ["packages/villages/src/server.ts"];
+  await writeFile(join(root, "scripts/test-inputs.json"), JSON.stringify(declarations));
+  const rescoped = await checkBlueprint(root, { inventory });
+  assert.equal(rescoped.policyDigest, first.policyDigest, "A declaration edit preserves validator trust identity");
+  const envForScope = environmentFor(first.toolchain, "linux", { ImageVersion: "fixture" });
+  const oldKeys = new Map(checkKeys(first, envForScope).map((s) => [s.id, s.key]));
+  const newKeys = new Map(checkKeys(rescoped, envForScope).map((s) => [s.id, s.key]));
+  assert.notEqual(
+    newKeys.get("test:tests/scoped.regression.mjs"),
+    oldKeys.get("test:tests/scoped.regression.mjs"),
+    "Changed scope invalidates its consumer even if resolved files coincide",
+  );
+  assert.equal(
+    newKeys.get("test:tests/a.regression.mjs"),
+    oldKeys.get("test:tests/a.regression.mjs"),
+    "Unrelated declarations cannot invalidate direct consumers",
+  );
+  await writeFile(join(root, "scripts/test-inputs.json"), files["scripts/test-inputs.json"]);
   const environment = environmentFor(first.toolchain, "linux", { ImageVersion: "fixture" });
   const specs = checkKeys(first, environment);
   const origin = {

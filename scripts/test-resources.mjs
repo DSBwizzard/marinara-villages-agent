@@ -3,6 +3,16 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  // Reviewed: fixed domain inputs and process-local fake runtime/document stores;
+  // these suites open no provider, port, shared output or real saved world.
+  "tests/villages-attention-sources.regression.ts",
+  "tests/villages-attention.regression.ts",
+  "tests/villages-clock-recovery.regression.ts",
+  "tests/villages-interpretation.regression.ts",
+  "tests/villages-project-interpretation.regression.ts",
+  "tests/villages-wish-interpretation.regression.ts",
+  "tests/villages-scene-json-hardening.regression.ts",
+  "tests/villages-feedback-proof.regression.mjs",
   "tests/villages-founding-phone-layout.e2e.mjs",
   "tests/villages-founding-compact-layout.e2e.mjs",
   "tests/villages-settings-requests.e2e.mjs",

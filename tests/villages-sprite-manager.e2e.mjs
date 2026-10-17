@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
 import { chromium } from "@playwright/test";
@@ -21,9 +21,6 @@ function pngImage(opaque = false, multiple = false) {
 }
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync("C:/Program Files/Google/Chrome/Application/chrome.exe")
-    ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" }
-    : {}),
 });
 try {
   for (const viewport of [

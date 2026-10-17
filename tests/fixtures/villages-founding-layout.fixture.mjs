@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
 import { chromium } from "@playwright/test";
@@ -10,10 +9,8 @@ import { wantsCase, runCase } from "../../scripts/test-cases.mjs";
 const art = new PNG({ width: 1536, height: 1024 });
 art.data.fill(90);
 const mapImage = "data:image/png;base64," + PNG.sync.write(art).toString("base64");
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const snapshot = {
   status: "ready",
