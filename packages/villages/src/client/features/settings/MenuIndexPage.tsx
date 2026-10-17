@@ -8,7 +8,6 @@ export function renderMenuIndexPage(ports: MenuIndexPagePorts) {
       {backgroundPanel}
       <span className={`${ELEMENT_TAG}-venue-kicker`}>Village menu</span>
       <h2>Choose where to go</h2>
-      <p>Manage the people and places in your village, adjust settings, or inspect its DEBUG records.</p>
       <div className={`${ELEMENT_TAG}-menu-quick-links`}>
         <button
           type="button"
