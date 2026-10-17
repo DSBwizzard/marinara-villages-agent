@@ -197,6 +197,14 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       }
       await mutateVillageState((state) => {
         if (state.seed === initial.seed && state.foundingPreparation?.status === "pending") {
+          if (
+            state.opening?.residentIds.some(
+              (id) =>
+                state.villagers.some((resident) => resident.characterId === id) &&
+                !state.opening!.proposals.some((proposal) => proposal.residentId === id),
+            )
+          )
+            throw new Error("Opening proposal preparation is incomplete. Retry preparation.");
           state.foundingPreparation.status = "ready";
           state.foundingPreparation.currentId = "";
           state.foundingPreparation.stage = undefined;

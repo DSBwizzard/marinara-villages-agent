@@ -1,3 +1,4 @@
+import { readOpeningProposal } from "../../domain/rules/opening-project.js";
 import { copyDate, calendarDate } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
@@ -100,6 +101,10 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         : undefined;
     await reportFoundingProgress(village.seed, { stage: "lore" }, characterId);
     const context = {
+      openingProposal:
+        village.opening?.stage === "gathering" &&
+        village.opening.residentIds.includes(characterId) &&
+        !village.opening.proposals.some((entry) => entry.residentId === characterId),
       card: effectiveCard,
       characterId,
       wishAttemptId: initialWishAttemptId,
@@ -164,7 +169,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     recoverSavedResult: (input, steps) => {
       const saved = steps.find((step) => step.key === "owned-routine-profile" && step.status === "completed");
       if (!saved?.response) return undefined;
-      return parseCompactFoundingCompletion(saved.response, input.context).agenda;
+      return parseCompactFoundingCompletion(saved.response, input.context);
     },
     generate: async (input) => {
       const job = (await backgroundWorkSummaries()).find(
@@ -175,12 +180,20 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         await reportFoundingProgress(input.seed, { stage: "model", modelName }, input.characterId);
       });
       await reportFoundingProgress(input.seed, { stage: "applying" }, input.characterId);
-      return result.agenda;
+      return result;
     },
     valid: (state, input) =>
       state.villagers.some((resident) => resident.characterId === input.characterId) &&
       agendaRevision(state, input.characterId) === input.revision,
-    apply: (state, input, agenda) => applyAgenda(state, input.characterId, agenda, input.initialWishAttemptId),
+    apply: (state, input, result) => {
+      if (
+        input.context.openingProposal &&
+        state.opening?.stage === "gathering" &&
+        !state.opening.proposals.some((entry) => entry.residentId === input.characterId)
+      )
+        state.opening.proposals.push(readOpeningProposal(result.openingProposal, input.characterId));
+      applyAgenda(state, input.characterId, result.agenda ?? result, input.initialWishAttemptId);
+    },
   };
 
   /**

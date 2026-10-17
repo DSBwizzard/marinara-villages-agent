@@ -18,6 +18,11 @@ export function renderProjectsPage(ports: ProjectsPagePorts) {
   return (
     <ProjectsPanelV2
       snapshot={snapshot}
+      onPeople={() => ports.openMenu?.("villagers")}
+      onVenue={(id) => {
+        const venue = snapshot.settings.venues.find((entry) => entry.id === id);
+        if (venue) ports.openVenue?.(venue);
+      }}
       room={room}
       onReturn={() => setScreen("room")}
       onMap={() => {

@@ -1,3 +1,4 @@
+import { openingView } from "../../domain/rules/opening-project.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
@@ -164,10 +165,12 @@ export function createVillageSnapshot({
           decision.status !== "countered" &&
           decision.venueDraft,
       ),
+      opening: openingView(village),
       projects: village.projects.map((project) =>
         project.lifecycle
           ? {
               ...project,
+              opening: project.opening ? { ...project.opening, provenance: "" } : undefined,
               lifecycle: {
                 ...project.lifecycle,
                 recordedItems: project.lifecycle.recordedItems.filter((item) => {

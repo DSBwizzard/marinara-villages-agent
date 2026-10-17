@@ -1,3 +1,4 @@
+import { openingActive, requireOrdinaryProjects } from "../../domain/rules/opening-project.js";
 import { readConnectionIds } from "../../domain/rules/space-connections.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type {
@@ -32,6 +33,7 @@ export function draftNewVenueProject(
   requesterCharacterId = "",
   requestId = "",
 ): VillageProject {
+  if (openingActive(state) && !requestId.startsWith(`opening:${state.seed}:`)) requireOrdinaryProjects(state);
   const row = asRecord(value);
   const name = boundText(row.name, MAX_VENUE_NAME_LENGTH).trim();
   const description = boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
@@ -73,6 +75,7 @@ export function draftNewVenueProject(
 }
 
 export function draftRenovationProject(state: VillageState, venueId: string, value: unknown): VillageProject {
+  requireOrdinaryProjects(state);
   const row = asRecord(value);
   const title = boundText(row.title, MAX_VENUE_NAME_LENGTH).trim() || "Renovation";
   const detail = boundText(row.detail, MAX_VENUE_DESCRIPTION_LENGTH).trim();

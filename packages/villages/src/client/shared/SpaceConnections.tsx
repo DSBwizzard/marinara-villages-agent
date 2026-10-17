@@ -43,10 +43,7 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
   return (
     <fieldset className="villages-space-connections">
       <legend>Connections between spaces</legend>
-      <p>
-        Each connection is a passage in both directions. Access rules are separate; no dimensions or door states are
-        implied.
-      </p>
+
       {editableIds ? (
         <p>
           Only connections involving the spaces edited in this project can change here. Use a separate layout or Upgrade

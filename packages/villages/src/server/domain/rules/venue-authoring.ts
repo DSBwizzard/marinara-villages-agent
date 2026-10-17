@@ -1,3 +1,4 @@
+import { requireOrdinaryProjects } from "./opening-project.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueFeature } from "../models/world.js";
 import { asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
@@ -195,6 +196,7 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
   return draft;
 }
 export function addVillageVenue(state: VillageState, draft: VillageVenue): void {
+  requireOrdinaryProjects(state);
   assertCanAddVillageVenue(state, draft.classes);
   if (state.venues.some((venue) => venue.name.trim().toLowerCase() === draft.name.toLowerCase())) {
     throw badRequest("A venue with that name already exists.");

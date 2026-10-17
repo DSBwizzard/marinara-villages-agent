@@ -48,6 +48,9 @@ export type SceneAttendance = {
   occupants: (VenueParticipant & { zoneId: string })[];
 };
 export type VenueSubmission = {
+  openingProcessedAt?: string;
+  openingContext?: { stage: string; projectId: string };
+  openingSignal?: import("../rules/opening-project.js").OpeningSignal;
   speechCapture?: { version: 3; status: "captured" | "silent" };
   effectFailures?: Partial<
     Record<
@@ -160,6 +163,7 @@ export type VenueRecordEvent = {
   detail?: string;
 };
 export type VenueScene = {
+  openingGatheringId?: string;
   spinoff?: import("./spinoff-model.js").VillageSpinoff;
   version: 1;
   processingVersion?: 1;

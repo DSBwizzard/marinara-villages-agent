@@ -401,6 +401,8 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               ? renderProjectsPage({
                   debugDiscardEnabled,
                   projectsController,
+                  openMenu,
+                  openVenue: openPlace,
                   goHome,
                   mobile,
                   room,

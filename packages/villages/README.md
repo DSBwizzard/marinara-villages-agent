@@ -1,5 +1,15 @@
 # Villages
 
+## Guided opening Project (0.7.3)
+
+New villages begin with their founding residents together at the placed Community Venue. After this Scene, individual conversations reveal one prepared proposal per founder. The player hears every remaining founder before choosing one proposal as offered. Resident move-outs remove unchosen proposals from eligibility; temporary absence does not. Existing villages do not adopt the opening.
+
+Opening Projects use the ordinary site, willing builder, agreed checklist, verified supply, work, and finishing pipeline. The site may be a new place or one already established in the setting. Established places retain their history, available uses, Zone identities, and physical records. The undertaking is actual preparation or coordination; it never establishes invented disrepair, supplies, permission, or resident willingness. Opening work lasts twelve real hours, including after guidance is skipped; other Projects keep their existing duration. Worksites remain available for ordinary Scenes.
+
+Opening the finished Venue completes the Project. A subsequent player exchange depicting its intended first use completes guidance. Projects contains revealed proposals, current controls, and completed records; a compact map/Scene action links to the relevant controls. Skipping or declining all proposals ends guidance permanently and unlocks normal Projects. Skipping preserves an accepted Project and all its consequences.
+
+Prepared ideas share the existing checkpointed founding routine request, with a 5,000-token output ceiling for that request only. The gathering and pitches use ordinary Scene requests; there are no journal, reminder, or first-use checker requests. Only witnessed saved speech reveals a proposal. Generation claims, saved responses, opening identity, Scene evidence and effect receipts support deliberate retry and local replay. Refresh does not generate another opening. Provider-free regression/browser fixtures cover mechanics and desktop/phone layouts; they do not establish live-model writing quality.
+
 **Experimental spinoffs:** an active Village Scene can open an Engine roleplay with one resident and return compatible, reviewed shared memories. See [Spinoffs: proof of concept](../../docs/spinoffs.md) for continuity, spending, and recovery behavior. This first version does not change relationship scores or other Village systems.
 
 ## Doorway conversations and saved updates

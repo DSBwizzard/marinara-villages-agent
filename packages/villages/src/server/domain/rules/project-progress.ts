@@ -187,7 +187,7 @@ function verifyGate(
         (venue) =>
           venue.id === project.venueId &&
           venue.buildProjectId === project.id &&
-          venue.constructionStatus === "worksite",
+          (venue.constructionStatus === "worksite" || project.opening?.established === true),
       )) ||
     (gate === "approval" &&
       evidence.kind === "project-approval" &&

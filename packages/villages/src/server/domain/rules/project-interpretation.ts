@@ -60,6 +60,14 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
         ...context,
         title: project.title,
         detail: flow.change ? renovationTerms(flow.change) : (project.venueDraft?.description ?? "").slice(0, 500),
+        undertaking: project.opening
+          ? {
+              established: project.opening.established,
+              provenance: project.opening.provenance,
+              work: project.opening.work,
+              durationHours: 12,
+            }
+          : undefined,
         builderId: flow.builderId,
         affectedIds: flow.affectedIds,
         supplies: flow.requirements

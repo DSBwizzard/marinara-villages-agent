@@ -1,3 +1,4 @@
+import { reconcileOpening } from "./opening-project.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { initializeVenueAccess, reconcileVenueAccess } from "./venue-access.js";
 import { assertVillageVenueCapacity, villageVenueUsage } from "./venue-capacity.js";
@@ -19,6 +20,7 @@ export function normalizeVillageMutation(
   const previousVenues = new Map(state.venues.map((venue) => [venue.id, structuredClone(venue)]));
   const previousCapacity = villageVenueUsage(state);
   mutate(state);
+  reconcileOpening(state);
   if (state.seed !== relationshipSeed) delete state.relationshipContext;
   const capacity = villageVenueUsage(state);
   if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)

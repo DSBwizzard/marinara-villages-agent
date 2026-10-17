@@ -1,3 +1,4 @@
+import { openingActive, openingView, reconcileOpening, OPENING_WORK_MS } from "../../domain/rules/opening-project.js";
 import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
 import { validateConnections } from "../../domain/rules/space-connections.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -57,12 +58,70 @@ export function createProjectLifecycle({
     });
   }
 
+  async function decideOpeningProposal(value: unknown): Promise<void> {
+    const row = asRecord(value);
+    const residentId = asTrimmedString(row.residentId);
+    await mutateVillageState((state) => {
+      reconcileOpening(state);
+      const opening = state.opening;
+      if (!opening) throw conflict("No opening is available.");
+      if (asTrimmedString(row.openingId) !== opening.id) throw conflict("The opening changed. Refresh the Village.");
+      if (state.foundingPreparation && state.foundingPreparation.status !== "ready")
+        throw conflict("Finish founding preparation first.");
+      if (row.action === "skip") {
+        if (openingActive(state)) {
+          opening.stage = "ended";
+          opening.outcome = "Skipped";
+        }
+        return;
+      }
+      const requestId = `opening:${state.seed}:${residentId}`;
+      if (row.action === "accept" && opening.projectId === requestId) return;
+      const view = openingView(state)!;
+      if (
+        opening.stage !== "conversations" ||
+        !view.residentIds.includes(residentId) ||
+        !view.heardIds.includes(residentId)
+      )
+        throw conflict("Hear this resident's proposal first.");
+      if (row.action === "decline") {
+        if (!opening.declinedIds.includes(residentId)) opening.declinedIds.push(residentId);
+        reconcileOpening(state);
+        return;
+      }
+      if (
+        row.action !== "accept" ||
+        opening.declinedIds.includes(residentId) ||
+        !view.residentIds.every((id) => view.heardIds.includes(id))
+      )
+        throw conflict("Hear every resident's proposal before choosing.");
+      const proposal = opening.proposals.find((entry) => entry.residentId === residentId)!;
+      const project = draftNewVenueProject(
+        state,
+        { name: proposal.name, classes: [proposal.venueClass], description: proposal.description },
+        residentId,
+        requestId,
+      );
+      project.requesterCharacterId = residentId;
+      project.opening = {
+        version: 1,
+        established: proposal.established,
+        provenance: proposal.provenance,
+        work: proposal.work,
+        firstUse: proposal.firstUse,
+        durationMs: OPENING_WORK_MS,
+      };
+      opening.projectId = project.id;
+      opening.stage = "project";
+    });
+  }
+
   function worksite(project: VillageProject, x: number, y: number, at: string): VillageVenue {
     const draft = project.venueDraft!;
     return {
       id: randomUUID(),
       buildProjectId: project.id,
-      constructionStatus: "worksite",
+      constructionStatus: project.opening?.established ? "complete" : "worksite",
       name: draft.name,
       form: "",
       classes: draft.classes,
@@ -78,7 +137,7 @@ export function createProjectLifecycle({
       workerIds: [],
       exteriorState: defaultVenueSpace("other", draft.description).state,
       state: {
-        condition: "planned",
+        condition: project.opening?.established ? draft.description : "planned",
         upgrades: [],
         furniture: [],
         publicFacts: [],
@@ -353,8 +412,9 @@ export function createProjectLifecycle({
       )
         throw conflict("That Builder is already working on another Project.");
       const at = now.toISOString(),
-        completesAt = new Date(now.getTime() + DAY_MS).toISOString();
-      flow.workOrder = { startsAt: at, completesAt, pausedAt: "", remainingMs: DAY_MS };
+        durationMs = project.opening ? OPENING_WORK_MS : DAY_MS,
+        completesAt = new Date(now.getTime() + durationMs).toISOString();
+      flow.workOrder = { startsAt: at, completesAt, pausedAt: "", remainingMs: durationMs };
       builder.agenda.projectWork = {
         projectId: id,
         venueId: project.venueId,
@@ -463,8 +523,26 @@ export function createProjectLifecycle({
               "",
               validImage,
             );
+            const existingZones = venueZones(venue);
+            if (
+              project.opening?.established &&
+              existingZones.some((saved) => !zones.some((zone) => zone.id === saved.id))
+            )
+              throw conflict("Keep existing Zones. Renovations unlock after the opening.");
             for (const zone of zones) {
-              const existing = venue.zones?.find((saved) => saved.id === zone.id);
+              const existing = existingZones.find((saved) => saved.id === zone.id);
+              if (project.opening?.established && existing) {
+                const draft = { ...zone };
+                Object.assign(zone, existing, draft, {
+                  state: existing.state,
+                  seen: existing.seen,
+                  picture: existing.picture,
+                  lastObserved: existing.lastObserved,
+                  preparation: existing.preparation,
+                  adaptationPending: existing.adaptationPending,
+                  image: draft.image ?? existing.image,
+                });
+              }
               // Structural finishing cannot replace access rules governed by the command service.
               zone.access = existing?.access;
             }
@@ -484,9 +562,10 @@ export function createProjectLifecycle({
             venue.venueType = boundText(row.venueType, 100);
             venue.imageContext = readVenueImageContext(row.imageContext);
             venue.description = exterior;
-            venue.presentation.image = validImage(row.exteriorImage);
+            venue.presentation.image =
+              validImage(row.exteriorImage) ?? (project.opening?.established ? venue.presentation.image : null);
             venue.constructionStatus = "complete";
-            venue.state.condition = "complete";
+            if (!project.opening?.established) venue.state.condition = "complete";
             venue.state.updatedAt = at;
             flow.phase = "complete";
             project.status = "complete";
@@ -699,6 +778,7 @@ export function createProjectLifecycle({
   }
 
   return {
+    decideOpeningProposal,
     createNewVenueProject,
     placeNewVenueProject,
     createRenovationProject,
