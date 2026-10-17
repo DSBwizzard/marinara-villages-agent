@@ -112,7 +112,7 @@ jobs:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
       - name: Install browser system dependencies
-        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
+        if: matrix.platform == 'linux' && steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
       - name: Install browser test runtime
         if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
