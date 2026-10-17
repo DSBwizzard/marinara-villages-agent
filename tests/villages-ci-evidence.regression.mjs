@@ -341,6 +341,52 @@ try {
     ["18", "17", "19"],
     "Unavailable completed attempts fall back within a bounded candidate window",
   );
+  const justMerged = new GitHubEvidence({
+    root,
+    repository: "example/villages",
+    environment: { VILLAGES_CI_BASE: "b".repeat(40), GITHUB_BASE_REF: "staging", GITHUB_RUN_ID: "60" },
+  });
+  const mergeLookups = [];
+  justMerged.api = (path) => {
+    mergeLookups.push(path);
+    if (path === "git/commits/" + "b".repeat(40))
+      return { parents: [{ sha: "a".repeat(40) }, { sha: "c".repeat(40) }] };
+    return {
+      check_runs: path.includes("c".repeat(40))
+        ? [
+            {
+              name: "package-parity",
+              status: "completed",
+              conclusion: "success",
+              details_url: "https://github.com/example/villages/actions/runs/59",
+            },
+          ]
+        : [],
+    };
+  };
+  justMerged.coverage = async (id) => ({ manifest: { from: id } });
+  assert.deepEqual(
+    (await justMerged.discover("policy")).map((row) => row.manifest.from),
+    ["59"],
+  );
+  assert.equal(mergeLookups.length, 3, "A just-merged base discovers its PR proof without waiting for push CI");
+  justMerged.api = (path) => {
+    assert.ok(!path.startsWith("git/commits/"), "A completed base does not need the parent fallback");
+    return {
+      check_runs: [
+        {
+          name: "package-parity",
+          status: "completed",
+          conclusion: "success",
+          details_url: "https://github.com/example/villages/actions/runs/58",
+        },
+      ],
+    };
+  };
+  assert.deepEqual(
+    (await justMerged.discover("policy")).map((row) => row.manifest.from),
+    ["58"],
+  );
   console.log("Per-check invalidation, version reuse, provenance, toolchain and tamper rejection passed.");
 } finally {
   await rm(root, { recursive: true, force: true });
