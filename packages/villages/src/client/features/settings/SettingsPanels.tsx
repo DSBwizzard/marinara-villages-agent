@@ -418,9 +418,6 @@ export function VillageWritingSettings() {
               </select>
             </label>
           </div>
-          <span className={ELEMENT_TAG + "-hint"}>
-            Rating applies to venue narration and dialogue only. NSFW allows adult content when the scene calls for it.
-          </span>
         </>
       ) : !error ? (
         <span className={ELEMENT_TAG + "-hint"}>Reading village writing settings…</span>
