@@ -14,6 +14,7 @@ import {
   FoundingVillagerPicker,
   SETUP_STEPS,
   VillageLorebookPicker,
+  LoreTokenBudgetField,
 } from "./FoundingPanels.js";
 import { FoundingField, FoundingHelp, CircumstanceInput } from "./FoundingField.js";
 import { venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
@@ -24,28 +25,16 @@ import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-wor
 import { DEFAULT_PLAYER_ROLE, PlayerRoleFields, PlayerRoleSummary, playerRoleProblem } from "./villages-player-role.js";
 import { ResidentFoundingEditors } from "./villages-resident-founding.js";
 
-const PLACE_EXAMPLES = [
-  "A seaside village beneath misty cliffs, in a world where magic is part of everyday life.",
-  "A converted shopping mall in a modern city, with shared living spaces and shops still operating below.",
-  "A remote space station orbiting an icy moon, supplied by occasional cargo ships.",
-  "An old countryside estate with gardens, workshops, and a small town nearby.",
-];
 const MAP_EXAMPLES = [
   "An inn beside the river, with homes around a central square.",
   "Bedrooms along an indoor corridor, with a shared kitchen at one end.",
   "Leave out cars and parking lots; connect the shops with covered paths.",
   "Show only the station interior; leave out planets, stars, and exterior views.",
 ];
-const CIRCUMSTANCE_EXAMPLES = [
-  "This village has existed for generations. I already live here, and everyone is preparing for the annual harvest festival.",
-  "The others and I have rented an abandoned observatory. The power works, but the living quarters need attention.",
-  "I work at the village inn. It is a quiet week, and the regulars gather each evening to share news and stories.",
-  "A storm has cut off the road out of the village. I am helping the others check supplies while we wait for news.",
-];
 const PLACE_ERRORS = {
   name: "Give the village a name.",
-  setting: "Describe the place and world.",
-  circumstance: "Describe the starting circumstances.",
+  setting: "Describe the setting.",
+  circumstance: "Describe the starting scenario.",
 };
 
 export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
@@ -431,11 +420,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <section className="villages-forging-card">
                   <h3>Place</h3>
                   <FoundingField
-                    title="Village timezone"
-                    help="Suggested from the computer running Marinara Engine. This choice stays with your village; daylight saving follows the selected timezone."
+                    title="Village Timezone"
+                    help="Villages runs on real-time. Select the timezone you wish for Villages' clock to use."
                   >
                     <select
-                      aria-label="Village timezone"
+                      aria-label="Village Timezone"
                       disabled={!!snapshot?.isFounded || busy}
                       value={
                         controller.setupTimeZone || snapshot?.clock?.timeZone || snapshot?.village.timeZone || "UTC"
@@ -461,11 +450,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     </select>
                   </FoundingField>
                   <FoundingField
-                    title="Village name"
+                    title="Village Name"
                     error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
                   >
                     <input
-                      aria-label="Village name"
+                      autoComplete="off"
+                      aria-label="Village Name"
+                      placeholder="Crystalwood Heights"
                       maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
                       value={setupName}
                       disabled={busy}
@@ -476,14 +467,23 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     />
                   </FoundingField>
                   <FoundingField
-                    title="Place and world"
+                    title="Setting"
+                    help={
+                      <>
+                        A Village is wherever your community lives - a town, spaceship, dumpster, shopping mall, or
+                        undeveloped land. Describe its <strong>permanent details</strong> and{" "}
+                        <strong>critical facts</strong> about the wider world, time period, and important world-building
+                        rules.
+                      </>
+                    }
                     error={
                       validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""
                     }
                   >
-                    <CircumstanceInput
-                      examples={PLACE_EXAMPLES}
-                      aria-label="Place and world"
+                    <textarea
+                      autoComplete="off"
+                      placeholder="A seaside resort on a sheltered coast in a present-day world without magic."
+                      aria-label="Setting"
                       maxLength={snapshot?.settings.settingMaxLength ?? 1200}
                       rows={4}
                       value={setupSetting}
@@ -497,8 +497,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 </section>
                 <section className="villages-forging-card villages-starting-situation">
                   <FoundingField
-                    title="Starting circumstances"
-                    help="Describe the circumstances when you first start playing here. Everyday life, an ongoing situation, or a recent change are all fine."
+                    title="Starting Scenario"
+                    help={
+                      <>
+                        Describe life in the Village when play begins, including any ongoing events or problems.{" "}
+                        <strong>These conditions can change through play.</strong>
+                      </>
+                    }
                     error={
                       validatedFields.includes("place-circumstance") &&
                       !snapshot?.isFounded &&
@@ -507,9 +512,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         : ""
                     }
                   >
-                    <CircumstanceInput
-                      examples={CIRCUMSTANCE_EXAMPLES}
-                      aria-label="Starting circumstances"
+                    <textarea
+                      autoComplete="off"
+                      placeholder="The resort is preparing for its annual festival, but visitors are scarce and several buildings need repairs."
+                      aria-label="Starting Scenario"
                       maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 2000}
                       rows={4}
                       value={setupFoundingDetails}
@@ -522,32 +528,25 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </FoundingField>
                 </section>
                 <section className="villages-forging-card villages-place-options">
-                  <details>
-                    <summary>Village lorebooks · {setupLorebookDraft.length} selected</summary>
-                    <VillageLorebookPicker
-                      books={lorebooks}
-                      error={lorebooksError}
-                      selected={setupLorebookDraft}
-                      onChange={setSetupLorebookDraft}
-                      disabled={busy}
-                    />
-                    <label>
-                      Lorebook token budget
-                      <input
-                        aria-label="Lorebook token budget"
-                        type="number"
-                        min={snapshot?.settings.loreTokenBudgetMin ?? 200}
-                        max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
-                        step={100}
-                        value={setupLoreTokenBudgetDraft}
-                        onChange={(event) => setSetupLoreTokenBudgetDraft(Number(event.target.value))}
-                      />
-                    </label>
-                  </details>
+                  <VillageLorebookPicker
+                    books={lorebooks}
+                    error={lorebooksError}
+                    selected={setupLorebookDraft}
+                    onChange={setSetupLorebookDraft}
+                    disabled={busy}
+                  />
+                  <LoreTokenBudgetField
+                    value={setupLoreTokenBudgetDraft}
+                    onChange={controller.setSetupLoreTokenBudgetDraft}
+                    min={snapshot?.settings.loreTokenBudgetMin ?? 0}
+                    max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
+                    disabled={busy}
+                  />
                   {snapshot?.isFounded ? (
                     <label>
-                      Current world facts
+                      Current World Facts
                       <textarea
+                        autoComplete="off"
                         value={setupWorldFacts.join("\n")}
                         onChange={(event) => setSetupWorldFacts(event.target.value.split(/\r?\n/u))}
                       />
@@ -596,13 +595,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   {setupMapSource === "generate" ? (
                     <>
                       <FoundingField
-                        title="Map details"
+                        title="Map Details"
                         optional
                         help="Describe what you want shown, arranged, or left out of the artwork."
                       >
                         <CircumstanceInput
                           examples={MAP_EXAMPLES}
-                          aria-label="Map details"
+                          aria-label="Map Details"
                           rows={3}
                           maxLength={1500}
                           value={setupMapPrompt === snapshot?.settings.townMapLayoutPrompt ? "" : setupMapPrompt}
@@ -610,7 +609,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         />
                       </FoundingField>
                       <label>
-                        Art style
+                        Art Style
                         <SceneryStylePicker
                           profileId={sceneryStyleProfileId}
                           onChange={(id) => {
@@ -621,9 +620,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       </label>
                       {sceneryStyleProfileId === null ? (
                         <label>
-                          Style description
+                          Style Description
                           <textarea
-                            aria-label="Scenery style description"
+                            autoComplete="off"
+                            aria-label="Scenery Style Description"
                             maxLength={600}
                             value={sceneryStyle}
                             onChange={(event) => setSceneryStyle(event.target.value)}
@@ -633,8 +633,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       <details>
                         <summary>More options</summary>
                         <label>
-                          Things to avoid
+                          Things to Avoid
                           <textarea
+                            autoComplete="off"
                             value={setupMapNegativePrompt}
                             maxLength={1500}
                             onChange={(event) => setSetupMapNegativePrompt(event.target.value)}
@@ -642,11 +643,12 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         </label>
                         <label>
                           <input
+                            autoComplete="off"
                             type="checkbox"
                             checked={mapVisualLore}
                             onChange={(event) => setMapVisualLore(event.target.checked)}
                           />
-                          Use Village lorebooks for map artwork
+                          Use Village Lorebooks for map artwork
                         </label>
                       </details>
                       <button
@@ -666,7 +668,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                           {setupMapProblem}
                         </p>
                       ) : null}
-                      {!setupSetting.trim() ? <p>Add a Place and world description first.</p> : null}
+                      {!setupSetting.trim() ? <p>Add a Setting description first.</p> : null}
                     </>
                   ) : null}
                   {setupMapSource === "upload" ? (
@@ -675,6 +677,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       <label>
                         Upload image
                         <input
+                          autoComplete="off"
                           aria-label="Upload map image"
                           type="file"
                           accept="image/*"
@@ -895,7 +898,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     </div>
                     <p>{setupMapSource === "upload" ? "Uploaded artwork" : "Chosen artwork"}</p>
                     {setupMapPrompt && setupMapPrompt !== snapshot?.settings.townMapLayoutPrompt ? (
-                      <p>Map details: {setupMapPrompt}</p>
+                      <p>Map Details: {setupMapPrompt}</p>
                     ) : null}
                   </section>
                   <section className="villages-forging-card">

@@ -1,7 +1,6 @@
 import { coerceLoreTokenBudget, DEFAULT_LORE_TOKEN_BUDGET } from "../../domain/rules/lore-policy.js";
 import { villageEngineJson } from "./engine-transport.js";
 import { villagesLogger } from "./runtime-host.js";
-import { runInNewContext } from "node:vm";
 
 export { MIN_LORE_TOKEN_BUDGET, MAX_LORE_TOKEN_BUDGET } from "../../domain/rules/lore-policy.js";
 
@@ -55,45 +54,14 @@ export async function listVillageLorebooks(signal?: AbortSignal): Promise<Engine
   });
 }
 
-function keyMatches(key: string, text: string, entry: EngineEntry): boolean {
-  if (!key || key.length > 160) return false;
-  if (entry.useRegex) {
-    // Engine-authored regexes are data. Bound their execution so a pathological
-    // expression cannot stall a village generation request.
-    try {
-      return (
-        runInNewContext(
-          "new RegExp(pattern, flags).test(context)",
-          { pattern: key, flags: entry.caseSensitive ? "u" : "iu", context: text },
-          { timeout: 25 },
-        ) === true
-      );
-    } catch {
-      return false;
-    }
-  }
-  const haystack = entry.caseSensitive ? text : text.toLocaleLowerCase();
-  const needle = entry.caseSensitive ? key : key.toLocaleLowerCase();
-  if (!entry.matchWholeWords) return haystack.includes(needle);
-  let offset = haystack.indexOf(needle);
-  while (offset !== -1) {
-    const before = haystack[offset - 1] ?? "";
-    const after = haystack[offset + needle.length] ?? "";
-    if (!/[\p{L}\p{N}_]/u.test(before) && !/[\p{L}\p{N}_]/u.test(after)) return true;
-    offset = haystack.indexOf(needle, offset + 1);
-  }
-  return false;
+function keyMatches(key: string, text: string): boolean {
+  return (
+    typeof key === "string" && key.length > 0 && key.length <= 160 && text.toLowerCase().includes(key.toLowerCase())
+  );
 }
 
 function matches(entry: EngineEntry, text: string): boolean {
-  if (entry.constant) return true;
-  if (!Array.isArray(entry.keys) || !entry.keys.some((key) => keyMatches(key, text, entry))) return false;
-  if (!entry.selective || !Array.isArray(entry.secondaryKeys) || !entry.secondaryKeys.length) return true;
-  const secondary = entry.secondaryKeys.map((key) => keyMatches(key, text, entry));
-  if (entry.selectiveLogic === "and_all") return secondary.every(Boolean);
-  if (entry.selectiveLogic === "not") return !secondary.some(Boolean);
-  if (entry.selectiveLogic === "not_all") return !secondary.every(Boolean);
-  return secondary.some(Boolean);
+  return entry.constant || (Array.isArray(entry.keys) && entry.keys.some((key) => keyMatches(key, text)));
 }
 
 function folderEnabled(folderId: string | null, folders: Map<string, EngineFolder>): boolean {
@@ -117,7 +85,7 @@ export async function readVillageLore(
   strict = false,
   preferMatches = false,
 ): Promise<string[]> {
-  if (!ids.length) return [];
+  if (!ids.length || coerceLoreTokenBudget(tokenBudget) === 0) return [];
   try {
     const books = await listVillageLorebooks(signal);
     const byId = new Map(books.map((book) => [book.id, book]));
@@ -153,10 +121,10 @@ export async function readVillageLore(
     candidates.sort(
       (a, b) =>
         (preferMatches
-          ? Number(!!b.keys?.some((key) => keyMatches(key, context, b))) -
-            Number(!!a.keys?.some((key) => keyMatches(key, context, a)))
+          ? Number(!!b.keys?.some((key) => keyMatches(key, context))) -
+            Number(!!a.keys?.some((key) => keyMatches(key, context)))
           : 0) ||
-        (a.order ?? 100) - (b.order ?? 100) ||
+        (preferMatches ? 0 : Number(b.constant) - Number(a.constant)) ||
         a.name.localeCompare(b.name),
     );
     const selected: string[] = [];
@@ -179,8 +147,13 @@ export async function readVillageLore(
 }
 
 /** Image prompts need visual cues, not a complete world-info entry. */
-export async function readVillageVisualLore(ids: readonly string[], context: string, maxLength = 360): Promise<string> {
-  return (await readVillageVisualLoreEntries(ids, context, maxLength)).join("; ");
+export async function readVillageVisualLore(
+  ids: readonly string[],
+  context: string,
+  maxLength = 360,
+  tokenBudget = DEFAULT_LORE_TOKEN_BUDGET,
+): Promise<string> {
+  return (await readVillageVisualLoreEntries(ids, context, maxLength, tokenBudget)).join("; ");
 }
 
 /** Complete visual entries, allowing each caller to fit them independently. */
@@ -188,8 +161,9 @@ export async function readVillageVisualLoreEntries(
   ids: readonly string[],
   context: string,
   maxLength = 360,
+  tokenBudget = DEFAULT_LORE_TOKEN_BUDGET,
 ): Promise<string[]> {
-  const entries = await readVillageLore(ids, context, undefined, DEFAULT_LORE_TOKEN_BUDGET, false, true);
+  const entries = await readVillageLore(ids, context, undefined, tokenBudget, false, true);
   const selected: string[] = [];
   let length = 0;
   for (const entry of entries) {

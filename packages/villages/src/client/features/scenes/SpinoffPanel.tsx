@@ -255,6 +255,7 @@ export function SpinoffPanel({
                     <label>
                       Spinoff idea{" "}
                       <textarea
+                        autoComplete="off"
                         className={input}
                         maxLength={600}
                         value={idea}
@@ -335,6 +336,7 @@ export function SpinoffPanel({
                               <div key={memory.id}>
                                 <label>
                                   <input
+                                    autoComplete="off"
                                     type="checkbox"
                                     disabled={value.selectionIds !== undefined}
                                     checked={selected.includes(memory.id)}

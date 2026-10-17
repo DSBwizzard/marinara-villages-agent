@@ -122,6 +122,7 @@ export function createLocationImages(ports: LocationImagePorts) {
             village.selectedLorebookIds,
             `${village.name}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}\n${venue.state.condition}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
             900,
+            village.loreTokenBudget,
           )
         : "";
     const basePrompt = buildLocationPrompt(

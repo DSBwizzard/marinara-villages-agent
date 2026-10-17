@@ -305,9 +305,9 @@ export function createFoundingGotoSetupStep(ports: {
       const placeProblem = !setupName.trim()
         ? "Give the village a name."
         : !setupSetting.trim()
-          ? "Describe the place and world."
+          ? "Describe the setting."
           : !snapshot?.isFounded && !setupFoundingDetails.trim()
-            ? "Describe the starting circumstances."
+            ? "Describe the starting scenario."
             : "";
       const mapProblem =
         !snapshot?.isFounded && !setupMapSrc && !setupMapBusy

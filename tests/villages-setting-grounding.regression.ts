@@ -94,6 +94,8 @@ async function main() {
     },
   } as any);
   try {
+    assert.equal(coerceVillageState({}).name, "", "new worlds have no invented village name");
+    assert.equal(coerceVillageState({ name: "Willowbrook" }).name, "Willowbrook", "authored names remain intact");
     for (const [name, setting, circumstances, home] of scenarios) {
       validateFirstDayDescription(circumstances, true);
       const state = coerceVillageState({

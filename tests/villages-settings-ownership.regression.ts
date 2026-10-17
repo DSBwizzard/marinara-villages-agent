@@ -136,12 +136,17 @@ async function main() {
     () => a.service.setVillageCharacterSpeechColors(null),
     () => a.service.setVillagePromptKnowledge(1),
     () => a.service.setVillageLoreSettings([""], 800),
-    () => a.service.setVillageLoreSettings(undefined, 10),
+    () => a.service.setVillageLoreSettings(undefined, -1),
   ]) {
     const before = structuredClone(a.state);
     await assert.rejects(invalid);
     assert.deepEqual(a.state, before);
   }
+  await a.service.setVillageLoreSettings(undefined, 0);
+  assert.equal(a.state.loreTokenBudget, 0);
+  assert.deepEqual(a.state.selectedLorebookIds, ["book"], "zero budget retains the selected books");
+  await a.service.setVillageLoreSettings(undefined, 10);
+  assert.equal(a.state.loreTokenBudget, 10);
   const originalStyle = a.state.sceneryArtStyle;
   await assert.rejects(() =>
     a.service.setScenerySettings({ sceneryArtStyle: "ink", personalizeVenueImagesByDefault: "invalid" }),

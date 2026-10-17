@@ -182,7 +182,7 @@ export const clientFeatureInterfaces = Object.freeze({
   "exploration/MapStage.tsx": ["defaultView", "MapStage", "PROJECT_BLUEPRINT_IMAGE", "TOWN_MAP_FITS"],
   "exploration/villages-venue-polaroid.tsx": ["VenuePolaroid"],
   "exploration/villages-exploration.tsx": ["ExplorationSheet", "ExplorationTab"],
-  "founding/FoundingPanels.tsx": ["PlayerIdentityEditor", "VillageLorebookPicker"],
+  "founding/FoundingPanels.tsx": ["PlayerIdentityEditor", "VillageLorebookPicker", "LoreTokenBudgetField"],
   "founding/villages-founding-editor.tsx": [
     "BaseZoneFields",
     "SceneryStyleFields",

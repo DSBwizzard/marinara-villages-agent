@@ -17,6 +17,7 @@ function VenueName({ place, controller }: { place: VillageVenue; controller: Ven
       <label className={`${ELEMENT_TAG}-label`}>
         Venue name
         <input
+          autoComplete="off"
           className={`${ELEMENT_TAG}-notice-input`}
           value={name}
           onChange={(event) =>
@@ -54,6 +55,7 @@ function ZoneName({
   const lifetime = useVillageMutationLifetime(controller.snapshot.isFounded, setBusy);
   return (
     <form
+      autoComplete="off"
       onSubmit={async (event) => {
         event.preventDefault();
         const claim = lifetime.begin();
@@ -74,6 +76,7 @@ function ZoneName({
       <label className={`${ELEMENT_TAG}-label`}>
         Zone name
         <input
+          autoComplete="off"
           className={`${ELEMENT_TAG}-notice-input`}
           maxLength={100}
           value={name}
@@ -153,6 +156,7 @@ function ZoneArtwork({
             Upload artwork
           </button>
           <input
+            autoComplete="off"
             ref={upload}
             hidden
             type="file"
@@ -423,6 +427,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
             <section className={`${ELEMENT_TAG}-venue-zone-details`} aria-label={selected.name}>
               <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
                 <input
+                  autoComplete="off"
                   type="checkbox"
                   checked={selected.freezePicture === true}
                   disabled={controller.busy}
