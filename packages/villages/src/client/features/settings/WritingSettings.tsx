@@ -133,7 +133,7 @@ export function VillageWritingSettings() {
           </div>
         </>
       ) : !error ? (
-        <span className={ELEMENT_TAG + "-hint"}>Reading village writing settings…</span>
+        <span className={ELEMENT_TAG + "-hint"}>Loading…</span>
       ) : null}
       {busy ? <span className={ELEMENT_TAG + "-hint"}>Saving…</span> : null}
       {saved && !busy ? (
