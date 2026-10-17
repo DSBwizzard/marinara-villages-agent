@@ -191,7 +191,11 @@ export function assertProofOrigin(proof, environment) {
     !/^[1-9]\d*$/.test(String(origin.runId)) ||
     !Number.isSafeInteger(origin.attempt) ||
     origin.attempt < 1 ||
-    origin.job !== (environment.platform === "linux" ? "validate" : "validate-windows") ||
+    ![
+      environment.platform === "linux" ? "validate" : "validate-windows",
+      `browser-${environment.platform}-1`,
+      `browser-${environment.platform}-2`,
+    ].includes(origin.job) ||
     !/^[a-f0-9]{40}$/.test(origin.sourceRevision ?? "") ||
     origin.platform !== environment.platform ||
     origin.node !== environment.node ||

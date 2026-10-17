@@ -17,6 +17,8 @@ import { validationInputs } from "./validation-inputs.mjs";
 import { GitHubEvidence } from "./ci-manifests.mjs";
 import { validationProfile, candidateChanges } from "./ci-validation-profile.mjs";
 
+import { planShards, workerCount, workerName, mergeShardReceipts } from "./ci-shards.mjs";
+
 const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
 const save = async (path, value) => {
   await mkdir(resolve(path, ".."), { recursive: true });
@@ -107,7 +109,22 @@ export async function collectCandidate({ root = process.cwd(), environment = pro
     const name = platform === "linux" ? "validate" : "validate-windows";
     const directory = join(root, ".build-tmp/platforms", "villages-" + name);
     try {
-      const receipt = await readJson(join(directory, ".build-tmp/ci-validation.json"));
+      let receipt = await readJson(join(directory, ".build-tmp/ci-validation.json")).catch(() => null);
+      if (plan.shards) {
+        const workers = receipt ? [receipt] : [];
+        for (let index = 1; index < workerCount(plan, platform); index++) {
+          const worker = await readJson(
+            join(
+              root,
+              ".build-tmp/platforms",
+              "villages-" + workerName(platform, index),
+              ".build-tmp/ci-validation.json",
+            ),
+          ).catch(() => null);
+          if (worker) workers.push(worker);
+        }
+        receipt = mergeShardReceipts(plan, platform, workers, { allowPartial: true });
+      }
       assert.equal(receipt.sourceRevision, plan.sourceRevision);
       assert.equal(receipt.inputDigest, snapshot.digest);
       assert.equal(receipt.environment.platform, platform);
@@ -195,7 +212,22 @@ async function main(args) {
       github,
       fresh: args.includes("--fresh") || process.env.VILLAGES_CI_MODE === "full",
     });
+    plan.shards = planShards(plan);
     await save(join(root, ".build-tmp/ci-plan.json"), plan);
+    const matrix = Object.keys(plan.platforms).flatMap((platform) =>
+      Array.from({ length: workerCount(plan, platform) - 1 }, (_, n) => ({
+        platform,
+        index: n + 1,
+        name: workerName(platform, n + 1),
+        runner: platform === "linux" ? "ubuntu-24.04" : "windows-2025",
+      })),
+    );
+    if (process.env.GITHUB_OUTPUT)
+      await writeFile(
+        process.env.GITHUB_OUTPUT,
+        "browser-matrix=" + JSON.stringify({ include: matrix }) + "\nbrowser-workers=" + (matrix.length > 0) + "\n",
+        { flag: "a" },
+      );
     if (process.env.GITHUB_OUTPUT)
       await writeFile(
         process.env.GITHUB_OUTPUT,

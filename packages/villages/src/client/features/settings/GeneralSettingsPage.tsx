@@ -2,7 +2,7 @@ import type { VillageSettings, VillageStoryPace } from "../../../shared/contract
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { storyPaceSummary } from "../../shared/presentation.js";
 import type { GeneralSettingsPagePorts } from "./page-contracts.js";
-import { AgentConnections } from "./SettingsPanels.js";
+import { AgentConnections } from "./AgentConnections.js";
 
 export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
   const {

@@ -56,6 +56,8 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       windows-needed: ${{ steps.plan.outputs.windows-needed }}
+      browser-matrix: ${{ steps.plan.outputs.browser-matrix }}
+      browser-workers: ${{ steps.plan.outputs.browser-workers }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -74,6 +76,77 @@ jobs:
           path: .build-tmp/ci-plan.json
           include-hidden-files: true
           if-no-files-found: error
+
+  browser:
+    name: ${{ matrix.name }}
+    needs: prepare
+    if: needs.prepare.outputs.browser-workers == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.browser-matrix) }}
+    concurrency:
+      group: villages-proof-${{ github.event.pull_request.head.sha || github.sha }}-${{ matrix.name }}
+      cancel-in-progress: false
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: villages-plan
+          path: .build-tmp
+      - name: Select missing check execution
+        id: scope
+        run: node scripts/ci-validation.mjs --target=${{ matrix.platform }} --shard=${{ matrix.index }} --policy
+      - name: Restore browser test runtime
+        if: steps.scope.outputs.browser == 'true'
+        id: browser-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+      - name: Install browser system dependencies
+        if: matrix.platform == 'linux' && steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Install browser test runtime
+        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Save browser test runtime
+        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+      - name: Validate maintained source and package
+        env:
+          VILLAGES_CI_BROWSER_READY: ${{ steps.scope.outputs.browser }}
+        run: npm run validate:ci -- --target=${{ matrix.platform }} --shard=${{ matrix.index }}
+      - name: Retain validated package and source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: villages-${{ matrix.name }}
+          path: |
+            artifacts/villages-*.zip
+            .build-tmp/package-build.json
+            .build-tmp/ci-validation.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          overwrite: true
+      - name: Retain validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.name }}
+          path: .build-tmp/test-results/
+          include-hidden-files: true
+          if-no-files-found: ignore
 
   validate:
     name: validate
@@ -208,7 +281,7 @@ jobs:
 
   package-parity:
     name: package-parity
-    needs: [prepare, validate, validate-windows]
+    needs: [prepare, validate, validate-windows, browser]
     if: always()
     runs-on: ubuntu-24.04
     steps:
@@ -226,7 +299,7 @@ jobs:
           path: .build-tmp
       - uses: actions/download-artifact@v4
         with:
-          pattern: villages-validate*
+          pattern: villages-*
           path: .build-tmp/platforms
       - name: Collect complete candidate evidence
         id: collect

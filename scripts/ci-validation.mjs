@@ -7,6 +7,7 @@ import { validationInputs } from "./validation-inputs.mjs";
 import { checkKeys, assembleChecks, environmentFor, fingerprint } from "./ci-checks.mjs";
 import { preparePlan } from "./ci-candidate.mjs";
 import { GitHubEvidence } from "./ci-manifests.mjs";
+import { shardSpecs, workerCount, workerName } from "./ci-shards.mjs";
 import { restorePackage } from "./ci-package.mjs";
 
 const json = async (path) => JSON.parse(await readFile(path, "utf8"));
@@ -18,6 +19,7 @@ export async function executeValidation({
   github,
   execute,
   environment = process.env,
+  shardIndex = 0,
 } = {}) {
   const before = await validationInputs(root);
   assert.equal(before.digest, plan.blueprint.inputDigest, "Source differs from the prepared validation plan");
@@ -37,11 +39,15 @@ export async function executeValidation({
       : [];
   const coverage = assembleChecks(specs, [...planned.reused, ...sameHead], { fresh });
   const proofs = new Map(coverage.reused.map((proof) => [proof.id, { ...proof, executed: false }]));
-  const pending = coverage.pending;
+  const shardCount = workerCount(plan, platform);
+  const assigned = shardSpecs(specs, shardCount, shardIndex);
+  const assignedIds = new Set(assigned.map((spec) => spec.id));
+  const pending = coverage.pending.filter((spec) => assignedIds.has(spec.id));
+
   const origin = {
     runId: environment.GITHUB_RUN_ID ?? null,
     attempt: Number(environment.GITHUB_RUN_ATTEMPT ?? 1),
-    job: environment.GITHUB_JOB ?? null,
+    job: workerName(platform, shardIndex),
     sourceRevision: plan.sourceRevision,
     platform: target.platform,
     node: target.node,
@@ -93,7 +99,7 @@ export async function executeValidation({
       build = await restorePackage(root, bytes, receipt, before);
     } else {
       const code = await run(["scripts/build-villages.mjs"]);
-      record(buildSpec, code);
+      if (shardIndex === 0) record(buildSpec, code);
       if (code !== 0) throw Error("Package build failed");
       build = await json(join(root, ".build-tmp/package-build.json"));
     }
@@ -136,7 +142,14 @@ export async function executeValidation({
   const checks = specs.map((spec) => proofs.get(spec.id)).filter(Boolean);
   const missing = assembleChecks(specs, checks).pending;
   const executed = checks.filter((check) => check.executed);
+  const assignedMissing = assembleChecks(assigned, checks).pending;
   const receipt = {
+    ...(plan.shards
+      ? {
+          shard: { index: shardIndex, count: shardCount },
+          shardComplete: !failure && inputsUnchanged && assignedMissing.length === 0,
+        }
+      : {}),
     schemaVersion: 3,
     validationProfile: plan.blueprint.validationProfile ?? "qualification",
     sourceRevision: plan.sourceRevision,
@@ -186,7 +199,14 @@ async function main(args) {
   )
     plan = await preparePlan({ root, github, fresh: args.includes("--fresh") || args.includes("--full") });
   if (args.includes("--policy")) {
-    const pending = plan.platforms[platform].pending;
+    const assignedIds = new Set(
+      shardSpecs(
+        checkKeys(plan.blueprint, plan.platforms[platform].environment),
+        workerCount(plan, platform),
+        Number(args.find((arg) => arg.startsWith("--shard="))?.slice(8) ?? 0),
+      ).map((spec) => spec.id),
+    );
+    const pending = plan.platforms[platform].pending.filter((spec) => assignedIds.has(spec.id));
     const browser = pending.some((spec) => spec.group === "browser");
     if (process.env.GITHUB_OUTPUT)
       await writeFile(process.env.GITHUB_OUTPUT, "browser=" + browser + "\n", { flag: "a" });
@@ -200,8 +220,10 @@ async function main(args) {
     );
     return;
   }
-  const receipt = await executeValidation({ root, plan, platform, github });
-  if (!receipt.coverageComplete) throw Error("Candidate coverage incomplete: " + receipt.missing.join(", "));
+  const shardIndex = Number(args.find((arg) => arg.startsWith("--shard="))?.slice(8) ?? 0);
+  const receipt = await executeValidation({ root, plan, platform, github, shardIndex });
+  if (!(receipt.shard ? receipt.shardComplete : receipt.coverageComplete))
+    throw Error("Candidate coverage incomplete: " + receipt.missing.join(", "));
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url)
   await main(process.argv.slice(2));

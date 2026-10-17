@@ -8,7 +8,7 @@ import type { SetupVenueDraft } from "../../shared/types.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
-import { AgentConnections } from "../settings/SettingsPanels.js";
+import { AgentConnections } from "../settings/AgentConnections.js";
 import {
   FoundingPersonaSelector,
   FoundingVillagerPicker,
