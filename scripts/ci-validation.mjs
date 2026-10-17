@@ -138,6 +138,7 @@ export async function executeValidation({
   const executed = checks.filter((check) => check.executed);
   const receipt = {
     schemaVersion: 3,
+    validationProfile: plan.blueprint.validationProfile ?? "qualification",
     sourceRevision: plan.sourceRevision,
     policyDigest: plan.blueprint.policyDigest,
     inputDigest: before.digest,

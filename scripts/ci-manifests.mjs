@@ -27,6 +27,7 @@ export function assertManifestOrigin(manifest, run, commit, job, repository, pol
     manifest.ready ? "success" : "failure",
   );
   assert.equal(manifest.inputsUnchanged, true);
+  assert.equal(manifest.validationProfile ?? "qualification", manifest.blueprint?.validationProfile ?? "qualification");
   assert.ok(manifest.platforms && typeof manifest.platforms === "object");
   for (const [platform, receipt] of Object.entries(manifest.platforms)) {
     assert.equal(receipt.environment.platform, platform);
@@ -34,6 +35,7 @@ export function assertManifestOrigin(manifest, run, commit, job, repository, pol
     assert.equal(receipt.inputDigest, manifest.inputDigest);
     assert.equal(receipt.sourceRevision, manifest.sourceRevision);
     assert.equal(receipt.inputsUnchanged, true);
+    assert.equal(receipt.validationProfile ?? "qualification", manifest.validationProfile ?? "qualification");
     assert.equal(String(receipt.producer.runId), String(run.id));
     assert.equal(receipt.producer.attempt, run.run_attempt);
     for (const proof of receipt.checks) assertProofOrigin(proof, receipt.environment);

@@ -15,6 +15,7 @@ import {
 } from "./ci-checks.mjs";
 import { validationInputs } from "./validation-inputs.mjs";
 import { GitHubEvidence } from "./ci-manifests.mjs";
+import { validationProfile, candidateChanges } from "./ci-validation-profile.mjs";
 
 const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
 const save = async (path, value) => {
@@ -23,12 +24,19 @@ const save = async (path, value) => {
 };
 
 export async function preparePlan({ root = process.cwd(), github, environment = process.env, fresh = false } = {}) {
+  fresh ||= environment.VILLAGES_CI_FRESH === "true" || environment.VILLAGES_CI_MODE === "full";
   const snapshot = await validationInputs(root);
   const digest = policyKey(snapshot);
   let baselines = [];
   if (github) baselines = await github.discover(digest);
   const cached = baselines.find((row) => row.manifest.inputDigest === snapshot.digest)?.manifest.blueprint;
-  const blueprint = cached ?? (await checkBlueprint(root, { snapshot }));
+  const profile = fresh || environment.VILLAGES_CI_FRESH === "true" ? "qualification" : validationProfile(environment),
+    changedPaths = candidateChanges(root, environment);
+  const blueprint = {
+    ...(cached ?? (await checkBlueprint(root, { snapshot }))),
+    validationProfile: profile,
+    changedPaths,
+  };
   assert.equal(blueprint.policyDigest, digest);
   assert.equal(blueprint.inputDigest, snapshot.digest);
   const platforms = {};
@@ -78,6 +86,7 @@ export async function preparePlan({ root = process.cwd(), github, environment = 
   assert.equal((await validationInputs(root)).digest, snapshot.digest, "Source changed while preparing CI evidence");
   return {
     schemaVersion: 3,
+    validationProfile: profile,
     fresh: fresh || environment.VILLAGES_CI_FRESH === "true",
     blueprint,
     platforms,
@@ -143,6 +152,7 @@ export async function collectCandidate({ root = process.cwd(), environment = pro
   }
   const manifest = {
     schemaVersion: 3,
+    validationProfile: blueprint.validationProfile,
     sourceRevision: plan.sourceRevision,
     inputDigest: snapshot.digest,
     policyDigest: blueprint.policyDigest,

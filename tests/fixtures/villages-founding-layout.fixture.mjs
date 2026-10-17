@@ -705,6 +705,35 @@ export async function verifyFoundingLayout(group) {
         await expect(outsideField).toBeFocused();
         await helpBackstory.click();
         const outsideHeading = root.getByRole("heading", { name: "Forging the Village", exact: true });
+        const touchTrace = [];
+        await page.exposeFunction("foundingTouchTrace", (event) => {
+          touchTrace.push(event);
+          if (touchTrace.length > 30) touchTrace.shift();
+        });
+        await page.evaluate(() => {
+          window.foundingTouchTraceController = new AbortController();
+          for (const type of [
+            "touchstart",
+            "touchend",
+            "touchcancel",
+            "pointerdown",
+            "pointerup",
+            "pointercancel",
+            "click",
+          ])
+            document.addEventListener(
+              type,
+              (event) =>
+                window.foundingTouchTrace({
+                  type,
+                  target: event.target?.tagName,
+                  label: event.target?.getAttribute?.("aria-label"),
+                  time: event.timeStamp,
+                  trusted: event.isTrusted,
+                }),
+              { capture: true, signal: window.foundingTouchTraceController.signal },
+            );
+        });
         if (width === 390 && height === 844) {
           const body = root;
           await body.evaluate((node) => {
@@ -739,9 +768,31 @@ export async function verifyFoundingLayout(group) {
             throw Error("Touch scroll did not settle before outside-tap assertion");
           });
         }
-        if (width < 600) await outsideHeading.tap();
+        if (width === 390 && height === 844) {
+          // Complete the independent native tap through the same gesture API as
+          // the raw touch-scroll probe, avoiding mixed protocol gesture state.
+          await outsideHeading.scrollIntoViewIfNeeded();
+          const box = await outsideHeading.boundingBox();
+          const gesture = await context.newCDPSession(page);
+          try {
+            await gesture.send("Input.synthesizeTapGesture", {
+              x: box.x + box.width / 2,
+              y: box.y + box.height / 2,
+              gestureSourceType: "touch",
+            });
+          } finally {
+            await gesture.detach();
+          }
+        } else if (width < 600) await outsideHeading.tap();
         else await outsideHeading.click();
-        await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+        try {
+          await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+        } catch (error) {
+          console.error("Founding native gesture events: " + JSON.stringify(touchTrace));
+          throw error;
+        } finally {
+          await page.evaluate(() => window.foundingTouchTraceController.abort());
+        }
         await helpBackstory.click();
         const roleHelp = root.getByRole("button", { name: "Help: Role Title", exact: true });
         await roleHelp.click();
