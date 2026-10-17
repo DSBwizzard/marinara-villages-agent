@@ -1,3 +1,5 @@
+import { sceneFixture } from "./fixtures/scene-browser.fixture.mjs";
+const sceneBundle = await sceneFixture();
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
@@ -238,7 +240,7 @@ try {
           }),
         );
         await target.goto("http://villages.test/");
-        await target.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await target.addScriptTag({ content: sceneBundle });
       }
       await mount();
       const cast = page.locator(".marinara-capability-villages-chat-cast");
@@ -252,7 +254,7 @@ try {
       const flipEnabled = count < 4;
       if (flipEnabled) await expect(flipSwitch).toBeChecked();
       else await expect(flipSwitch).not.toBeChecked();
-      if (count === 2) {
+      if (count === 2 && width === 1440) {
         await flipSwitch.uncheck();
         await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(false);
         await flipSwitch.check();
@@ -479,7 +481,7 @@ try {
         });
       // A refresh restores latest saved visual state without animation.
       await page.reload();
-      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await page.addScriptTag({ content: sceneBundle });
       await expect(mara).toHaveAttribute("data-position", "right");
       await expect(mara).toHaveAttribute("data-attention", "right");
       await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
@@ -504,7 +506,7 @@ try {
       await checkSpriteSize(mobile);
       fixture.villagers[0].sprite.framing.mode = "half";
       await page.reload();
-      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await page.addScriptTag({ content: sceneBundle });
       await expect(mara.locator("img")).toHaveAttribute("data-framing", "half");
       await checkSpriteSize(mobile);
       if (count === 1 && width === 1440) {

@@ -200,7 +200,7 @@ const scopeEnvironment = {
   runner: live.toolchain.runners.linux,
 };
 const liveKeys = new Map(checkKeys(live, scopeEnvironment).map((spec) => [spec.id, spec.key]));
-const clientPath = "packages/villages/src/client/features/settings/SettingsPanels.tsx";
+const clientPath = "packages/villages/src/client/features/settings/WritingSettings.tsx";
 const discoveryPath = "scripts/candidate-history.mjs";
 const serverPath = "packages/villages/src/server/domain/models/world.ts";
 const sharedPath = "packages/villages/src/shared/contracts/village.ts";
@@ -230,3 +230,17 @@ assert.ok(clientImplementation().length > 0, "The maintained client graph fits i
 console.log(
   "Platform inventories, main/full qualification, unknown/changed test broadening and no staging-to-release laundering passed.",
 );
+
+for (const path of [
+  "tests/villages-scene-staging.e2e.mjs",
+  "tests/villages-founding-layout.e2e.mjs",
+  "tests/villages-founding-phone-layout.e2e.mjs",
+  "tests/villages-founding-compact-layout.e2e.mjs",
+]) {
+  const id = "test:" + path;
+  const spec = live.specs.find((spec) => spec.id === id);
+  assert.equal(spec.opaque, false);
+  assert.ok(!spec.inputs.includes(clientPath), path + " does not load Writing settings");
+  assert.equal(changedKey(id, clientPath), liveKeys.get(id));
+  assert.ok(spec.inputs.includes("packages/villages/src/client/shell/VillagesFrame.tsx"));
+}

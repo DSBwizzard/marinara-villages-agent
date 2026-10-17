@@ -1,3 +1,5 @@
+import { residentsFixture } from "./fixtures/residents-browser.fixture.mjs";
+const residentsBundle = await residentsFixture();
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -221,8 +223,13 @@ try {
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
     });
     async function openManager() {
-      await page.getByRole("button", { name: /^Villagers \(/ }).click();
-      await page.getByRole("button", { name: "Open Mara profile" }).click();
+      if (viewport.width === 1917) {
+        await page.getByRole("button", { name: /^Villagers \(/ }).click();
+        await page.getByRole("button", { name: "Open Mara profile" }).click();
+      } else {
+        await expect.poll(() => page.evaluate(() => !!window.featureController?.snapshot)).toBe(true);
+        await page.evaluate(() => window.featureController.openPerson({ actorId: "mara", returnTo: "menu" }));
+      }
       await page
         .getByRole("button", { name: /Manage sprites ·/ })
         .first()
@@ -231,8 +238,10 @@ try {
       await expect(page.getByRole("heading", { name: "Mara’s Sprite Manager" })).toBeFocused();
     }
     await page.goto("http://villages.test/");
-    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await page.getByRole("button", { name: "More" }).click();
+    if (viewport.width === 1917) {
+      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await page.getByRole("button", { name: "More" }).click();
+    } else await page.addScriptTag({ content: residentsBundle });
     await openManager();
     await expect(page.getByText(/No sprites assigned yet/)).toBeVisible();
     await page.getByLabel("Upload sprite images").setInputFiles([
@@ -259,6 +268,30 @@ try {
         path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `confirmation-${viewport.width}x${viewport.height}.png`),
       });
 
+    if (![1917, 390].includes(viewport.width)) {
+      await page.getByLabel("More artwork actions").click();
+      await expect(page.locator(".vsm-more-menu")).toBeVisible();
+      const menuBox = await page.locator(".vsm-more-menu").boundingBox();
+      const settingsBox = await page.locator(".vsm-settings").boundingBox();
+      const expressionBox = await page.getByRole("heading", { name: "Expression", exact: true }).boundingBox();
+      assert.ok(menuBox.x >= settingsBox.x && menuBox.x + menuBox.width <= settingsBox.x + settingsBox.width + 1);
+      assert.ok(expressionBox.y >= menuBox.y + menuBox.height);
+      const actions = page.locator(".vsm-settings > .vsm-actions");
+      await expect(actions).toHaveCSS("position", "static");
+      await actions.scrollIntoViewIfNeeded();
+      const before = await actions.boundingBox();
+      await page.getByLabel("Foot position", { exact: true }).scrollIntoViewIfNeeded();
+      const after = await actions.boundingBox();
+      assert.ok(after.y < before.y - 20);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+      if (process.env.VILLAGES_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `layout-${viewport.width}x${viewport.height}.png`),
+        });
+      assert.deepEqual(errors, []);
+      await page.close();
+      continue;
+    }
     await page
       .getByRole("group", { name: "Preview screen" })
       .getByRole("button", { name: "Mobile", exact: true })

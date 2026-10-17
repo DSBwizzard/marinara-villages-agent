@@ -1,3 +1,5 @@
+import { foundingFixture } from "./founding-browser.fixture.mjs";
+const foundingBundle = await foundingFixture();
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
@@ -419,7 +421,7 @@ export async function verifyFoundingLayout(group) {
         );
         await page.goto("http://villages.test/");
         if (width === 390 && height === 844) await page.clock.install();
-        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await page.addScriptTag({ content: foundingBundle });
         let root = page.locator(".villages-forging-v2");
         const forward = (name) => root.getByRole("button", { name, exact: true });
         const bounds = async () => {
@@ -949,7 +951,7 @@ export async function verifyFoundingLayout(group) {
             db.close();
           });
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume founding", exact: true }).click();
           await expect(choice).toHaveValue("adapt");
           await forward("Continue to Map").click();
@@ -1166,7 +1168,7 @@ export async function verifyFoundingLayout(group) {
           });
         }
         await page.reload();
-        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await page.addScriptTag({ content: foundingBundle });
         await expect(root.getByText(/Resume: Map/)).toBeVisible();
         await root.getByRole("button", { name: "Resume founding", exact: true }).click();
         await expect(root).toHaveAttribute("data-step", "2");
@@ -1377,7 +1379,7 @@ export async function verifyFoundingLayout(group) {
             db.close();
           });
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
           await expect(root.getByText(/generation request was interrupted and may have been billed/)).toHaveCount(0);
           await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue("Legacy current edit");
@@ -1601,7 +1603,7 @@ export async function verifyFoundingLayout(group) {
         await mapView();
         await forward("Save & exit").click();
         await page.reload();
-        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await page.addScriptTag({ content: foundingBundle });
         await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
         await open();
         await zone("Private");
@@ -1857,7 +1859,7 @@ export async function verifyFoundingLayout(group) {
           await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Unsaved competing choice");
           await competingTab.close();
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume founding", exact: true }).click();
           await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Willowbrook revised");
           await forward("Continue to People").click();
@@ -1905,7 +1907,7 @@ export async function verifyFoundingLayout(group) {
           // Reload while the provider is still drawing: the resumed draft only reads status.
           await forward("Save & exit").click();
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
           await expect(
             root.getByText(/Waiting for map artwork|Image generation can take several minutes|Creating map artwork/),
@@ -1930,7 +1932,7 @@ export async function verifyFoundingLayout(group) {
           await capture("artwork-spaces");
           await forward("Save & exit").click();
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
           await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
           assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
@@ -1985,7 +1987,7 @@ export async function verifyFoundingLayout(group) {
           await forward("Save & exit").click();
           await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
           await page.reload();
-          await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+          await page.addScriptTag({ content: foundingBundle });
           await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
           await forward("Back").click();
           await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
@@ -2036,7 +2038,7 @@ export async function verifyFoundingLayout(group) {
               db.close();
             }, legacyStep);
             await page.reload();
-            await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+            await page.addScriptTag({ content: foundingBundle });
             await expect(
               root.getByText(new RegExp("Resume: " + (legacyStep === 2 ? "Venues" : "Review"))),
             ).toBeVisible();

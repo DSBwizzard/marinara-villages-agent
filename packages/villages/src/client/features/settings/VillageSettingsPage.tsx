@@ -8,7 +8,7 @@ import { PlayerIdentityEditor, VillageLorebookPicker, LoreTokenBudgetField } fro
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
 import { PlayerRoleSummary } from "../founding/villages-player-role.js";
 import type { VillageSettingsPagePorts } from "./page-contracts.js";
-import { VillageWritingSettings } from "./SettingsPanels.js";
+import { VillageWritingSettings } from "./WritingSettings.js";
 
 export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
   const {

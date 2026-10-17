@@ -1,3 +1,4 @@
+import { CapabilityFrame } from "./CapabilityFrame.js";
 import { ELEMENT_TAG } from "../shared/constants.js";
 import { syncVillagesStyles } from "./styles.js";
 import { VillagesView } from "../shell/VillagesApp.js";
@@ -88,11 +89,9 @@ function CapabilityRoot({ element }: { element: VillagesCapabilityElement }) {
     return () => element.removeEventListener("marinara-capability-props", update);
   }, [element]);
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
-      <div style={{ flex: "1 1 auto", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
-        <VillagesView element={element} />
-      </div>
-    </div>
+    <CapabilityFrame>
+      <VillagesView element={element} />
+    </CapabilityFrame>
   );
 }
 

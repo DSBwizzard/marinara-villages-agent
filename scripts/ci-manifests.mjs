@@ -44,17 +44,42 @@ export function assertManifestOrigin(manifest, run, commit, job, repository, pol
   return manifest;
 }
 
-export function assertWorkerOrigin(receipt, run, job) {
+export function assertWorkerOrigin(receipt, run, job, jobs = []) {
+  if (receipt.workers) {
+    assert.ok(receipt.workers.length >= 1 && receipt.workers.length <= 3);
+    for (const worker of receipt.workers)
+      assertWorkerOrigin(
+        worker,
+        run,
+        jobs.find((candidate) => candidate.name === worker.producer.job),
+        jobs,
+      );
+    const { workers, checks, ...rest } = receipt;
+    assert.equal(String(rest.producer.runId), String(run.id));
+    const executed = workers.flatMap((worker) => worker.checks);
+    for (const proof of checks)
+      assert.ok(
+        executed.some((candidate) => JSON.stringify(candidate) === JSON.stringify(proof)),
+        "Aggregated proof absent from authenticated worker",
+      );
+    return;
+  }
   assert.equal(receipt.schemaVersion, 3);
   assert.equal(String(receipt.producer.runId), String(run.id));
   assert.equal(receipt.producer.attempt, run.run_attempt);
   assert.equal(receipt.inputsUnchanged, true);
-  const expected = receipt.environment.platform === "linux" ? "validate" : "validate-windows";
+  const expected =
+    receipt.shard?.index > 0
+      ? `browser-${receipt.environment.platform}-${receipt.shard.index}`
+      : receipt.environment.platform === "linux"
+        ? "validate"
+        : "validate-windows";
+  assert.equal(receipt.producer.job, expected);
   assert.equal(job?.name, expected);
   assert.equal(job.status, "completed");
   assert.equal(
     job.steps.find((step) => step.name === "Validate maintained source and package")?.conclusion,
-    receipt.coverageComplete ? "success" : "failure",
+    (receipt.shard ? receipt.shardComplete : receipt.coverageComplete) ? "success" : "failure",
   );
   for (const proof of receipt.checks) {
     assertProofOrigin(proof, receipt.environment);
@@ -62,6 +87,7 @@ export function assertWorkerOrigin(receipt, run, job) {
     assert.equal(String(proof.origin.runId), String(run.id));
     assert.equal(proof.origin.attempt, run.run_attempt);
     assert.equal(proof.origin.sourceRevision, receipt.sourceRevision);
+    assert.equal(proof.origin.job, expected);
     assert.equal(receipt.executor.platform, receipt.environment.platform, "Check executed on wrong platform");
     assert.equal(receipt.executor.node, receipt.environment.node, "Check executed on wrong Node");
     assert.ok(
@@ -158,6 +184,7 @@ export class GitHubEvidence {
         receipt,
         run,
         jobs.find((job) => job.name === receipt.producer.job),
+        jobs,
       );
     return { manifest, run, artifact };
   }
@@ -197,14 +224,13 @@ export class GitHubEvidence {
             commit.parents?.length === 2 &&
             commit.parents.some((parent) => parent.sha === run.head_sha)),
       );
-      const job = this.api("actions/runs/" + run.id + "/attempts/" + run.run_attempt + "/jobs?per_page=100").jobs.find(
-        (job) => job.name === name,
-      );
-      assertWorkerOrigin(receipt, run, job);
+      const jobs = this.api("actions/runs/" + run.id + "/attempts/" + run.run_attempt + "/jobs?per_page=100").jobs;
+      const job = jobs.find((job) => job.name === name);
+      assertWorkerOrigin(receipt, run, job, jobs);
       assert.equal(job.status, "completed");
       assert.equal(
         job.steps.find((step) => step.name === "Validate maintained source and package")?.conclusion,
-        receipt.coverageComplete ? "success" : "failure",
+        (receipt.shard ? receipt.shardComplete : receipt.coverageComplete) ? "success" : "failure",
       );
       assert.equal(receipt.schemaVersion, 3);
       assert.equal(receipt.policyDigest, policyDigest);

@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import type { useVillageController as ControllerFactory } from "./useVillageController.js";
 import { ELEMENT_TAG } from "../shared/constants.js";
 import { ExplorationScreen } from "../features/exploration/ExplorationScreen.js";
@@ -11,55 +10,14 @@ import { SceneScreen } from "../features/scenes/SceneScreen.js";
 import { MenuScreen } from "./MenuScreen.js";
 import { VenueScreen } from "../features/venues/VenueScreen.js";
 import { useVillageController } from "./useVillageController.js";
-import { SpinoffPanel } from "../features/scenes/SpinoffPanel.js";
-import { useState } from "react";
+import { VillagesFrame } from "./VillagesFrame.js";
 
 export function VillagesView({ element }: { element: HTMLElement }) {
   const controller = useVillageController({ element });
-  const [spinoffLocked, setSpinoffLocked] = useState(false);
   return (
-    <div style={{ position: "relative", height: "100%" }}>
-      <SpinoffPanel
-        element={element}
-        scene={controller.room}
-        onLocked={setSpinoffLocked}
-        onResolved={async () => {
-          await controller.loadSnapshot();
-          const { request } = await import("../shared/api.js");
-          const { session } = await request<{ session: typeof controller.room }>("/rooms/active");
-          controller.setRoom(session);
-          if (session) controller.setScreen("room");
-        }}
-      >
-        <div inert={spinoffLocked} style={{ height: "100%" }}>
-          <VillageContent controller={controller} />
-        </div>
-      </SpinoffPanel>
-    </div>
-  );
-}
-
-function VillageContent({ controller }: { controller: ReturnType<typeof useVillageController> }) {
-  const { loadSnapshot } = controller;
-  useEffect(() => {
-    const refresh = () => {
-      if (!document.hidden) void loadSnapshot().catch(() => {});
-    };
-    const timer = window.setInterval(refresh, 15_000);
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, [loadSnapshot]);
-  return (
-    <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-        <VillageScreen controller={controller} />
-      </div>
-    </div>
+    <VillagesFrame controller={controller}>
+      <VillageScreen controller={controller} />
+    </VillagesFrame>
   );
 }
 
