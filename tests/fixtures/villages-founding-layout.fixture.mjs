@@ -720,6 +720,20 @@ export async function verifyFoundingLayout(group) {
           await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
           await expect(helpBackstory).toHaveAttribute("aria-expanded", "true");
           await touch.detach();
+          // Chromium suppresses taps while a touch scroll is coasting. Observe
+          // settlement before testing the next independent outside-tap action.
+          await body.evaluate(async (node) => {
+            let previous = node.scrollTop,
+              stable = 0;
+            for (let frame = 0; frame < 120; frame++) {
+              await new Promise((done) => requestAnimationFrame(done));
+              const current = node.scrollTop;
+              stable = Math.abs(current - previous) < 0.1 ? stable + 1 : 0;
+              if (stable >= 3) return;
+              previous = current;
+            }
+            throw Error("Touch scroll did not settle before outside-tap assertion");
+          });
         }
         if (width < 600) await outsideHeading.tap();
         else await outsideHeading.click();
