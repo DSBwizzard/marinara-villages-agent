@@ -31,16 +31,80 @@ try {
     "tests/b.regression.mjs": 'export {answer} from "./a.regression.mjs";',
     "tests/payload.regression.mjs": 'export {answer} from "../packages/villages/server.mjs";',
     "tests/metadata.regression.mjs": 'export {villagesDefinition} from "../packages/villages/package-definition.mjs";',
+    "tests/literal.regression.mjs":
+      'import {readFile as read} from "node:fs/promises"; await read(new URL("../packages/villages/src/server.ts",import.meta.url));',
+    "tests/inline.regression.mjs":
+      'import {build} from "esbuild"; await build({stdin:{contents:"export {answer} from \\"./packages/villages/src/server.js\\";",resolveDir:process.cwd()},bundle:true,write:false});',
+    "tests/inline-io.regression.mjs":
+      'import {build} from "esbuild"; await build({stdin:{contents:"import {readdirSync} from \\"node:fs\\"; readdirSync(process.env.DIR);",resolveDir:process.cwd()},bundle:true,write:false});',
+    "tests/escaped-builder.regression.mjs":
+      'import * as esbuild from "esbuild"; const compile = esbuild.build; await compile({entryPoints:[process.env.SOURCE]});',
+    "tests/alias.regression.mjs":
+      'import {build} from "esbuild"; await build({entryPoints:["packages/villages/src/server.ts"],alias:{server:process.env.SOURCE}});',
+    "tests/mixed-build.regression.mjs":
+      'import {build} from "esbuild"; await build({stdin:{contents:"export const ok=true;",resolveDir:process.cwd()},entryPoints:[process.env.SOURCE]});',
+    "tests/loader.regression.mjs":
+      'import {build} from "esbuild"; await build({stdin:{contents:"export const ok=true;",resolveDir:process.cwd(),loader:process.env.LOADER}});',
+    "tests/promises.regression.mjs": 'import {promises as fs} from "node:fs"; await fs.readFile(process.env.FIXTURE);',
+    "tests/method.regression.mjs":
+      'import {readFile} from "node:fs/promises"; await readFile.call(null,process.env.FIXTURE);',
+    "tests/archive.regression.mjs": 'import AdmZip from "adm-zip"; new AdmZip(process.env.ARCHIVE);',
+    "tests/compiler.regression.mjs": 'import ts from "typescript"; ts.createProgram([process.env.SOURCE],{});',
+    "tests/escaped.regression.mjs": 'import {readFile} from "node:fs/promises"; globalThis.read = readFile;',
+    "tests/namespace.regression.mjs":
+      'import * as esbuild from "esbuild"; await esbuild.build({entryPoints:[process.env.SOURCE]});',
+    "tests/plugin.regression.mjs":
+      'import {build} from "esbuild"; await build({entryPoints:["packages/villages/src/server.ts"],plugins:process.env.PLUGINS});',
+    "tests/scoped-helper.mjs":
+      'import {readFile} from "node:fs/promises"; export const read = () => readFile(process.env.FIXTURE);',
+    "tests/scoped.regression.mjs": 'import {read} from "./scoped-helper.mjs"; await read();',
     "tests/unknown.regression.mjs": 'import {readFile} from "node:fs/promises"; await readFile(process.env.FIXTURE);',
   };
   for (const [path, value] of Object.entries(files)) {
     await mkdir(join(root, path, ".."), { recursive: true });
     await writeFile(join(root, path), value);
   }
+  files["scripts/test-inputs.json"] = JSON.stringify({
+    "tests/scoped-helper.mjs": {
+      sha256: fingerprint(files["tests/scoped-helper.mjs"]),
+      inputs: ["packages/villages/src/"],
+    },
+  });
+  await writeFile(join(root, "scripts/test-inputs.json"), files["scripts/test-inputs.json"]);
   const inventory = Object.keys(files)
-    .filter((path) => path.startsWith("tests/"))
+    .filter((path) => path.endsWith(".regression.mjs"))
     .map((path) => ({ path, group: "regression" }));
   const first = await checkBlueprint(root, { inventory });
+  const spec = (path, blueprint = first) =>
+    blueprint.specs.find((s) => s.id === "test:tests/" + path + ".regression.mjs");
+  assert.equal(spec("literal").opaque, false);
+  assert.ok(spec("literal").inputs.includes("packages/villages/src/server.ts"));
+  assert.equal(spec("inline").opaque, false, "Literal inline bundles use actual compiler inputs");
+  assert.ok(spec("inline").inputs.includes("packages/villages/src/server.ts"));
+  for (const name of [
+    "archive",
+    "compiler",
+    "escaped",
+    "namespace",
+    "plugin",
+    "unknown",
+    "inline-io",
+    "promises",
+    "method",
+    "mixed-build",
+    "loader",
+    "escaped-builder",
+    "alias",
+  ])
+    assert.equal(spec(name).opaque, true, name);
+  assert.equal(spec("scoped").opaque, false);
+  await writeFile(join(root, "tests/scoped-helper.mjs"), files["tests/scoped-helper.mjs"] + "// changed");
+  assert.equal(
+    spec("scoped", await checkBlueprint(root, { inventory })).opaque,
+    true,
+    "Stale reviewed scopes fail broad",
+  );
+  await writeFile(join(root, "tests/scoped-helper.mjs"), files["tests/scoped-helper.mjs"]);
   const environment = environmentFor(first.toolchain, "linux", { ImageVersion: "fixture" });
   const specs = checkKeys(first, environment);
   const origin = {

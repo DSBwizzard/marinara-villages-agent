@@ -3,6 +3,18 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  "tests/villages-test-scheduler.regression.mjs",
+  "tests/villages-checkout-operation.regression.mjs",
+  "tests/villages-ci-evidence.regression.mjs",
+  "tests/villages-architecture.regression.mjs",
+  "tests/villages-package-verifier.regression.mjs",
+  "tests/villages-client-scope.regression.ts",
+  "tests/villages-api-failures.regression.ts",
+  "tests/villages-background-decisions.regression.ts",
+  "tests/villages-public-client.regression.ts",
+  "tests/villages-activation-owner.regression.mjs",
+  "tests/villages-clock-packaged.regression.ts",
+  "tests/villages-zone-events-packaged.regression.ts",
   "tests/villages-universal-venue.e2e.mjs",
   "tests/villages-spinoff.regression.ts",
   "tests/villages-spinoff.e2e.mjs",

@@ -1,8 +1,27 @@
+export const dependencySchema = 2;
+const graphs = new Map();
+/** Feedback selection is deliberately cheap and incomplete; only complete input graphs may cache proof. */
+export async function testConsumers(inventory, root = process.cwd(), options = {}) {
+  if (!options.complete) return feedbackConsumers(inventory, root, options);
+  const { checkInputGraph } = await import("./check-inputs.mjs");
+  const { validationInputs } = await import("./validation-inputs.mjs");
+  const snapshot = await validationInputs(root);
+  const entries = inventory.filter((test) => test.group !== "engine").map((test) => test.path);
+  const key = JSON.stringify([root, snapshot.digest, entries]);
+  if (!graphs.has(key)) graphs.set(key, checkInputGraph(entries, snapshot.inputs, root));
+  const result = new Map();
+  for (const [test, info] of await graphs.get(key))
+    for (const path of info.inputs) {
+      if (!result.has(path)) result.set(path, []);
+      result.get(path).push(test);
+    }
+  return result;
+}
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
 /** Follow literal imports and source-extraction fixtures, including inline esbuild entries. */
-export async function testConsumers(inventory, root = process.cwd(), { expandBundles = true } = {}) {
+async function feedbackConsumers(inventory, root = process.cwd(), { expandBundles = true } = {}) {
   const edges = new Map();
   const find = async (path) => {
     for (const candidate of [

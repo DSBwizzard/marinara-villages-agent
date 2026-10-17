@@ -49,9 +49,19 @@ npm run test:engine
 
 The inventory accounts for every regression and browser scenario. Engine tests are explicitly separate: the image compatibility test requires `MARINARA_ENGINE_ROOT` for read-only source, Decisions transport requires a compatible existing built runtime and synthetic local provider, and the shell test needs `VILLAGES_ENGINE_URL` pointing to an isolated running Engine. They do not authorize Engine source changes, rebuilds or everyday restarts. Mocked tests complement actual packaged activation, persistence, Scene privacy, recovery and desktop/mobile verification.
 
+## Fast feedback and measured coverage
+
+Use npm run test:impact -- --file=<repository-relative-path> to inspect local selection, CI invalidation and unresolved-input reasons without running tests. Multiple --file options model a batch. The diagnostic does not grant coverage or release readiness.
+
+CI and local evidence validity use scripts/check-inputs.mjs. Ordinary feedback uses the cheaper owner/literal view in test-dependencies.mjs; it selects useful checks without claiming complete consumer coverage or granting reusable CI proof. Literal imports, file reads and supported inline bundles follow actual compiler inputs. Dynamic loaders/read paths remain conservative. scripts/test-inputs.json declares reviewed runtime-data scopes, paired with the normalized source SHA256 of the specific reader. A source change without a fresh review automatically falls back to broader coverage; never refresh hashes mechanically to silence a warning. Directory scopes include new/deleted maintained inputs. Imported helpers are inspected separately, while declared raw-data dependencies are fingerprinted rather than executed by the analyzer.
+
+Tests report start/completion, wall time, worker limits and the slowest suites. Measure changed-code workflows as well as unchanged promotion: small style changes, focused behavior fixes, test-only corrections, shared contracts, cold baselines and prepared promotion. Request-to-preview, request-to-staging and publication times are separate. Include unexpected preparation and queueing; never present a warm verification rehearsal as an actual publication measurement. Timing targets guide optimization rather than creating flaky wall-clock assertions on shared runners.
+
+Retain complete Linux/Windows coverage initially. Optimize actual tests before adding caching machinery: state-only harnesses use one width, layout tests retain desktop/phone, and process-local/owned-temp suites can run concurrently. Unknown suites remain exclusive until inspected. Broad runtime contracts may still rerun several infrastructure suites per edit; do not weaken unknown-loader handling merely to lower a count.
+
 ## Keeping the architecture healthy
 
-For each task, state the intended user-visible outcome and identify its feature owner, collaborators and relevant Engine contract. Start with the smallest change that fits those owners. If the request appears to require a dependency outside an existing feature contract, duplicated host service, new private Engine import, data-policy change or broad restructuring, explain the concrete tradeoff and discuss the approach before expanding implementation. Follow the engineering discussion guidance in [AGENTS.md](AGENTS.md); conventions are revisable, but changes to them need a reason and appropriate validation.
+Identify the user-visible outcome and affected owner/Engine contract. Routine reversible edits need no design ceremony. Start with the smallest change that fits those owners. If the request appears to require a dependency outside an existing feature contract, duplicated host service, new private Engine import, data-policy change or broad restructuring, explain the concrete tradeoff and discuss the approach before expanding implementation. Follow the engineering discussion guidance in [AGENTS.md](AGENTS.md); conventions are revisable, but changes to them need a reason and appropriate validation.
 
 During review, check these points:
 
@@ -106,3 +116,7 @@ Rehearse the entire verification path with `--dry-run --acceptance <verification
 Numbered publication additionally requires `--publish --notes <release-notes.md>`. It creates a draft, uploads the verified archive, checks its GitHub digest, publishes, and verifies the immutable tag/asset identity. Existing different bytes or tags are rejected. Repeating the same command verifies remote state and skips completed mutations. The published checkpoint contains the next patch target for workflow bookkeeping; it does not modify private review worlds or machine-specific release coordination.
 
 A per-candidate operation lock rejects concurrent invocations. After an interrupted process, inspect its recorded PID and checkpoint before recovering a stale lock; never remove a live process's lock.
+
+## Contribution boundary
+
+Follow [upstream-contribution.md](docs/upstream-contribution.md) for the official Marinara Agents engineering and submission expectations. Local source-only commits and upstream generated catalog commits are deliberately different workflows.

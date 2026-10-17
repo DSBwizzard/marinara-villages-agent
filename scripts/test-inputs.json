@@ -1,0 +1,80 @@
+{
+  "tests/route-source.ts": {
+    "sha256": "266e53436bf7a1f1ab5513a941587515b2893297e37767b0af82ff1c4877c72a",
+    "inputs": ["packages/villages/src/server/"]
+  },
+  "tests/client-source.ts": {
+    "sha256": "18c8d5fefbaa5905c9ba70c987e1719bd6cd1adce3e66fc5129dd2e04f5bb8e4",
+    "inputs": ["packages/", "sources/"]
+  },
+  "packages/villages/src/server/adapters/engine/image-style-profiles.ts": {
+    "sha256": "36868b72018bff28b0e66dcdff27427b18d923aed30189f142f789bc46bd26e1",
+    "inputs": ["packages/villages/engine-boundary.json", "sources/engine-public/"],
+    "note": "External Engine public export is covered by separately pinned package acceptance, not provider-free source CI."
+  },
+  "packages/villages/src/server/features/media/sprite-image-codec.ts": {
+    "sha256": "984da5bf9f8439bc538f465e4e0136807f6b5e3178d2487d0f810bad445ea4ea",
+    "inputs": [],
+    "note": "Optional sharp receives decoded image bytes only; this scope does not claim native decoder coverage."
+  },
+  "packages/villages/src/server/adapters/engine/lorebooks.ts": {
+    "sha256": "27de0705e43b5db34c822ded0d523b10c256b79e6e8ac2f99739c53d9d1fbf0a",
+    "inputs": [],
+    "note": "VM evaluates a fixed expression over supplied pattern/text only; no repository loader is exposed."
+  },
+  "packages/villages/src/server/features/residents/signature-image.ts": {
+    "sha256": "c15e9dba2921874a31ae028a9c1cfade3dc31b1022085368bc6c76f15762e6fe",
+    "inputs": [],
+    "note": "Optional sharp consumes decoded or derived image buffers, never repository paths."
+  },
+  "tests/villages-public-client.regression.ts": {
+    "sha256": "44981e323e12e74804e9239ed2a095b15f38eb0a8d2679d8e71c323eb1830e80",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-connections.regression.ts": {
+    "sha256": "fe050e8a3073cb24308d3d9ec1aa58db805ee93a577a01a5cb81b405f05fca85",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-founding-flow.regression.ts": {
+    "sha256": "1ee756161c617311eab4e153e7cf4162bdb71ba97c4705731fb0331c948df03c",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-automatic-refresh.regression.ts": {
+    "sha256": "715baa4541f9707704e7c1b4d69ba58ca43a105c223a227b02beb4d62202a9e1",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-settings-drift.regression.ts": {
+    "sha256": "89cfa657318c011f000422d25ef2fe67afa4d2fb50a6e8780112a484a9300d81",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-signatures.regression.ts": {
+    "sha256": "bc27d5741fdccf0ed9aa03fa7de33b1fba717330119f665941b4012590ae449d",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-sprite-manager.regression.ts": {
+    "sha256": "4988189d0834a6d41f3339caf2e18db1038b0a422a976076e36e053da23bb199",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-clock-packaged.regression.ts": {
+    "sha256": "6e7e1327e34a5d32d1ab9130743c4748c235e31daef3c1e605b64c863a4f15e3",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-spinoff-packaged.regression.ts": {
+    "sha256": "3e4a18097ddec443f17132ebfd96fd3eeb747c4d9c5c1c99fe51149165166016",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  },
+  "tests/villages-zone-events-packaged.regression.ts": {
+    "sha256": "a9a32ee4323f55293726109621c22f1725a9809067a0033d6d56139d4ef6e9ff",
+    "inputs": ["packages/", "sources/", "scripts/"],
+    "note": "Audited fixed product/source or prepared-package reads; imported test helpers remain independently inspected."
+  }
+}

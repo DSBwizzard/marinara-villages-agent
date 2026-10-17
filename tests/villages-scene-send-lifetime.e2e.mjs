@@ -217,7 +217,8 @@ async function mount({
   };
 }
 try {
-  for (const width of [390, 1440])
+  // Hook state is viewport-independent; packaged layout suites retain desktop/phone coverage.
+  for (const width of [1366])
     for (const strict of [false, true]) {
       for (const stage of ["activity", "operation", "turn", "recovery-operation", "active", "archive"]) {
         const f = await mount({

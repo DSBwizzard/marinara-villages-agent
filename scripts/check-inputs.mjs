@@ -7,17 +7,33 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const portable = (path) => path.replaceAll("\\", "/");
 const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/, "")));
-// Keep the file-read analysis below, but never narrow runtime I/O or unknown package loaders to a guessed path.
+// Standard in-memory test libraries; filesystem, compiler, archive and builder APIs remain inspected or opaque.
+const inputLibraries = new Set([
+  "@playwright/test",
+  "pngjs",
+  "zod",
+  "react",
+  "react-dom",
+  "react-dom/client",
+  "react-dom/server",
+  "esbuild",
+  "fastify",
+]);
 const unknownRuntimeInput = (module) =>
-  /^(?:node:)?(?:fs(?:\/promises)?|child_process|module|vm|worker_threads)$/.test(module) ||
+  /^(?:node:)?(?:child_process|module|vm|worker_threads)$/.test(module) ||
   (!module.startsWith(".") &&
     !module.startsWith("/") &&
     module !== "@marinara-engine/shared" &&
+    !inputLibraries.has(module) &&
     !builtins.has(module.replace(/^node:/, "")));
 
 /** Bundler inputs plus fixture reads; unresolved dependencies widen the input set. */
 export async function checkInputGraph(entries, catalog, root = process.cwd()) {
   const paths = new Set(catalog.map((row) => row.path));
+  const catalogHashes = new Map(catalog.map((row) => [row.path, row.sha256]));
+  const contracts = catalogHashes.has("scripts/test-inputs.json")
+    ? JSON.parse(await readFile(resolve(root, "scripts/test-inputs.json"), "utf8"))
+    : {};
   const sources = new Map();
   const analyses = new Map();
   const generated = {
@@ -92,12 +108,19 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
     const inputs = new Set(found);
     let opaque = false,
       payload = false;
+    const reasons = new Set(),
+      declaredInputs = new Set();
     const pending = [...found],
       queued = new Set(pending);
     for (const file of pending) {
       if (!/\.(?:[cm]?js|tsx?)$/.test(file)) continue;
       if (!analyses.has(file)) {
         let uncertain = false;
+        const reasons = new Set();
+        const unknown = (reason) => {
+          uncertain = true;
+          reasons.add(file + ": " + reason);
+        };
         const text = await source(file);
         const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
         const bindings = new Map();
@@ -106,7 +129,9 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
           ioNamespaces = new Set(),
           processNames = new Set(),
           processNamespaces = new Set(),
-          bundlerNames = new Set();
+          bundlerNames = new Set(),
+          ioMethods = new Map(),
+          builderMethods = new Map();
         function lexicalScope(node, parameter = false) {
           let scope = node.parent;
           while (
@@ -133,7 +158,7 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
           }
           if (ts.isImportDeclaration(node) && ts.isStringLiteralLike(node.moduleSpecifier)) {
             const module = node.moduleSpecifier.text;
-            if (unknownRuntimeInput(module)) uncertain = true;
+            if (unknownRuntimeInput(module)) unknown("runtime loader " + module);
             if (/^(?:node:)?(?:path|url)$/.test(module)) {
               const named = node.importClause?.namedBindings;
               if (named && ts.isNamedImports(named))
@@ -152,7 +177,12 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
               if (node.importClause?.name) namespaces.add(node.importClause.name.text);
               const named = node.importClause?.namedBindings;
               if (named && ts.isNamespaceImport(named)) namespaces.add(named.name.text);
-              else if (named && ts.isNamedImports(named)) for (const item of named.elements) names.add(item.name.text);
+              else if (named && ts.isNamedImports(named))
+                for (const item of named.elements) {
+                  names.add(item.name.text);
+                  if (names === ioNames) ioMethods.set(item.name.text, (item.propertyName ?? item.name).text);
+                  if (names === bundlerNames) builderMethods.set(item.name.text, (item.propertyName ?? item.name).text);
+                }
             }
           }
           ts.forEachChild(node, declarations);
@@ -203,7 +233,105 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
           }
           return null;
         }
-        const extra = new Set();
+        const extra = new Set(),
+          inlineModules = [];
+        const outputIO = new Set([
+          "mkdir",
+          "mkdirSync",
+          "mkdtemp",
+          "mkdtempSync",
+          "writeFile",
+          "writeFileSync",
+          "appendFile",
+          "appendFileSync",
+          "unlink",
+          "unlinkSync",
+          "rm",
+          "rmSync",
+          "rmdir",
+          "rmdirSync",
+        ]);
+        function literalBuild(node) {
+          const options = node.arguments[0];
+          if (
+            !options ||
+            !ts.isObjectLiteralExpression(options) ||
+            options.properties.some((p) => !ts.isPropertyAssignment(p))
+          )
+            return false;
+          const property = (object, key) => object.properties.find((p) => p.name?.getText(sf) === key)?.initializer;
+          const allowed = new Set([
+            "stdin",
+            "entryPoints",
+            "bundle",
+            "write",
+            "platform",
+            "format",
+            "jsx",
+            "target",
+            "metafile",
+            "logLevel",
+            "minify",
+            "sourcemap",
+            "packages",
+          ]);
+          const constant = (node) =>
+            ts.isStringLiteralLike(node) ||
+            node.kind === ts.SyntaxKind.TrueKeyword ||
+            node.kind === ts.SyntaxKind.FalseKeyword ||
+            ts.isNumericLiteral(node) ||
+            (ts.isArrayLiteralExpression(node) && node.elements.every(constant));
+          if (
+            options.properties.some(
+              (p) =>
+                !allowed.has(p.name.getText(sf)) ||
+                (!["stdin", "entryPoints"].includes(p.name.getText(sf)) && !constant(p.initializer)),
+            )
+          )
+            return false;
+          const stdin = property(options, "stdin");
+          const entries = property(options, "entryPoints");
+          if (stdin && entries) return false;
+          if (
+            stdin &&
+            ts.isObjectLiteralExpression(stdin) &&
+            stdin.properties.every(
+              (p) =>
+                ts.isPropertyAssignment(p) &&
+                ["contents", "resolveDir", "loader", "sourcefile"].includes(p.name.getText(sf)),
+            )
+          ) {
+            if (
+              ["loader", "sourcefile"].some(
+                (key) => property(stdin, key) && !ts.isStringLiteralLike(property(stdin, key)),
+              )
+            )
+              return false;
+            const contents = value(property(stdin, "contents"));
+            const resolveDir = property(stdin, "resolveDir");
+            if (contents === null || (resolveDir && value(resolveDir) !== root)) return false;
+            // Literal import strings are scanned below. Runtime imports remain unknown.
+            if (/\b(?:import\s*\(|require\s*\(|readFile|fetch\s*\()/.test(contents)) return false;
+            for (const match of contents.matchAll(/(?:from\s*|import\s*)["']([^"']+)["']/g))
+              if (
+                unknownRuntimeInput(match[1]) ||
+                /^(?:node:)?fs(?:\/promises)?$/.test(match[1]) ||
+                match[1] === "esbuild"
+              )
+                return false;
+            inlineModules.push(contents);
+            return true;
+          }
+          if (!entries || !ts.isArrayLiteralExpression(entries)) return false;
+          for (const entry of entries.elements) {
+            const path = value(entry);
+            if (!path) return false;
+            const rel = portable(relative(root, resolve(root, path)));
+            if (!paths.has(rel) && !generated[rel]) return false;
+            extra.add(rel);
+          }
+          return true;
+        }
         function visit(node) {
           if (
             ts.isExportDeclaration(node) &&
@@ -218,23 +346,35 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
             const namespace = ts.isPropertyAccessExpression(node.expression)
               ? node.expression.expression.getText(sf)
               : null;
-            if ((identifier && ioNames.has(identifier)) || (namespace && ioNamespaces.has(namespace))) {
+            if (
+              ((identifier && ioNames.has(identifier)) || (namespace && ioNamespaces.has(namespace))) &&
+              !outputIO.has(ioMethods.get(identifier) ?? name)
+            ) {
               const target = value(node.arguments[0]);
               if (target) {
                 const rel = portable(
                   relative(root, target.startsWith("file:") ? fileURLToPath(target) : resolve(root, target)),
                 );
                 if (paths.has(rel) || generated[rel]) extra.add(rel);
-                else if (!/^(?:\.build-tmp|artifacts|node_modules)\//.test(rel)) uncertain = true;
-              } else uncertain = true;
+                else if (
+                  !/^(?:\.build-tmp|artifacts|node_modules)\//.test(rel) &&
+                  !(
+                    (ioMethods.get(identifier) ?? name) === "existsSync" &&
+                    /Google[\\/]Chrome[\\/]Application[\\/]chrome\.exe$/.test(target)
+                  )
+                )
+                  unknown("untracked file " + rel);
+              } else unknown("dynamic filesystem " + (ioMethods.get(identifier) ?? name));
             }
             if (
               (identifier && processNames.has(identifier)) ||
               (namespace && processNamespaces.has(namespace)) ||
               ["glob", "globSync", "require", "createRequire", "eval"].includes(name) ||
-              (identifier && bundlerNames.has(identifier))
+              (identifier &&
+                bundlerNames.has(identifier) &&
+                (!["build", "buildSync"].includes(builderMethods.get(identifier)) || !literalBuild(node)))
             )
-              uncertain = true;
+              unknown("dynamic loader " + name);
             if (
               node.expression.kind === ts.SyntaxKind.ImportKeyword &&
               (!ts.isStringLiteralLike(node.arguments[0]) || unknownRuntimeInput(node.arguments[0].text))
@@ -243,7 +383,10 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
           }
           if (
             ts.isIdentifier(node) &&
-            (ioNames.has(node.text) || ioNamespaces.has(node.text)) &&
+            (ioNames.has(node.text) ||
+              ioNamespaces.has(node.text) ||
+              bundlerNames.has(node.text) ||
+              processNamespaces.has(node.text)) &&
             !ts.isImportSpecifier(node.parent) &&
             !ts.isImportClause(node.parent) &&
             !ts.isNamespaceImport(node.parent)
@@ -251,15 +394,42 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
             const parent = node.parent;
             const direct = ts.isCallExpression(parent) && parent.expression === node;
             const member =
+              (ioNamespaces.has(node.text) || processNamespaces.has(node.text)) &&
               ts.isPropertyAccessExpression(parent) &&
               parent.expression === node &&
               ts.isCallExpression(parent.parent) &&
               parent.parent.expression === parent;
-            if (!direct && !member) uncertain = true;
+            if (!direct && !member) unknown("escaped input API " + node.text);
           }
           ts.forEachChild(node, visit);
         }
         visit(sf);
+        for (const contents of inlineModules) {
+          try {
+            const bundled = await build({
+              absWorkingDir: root,
+              stdin: { contents, resolveDir: root, loader: "tsx" },
+              bundle: true,
+              write: false,
+              metafile: true,
+              platform: "node",
+              format: "esm",
+              packages: "external",
+              logLevel: "silent",
+              jsx: "automatic",
+              alias: { "@marinara-engine/shared": resolve(root, "sources/package-shared.ts") },
+              define: {
+                "import.meta.env.DEV": "false",
+                "import.meta.env.PROD": "true",
+                "import.meta.env.MODE": '"production"',
+              },
+            });
+            for (const input of Object.keys(bundled.metafile.inputs).map(portable))
+              if (paths.has(input)) extra.add(input);
+          } catch {
+            unknown("unresolved inline bundle");
+          }
+        }
         for (const match of text.matchAll(
           /["']((?:\.{1,2}\/|packages\/|sources\/|tests\/)[^"'\s]+\.(?:mjs|[jt]sx?|json|css|svg|png|webp|wasm))["']/g,
         )) {
@@ -268,11 +438,32 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
             if (paths.has(rel) || generated[rel]) extra.add(rel);
           }
         }
-        analyses.set(file, { extra, opaque: uncertain });
+        if (uncertain && !reasons.size) reasons.add(file + ": unresolved runtime input");
+        analyses.set(file, { extra, opaque: uncertain, reasons: [...reasons] });
       }
       const info = analyses.get(file);
       const extra = info.extra;
-      if (info.opaque) {
+      const contract = contracts[file];
+      const reviewed =
+        contract &&
+        contract.sha256 === catalogHashes.get(file) &&
+        Array.isArray(contract.inputs) &&
+        contract.inputs.every(
+          (path) =>
+            typeof path === "string" &&
+            /^(?:packages|sources|scripts|tests)\//.test(path) &&
+            !path.split("/").includes(".."),
+        );
+      if (reviewed) {
+        inputs.add("scripts/test-inputs.json");
+        for (const path of paths)
+          if (contract.inputs.some((scope) => path === scope || (scope.endsWith("/") && path.startsWith(scope)))) {
+            inputs.add(path);
+            declaredInputs.add(path);
+          }
+      }
+      if (info.opaque && !reviewed) {
+        for (const reason of info.reasons) reasons.add(reason);
         opaque = true;
         break;
       }
@@ -293,13 +484,13 @@ export async function checkInputGraph(entries, catalog, root = process.cwd()) {
         }
       }
       for (const input of inputs)
-        if (!queued.has(input)) {
+        if (!queued.has(input) && (!declaredInputs.has(input) || found.has(input) || extra.has(input))) {
           queued.add(input);
           pending.push(input);
         }
     }
     if (opaque) for (const path of broad) inputs.add(path);
-    return { inputs, opaque, payload, resolved: [...found] };
+    return { inputs, opaque, payload, reasons: [...reasons], resolved: [...found] };
   }
   for (let index = 0; index < entries.length; index += 4) {
     const settled = await Promise.all(entries.slice(index, index + 4).map(async (path) => [path, await inspect(path)]));
