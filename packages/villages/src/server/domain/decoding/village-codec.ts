@@ -137,7 +137,7 @@ export function defaultVillageState(): VillageState {
     projectWishOutbox: [],
     wishRefillIntents: {},
     progressEngineVersion: 1,
-    name: "Willowbrook",
+    name: "",
     narrationStyle: defaultVillageNarrationStyle(),
     characterSpeechColors: true,
     sendOnEnter: false,

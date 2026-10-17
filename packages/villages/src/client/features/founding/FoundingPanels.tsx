@@ -13,7 +13,7 @@ import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { startingZone } from "./founding-template.js";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 export const emptyScenarioImprint = (): ScenarioImprint => ({
   origin: "",
@@ -183,6 +183,7 @@ export function FoundingPersonaSelector({
       {open ? (
         <FoundingDialog title="Choose Persona" onClose={() => setOpen(false)}>
           <input
+            autoComplete="off"
             type="search"
             aria-label="Search Personas"
             placeholder="Search Personas"
@@ -284,6 +285,7 @@ export function FoundingVillagerPicker({
       {open ? (
         <FoundingDialog title="Choose founding villagers" onClose={() => setOpen(false)}>
           <input
+            autoComplete="off"
             type="search"
             aria-label="Search character cards by name"
             placeholder="Search characters"
@@ -407,26 +409,64 @@ export function VillageLorebookPicker({
   onChange(ids: string[]): void;
   disabled: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState<string[]>([]);
+  const [baseSelection, setBaseSelection] = useState<string[]>([]);
+  const active = open ? pending : selected;
+  const stale =
+    open && (baseSelection.length !== selected.length || baseSelection.some((id, index) => id !== selected[index]));
+  const search = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (open) search.current?.focus({ preventScroll: true });
+  }, [open]);
   const [query, setQuery] = useState("");
   const byId = new Map((books ?? []).map((book) => [book.id, book]));
-  const visible = (books ?? []).filter((book) => !book.hiddenFromLibrary || selected.includes(book.id));
-  const missing = selected.filter((id) => !byId.has(id));
+  const visible = (books ?? []).filter(
+    (book) => !book.hiddenFromLibrary || selected.includes(book.id) || active.includes(book.id),
+  );
+  const missing = [...new Set([...selected, ...active])].filter((id) => !byId.has(id));
   const options = [...visible, ...missing.map((id) => ({ id, name: id, enabled: false }))];
   const filtered = options.filter((book) => book.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const shown = filtered.slice(0, 50);
+  const status = error ? (
+    <p role="alert">{error}</p>
+  ) : books === null ? (
+    <p role="status">Loading lorebooks…</p>
+  ) : options.length === 0 ? (
+    <p>No lorebooks available.</p>
+  ) : null;
   return (
-    <fieldset className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-lore-picker`}>
-      <legend className={`${ELEMENT_TAG}-label`}>
-        Village Lorebooks{" "}
-        <FoundingHelp label="Village lorebooks">
-          Selected books supply live world facts for places, stories, conversations, wishes, agendas, and generated
-          scenery. Villages never edits them.
-        </FoundingHelp>
-      </legend>
-      <div className={`${ELEMENT_TAG}-lore-selected`} aria-live="polite">
+    <section
+      className={ELEMENT_TAG + "-field " + ELEMENT_TAG + "-lore-picker villages-lorebook-card"}
+      aria-label="Village Lorebooks"
+    >
+      <div className="villages-lorebook-header">
+        <div className="villages-lorebook-heading">
+          <h3>Village Lorebooks</h3>
+          <FoundingHelp label="Village Lorebooks">
+            Selected lorebooks enrich your Village with information for places, stories, village life and image
+            generation.
+          </FoundingHelp>
+        </div>
+        <button
+          type="button"
+          className="villages-lorebook-action"
+          aria-label="Choose Village Lorebooks"
+          disabled={disabled}
+          onClick={() => {
+            setQuery("");
+            setPending([...selected]);
+            setBaseSelection([...selected]);
+            setOpen(true);
+          }}
+        >
+          Choose...
+        </button>
+      </div>
+      <div className={ELEMENT_TAG + "-lore-selected"} aria-live="polite">
         {selected.length ? (
           selected.map((id) => (
-            <span className={`${ELEMENT_TAG}-lore-chip`} key={id}>
+            <span className={ELEMENT_TAG + "-lore-chip"} key={id}>
               <span>
                 {byId.get(id)?.name ?? id}
                 {books === null
@@ -439,7 +479,7 @@ export function VillageLorebookPicker({
               </span>
               <button
                 type="button"
-                aria-label={`Remove ${byId.get(id)?.name ?? id}`}
+                aria-label={"Remove " + (byId.get(id)?.name ?? id)}
                 disabled={disabled}
                 onClick={() => onChange(selected.filter((choice) => choice !== id))}
               >
@@ -448,64 +488,139 @@ export function VillageLorebookPicker({
             </span>
           ))
         ) : (
-          <span className={`${ELEMENT_TAG}-hint`}>No lorebooks selected.</span>
+          <span className={ELEMENT_TAG + "-hint"}>None selected</span>
         )}
       </div>
-      {error ? (
-        <p className={`${ELEMENT_TAG}-error`} role="alert">
-          {error}
-        </p>
+      {!open ? status : null}
+      {open ? (
+        <FoundingDialog title="Choose Lorebooks" scrollBody onClose={() => setOpen(false)}>
+          <input
+            autoComplete="off"
+            type="search"
+            className="villages-lorebook-search"
+            value={query}
+            ref={search}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setOpen(false);
+              }
+            }}
+            aria-label="Search Lorebooks"
+            placeholder="Search Lorebooks"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          {status}
+          {stale ? <p role="alert">Lorebooks changed. Close and reopen this picker.</p> : null}
+          <div className="villages-lorebook-results" role="group" aria-label="Lorebooks">
+            {shown.map((book) => {
+              const checked = active.includes(book.id);
+              const state = missing.includes(book.id)
+                ? books === null
+                  ? error
+                    ? "Unavailable"
+                    : "Checking"
+                  : "Missing"
+                : book.enabled
+                  ? ""
+                  : "Disabled";
+              return (
+                <label key={book.id} className="villages-lorebook-option" data-selected={checked}>
+                  <input
+                    autoComplete="off"
+                    type="checkbox"
+                    checked={checked}
+                    disabled={
+                      disabled ||
+                      stale ||
+                      (!book.enabled && !checked && !selected.includes(book.id)) ||
+                      (!checked && active.length >= 24)
+                    }
+                    onChange={() =>
+                      setPending((current) =>
+                        checked ? current.filter((id) => id !== book.id) : [...current, book.id],
+                      )
+                    }
+                  />
+                  <span>
+                    {book.name}
+                    {state ? <small>{state}</small> : null}
+                  </span>
+                </label>
+              );
+            })}
+            {books !== null && options.length > 0 && filtered.length === 0 ? <p>No matches</p> : null}
+            {filtered.length > shown.length ? (
+              <p>
+                {shown.length} of {filtered.length} matches
+              </p>
+            ) : null}
+          </div>
+          <footer className="villages-lorebook-footer">
+            <span aria-live="polite">{active.length} / 24</span>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              disabled={disabled || stale}
+              onClick={() => {
+                if (disabled || stale) return;
+                onChange(pending);
+                setOpen(false);
+              }}
+            >
+              Done
+            </button>
+          </footer>
+        </FoundingDialog>
       ) : null}
-      {books === null && !error ? <p className={`${ELEMENT_TAG}-hint`}>Loading lorebooks…</p> : null}
-      {books === null && error && selected.length > 0 ? (
-        <p className={`${ELEMENT_TAG}-hint`}>
-          Selected books could not be checked. Lore generation will skip unavailable books.
-        </p>
-      ) : null}
-      {books?.length === 0 ? <p className={`${ELEMENT_TAG}-hint`}>No lorebooks in the Engine library.</p> : null}
-      <details className={`${ELEMENT_TAG}-lore-options`}>
-        <summary className={`${ELEMENT_TAG}-button`}>Choose lorebooks ({selected.length}/24)</summary>
-        <input
-          type="search"
-          className={`${ELEMENT_TAG}-search`}
-          value={query}
-          aria-label="Search lorebooks"
-          placeholder="Search your lorebooks"
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <div className={`${ELEMENT_TAG}-lore-results`}>
-          {shown.map((book) => {
-            const checked = selected.includes(book.id);
-            const status = missing.includes(book.id)
-              ? books === null
-                ? error
-                  ? "Unavailable — skipped"
-                  : "Checking status"
-                : "Missing — skipped"
-              : book.enabled
-                ? ""
-                : "Disabled — skipped";
-            return (
-              <label key={book.id} className={`${ELEMENT_TAG}-reason-option`}>
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={disabled || (!book.enabled && !checked) || (!checked && selected.length >= 24)}
-                  onChange={() => onChange(checked ? selected.filter((id) => id !== book.id) : [...selected, book.id])}
-                />
-                {book.name}
-                {status ? ` (${status})` : ""}
-              </label>
-            );
-          })}
-          {books !== null && filtered.length === 0 ? (
-            <p className={`${ELEMENT_TAG}-hint`}>No matching lorebooks.</p>
-          ) : null}
-          {filtered.length > shown.length ? (
-            <p className={`${ELEMENT_TAG}-hint`}>Showing the first 50 matches. Search to narrow the list.</p>
-          ) : null}
-        </div>
-      </details>
-    </fieldset>
+    </section>
+  );
+}
+
+export function LoreTokenBudgetField({
+  value,
+  onChange,
+  min = 0,
+  max = 3200,
+  disabled = false,
+}: {
+  value: number;
+  onChange(value: number): void;
+  min?: number;
+  max?: number;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  const [empty, setEmpty] = useState(false);
+  const invalid = !Number.isInteger(value) || value < min || value > max;
+  return (
+    <div className="villages-lorebook-budget">
+      <div className="villages-lorebook-budget-heading">
+        <label htmlFor={id}>Lorebook Token Budget</label>
+        <FoundingHelp label="Lorebook Token Budget">
+          Maximum tokens lorebooks can use in any lorebook-enabled prompt. Entries are always injected if set to
+          Constant mode, otherwise injection is based on primary keys only (other lorebook entry settings are ignored).
+        </FoundingHelp>
+      </div>
+      <input
+        id={id}
+        aria-label="Lorebook Token Budget"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        placeholder="1600"
+        value={empty && value === 0 ? "" : String(value)}
+        disabled={disabled}
+        aria-invalid={invalid || undefined}
+        onChange={(event) => {
+          const raw = event.target.value.trim();
+          if (!/^\d*$/.test(raw)) return;
+          setEmpty(raw === "");
+          onChange(raw === "" ? 0 : Number(raw));
+        }}
+      />
+    </div>
   );
 }

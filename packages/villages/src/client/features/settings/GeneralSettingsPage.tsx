@@ -31,6 +31,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
         <div className={`${ELEMENT_TAG}-field`}>
           <label className={`${ELEMENT_TAG}-row`} htmlFor={`${ELEMENT_TAG}-send-on-enter`}>
             <input
+              autoComplete="off"
               id={`${ELEMENT_TAG}-send-on-enter`}
               type="checkbox"
               checked={snapshot.settings.sendOnEnter === true}
@@ -49,6 +50,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
         <div className={`${ELEMENT_TAG}-field`}>
           <label className={`${ELEMENT_TAG}-row`} htmlFor={`${ELEMENT_TAG}-speech-colors`}>
             <input
+              autoComplete="off"
               id={`${ELEMENT_TAG}-speech-colors`}
               type="checkbox"
               checked={snapshot.settings.characterSpeechColors}
@@ -115,6 +117,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
           </select>
           {snapshot.settings.visitRetention.mode !== "forever" ? (
             <input
+              autoComplete="off"
               key={`${snapshot.settings.visitRetention.mode}:${snapshot.settings.visitRetention.value}`}
               type="number"
               aria-label={

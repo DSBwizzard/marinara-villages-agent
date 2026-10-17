@@ -491,9 +491,9 @@ async function main() {
     (await readFile(join(serverRoot, "domain/rules/founding-record.ts"), "utf8"));
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts-service.ts"), "utf8");
   assert.ok(client.includes('["Place", "People", "Map", "Venues", "Review"]'));
-  assert.ok(client.includes("Place and world"));
-  assert.ok(client.includes("Starting circumstances"));
-  assert.ok(client.includes("Search lorebooks"));
+  assert.ok(client.includes("Setting"));
+  assert.ok(client.includes("Starting Scenario"));
+  assert.ok(client.includes("Search Lorebooks"));
   const editor = await readFile(
     join(root, "packages/villages/src/client/features/founding/villages-founding-editor.tsx"),
     "utf8",
@@ -502,7 +502,7 @@ async function main() {
   assert.equal(client.includes("resumeSetupPlacement"), false);
   assert.ok(client.includes("Review village"));
   assert.ok(editor.includes("Assigned villager"));
-  assert.ok(editor.includes("Physical form"));
+  assert.ok(editor.includes("Physical Form"));
   assert.ok(editor.includes("Private Space"));
   assert.ok(client.includes("generateSetupImage(venue, area, zoneId)"));
   assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);

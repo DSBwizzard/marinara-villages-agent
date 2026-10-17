@@ -1705,6 +1705,7 @@ export function RoomPanel({
                       </span>
                     ) : null}
                     <textarea
+                      autoComplete="off"
                       ref={composerRef}
                       data-villages-scene-composer
                       className={`${ELEMENT_TAG}-textarea`}

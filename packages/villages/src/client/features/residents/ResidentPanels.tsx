@@ -130,6 +130,7 @@ export function VillagerMemoriesPanel({
           ))}
         </div>
         <input
+          autoComplete="off"
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}

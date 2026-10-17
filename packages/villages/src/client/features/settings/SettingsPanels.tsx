@@ -44,6 +44,7 @@ export function VillagesRuntimeDebug() {
     <section className={ELEMENT_TAG + "-panel"}>
       <label>
         <input
+          autoComplete="off"
           type="checkbox"
           checked={settings?.verbose ?? false}
           disabled={!settings || saving}
@@ -384,6 +385,7 @@ export function VillageWritingSettings() {
       {view ? (
         <>
           <textarea
+            autoComplete="off"
             className={ELEMENT_TAG + "-textarea"}
             aria-label="Additional writing guidance"
             value={draft}

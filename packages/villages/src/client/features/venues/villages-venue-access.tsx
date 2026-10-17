@@ -23,6 +23,7 @@ export function PeopleFields({
       {people.map((person) => (
         <label key={person.id} style={{ display: "block" }}>
           <input
+            autoComplete="off"
             type="checkbox"
             checked={value.includes(person.id)}
             onChange={(event) =>
@@ -59,6 +60,7 @@ export function VisitorHoursFields({
           {weekdays.map((day) => (
             <label key={day}>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={row.days.includes(day)}
                 onChange={(event) =>
@@ -80,6 +82,7 @@ export function VisitorHoursFields({
           <label>
             From{" "}
             <input
+              autoComplete="off"
               type="time"
               value={row.start}
               onChange={(event) =>
@@ -90,6 +93,7 @@ export function VisitorHoursFields({
           <label>
             Until{" "}
             <input
+              autoComplete="off"
               type="time"
               value={row.end}
               onChange={(event) =>
@@ -148,6 +152,7 @@ export function ZonePolicyFields({
       </p>
       <label>
         <input
+          autoComplete="off"
           type="checkbox"
           checked={value.managerIds === null}
           onChange={(event) => patch({ managerIds: event.target.checked ? null : [] })}
@@ -171,6 +176,7 @@ export function ZonePolicyFields({
       {(["residents", "workers"] as const).map((role) => (
         <label key={role} style={{ display: "block" }}>
           <input
+            autoComplete="off"
             type="checkbox"
             checked={value.memberRoles.includes(role)}
             onChange={(event) =>
@@ -192,6 +198,7 @@ export function ZonePolicyFields({
       />
       <label>
         <input
+          autoComplete="off"
           type="checkbox"
           checked={value.accompanied}
           onChange={(event) => patch({ accompanied: event.target.checked })}
@@ -260,6 +267,7 @@ export function ZonePolicyFields({
             </select>
             <label>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={rule.accompanied}
                 onChange={(event) =>
@@ -446,6 +454,7 @@ export function VenueAccessPanel({
                 </label>
                 <label>
                   <input
+                    autoComplete="off"
                     type="checkbox"
                     checked={accompanied}
                     onChange={(event) => setAccompanied(event.target.checked)}
@@ -454,6 +463,7 @@ export function VenueAccessPanel({
                 </label>
                 <label>
                   <input
+                    autoComplete="off"
                     type="checkbox"
                     checked={outsideHours}
                     onChange={(event) => setOutsideHours(event.target.checked)}

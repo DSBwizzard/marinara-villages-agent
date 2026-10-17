@@ -364,6 +364,25 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: "Village Settings", exact: true }).click();
   await page.clock.fastForward(350);
   assert.equal(usagePreviews.length, 0, "public Settings never request the private cost preview");
+  const loreCard = page.getByRole("region", { name: "Village Lorebooks", exact: true });
+  const editLore = loreCard.getByRole("button", { name: "Choose Village Lorebooks", exact: true });
+  await editLore.click();
+  const loreDialog = page.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
+  const missingBook = loreDialog.getByRole("checkbox", { name: /^saved-book/ });
+  await expect(missingBook).toBeChecked();
+  await expect(missingBook).toBeEnabled();
+  await expect(loreDialog.getByText("Missing", { exact: true })).toBeVisible();
+  await missingBook.uncheck();
+  await loreDialog.getByRole("searchbox", { name: "Search Lorebooks", exact: true }).press("Escape");
+  await expect(editLore).toBeFocused();
+  await expect(loreCard.getByRole("button", { name: "Remove saved-book", exact: true })).toBeVisible();
+  const loreBudget = page.getByLabel("Lorebook Token Budget", { exact: true });
+  await expect(loreBudget).toHaveAttribute("type", "text");
+  await loreBudget.fill("800");
+  await loreBudget.fill("");
+  await expect(loreBudget).toHaveValue("");
+  await expect(loreBudget).toHaveAttribute("placeholder", "1600");
+
   await page.getByLabel("The information villagers know", { exact: true }).fill("Packaged retained draft");
   await page.getByRole("button", { name: "Back to menu", exact: true }).click();
   await page.getByRole("button", { name: "General Settings", exact: true }).click();

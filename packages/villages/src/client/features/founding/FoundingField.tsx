@@ -1,6 +1,6 @@
 import { cloneElement, type ReactElement, type ReactNode, useId, useRef, useState, useEffect } from "react";
 
-/** Field help stays beside its label or input; it never changes the input's accessible name. */
+/** Field help stays beside its label; it never changes the input's accessible name. */
 export function FoundingHelp({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const id = useId(),
@@ -52,14 +52,12 @@ export function FoundingHelp({ label, children }: { label: string; children: Rea
 export function FoundingField({
   title,
   help,
-  helpPlacement = "label",
   optional = false,
   error,
   children,
 }: {
   title: ReactNode;
   help?: ReactNode;
-  helpPlacement?: "label" | "input";
   optional?: boolean;
   error?: string;
   children: ReactElement<{ id?: string; "aria-describedby"?: string; "aria-invalid"?: boolean }>;
@@ -73,9 +71,7 @@ export function FoundingField({
           {title}
           {optional ? <small>Optional</small> : null}
         </label>
-        {help && helpPlacement === "label" ? (
-          <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp>
-        ) : null}
+        {help ? <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp> : null}
       </div>
       {cloneElement(children, {
         id,
@@ -86,9 +82,6 @@ export function FoundingField({
             }
           : {}),
       })}
-      {help && helpPlacement === "input" ? (
-        <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp>
-      ) : null}
       {error ? (
         <p id={errorId} role="alert" data-founding-problem tabIndex={-1}>
           {error}
@@ -105,5 +98,5 @@ export function CircumstanceInput({ examples, ...props }: { examples: string[] }
     const timer = setInterval(() => setExample((index) => (index + 1) % examples.length), 4000);
     return () => clearInterval(timer);
   }, [props.value, examples]);
-  return <textarea {...props} placeholder={examples[example % examples.length]} />;
+  return <textarea autoComplete="off" {...props} placeholder={examples[example % examples.length]} />;
 }

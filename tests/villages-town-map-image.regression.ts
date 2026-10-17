@@ -189,12 +189,12 @@ async function main() {
     assert.match(prompt, /Map details: Respect repeated living spaces/);
     assert.ok(prompt.length <= 4000);
   }
-  const tightBase = buildTownMapPrompt(undefined, "x".repeat(1900));
+  const tightBase = buildTownMapPrompt(undefined, "x".repeat(1500));
   const exactlyFits = "v".repeat(4000 - tightBase.length - 1 - "Compatible visual lore: ".length);
-  const tightPrompt = buildTownMapPrompt(undefined, "x".repeat(1900), [exactlyFits]);
+  const tightPrompt = buildTownMapPrompt(undefined, "x".repeat(1500), [exactlyFits]);
   assert.equal(tightPrompt.length, 4000, "complete optional entry fits the actual final character allowance");
   assert.ok(tightPrompt.includes("\nCompatible visual lore: "));
-  const longSetting = "a".repeat(1990) + "LAST-FACT";
+  const longSetting = "a".repeat(1490) + "LAST-FACT";
   assert.ok(buildTownMapPrompt(undefined, longSetting, "", undefined, "Watercolor").includes("LAST-FACT"));
   const optionalPrompt = buildTownMapPrompt(undefined, "An enclosed mall.", ["z".repeat(4000), "COMPLETE-SHORT-ENTRY"]);
   assert.ok(!optionalPrompt.includes("zzz"));
@@ -297,9 +297,11 @@ async function main() {
     };
     const input = {
       structure: "A corridor and shared hall. ".repeat(4),
-      setting: "An indoor observatory. ".repeat(70),
+      setting: "An indoor observatory. ".repeat(60),
       sceneryArtStyle: "Painted scenery. ".repeat(6),
-      useVisualLore: false,
+      useVisualLore: true,
+      selectedLorebookIds: ["zero-budget-book"],
+      loreTokenBudget: 0,
       connectionId: "fixture-image",
     };
     const expectedPrompt = buildTownMapPrompt(input.structure, input.setting, "", null, input.sceneryArtStyle.trim());

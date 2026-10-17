@@ -75,7 +75,7 @@ try {
     founding = true;
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    const zone = page.getByRole("combobox", { name: "Village timezone" });
+    const zone = page.getByRole("combobox", { name: "Village Timezone" });
     await expect(zone).toHaveValue("America/Los_Angeles");
     await zone.selectOption("Europe/London");
     await expect(zone).toHaveValue("Europe/London");

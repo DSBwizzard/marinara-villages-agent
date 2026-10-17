@@ -180,6 +180,7 @@ async function reset() {
   now = 0;
   await mutateVillageState((state) => {
     Object.assign(state, defaultVillageState());
+    state.name = "Willowbrook";
     state.seed = "fixture";
     state.villagers = [
       "same",

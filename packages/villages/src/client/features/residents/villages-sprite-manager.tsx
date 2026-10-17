@@ -367,6 +367,7 @@ export function SpriteManager({
         </div>
       </header>
       <input
+        autoComplete="off"
         className="vsm-file"
         ref={fileInput}
         type="file"
@@ -626,6 +627,7 @@ export function SpriteManager({
                   <label>
                     Expression name
                     <input
+                      autoComplete="off"
                       value={draft.name}
                       maxLength={100}
                       disabled={busy}
@@ -699,6 +701,7 @@ export function SpriteManager({
                   <label>
                     Use when…
                     <textarea
+                      autoComplete="off"
                       aria-label="Use when…"
                       value={draft.useWhen}
                       maxLength={1000}
@@ -725,6 +728,7 @@ export function SpriteManager({
                         </span>
                       </span>
                       <input
+                        autoComplete="off"
                         aria-label={{ scale: "Size", offsetX: "Horizontal position", offsetY: "Foot position" }[field]}
                         type="range"
                         min={field === "scale" ? 0.05 : field === "offsetX" ? -1024 : -1536}
@@ -773,6 +777,7 @@ export function SpriteManager({
                             ]
                           }
                           <input
+                            autoComplete="off"
                             type="number"
                             step={field === "scale" ? 0.05 : 1}
                             disabled={busy}
@@ -800,6 +805,7 @@ export function SpriteManager({
                             }[field]
                           }
                           <input
+                            autoComplete="off"
                             type="number"
                             step={1}
                             value={frame[field] ?? ""}
@@ -885,6 +891,7 @@ export function SpriteManager({
                 <img src={item.url} alt="" loading="lazy" />
                 <span>
                   <input
+                    autoComplete="off"
                     type="checkbox"
                     disabled={busy || Boolean(item.adoptedArtworkId)}
                     checked={librarySelected.includes(item.filename)}
