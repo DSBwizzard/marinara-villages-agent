@@ -85,7 +85,6 @@ export function VillagesRuntimeDebug() {
 function ConnectionPicker({
   id,
   label,
-  hint,
   options,
   value,
   disabled,
@@ -93,7 +92,6 @@ function ConnectionPicker({
 }: {
   id: string;
   label: string;
-  hint: string;
   options: readonly VillageConnectionOption[];
   value: string;
   disabled: boolean;
@@ -120,7 +118,6 @@ function ConnectionPicker({
           </option>
         ))}
       </select>
-      <span className={`${ELEMENT_TAG}-hint`}>{hint}</span>
     </div>
   );
 }
@@ -236,25 +233,11 @@ export function AgentConnections({
   return (
     <div className={`${ELEMENT_TAG}-field ${compact ? `${ELEMENT_TAG}-connections-compact` : ""}`}>
       <span className={`${ELEMENT_TAG}-label`}>Connections</span>
-      {compact ? (
-        <p className={`${ELEMENT_TAG}-hint`}>Choose models for village planning, conversations, and artwork.</p>
-      ) : (
-        <p className={`${ELEMENT_TAG}-empty`}>
-          The village spends model calls on three kinds of work, and they are not worth the same money. The heavy
-          lifting is one long call about the whole village. The conversations are short and frequent. Pictures are drawn
-          only when you ask for one. Leave any of these alone and the agent&apos;s own choice is used.
-        </p>
-      )}
       {settings ? (
         <div className={compact ? `${ELEMENT_TAG}-connections-grid` : ""}>
           <ConnectionPicker
             id={`${ELEMENT_TAG}-connection-system`}
             label="System"
-            hint={
-              compact
-                ? "Founding, daily planning, and recaps."
-                : "Founding the village, the write-up each time the day turns over, and the village's reading of what happened while you were away."
-            }
             options={talk}
             value={settings.systemConnectionId}
             disabled={busy}
@@ -263,11 +246,6 @@ export function AgentConnections({
           <ConnectionPicker
             id={`${ELEMENT_TAG}-connection-narration`}
             label="Narration"
-            hint={
-              compact
-                ? "Villagers' speech and conversation recaps."
-                : "Everything the villagers say to you, and how the conversation reads back afterwards."
-            }
             options={talk}
             value={settings.narrationConnectionId}
             disabled={busy}
@@ -297,20 +275,6 @@ export function AgentConnections({
                 </option>
               ))}
             </select>
-            <span className={`${ELEMENT_TAG}-hint`}>
-              {compact ? (
-                "Maps and places. Recommended."
-              ) : (
-                <>
-                  This is the connection that Villages uses to generate images such as the Village map, Venue
-                  backgrounds, etc.{" "}
-                  <span className={`${ELEMENT_TAG}-image-recommendation`}>
-                    The intended experience includes an image generation connection to bring the world to life, and is{" "}
-                    <em>highly</em> recommended.
-                  </span>
-                </>
-              )}
-            </span>
           </div>
         </div>
       ) : error.length === 0 ? (
