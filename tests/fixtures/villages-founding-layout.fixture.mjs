@@ -501,21 +501,11 @@ export async function verifyFoundingLayout(group) {
         await forward("Continue to People").click();
         await expect(root.getByLabel("Place and world", { exact: true })).toBeFocused();
         await expect(root.getByRole("button", { name: "Help: Village name", exact: true })).toHaveCount(0);
-        const help = root.getByRole("button", { name: "Help: Place and world", exact: true });
         const panelsHeight = (await root.locator(".villages-place-panels").boundingBox()).height;
-        await help.click();
-        await expect(help).toHaveAttribute("aria-expanded", "true");
-        await expect(root.getByRole("note").filter({ hasText: "surrounding world" })).toBeVisible();
-        assert.equal(
-          (await root.locator(".villages-place-panels").boundingBox()).height,
-          panelsHeight,
-          "Place help floats without expanding panels",
-        );
+        await expect(root.getByRole("button", { name: "Help: Place and world", exact: true })).toHaveCount(0);
+        await expect(root.getByRole("note").filter({ hasText: "surrounding world" })).toHaveCount(0);
         await bounds();
-        await capture("place-help");
-        await help.press("Escape");
-        await expect(help).toBeFocused();
-        await expect(help).toHaveAttribute("aria-expanded", "false");
+        await capture("place-fields");
         for (const label of ["Starting circumstances"]) {
           const otherHelp = root.getByRole("button", { name: "Help: " + label, exact: true });
           await otherHelp.click();
