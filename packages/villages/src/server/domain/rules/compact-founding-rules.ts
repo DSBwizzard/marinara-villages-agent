@@ -11,6 +11,9 @@ import type {
 import { villageAgendaDay } from "./agenda-plan.js";
 import { extractJsonObject } from "./json-reply.js";
 import { remapBlocks, VILLAGE_UNTRANSLATED_ACTIVITY } from "./native-remap.js";
+import { influenceSettings, scheduleSemanticSource, readPreparedInfluence } from "./owned-routine.js";
+import { semanticHash } from "./semantic-contract.js";
+import { readSemanticWishCriteria } from "./wish-criteria.js";
 import { routineDay, validRoutineRhythm } from "./owned-routine.js";
 import type { RoutineProfile } from "./owned-routine.js";
 import { boundText, coerceWish, MAX_ROUTINE_SUMMARY_LENGTH, MAX_VILLAGER_WISHES } from "./prompt-preset.js";
@@ -29,6 +32,7 @@ type PaletteEntry = {
 };
 
 export type CompactFoundingContext = {
+  semanticVersion?: 2;
   wishAttemptId?: string;
   playerRole?: VillagePlayerRole | null;
   playerPersonaName?: string;
@@ -44,6 +48,7 @@ export type CompactFoundingContext = {
   schedule: NativeWeekSchedule | null;
   characterId?: string;
   influenceHints?: readonly string[];
+  influenceSettings?: import("./owned-routine.js").ScheduleInfluence;
 };
 
 export type CompactFoundingResult = { agenda: VillageAgenda; moves: VillageRemapMove[] };
@@ -150,7 +155,11 @@ export function parseCompactFounding(
         at,
       );
       if (!wish || seen.has(compactKey(wish.wish))) continue;
-      validateGeneratedWishWording(wish.wish);
+      if (context.semanticVersion === 2) {
+        wish.semanticCriteria = readSemanticWishCriteria(raw.criteria, wish.wish);
+        if (!wish.semanticCriteria || raw.neutralWording !== true)
+          throw new Error("Wish interpretation is incomplete; explicitly retry.");
+      } else validateGeneratedWishWording(wish.wish);
       seen.add(compactKey(wish.wish));
       wishes.push(wish);
       if (wishes.length >= 1) break;
@@ -182,7 +191,75 @@ export function parseCompactFounding(
     return { startMinute: row.startMinute as number, endMinute: row.endMinute as number, activity: activity as number };
   });
   if (!validRoutineRhythm(rhythm)) throw new Error("Resident rest windows overlap.");
-  const profile: RoutineProfile = { version: 1, activities: palette, days: days as number[][], rhythm };
+  const profile: RoutineProfile = {
+    version: 1,
+    ...(context.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
+    activities: palette,
+    days: days as number[][],
+    rhythm,
+  };
+  const influence = payload.scheduleInfluence;
+  if (
+    context.semanticVersion === 2 &&
+    context.schedule &&
+    context.influenceSettings?.enabled &&
+    (!influence || typeof influence !== "object" || Array.isArray(influence))
+  )
+    throw new Error("System schedule interpretation is missing.");
+  if (influence && typeof influence === "object" && !Array.isArray(influence)) {
+    const row = influence as Record<string, unknown>;
+    profile.influence = {
+      version: 1,
+      signature: semanticHash(influence),
+      available: !!context.schedule,
+      enabled: true,
+      rhythms: Array.isArray(row.rhythms)
+        ? row.rhythms.filter(
+            (item: any) =>
+              typeof item.weekday === "string" &&
+              Number.isInteger(item.startMinute) &&
+              Number.isInteger(item.endMinute) &&
+              item.startMinute >= 0 &&
+              item.endMinute <= 1440,
+          )
+        : [],
+      busy: Array.isArray(row.busy)
+        ? row.busy.filter(
+            (item: any) =>
+              typeof item.weekday === "string" &&
+              Number.isInteger(item.part) &&
+              item.part >= 0 &&
+              item.part <= 3 &&
+              typeof item.free === "boolean",
+          )
+        : [],
+      interests: Array.isArray(row.interests)
+        ? row.interests.filter(
+            (item: unknown) => typeof item === "string" && palette.some((activity) => activity.activity === item),
+          )
+        : [],
+      entities: Array.isArray(row.entities)
+        ? row.entities.filter(
+            (item: unknown) => typeof item === "string" && context.venues.some((venue) => venue.id === item),
+          )
+        : [],
+      adopted: [],
+      unresolved: [],
+    };
+    if (
+      context.semanticVersion === 2 &&
+      (!readPreparedInfluence(profile.influence) ||
+        ["rhythms", "busy", "interests", "entities"].some(
+          (key) =>
+            !Array.isArray(row[key]) || (row[key] as unknown[]).length !== (profile.influence as any)[key].length,
+        ))
+    )
+      throw new Error("System schedule interpretation has invalid fields.");
+    profile.influenceSource = scheduleSemanticSource(
+      context.schedule,
+      context.influenceSettings ?? influenceSettings(undefined),
+    );
+  }
   const week = Object.fromEntries(
     VILLAGE_WEEKDAYS.map((weekday, index) => [
       weekday,

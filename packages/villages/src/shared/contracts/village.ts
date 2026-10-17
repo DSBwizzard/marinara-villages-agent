@@ -117,7 +117,16 @@ export type VillageRecap = {
 
 export type BackgroundWork = {
   id: string;
-  kind: "story" | "agenda" | "translation" | "wish" | "wish-check" | "mail" | "adaptation";
+  kind:
+    | "story"
+    | "agenda"
+    | "translation"
+    | "wish"
+    | "wish-check"
+    | "mail"
+    | "adaptation"
+    | "starting-ties"
+    | "schedule-influence";
   subjectId: string;
   label: string;
   status: "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
@@ -877,6 +886,8 @@ export type RoomOperation = {
 };
 
 export type SceneChangeIssue = {
+  canContinue?: boolean;
+  continued?: boolean;
   submissionId: string;
   domain: string;
   status?: "pending" | "failed" | "rejected";
@@ -885,6 +896,7 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  semanticVersion?: 2;
   connectionMap?: { id: string; connectedTo?: string[] }[];
   attentionClarification?: { id: string; message: string; question: string; choices: { id: string; label: string }[] };
   memoryMode?: "live";
@@ -1197,6 +1209,7 @@ type VillagePromptMessage = {
 
 /** Owned resolved Agenda and optional influence controls. Legacy remap fields are inert compatibility data. */
 export type VillagerAgendaView = {
+  canInterpretSchedule?: boolean;
   effectiveDays?: Record<string, AgendaBlock[]>;
   wishHistoryCount?: number;
   wishAttempt?: {

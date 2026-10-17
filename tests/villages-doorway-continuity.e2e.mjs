@@ -145,9 +145,9 @@ try {
     status = await openSceneErrors(page);
     await expect(status).toContainText("relationships update failed");
     await expect(status).not.toContainText("wishes update failed");
-    await expect(status.getByRole("button", { name: /Retry relationships interpretation/ })).toBeVisible();
-    await expect(status.getByRole("button", { name: /Retry memories interpretation/ })).toHaveCount(0);
-    await expect(status.getByRole("button", { name: /Retry wishes interpretation/ })).toHaveCount(0);
+    await expect(status.getByRole("button", { name: /Retry relationships/ })).toBeVisible();
+    await expect(status.getByRole("button", { name: /Retry memories/ })).toHaveCount(0);
+    await expect(status.getByRole("button", { name: /Retry wishes/ })).toHaveCount(0);
     issues = [];
     summary = { pending: 0, failed: 0, rejected: 1 };
     await closeSceneErrors(page);

@@ -79,7 +79,7 @@
     "note": "Extracts and executes archive-identical server payload; retain all HTTP/state assertions and generated server/builder dependencies."
   },
   "tests/villages-zone-events-packaged.regression.ts": {
-    "sha256": "a9a32ee4323f55293726109621c22f1725a9809067a0033d6d56139d4ef6e9ff",
+    "sha256": "2353ab32cb6962dcd47dc948fb0fb33c721d252badfa1061f1ad972da26487e2",
     "inputs": ["packages/villages/src/server/", "packages/villages/src/shared/", "sources/"],
     "note": "Extracts and executes archive-identical server payload; retain payload equality, HTTP/recovery assertions and generated server/builder dependencies."
   },

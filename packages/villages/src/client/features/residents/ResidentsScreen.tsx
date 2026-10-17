@@ -235,9 +235,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
         <div className={`${ELEMENT_TAG}-overlay-head`}>
           <h2 className={`${ELEMENT_TAG}-panel-title`}>Villager agendas</h2>
         </div>
-        <p className={`${ELEMENT_TAG}-empty`}>
-          Each villager follows a Villages agenda. A Marinara schedule can guide future days when enabled.
-        </p>
         {agendas === null ? (
           <p className={`${ELEMENT_TAG}-empty`}>Loading agendas…</p>
         ) : selectedAgendas.length === 0 ? (
@@ -288,7 +285,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                           void setAgendaScheduleIngestion(villager.characterId, event.target.checked)
                         }
                       />
-                      Let Marinara schedule influence this Agenda
+                      Schedule influence
                     </label>
                     <button
                       type="button"
@@ -298,7 +295,16 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                     >
                       Regenerate agenda
                     </button>
-
+                    {villager.canInterpretSchedule ? (
+                      <button
+                        type="button"
+                        className={`${ELEMENT_TAG}-button`}
+                        disabled={busy || !villager.ingestSchedule}
+                        onClick={() => void setAgendaScheduleIngestion(villager.characterId, true)}
+                      >
+                        Interpret schedule
+                      </button>
+                    ) : null}
                     {Object.entries({
                       rhythm: "Preferred sleep/wake rhythm",
                       busyFree: "Broad busy/free periods",
@@ -322,18 +328,13 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                       </label>
                     ))}
                   </div>
-                  <p className={ELEMENT_TAG + "-story-scope"}>
-                    Changes guide future days locally and make no AI requests. Today's plan and accepted commitments
-                    remain intact.
-                    {villager.ingestSchedule ? "" : " Schedule influence is off."}
-                  </p>
                   {villager.ingestSchedule ? (
                     <ul>
                       {(villager.agenda?.scheduleInfluenceSnapshot?.adopted ?? []).map((line) => (
                         <li key={line}>{line}</li>
                       ))}
                       {(villager.agenda?.scheduleInfluenceSnapshot?.unresolved ?? []).map((line) => (
-                        <li key={line}>{line}; waits for an existing generation request.</li>
+                        <li key={line}>{line}</li>
                       ))}
                     </ul>
                   ) : null}

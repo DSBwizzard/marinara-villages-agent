@@ -54,13 +54,28 @@ try {
     let hideReads = false;
     let loseOperationRead = false;
     let staleRecovery = null;
+    let semanticRecovery = null;
+    let continuations = 0;
     const turns = [];
     const settingsWrites = [];
     await page.route("**/api/villages**", async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
       let value = fixture;
-      if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) {
+      if (path.endsWith("/continue")) {
+        assert.equal(request.method(), "POST");
+        assert.deepEqual(request.postDataJSON(), { domain: "memories" });
+        continuations++;
+        semanticRecovery = null;
+        value = {
+          processingSummary: { pending: 0, failed: 0, rejected: 1 },
+          unresolved: [],
+          notices: [],
+          changes: [],
+          hasMore: false,
+          nextCursor: "0:0",
+        };
+      } else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) {
         if (hideReads) return route.fulfill({ status: 503, json: { error: "Read unavailable" } });
         value = { session: active ? session : null };
         if (path.endsWith("/rooms/active") && staleRecovery) {
@@ -85,6 +100,10 @@ try {
           nextCursor: "0:0",
           hasMore: false,
         };
+        if (semanticRecovery) {
+          value.processingSummary = { pending: 0, failed: 1, rejected: 0 };
+          value.unresolved = [semanticRecovery];
+        }
       } else if (/\/rooms\/[^/]+\/operations?/.test(path)) {
         if (hideReads) return route.fulfill({ status: 503, json: { error: "Read unavailable" } });
         if (loseOperationRead) return route.fulfill({ status: 404, json: { error: "Operation unavailable" } });
@@ -322,6 +341,27 @@ try {
     await expect(composer).toHaveValue("");
     await expect(composer).toBeEnabled();
     assert.equal(turns.length, beforeEnter + 1);
+    session.semanticVersion = 2;
+    semanticRecovery = {
+      submissionId: "semantic-failure",
+      domain: "memories",
+      status: "failed",
+      canContinue: true,
+      at: now,
+      reason: "System update metadata is missing.",
+    };
+    await load();
+    await expect(composer).toBeVisible();
+    await composer.fill("Keep this draft during recovery");
+    await expect(send).toBeDisabled();
+    const recoveryPanel = await openSceneErrors(page);
+    await expect(recoveryPanel.getByRole("button", { name: "Continue", exact: true })).toBeVisible();
+    await page.screenshot({ path: `.build-tmp/scene-status/semantic-continue-${mobile ? "mobile" : "desktop"}.png` });
+    await recoveryPanel.getByRole("button", { name: "Continue", exact: true }).click();
+    await closeSceneErrors(page);
+    await expect(send).toBeEnabled();
+    await expect(composer).toHaveValue("Keep this draft during recovery");
+    assert.equal(continuations, 1, "Continue is an explicit local request, never an automatic model retry");
     assert.deepEqual(errors, []);
     await page.close();
   }

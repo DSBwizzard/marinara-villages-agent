@@ -1,3 +1,4 @@
+import { readSemanticWishCriteria } from "../../../domain/rules/wish-criteria.js";
 import { ZonedDate } from "../../../../shared/helpers/zoned-date.js";
 import { calendarReplay } from "../../../domain/rules/clock-recovery.js";
 import { villageNow } from "../../../adapters/time/clock-gate.js";
@@ -244,6 +245,9 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
           role: "system",
           content:
             wishGenerationDirection(size) +
+            (job.semanticVersion === 2
+              ? ' Include wish.criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the original goal. Action predicates:item-added,item-removed,trace-resolved. Return neutralWording:true only if the goal is a neutral description without directing the player.'
+              : "") +
             "\n" +
             'Propose at most ONE personal desire grounded in the complete authored character, or none. Their circumstances may change; their personality, voice, and values are not rewritten by the village. Do not prescribe a visible tell or recurring gesture. JSON only: {"wish":null} or {"wish":{"wish":"...","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}}}. Also return matchedNeedId (exact supplied known id, or empty for a new need) and certain (false if uncertain). Match the same unmet need, not merely the same object; acquiring, repairing and using differ. Do not change a matched recurrence policy. ' +
             (job.resetRefill
@@ -315,7 +319,18 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         job.reason = "No new wish today.";
         return job;
       }
-      validateGeneratedWishWording(candidate.wish);
+      if (job.semanticVersion === 2) {
+        candidate.semanticCriteria = readSemanticWishCriteria(
+          (raw as Record<string, unknown>).criteria,
+          candidate.wish,
+        );
+        if (!candidate.semanticCriteria || payload.neutralWording !== true)
+          throw new WorkFailureError({
+            cause: "unsupported_outcome",
+            stage: "wish-generation",
+            message: "System must establish a neutrally described Wish and its criteria; explicitly retry.",
+          });
+      } else validateGeneratedWishWording(candidate.wish);
       if (candidate.need) candidate.need.id = "";
       const adjustment =
         !job.resetRefill &&
@@ -513,6 +528,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
           dateKey,
           at: now.toISOString(),
           stage: "reserved",
+          semanticVersion: 2,
           reason: "Queued",
           calls: 0,
           elapsedMs: 0,
@@ -576,6 +592,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
           dateKey,
           at: now.toISOString(),
           stage: "reserved",
+          semanticVersion: 2,
           reason: "Queued",
           calls: 0,
           elapsedMs: 0,

@@ -141,6 +141,7 @@ export function coerceSession(value: unknown): VenueScene {
     version: 1,
     ...(raw.spinoff ? { spinoff: structuredClone(raw.spinoff) as VenueScene["spinoff"] } : {}),
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
+    ...(raw.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
     ...(raw.processingVersion === 1 ? { processingVersion: 1 as const, villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,
@@ -308,6 +309,13 @@ export function coerceSession(value: unknown): VenueScene {
                 ? { requestMode: row.requestMode as "act" | "fulfill" }
                 : {}),
               ...(row.movement ? { movement: row.movement as VenueSubmission["movement"] } : {}),
+              ...(row.semanticConclude === true ? { semanticConclude: true } : {}),
+              ...(Array.isArray(row.semanticPlayerMoves)
+                ? { semanticPlayerMoves: row.semanticPlayerMoves as VenueSubmission["semanticPlayerMoves"] }
+                : {}),
+              ...(row.physicalContext
+                ? { physicalContext: row.physicalContext as VenueSubmission["physicalContext"] }
+                : {}),
               ...(row.contact ? { contact: row.contact as ContactIntent } : {}),
               ...(row.attention ? { attention: row.attention as VenueSubmission["attention"] } : {}),
               ...(Array.isArray(row.speechIdsAtTurn) ? { speechIdsAtTurn: row.speechIdsAtTurn as string[] } : {}),
@@ -405,6 +413,20 @@ export function coerceSession(value: unknown): VenueScene {
                 ? { editApprovalSignal: row.editApprovalSignal as VenueSubmission["editApprovalSignal"] }
                 : {}),
               ...(Array.isArray(row.turnMemories) ? { turnMemories: row.turnMemories as VenueMemory[] } : {}),
+              ...(row.semanticReady === true ? { semanticReady: true } : {}),
+              ...(Array.isArray(row.semanticContinuedDomains)
+                ? {
+                    semanticContinuedDomains:
+                      row.semanticContinuedDomains as VenueSubmission["semanticContinuedDomains"],
+                  }
+                : {}),
+              ...(asRecord(row.semanticProvenance).version === 2
+                ? {
+                    semanticProvenance: structuredClone(
+                      row.semanticProvenance,
+                    ) as import("../models/semantic-model.js").SemanticProvenance,
+                  }
+                : {}),
               ...(asRecord(row.liveProposals).version === 1
                 ? { liveProposals: structuredClone(row.liveProposals) as LiveExchangeProposals }
                 : {}),

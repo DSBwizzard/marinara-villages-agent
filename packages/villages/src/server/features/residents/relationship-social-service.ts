@@ -13,20 +13,23 @@ import { readEncounter } from "../../domain/rules/social-encounter.js";
 import { settleStandingAccess } from "../../domain/rules/venue-access.js";
 import type { mutateVillageState } from "../world/village-store.js";
 import type { mutateRelationships } from "./relationship-store.js";
+import { coerceSession } from "../../domain/decoding/scene-codec.js";
+import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
 export type RelationshipSocialPorts = {
+  processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;
   mutateVillageState: typeof mutateVillageState;
   mutateRelationships: typeof mutateRelationships;
 };
 /** A saved social outbox settles relationships before its Village acknowledgement. */
 export function createRelationshipSocial(ports: RelationshipSocialPorts) {
-  const { mutateVillageState, mutateRelationships } = ports;
+  const { mutateVillageState, mutateRelationships, processLiveMemories } = ports;
 
   async function processSocialOutbox(village: VillageState): Promise<boolean> {
     const pending = (village.socialOutbox ?? []).filter((entry) => !entry.processed).slice(0, 8);
     if (!pending.length) return false;
     for (const entry of pending) {
       if (entry.seed !== village.seed) continue;
-      await mutateRelationships(village.seed, (state) => {
+      const settled = await mutateRelationships(village.seed, (state) => {
         const current = { ...village, relationshipContext: state };
         reconcileRelationships(state, current);
         reconcileSocialPlans(current);
@@ -68,6 +71,46 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         state.socialPlans = state.socialPlans.slice(-64);
         state.applied[entry.id] = true;
       });
+      const accepted = settled.socialEncounters.find((row) => row.id === entry.id);
+      if (accepted?.semanticProvenance?.version === 2) {
+        if (!processLiveMemories) throw new Error("Offscreen memory application is unavailable.");
+        const lines = accepted.lines.map((line) => ({
+          ...line,
+          name: line.speakerId,
+          at: accepted.at,
+          contactHidden: true,
+        }));
+        const privateScene = coerceSession({
+          id: "offscreen:" + entry.id,
+          processingVersion: 1,
+          villageSeed: entry.seed,
+          placeId: accepted.venueId,
+          zoneId: accepted.zoneId,
+          startedAt: accepted.at,
+          status: "closed",
+          activeIds: accepted.actorIds,
+          participants: accepted.actorIds.map((id) => ({ characterId: id, name: id, doing: "" })),
+          lines,
+          submissions: [
+            {
+              id: entry.id,
+              mode: "chat",
+              message: "",
+              targetId: "",
+              at: accepted.at,
+              semanticProvenance: accepted.semanticProvenance,
+              liveProposals: bindLiveProposals(
+                { memoryChanges: accepted.memoryChanges },
+                "",
+                lines.map((line) => line.id),
+              ),
+            },
+          ],
+        });
+        const memory = await processLiveMemories(privateScene, entry.id);
+        if (memory.status === "failed" || memory.status === "pending")
+          throw new Error(memory.reason || "Offscreen memory application needs recovery.");
+      }
       await mutateVillageState((state) => {
         if (state.seed !== entry.seed) return;
         // Only an encounter accepted by the relationship transaction can settle access.
@@ -79,6 +122,8 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
             encounter.id,
             encounter.lines,
             state,
+            undefined,
+            encounter.semanticProvenance?.version === 2,
           );
           for (const permission of fresh.review.permissions) {
             const venue = state.venues.find((venue) => venue.id === permission.venueId);

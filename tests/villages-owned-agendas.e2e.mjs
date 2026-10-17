@@ -32,6 +32,7 @@ try {
       name: "Mara",
       missing: false,
       ingestSchedule: false,
+      canInterpretSchedule: true,
       scheduleInfluence: { version: 1, enabled: false, categories },
       nativeSchedule: { weekStart: "", days: {} },
       weekUnreadable: false,
@@ -92,7 +93,9 @@ try {
     const sections = page.getByRole("navigation", { name: "Villager profile sections" });
     await sections.getByRole("button", { name: "Agenda", exact: true }).click();
     await sections.getByRole("button", { name: "Inspect", exact: true }).click();
-    const master = page.getByRole("checkbox", { name: "Let Marinara schedule influence this Agenda" });
+    const master = page.getByRole("checkbox", { name: "Schedule influence", exact: true });
+    const interpret = page.getByRole("button", { name: "Interpret schedule", exact: true });
+    await expect(interpret).toBeDisabled();
     const controls = [
       "Preferred sleep/wake rhythm",
       "Broad busy/free periods",
@@ -110,14 +113,21 @@ try {
     await page.getByRole("checkbox", { name: controls[0], exact: true }).click();
     await expect(page.getByRole("checkbox", { name: controls[0], exact: true })).not.toBeChecked();
     await expect(page.getByText("Interest: Reading", { exact: true })).toBeVisible();
-    await expect(page.getByText(/waits for an existing generation request/)).toBeVisible();
+    await expect(
+      page.getByText("Interest awaiting compatible village activity: Painting", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText(/waits for an existing generation request/)).toHaveCount(0);
     await expect(page.getByText("Reading by the window", { exact: true })).toBeVisible();
     await expect(page.getByText("An ordinary day", { exact: true })).toHaveCount(0);
     for (const label of ["Online", "Available", "Busy", "Offline", "Away"])
       await expect(page.getByText(label, { exact: true })).toHaveCount(0);
     await expect(page.getByText("Marinara schedule", { exact: true })).toHaveCount(0);
     assert.equal(paid, 0);
-    assert.equal(patches.length, 2);
+    await expect(interpret).toBeEnabled();
+    await interpret.click();
+    await expect(interpret).toBeEnabled();
+    assert.equal(patches.length, 3, "Explicit interpretation reuses the finite settings admission");
+    assert.equal(patches[2].enabled, true);
     assert.equal(patches[1].categories.rhythm, false);
     const box = await master.boundingBox();
     assert.ok(box && box.x >= 0 && box.x + box.width <= width);
@@ -126,7 +136,7 @@ try {
     await page.close();
   }
   console.log(
-    "Owned Agenda controls: opt-in, independent categories, preserved day and zero generation on desktop/phones.",
+    "Owned Agenda controls: opt-in, independent categories, explicit interpretation and preserved day on desktop/phones; mocked HTTP only.",
   );
 } finally {
   await browser.close();

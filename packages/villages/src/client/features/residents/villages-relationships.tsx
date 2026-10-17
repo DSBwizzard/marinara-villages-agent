@@ -156,16 +156,8 @@ export function VillagesRelationships({
           {inspect && view.starting ? (
             <details className="villages-relationship-setup" open={view.starting.pending || undefined}>
               <summary>{view.starting.pending ? "Review starting ties" : "Relationship creator"}</summary>
-              <p>
-                Starting-tie acceptance, neutral setup, and spoiler visibility apply to the entire village. Directional
-                edits change only the selected tie.
-              </p>
               {view.starting.pending ? (
                 <>
-                  <p>
-                    These suggestions use explicit existing history. Accept them, start neutral, or reveal values to
-                    adjust them. Creator choices do not tell your player character private information.
-                  </p>
                   <div className="villages-relationship-grid">
                     {view.starting.summaries
                       .filter((tie) => tie.status !== "No established history")
@@ -175,16 +167,21 @@ export function VillagesRelationships({
                         </p>
                       ))}
                   </div>
-                  {view.starting.summaries.every((tie) => tie.status === "No established history") ? (
-                    <p>No established history was found. Unspecified ties begin neutral.</p>
-                  ) : null}
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy}
+                    onClick={() => void action({ action: "prepare" })}
+                  >
+                    Interpret
+                  </button>
                   <button
                     type="button"
                     className={button}
                     disabled={busy}
                     onClick={() => void action({ action: "accept" })}
                   >
-                    Accept suggested ties
+                    Accept
                   </button>{" "}
                   <button
                     type="button"

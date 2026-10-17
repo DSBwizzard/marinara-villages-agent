@@ -121,6 +121,7 @@ export type VillageTickResident = {
 };
 
 export type VillageTickContext = {
+  semanticVersion?: 2;
   social?: { candidates: import("../../domain/models/relationship-types.js").SocialPlan[]; relationships: string[] };
   playerRole?: VillagePlayerRole | null;
   playerPersonaName?: string;

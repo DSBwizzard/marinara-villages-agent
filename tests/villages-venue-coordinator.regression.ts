@@ -421,6 +421,82 @@ async function main() {
       [false, true],
     );
     assert(timing.stages.every((stage: any) => stage.elapsedMs >= 0));
+    seed("semantic-budget");
+    const budgetInput = { semanticBudget: { version: 1, requests: 1, inputTokens: 20, outputTokens: 10 } };
+    let budgetDispatches = 0;
+    const budgetWork = async () => {
+      await coordinatedCompletion(
+        "first-budgeted",
+        async () => {
+          budgetDispatches++;
+          return "saved";
+        },
+        undefined,
+        { inputTokens: 10, outputTokens: 5 },
+      );
+      return coordinatedCompletion(
+        "second-budgeted",
+        async () => {
+          budgetDispatches++;
+          return "second";
+        },
+        undefined,
+        { inputTokens: 10, outputTokens: 5 },
+      );
+    };
+    await assert.rejects(
+      coordinateVenue("semantic-budget", "budgeted", "turn", budgetInput, 0, undefined, budgetWork),
+      refused("SEMANTIC_BUDGET"),
+    );
+    assert.equal(budgetDispatches, 1, "The whole-attempt reservation stops additional dispatch before spending");
+    const budgetOperation = await readVenueOperation("semantic-budget");
+    await coordinateVenue(
+      "semantic-budget",
+      "budgeted",
+      "turn",
+      budgetInput,
+      0,
+      budgetOperation!.attemptId,
+      budgetWork,
+    );
+    assert.equal(
+      budgetDispatches,
+      2,
+      "An explicit attempt reuses the first saved result and reserves only its new request",
+    );
+    for (const [index, budget] of [
+      null,
+      { version: 2, requests: 1, inputTokens: 20, outputTokens: 10 },
+      { version: 1, requests: 1, inputTokens: "unknown", outputTokens: 10 },
+      { version: 1, requests: 1, outputTokens: 10 },
+    ].entries()) {
+      const id = "invalid-semantic-budget-" + index;
+      seed(id);
+      await assert.rejects(
+        coordinateVenue(id, "invalid", "turn", { semanticBudget: budget }, 0, undefined, () =>
+          coordinatedCompletion(
+            "invalid-budget",
+            async () => assert.fail("Invalid budget must not dispatch"),
+            undefined,
+            { inputTokens: 1, outputTokens: 1 },
+          ),
+        ),
+        refused("SEMANTIC_BUDGET"),
+      );
+    }
+    seed("missing-v2-budget");
+    row("missing-v2-budget").data.semanticVersion = 2;
+    await assert.rejects(
+      coordinateVenue("missing-v2-budget", "invalid", "turn", {}, 0, undefined, () =>
+        coordinatedCompletion(
+          "missing-budget",
+          async () => assert.fail("New semantic Scenes require an allowance"),
+          undefined,
+          { inputTokens: 1, outputTokens: 1 },
+        ),
+      ),
+      refused("SEMANTIC_BUDGET"),
+    );
     console.log("villages-venue-coordinator: ok");
   } finally {
     release();

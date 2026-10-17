@@ -13,6 +13,7 @@ import type {
 } from "../../../domain/models/wish-check-model.js";
 import type { WishCriteria, WishInterpretationContext } from "../../../domain/models/wish-interpretation-model.js";
 import { asRecord } from "../../../domain/rules/coerce.js";
+import { semanticContinued } from "../../../domain/rules/semantic-continuity.js";
 import { deriveVillageMoment } from "../../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../../domain/rules/village-projections.js";
 import { localWishRequirements, wishEvidenceAdmission } from "../../../domain/rules/wish-admission.js";
@@ -35,6 +36,8 @@ import {
   matchingWishReceipts,
   wishFingerprint,
   wishReceiptRecords,
+  wishInterpretationCheck,
+  validateWishInterpretation,
 } from "../../../domain/rules/wish-interpretation-rules.js";
 import {
   applyPreparedWishVerdict,
@@ -46,6 +49,7 @@ import {
 } from "../../../domain/rules/wish-progress-rules.js";
 import { revealProgress } from "../../../domain/rules/progress-engine.js";
 export type WishProgressPorts = {
+  finishSemanticScene?(id: string): Promise<void>;
   readEffectiveVillagerCard: typeof readEffectiveVillagerCard;
   backgroundCalls: Pick<typeof backgroundCalls, "getStore">;
   backgroundSetting: typeof backgroundSetting;
@@ -78,7 +82,9 @@ export function createWishProgress(ports: WishProgressPorts) {
 
   const wishCheckBackgroundHandler: Handler = {
     valid: (state, input: WishCheckInput | WishBatchInput) =>
-      state.seed === input.seed && batchItems(input).some((item) => !!currentWish(state, item.proposal)),
+      state.seed === input.seed &&
+      !semanticContinued(state, input.sceneId, input.submissionId, "wishes") &&
+      batchItems(input).some((item) => !!currentWish(state, item.proposal)),
     async generate(input: WishCheckInput | WishBatchInput): Promise<PreparedWishVerdict | PreparedWishBatch> {
       const compact = input.contractVersion === 2 || input.contractVersion === 3;
       const all = batchItems(input);
@@ -179,11 +185,15 @@ export function createWishProgress(ports: WishProgressPorts) {
       if (input.sceneId.startsWith("project:")) return;
       const { processSavedExchange } = sceneQueries();
       await processSavedExchange(input.sceneId, input.submissionId);
+      if (batchItems(input).some((item) => item.proposal.semanticCriteria?.semanticVersion === 2))
+        await ports.finishSemanticScene?.(input.sceneId);
     },
     async afterFailure(input: WishCheckInput | WishBatchInput | null) {
       if (!input || input.sceneId.startsWith("project:")) return;
       const { processSavedExchange } = sceneQueries();
       await processSavedExchange(input.sceneId, input.submissionId);
+      if (batchItems(input).some((item) => item.proposal.semanticCriteria?.semanticVersion === 2))
+        await ports.finishSemanticScene?.(input.sceneId);
     },
   };
 
@@ -216,8 +226,9 @@ export function createWishProgress(ports: WishProgressPorts) {
         for (const resident of state.villagers)
           for (const wish of resident.agenda?.wishes ?? []) {
             // Routing only; the System check must still establish ALL conditions using canonical completion receipts.
-            const criteria = cached.get(`${resident.characterId}:${wishFingerprint(wish)}`);
+            const criteria = wish.semanticCriteria ?? cached.get(`${resident.characterId}:${wishFingerprint(wish)}`);
             if (
+              criteria?.semanticVersion !== 2 &&
               !routingWords.some((word) => wish.wish.toLocaleLowerCase().includes(word)) &&
               !(criteria?.requiresPhysical && criteria.venueId && criteria.venueId === project.venueId)
             )
@@ -229,6 +240,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             const player = readPlayerIdentity(state),
               fingerprint = wishFingerprint(wish);
             const proposal: WishProposal = {
+              ...(criteria?.semanticVersion === 2 ? { semanticCriteria: criteria } : {}),
               actorId: resident.characterId,
               wishId: wish.id,
               fingerprint,
@@ -294,6 +306,8 @@ export function createWishProgress(ports: WishProgressPorts) {
     const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
     let state = await readVillageState();
     if (state.seed !== scene.villageSeed) return { status: "rejected", reason: "Village identity changed" };
+    if (semanticContinued(state, scene.id, submissionId, "wishes"))
+      return { status: "rejected", reason: "Continued without this failed update" };
     const lineIndex = new Map(scene.lines.map((line) => [line.id, line]));
     const proposals = [
       ...new Map(
@@ -307,7 +321,7 @@ export function createWishProgress(ports: WishProgressPorts) {
         ({ reveal: 0, journal: 1, progress: 2, check: 2 })[a.intent] -
         { reveal: 0, journal: 1, progress: 2, check: 2 }[b.intent],
     );
-    if (turn.action?.happened) {
+    if (turn.action?.happened && turn.semanticProvenance?.version !== 2) {
       const cached = await cachedWishCriteria();
       for (const resident of state.villagers) {
         for (const wish of resident.agenda?.wishes ?? []) {
@@ -367,8 +381,16 @@ export function createWishProgress(ports: WishProgressPorts) {
       )
         continue;
       const resident = state.villagers.find((resident) => resident.characterId === proposal.actorId)!;
+      if (turn.semanticProvenance?.version === 2 && proposal.semanticCriteria && !wish.semanticCriteria) {
+        await mutateVillageState((live) => {
+          const current = currentWish(live, proposal);
+          if (current && !semanticContinued(live, scene.id, turn.id, "wishes"))
+            current.semanticCriteria = proposal.semanticCriteria;
+        });
+      }
       if (proposal.intent === "reveal") {
         await mutateVillageState((live) => {
+          if (semanticContinued(live, scene.id, turn.id, "wishes")) return;
           const current = currentWish(live, proposal);
           if (live.seed !== scene.villageSeed || !current || live.exchangeReceipts[id]) return;
           const fresh = !current.learnedAt;
@@ -416,6 +438,7 @@ export function createWishProgress(ports: WishProgressPorts) {
       }
       if (proposal.intent === "journal") {
         await mutateVillageState((live) => {
+          if (semanticContinued(live, scene.id, turn.id, "wishes")) return;
           const current = currentWish(live, proposal);
           if (!current || live.exchangeReceipts[id] || !current.learnedAt) return;
           const added = addWishFacts(
@@ -504,6 +527,7 @@ export function createWishProgress(ports: WishProgressPorts) {
       const knowledge = wishCheckKnowledge(state, proposal.actorId, wish.id, turn.at);
       const context: WishInterpretationContext = {
         knowledge,
+        ...(proposal.semanticCriteria ? { semanticCriteria: proposal.semanticCriteria } : {}),
         actorId: proposal.actorId,
         village: state.name,
         setting: state.setting,
@@ -545,6 +569,7 @@ export function createWishProgress(ports: WishProgressPorts) {
         wish,
         context.evidence.filter((line) => !line.current || proposal.lineIds.includes(line.id)),
         newReceipts.map((receipt) => receipt.id),
+        proposal.semanticCriteria,
       );
       if (!admission.admitted) {
         await mutateVillageState((live) =>
@@ -561,6 +586,33 @@ export function createWishProgress(ports: WishProgressPorts) {
         continue;
       }
       const legacyStatus = await backgroundStatus("wish-check", id);
+      if (
+        turn.semanticProvenance?.version === 2 &&
+        proposal.semanticVerdict &&
+        proposal.semanticCriteria?.kind === "conversation" &&
+        !proposal.semanticCriteria.requiresPhysical &&
+        !knowledge.conditions.length &&
+        !knowledge.discoveries.length &&
+        !proposal.facts?.length
+      ) {
+        const verdict = proposal.semanticVerdict;
+        const check = wishInterpretationCheck(context, wish, proposal.semanticCriteria, "semantic:" + turn.id, true);
+        if (
+          verdict.evidenceIds.some((id) => !proposal.lineIds.includes(id)) ||
+          validateWishInterpretation(check, { ...verdict, source: "system" })
+        )
+          throw new WorkFailureError(metadataFailure("The saved System Wish verdict lacks valid current evidence."));
+        await mutateVillageState((live) =>
+          applyPreparedWishVerdict(live, input, {
+            ...verdict,
+            criteria: asRecord(check.facts).criteria as WishCriteria,
+            memory: "",
+            receiptIds: [],
+          }),
+        );
+        receiptIds.push(id);
+        continue;
+      }
       if (legacyStatus && legacyStatus !== "obsolete") {
         pending.push(`${legacyStatus}: saved Wish check`);
         continue;

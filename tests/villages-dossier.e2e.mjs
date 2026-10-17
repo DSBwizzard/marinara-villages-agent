@@ -337,8 +337,8 @@ try {
     await expect(profile.getByText("PRIVATE ELI WISH", { exact: true })).toHaveCount(0);
     await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
     await expect(profile.getByText("PRIVATE ROUTINE", { exact: true })).toBeVisible();
-    await profile.getByRole("checkbox", { name: "Let Marinara schedule influence this Agenda" }).click();
-    await expect(profile.getByRole("checkbox", { name: "Let Marinara schedule influence this Agenda" })).toBeChecked();
+    await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
+    await expect(profile.getByRole("checkbox", { name: "Schedule influence" })).toBeChecked();
     assert.equal(writes.at(-1).path.endsWith("/agendas/mara/influence"), true);
     await profile.getByRole("button", { name: "Regenerate agenda", exact: true }).click();
     try {
