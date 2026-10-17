@@ -38,6 +38,7 @@ export function SceneryStyleFields({
         <label>
           Style description
           <textarea
+            autoComplete="off"
             aria-label="Scenery style description"
             rows={3}
             maxLength={600}
@@ -235,6 +236,7 @@ export function BaseZoneFields({
           <label>
             Area name
             <input
+              autoComplete="off"
               value={zone.name}
               onChange={(event) =>
                 onChange(zones.map((area) => (area.id === zone.id ? { ...area, name: event.target.value } : area)))
@@ -279,6 +281,7 @@ export function BaseZoneFields({
             <label>
               Description
               <textarea
+                autoComplete="off"
                 value={zone.description}
                 placeholder="Existing undiscovered description is retained"
                 onChange={(event) =>
@@ -292,6 +295,7 @@ export function BaseZoneFields({
             <label>
               Structural purpose
               <input
+                autoComplete="off"
                 value={zone.purpose || ""}
                 onChange={(event) =>
                   onChange(zones.map((area) => (area.id === zone.id ? { ...area, purpose: event.target.value } : area)))
@@ -301,9 +305,10 @@ export function BaseZoneFields({
           )}
           {["private-residence", "staff", "restricted"].includes(zone.kind) ? (
             <label>
-              Room specification · optional
+              Room Specification · optional
               <textarea
-                aria-label="Room specification"
+                autoComplete="off"
+                aria-label="Room Specification"
                 maxLength={1000}
                 value={zone.roomSpecification ?? ""}
                 placeholder="Physical changes to the provided room…"
@@ -443,8 +448,9 @@ export function PrivateSpaceFields({
           <fieldset key={room.id}>
             <legend>{room.name || "Private space"}</legend>
             <label>
-              Zone name
+              Zone Name
               <input
+                autoComplete="off"
                 maxLength={100}
                 value={room.name ?? ""}
                 onChange={(event) => patch(room.id, { name: event.target.value })}
@@ -453,6 +459,7 @@ export function PrivateSpaceFields({
             <label>
               Purpose
               <input
+                autoComplete="off"
                 maxLength={240}
                 value={room.purpose ?? ""}
                 onChange={(event) => patch(room.id, { purpose: event.target.value })}
@@ -464,6 +471,7 @@ export function PrivateSpaceFields({
                 {people.map((person) => (
                   <label key={person.id}>
                     <input
+                      autoComplete="off"
                       type="checkbox"
                       checked={room.controllerIds?.includes(person.id) ?? false}
                       onChange={(event) =>
@@ -480,9 +488,10 @@ export function PrivateSpaceFields({
               </fieldset>
             ) : null}
             <label>
-              Room specification · optional
+              Room Specification · optional
               <textarea
-                aria-label="Room specification"
+                autoComplete="off"
+                aria-label="Room Specification"
                 maxLength={1000}
                 value={room.roomSpecification ?? room.description}
                 onChange={(event) => patch(room.id, { roomSpecification: event.target.value })}
@@ -584,6 +593,7 @@ export function FoundingVenueEditor({
         <label>
           Upload image
           <input
+            autoComplete="off"
             aria-label={`Upload ${area} image`}
             type="file"
             accept="image/*"
@@ -680,9 +690,10 @@ export function FoundingVenueEditor({
         <div className="villages-founding-editor-body">
           <div className="villages-forging-editor-top">
             <label>
-              Venue name
+              Venue Name
               <input
-                aria-label="Venue name"
+                autoComplete="off"
+                aria-label="Venue Name"
                 maxLength={100}
                 value={venue.name}
                 disabled={busy}
@@ -692,6 +703,7 @@ export function FoundingVenueEditor({
             <label>
               Venue Type
               <input
+                autoComplete="off"
                 aria-label="Venue Type"
                 maxLength={100}
                 value={venue.venueType ?? ""}
@@ -700,9 +712,10 @@ export function FoundingVenueEditor({
               />
             </label>
             <label>
-              Physical form
+              Physical Form
               <input
-                aria-label="Physical form"
+                autoComplete="off"
+                aria-label="Physical Form"
                 maxLength={240}
                 value={venue.form ?? ""}
                 disabled={busy}
@@ -746,7 +759,8 @@ export function FoundingVenueEditor({
               <label>
                 Exterior appearance
                 <textarea
-                  aria-label="Exterior description"
+                  autoComplete="off"
+                  aria-label="Exterior Description"
                   maxLength={1000}
                   value={venue.description}
                   disabled={busy}
@@ -761,6 +775,7 @@ export function FoundingVenueEditor({
             <summary>Artwork context</summary>
             <label>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={venue.imageContext?.useAssignedVillagerContext ?? true}
                 onChange={(event) =>
@@ -777,6 +792,7 @@ export function FoundingVenueEditor({
             </label>
             <label>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={venue.imageContext?.useVisualLore ?? true}
                 onChange={(event) =>

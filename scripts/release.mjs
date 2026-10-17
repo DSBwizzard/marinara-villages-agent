@@ -148,8 +148,13 @@ export async function runRelease(
       assert.equal(head.object.sha, options.candidate, "Preparation branch moved");
       const active = api(
         "actions/workflows/ci.yml/runs?head_sha=" + options.candidate + "&per_page=5",
-      ).workflow_runs.find((run) => run.head_sha === options.candidate && run.status !== "completed");
-      if (!active) gh("workflow", "run", "ci.yml", "--repo", repository, "--ref", branch, "-f", "mode=prepare");
+      ).workflow_runs.find(
+        (run) =>
+          run.head_sha === options.candidate &&
+          run.status !== "completed" &&
+          (run.head_branch === "main" || run.pull_requests?.some((pull) => pull.base?.ref === "main")),
+      );
+      if (!active) gh("workflow", "run", "ci.yml", "--repo", repository, "--ref", branch, "-f", "mode=full");
       preparationStarted = true;
       preparationRunId = active?.id;
       await save("preparing", { reason, runId: active?.id });

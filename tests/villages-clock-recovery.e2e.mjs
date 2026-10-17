@@ -1,15 +1,12 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot as base } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 // Test cases: village-clock-recovery, founding-timezone
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 await mkdir(".build-tmp/clock-visual", { recursive: true });
 try {
@@ -75,7 +72,7 @@ try {
     founding = true;
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    const zone = page.getByRole("combobox", { name: "Village timezone" });
+    const zone = page.getByRole("combobox", { name: "Village Timezone" });
     await expect(zone).toHaveValue("America/Los_Angeles");
     await zone.selectOption("Europe/London");
     await expect(zone).toHaveValue("Europe/London");

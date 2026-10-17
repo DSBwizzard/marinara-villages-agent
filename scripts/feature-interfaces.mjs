@@ -182,7 +182,7 @@ export const clientFeatureInterfaces = Object.freeze({
   "exploration/MapStage.tsx": ["defaultView", "MapStage", "PROJECT_BLUEPRINT_IMAGE", "TOWN_MAP_FITS"],
   "exploration/villages-venue-polaroid.tsx": ["VenuePolaroid"],
   "exploration/villages-exploration.tsx": ["ExplorationSheet", "ExplorationTab"],
-  "founding/FoundingPanels.tsx": ["PlayerIdentityEditor", "VillageLorebookPicker"],
+  "founding/FoundingPanels.tsx": ["PlayerIdentityEditor", "VillageLorebookPicker", "LoreTokenBudgetField"],
   "founding/villages-founding-editor.tsx": [
     "BaseZoneFields",
     "SceneryStyleFields",
@@ -194,6 +194,7 @@ export const clientFeatureInterfaces = Object.freeze({
   "residents/ResidentPanels.tsx": ["AvatarFace", "readAvatarCrop"],
   "residents/villages-dossier.tsx": ["DossierNavigation"],
   "settings/SettingsPanels.tsx": ["AgentConnections"],
+  "settings/AgentConnections.tsx": ["AgentConnections"],
   "settings/villages-decisions-control.tsx": ["DecisionsControl"],
   "settings/villages-saved-changes.tsx": ["SavedChangesDiagnostics"],
   "venues/VenuePanels.tsx": ["MailboxImprovementEditor", "VENUE_CLASS_CHOICES", "VenueDraftFields"],

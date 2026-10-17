@@ -38,19 +38,24 @@ export function VenueZoneEditor({
       <h2>{zone.label} details</h2>
       <label>
         Zone name
-        <input maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
+        <input autoComplete="off" maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
       </label>
       <label>
         Used for
-        <input maxLength={240} value={purpose} onChange={(event) => setPurpose(event.target.value)} />
+        <input
+          autoComplete="off"
+          maxLength={240}
+          value={purpose}
+          onChange={(event) => setPurpose(event.target.value)}
+        />
       </label>
       <label>
         Appearance
-        <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
+        <textarea autoComplete="off" value={description} onChange={(event) => setDescription(event.target.value)} />
       </label>
       <label>
         Features · one per line
-        <textarea value={features} onChange={(event) => setFeatures(event.target.value)} />
+        <textarea autoComplete="off" value={features} onChange={(event) => setFeatures(event.target.value)} />
       </label>
       <p>
         {zone.area === "shared" || zone.area === "private"
@@ -133,6 +138,7 @@ export function VenueDraftFields({
       <label className={`${ELEMENT_TAG}-label`}>
         Name
         <input
+          autoComplete="off"
           className={`${ELEMENT_TAG}-notice-input`}
           value={draft.name}
           maxLength={100}
@@ -143,6 +149,7 @@ export function VenueDraftFields({
       <label className={`${ELEMENT_TAG}-label`}>
         Venue Type <span className={`${ELEMENT_TAG}-hint`}>Home, bakery, church, campsite…</span>
         <input
+          autoComplete="off"
           className={`${ELEMENT_TAG}-notice-input`}
           maxLength={100}
           value={draft.venueType ?? ""}
@@ -152,6 +159,7 @@ export function VenueDraftFields({
       <label className={`${ELEMENT_TAG}-label`}>
         Physical form <span className={`${ELEMENT_TAG}-hint`}>Building, shelter, or physical arrangement</span>
         <input
+          autoComplete="off"
           className={`${ELEMENT_TAG}-notice-input`}
           value={draft.form ?? ""}
           maxLength={200}
@@ -167,6 +175,7 @@ export function VenueDraftFields({
             <label key={axis} className={`${ELEMENT_TAG}-label`}>
               {axis === "x" ? "Across" : "Down"}
               <input
+                autoComplete="off"
                 className={`${ELEMENT_TAG}-notice-input`}
                 type="number"
                 min={0}
@@ -197,6 +206,7 @@ export function VenueDraftFields({
           {VENUE_CLASS_CHOICES.map((item) => (
             <label key={item} className={`${ELEMENT_TAG}-label`} style={{ textTransform: "capitalize" }}>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={classes.includes(item)}
                 disabled={existing || (!classes.includes(item) && classes.length >= 2)}
@@ -216,6 +226,7 @@ export function VenueDraftFields({
         <label className={`${ELEMENT_TAG}-label`}>
           Resident capacity · includes you
           <input
+            autoComplete="off"
             className={`${ELEMENT_TAG}-notice-input`}
             type="number"
             min={1}
@@ -235,6 +246,7 @@ export function VenueDraftFields({
           {villagers.map((villager) => (
             <label key={villager.characterId} className={`${ELEMENT_TAG}-label`}>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={(draft.workerIds ?? []).includes(villager.characterId)}
                 onChange={(event) =>
@@ -264,6 +276,7 @@ export function VenueDraftFields({
               <label className={`${ELEMENT_TAG}-label`}>
                 Scene description
                 <textarea
+                  autoComplete="off"
                   className={`${ELEMENT_TAG}-textarea`}
                   value={space.description}
                   maxLength={1000}
@@ -277,6 +290,7 @@ export function VenueDraftFields({
                   Condition now{" "}
                   <span className={`${ELEMENT_TAG}-hint`}>For example, a leaking roof or a repaired door.</span>
                   <input
+                    autoComplete="off"
                     className={`${ELEMENT_TAG}-notice-input`}
                     value={space.state.condition}
                     onChange={(event) =>
@@ -288,6 +302,7 @@ export function VenueDraftFields({
                   Present items · one per line{" "}
                   <span className={`${ELEMENT_TAG}-hint`}>Objects physically in this space.</span>
                   <textarea
+                    autoComplete="off"
                     className={`${ELEMENT_TAG}-textarea`}
                     value={space.state.items.join("\n")}
                     onChange={(event) =>
@@ -299,6 +314,7 @@ export function VenueDraftFields({
                   Established facts · one per line{" "}
                   <span className={`${ELEMENT_TAG}-hint`}>Durable truths about this space.</span>
                   <textarea
+                    autoComplete="off"
                     className={`${ELEMENT_TAG}-textarea`}
                     value={space.state.publicFacts.join("\n")}
                     onChange={(event) =>
@@ -311,6 +327,7 @@ export function VenueDraftFields({
                   {space.state.features.map((feature, index) => (
                     <div className={`${ELEMENT_TAG}-row`} key={feature.id}>
                       <input
+                        autoComplete="off"
                         className={`${ELEMENT_TAG}-notice-input`}
                         value={feature.text}
                         aria-label={`Feature ${index + 1}`}
@@ -327,6 +344,7 @@ export function VenueDraftFields({
                       />
                       <label className={`${ELEMENT_TAG}-label`}>
                         <input
+                          autoComplete="off"
                           type="checkbox"
                           checked={feature.locked}
                           onChange={(event) =>
@@ -426,6 +444,7 @@ export function MailboxImprovementEditor({
       <label className={`${ELEMENT_TAG}-label`}>
         Proposed improvement
         <input
+          autoComplete="off"
           className={`${ELEMENT_TAG}-notice-input`}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
@@ -434,6 +453,7 @@ export function MailboxImprovementEditor({
       <label className={`${ELEMENT_TAG}-label`}>
         What changes?
         <textarea
+          autoComplete="off"
           className={`${ELEMENT_TAG}-textarea`}
           value={description}
           onChange={(event) => setDescription(event.target.value)}
@@ -442,6 +462,7 @@ export function MailboxImprovementEditor({
       <label className={`${ELEMENT_TAG}-label`}>
         Extra beds
         <input
+          autoComplete="off"
           type="number"
           min={0}
           max={3}

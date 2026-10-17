@@ -92,9 +92,10 @@ export function FoundingZoneFields({
                 <>
                   <h4>{zone.name || "Zone"}</h4>
                   <label>
-                    Zone name
+                    Zone Name
                     <input
-                      aria-label="Zone name"
+                      autoComplete="off"
+                      aria-label="Zone Name"
                       disabled={busy}
                       maxLength={100}
                       value={zone.name ?? ""}
@@ -109,7 +110,8 @@ export function FoundingZoneFields({
                   <label>
                     Used for
                     <input
-                      aria-label="Zone used for"
+                      autoComplete="off"
+                      aria-label="Zone Used For"
                       disabled={busy}
                       maxLength={240}
                       value={zone.purpose ?? ""}
@@ -145,9 +147,10 @@ export function FoundingZoneFields({
               {generatedLater ? (
                 <>
                   <label>
-                    Room specification (optional)
+                    Room Specification (optional)
                     <textarea
-                      aria-label="Room specification"
+                      autoComplete="off"
+                      aria-label="Room Specification"
                       disabled={busy}
                       maxLength={1000}
                       rows={3}
@@ -164,7 +167,8 @@ export function FoundingZoneFields({
                 <label>
                   Appearance
                   <textarea
-                    aria-label="Zone appearance"
+                    autoComplete="off"
+                    aria-label="Zone Appearance"
                     disabled={busy}
                     maxLength={1000}
                     rows={3}
@@ -184,7 +188,7 @@ export function FoundingZoneFields({
                     <label>
                       Legacy Zone controllers
                       <select
-                        aria-label="Zone controllers"
+                        aria-label="Zone Controllers"
                         multiple
                         value={zone.controllerIds ?? []}
                         onChange={(event) =>

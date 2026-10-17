@@ -1,7 +1,7 @@
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { PreparationScreenController } from "./screen-contracts.js";
-import { AgentConnections } from "../settings/SettingsPanels.js";
+import { AgentConnections } from "../settings/AgentConnections.js";
 
 export function PreparationScreen({ controller }: { controller: PreparationScreenController }) {
   const { preparationProblem, retryPreparation, screen, snapshot } = controller;

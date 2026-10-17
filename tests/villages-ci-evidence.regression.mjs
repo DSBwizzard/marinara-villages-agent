@@ -105,6 +105,25 @@ try {
     "Stale reviewed scopes fail broad",
   );
   await writeFile(join(root, "tests/scoped-helper.mjs"), files["tests/scoped-helper.mjs"]);
+  const declarations = JSON.parse(files["scripts/test-inputs.json"]);
+  declarations["tests/scoped-helper.mjs"].inputs = ["packages/villages/src/server.ts"];
+  await writeFile(join(root, "scripts/test-inputs.json"), JSON.stringify(declarations));
+  const rescoped = await checkBlueprint(root, { inventory });
+  assert.equal(rescoped.policyDigest, first.policyDigest, "A declaration edit preserves validator trust identity");
+  const envForScope = environmentFor(first.toolchain, "linux", { ImageVersion: "fixture" });
+  const oldKeys = new Map(checkKeys(first, envForScope).map((s) => [s.id, s.key]));
+  const newKeys = new Map(checkKeys(rescoped, envForScope).map((s) => [s.id, s.key]));
+  assert.notEqual(
+    newKeys.get("test:tests/scoped.regression.mjs"),
+    oldKeys.get("test:tests/scoped.regression.mjs"),
+    "Changed scope invalidates its consumer even if resolved files coincide",
+  );
+  assert.equal(
+    newKeys.get("test:tests/a.regression.mjs"),
+    oldKeys.get("test:tests/a.regression.mjs"),
+    "Unrelated declarations cannot invalidate direct consumers",
+  );
+  await writeFile(join(root, "scripts/test-inputs.json"), files["scripts/test-inputs.json"]);
   const environment = environmentFor(first.toolchain, "linux", { ImageVersion: "fixture" });
   const specs = checkKeys(first, environment);
   const origin = {
@@ -258,7 +277,13 @@ try {
     },
   });
   discovery.api = (path) => {
-    if (path.startsWith("actions/")) return { workflow_runs: [{ id: 14 }, { id: 12 }] };
+    if (path.startsWith("actions/"))
+      return {
+        workflow_runs: [
+          { id: 14, status: "in_progress" },
+          { id: 12, status: "completed", conclusion: "failure" },
+        ],
+      };
     return {
       check_runs: [
         {
@@ -278,6 +303,92 @@ try {
   };
   assert.deepEqual(await discovery.discover("policy"), [{ manifest: { integrated: true } }]);
   assert.deepEqual(attempted, ["11", "12", "13"], "Unavailable attempts must not hide the integrated baseline");
+  const queuedShadow = new GitHubEvidence({
+    root,
+    repository: "example/villages",
+    environment: { GITHUB_HEAD_REF: "candidate", GITHUB_RUN_ID: "20" },
+  });
+  queuedShadow.api = (path) =>
+    path.startsWith("actions/workflows")
+      ? {
+          workflow_runs: [
+            { id: 20, status: "in_progress" },
+            { id: 19, status: "completed", conclusion: "cancelled" },
+            { id: 18, status: "completed", conclusion: "failure" },
+            { id: 17, status: "completed", conclusion: "success" },
+          ],
+        }
+      : { check_runs: [] };
+  const recovered = [];
+  queuedShadow.coverage = async (id) => {
+    recovered.push(id);
+    return { manifest: { from: id } };
+  };
+  assert.deepEqual(await queuedShadow.discover("policy"), [{ manifest: { from: "18" } }, { manifest: { from: "17" } }]);
+  assert.deepEqual(recovered, ["18", "17"], "A cancelled queued correction cannot hide authenticated completed work");
+  const expired = [];
+  queuedShadow.coverage = async (id) => {
+    expired.push(id);
+    if (id === "18") throw Error("Expired earlier artifact");
+    return { manifest: { from: id } };
+  };
+  assert.deepEqual(
+    (await queuedShadow.discover("policy")).map((row) => row.manifest.from),
+    ["17", "19"],
+  );
+  assert.deepEqual(
+    expired,
+    ["18", "17", "19"],
+    "Unavailable completed attempts fall back within a bounded candidate window",
+  );
+  const justMerged = new GitHubEvidence({
+    root,
+    repository: "example/villages",
+    environment: { VILLAGES_CI_BASE: "b".repeat(40), GITHUB_BASE_REF: "staging", GITHUB_RUN_ID: "60" },
+  });
+  const mergeLookups = [];
+  justMerged.api = (path) => {
+    mergeLookups.push(path);
+    if (path === "git/commits/" + "b".repeat(40))
+      return { parents: [{ sha: "a".repeat(40) }, { sha: "c".repeat(40) }] };
+    return {
+      check_runs: path.includes("c".repeat(40))
+        ? [
+            {
+              name: "package-parity",
+              status: "completed",
+              conclusion: "success",
+              details_url: "https://github.com/example/villages/actions/runs/59",
+            },
+          ]
+        : [],
+    };
+  };
+  justMerged.coverage = async (id) => ({ manifest: { from: id } });
+  assert.deepEqual(
+    (await justMerged.discover("policy")).map((row) => row.manifest.from),
+    ["59"],
+  );
+  assert.equal(mergeLookups.length, 4, "Discovery inspects only the merge and its two immediate parents");
+  justMerged.api = (path) => {
+    if (path.startsWith("git/commits/")) return { parents: [{ sha: "a".repeat(40) }, { sha: "c".repeat(40) }] };
+    assert.ok(!path.includes("c".repeat(40)), "A completed base does not need the PR-head fallback");
+    return {
+      check_runs: [
+        {
+          name: "package-parity",
+          status: "completed",
+          conclusion: "success",
+          details_url: "https://github.com/example/villages/actions/runs/" + (path.includes("a".repeat(40)) ? 57 : 58),
+        },
+      ],
+    };
+  };
+  assert.deepEqual(
+    (await justMerged.discover("policy")).map((row) => row.manifest.from),
+    ["58", "57"],
+    "A narrow base receipt can supplement proof from the prior integrated base",
+  );
   console.log("Per-check invalidation, version reuse, provenance, toolchain and tamper rejection passed.");
 } finally {
   await rm(root, { recursive: true, force: true });

@@ -1,7 +1,11 @@
 import type { inspectVillageImage } from "../../adapters/engine/image-files.js";
 import type { readVillageVisualLoreEntries } from "../../adapters/engine/lorebooks.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
+import {
+  readLoreTokenBudget,
+  DEFAULT_LORE_TOKEN_BUDGET,
+  readSelectedLorebookIds,
+} from "../../domain/rules/lore-policy.js";
 import {
   MAX_TOWN_MAP_IMAGE_LENGTH,
   TOWN_MAP_EXPECTED_HEIGHT,
@@ -30,11 +34,13 @@ export function createTownMapImage(ports: TownMapImagePorts) {
     negative?: unknown;
     connectionId?: unknown;
     selectedLorebookIds?: unknown;
+    loreTokenBudget?: unknown;
     scenarioImprint?: unknown;
     sceneryArtStyle?: unknown;
     sceneryStyleProfileId?: unknown;
     useVisualLore?: unknown;
   }): Promise<{ image: string; width: number; height: number }> {
+    const budget = readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET);
     const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
     if (input.useVisualLore !== undefined && typeof input.useVisualLore !== "boolean")
       throw badRequest("Visual lore must be on or off.");
@@ -49,6 +55,7 @@ export function createTownMapImage(ports: TownMapImagePorts) {
             ids,
             [input.setting, JSON.stringify(coerceScenarioImprint(input.scenarioImprint))].filter(Boolean).join("\n"),
             900,
+            budget,
           );
     const prompt = fitMapContext(
       base,

@@ -189,15 +189,15 @@ export function FoundingWorkspace({
     if (!focusIssue || focusIssue.venueId !== selectedId) return;
     const labels: Record<FoundingIssue["field"], string> = {
       placement: "",
-      name: "Venue name",
-      form: "Physical form",
-      description: "Exterior description",
+      name: "Venue Name",
+      form: "Physical Form",
+      description: "Exterior Description",
       layout: "Include Common Space",
       assignment: "",
-      "zone-name": "Zone name",
-      "zone-purpose": "Zone used for",
-      "zone-appearance": "Zone appearance",
-      controller: "Zone controllers",
+      "zone-name": "Zone Name",
+      "zone-purpose": "Zone Used For",
+      "zone-appearance": "Zone Appearance",
+      controller: "Zone Controllers",
     };
     const containers = [...(inspector.current?.querySelectorAll<HTMLElement>("[data-zone-id]") ?? [])].filter(
       (element) => element.dataset.zoneId === focusIssue.zoneId,
@@ -236,6 +236,7 @@ export function FoundingWorkspace({
             Upload image
           </button>
           <input
+            autoComplete="off"
             hidden
             aria-label={`Upload ${area} image`}
             type="file"
@@ -304,6 +305,7 @@ export function FoundingWorkspace({
         <div className="villages-workspace-inclusion" data-zone-id={personal ? "private" : "common"}>
           <label className="villages-workspace-included">
             <input
+              autoComplete="off"
               aria-label={`Include ${personal ? "Private" : "Common"} Space`}
               type="checkbox"
               disabled={locked || community}
@@ -358,9 +360,12 @@ export function FoundingWorkspace({
               return (
                 <section key={zone.id} data-zone-id={zone.id}>
                   {hidden ? (
-                    <FoundingHelp label="Private interior">
-                      This interior is prepared privately. Discover it on your first authorized visit.
-                    </FoundingHelp>
+                    <div className="villages-founding-field-heading">
+                      <span>Private Interior</span>
+                      <FoundingHelp label="Private interior">
+                        This interior is prepared privately. Discover it on your first authorized visit.
+                      </FoundingHelp>
+                    </div>
                   ) : null}
                   {!hidden ? imageFields(personal ? "private" : "interior", zone.image, zone.id) : null}
                 </section>
@@ -503,13 +508,14 @@ export function FoundingWorkspace({
               <header className="villages-workspace-sheet-header villages-workspace-venue-identity">
                 <div className="villages-workspace-box-field">
                   <label className="villages-workspace-caption" htmlFor={tabId + "Venue-name"}>
-                    Venue name
+                    Venue Name
                   </label>
                   <div className="villages-workspace-sheet-summary">
                     <textarea
+                      autoComplete="off"
                       id={tabId + "Venue-name"}
-                      aria-label="Venue name"
-                      placeholder="Venue name"
+                      aria-label="Venue Name"
+                      placeholder="Venue Name"
                       rows={1}
                       maxLength={100}
                       disabled={locked}
@@ -521,14 +527,18 @@ export function FoundingWorkspace({
                   {fieldProblem("name") ? <p role="alert">{fieldProblem("name")}</p> : null}
                 </div>
                 <div className="villages-workspace-box-field">
-                  <label className="villages-workspace-caption" htmlFor={tabId + "Physical-form"}>
-                    Venue form
-                  </label>
+                  <div className="villages-founding-field-heading">
+                    <label className="villages-workspace-caption" htmlFor={tabId + "Physical-form"}>
+                      Venue Form
+                    </label>
+                    <FoundingHelp label="Form">Describe the overall physical place.</FoundingHelp>
+                  </div>
                   <div className="villages-workspace-sheet-summary">
                     <textarea
+                      autoComplete="off"
                       id={tabId + "Physical-form"}
-                      aria-label="Physical form"
-                      placeholder="Venue form"
+                      aria-label="Physical Form"
+                      placeholder="Venue Form"
                       rows={2}
                       maxLength={240}
                       disabled={locked}
@@ -536,7 +546,6 @@ export function FoundingWorkspace({
                       aria-invalid={!!fieldProblem("form")}
                       onChange={(event) => onPatch({ ...selected, form: event.target.value })}
                     />
-                    <FoundingHelp label="Form">Describe the overall physical place.</FoundingHelp>
                   </div>
                   {fieldProblem("form") ? <p role="alert">{fieldProblem("form")}</p> : null}
                 </div>
@@ -594,14 +603,20 @@ export function FoundingWorkspace({
                   {activeTab === "exterior" ? (
                     <>
                       <div className="villages-workspace-box-field">
-                        <label className="villages-workspace-caption" htmlFor={tabId + "Exterior-description"}>
-                          Exterior and approach
-                        </label>
+                        <div className="villages-founding-field-heading">
+                          <label className="villages-workspace-caption" htmlFor={tabId + "Exterior-description"}>
+                            Exterior and Approach
+                          </label>
+                          <FoundingHelp label="Exterior and Approach">
+                            Describe the entrance, approach and visible exterior of this Venue.
+                          </FoundingHelp>
+                        </div>
                         <div className="villages-workspace-sheet-summary">
                           <textarea
+                            autoComplete="off"
                             id={tabId + "Exterior-description"}
-                            aria-label="Exterior description"
-                            placeholder="Zone appearance"
+                            aria-label="Exterior Description"
+                            placeholder="Zone Appearance"
                             rows={3}
                             maxLength={1000}
                             disabled={locked}
@@ -609,9 +624,6 @@ export function FoundingWorkspace({
                             aria-invalid={!!fieldProblem("description", "exterior")}
                             onChange={(event) => onPatch({ ...selected, description: event.target.value })}
                           />
-                          <FoundingHelp label="Exterior and approach">
-                            Describe the entrance, approach and visible exterior of this Venue.
-                          </FoundingHelp>
                         </div>
                         {fieldProblem("description", "exterior") ? (
                           <p role="alert">{fieldProblem("description", "exterior")}</p>
@@ -622,13 +634,14 @@ export function FoundingWorkspace({
                     <>
                       <div className="villages-workspace-box-field">
                         <label className="villages-workspace-caption" htmlFor={tabId + "Zone-name"}>
-                          Zone name
+                          Zone Name
                         </label>
                         <div className="villages-workspace-sheet-summary">
                           <textarea
+                            autoComplete="off"
                             id={tabId + "Zone-name"}
-                            aria-label="Zone name"
-                            placeholder="Zone name"
+                            aria-label="Zone Name"
+                            placeholder="Zone Name"
                             rows={1}
                             maxLength={100}
                             disabled={locked || !headerZone}
@@ -644,14 +657,18 @@ export function FoundingWorkspace({
                       {headerZone ? (
                         <>
                           <div className="villages-workspace-box-field">
-                            <label className="villages-workspace-caption" htmlFor={tabId + "Zone-used-for"}>
-                              Zone purpose
-                            </label>
+                            <div className="villages-founding-field-heading">
+                              <label className="villages-workspace-caption" htmlFor={tabId + "Zone-used-for"}>
+                                Zone Purpose
+                              </label>
+                              <FoundingHelp label="Zone Purpose">Describe what this space is used for.</FoundingHelp>
+                            </div>
                             <div className="villages-workspace-sheet-summary">
                               <textarea
+                                autoComplete="off"
                                 id={tabId + "Zone-used-for"}
-                                aria-label="Zone used for"
-                                placeholder="Zone purpose"
+                                aria-label="Zone Used For"
+                                placeholder="Zone Purpose"
                                 rows={2}
                                 maxLength={240}
                                 disabled={locked}
@@ -659,7 +676,6 @@ export function FoundingWorkspace({
                                 aria-invalid={!!fieldProblem("zone-purpose", headerZone.id)}
                                 onChange={(event) => patchHeaderZone({ purpose: event.target.value })}
                               />
-                              <FoundingHelp label="Zone purpose">Describe what this space is used for.</FoundingHelp>
                             </div>
                             {fieldProblem("zone-purpose", headerZone.id) ? (
                               <p role="alert">{fieldProblem("zone-purpose", headerZone.id)}</p>
@@ -670,11 +686,12 @@ export function FoundingWorkspace({
                       {headerZone && privateHeaderHidden ? (
                         <div className="villages-workspace-box-field">
                           <label className="villages-workspace-caption" htmlFor={tabId + "Room-specification"}>
-                            Room specification (optional)
+                            Room Specification (optional)
                           </label>
                           <textarea
+                            autoComplete="off"
                             id={tabId + "Room-specification"}
-                            aria-label="Room specification"
+                            aria-label="Room Specification"
                             placeholder="A small bedroom with a garden-facing window…"
                             rows={3}
                             maxLength={1000}
@@ -692,14 +709,20 @@ export function FoundingWorkspace({
                       {headerZone && !privateHeaderHidden ? (
                         <>
                           <div className="villages-workspace-box-field">
-                            <label className="villages-workspace-caption" htmlFor={tabId + "Zone-appearance"}>
-                              Zone appearance
-                            </label>
+                            <div className="villages-founding-field-heading">
+                              <label className="villages-workspace-caption" htmlFor={tabId + "Zone-appearance"}>
+                                Zone Appearance
+                              </label>
+                              <FoundingHelp label="Zone Appearance">
+                                Describe the visible interior of this space.
+                              </FoundingHelp>
+                            </div>
                             <div className="villages-workspace-sheet-summary">
                               <textarea
+                                autoComplete="off"
                                 id={tabId + "Zone-appearance"}
-                                aria-label="Zone appearance"
-                                placeholder="Zone appearance"
+                                aria-label="Zone Appearance"
+                                placeholder="Zone Appearance"
                                 rows={3}
                                 maxLength={1000}
                                 disabled={locked}
@@ -707,9 +730,6 @@ export function FoundingWorkspace({
                                 aria-invalid={!!fieldProblem("zone-appearance", headerZone.id)}
                                 onChange={(event) => patchHeaderZone({ description: event.target.value })}
                               />
-                              <FoundingHelp label="Zone appearance">
-                                Describe the visible interior of this space.
-                              </FoundingHelp>
                             </div>
                             {fieldProblem("zone-appearance", headerZone.id) ? (
                               <p role="alert">{fieldProblem("zone-appearance", headerZone.id)}</p>
@@ -733,6 +753,7 @@ export function FoundingWorkspace({
                             <label>
                               Venue Type
                               <input
+                                autoComplete="off"
                                 aria-label="Venue Type"
                                 maxLength={100}
                                 value={selected.venueType ?? ""}

@@ -4,11 +4,11 @@ import { pinTone, placeSpot, playerDisplayName } from "../../shared/presentation
 import type { MapPin } from "../../shared/types.js";
 import { isHouse } from "../../shared/venue.js";
 import { MapStage, PROJECT_BLUEPRINT_IMAGE, TOWN_MAP_FITS } from "../exploration/MapStage.js";
-import { PlayerIdentityEditor, VillageLorebookPicker } from "../founding/FoundingPanels.js";
+import { PlayerIdentityEditor, VillageLorebookPicker, LoreTokenBudgetField } from "../founding/FoundingPanels.js";
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
 import { PlayerRoleSummary } from "../founding/villages-player-role.js";
 import type { VillageSettingsPagePorts } from "./page-contracts.js";
-import { VillageWritingSettings } from "./SettingsPanels.js";
+import { VillageWritingSettings } from "./WritingSettings.js";
 
 export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
   const {
@@ -85,6 +85,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
       <section className={ELEMENT_TAG + "-venue-card"}>
         <label>
           <input
+            autoComplete="off"
             type="checkbox"
             disabled={busy}
             checked={snapshot.settings.automaticZonePictures !== false}
@@ -100,6 +101,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
         />
         <label>
           <input
+            autoComplete="off"
             type="checkbox"
             checked={personalizeHomes}
             onChange={(event) => setPersonalizeHomes(event.target.checked)}
@@ -108,6 +110,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
         </label>
         <label>
           <input
+            autoComplete="off"
             type="checkbox"
             checked={visualLoreDefault}
             onChange={(event) => setVisualLoreDefault(event.target.checked)}
@@ -193,6 +196,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
                   </button>
 
                   <input
+                    autoComplete="off"
                     className={ELEMENT_TAG + "-file"}
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/avif"
@@ -404,6 +408,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               Where are we?
             </label>
             <textarea
+              autoComplete="off"
               id={`${ELEMENT_TAG}-setting`}
               className={`${ELEMENT_TAG}-textarea ${ELEMENT_TAG}-off`}
               value={settingDraft}
@@ -421,22 +426,13 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             onChange={setLorebookDraft}
             disabled={busy}
           />
-          <div className={`${ELEMENT_TAG}-field`}>
-            <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-lore-budget`}>
-              Lorebook token budget
-            </label>
-            <input
-              id={`${ELEMENT_TAG}-lore-budget`}
-              className={`${ELEMENT_TAG}-notice-input`}
-              type="number"
-              min={snapshot.settings.loreTokenBudgetMin}
-              max={snapshot.settings.loreTokenBudgetMax}
-              step={100}
-              value={loreTokenBudgetDraft}
-              disabled={busy}
-              onChange={(event) => setLoreTokenBudgetDraft(Number(event.target.value))}
-            />
-          </div>
+          <LoreTokenBudgetField
+            value={loreTokenBudgetDraft}
+            onChange={setLoreTokenBudgetDraft}
+            min={snapshot.settings.loreTokenBudgetMin ?? 0}
+            max={snapshot.settings.loreTokenBudgetMax ?? 3200}
+            disabled={busy}
+          />
 
           <section className={ELEMENT_TAG + "-field"}>
             <h2 className={ELEMENT_TAG + "-panel-title"}>Venues</h2>
@@ -449,6 +445,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               Propose Venue Project
             </button>
             <input
+              autoComplete="off"
               className={ELEMENT_TAG + "-notice-input"}
               type="search"
               value={venueSearch}
@@ -479,6 +476,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               The information villagers know
             </label>
             <textarea
+              autoComplete="off"
               id={`${ELEMENT_TAG}-knowledge`}
               ref={knowledgeRef}
               className={`${ELEMENT_TAG}-preset`}

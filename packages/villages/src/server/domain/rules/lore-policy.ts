@@ -2,7 +2,7 @@ import { badRequest } from "./errors.js";
 
 export const MAX_BOOKS = 24;
 export const DEFAULT_LORE_TOKEN_BUDGET = 1_600;
-export const MIN_LORE_TOKEN_BUDGET = 200;
+export const MIN_LORE_TOKEN_BUDGET = 0;
 export const MAX_LORE_TOKEN_BUDGET = 3_200;
 export function readLoreTokenBudget(value: unknown): number {
   if (

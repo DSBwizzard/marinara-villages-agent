@@ -64,16 +64,16 @@ export function PlayerRoleFields({
       {!compact ? <legend className={`${PREFIX}-label`}>Role</legend> : null}
       <div className={`${PREFIX}-founding-role-fields`}>
         <FoundingField
-          title="Role title"
+          title="Role Title"
           help="In Villages, you oversee major changes, improvements, and developments."
-          helpPlacement="input"
           error={problem && (!role.title.trim() || role.title.length > 80) ? problem : ""}
         >
           <input
+            autoComplete="off"
             id={`${PREFIX}-role-title`}
             className={`${PREFIX}-search`}
             type="text"
-            aria-label="Role title"
+            aria-label="Role Title"
             value={role.title}
             placeholder={ROLE_EXAMPLES[example]}
             maxLength={80}

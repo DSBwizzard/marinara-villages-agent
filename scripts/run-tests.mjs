@@ -1,10 +1,11 @@
 import { acquireCheckoutOperation } from "./checkout-operation.mjs";
-import { mkdir, writeFile, readFile, open, unlink } from "node:fs/promises";
+import { mkdir, writeFile, readFile, open, unlink, appendFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { testInventory } from "./test-inventory.mjs";
-import { scheduleTests } from "./test-scheduler.mjs";
+import { availableParallelism, totalmem, freemem } from "node:os";
+import { browserWorkerLimit, scheduleTests } from "./test-scheduler.mjs";
 import { caseMatches } from "./test-cases.mjs";
 
 const args = process.argv.slice(2);
@@ -19,16 +20,23 @@ if (!["regression", "browser", "engine", "review", "all"].includes(group))
 const filter = args.find((arg) => arg.startsWith("--filter="))?.slice(9);
 const selected = args.filter((arg) => arg.startsWith("--test=")).map((arg) => arg.slice(7));
 const cases = args.filter((arg) => arg.startsWith("--case=")).map((arg) => arg.slice(7));
+const reuse = args.includes("--reuse");
+if (reuse && process.env.CI === "true") throw Error("Local feedback receipts cannot satisfy CI coverage");
 if (args.includes("--fail-fast") && args.includes("--keep-going")) throw new Error("Choose fail-fast or keep-going");
 const failFast = args.includes("--fail-fast") || (!args.includes("--keep-going") && process.env.CI !== "true");
 const jobs = Number(args.find((arg) => arg.startsWith("--jobs="))?.slice(7) ?? 4);
-const browserJobs = Number(args.find((arg) => arg.startsWith("--browser-jobs="))?.slice(15) ?? Math.min(2, jobs));
+const host = { cpuCount: availableParallelism(), memoryBytes: totalmem(), freeMemoryBytes: freemem() };
+const browserJobs = Number(
+  args.find((arg) => arg.startsWith("--browser-jobs="))?.slice(15) ??
+    browserWorkerLimit({ jobs, ci: process.env.CI === "true", ...host }),
+);
 for (const arg of args) {
   if (
     arg !== group &&
     arg !== "--list" &&
     arg !== "--fail-fast" &&
     arg !== "--keep-going" &&
+    arg !== "--reuse" &&
     !["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs="].some((prefix) => arg.startsWith(prefix))
   )
     throw new Error(`Unknown test option: ${arg}`);
@@ -96,6 +104,18 @@ try {
     await lock.writeFile(JSON.stringify({ pid: process.pid, runId, group, startedAt: new Date().toISOString() }));
     await mkdir(directory);
     const start = Date.now();
+    const cache =
+      reuse &&
+      !process.env.VILLAGES_FEEDBACK_SCREENSHOTS &&
+      !process.env.VILLAGES_SCREENSHOT_DIR &&
+      !process.env.VILLAGES_VISUAL_OUTPUT
+        ? await (await import("./feedback-proof.mjs")).feedbackProof(process.cwd(), tests)
+        : null;
+    console.log(
+      `WORKERS total=${jobs} browsers=${browserJobs} cpus=${host.cpuCount} memoryGiB=${(host.memoryBytes / 1024 ** 3).toFixed(1)} freeGiB=${(host.freeMemoryBytes / 1024 ** 3).toFixed(1)}`,
+    );
+    const progress = join(directory, "progress.jsonl");
+    let firstFailure = false;
     const results = await scheduleTests(tests, {
       jobs,
       browserJobs,
@@ -106,6 +126,11 @@ try {
         const testCases = cases.filter((name) =>
           test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
         );
+        const cached = await cache?.read(test, testCases);
+        if (cached) {
+          console.log(`REUSE ${test.path} (local feedback; exact unchanged inputs)`);
+          return cached;
+        }
         const caseReport = join(directory, test.path.split("/").pop() + ".cases.json");
         const result = await new Promise((resolve) => {
           const child = spawn(process.execPath, ["--import", "tsx", test.path], {
@@ -183,10 +208,52 @@ try {
         }
         await writeFile(join(directory, test.path.split("/").pop() + ".log"), result.output);
         console.log(`${result.code === 0 ? "PASS" : "FAIL"} ${test.path} (${result.durationMs}ms)`);
-        if (result.code !== 0) console.error(result.output.slice(-3500));
+        await appendFile(
+          progress,
+          JSON.stringify({
+            at: new Date().toISOString(),
+            path: test.path,
+            code: result.code,
+            durationMs: result.durationMs,
+          }) + "\n",
+        );
+        if (result.code !== 0) {
+          console.error(result.output.slice(-3500));
+          if (!firstFailure) {
+            firstFailure = true;
+            await writeFile(
+              join(directory, "first-failure.json"),
+              JSON.stringify({
+                path: test.path,
+                at: new Date().toISOString(),
+                log: join(directory, test.path.split("/").pop() + ".log"),
+              }) + "\n",
+            );
+            if (process.env.GITHUB_ACTIONS === "true") {
+              console.error(
+                `::error title=First actionable test failure::${test.path}; remaining coverage is still being collected`,
+              );
+              if (process.env.GITHUB_STEP_SUMMARY)
+                await appendFile(
+                  process.env.GITHUB_STEP_SUMMARY,
+                  `First failing suite: \`${test.path}\`. Remaining coverage continues; successful checks will be retained.\n`,
+                );
+            }
+          }
+        }
         return { ...result, output: undefined };
       },
     });
+    await cache?.unchanged();
+    if (cache)
+      for (const result of results) {
+        if (result.reused) continue;
+        const test = tests.find((test) => test.path === result.path);
+        const testCases = cases.filter((name) =>
+          test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
+        );
+        await cache.write(test, testCases, result);
+      }
     const report = {
       startedAt: new Date(start).toISOString(),
       completedAt: new Date().toISOString(),
@@ -194,6 +261,7 @@ try {
       group,
       jobs,
       browserJobs,
+      host: { ...host, freeMemoryAtEnd: freemem() },
       failFast,
       cases,
       durationMs: Date.now() - start,

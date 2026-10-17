@@ -69,6 +69,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                         {` · ${entry.source === "chat" ? "Conversation" : "Village life"}`}
                       </span>
                       <input
+                        autoComplete="off"
                         className={`${ELEMENT_TAG}-notice-input`}
                         value={draft.name}
                         maxLength={snapshot.settings.maxVenueNameLength}
@@ -87,6 +88,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                         <option value="other">Other</option>
                       </select>
                       <textarea
+                        autoComplete="off"
                         className={`${ELEMENT_TAG}-textarea`}
                         value={draft.description ?? ""}
                         maxLength={1000}

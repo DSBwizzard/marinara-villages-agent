@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import AdmZip from "adm-zip";
-import { checkKeys, environmentFor, fingerprint, policyKey } from "../../scripts/ci-checks.mjs";
+import { checkBlueprint, checkKeys, environmentFor, fingerprint } from "../../scripts/ci-checks.mjs";
 import { join } from "node:path";
 import { validationInputs } from "../../scripts/validation-inputs.mjs";
 import { releaseOptions, runRelease } from "../../scripts/release.mjs";
@@ -13,8 +13,18 @@ export async function releaseDriverFixture(root) {
   await mkdir(join(root, "tests"), { recursive: true });
   await mkdir(join(root, "artifacts"), { recursive: true });
   await mkdir(join(root, ".build-tmp"), { recursive: true });
+  await mkdir(join(root, "scripts"), { recursive: true });
   execFileSync("git", ["init", root], { stdio: "ignore" });
   await writeFile(join(root, "tests/a.regression.mjs"), "// fixture\n");
+  await writeFile(join(root, "scripts/build-villages.mjs"), "// fixture builder\n");
+  await writeFile(
+    join(root, "scripts/ci-toolchain.json"),
+    JSON.stringify({
+      node: process.version.slice(1),
+      arch: process.arch,
+      runners: { linux: "ubuntu-24.04", win32: "windows-2025" },
+    }),
+  );
   const current = await validationInputs(root);
   const candidate = "a".repeat(40);
   const zip = new AdmZip();
@@ -121,7 +131,18 @@ export async function releaseDriverFixture(root) {
     if (path === "git/ref/heads/candidate" || path === "git/ref/heads/staging")
       return send({ object: { sha: path.endsWith("staging") ? stagingSha : candidate } });
     if (path.startsWith("actions/workflows/ci.yml/runs?head_sha="))
-      return send({ workflow_runs: activePreparation ? [{ id: 6, head_sha: candidate, status: "in_progress" }] : [] });
+      return send({
+        workflow_runs: activePreparation
+          ? [
+              {
+                id: 6,
+                head_sha: candidate,
+                status: "in_progress",
+                pull_requests: [{ base: { ref: activePreparation === true ? "main" : "staging" } }],
+              },
+            ]
+          : [],
+      });
     if (path === "actions/runs/4") return send({ ...run, id: 4 });
     if (path === "actions/runs/4/artifacts") return send({ artifacts: [] });
     if (path === "actions/runs/5") return send(run);
@@ -161,17 +182,7 @@ export async function releaseDriverFixture(root) {
     throw Error("Unexpected fixture API: " + path);
   };
   const args = ["--version", "1.2.3", "--candidate", candidate, "--staging-pr", "10", "--main-pr", "11"];
-  const blueprint = {
-    inputDigest: current.digest,
-    policyDigest: policyKey(current),
-    catalog: [],
-    toolchain: {
-      node: process.version.slice(1),
-      arch: process.arch,
-      runners: { linux: "ubuntu-24.04", win32: "windows-2025" },
-    },
-    specs: [{ id: "test:tests/a.regression.mjs", kind: "test", inputs: [] }],
-  };
+  const blueprint = await checkBlueprint(root, { snapshot: current });
   const manifest = {
     ready: true,
     inputDigest: current.digest,
@@ -255,7 +266,7 @@ export async function releaseDriverFixture(root) {
   });
   assert.equal(waitingResult.stage, "validated");
   assert.equal(sleeps, 1, "The release process owns waiting");
-  for (const active of [false, true]) {
+  for (const active of [false, true, "staging"]) {
     waiting = true;
     absent = true;
     activePreparation = active;
@@ -274,9 +285,16 @@ export async function releaseDriverFixture(root) {
     );
     assert.equal(
       commands.filter((args) => args[1] === "workflow").length - before,
-      active ? 0 : 1,
-      "Absent contexts start preparation once and reuse an active exact-head run",
+      active === true ? 0 : 1,
+      "Absent contexts start qualification once; an active staging-only run cannot substitute",
     );
+    if (active !== true)
+      assert.ok(
+        commands
+          .filter((args) => args[1] === "workflow")
+          .at(-1)
+          .includes("mode=full"),
+      );
   }
   absent = false;
   const authorized = releaseOptions([

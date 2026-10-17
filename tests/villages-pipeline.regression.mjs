@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, relative, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
-import { scheduleTests } from "../scripts/test-scheduler.mjs";
+import { browserWorkerLimit, scheduleTests } from "../scripts/test-scheduler.mjs";
 import { testResources } from "../scripts/test-resources.mjs";
 import { checkPlan } from "../scripts/check-changed.mjs";
 import {
@@ -22,6 +22,17 @@ import { selectAffectedTests, feedbackTests } from "../scripts/select-tests.mjs"
 import { validationInputs } from "../scripts/validation-inputs.mjs";
 import { releaseDriverFixture } from "./fixtures/release-driver.mjs";
 import { ciValidationFixture } from "./fixtures/ci-validation.mjs";
+
+const capableCi = { jobs: 4, ci: true, cpuCount: 4, memoryBytes: 16 * 1024 ** 3, freeMemoryBytes: 12 * 1024 ** 3 };
+assert.equal(browserWorkerLimit(capableCi), 3);
+for (const constrained of [
+  { ci: false },
+  { cpuCount: 2 },
+  { memoryBytes: 4 * 1024 ** 3 },
+  { freeMemoryBytes: 3 * 1024 ** 3 },
+])
+  assert.equal(browserWorkerLimit({ ...capableCi, ...constrained }), 2);
+assert.equal(browserWorkerLimit({ ...capableCi, jobs: 1 }), 1);
 
 const acousticInventory = ["space-sound", "attention", "scene-privacy", "scene-controls"].map((name) => ({
   path: "tests/villages-" + name + ".regression.ts",

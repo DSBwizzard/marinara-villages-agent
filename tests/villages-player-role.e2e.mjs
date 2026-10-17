@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot as savedSnapshot } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const steward = {
   enabled: true,
@@ -121,9 +119,9 @@ try {
         if (scenario.label === "steward") await screenshot(page, "settings-" + width);
         await page.getByRole("button", { name: "Run setup again" }).click();
       } else {
-        await page.getByLabel("Village name", { exact: true }).fill("Harbor village");
-        await page.getByLabel("Place and world", { exact: true }).fill("A fishing village on sea cliffs.");
-        await page.getByLabel("Starting circumstances", { exact: true }).fill("Neighbors arrived with damaged boats.");
+        await page.getByLabel("Village Name", { exact: true }).fill("Harbor village");
+        await page.getByLabel("Setting", { exact: true }).fill("A fishing village on sea cliffs.");
+        await page.getByLabel("Starting Scenario", { exact: true }).fill("Neighbors arrived with damaged boats.");
         await page.getByRole("button", { name: "Continue to People", exact: true }).click();
         await page.getByRole("button", { name: /Ada.*Change/ }).click();
         await page
@@ -148,19 +146,19 @@ try {
             : "No founding role recorded",
         );
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
-        await expect(page.getByRole("textbox", { name: "Role title" })).toHaveCount(0);
+        await expect(page.getByRole("textbox", { name: "Role Title" })).toHaveCount(0);
       } else {
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         const role = page.getByRole("group", { name: "Your role", exact: true });
-        await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue("");
-        const title = role.getByRole("textbox", { name: "Role title", exact: true });
-        const help = role.getByRole("button", { name: "Help: Role title", exact: true });
+        await expect(role.getByRole("textbox", { name: "Role Title", exact: true })).toHaveValue("");
+        const title = role.getByRole("textbox", { name: "Role Title", exact: true });
+        const help = role.getByRole("button", { name: "Help: Role Title", exact: true });
         const responsibility = role.getByRole("note");
         await expect(responsibility).toHaveCount(0);
         await expect(help).toHaveAttribute("aria-expanded", "false");
-        const inputBounds = await title.boundingBox(),
+        const labelBounds = await role.locator(".villages-founding-field-heading label").boundingBox(),
           helpBounds = await help.boundingBox();
-        assert.ok(helpBounds.x >= inputBounds.x + inputBounds.width, "help is to the right of the Role field");
+        assert.ok(Math.abs(helpBounds.x - labelBounds.x - labelBounds.width) < 8, "help follows the Role Title label");
         await help.click();
         await expect(responsibility).toHaveText(
           "In Villages, you oversee major changes, improvements, and developments.",

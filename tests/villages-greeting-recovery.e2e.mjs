@@ -1,17 +1,11 @@
 import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-const windowsBrowser = [
-  "C:/Program Files/Google/Chrome/Application/chrome.exe",
-  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-].find(existsSync);
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && windowsBrowser ? { executablePath: windowsBrowser } : {}),
 });
 const bundle = resolve(process.env.VILLAGES_GREETING_CLIENT_BUNDLE || "packages/villages/client.js");
 const errors = [];
