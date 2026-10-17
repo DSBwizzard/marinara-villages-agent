@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
-// Test cases: settings/hooks, settings/package, settings/requests, venues/mutations, venues/requests
+// Test cases: settings/hooks, settings/package
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium } from "@playwright/test";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
 import { build } from "esbuild";
 import { resolve } from "node:path";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
-import { verifySettingsRequestLifetimes } from "./fixtures/villages-settings-request-lifetime.fixture.mjs";
-import { verifyVenueMutationLifetimes } from "./fixtures/villages-venue-mutation-lifetime.fixture.mjs";
-import { verifyVenueRequestLifetimes } from "./fixtures/villages-venue-request-lifetime.fixture.mjs";
 
 function initialSnapshot() {
   const snapshot = structuredClone(fixture);
@@ -423,9 +420,6 @@ try {
   for (const width of [1366, 390]) {
     await runCase("settings/package/" + width, () => checkPackage(width));
   }
-  await runCase("settings/requests", () => verifySettingsRequestLifetimes(browser));
-  await runCase("venues/mutations", () => verifyVenueMutationLifetimes(browser));
-  await runCase("venues/requests", () => verifyVenueRequestLifetimes(browser));
   console.log(
     "Selected Settings/Venue navigation and lifetime scenarios passed; the case report records exact coverage.",
   );

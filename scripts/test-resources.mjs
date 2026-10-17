@@ -3,6 +3,11 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  "tests/villages-founding-phone-layout.e2e.mjs",
+  "tests/villages-founding-compact-layout.e2e.mjs",
+  "tests/villages-settings-requests.e2e.mjs",
+  "tests/villages-venue-mutations.e2e.mjs",
+  "tests/villages-venue-requests.e2e.mjs",
   "tests/villages-test-scheduler.regression.mjs",
   "tests/villages-checkout-operation.regression.mjs",
   "tests/villages-ci-evidence.regression.mjs",
