@@ -295,9 +295,20 @@ async function checkPackage(width) {
     usagePreviews = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const snapshot = initialSnapshot();
+  const narration = {
+    tense: "present",
+    person: "second",
+    rating: "sfw",
+    writingGuidance: "",
+    writingGuidanceMaxLength: 2000,
+  };
   await page.clock.install();
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/narration")) {
+      if (route.request().method() === "PUT") Object.assign(narration, route.request().postDataJSON());
+      return route.fulfill({ json: narration });
+    }
     if (path.endsWith("/settings") && route.request().method() === "PATCH") {
       scenerySaves.push(route);
       return;
@@ -427,6 +438,15 @@ async function checkPackage(width) {
   saved.settings.automaticZonePictures = true;
   await scenerySaves[2].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   await expect(automatic).toBeChecked();
+  const guidance = page.getByLabel("Additional writing guidance", { exact: true });
+  await guidance.fill("Committed guidance");
+  await page.getByRole("button", { name: "Apply guidance", exact: true }).click();
+  const savedStatus = page.getByRole("status").filter({ hasText: /^Saved$/ });
+  await expect(savedStatus).toBeVisible();
+  await guidance.fill("Unsaved guidance");
+  await expect(savedStatus).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply guidance", exact: true })).toBeEnabled();
+  assert.equal(narration.writingGuidance, "Committed guidance", "Editing does not silently save the draft");
   if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
     await page.screenshot({
       path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-settings-${width}.png`),

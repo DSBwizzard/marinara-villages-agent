@@ -136,7 +136,7 @@ export function VillageWritingSettings() {
         <span className={ELEMENT_TAG + "-hint"}>Loading…</span>
       ) : null}
       {busy ? <span className={ELEMENT_TAG + "-hint"}>Saving…</span> : null}
-      {saved && !busy ? (
+      {saved && !busy && draft === view?.writingGuidance ? (
         <span className={ELEMENT_TAG + "-hint"} role="status">
           Saved
         </span>
