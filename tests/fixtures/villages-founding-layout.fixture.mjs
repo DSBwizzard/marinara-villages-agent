@@ -10,7 +10,9 @@ import { wantsCase, runCase } from "../../scripts/test-cases.mjs";
 
 const art = new PNG({ width: 1536, height: 1024 });
 art.data.fill(90);
-const mapImage = "data:image/png;base64," + PNG.sync.write(art).toString("base64");
+const generatedArt = new PNG({ width: 1536, height: 1024 });
+generatedArt.data.fill(110);
+const mapImage = "data:image/png;base64," + PNG.sync.write(generatedArt).toString("base64");
 const browser = await chromium.launch({
   headless: true,
 });
@@ -1918,6 +1920,8 @@ export async function verifyFoundingLayout(group) {
           failMapStatus = false;
           releaseMap();
           await root.getByRole("button", { name: "Check map status", exact: true }).click();
+          // The status request is asynchronous; old uploaded artwork is still visible while it runs.
+          await expect(root.getByRole("img", { name: /^Map of / })).toHaveAttribute("src", mapImage);
           await expect(
             root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }),
           ).toHaveCount(0);
