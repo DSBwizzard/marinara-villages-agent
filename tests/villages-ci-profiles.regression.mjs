@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { platformSpecs, validationProfile, requireValidationProfile } from "../scripts/ci-validation-profile.mjs";
 import { checkBlueprint, checkKeys, assertCoverage, environmentFor, fingerprint } from "../scripts/ci-checks.mjs";
 import { preparedCandidate } from "../scripts/prepare-release.mjs";
 import { preparePlan } from "../scripts/ci-candidate.mjs";
+import { clientImplementation, clientSourcePath } from "./client-source.ts";
 
 const deferred = "tests/known.e2e.mjs";
 const blueprint = {
@@ -189,6 +190,43 @@ try {
 } finally {
   await rm(root, { recursive: true, force: true });
 }
+// Real reader boundaries: client-only edits must not repeat server saved-data
+// scenarios, while changes to server/shared/build inputs must still invalidate.
+const live = await checkBlueprint(process.cwd());
+const scopeEnvironment = {
+  platform: "linux",
+  node: "v" + live.toolchain.node,
+  arch: live.toolchain.arch,
+  runner: live.toolchain.runners.linux,
+};
+const liveKeys = new Map(checkKeys(live, scopeEnvironment).map((spec) => [spec.id, spec.key]));
+const clientPath = "packages/villages/src/client/features/settings/SettingsPanels.tsx";
+const discoveryPath = "scripts/candidate-history.mjs";
+const serverPath = "packages/villages/src/server/domain/models/world.ts";
+const sharedPath = "packages/villages/src/shared/contracts/village.ts";
+const builderPath = "scripts/build-feature-packages.mjs";
+const changedKey = (id, path) => {
+  const catalog = live.catalog.map(([input, hash]) => [input, input === path ? fingerprint("changed") : hash]);
+  return checkKeys({ ...live, catalog }, scopeEnvironment).find((spec) => spec.id === id).key;
+};
+for (const name of ["clock", "spinoff", "zone-events"]) {
+  const id = "test:tests/villages-" + name + "-packaged.regression.ts";
+  const spec = live.specs.find((spec) => spec.id === id);
+  assert.ok(spec && !spec.opaque);
+  for (const unrelated of [clientPath, discoveryPath]) {
+    assert.ok(!spec.inputs.includes(unrelated), name + " does not consume unrelated UI/discovery source");
+    assert.equal(changedKey(id, unrelated), liveKeys.get(id));
+  }
+  for (const required of [serverPath, sharedPath, builderPath, "$definition-behavior"]) {
+    assert.ok(spec.inputs.includes(required), name + " retains " + required);
+    assert.notEqual(changedKey(id, required), liveKeys.get(id));
+  }
+}
+assert.equal(clientSourcePath(resolve(clientPath)), resolve(clientPath));
+assert.equal(clientSourcePath(resolve(sharedPath)), resolve(sharedPath));
+assert.throws(() => clientSourcePath(resolve(serverPath)), /escapes reviewed sources/);
+assert.throws(() => clientSourcePath(resolve(discoveryPath)), /escapes reviewed sources/);
+assert.ok(clientImplementation().length > 0, "The maintained client graph fits its explicit reviewed boundary");
 console.log(
   "Platform inventories, main/full qualification, unknown/changed test broadening and no staging-to-release laundering passed.",
 );

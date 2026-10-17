@@ -369,23 +369,25 @@ try {
     (await justMerged.discover("policy")).map((row) => row.manifest.from),
     ["59"],
   );
-  assert.equal(mergeLookups.length, 3, "A just-merged base discovers its PR proof without waiting for push CI");
+  assert.equal(mergeLookups.length, 4, "Discovery inspects only the merge and its two immediate parents");
   justMerged.api = (path) => {
-    assert.ok(!path.startsWith("git/commits/"), "A completed base does not need the parent fallback");
+    if (path.startsWith("git/commits/")) return { parents: [{ sha: "a".repeat(40) }, { sha: "c".repeat(40) }] };
+    assert.ok(!path.includes("c".repeat(40)), "A completed base does not need the PR-head fallback");
     return {
       check_runs: [
         {
           name: "package-parity",
           status: "completed",
           conclusion: "success",
-          details_url: "https://github.com/example/villages/actions/runs/58",
+          details_url: "https://github.com/example/villages/actions/runs/" + (path.includes("a".repeat(40)) ? 57 : 58),
         },
       ],
     };
   };
   assert.deepEqual(
     (await justMerged.discover("policy")).map((row) => row.manifest.from),
-    ["58"],
+    ["58", "57"],
+    "A narrow base receipt can supplement proof from the prior integrated base",
   );
   console.log("Per-check invalidation, version reuse, provenance, toolchain and tamper rejection passed.");
 } finally {
