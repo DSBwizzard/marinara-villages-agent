@@ -18,11 +18,38 @@ import { assertReusableCi, reusableCi } from "../scripts/ci-reuse.mjs";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { evidenceDigest, reusableTests } from "../scripts/ci-evidence.mjs";
 import { releaseOptions, promotionStatus, assertPublishedRelease } from "../scripts/release.mjs";
-import { selectAffectedTests } from "../scripts/select-tests.mjs";
+import { selectAffectedTests, feedbackTests } from "../scripts/select-tests.mjs";
 import { validationInputs } from "../scripts/validation-inputs.mjs";
 import { releaseDriverFixture } from "./fixtures/release-driver.mjs";
 import { ciValidationFixture } from "./fixtures/ci-validation.mjs";
 
+const acousticInventory = ["space-sound", "attention", "scene-privacy", "scene-controls"].map((name) => ({
+  path: "tests/villages-" + name + ".regression.ts",
+  group: "regression",
+}));
+assert.equal(
+  feedbackTests(["packages/villages/src/server/features/scenes/acoustic-interpretation.ts"], acousticInventory).length,
+  3,
+);
+assert.equal(
+  selectAffectedTests(
+    ["packages/villages/src/server/features/scenes/acoustic-interpretation.ts"],
+    acousticInventory,
+    new Map([
+      [
+        "packages/villages/src/server/features/scenes/acoustic-interpretation.ts",
+        acousticInventory.map((test) => test.path),
+      ],
+    ]),
+  ).length,
+  4,
+  "Feedback hints cannot narrow CI consumer coverage",
+);
+assert.deepEqual(
+  feedbackTests(["packages/villages/src/server/features/scenes/acoustic-future.ts"], acousticInventory),
+  selectAffectedTests(["packages/villages/src/server/features/scenes/acoustic-future.ts"], acousticInventory),
+  "Unknown modules retain normal feedback selection",
+);
 const invoked = [];
 const stopped = await scheduleTests(
   [

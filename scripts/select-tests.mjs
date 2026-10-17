@@ -55,6 +55,21 @@ export function selectAffectedTests(paths, inventory, consumers = new Map()) {
   }
   return inventory.filter((test) => selected.has(test.path)).map((test) => test.path);
 }
+/** Fast local feedback only. CI/cache validity still examines every actual consumer. */
+export function feedbackTests(paths, inventory, consumers = new Map()) {
+  if (
+    paths.length &&
+    paths.every((path) =>
+      /^packages\/villages\/src\/server\/features\/scenes\/acoustic-(?:interpretation|prompt)\.ts$/.test(path),
+    )
+  ) {
+    const focused = inventory.filter(
+      (test) => test.group !== "engine" && /villages-(?:space-sound|attention|scene-privacy)\./.test(test.path),
+    );
+    if (focused.length) return focused.map((test) => test.path);
+  }
+  return selectAffectedTests(paths, inventory, consumers);
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const explicit = process.argv.filter((arg) => arg.startsWith("--file=")).map((arg) => arg.slice(7));
   const explain = process.argv.includes("--explain");
@@ -78,7 +93,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         (path.startsWith("tests/") && !inventory.some((test) => test.path === path))),
   );
   const source = paths.some((path) => !isDocumentation(path) && /^(packages\/|sources\/)/.test(path));
-  const tests = selectAffectedTests(
+  const tests = feedbackTests(
     paths,
     inventory,
     shared || source || paths.some((path) => path.startsWith("tests/"))
