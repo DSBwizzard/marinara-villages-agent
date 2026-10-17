@@ -6,8 +6,7 @@ export function renderMenuIndexPage(ports: MenuIndexPagePorts) {
   return (
     <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content ${ELEMENT_TAG}-menu-welcome`} role="main">
       {backgroundPanel}
-      <span className={`${ELEMENT_TAG}-venue-kicker`}>Village menu</span>
-      <h2>Choose where to go</h2>
+      <h2 className={`${ELEMENT_TAG}-venue-kicker`}>Village menu</h2>
       <div className={`${ELEMENT_TAG}-menu-quick-links`}>
         <button
           type="button"
