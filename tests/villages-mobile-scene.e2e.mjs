@@ -257,6 +257,13 @@ try {
             return { x, y, width, height };
           }),
         );
+      // Reading pagination and the Scene canvas each schedule layout work through
+      // ResizeObserver/requestAnimationFrame. Capture after font readiness and
+      // their chained render callbacks, rather than racing first pointerdown.
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        for (let frame = 0; frame < 3; frame++) await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
       const baseline = await boxes();
       if (mode === "sprites") {
         await next.click();
