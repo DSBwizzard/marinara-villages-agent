@@ -67,7 +67,8 @@ export function createSemanticService(ports: SemanticPorts) {
           connectionId: initial.connectionId,
           model: initial.model,
           output: Math.min(initial.maxOutputTokens ?? taskOutput, taskOutput),
-          outputPolicy: 2,
+          outputPolicy: 3,
+          reasoningEffort: identity.pipelineVersion === 3 ? ("none" as const) : ("low" as const),
           budget: { inputTokens: 12000, plannedShards: 1 },
         };
       });
@@ -127,7 +128,8 @@ export function createSemanticService(ports: SemanticPorts) {
       const answer = await ports.completeWithRoom(model, messages, Math.min(fitted.maxTokens ?? output, output), {
         responseFormat: { type: "json_object" },
         temperature: 0.1,
-        reasoningEffort: "low",
+        reasoningEffort: snapshot.reasoningEffort ?? (identity.pipelineVersion === 3 ? "none" : "low"),
+        ...(identity.pipelineVersion === 3 ? { replayReasoningEffort: "low" as const } : {}),
         debugMode: false,
         retryEmpty: false,
         usagePurpose: "checks",

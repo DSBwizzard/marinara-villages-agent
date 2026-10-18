@@ -6,6 +6,8 @@ A model response, a validated result, a committed effect and a playable Scene ar
 
 New semantic admissions carry semanticPipelineVersion: 3. Narration drafts first; a single System exchange check interprets original input and draft together. System supplies cited meaning, ordered input spans and proposed effects. Code retains authority over witness timelines, consent/access, physical receipts and Project revisions. Unsupported or ambiguous consequential outcomes remain unresolved before play.
 
+The combined System check requests non-thinking JSON within its 4,096-token task cap. Completed responses from the earlier low-reasoning policy remain locally replayable, including raw responses whose validation was interrupted. A rejected response still needs explicit replacement; the policy change never authorizes another request.
+
 Saved operations without this marker retain their original intent/Narration/exchange pipeline. Do not backfill the marker or rewrite their frozen prompts. A completed greeting-reply checkpoint can be applied through POST /rooms/greet with recovery:true. This path disables provider dispatch; missing stages remain interrupted. Paid replacement remains a separate explicit retry.
 
 The Venue coordinator owns cancellation and the operation watchdog. Provider requests retain independent bounded deadlines. Greeting observers do not impose a shorter generation deadline. A late provider success is evidence, never authorization to append lines or apply effects. Its original source identity must match before a later local replay can use it.

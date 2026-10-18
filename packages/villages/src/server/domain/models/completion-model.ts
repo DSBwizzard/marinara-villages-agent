@@ -8,6 +8,8 @@ export type VillageCompletionOptions = {
   savedRequest?: { key: string; retry: boolean; valid?: (result: CapabilityLanguageModelCompletion) => boolean };
   temperature: number | null;
   reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max" | null;
+  /** Replay a completed response from the prior reasoning policy; never dispatch it. */
+  replayReasoningEffort?: "low";
   verbosity?: "low" | "medium" | "high" | null;
   debugMode?: boolean;
   signal?: AbortSignal;

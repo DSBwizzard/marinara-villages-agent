@@ -1,3 +1,4 @@
+import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
 import { bindWishProposals } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
 import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
@@ -89,6 +90,151 @@ const paid = (answer = "answer") =>
 
 async function main() {
   try {
+    // Real completion fingerprints and persisted raw responses survive a reasoning-policy upgrade.
+    let policyCalls = 0;
+    const efforts: unknown[] = [];
+    let truncated = false;
+    const policyModel = {
+      connectionId: "system",
+      model: "synthetic",
+      chatComplete: async (_messages: unknown, options: any) => {
+        policyCalls++;
+        efforts.push(options.reasoningEffort);
+        return { content: truncated ? "" : '{"valid":true}', finishReason: truncated ? "length" : "stop" };
+      },
+    } as any;
+    const modelCalls = createModelCompletions({
+      readRuntimeDebug: async () => {},
+      runtimeDebug() {},
+      backgroundCalls: { getStore: () => undefined },
+      coordinatedCompletion,
+      withUsagePurpose: async (_purpose: unknown, work: any) => work(),
+      inferredPurpose: () => "checks",
+      villagesLogger: () => ({ debug() {}, warn() {} }),
+      bindCallback: (callback: any) => callback,
+    } as any);
+    const policyInput = { semanticPipelineVersion: 3, message: "Hello" };
+    const policyWork =
+      (effort: "low" | "none", crash = false) =>
+      () =>
+        venueCheckpoint("system", async () => {
+          const raw = await modelCalls.completeWithRoom(
+            policyModel,
+            [{ role: "user", content: "Frozen evidence" }],
+            4096,
+            {
+              temperature: 0.1,
+              responseFormat: { type: "json_object" },
+              reasoningEffort: effort,
+              ...(effort === "none" ? { replayReasoningEffort: "low" as const } : {}),
+            },
+          );
+          if (raw.finishReason === "length") {
+            await rejectVenueCompletion();
+            throw Error("Truncated");
+          }
+          if (crash) throw Error("Validation interrupted");
+          return raw;
+        });
+    seed("policy-raw");
+    await assert.rejects(
+      coordinateVenue("policy-raw", "turn", "turn", policyInput, 0, undefined, policyWork("low", true)),
+      /Validation interrupted/,
+    );
+    assert.equal(row("policy-raw").data.operation.checkpoints.system, undefined);
+    const reusedRaw = await coordinateVenue(
+      "policy-raw",
+      "turn",
+      "turn",
+      policyInput,
+      undefined,
+      undefined,
+      policyWork("none"),
+      { recovery: true },
+    );
+    assert.equal(reusedRaw.content, '{"valid":true}');
+    assert.equal(policyCalls, 1, "Completed low-effort raw response replays without a parsed checkpoint or paid call");
+    seed("policy-rejected");
+    truncated = true;
+    await assert.rejects(
+      coordinateVenue("policy-rejected", "turn", "turn", policyInput, 0, undefined, policyWork("low")),
+      /Truncated/,
+    );
+    await assert.rejects(
+      coordinateVenue("policy-rejected", "turn", "turn", policyInput, undefined, undefined, policyWork("none"), {
+        recovery: true,
+      }),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    assert.equal(policyCalls, 2, "Saved-only recovery cannot replace rejected low-effort output");
+    truncated = false;
+    const rejectedAttempt = (await readVenueOperation("policy-rejected"))!.attemptId;
+    await coordinateVenue(
+      "policy-rejected",
+      "turn",
+      "turn",
+      policyInput,
+      undefined,
+      rejectedAttempt,
+      policyWork("none"),
+    );
+    assert.deepEqual(
+      efforts,
+      ["low", "low", "none"],
+      "Explicit replacement alone dispatches the new non-thinking policy",
+    );
+    assert.equal(policyCalls, 3);
+    for (const finishReason of ["stop", "length"]) {
+      const id = "policy-late-" + finishReason;
+      seed(id);
+      const ready = deferred<void>(),
+        delayed = deferred<any>();
+      let lateCalls = 0;
+      policyModel.chatComplete = async (_messages: unknown, options: any) => {
+        lateCalls++;
+        if (lateCalls > 1) {
+          assert.equal(options.reasoningEffort, "none");
+          return { content: '{"valid":true}', finishReason: "stop" };
+        }
+        assert.equal(options.reasoningEffort, "low");
+        return withProviderDeadline(async () => {
+          ready.resolve();
+          return delayed.promise;
+        });
+      };
+      mock.timers.enable({ apis: ["setTimeout"] });
+      try {
+        const first = coordinateVenue(id, "turn", "turn", policyInput, 0, undefined, policyWork("low"));
+        const failed = assert.rejects(first, /timed out after 30 seconds/);
+        await ready.promise;
+        mock.timers.tick(30_000);
+        await failed;
+        delayed.resolve({ content: finishReason === "stop" ? '{"valid":true}' : "", finishReason });
+        await new Promise((resolve) => setImmediate(resolve));
+        const replay = () =>
+          coordinateVenue(id, "turn", "turn", policyInput, undefined, undefined, policyWork("none"), {
+            recovery: true,
+          });
+        if (finishReason === "stop") {
+          assert.equal((await replay()).content, '{"valid":true}');
+          assert.equal((await replay()).content, '{"valid":true}');
+        } else {
+          await assert.rejects(replay(), /Truncated/);
+          const receipt = [...records.values()].find(
+            (r) => typeof r.data?.signature === "string" && JSON.parse(r.data.signature)[0] === id,
+          );
+          assert.equal(receipt.data.status, "rejected", "Rejection targets the adopted low-effort late receipt");
+          await assert.rejects(replay(), refused("OPERATION_INTERRUPTED"));
+          assert.equal(lateCalls, 1, "Rejected late alias cannot loop or silently spend");
+          const attempt = (await readVenueOperation(id))!.attemptId;
+          await coordinateVenue(id, "turn", "turn", policyInput, undefined, attempt, policyWork("none"));
+        }
+        assert.equal(lateCalls, finishReason === "stop" ? 1 : 2);
+      } finally {
+        mock.timers.reset();
+      }
+    }
+
     seed("slow-greeting");
     row("slow-greeting").data = coerceSession({ ...row("slow-greeting").data, status: "opening" });
     const world = defaultVillageState();
