@@ -113,7 +113,7 @@ export function createFoundingSuggestSetupVenues(ports: {
             return row;
           const changed: SetupVenueDraft = { ...row };
           for (const key of ["name", "venueType", "form", "description"] as const)
-            if (!setupAuthoredFieldsRef.current[row.id]?.includes(key) && row[key] === before[key])
+            if ((key === "name" || !setupAuthoredFieldsRef.current[row.id]?.includes(key)) && row[key] === before[key])
               changed[key] = proposal[key] ?? row[key];
           if (options?.quickStart)
             return mergeQuickStartSpaces(changed, before, proposal, setupAuthoredFieldsRef.current[row.id] ?? []);
