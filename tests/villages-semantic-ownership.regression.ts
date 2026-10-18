@@ -9,7 +9,8 @@ import {
   reconcileResidentActions,
   assertResidentActionWitnesses,
 } from "../packages/villages/src/server/domain/rules/resident-actions.js";
-import { semanticEvidence } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
+import { semanticEvidence, semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import assert from "node:assert/strict";
 import {
   createSemanticService,
@@ -616,6 +617,40 @@ async function main() {
     1,
   );
   // New resident actions share a single contract between Narration, System and authoritative effects.
+  const topologyVenue = structuredClone(venue);
+  topologyVenue.zones = [
+    { ...topologyVenue.zones[0], id: "exterior", name: "Entrance", kind: "exterior", seen: true, connectedTo: [] },
+    {
+      ...topologyVenue.zones[0],
+      id: "unseen",
+      name: "SECRET INTERIOR",
+      kind: "private-residence",
+      seen: false,
+      connectedTo: ["exterior"],
+    },
+  ] as any;
+  const topologyScene = {
+    ...scene,
+    placeId: topologyVenue.id,
+    zoneId: "exterior",
+    sceneAttendance: { capturedAt: scene.startedAt, occupants: [], layout: captureSceneLayout(topologyVenue) },
+    operation: { kind: "turn", input: { interactionScopeVersion: 6 } },
+  } as typeof scene;
+  const topologyState = { ...state, venues: [topologyVenue] };
+  const knownOnly = semanticContext(topologyScene, topologyState, "May I visit?", true);
+  const authorityContext = semanticContext(topologyScene, topologyState, "May I visit?", true, true);
+  assert.deepEqual(
+    authorityContext.zones.map((z) => z.id),
+    ["exterior"],
+  );
+  assert.deepEqual(authorityContext.accessScopes.find((z) => z.id === "exterior")?.adjacentZoneIds, ["unseen"]);
+  assert.deepEqual(authorityContext.accessScopes.find((z) => z.id === "unseen")?.adjacentZoneIds, ["exterior"]);
+  assert.equal(authorityContext.accessScopes.find((z) => z.id === "unseen")?.kind, "private-residence");
+  assert.doesNotMatch(JSON.stringify(authorityContext.accessScopes), /SECRET INTERIOR|condition|items|occupants/);
+  assert(
+    !knownOnly.accessScopes.some((z) => Object.hasOwn(z, "adjacentZoneIds")),
+    "Legacy packets keep their exact context shape",
+  );
   const reviewFor = (evidence: any[], proposed: any[], additional: any[] = []) => ({
     version: 1,
     additionalActions: additional,

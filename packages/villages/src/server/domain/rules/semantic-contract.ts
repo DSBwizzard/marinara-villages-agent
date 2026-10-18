@@ -3,6 +3,7 @@ import { asRecord } from "./coerce.js";
 import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
+import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { zoneEventHearingContext } from "./zone-events.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { memoryVersion } from "./live-exchange.js";
@@ -31,7 +32,13 @@ export const semanticHash = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 /** Shared context is server-only. Actor-scoped audiences remain explicit on every fact. */
-export function semanticContext(scene: VenueScene, state: VillageState, query: string, compact = false) {
+export function semanticContext(
+  scene: VenueScene,
+  state: VillageState,
+  query: string,
+  compact = false,
+  accessTopology = false,
+) {
   const actors = [...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])])];
   const venue = state.venues.find((row) => row.id === scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
@@ -123,6 +130,9 @@ export function semanticContext(scene: VenueScene, state: VillageState, query: s
           id: zone.id,
           ownerId: zone.ownerId,
           controllerIds: zoneControllerIds(venue, zone),
+          ...(accessTopology && layout
+            ? { kind: zone.kind, adjacentZoneIds: contactNeighborIds(venueZones(layout), zone.id) }
+            : {}),
         }))
       : [],
     projects: projectSpeechPrompt(state, projectSpeechContexts(state, actors, "", query, scene.placeId)),

@@ -309,7 +309,7 @@ export function createSemanticService(ports: SemanticPorts) {
     const evidence = semanticEvidence(lines);
     const combined = scene.operation?.input.semanticPipelineVersion === 3;
     const actionContractV2 = scene.operation?.input.residentActionsVersion === 2;
-    const context = semanticContext(scene, state, message, combined);
+    const context = semanticContext(scene, state, message, combined, actionContractV2);
     return ask(
       "exchange",
       {
