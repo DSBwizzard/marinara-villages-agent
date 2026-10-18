@@ -139,7 +139,9 @@ export function parseCompactFounding(
   if (
     !Array.isArray(days) ||
     days.length !== 7 ||
-    days.some((day) => !Array.isArray(day) || day.length !== 8 || day.some((id) => !validIndex(id, palette.length)))
+    days.some(
+      (day) => !Array.isArray(day) || ![4, 8].includes(day.length) || day.some((id) => !validIndex(id, palette.length)),
+    )
   )
     throw new Error("The model did not provide a complete seven-day activity pattern.");
   if (typeof payload.routine !== "string" || !payload.routine.trim())
@@ -195,7 +197,8 @@ export function parseCompactFounding(
     version: 1,
     ...(context.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
     activities: palette,
-    days: days as number[][],
+    // A single supplied option per daypart is also a complete plan; duplicate only its choice slot.
+    days: (days as number[][]).map((day) => (day.length === 4 ? day.flatMap((id) => [id, id]) : [...day])),
     rhythm,
   };
   const influence = payload.scheduleInfluence;

@@ -264,7 +264,7 @@ async function main() {
 
     // Simulate the old validator rejecting a purchased venueNumber reply.
     // Retry must validate it locally before discarding its failed checkpoint.
-    for (const recovery of ["alias", "malformed", "truncated", "stale"]) {
+    for (const recovery of ["alias", "dayparts", "malformed", "truncated", "stale"]) {
       install();
       mode = "routine-invalid";
       await prepareFoundedVillage();
@@ -276,6 +276,7 @@ async function main() {
       const response = JSON.parse(saved.content);
       response.palette = response.palette.map(({ venue: _venue, ...row }: any) => ({ ...row, venueNumber: 0 }));
       response.rhythm = [{ startMinute: 1320, endMinute: 360, activityPaletteIndex: 0 }];
+      if (recovery === "dayparts") response.days = Array.from({ length: 7 }, () => [0, 1, 2, 3]);
       saved.content = recovery === "malformed" ? "{}" : JSON.stringify(response);
       if (recovery === "truncated") saved.finishReason = "length";
       mode = "valid";
@@ -292,7 +293,10 @@ async function main() {
         continue;
       }
       const previewWrites = writes;
-      assert.equal((await previewVillageBurst({ action: "founding" })).requests, recovery === "alias" ? 2 : 3);
+      assert.equal(
+        (await previewVillageBurst({ action: "founding" })).requests,
+        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
+      );
       assert.equal(writes, previewWrites, "recovery forecasts do not write");
       assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
       conflicts = 2;
@@ -301,7 +305,11 @@ async function main() {
       state = await readVillageState();
       assert.equal(state.foundingPreparation?.status, "ready");
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
-      assert.equal(calls.length, recovery === "alias" ? 2 : 3, "only invalid saved replies need replacement requests");
+      assert.equal(
+        calls.length,
+        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
+        "only invalid saved replies need replacement requests",
+      );
       assert.ok(
         calls.every((call) => call === "routine"),
         "completed private spaces are preserved",

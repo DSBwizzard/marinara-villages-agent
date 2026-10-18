@@ -375,6 +375,24 @@ async function main() {
     ),
     undefined,
   );
+  for (const predicate of ["item-added", "item-removed"]) {
+    const itemCriteria = { kind: "action", predicate, itemName: "cup", requiresPhysical: true };
+    assert.equal(readSemanticWishCriteria(itemCriteria, "A physical cup change")?.target, "cup");
+    assert.equal(
+      readSemanticWishCriteria({ ...itemCriteria, target: "" }, "A cup change"),
+      undefined,
+      "an explicitly empty target is not replaced by a different field",
+    );
+    assert.equal(readSemanticWishCriteria({ ...itemCriteria, requiresPhysical: false }, "A cup change"), undefined);
+  }
+  assert.equal(
+    readSemanticWishCriteria(
+      { kind: "action", predicate: "trace-resolved", itemName: "cup", requiresPhysical: true },
+      "Resolve a trace",
+    ),
+    undefined,
+    "an item name cannot guess a trace target",
+  );
   assert.equal(localWishRequirements(wish, criteria).criteria, criteria);
   assert.ok(
     wishEvidenceAdmission(wish, [], [], criteria).admitted,

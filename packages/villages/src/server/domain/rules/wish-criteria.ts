@@ -3,6 +3,11 @@ import type { WishCriteria } from "../models/wish-interpretation-model.js";
 
 export function readSemanticWishCriteria(value: unknown, goal: string): WishCriteria | undefined {
   const row = asRecord(value);
+  // For item effects, itemName names the same physical target. Never replace an explicit target.
+  const target =
+    row.kind === "action" && row.target === undefined && ["item-added", "item-removed"].includes(String(row.predicate))
+      ? row.itemName
+      : row.target;
   if (
     !["conversation", "transfer", "action", "complex"].includes(String(row.kind)) ||
     typeof row.requiresPhysical !== "boolean"
@@ -18,8 +23,8 @@ export function readSemanticWishCriteria(value: unknown, goal: string): WishCrit
   if (
     row.kind === "action" &&
     (!["item-added", "item-removed", "trace-resolved"].includes(String(row.predicate)) ||
-      typeof row.target !== "string" ||
-      !row.target.trim())
+      typeof target !== "string" ||
+      !target.trim())
   )
     return undefined;
   return {
@@ -28,7 +33,7 @@ export function readSemanticWishCriteria(value: unknown, goal: string): WishCrit
     goal,
     requiresPhysical: row.requiresPhysical,
     ...(typeof row.itemName === "string" ? { itemName: row.itemName } : {}),
-    ...(typeof row.target === "string" ? { target: row.target } : {}),
+    ...(typeof target === "string" ? { target } : {}),
     ...(typeof row.venueId === "string" ? { venueId: row.venueId } : {}),
     ...(row.kind === "action" ? { predicate: row.predicate as WishCriteria["predicate"] } : {}),
   };

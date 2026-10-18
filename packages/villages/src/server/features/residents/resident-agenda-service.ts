@@ -243,12 +243,10 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       socialActivities: previous?.socialActivities ?? [],
       projectWork: previous?.projectWork,
       scheduleInfluenceSnapshot: previous?.scheduleInfluenceSnapshot,
-      activeDay: {
-        dateKey: agendaDateKey(now),
-        weekday,
-        blocks: previous?.activeDay?.dateKey === agendaDateKey(now) ? previous.activeDay.blocks : nextDay,
-        scheduleInformed: false,
-      },
+      activeDay:
+        previous?.activeDay?.dateKey === agendaDateKey(now)
+          ? previous.activeDay
+          : { dateKey: agendaDateKey(now), weekday, blocks: nextDay, scheduleInformed: false },
       personalizationAttemptDate: agendaDateKey(now),
     };
     registerInitialWish(villager, now);
