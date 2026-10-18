@@ -24,7 +24,9 @@ export const SEMANTIC_OPERATION_BUDGET = {
 } as const;
 export const semanticNarrationCore = (raw: Record<string, unknown>) =>
   Object.fromEntries(
-    Object.entries(raw).filter(([key]) => ["segments", "lines", "heardPlayerBy", "playerSpeechCapture"].includes(key)),
+    Object.entries(raw).filter(([key]) =>
+      ["segments", "lines", "heardPlayerBy", "playerSpeechCapture", "residentActions"].includes(key),
+    ),
   );
 export const semanticHash = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");

@@ -430,6 +430,13 @@ export function coerceSession(value: unknown): VenueScene {
                       row.semanticContinuedDomains as VenueSubmission["semanticContinuedDomains"],
                   }
                 : {}),
+              ...(asRecord(row.residentActionReceipt).version === 1
+                ? {
+                    residentActionReceipt: structuredClone(
+                      row.residentActionReceipt,
+                    ) as VenueSubmission["residentActionReceipt"],
+                  }
+                : {}),
               ...(asRecord(row.semanticProvenance).version === 2
                 ? {
                     semanticProvenance: structuredClone(

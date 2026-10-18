@@ -203,8 +203,54 @@ const model = {
       semanticStages.push(intent ? "intent" : "exchange");
       const response = intent ? semanticIntentAnswer : { ...semanticExchangeAnswer, intent: semanticIntentAnswer };
       assert(response, "A labeled System response is required");
+      // The fixture supplies meaning explicitly; System discovers these omitted Narration actions.
+      const accessActions = ((response as any).access ?? []).map(({ evidence, ...row }: any, index: number) => ({
+        ...row,
+        id: "discovered-" + index,
+        source: {
+          speakerId: packet.input.evidence[evidence[0]].speakerId,
+          quote: packet.input.evidence[evidence[0]].content,
+        },
+      }));
       return {
-        content: JSON.stringify({ ...response, sourceHash: packet.sourceHash }),
+        content: JSON.stringify({
+          ...response,
+          sourceHash: packet.sourceHash,
+          ...(packet.input.residentActions
+            ? {
+                access: [],
+                residentActionReview: {
+                  version: 1,
+                  additionalActions: accessActions,
+                  decisions: accessActions.map((a: any) => ({
+                    id: a.id,
+                    status: "accepted",
+                    reason: "Fixture supplies this resident action",
+                  })),
+                  coverage: packet.input.evidence.flatMap((line: any, segment: number) =>
+                    line.playerHeard && line.speakerId !== "player"
+                      ? [
+                          {
+                            segment,
+                            status: accessActions.some(
+                              (a: any) => a.source.speakerId === line.speakerId && a.source.quote === line.content,
+                            )
+                              ? "actions"
+                              : "none",
+                            actionIds: accessActions
+                              .filter(
+                                (a: any) => a.source.speakerId === line.speakerId && a.source.quote === line.content,
+                              )
+                              .map((a: any) => a.id),
+                            reason: "Explicit fixture meaning",
+                          },
+                        ]
+                      : [],
+                  ),
+                },
+              }
+            : {}),
+        }),
         finishReason: "stop",
         usage: { promptTokens: 10, completionTokens: 10 },
       };
@@ -229,7 +275,12 @@ const model = {
     narrationPrompts.push(messages.map((message: any) => message.content).join("\n"));
     assert.match(messages[0].content, /ZONE EVENTS/, "no acoustic interpreter or unexpected model request");
     assert(answer, "a model response must be explicitly supplied by this fixture");
-    let content = JSON.stringify(answer);
+    let content = JSON.stringify({
+      ...answer,
+      ...(messages.some((m: any) => m.content.includes("Always include residentActions"))
+        ? { residentActions: [] }
+        : {}),
+    });
     if (closeCoreBeforeEffects) {
       closeCoreBeforeEffects = false;
       const { memoryChanges, ...core } = answer;
@@ -1126,7 +1177,7 @@ try {
   const semanticPublic = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
   assert.doesNotMatch(
     semanticPublic.body,
-    /semanticIntent|semanticProvenance|semanticAccess|semanticReady|FORGED NARRATOR AUTHORITY/,
+    /semanticIntent|semanticProvenance|semanticAccess|semanticReady|residentActionReceipt|residentActions|FORGED NARRATOR AUTHORITY/,
   );
   assert.equal(modelCalls, beforeSemanticRead, "New-contract read and replay are provider-free");
   delete semanticExchangeAnswer.memoryChanges;

@@ -51,6 +51,7 @@ export type VenueSubmission = {
   openingProcessedAt?: string;
   openingContext?: { stage: string; projectId: string };
   openingSignal?: import("../rules/opening-project.js").OpeningSignal;
+  residentActionReceipt?: import("../rules/resident-actions.js").ResidentActionReceipt;
   speechCapture?: { version: 3; status: "captured" | "silent" };
   effectFailures?: Partial<
     Record<

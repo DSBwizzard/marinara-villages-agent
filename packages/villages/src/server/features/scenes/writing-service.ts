@@ -1,5 +1,10 @@
 import { openingSceneDirection, readOpeningSignal } from "../../domain/rules/opening-project.js";
 import {
+  RESIDENT_ACTION_WRITING,
+  readResidentActions,
+  assertResidentActionWitnesses,
+} from "../../domain/rules/resident-actions.js";
+import {
   playerSpeechCapture,
   materializePlayerSpeech,
   assertRecoveredSpeechPrivacy,
@@ -724,8 +729,13 @@ export function createSceneWriting({
         )
           block.text = "";
       }
+      if (venueOperationInput()?.residentActionsVersion === 1) blocks.push({ text: RESIDENT_ACTION_WRITING });
       blocks.push({
-        text: "System interprets consequences. Write Scene prose, exact speech/source and delivery metadata only. Omit memoryChanges, relationshipChanges, wishChanges, projectSpeech, roomEvents, sceneChange and interpretationRouting. Existing cards and private audience boundaries still govern characterization.",
+        text:
+          (venueOperationInput()?.residentActionsVersion === 1
+            ? "System interprets consequences. Write Scene prose, exact speech/source, delivery metadata and residentActions only."
+            : "System interprets consequences. Write Scene prose, exact speech/source and delivery metadata only.") +
+          " Omit memoryChanges, relationshipChanges, wishChanges, projectSpeech, roomEvents, sceneChange and interpretationRouting. Existing cards and private audience boundaries still govern characterization.",
       });
     }
     const fitted = fitVenueWritingMessages(model, blocks, input, maxTokens);
@@ -845,6 +855,13 @@ export function createSceneWriting({
           materializedRaw = materializePlayerSpeech(savedRaw, message);
           captureSources = playerSpeechCapture(materializedRaw, message, mode === "greet");
         } catch (error) {
+          if (venueOperationInput()?.residentActionsVersion === 1) {
+            await rejectVenueCompletion(
+              { model: model.model, connectionId: model.connectionId, reason: "speech-capture" },
+              { preserveWriting: true, stages: ["writing-completion:" + requestKey] },
+            );
+            throw error;
+          }
           if (!venueExplicitRetry()) throw error;
           recoveredRaw = await venueCheckpoint(
             "speech-capture:" +
@@ -1014,9 +1031,21 @@ export function createSceneWriting({
         responseDiagnostics: diagnostics,
       });
     }
+    let residentActions: ReturnType<typeof readResidentActions> | undefined;
+    if (venueOperationInput()?.residentActionsVersion === 1) {
+      try {
+        residentActions = readResidentActions(raw?.residentActions);
+      } catch (error) {
+        await rejectVenueCompletion(
+          { model: model.model, connectionId: model.connectionId, reason: "resident-actions" },
+          { preserveWriting: true, stages: ["writing-completion:" + requestKey] },
+        );
+        throw error;
+      }
+    }
     const semanticResult =
       session.semanticVersion === 2 && semantic
-        ? await semantic.exchange(session, message, parsed.lines, session.semanticIntent ?? null)
+        ? await semantic.exchange(session, message, parsed.lines, session.semanticIntent ?? null, residentActions)
         : null;
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
     const semanticAccess = semanticResult?.access;
@@ -1123,6 +1152,11 @@ export function createSceneWriting({
           if (!semanticResult) await rejectVenueCompletion();
           throw cause;
         }
+      }
+      if (semanticResult?.effects.residentActionReceipt) {
+        const receipt = semanticResult.effects
+          .residentActionReceipt as import("../../domain/rules/resident-actions.js").ResidentActionReceipt;
+        assertResidentActionWitnesses(receipt, semanticEvidence(parsed.lines));
       }
       if (semanticAccess) {
         // The interpreter proposes events; only the mechanically routed timeline owns witnesses.
@@ -1478,12 +1512,15 @@ export function createSceneWriting({
         sceneEnded,
         recollections,
         responseDiagnostics: diagnostics as ResponseDiagnostics | undefined,
+        residentActionReceipt: semanticResult?.effects.residentActionReceipt as
+          import("../../domain/rules/resident-actions.js").ResidentActionReceipt | undefined,
         semanticAccess,
         semanticProvenance: semanticResult
           ? ({
               version: 2 as const,
               sourceHash: semanticResult.sourceHash,
               ...(venueOperationInput()?.semanticPipelineVersion === 3 ? { pipelineVersion: 3 as const } : {}),
+              ...(venueOperationInput()?.residentActionsVersion === 1 ? { residentActionsVersion: 1 as const } : {}),
               authority: semanticResult.authority,
               interpretedAt: new Date().toISOString(),
             } as import("../../domain/models/semantic-model.js").SemanticProvenance)

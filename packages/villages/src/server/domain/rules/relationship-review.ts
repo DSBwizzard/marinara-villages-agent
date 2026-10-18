@@ -2,7 +2,7 @@ import type { RelationshipChange, RelationshipEvidenceLine, RelationshipReview }
 import type { VillageState } from "../models/world.js";
 import { asRecord } from "./coerce.js";
 import { RELATIONSHIP_POLICY } from "./relationship-policy.js";
-import { canInviteToZone, resolveVenueZone } from "./venue-zones.js";
+import { canInviteToZone, canRevokeZonePermission, resolveVenueZone } from "./venue-zones.js";
 import { createHash } from "node:crypto";
 
 export const emptyRelationshipReview = (): RelationshipReview => ({ changes: [], permissions: [], disclosures: [] });
@@ -113,7 +113,9 @@ export function parseRelationshipReview(
       visitorId === controllerId ||
       !venue ||
       !zone ||
-      !canInviteToZone(venue, zone, controllerId) ||
+      !(row.action === "revoke"
+        ? canRevokeZonePermission(venue, zone, controllerId)
+        : canInviteToZone(venue, zone, controllerId)) ||
       !["grant", "revoke"].includes(String(row.action))
     )
       throw new Error("A standing permission has no current controller or zone.");

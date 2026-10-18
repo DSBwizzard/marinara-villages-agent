@@ -16,6 +16,14 @@ For new admissions, pending memories and non-standing social updates do not bloc
 
 A Scene still ends after 30 minutes of inactivity. Expiry retains raw responses, checkpoints and uncertain billing receipts even if no player line was committed. Closed Scenes are archived evidence; expiry does not authorize replaying their effects into a new Scene.
 
+## Resident access actions
+
+New admissions also carry residentActionsVersion: 1. Narration supplies scoped resident actions bound to exact current speech or witnessed narration. The existing System exchange must disposition every proposal and cover every player-heard resident/narration segment, adding any omitted action. This remains two model requests. Invalid speech capture or action metadata holds the draft instead of purchasing a repair call.
+
+Code checks source/witness identity, current invitation authority, duration, conditions and scope before using existing access and standing-permission mechanics. Unresolved, rejected or contradictory actions hold the complete turn. Equivalent repeated invitations produce one effect. Invitations permit entry; they neither move the player nor reveal unseen contents. Standing revocation checks authority even when a space is closed; admission still checks availability. Unsupported conditions require clarification rather than unconditional permission.
+
+The private saved receipt retains proposals, review and the System response. Rejected completions use the existing bounded private diagnostic journal. Neither appears in public Scene data. Saved-response reuse is bound to the action payload as well as the draft; explicit retry reuses valid Narration and replaces only the rejected stage. Existing admissions retain their original contract and effects, with no retrospective interpretation or regeneration. These checks enforce explicit coverage and consistency; two models can still both miss the meaning of a sentence.
+
 ## Preparation
 
 Routine contract 2 asks for activities, allowed dayparts, optional weekday restrictions and fixed rhythms. Deterministic code constructs the seven-day choice structure and schedules. Contract 1 and legacy saved responses remain readable, including lossless four-daypart normalization. Long rest uses fixed rhythms; ordinary activity durations remain bounded.
