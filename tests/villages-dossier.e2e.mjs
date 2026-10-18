@@ -17,6 +17,7 @@ try {
     [900, 800],
     [768, 1024],
     [390, 844],
+    [390, 600],
     [320, 650],
   ].filter(([width]) => !process.env.VILLAGES_DOSSIER_WIDTH || width === Number(process.env.VILLAGES_DOSSIER_WIDTH))) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
@@ -168,6 +169,15 @@ try {
         wishHistoryCount: 0,
       })),
     };
+    relationships.profiles[0].knownWishes.push(
+      ...Array.from({ length: 12 }, (_, index) => ({
+        wishId: `shared-${index}`,
+        text: `Shared wish ${index + 1}`,
+        learnedAt: now,
+        status: "active",
+        facts: [],
+      })),
+    );
     await page.route("**/api/characters/summaries", (route) =>
       route.fulfill({ contentType: "application/json", body: "[]" }),
     );
@@ -269,14 +279,26 @@ try {
       await expect(menu.getByRole("button", { name, exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: /^Villagers \(/ }).click();
     const directory = page.getByRole("main", { name: "Villagers directory" });
+    await expect(directory.locator(`.${P}-directory-cover`)).toHaveCount(1);
     await expect(menu).toHaveCount(0);
     await directory.getByRole("searchbox", { name: "Search villagers" }).fill("explorer");
     await expect(directory.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(1);
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     const profile = page.getByRole("region", { name: "Mara profile", exact: true });
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
+    const settleTurn = () =>
+      profile
+        .locator(`.${P}-dossier-turn`)
+        .evaluateAll((nodes) =>
+          Promise.all(
+            nodes.flatMap((node) => node.getAnimations().map((animation) => animation.finished.catch(() => {}))),
+          ),
+        );
     await expect(profile).toBeVisible();
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
+    await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
+    await expect(profile.locator(`.${P}-dossier-content`)).toBeEmpty();
+    await tabs.getByRole("button", { name: "Venues", exact: true }).click();
     await expect(profile.getByText("Mara's workshop", { exact: true })).toBeVisible();
     await expect(profile.getByText("Other person's request", { exact: true })).toHaveCount(0);
     await profile.getByRole("button", { name: /Mara's workshop/ }).click();
@@ -301,6 +323,7 @@ try {
     await profile.getByRole("button", { name: "Retry signature", exact: true }).click();
     await expect(profile.getByRole("alert")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `overview-${width}-${height}.png`) });
+    await expect.poll(() => page.evaluate(() => document.fonts.check('17px "Villages Notebook"'))).toBe(true);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,
@@ -332,6 +355,21 @@ try {
     await expect(profile.getByText("Agenda destination", { exact: true })).toHaveCount(0);
     await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
     await expect(profile.getByText("Learn to swim", { exact: true }).first()).toBeVisible();
+    const tabBefore = await tabs.boundingBox();
+    const reading = profile.locator(`.${P}-dossier-content`);
+    assert.ok(
+      await reading.evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+        return node.scrollTop > 0;
+      }),
+      "Long section content scrolls vertically",
+    );
+    const tabAfter = await tabs.boundingBox();
+    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while content scrolls");
+    assert.equal(tabAfter.x, tabBefore.x);
+    await expect(profile.getByText("Shared wish 12", { exact: true }).first()).toBeVisible();
+    await settleTurn();
+    await page.screenshot({ path: resolve(output, `wishes-${width}-${height}.png`) });
     await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
     await expect(profile.getByText("PRIVATE MARA WISH", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI WISH", { exact: true })).toHaveCount(0);
@@ -365,8 +403,24 @@ try {
     await tabs.getByRole("button", { name: "Memories", exact: true }).click();
     await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toHaveCount(0);
+    if (width === 390) {
+      const query = profile.getByRole("searchbox", { name: "Search memories" });
+      await query.fill("PRIVATE");
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(query).toHaveValue("PRIVATE");
+      await expect(tabs.getByRole("button", { name: "Memories", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await page.setViewportSize({ width, height });
+      await expect(query).toHaveValue("PRIVATE");
+      await query.fill("");
+    }
+    await profile
+      .locator(`.${P}-memory-card`)
+      .filter({ hasText: "PRIVATE MARA MEMORY" })
+      .getByText("Details", { exact: true })
+      .click();
     await profile.getByRole("button", { name: "View evidence" }).click();
     await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
+    await settleTurn();
     await page.screenshot({ path: resolve(output, `inspect-${width}-${height}.png`) });
     page.once("dialog", (dialog) => dialog.accept());
     await profile.getByRole("button", { name: "Forget", exact: true }).click();
@@ -380,6 +434,7 @@ try {
     await profile.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveValue("explorer");
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeFocused();
+    await expect(directory.locator(`.${P}-directory-cover`)).toHaveCount(0);
     await directory.getByRole("searchbox", { name: "Search villagers" }).fill("");
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
     await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toHaveAttribute("aria-pressed", "false");
@@ -402,6 +457,7 @@ try {
       "src",
       signatureUrl,
     );
+    await profile.getByText("Manage", { exact: true }).click();
     await profile.getByRole("button", { name: "Compare card", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Apply refresh", exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "Apply refresh", exact: true }).click();
@@ -410,6 +466,14 @@ try {
     await expect(page.getByRole("heading", { name: "This villager has moved out" })).toBeVisible();
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toHaveCount(0);
+    await directory.getByRole("button", { name: "Back to menu", exact: true }).click();
+    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await expect(directory.locator(`.${P}-directory-cover`)).toHaveCount(1);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(directory.locator(`.${P}-directory-cover`)).toBeHidden();
+    await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
+    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
+    await expect(page.locator(`.${P}-dossier-turn`)).toBeHidden();
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,
