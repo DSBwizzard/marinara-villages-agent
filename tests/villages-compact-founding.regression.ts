@@ -1,3 +1,4 @@
+import { routineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
 import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/server/domain/rules/player-role.js";
 import {
@@ -62,6 +63,26 @@ const context = (native: ReturnType<typeof schedule> | null) => ({
   activeWishes: [],
   schedule: native,
 });
+
+// Ordinary activity bounds do not limit fixed overnight rest windows.
+for (const endMinute of [360, 480]) {
+  const answer = {
+    ...payload(0),
+    wishes: [],
+    palette: palette.map((row) => ({ ...row, duration: 90, flexible: false, essential: true, parts: [0, 1, 2, 3] })),
+    rhythm: [{ startMinute: 0, endMinute, activity: 0 }],
+  };
+  const strictContext = { ...context(null), contractVersion: 1 as const, allowInitialWish: false };
+  const profile = parseCompactFounding(answer, strictContext).agenda.routineProfile!;
+  const day = routineDay(profile, "a", new Date(2026, 0, 5, 12));
+  assert.equal(day[0].startMinute, 0);
+  assert.equal(day[0].endMinute, endMinute);
+  answer.palette[0].duration = 360;
+  assert.throws(
+    () => parseCompactFounding(answer, strictContext),
+    /Routine activity 1 .*duration 360; expected 30�240 minutes/,
+  );
+}
 
 async function main() {
   const unscheduled = parseCompactFounding(payload(0), context(null) as any);
@@ -206,6 +227,8 @@ async function main() {
       assert.equal(calls, before + 1, "role context adds no generation call");
     }
     assert.match(capturedPrompt, /Omit Wishes/);
+    assert.match(capturedPrompt, /30 to 240 inclusive/);
+    assert.match(capturedPrompt, /independently of palette duration/);
     assert.doesNotMatch(
       capturedPrompt,
       /chocolate|identifying a tune|stuck in their head|borrowing a pencil|repair a favorite chair|arrange a picnic|perform a song|"activity":"reading"/,

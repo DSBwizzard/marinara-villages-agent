@@ -144,8 +144,16 @@ export function parseCompactFounding(
   context: CompactFoundingContext,
 ): CompactFoundingResult {
   if (context.contractVersion === 1 && Array.isArray(payload.palette))
-    for (const value of payload.palette) {
+    for (const [index, value] of payload.palette.entries()) {
       const row = value as Record<string, unknown>;
+      if (
+        row &&
+        typeof row === "object" &&
+        (typeof row.duration !== "number" || !Number.isFinite(row.duration) || row.duration < 30 || row.duration > 240)
+      )
+        throw new Error(
+          `Routine activity ${index + 1} (${typeof row.activity === "string" ? row.activity.slice(0, 80) : "unnamed"}) has duration ${String(row.duration).slice(0, 30)}; expected 30�240 minutes.`,
+        );
       if (
         !row ||
         typeof row !== "object" ||
