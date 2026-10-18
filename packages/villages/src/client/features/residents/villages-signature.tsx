@@ -133,13 +133,8 @@ export function VillagerSignature({
           </button>
         ) : null}
       </div>
-      {view?.available && !view.recoverable && !busy && !running ? (
-        <p>One image request. Saved signatures are reused.</p>
-      ) : null}
-      {view?.recoverable && !busy && !running ? (
-        <p>The generated image is saved. Retry saving uses it without another image request.</p>
-      ) : null}
-      {view && !view.available ? <p>{view.unavailableReason} The local signature is available.</p> : null}
+      {view?.recoverable && !busy && !running ? <p>Image saved · retry saving available.</p> : null}
+      {view && !view.available ? <p>{view.unavailableReason}</p> : null}
       {view?.status === "interrupted" ? (
         <p role="status">Generation was interrupted and may have been charged. Retry is deliberate.</p>
       ) : null}

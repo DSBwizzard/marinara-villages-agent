@@ -143,10 +143,6 @@ export function VillagesRelationships({
     `}</style>
       <header>
         <h2>Relationships</h2>
-        <p>
-          Warmth is how someone feels about your company. Trust is their confidence in you. Each villager has their own
-          feelings.
-        </p>
       </header>
       {error ? <p role="alert">{error}</p> : null}
       {!view ? (
@@ -156,16 +152,8 @@ export function VillagesRelationships({
           {inspect && view.starting ? (
             <details className="villages-relationship-setup" open={view.starting.pending || undefined}>
               <summary>{view.starting.pending ? "Review starting ties" : "Relationship creator"}</summary>
-              <p>
-                Starting-tie acceptance, neutral setup, and spoiler visibility apply to the entire village. Directional
-                edits change only the selected tie.
-              </p>
               {view.starting.pending ? (
                 <>
-                  <p>
-                    These suggestions use explicit existing history. Accept them, start neutral, or reveal values to
-                    adjust them. Creator choices do not tell your player character private information.
-                  </p>
                   <div className="villages-relationship-grid">
                     {view.starting.summaries
                       .filter((tie) => tie.status !== "No established history")
@@ -223,7 +211,6 @@ export function VillagesRelationships({
                 </>
               ) : (
                 <>
-                  <p>Creator values are visible for this village. Exact reasons remain learned through gameplay.</p>
                   <button
                     type="button"
                     className={button}
