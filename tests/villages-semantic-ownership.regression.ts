@@ -149,6 +149,7 @@ async function main() {
   let loreReads = 0;
   let accessRows: any[] = [];
   let actionReview: ((packet: any) => any) | undefined;
+  let narrationPrompt = "";
   let narrativeActions: unknown;
   let behavior: "valid" | "wrong-hash" | "length" | "missing-domain" | "needs-context" = "valid";
   let lastPacket: any;
@@ -211,6 +212,7 @@ async function main() {
       assert.equal(options.responseFormat && (options.responseFormat as { type: string }).type, "json_object");
       if (!isSystem) {
         calls.push("narration");
+        narrationPrompt = messages.map((m) => m.content).join("\n");
         return {
           finishReason: "stop",
           content: JSON.stringify({
@@ -858,6 +860,9 @@ async function main() {
   });
   const actionResult = await actionWriter.generate(actionScene, "A quiet conversation", "chat", "", null);
   assert.deepEqual(calls, ["narration", "exchange"], "Actions use exactly the existing two calls");
+  assert.match(narrationPrompt, /Never put speakerId:"player" in segments/);
+  assert.doesNotMatch(narrationPrompt, /Represent CURRENT player speech first/);
+  assert.match(narrationPrompt, /Unquoted:\{text:"exact span",occurrence:1\}/);
   assert.equal(actionResult.semanticProvenance?.residentActionsVersion, 1);
   assert(actionResult.residentActionReceipt?.systemResponse?.includes("residentActionReview"));
   const decodedReceipt = coerceSession({
