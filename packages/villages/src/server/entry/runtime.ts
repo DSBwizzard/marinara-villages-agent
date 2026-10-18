@@ -198,7 +198,7 @@ import {
 import { registerInitialWish } from "../features/residents/wishes/wish-initial.js";
 import { expireResidentWishes } from "../domain/rules/wish-lifecycle-rules.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
-import { proposeCompactFounding } from "../features/founding/founding-compact.js";
+import { proposeCompactFounding, proposeOpeningIdea } from "../features/founding/founding-compact.js";
 import { rollActiveAgendas } from "../features/residents/resident-agendas.js";
 import { createPersonaCache } from "../features/settings/persona-cache-service.js";
 import { configurePersonaCache } from "../features/settings/persona-cache.js";
@@ -469,6 +469,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const completionOwner = activationScope();
   const releaseCompletions = configureModelCompletions(
     createModelCompletions({
+      mutateDocument: createDocumentMutator(villagesDocuments),
       readRuntimeDebug,
       runtimeDebug,
       backgroundCalls: background.backgroundCalls,
@@ -1112,6 +1113,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseFounding = configureFoundingPreparation(
     createFoundingPreparation({
+      proposeOpeningIdea,
       backgroundJobSnapshot,
       backgroundLegacyFounding,
       retireLegacyFounding,

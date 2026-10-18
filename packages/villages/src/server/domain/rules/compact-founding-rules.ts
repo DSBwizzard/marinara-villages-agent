@@ -1,4 +1,4 @@
-import { readOpeningProposal } from "./opening-project.js";
+import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import type { VillagerCard } from "../models/catalog-model.js";
 import type {
   VillageAgenda,
@@ -30,12 +30,14 @@ type PaletteEntry = {
   duration: number;
   essential: boolean;
   parts: number[];
+  weekdays?: number[];
 };
 
 export type CompactFoundingContext = {
+  /** Legacy frozen requests may include a proposal; Routine validation ignores it. */
   openingProposal?: boolean;
   sourceRevision?: string;
-  contractVersion?: 1;
+  contractVersion?: 1 | 2;
   circumstances?: unknown;
   semanticVersion?: 2;
   wishAttemptId?: string;
@@ -57,9 +59,9 @@ export type CompactFoundingContext = {
 };
 
 export type CompactFoundingResult = {
+  openingProposal?: unknown;
   agenda: VillageAgenda;
   moves: VillageRemapMove[];
-  openingProposal?: import("../../../shared/contracts/opening.js").OpeningProposal;
 };
 
 const compactKey = (activity: string): string => activity.trim().replace(/\s+/g, " ").toLocaleLowerCase();
@@ -118,13 +120,17 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
     // Older prompts said "venue number", and some saved replies use that spelling.
     // Preserve exact numeric indexes and reject ambiguous or invented destinations.
     const venue = row.venue ?? row.venueNumber;
-    if (!activity || activity.length > 160)
+    if (!activity || activity.length > ROUTINE_CONTRACT.maxActivityCharacters)
       throw new Error(`Village activity ${index + 1} needs activity text of 1–160 characters.`);
     if (!Number.isInteger(venue) || (venue as number) < 0 || (venue as number) > venues.length)
       throw new Error(`Village activity ${index + 1} needs a numeric venue index from 0 to ${venues.length}.`);
     return {
       activity,
-      duration: Math.max(30, Math.min(240, Number(row.duration) || 90)),
+      ...(Array.isArray(row.weekdays) ? { weekdays: row.weekdays as number[] } : {}),
+      duration: Math.max(
+        ROUTINE_CONTRACT.minMinutes,
+        Math.min(ROUTINE_CONTRACT.maxMinutes, Number(row.duration) || 90),
+      ),
       parts:
         Array.isArray(row.parts) &&
         row.parts.length &&
@@ -139,21 +145,29 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
   });
 }
 
+/** Models select activities and dayparts; code owns the repeated calendar structure. */
+export function compileRoutineDays(palette: readonly PaletteEntry[], residentId: string): number[][] {
+  const seed = Number.parseInt(semanticHash(residentId).slice(0, 8), 16);
+  return VILLAGE_WEEKDAYS.map((_, day) =>
+    Array.from({ length: 8 }, (_, slot) => {
+      const candidates = palette.flatMap((activity, index) =>
+        activity.parts.includes(Math.floor(slot / 2)) && (!activity.weekdays || activity.weekdays.includes(day))
+          ? [index]
+          : [],
+      );
+      if (!candidates.length) throw new Error("Routine activities must cover every daypart.");
+      return candidates[(seed + day * 2 + slot) % candidates.length]!;
+    }),
+  );
+}
+
 export function parseCompactFounding(
   payload: Record<string, unknown>,
   context: CompactFoundingContext,
 ): CompactFoundingResult {
-  if (context.contractVersion === 1 && Array.isArray(payload.palette))
-    for (const [index, value] of payload.palette.entries()) {
+  if (context.contractVersion && Array.isArray(payload.palette))
+    for (const value of payload.palette) {
       const row = value as Record<string, unknown>;
-      if (
-        row &&
-        typeof row === "object" &&
-        (typeof row.duration !== "number" || !Number.isFinite(row.duration) || row.duration < 30 || row.duration > 240)
-      )
-        throw new Error(
-          `Routine activity ${index + 1} (${typeof row.activity === "string" ? row.activity.slice(0, 80) : "unnamed"}) has duration ${String(row.duration).slice(0, 30)}; expected 30–240 minutes.`,
-        );
       if (
         !row ||
         typeof row !== "object" ||
@@ -161,13 +175,20 @@ export function parseCompactFounding(
         typeof row.essential !== "boolean" ||
         typeof row.duration !== "number" ||
         !Number.isFinite(row.duration) ||
-        row.duration < 30 ||
-        row.duration > 240 ||
+        row.duration < ROUTINE_CONTRACT.minMinutes ||
+        row.duration > ROUTINE_CONTRACT.maxMinutes ||
         !Array.isArray(row.parts) ||
         !row.parts.length ||
         row.parts.some((part) => !Number.isInteger(part) || part < 0 || part > 3)
       )
         throw new Error("Routine activity fields are incomplete or invalid.");
+      if (
+        row.weekdays !== undefined &&
+        (!Array.isArray(row.weekdays) ||
+          !row.weekdays.length ||
+          row.weekdays.some((day) => !Number.isInteger(day) || Number(day) < 0 || Number(day) > 6))
+      )
+        throw new Error("Routine weekday preferences must use Monday–Sunday indexes 0–6.");
       if (
         row.zoneId !== undefined &&
         (typeof row.zoneId !== "string" ||
@@ -178,9 +199,12 @@ export function parseCompactFounding(
         throw new Error("Routine activity has an unavailable Zone identifier.");
     }
   const palette = checkedPalette(payload.palette, context.venues);
-  if (context.contractVersion === 1 && (!Array.isArray(payload.palette) || payload.palette.length > 8))
+  if (
+    context.contractVersion &&
+    (!Array.isArray(payload.palette) || payload.palette.length > ROUTINE_CONTRACT.maxActivities)
+  )
     throw new Error("Routine requires 6–8 activities.");
-  const days = payload.days;
+  const days = context.contractVersion === 2 ? compileRoutineDays(palette, context.card.id) : payload.days;
   if (
     !Array.isArray(days) ||
     days.length !== 7 ||
@@ -315,6 +339,7 @@ export function parseCompactFounding(
     ]),
   );
   return {
+    ...(context.openingProposal ? { openingProposal: payload.openingProposal } : {}),
     agenda: {
       routineProfile: profile,
       wishes: [...context.activeWishes, ...wishes].slice(0, Math.min(2, MAX_VILLAGER_WISHES)),
@@ -327,9 +352,6 @@ export function parseCompactFounding(
       source: "village",
       generatedAt: at,
     },
-    openingProposal: context.openingProposal
-      ? readOpeningProposal(payload.openingProposal, context.characterId ?? context.card.id)
-      : undefined,
     moves: [],
   };
 }

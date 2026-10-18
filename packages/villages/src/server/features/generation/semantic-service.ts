@@ -43,7 +43,7 @@ export function createSemanticService(ports: SemanticPorts) {
     validate: (raw: Record<string, unknown>, hash: string, savedInput: Input) => Result,
   ): Promise<Result> {
     // Context is frozen once per operation/source, even when world state changes during recovery.
-    const taskOutput = stage === "intent" ? 4096 : 8192;
+    const taskOutput = stage === "intent" ? 4096 : asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
     const identity = asRecord(input);
     const key = `semantic-v2:${stage}:${semanticHash([identity.message, identity.evidence])}`;
     return ports.venueCheckpoint(key, async () => {
@@ -182,6 +182,91 @@ export function createSemanticService(ports: SemanticPorts) {
     });
   }
 
+  function readIntent(
+    raw: Record<string, unknown>,
+    hash: string,
+    savedInput: { message: string; context: ReturnType<typeof semanticContext> },
+    state: Awaited<ReturnType<SemanticPorts["readVillageState"]>>,
+    scene: VenueScene,
+  ): SemanticIntent {
+    const message = savedInput.message;
+
+    if (!["resolved", "unresolved"].includes(String(raw.status)) || typeof raw.instructions !== "string")
+      throw badGateway("System intent result is incomplete. Explicit retry required.");
+    const movement = asRecord(raw.movement);
+    const rawTimeline = Array.isArray(raw.timeline) ? raw.timeline.map(asRecord) : [];
+    const actionIndex = rawTimeline.findIndex((step) => step.kind === "action");
+    const actionZone = rawTimeline
+      .slice(0, actionIndex < 0 ? 0 : actionIndex)
+      .reverse()
+      .find((step) => step.kind === "movement" && typeof step.zoneId === "string")?.zoneId;
+    const venue = state.venues.find((row) => row.id === scene.placeId);
+    const action =
+      raw.action === null
+        ? null
+        : readVenueSceneChange(
+            raw.action,
+            venue
+              ? actionZone || scene.zoneId
+                ? venueInZone(venue, String(actionZone || scene.zoneId))
+                : venueInArea(venue, scene.area, scene.spaceClass, scene.privateOwnerId)
+              : undefined,
+            scene.activeIds,
+            state.villagers.map((person) => person.characterId),
+          );
+    if (raw.action !== null && !action) throw badGateway("System prepared action is incomplete.");
+    if (
+      !Array.isArray(raw.timeline) ||
+      raw.timeline.length > 24 ||
+      (raw.status === "resolved" && savedInput.message.trim() && !raw.timeline.length)
+    )
+      throw badGateway("System source timeline is incomplete.");
+    let cursor = 0;
+    const timeline = raw.timeline.map((value) => {
+      const row = asRecord(value);
+      const text = typeof row.text === "string" ? row.text : "";
+      const start = text ? savedInput.message.indexOf(text, cursor) : -1;
+      if (
+        !text ||
+        start < 0 ||
+        !["speech", "thought", "action", "movement", "context"].includes(String(row.kind)) ||
+        (row.targetId !== undefined &&
+          row.targetId !== "player" &&
+          !savedInput.context.referenceActors.some((actor) => actor.id === row.targetId)) ||
+        (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery))) ||
+        (raw.status === "resolved" && row.kind === "movement" && typeof row.zoneId !== "string") ||
+        (row.zoneId !== undefined &&
+          (row.kind !== "movement" || !savedInput.context.zones.some((zone) => zone.id === row.zoneId)))
+      )
+        throw badGateway("System source timeline has invalid or reordered spans.");
+      cursor = start + text.length;
+      return {
+        kind: row.kind as SemanticIntent["timeline"][number]["kind"],
+        text,
+        start,
+        end: cursor,
+        ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
+        ...(row.delivery ? { delivery: row.delivery as "ordinary" | "whisper" | "shout" } : {}),
+        ...(typeof row.zoneId === "string" ? { zoneId: row.zoneId } : {}),
+      };
+    });
+    if (timeline.filter((step) => step.kind === "movement").length > 8)
+      throw badGateway("The movement timeline exceeds its supported step limit.");
+    return {
+      timeline,
+      version: 2,
+      sourceHash: hash,
+      status: raw.status as SemanticIntent["status"],
+      reason: typeof raw.reason === "string" ? raw.reason : "",
+      instructions: raw.instructions,
+      action,
+      movement:
+        typeof movement.zoneId === "string" && movement.quote === message
+          ? { zoneId: movement.zoneId, quote: message }
+          : null,
+    };
+  }
+
   async function intent(scene: VenueScene, message: string): Promise<SemanticIntent> {
     const state = await ports.readVillageState();
     return ask(
@@ -192,82 +277,7 @@ export function createSemanticService(ports: SemanticPorts) {
         "Only existing supported effects and current reachable targets. Do not create resources without established source/capability. Required resident consent absent from evidence means requires-response in instructions and no completed action. " +
         "For ordered Zone movement mixed with speech, include zoneId on EACH movement timeline span (at most 8); keep source order. movement:{zoneId,quote:exact whole input} is only the shortcut for a pure move. Each movement uses an existing permitted route; no retroactive witnessing. Multiple persistent physical steps needing intermediate receipts or unsupported effects remain unresolved. " +
         "Instructions identify actual speech/delivery, addressees, thoughts, plans, action order and prepared outcomes for Narration; they are not character speech. No action means action:null. Conversational input is resolved. Unknown necessary meaning is unresolved.",
-      (raw, hash, savedInput): SemanticIntent => {
-        if (!["resolved", "unresolved"].includes(String(raw.status)) || typeof raw.instructions !== "string")
-          throw badGateway("System intent result is incomplete. Explicit retry required.");
-        const movement = asRecord(raw.movement);
-        const rawTimeline = Array.isArray(raw.timeline) ? raw.timeline.map(asRecord) : [];
-        const actionIndex = rawTimeline.findIndex((step) => step.kind === "action");
-        const actionZone = rawTimeline
-          .slice(0, actionIndex < 0 ? 0 : actionIndex)
-          .reverse()
-          .find((step) => step.kind === "movement" && typeof step.zoneId === "string")?.zoneId;
-        const venue = state.venues.find((row) => row.id === scene.placeId);
-        const action =
-          raw.action === null
-            ? null
-            : readVenueSceneChange(
-                raw.action,
-                venue
-                  ? actionZone || scene.zoneId
-                    ? venueInZone(venue, String(actionZone || scene.zoneId))
-                    : venueInArea(venue, scene.area, scene.spaceClass, scene.privateOwnerId)
-                  : undefined,
-                scene.activeIds,
-                state.villagers.map((person) => person.characterId),
-              );
-        if (raw.action !== null && !action) throw badGateway("System prepared action is incomplete.");
-        if (
-          !Array.isArray(raw.timeline) ||
-          raw.timeline.length > 24 ||
-          (raw.status === "resolved" && savedInput.message.trim() && !raw.timeline.length)
-        )
-          throw badGateway("System source timeline is incomplete.");
-        let cursor = 0;
-        const timeline = raw.timeline.map((value) => {
-          const row = asRecord(value);
-          const text = typeof row.text === "string" ? row.text : "";
-          const start = text ? savedInput.message.indexOf(text, cursor) : -1;
-          if (
-            !text ||
-            start < 0 ||
-            !["speech", "thought", "action", "movement", "context"].includes(String(row.kind)) ||
-            (row.targetId !== undefined &&
-              row.targetId !== "player" &&
-              !savedInput.context.referenceActors.some((actor) => actor.id === row.targetId)) ||
-            (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery))) ||
-            (raw.status === "resolved" && row.kind === "movement" && typeof row.zoneId !== "string") ||
-            (row.zoneId !== undefined &&
-              (row.kind !== "movement" || !savedInput.context.zones.some((zone) => zone.id === row.zoneId)))
-          )
-            throw badGateway("System source timeline has invalid or reordered spans.");
-          cursor = start + text.length;
-          return {
-            kind: row.kind as SemanticIntent["timeline"][number]["kind"],
-            text,
-            start,
-            end: cursor,
-            ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
-            ...(row.delivery ? { delivery: row.delivery as "ordinary" | "whisper" | "shout" } : {}),
-            ...(typeof row.zoneId === "string" ? { zoneId: row.zoneId } : {}),
-          };
-        });
-        if (timeline.filter((step) => step.kind === "movement").length > 8)
-          throw badGateway("The movement timeline exceeds its supported step limit.");
-        return {
-          timeline,
-          version: 2,
-          sourceHash: hash,
-          status: raw.status as SemanticIntent["status"],
-          reason: typeof raw.reason === "string" ? raw.reason : "",
-          instructions: raw.instructions,
-          action,
-          movement:
-            typeof movement.zoneId === "string" && movement.quote === message
-              ? { zoneId: movement.zoneId, quote: message }
-              : null,
-        };
-      },
+      (raw, hash, savedInput) => readIntent(raw, hash, savedInput, state, scene),
     );
   }
 
@@ -279,11 +289,15 @@ export function createSemanticService(ports: SemanticPorts) {
   ): Promise<SemanticExchange> {
     const state = await ports.readVillageState();
     const evidence = semanticEvidence(lines);
-    const context = semanticContext(scene, state, message);
+    const combined = scene.operation?.input.semanticPipelineVersion === 3;
+    const context = semanticContext(scene, state, message, combined);
     return ask(
       "exchange",
-      { message, evidence, prepared, context },
-      "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash,consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false},action:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}}. Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
+      { message, evidence, prepared, context, ...(combined ? { pipelineVersion: 3 } : {}) },
+      (combined
+        ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. Include every meaningful input span in source order. Zone movements require exact existing zoneId. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
+        : "") +
+        "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash,consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false},action:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}}. Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
         "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
         "events independently discovers resident moves [{characterId,zoneId,segment:narration index}], playerMoves:[{zoneId,segment:narration index}] matching every prepared movement timeline span, departures/contactEnd [{source:speech index}], sceneEnded:{source}, residenceRequest:{source,venueId}, residenceDecision:{source,approved}, upgradeRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
         'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ' +
@@ -297,6 +311,11 @@ export function createSemanticService(ports: SemanticPorts) {
       (raw, hash, savedInput): SemanticExchange => {
         if (raw.consistent !== true)
           throw badGateway("System could not establish a consistent Scene outcome. The draft is preserved.");
+        const interpretedIntent = combined
+          ? readIntent(asRecord(raw.intent), hash, savedInput, state, scene)
+          : undefined;
+        if (interpretedIntent?.status === "unresolved")
+          throw badGateway(interpretedIntent.reason || "The action needs clarification. The draft is preserved.");
         const effects = readSemanticEffects(raw, hash);
         if (savedInput.context.opening) {
           if (raw.openingSignal === undefined)
@@ -476,6 +495,7 @@ export function createSemanticService(ports: SemanticPorts) {
           throw badGateway("System authority metadata is missing or inconsistent. The draft is preserved.");
         return {
           version: 2,
+          ...(interpretedIntent ? { intent: interpretedIntent } : {}),
           checkpointKey: `semantic-v2:exchange:${semanticHash([savedInput.message, savedInput.evidence])}`,
           sourceHash: hash,
           authority,

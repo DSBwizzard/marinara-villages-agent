@@ -1150,17 +1150,18 @@ export function createSceneCommands({
     return moveVenueZone(sessionId, legacyZoneId(venue, "private", "residence", ownerId), expectedSceneRevision);
   }
 
-  async function greetVenue(id: string, retryOfAttemptId?: string): Promise<VenueScene> {
-    return withSceneActivation(() => greetVenueInActivation(id, retryOfAttemptId));
+  async function greetVenue(id: string, retryOfAttemptId?: string, recovery = false): Promise<VenueScene> {
+    return withSceneActivation(() => greetVenueInActivation(id, retryOfAttemptId, recovery));
   }
 
-  async function greetVenueInActivation(id: string, retryOfAttemptId?: string): Promise<VenueScene> {
+  async function greetVenueInActivation(id: string, retryOfAttemptId?: string, recovery = false): Promise<VenueScene> {
     const work = sceneWork();
     const inFlight = work.greetingTask(id);
     if (inFlight) return inFlight.task;
     const started = performance.now();
     const controller = new AbortController();
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(28_000)]);
+    const signal = controller.signal;
+    let coordinated = false;
     let stage = "session read";
     const trace: GreetingTrace = (next, elapsedMs, detail = "") => {
       stage = next;
@@ -1182,6 +1183,9 @@ export function createSceneCommands({
             ? admission.operation.input.writingContractVersion !== undefined
               ? {
                   writingContractVersion: admission.operation.input.writingContractVersion,
+                  ...(admission.operation.input.semanticPipelineVersion
+                    ? { semanticPipelineVersion: admission.operation.input.semanticPipelineVersion }
+                    : {}),
                   ...(admission.operation.input.semanticBudget
                     ? { semanticBudget: admission.operation.input.semanticBudget }
                     : {}),
@@ -1192,16 +1196,29 @@ export function createSceneCommands({
               : {}
             : {
                 writingContractVersion: 3,
-                ...(admission.semanticVersion === 2 ? { semanticBudget: SEMANTIC_OPERATION_BUDGET } : {}),
+                ...(admission.semanticVersion === 2
+                  ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3 }
+                  : {}),
                 writingCapabilities: sceneWritingCapabilities(await readVillageState(), admission),
               };
         signal.throwIfAborted();
-        return coordinateVenue(id, "greeting", "greet", writingInput, undefined, retryOfAttemptId, () =>
-          Promise.race([greetVenueOnce(id, signal, trace), aborted]),
+        coordinated = true;
+        return coordinateVenue(
+          id,
+          "greeting",
+          "greet",
+          writingInput,
+          undefined,
+          retryOfAttemptId,
+          () => greetVenueOnce(id, venueOperationSignal() ?? signal, trace),
+          { recovery },
         );
       }),
     ]);
-    work.rememberGreeting(id, task, () => controller.abort());
+    work.rememberGreeting(id, task, () => {
+      controller.abort();
+      if (coordinated) void cancelVenueOperation(id).catch(() => {});
+    });
     try {
       return await task;
     } catch (error) {
@@ -1212,11 +1229,6 @@ export function createSceneCommands({
         Math.round(performance.now() - started),
         error instanceof Error ? error.message : String(error),
       );
-      if (signal.reason instanceof DOMException && signal.reason.name === "TimeoutError")
-        throw new VillagesRequestError(
-          504,
-          "The scene opening exceeded 28 seconds. Retry it or continue without an opening.",
-        );
       throw error;
     } finally {
       signal.removeEventListener("abort", onAbort);
@@ -1744,6 +1756,17 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       : undefined;
     const payload = {
       ...(scene.semanticVersion === 2
+        ? scene.operation?.id === input.submissionId
+          ? scene.operation.input.semanticPipelineVersion
+            ? { semanticPipelineVersion: scene.operation.input.semanticPipelineVersion }
+            : {}
+          : prior
+            ? prior.semanticProvenance?.pipelineVersion === 3
+              ? { semanticPipelineVersion: 3 }
+              : {}
+            : { semanticPipelineVersion: 3 }
+        : {}),
+      ...(scene.semanticVersion === 2
         ? {
             semanticBudget:
               scene.operation?.id === input.submissionId
@@ -1922,7 +1945,12 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     }
     if (input.mode !== "leave" && !input.message.trim()) throw badRequest("Write something before sending it.");
     if (input.message.length > 4000) throw badRequest("A line can be at most 4000 characters.");
-    if (session.semanticVersion === 2 && semantic && input.mode !== "leave") {
+    if (
+      session.semanticVersion === 2 &&
+      semantic &&
+      input.mode !== "leave" &&
+      venueOperationInput()?.semanticPipelineVersion !== 3
+    ) {
       const intent = await semantic.intent(session, input.message);
       if (intent.status === "unresolved") throw conflict(intent.reason || "The action needs clarification.");
       session = { ...session, semanticIntent: intent };
@@ -2175,7 +2203,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
             input.mode === "contact" ? "chat" : input.mode,
             responseTargetId,
             null,
-            venueOperationSignal() ?? AbortSignal.timeout(90_000),
+            venueOperationSignal(),
           ),
         );
     if (!explicitSceneActions() && !contactIntentUsed && reply.contactIntent) {

@@ -237,6 +237,16 @@ async function main() {
             access: accessRows,
             events: { moves: [], departures: [], contactEnd: [] },
           };
+      if (!intent && packet.input.pipelineVersion === 3)
+        Object.assign(result, {
+          intent: {
+            status: "resolved",
+            instructions: "",
+            action: null,
+            movement: null,
+            timeline: packet.input.message ? [{ kind: "speech", text: packet.input.message }] : [],
+          },
+        });
       if (behavior === "missing-domain") delete (result as Record<string, unknown>).memoryChanges;
       return {
         finishReason: behavior === "length" ? "length" : "stop",
@@ -538,6 +548,17 @@ async function main() {
   scene.activeIds = [];
   openingSignal = null;
   spoofOpening = false;
+  checkpoints.clear();
+  calls.length = 0;
+  const combinedScene = { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as typeof scene;
+  const combinedWriter = createSceneWriting({
+    ...writerPorts,
+    venueOperationInput: () => ({ semanticPipelineVersion: 3 }),
+  });
+  const combined = await combinedWriter.generate(combinedScene, "Two request conversation", "chat", "", null);
+  assert.deepEqual(calls, ["narration", "exchange"], "Current writer checks input and reply with one System request");
+  assert.equal(combined.semanticProvenance?.pipelineVersion, 3);
+  assert.equal(combined.semanticProvenance?.authority?.physical, false);
   const processing = createExchangeProcessing({
     seed: state.seed,
     sceneId: scene.id,
@@ -553,6 +574,9 @@ async function main() {
   for (const row of Object.values(processing.domains)) row.status = "applied";
   processing.domains.memories.status = "failed";
   assert.match(semanticBlocker(pendingScene)!, /Continue/);
+  turn.semanticProvenance.pipelineVersion = 3;
+  assert.equal(semanticBlocker(pendingScene), null, "Optional memory failure does not block new play");
+  turn.semanticProvenance.pipelineVersion = undefined;
   continueSemanticDomain(turn, "memories");
   assert.equal(semanticBlocker(pendingScene), null);
   turn.semanticProvenance.authority = { standing: true };

@@ -976,7 +976,6 @@ export function useGreetRoom(ports: {
         const answer = await request<{ session: SceneView }>("/rooms/greet", {
           method: "POST",
           body: JSON.stringify({ sessionId }),
-          signal: AbortSignal.timeout(30_000),
         });
         if (!owns()) return;
         if (entry && !entry.handoff(answer.session)) return;
@@ -1092,9 +1091,10 @@ export function useRetrySavedScene(ports: {
           submissionId: operation.id,
           operationId: operation.id,
           expectedSceneRevision: room.sceneRevision ?? 0,
-          retryOfAttemptId: operation.attemptId,
+          ...(operation.kind === "greet" && operation.recoverable
+            ? { recovery: true }
+            : { retryOfAttemptId: operation.attemptId }),
         }),
-        signal: AbortSignal.timeout(300_000),
       });
       if (!lifetime.owns(claim)) return;
       setRoom(currentRoom(answer.session));

@@ -1,3 +1,6 @@
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
+import { proposalSourceCompatible } from "../../domain/rules/opening-proposal-source.js";
+import type { proposeOpeningIdea } from "./founding-compact.js";
 import { readOpeningProposal } from "../../domain/rules/opening-project.js";
 import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { foundingIdentity } from "../../domain/rules/founding-requests.js";
@@ -6,7 +9,7 @@ import { villageFoundingSetting, remapVenues } from "../../domain/rules/prompt-p
 import { readSemanticWishCriteria } from "../../domain/rules/wish-criteria.js";
 import { coerceWish } from "../../domain/rules/prompt-preset.js";
 import type { FoundingRetry, FoundingTaskKind } from "../../../shared/contracts/founding-tasks.js";
-import { foundingCompletedIds, foundingSlot, foundingTaskRevision } from "../../domain/rules/founding-tasks.js";
+import { foundingSlot, foundingTaskRevision } from "../../domain/rules/founding-tasks.js";
 import { parseCompactFoundingCompletion } from "../../domain/rules/compact-founding-rules.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
@@ -30,6 +33,7 @@ import type { buildVillageSnapshot } from "../world/snapshot.js";
 import type { seedFoundingVenueDetails } from "./founding-drafts.js";
 import type { reportFoundingProgress } from "./founding-progress.js";
 export interface FoundingPreparationPorts {
+  proposeOpeningIdea?: typeof proposeOpeningIdea;
   backgroundJobSnapshot: typeof backgroundJobSnapshot;
   backgroundLegacyFounding: typeof backgroundLegacyFounding;
   retireLegacyFounding: typeof retireLegacyFounding;
@@ -78,7 +82,8 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       const initial = await readVillageState();
       seed = initial.seed;
       if (initial.foundingPreparation?.status !== "pending") return;
-      if (!initial.foundingPreparation.venueDetailsSeeded) {
+      const targeted = !!initial.foundingPreparation.selectedTasks?.length;
+      if (!targeted && !initial.foundingPreparation.venueDetailsSeeded) {
         try {
           await reportFoundingProgress(initial.seed, {
             phase: "venues",
@@ -131,7 +136,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           villagesLogger().warn("[villages] initial venue details unavailable: %s", String(error));
           await mutateVillageState((state) => {
             if (state.seed === initial.seed && state.foundingPreparation?.status === "pending")
-              state.foundingPreparation.venueDetailsSeeded = true;
+              state.foundingPreparation.error = safeFailureMessage(error).slice(0, 300);
           });
         }
       }
@@ -143,7 +148,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           currentId: "",
           attempt: undefined,
         });
-        await preparePrivateSpaces();
+        if (!targeted) await preparePrivateSpaces();
         const prepared = await readVillageState();
         if (prepared.seed !== initial.seed) return;
         const blocked = privatePreparationRooms(prepared).find(({ zone }) => zone.preparation?.status !== "ready");
@@ -154,11 +159,9 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       } catch (error) {
         await mutateVillageState((state) => {
           if (state.seed === initial.seed && state.foundingPreparation?.status === "pending") {
-            state.foundingPreparation.status = "failed";
             state.foundingPreparation.error = safeFailureMessage(error).slice(0, 300);
           }
         });
-        return;
       }
       await initializeTasks(initial.seed);
       let connectionBlocked = false;
@@ -277,22 +280,81 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           }
         }
       }
+      await salvageOpeningIdeas(await readVillageState());
+      // Opening ideas are independent of Routine/Wish parsing and commit one resident at a time.
+      let openingError = "";
+      if (!targeted && !connectionBlocked) {
+        for (const id of initial.opening?.residentIds ?? []) {
+          try {
+            const live = await readVillageState();
+            if (live.seed !== initial.seed || live.opening?.id !== initial.opening?.id) return;
+            if (
+              live.opening.stage !== "gathering" ||
+              live.opening.proposals.some((row) => row.residentId === id) ||
+              !live.villagers.some((row) => row.characterId === id)
+            )
+              continue;
+            const context = await readFoundingResidentContext(id);
+            if (!context || !ports.proposeOpeningIdea) throw new Error("Opening idea preparation is unavailable.");
+            if (!proposalSourceCompatible({ input: { context } }, live, id))
+              throw new Error("Opening context changed. Retry preparation.");
+            const source = backgroundRevision([context.sourceRevision, context.circumstances]);
+            const proposal = await ports.proposeOpeningIdea(
+              context,
+              `opening:${live.seed}:${live.opening.id}:${source}:${id}`,
+              !!live.foundingPreparation?.retryActions?.length,
+            );
+            await mutateVillageState((state) => {
+              if (
+                state.seed !== live.seed ||
+                state.opening?.id !== live.opening?.id ||
+                state.opening?.stage !== "gathering" ||
+                !proposalSourceCompatible({ input: { context } }, state, id) ||
+                !state.villagers.some((row) => row.characterId === id)
+              )
+                throw new Error("Opening changed. Saved idea is preserved.");
+              if (!state.opening.proposals.some((row) => row.residentId === id))
+                state.opening.proposals.push(readOpeningProposal(proposal, id));
+            });
+          } catch (error) {
+            openingError ||= safeFailureMessage(error).slice(0, 300);
+          }
+        }
+      }
       await mutateVillageState((state) => {
         const marker = state.foundingPreparation;
         if (state.seed !== initial.seed || marker?.status !== "pending") return;
-        marker.completedIds = foundingCompletedIds(state);
-        const proposalsIncomplete = state.opening?.residentIds.some(
+        marker.completedIds = state.villagers
+          .filter((row) =>
+            ["routine", "wish"].every(
+              (kind) => marker.tasks?.[row.characterId]?.[kind as FoundingTaskKind]?.status === "completed",
+            ),
+          )
+          .map((row) => row.characterId);
+        const ideasReady = !state.opening?.residentIds.some(
           (id) =>
-            state.villagers.some((resident) => resident.characterId === id) &&
-            !state.opening!.proposals.some((proposal) => proposal.residentId === id),
+            state.villagers.some((row) => row.characterId === id) &&
+            !state.opening!.proposals.some((row) => row.residentId === id),
         );
+        const spacesReady = privatePreparationRooms(state).every(({ zone }) => zone.preparation?.status === "ready");
         marker.status =
-          !proposalsIncomplete && marker.completedIds.length === state.villagers.length ? "ready" : "failed";
-        marker.error = proposalsIncomplete
-          ? "Opening proposal preparation is incomplete. Retry preparation."
-          : marker.status === "failed"
-            ? "Resident preparation incomplete."
-            : "";
+          marker.venueDetailsSeeded &&
+          spacesReady &&
+          ideasReady &&
+          marker.completedIds.length === state.villagers.length
+            ? "ready"
+            : "failed";
+        marker.error =
+          marker.status === "ready"
+            ? ""
+            : !marker.venueDetailsSeeded
+              ? "Venue preparation incomplete."
+              : !spacesReady
+                ? privatePreparationRooms(state).find(({ zone }) => zone.preparation?.status !== "ready")?.zone
+                    .preparation?.error || "Interior preparation incomplete."
+                : !ideasReady
+                  ? openingError || "Opening ideas incomplete. Retry preparation."
+                  : "Resident preparation incomplete.";
         marker.currentId = "";
         marker.currentTask = undefined;
         marker.stage = undefined;
@@ -322,11 +384,6 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
   async function compatibleLegacy(state: Awaited<ReturnType<typeof readVillageState>>, id: string) {
     const job = await backgroundLegacyFounding(id, state.seed, agendaRevision(state, id)),
       context = (job?.input as any)?.context;
-    const needsProposal =
-      state.opening?.stage === "gathering" &&
-      state.opening.residentIds.includes(id) &&
-      !state.opening.proposals.some((entry) => entry.residentId === id);
-    if (needsProposal && context?.openingProposal !== true) return null;
     if (context) {
       if (
         !Array.isArray(context.venues) ||
@@ -354,6 +411,51 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
         return null;
     }
     return job ? { ...job, compatibilitySourceRevision: foundingTaskRevision(state, id, "routine") } : null;
+  }
+  async function salvageOpeningIdeas(
+    state: Awaited<ReturnType<typeof readVillageState>>,
+    legacy: (readonly [string, Awaited<ReturnType<typeof compatibleLegacy>>])[] = [],
+  ) {
+    const seed = state.seed;
+    for (const row of state.villagers) {
+      const id = row.characterId;
+      if (
+        !state.opening?.residentIds.includes(id) ||
+        state.opening.proposals.some((proposal) => proposal.residentId === id)
+      )
+        continue;
+      const candidates = [
+        await backgroundJobSnapshot("agenda", id),
+        legacy.find(([residentId]) => residentId === id)?.[1],
+      ];
+      for (const job of candidates) {
+        if (!job || job.seed !== state.seed || !(job.input as any)?.context?.openingProposal) continue;
+        if (!proposalSourceCompatible(job, state, id)) continue;
+        const capturedRevision = foundingTaskRevision(state, id, "routine");
+        const saved = job.steps.find(
+          (step) =>
+            ["owned-routine-profile", "founding-routine-v1"].includes(step.key ?? "") && step.status === "completed",
+        )?.response;
+        if (!saved || ["length", "max_tokens"].includes(saved.finishReason ?? "")) continue;
+        try {
+          const proposal = readOpeningProposal(extractModelJsonObject(saved)?.openingProposal, id);
+          await mutateVillageState((live) => {
+            if (
+              live.seed === seed &&
+              live.opening?.id === state.opening?.id &&
+              live.opening?.stage === "gathering" &&
+              foundingTaskRevision(live, id, "routine") === capturedRevision &&
+              proposalSourceCompatible(job, live, id) &&
+              !live.opening.proposals.some((entry) => entry.residentId === id)
+            )
+              live.opening.proposals.push(proposal);
+          });
+          break;
+        } catch {
+          /* Invalid ideas never discard a valid saved Routine. */
+        }
+      }
+    }
   }
   async function initializeTasks(seed: string) {
     const state = await readVillageState();
@@ -402,6 +504,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           };
         }
     });
+    await salvageOpeningIdeas(state, legacy);
     // Salvage routine independently of any invalid legacy Wish, without provider work.
     for (const [id, old] of legacy) {
       if (
@@ -430,12 +533,6 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             task?.status !== "completed" &&
             task?.revision === foundingTaskRevision(live, id, "routine")
           ) {
-            if (
-              (old.input as any).context.openingProposal &&
-              live.opening?.stage === "gathering" &&
-              !live.opening.proposals.some((entry) => entry.residentId === id)
-            )
-              live.opening.proposals.push(readOpeningProposal(result.openingProposal, id));
             adoptFoundingRoutine(live, id, result.agenda, task.revision);
           }
         });
@@ -446,6 +543,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
     }
   }
   async function retryFoundedVillagePreparation(input: FoundingRetry = {}): Promise<VillageSnapshot> {
+    await recoverFoundingPreparation();
     const requested = await readVillageState(),
       marker = requested.foundingPreparation;
     if (!marker) return buildVillageSnapshot();
@@ -494,7 +592,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       retryAdmissions--;
     }
   }
-  async function foundingPreparationSnapshot(): Promise<VillageSnapshot> {
+  async function recoverFoundingPreparation(): Promise<void> {
     // A read after restart may report interruption, but never authorizes a new request.
     const current = await readVillageState();
     if (!foundingWork && !retryAdmissions && current.foundingPreparation?.status === "pending")
@@ -506,6 +604,8 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
         for (const tasks of Object.values(marker.tasks ?? {}))
           for (const task of Object.values(tasks)) if (task.status === "running") task.status = "failed";
       });
+  }
+  async function foundingPreparationSnapshot(): Promise<VillageSnapshot> {
     return buildVillageSnapshot();
   }
   async function assertFoundedVillageReady(): Promise<void> {
@@ -517,6 +617,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
     prepareFoundedVillage,
     retryFoundedVillagePreparation,
     foundingPreparationSnapshot,
+    recoverFoundingPreparation,
     assertFoundedVillageReady,
   };
 }

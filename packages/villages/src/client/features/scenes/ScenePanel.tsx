@@ -435,7 +435,7 @@ export function RoomPanel({
           Back to map
         </button>
         <button type="button" onClick={onRetryGreeting} disabled={busy}>
-          Retry opening
+          {room.operation?.recoverable ? "Recover saved opening" : "Retry opening"}
         </button>
         {room.id ? (
           <button type="button" onClick={onContinueWithoutGreeting} disabled={busy}>

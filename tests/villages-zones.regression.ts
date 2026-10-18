@@ -1193,6 +1193,7 @@ async function main() {
     legacyRecord.data.operation = {
       ...legacyRecord.data.operation,
       id: "legacy-written-move",
+      sceneRevision: candidate.sceneRevision,
       kind: "turn",
       status: "interrupted",
       error: "",

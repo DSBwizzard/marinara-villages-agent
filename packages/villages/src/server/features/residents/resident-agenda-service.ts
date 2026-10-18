@@ -1,4 +1,5 @@
 import { readOpeningProposal } from "../../domain/rules/opening-project.js";
+import { proposalSourceCompatible } from "../../domain/rules/opening-proposal-source.js";
 import {
   completeFoundingTask,
   foundingTaskRevision,
@@ -103,15 +104,11 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       ? await readNativeScheduleSnapshot(villageNow(), [characterId])
       : null;
     const context = {
-      openingProposal:
-        village.opening?.stage === "gathering" &&
-        village.opening.residentIds.includes(characterId) &&
-        !village.opening.proposals.some((entry) => entry.residentId === characterId),
       semanticVersion: 2 as const,
       card: effectiveCard,
       characterId,
       sourceRevision: foundingTaskRevision(village, characterId, "routine"),
-      contractVersion: 1 as const,
+      contractVersion: 2 as const,
       allowInitialWish: false,
       circumstances: {
         worldFacts: village.worldFacts,
@@ -212,7 +209,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     recoverSavedResult: (input, steps) => {
       const saved = steps.find(
         (step) =>
-          ["owned-routine-profile", "founding-routine-v1"].includes(step.key ?? "") && step.status === "completed",
+          ["owned-routine-profile", "founding-routine-v1", "founding-routine-v2"].includes(step.key ?? "") &&
+          step.status === "completed",
       );
       if (!saved?.response) return undefined;
       return parseCompactFoundingCompletion(saved.response, { ...input.context, allowInitialWish: false });
@@ -237,9 +235,15 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       if (
         input.context.openingProposal &&
         state.opening?.stage === "gathering" &&
-        !state.opening.proposals.some((entry) => entry.residentId === input.characterId)
-      )
-        state.opening.proposals.push(readOpeningProposal(result.openingProposal, input.characterId));
+        proposalSourceCompatible({ input, revision: input.revision }, state, input.characterId) &&
+        !state.opening.proposals.some((row) => row.residentId === input.characterId)
+      ) {
+        try {
+          state.opening.proposals.push(readOpeningProposal(result.openingProposal, input.characterId));
+        } catch {
+          /* An invalid bundled idea cannot reject a valid Routine. */
+        }
+      }
       applyAgenda(
         state,
         input.characterId,

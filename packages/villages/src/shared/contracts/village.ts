@@ -883,6 +883,7 @@ export type RoomRecollection = {
 };
 
 export type RoomOperation = {
+  recoverable?: boolean;
   id: string;
   kind: string;
   attemptId: string;

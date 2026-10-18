@@ -1,3 +1,14 @@
+import { bindWishProposals } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
+import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
+import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
+import { readSession, changeSession } from "../packages/villages/src/server/adapters/storage/scene-store.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { quietContactReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import {
+  venueOperationSignal,
+  venueRequestMetrics,
+} from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { mock } from "node:test";
 import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
 import assert from "node:assert/strict";
@@ -8,6 +19,7 @@ import {
   coordinateVenue,
   coordinatedCompletion,
   venueCheckpoint,
+  rejectVenueCompletion,
   cancelVenueOperation,
   recoverVenueOperations,
   readVenueOperation,
@@ -77,6 +89,98 @@ const paid = (answer = "answer") =>
 
 async function main() {
   try {
+    seed("slow-greeting");
+    row("slow-greeting").data = coerceSession({ ...row("slow-greeting").data, status: "opening" });
+    const world = defaultVillageState();
+    const greetingWork = createSceneWork();
+    let stage = deferred<void>();
+    let dispatches = 0;
+    const commands = createSceneCommands({
+      bindWishProposals,
+      activationScope: () => undefined,
+      sceneWork: () => greetingWork,
+      readSession,
+      changeSession,
+      readVillageState: async () => world,
+      mutateVillageState: async (change: any) => {
+        change(world);
+        return world;
+      },
+      requireLiveVenueSession: readSession,
+      coordinateVenue,
+      venueCheckpoint,
+      venueOperationSignal,
+      venueRequestMetrics,
+      cancelVenueOperation,
+      hasVenueOperation: () => true,
+      isInactive: () => false,
+      villagesLogger: () => ({ info() {}, warn() {} }),
+      refreshZoneParticipants: async (scene) => scene,
+      markZoneSeen: async () => {},
+      processSavedExchange: async () => {},
+      generate: async (_scene, _message, _mode, _target, _settled, signal) => {
+        for (const duration of [7942, 24163]) {
+          await coordinatedCompletion("stage-" + duration, () =>
+            withProviderDeadline(async () => {
+              dispatches++;
+              stage.resolve();
+              await new Promise((resolve) => setTimeout(resolve, duration));
+              return "saved stage";
+            }, signal),
+          );
+        }
+        return quietContactReply("Saved slow greeting.", []);
+      },
+    } as any);
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const greeting = commands.greetVenue("slow-greeting");
+      await stage.promise;
+      stage = deferred<void>();
+      mock.timers.tick(7942);
+      await stage.promise;
+      mock.timers.tick(24163);
+      const completed = await greeting;
+      assert.equal(completed.status, "active");
+      assert.equal(completed.lines.length, 1);
+      assert.equal(dispatches, 2);
+      assert.equal((await commands.greetVenue("slow-greeting", undefined, true)).lines.length, 1);
+      assert.equal(dispatches, 2, "Saved-only duplicate recovery does not dispatch or append twice");
+    } finally {
+      mock.timers.reset();
+    }
+    seed("v3-replay");
+    row("v3-replay").data = coerceSession({ ...row("v3-replay").data, semanticVersion: 2 });
+    const replayCommands = createSceneCommands({
+      runtimeDebug() {},
+      readSession,
+      requireLiveVenueSession: readSession,
+      readVillageState: async () => world,
+      coordinateVenue: (...args: any[]) =>
+        coordinateVenue(args[0], args[1], args[2], args[3], args[4], args[5], () => readSession(args[0]), args[7]),
+    } as any);
+    const turn = {
+      sessionId: "v3-replay",
+      submissionId: "new-turn",
+      message: "Hello",
+      mode: "chat" as const,
+      targetId: "",
+    };
+    await replayCommands.sendVenueTurn(turn);
+    const originalInput = structuredClone(row("v3-replay").data.operation.input);
+    row("v3-replay").data.submissions.push({
+      id: "new-turn",
+      message: "Hello",
+      mode: "chat",
+      targetId: "",
+      semanticProvenance: { version: 2, pipelineVersion: 3 },
+    });
+    await replayCommands.sendVenueTurn(turn);
+    assert.deepEqual(
+      row("v3-replay").data.operation.input,
+      originalInput,
+      "Committed v3 duplicate keeps its original admission fingerprint",
+    );
     seed("provider-timeout");
     let providerCalls = 0;
     let timeoutLate!: (value: string) => void;
@@ -118,25 +222,59 @@ async function main() {
           await coordinateVenue(id, "turn", "turn", {}, undefined, undefined, timeoutWork, { recovery: true });
       });
       assert.equal(providerCalls, 1, "Startup recovery cannot dispatch again");
-      await assert.rejects(
-        coordinateVenue("provider-timeout", "turn", "turn", {}, 0, undefined, timeoutWork),
-        refused("OPERATION_INTERRUPTED"),
-      );
-      const current = await readVenueOperation("provider-timeout");
-      const retry = () =>
-        coordinateVenue("provider-timeout", "turn", "turn", {}, 0, current!.attemptId, () =>
-          venueCheckpoint("saved-intent", async () => assert.fail("Saved work must be reused")).then(() =>
-            venueCheckpoint("reply", () =>
-              coordinatedCompletion("timeout-provider", async () => {
-                providerCalls++;
-                return "recovered";
-              }),
-            ),
-          ),
+      await new Promise((resolve) => setImmediate(resolve));
+      const recovered = () =>
+        coordinateVenue("provider-timeout", "turn", "turn", {}, undefined, undefined, timeoutWork, { recovery: true });
+      assert.deepEqual(await Promise.all([recovered(), recovered()]), ["late reply", "late reply"]);
+      assert.equal(providerCalls, 1, "Late paid result is reused without a replacement request");
+    } finally {
+      mock.timers.reset();
+    }
+    seed("late-invalid");
+    let finishInvalid!: (value: string) => void;
+    const invalidStarted = deferred<void>();
+    let invalidCalls = 0;
+    const invalidWork = () =>
+      venueCheckpoint("invalid-stage", async () => {
+        const value = await coordinatedCompletion("invalid-late", () =>
+          withProviderDeadline(async () => {
+            invalidCalls++;
+            if (invalidCalls > 1) return "valid replacement";
+            invalidStarted.resolve();
+            return new Promise<string>((resolve) => {
+              finishInvalid = resolve;
+            });
+          }),
         );
-      assert.deepEqual(await Promise.all([retry(), retry()]), ["recovered", "recovered"]);
-      assert.equal(providerCalls, 2, "Explicit duplicate retries authorize only one replacement call");
-      assert.equal(row("provider-timeout").data.generationReceipts[0].outcome, "unknown");
+        if (value === "invalid result") {
+          await rejectVenueCompletion();
+          throw Error("invalid response");
+        }
+        return value;
+      });
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const pending = coordinateVenue("late-invalid", "same", "turn", {}, 0, undefined, invalidWork);
+      const failed = assert.rejects(pending, /timed out/);
+      await invalidStarted.promise;
+      mock.timers.tick(30_000);
+      await failed;
+      finishInvalid("invalid result");
+      await new Promise((resolve) => setImmediate(resolve));
+      await assert.rejects(
+        coordinateVenue("late-invalid", "same", "turn", {}, undefined, undefined, invalidWork, { recovery: true }),
+        /invalid response/,
+      );
+      const op = await readVenueOperation("late-invalid");
+      assert.equal(
+        await coordinateVenue("late-invalid", "same", "turn", {}, undefined, op!.attemptId, invalidWork),
+        "valid replacement",
+      );
+      assert.equal(
+        invalidCalls,
+        2,
+        "Explicit retry replaces rejected late evidence rather than replaying it indefinitely",
+      );
     } finally {
       mock.timers.reset();
     }
