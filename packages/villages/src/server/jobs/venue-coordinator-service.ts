@@ -238,12 +238,24 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       key,
     ]);
     const lateId = "villages-generation-response-" + createHash("sha256").update(signature).digest("hex");
-    const late = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, lateId);
-    const lateData = asRecord(late?.data);
-    if (lateData.signature === signature && lateData.status === "complete") {
-      current.operation.attempts[key] = { status: "complete", result: structuredClone(lateData.result) };
-      await persist(current);
-      return structuredClone(lateData.result) as T;
+    // A policy upgrade may replay a completed late response too. A newer exact attempt always wins.
+    for (const savedKey of current.operation.attempts[key] || !legacyKey ? [key] : [key, legacyKey]) {
+      const savedSignature = JSON.stringify([
+        current.sessionId,
+        current.operation.id,
+        current.operation.sceneRevision,
+        current.operation.input,
+        savedKey,
+      ]);
+      const savedId = "villages-generation-response-" + createHash("sha256").update(savedSignature).digest("hex");
+      const late = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, savedId);
+      const lateData = asRecord(late?.data);
+      if (lateData.signature === savedSignature && lateData.status === "complete") {
+        current.operation.attempts[savedKey] = { status: "complete", result: structuredClone(lateData.result) };
+        current.usedAttemptKeys.set(`${current.scope}:${index}`, savedKey);
+        await persist(current);
+        return structuredClone(lateData.result) as T;
+      }
     }
     if (!current.allowPaid) {
       current.blocked.add(current.scope);

@@ -185,7 +185,12 @@ async function main() {
       const isSystem = messages[0].content.startsWith("You interpret Villages gameplay.");
       assert.equal(options.usagePurpose, isSystem ? "checks" : "conversation");
       assert.ok(output <= (isSystem ? 8192 : 4096));
-      if (isSystem) outputRequests.push(output);
+      if (isSystem) {
+        outputRequests.push(output);
+        const combined = JSON.parse(messages[1].content).input.pipelineVersion === 3;
+        assert.equal(options.reasoningEffort, combined ? "none" : "low");
+        assert.equal(options.replayReasoningEffort, combined ? "low" : undefined);
+      }
       assert.equal(options.responseFormat && (options.responseFormat as { type: string }).type, "json_object");
       if (!isSystem) {
         calls.push("narration");

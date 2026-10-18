@@ -154,8 +154,9 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                   messages,
                   tokens,
                   options.temperature,
-                  options.reasoningEffort,
+                  options.replayReasoningEffort ?? options.reasoningEffort,
                   options.verbosity,
+                  ...(options.replayReasoningEffort ? [options.responseFormat] : []),
                 ]),
               )
               .digest("hex")
