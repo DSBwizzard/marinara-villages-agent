@@ -231,10 +231,28 @@ async function main() {
     "existing lazy cleanup getters remain separate",
   );
   assert(unplayed.calls.includes("remove:" + SESSION_PREFIX + "same:7"));
-  for (const evidence of ["raw", "checkpoint", "unknown"]) {
+  for (const evidence of ["raw", "checkpoint", "unknown", "committed"]) {
     const interrupted = fixture("saved-" + evidence);
     interrupted.saved.lastActivityAt = "2020-01-01T00:00:00.000Z";
-    if (evidence === "unknown")
+    if (evidence === "committed") {
+      interrupted.saved.lines.push({
+        id: "greeting-line",
+        role: "assistant",
+        speakerId: "mara",
+        name: "Mara",
+        content: "Hello",
+        at: interrupted.saved.startedAt,
+        heardBy: ["player"],
+      });
+      interrupted.saved.submissions.push({ id: "greeting", replyLineIds: ["greeting-line"] } as any);
+      interrupted.saved.operation = {
+        id: "greeting",
+        kind: "greet",
+        status: "complete",
+        attempts: {},
+        checkpoints: {},
+      } as any;
+    } else if (evidence === "unknown")
       interrupted.saved.generationReceipts = [
         {
           operationId: "greeting",
@@ -260,13 +278,23 @@ async function main() {
     const before = structuredClone({
       operation: interrupted.saved.operation,
       receipts: interrupted.saved.generationReceipts,
+      lines: interrupted.saved.lines,
+      submissions: interrupted.saved.submissions,
     });
     assert.equal(await interrupted.service.activeVenueSession(), null);
     const archived = interrupted.sessions.get("same")!;
     assert.equal(archived.status, "closed");
     assert.equal(archived.endReason, "inactivity");
     assert.equal(interrupted.active.sessionId, "");
-    assert.deepEqual({ operation: archived.operation, receipts: archived.generationReceipts }, before);
+    assert.deepEqual(
+      {
+        operation: archived.operation,
+        receipts: archived.generationReceipts,
+        lines: archived.lines,
+        submissions: archived.submissions,
+      },
+      before,
+    );
     assert(
       !interrupted.calls.includes("documents"),
       "Expired unplayed Scene retains raw, checkpoint and uncertain billing evidence",

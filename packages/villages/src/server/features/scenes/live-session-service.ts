@@ -87,7 +87,7 @@ export function createLiveScenes({
       Object.keys(closed.operation?.attempts ?? {}).length > 0 ||
       Object.keys(closed.operation?.checkpoints ?? {}).length > 0 ||
       (closed.generationReceipts?.length ?? 0) > 0;
-    if (!savedGeneration && !closed.lines.some((line) => line.role === "user")) {
+    if (!savedGeneration && closed.lines.length === 0 && closed.submissions.length === 0) {
       const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
       if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
     }
