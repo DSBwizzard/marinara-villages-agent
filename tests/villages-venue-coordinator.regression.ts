@@ -562,6 +562,88 @@ async function main() {
       ),
       refused("SEMANTIC_BUDGET"),
     );
+    seed("abandon");
+    await assert.rejects(
+      coordinateVenue("abandon", "failed", "turn", {}, 0, undefined, async () => {
+        await venueCheckpoint("turn-reply", async () => "saved narration");
+        throw new Error("truncated");
+      }),
+      /truncated/,
+    );
+    const failed = structuredClone(row("abandon").data.operation);
+    const closeInput = { abandonOperationId: "failed" };
+    const closeOptions = { abandonOfOperationId: "failed" };
+    for (const [revision, attempt] of [
+      [1, failed.attemptId],
+      [0, "stale"],
+    ] as const) {
+      await assert.rejects(
+        coordinateVenue(
+          "abandon",
+          "close",
+          "close",
+          closeInput,
+          revision,
+          attempt,
+          async () => assert.fail("stale close"),
+          closeOptions,
+        ),
+      );
+    }
+    row("abandon").data.submissions.push({ id: "earlier", semanticProvenance: { version: 2 }, semanticReady: false });
+    await assert.rejects(
+      coordinateVenue(
+        "abandon",
+        "close",
+        "close",
+        closeInput,
+        0,
+        failed.attemptId,
+        async () => assert.fail("committed barrier"),
+        closeOptions,
+      ),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    row("abandon").data.submissions = [];
+    await assert.rejects(
+      coordinateVenue(
+        "abandon",
+        "close",
+        "close",
+        closeInput,
+        0,
+        failed.attemptId,
+        async () => {
+          await assert.rejects(paid(), refused("OPERATION_INTERRUPTED"));
+          throw new Error("close storage failure");
+        },
+        closeOptions,
+      ),
+      /close storage failure/,
+    );
+    const interruptedClose = structuredClone(row("abandon").data.operation);
+    assert.deepEqual(
+      interruptedClose.checkpoints["abandoned-request"],
+      failed,
+      "Failed request and saved writing remain recoverable",
+    );
+    let closeWrites = 0;
+    await coordinateVenue(
+      "abandon",
+      "close",
+      "close",
+      interruptedClose.input,
+      0,
+      interruptedClose.attemptId,
+      async () => {
+        closeWrites++;
+        row("abandon").data.status = "closed";
+        return "closed";
+      },
+    );
+    assert.equal(closeWrites, 1, "Admitted close can recover after a storage failure without paid work");
+    assert.equal(row("abandon").data.status, "closed");
+    assert.deepEqual(row("abandon").data.operation.checkpoints["abandoned-request"], failed);
     console.log("villages-venue-coordinator: ok");
   } finally {
     release();

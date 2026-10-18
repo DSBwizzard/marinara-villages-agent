@@ -18,7 +18,7 @@ export const semanticContinuationKey = (sceneId: string, submissionId: string) =
 export const semanticContinued = (state: VillageState, sceneId: string, submissionId: string, domain: ExchangeDomain) =>
   state.semanticContinuations?.[semanticContinuationKey(sceneId, submissionId)]?.includes(domain) === true;
 
-export function semanticBlocker(scene: VenueScene): string | null {
+export function semanticBlocker(scene: Pick<VenueScene, "submissions">): string | null {
   for (const turn of scene.submissions) {
     if (turn.semanticProvenance?.version !== 2) continue;
     if (turn.semanticReady !== true) return "The saved action needs recovery.";

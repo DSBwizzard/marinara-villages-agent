@@ -128,6 +128,9 @@ async function main() {
   });
   const checkpoints = new Map<string, unknown>();
   const calls: string[] = [];
+  const outputRequests: number[] = [];
+  let explicitRetry = false;
+  let attemptIdentity = "initial";
   const rejected: any[] = [];
   let inputEstimate = 1000;
   let loreReads = 0;
@@ -138,7 +141,7 @@ async function main() {
     model: "fake-system",
     name: "Fake",
     connectionId: "system",
-    maxOutputTokens: 4000,
+    maxOutputTokens: 16384,
     fitContext: (messages: unknown, options: { maxTokens: number }) => ({
       messages,
       maxTokens: options.maxTokens,
@@ -149,6 +152,8 @@ async function main() {
     chatComplete: () => assert.fail("No real provider dispatch is allowed"),
   };
   const ports = {
+    venueExplicitRetry: () => explicitRetry,
+    venueDebugContext: () => ({ attemptId: attemptIdentity }),
     readVillageState: async () => state,
     readVillageLore: async () => {
       loreReads++;
@@ -179,7 +184,8 @@ async function main() {
       assert.equal(options.retryEmpty, false);
       const isSystem = messages[0].content.startsWith("You interpret Villages gameplay.");
       assert.equal(options.usagePurpose, isSystem ? "checks" : "conversation");
-      assert.ok(output <= (isSystem ? 2400 : 4096));
+      assert.ok(output <= (isSystem ? 8192 : 4096));
+      if (isSystem) outputRequests.push(output);
       assert.equal(options.responseFormat && (options.responseFormat as { type: string }).type, "json_object");
       if (!isSystem) {
         calls.push("narration");
@@ -234,6 +240,7 @@ async function main() {
   const result = await service.exchange(scene, "We can discuss it.", [], intent);
   assert.deepEqual(result.effects.memoryChanges, []);
   assert.deepEqual(calls, ["intent", "exchange"]);
+  assert.deepEqual(outputRequests, [4096, 8192], "Intent and exchange have distinct bounded allowances");
   await service.intent(scene, "We can discuss it.");
   await service.exchange(scene, "We can discuss it.", [], intent);
   assert.equal(calls.length, 2, "saved identical stage results replay without dispatch");
@@ -251,6 +258,54 @@ async function main() {
     "Recovery uses the frozen source despite intervening world changes",
   );
   state.seed = scene.villageSeed!;
+  const legacyKey = intentKey + ":input";
+  const legacy = checkpoints.get(legacyKey) as any;
+  legacy.output = 2400;
+  delete legacy.outputPolicy;
+  const frozenEvidence = structuredClone(legacy);
+  checkpoints.delete(intentKey);
+  await service.intent(scene, "We can discuss it.");
+  assert.equal(outputRequests.at(-1), 2400, "Non-explicit recovery keeps its saved allowance");
+  checkpoints.delete(intentKey);
+  explicitRetry = true;
+  attemptIdentity = "budget-retry-1";
+  await service.intent(scene, "We can discuss it.");
+  assert.equal(outputRequests.at(-1), 4096, "Explicit retry refreshes the legacy allowance");
+  assert.deepEqual(
+    checkpoints.get(legacyKey),
+    frozenEvidence,
+    "Budget refresh cannot reread or replace frozen evidence",
+  );
+  const replayCalls = calls.length;
+  attemptIdentity = "completed-retry";
+  await service.intent(scene, "We can discuss it.");
+  assert.equal(calls.length, replayCalls, "Completed interpretation stays cached on explicit retry");
+  checkpoints.delete(intentKey);
+  model.maxOutputTokens = 3072;
+  attemptIdentity = "budget-retry-2";
+  await service.intent(scene, "We can discuss it.");
+  assert.equal(outputRequests.at(-1), 3072, "Connection cap remains authoritative");
+  assert.deepEqual(checkpoints.get(legacyKey), frozenEvidence);
+  model.maxOutputTokens = 16384;
+  const legacyExchange = checkpoints.get(result.checkpointKey + ":input") as any;
+  legacyExchange.output = 2400;
+  delete legacyExchange.outputPolicy;
+  const originalExchange = structuredClone(legacyExchange);
+  checkpoints.delete(result.checkpointKey);
+  attemptIdentity = "exchange-budget-retry";
+  await service.exchange(scene, "We can discuss it.", [], intent);
+  assert.equal(outputRequests.at(-1), 8192, "Failed legacy exchange receives its task allowance on explicit retry");
+  assert.deepEqual(checkpoints.get(result.checkpointKey + ":input"), originalExchange);
+  explicitRetry = false;
+  checkpoints.delete(result.checkpointKey);
+  await service.exchange(scene, "We can discuss it.", [], intent);
+  assert.equal(
+    outputRequests.at(-1),
+    8192,
+    "Restart recovery reuses the admitted retry allowance, preserving the completion fingerprint",
+  );
+  assert.deepEqual(checkpoints.get(result.checkpointKey + ":input"), originalExchange);
+
   inputEstimate = 12001;
   const beforeBudget = calls.length;
   await assert.rejects(service.intent(scene, "A request exceeding the reserved context"), /does not fit/);

@@ -1,3 +1,5 @@
+import { semanticBlocker } from "../domain/rules/semantic-continuity.js";
+import type { VenueScene } from "../domain/models/scene-model.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import { asRecord } from "../domain/rules/coerce.js";
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
@@ -384,7 +386,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     expected: number | undefined,
     retryOfAttemptId: string | undefined,
     work: () => Promise<T>,
-    options: { replay?: boolean; recovery?: boolean; replaceOfOperationId?: string } = {},
+    options: {
+      replay?: boolean;
+      recovery?: boolean;
+      replaceOfOperationId?: string;
+      abandonOfOperationId?: string;
+    } = {},
   ): Promise<T> {
     const nested = context.getStore();
     if (nested?.sessionId === sessionId) {
@@ -429,6 +436,27 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         const prior = data.operation as VenueOperation | undefined;
         if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
           throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
+        let abandoned: VenueOperation | undefined;
+        if (options.abandonOfOperationId) {
+          if (
+            kind !== "close" ||
+            id !== "close" ||
+            options.recovery ||
+            expected === undefined ||
+            !prior ||
+            prior.status !== "interrupted" ||
+            prior.id !== options.abandonOfOperationId ||
+            prior.attemptId !== retryOfAttemptId ||
+            semanticBlocker({ submissions: (data.submissions ?? []) as VenueScene["submissions"] }) ||
+            (data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === prior.id)
+          )
+            throw venueRefusal(
+              "OPERATION_INTERRUPTED",
+              "The failed request changed. Review the Scene before ending it.",
+            );
+          abandoned = structuredClone(prior);
+          acknowledgeUnknownAttempts(data, prior);
+        }
         if (options.replaceOfOperationId) {
           const committed = (data.submissions as { id: string }[] | undefined)?.some((entry) => entry.id === prior?.id);
           if (
@@ -461,7 +489,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             );
           acknowledgeUnknownAttempts(data, prior);
         }
-        if (prior && prior.status !== "complete" && prior.id !== id && !options.replaceOfOperationId)
+        if (prior && prior.status !== "complete" && prior.id !== id && !options.replaceOfOperationId && !abandoned)
           throw venueRefusal(
             "OPERATION_INTERRUPTED",
             "Recover or explicitly retry the interrupted scene before starting another operation.",
@@ -514,11 +542,13 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             startedAt: new Date().toISOString(),
             sceneRevision: sceneRevision(data),
             snapshot,
-            checkpoints: reuseAttention
-              ? Object.fromEntries(
-                  Object.entries(prior.checkpoints).filter(([stage]) => attentionStages(prior).includes(stage)),
-                )
-              : {},
+            checkpoints: abandoned
+              ? { "abandoned-request": abandoned }
+              : reuseAttention
+                ? Object.fromEntries(
+                    Object.entries(prior.checkpoints).filter(([stage]) => attentionStages(prior).includes(stage)),
+                  )
+                : {},
             attempts: {},
             error: "",
           };
@@ -531,7 +561,11 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         sessionId,
         operation,
         controller,
-        allowPaid: !options.recovery && (!options.replay || authorizedRetry),
+        allowPaid:
+          !operation.checkpoints["abandoned-request"] &&
+          !options.abandonOfOperationId &&
+          !options.recovery &&
+          (!options.replay || authorizedRetry),
         scope: kind,
         explicitRetry: authorizedRetry,
         counts: new Map(),
@@ -569,7 +603,9 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             );
             if (operation.status === "complete") {
               operation.snapshot = null;
-              operation.checkpoints = {};
+              operation.checkpoints = operation.checkpoints["abandoned-request"]
+                ? { "abandoned-request": operation.checkpoints["abandoned-request"] }
+                : {};
               operation.attempts = {};
             } else operation.error = "The previous request may have been billed. No automatic retry was made.";
             await persist(current).catch((error) => {
@@ -613,7 +649,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                 operation.checkpoints["action-reply"] ||
                 operation.checkpoints["greeting-reply"] ||
                 operation.checkpoints["move-invitation"] ||
-                (operation.kind === "close" && Object.keys(operation.attempts).length > 0) ||
+                (operation.kind === "close" &&
+                  (Object.keys(operation.attempts).length > 0 || !!operation.checkpoints["abandoned-request"])) ||
                 (data.submissions as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id) ||
                 (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id)
                   ? "interrupted"

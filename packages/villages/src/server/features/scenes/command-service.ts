@@ -3344,9 +3344,27 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     id: string,
     expectedSceneRevision?: number,
     retryOfAttemptId?: string,
+    abandonOperationId?: string,
   ): Promise<VenueScene> {
-    return coordinateVenue(id, "close", "close", {}, expectedSceneRevision, retryOfAttemptId, () =>
-      closeVenueSessionOnce(id),
+    const scene = await readSession(id);
+    if (scene.status === "closed") return scene;
+    const resumingAbandon = scene.operation?.id === "close" && !!scene.operation.checkpoints?.["abandoned-request"];
+    const closeInput = resumingAbandon ? scene.operation!.input : abandonOperationId ? { abandonOperationId } : {};
+    return coordinateVenue(
+      id,
+      "close",
+      "close",
+      closeInput,
+      expectedSceneRevision,
+      retryOfAttemptId,
+      async () => {
+        if (!abandonOperationId && !resumingAbandon) return closeVenueSessionOnce(id);
+        const current = await readSession(id);
+        const blocker = semanticBlocker(current);
+        if (blocker) throw conflict(blocker);
+        return closeLiveScene(current);
+      },
+      { abandonOfOperationId: resumingAbandon ? undefined : abandonOperationId },
     );
   }
 
@@ -3363,8 +3381,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     return closeLiveScene(recovered);
   }
 
-  async function closeVenueSessionWithReceipts(id: string, expectedSceneRevision?: number, retryOfAttemptId?: string) {
-    const session = await closeVenueSession(id, expectedSceneRevision, retryOfAttemptId);
+  async function closeVenueSessionWithReceipts(
+    id: string,
+    expectedSceneRevision?: number,
+    retryOfAttemptId?: string,
+    abandonOperationId?: string,
+  ) {
+    const session = await closeVenueSession(id, expectedSceneRevision, retryOfAttemptId, abandonOperationId);
     return { session, recordEvents: await sceneReceipts(session) };
   }
 

@@ -769,6 +769,38 @@ try {
   assert.equal(missing.statusCode, 502, missing.body);
   assert(!state().lines.some((line: any) => line.content === recoveryText));
   assert(Object.keys(state().operation.checkpoints).some((key) => key.startsWith("writing-completion:")));
+  // A separate failed precommit Scene can be ended without generating or losing history.
+  const failedCloseId = "failed-close-fixture";
+  const failedCloseKey = "villages-venue-visit-" + failedCloseId;
+  const failedCloseRow = clone(records.get("villages-venue-visit-" + scene.id));
+  failedCloseRow.id = failedCloseKey;
+  failedCloseRow.data.id = failedCloseId;
+  failedCloseRow.data.operation.snapshot.id = failedCloseId;
+  records.set(failedCloseKey, failedCloseRow);
+  const originalFailed = clone(failedCloseRow.data.operation);
+  const originalLines = clone(failedCloseRow.data.lines);
+  const beforeFailedClose = modelCalls;
+  const endFailedPayload = {
+    sessionId: failedCloseId,
+    expectedSceneRevision: failedCloseRow.data.sceneRevision,
+    abandonOperationId: originalFailed.id,
+    retryOfAttemptId: originalFailed.attemptId,
+  };
+  const staleFailedClose = await app.inject({
+    method: "POST",
+    url: "/api/villages/rooms/end",
+    payload: { ...endFailedPayload, retryOfAttemptId: "wrong" },
+  });
+  assert.equal(staleFailedClose.statusCode, 409, staleFailedClose.body);
+  const endedFailed = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload: endFailedPayload });
+  assert.equal(endedFailed.statusCode, 200, endedFailed.body);
+  assert.equal(records.get(failedCloseKey).data.status, "closed");
+  assert.deepEqual(records.get(failedCloseKey).data.lines, originalLines);
+  assert.deepEqual(records.get(failedCloseKey).data.operation.checkpoints["abandoned-request"], originalFailed);
+  assert.doesNotMatch(endedFailed.body, /abandoned-request|writing-completion|snapshot/);
+  const endedAgain = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload: endFailedPayload });
+  assert.equal(endedAgain.statusCode, 200, endedAgain.body);
+  assert.equal(modelCalls, beforeFailedClose, "Ending and replaying failed Scene makes no provider calls");
   captureRecoveryAnswers = [
     {},
     {

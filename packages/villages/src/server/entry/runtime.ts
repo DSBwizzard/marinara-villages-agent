@@ -693,6 +693,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const semantic = createSemanticService({
+    venueExplicitRetry,
+    venueDebugContext,
     readVillageLore,
     venueSavedCheckpoint,
     rejectVenueCompletion,

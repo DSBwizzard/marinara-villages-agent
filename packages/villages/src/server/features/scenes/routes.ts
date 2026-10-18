@@ -340,20 +340,25 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       return fail(reply, error, "leaving a venue naturally");
     }
   });
-  app.post<{ Body: { sessionId?: unknown; expectedSceneRevision?: unknown; retryOfAttemptId?: string } }>(
-    "/rooms/end",
-    async (request, reply) => {
-      try {
-        return await closeVenueSessionWithReceipts(
-          readChatId(request.body?.sessionId),
-          readSceneRevision(request.body?.expectedSceneRevision),
-          request.body?.retryOfAttemptId,
-        );
-      } catch (error) {
-        return fail(reply, error, "ending a Scene");
-      }
-    },
-  );
+  app.post<{
+    Body: {
+      sessionId?: unknown;
+      expectedSceneRevision?: unknown;
+      retryOfAttemptId?: string;
+      abandonOperationId?: unknown;
+    };
+  }>("/rooms/end", async (request, reply) => {
+    try {
+      return await closeVenueSessionWithReceipts(
+        readChatId(request.body?.sessionId),
+        readSceneRevision(request.body?.expectedSceneRevision),
+        request.body?.retryOfAttemptId,
+        request.body?.abandonOperationId === undefined ? undefined : readSubmissionId(request.body.abandonOperationId),
+      );
+    } catch (error) {
+      return fail(reply, error, "ending a Scene");
+    }
+  });
   app.get<{ Querystring: { venueId?: string; characterId?: string; offset?: string; limit?: string } }>(
     "/rooms/archive",
     async (request, reply) => {

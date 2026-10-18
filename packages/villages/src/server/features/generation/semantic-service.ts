@@ -29,6 +29,8 @@ export interface SemanticPorts {
   venueCheckpoint: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
   venueSavedCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueSavedCheckpoint;
   venueOperationSignal: typeof import("../../jobs/venue-coordinator.js").venueOperationSignal;
+  venueExplicitRetry?: typeof import("../../adapters/operations/operation-context.js").venueExplicitRetry;
+  venueDebugContext?: typeof import("../../adapters/operations/operation-context.js").venueDebugContext;
   rejectVenueCompletion: typeof import("../../jobs/venue-coordinator.js").rejectVenueCompletion;
 }
 
@@ -40,6 +42,7 @@ export function createSemanticService(ports: SemanticPorts) {
     validate: (raw: Record<string, unknown>, hash: string, savedInput: Input) => Result,
   ): Promise<Result> {
     // Context is frozen once per operation/source, even when world state changes during recovery.
+    const taskOutput = stage === "intent" ? 4096 : 8192;
     const identity = asRecord(input);
     const key = `semantic-v2:${stage}:${semanticHash([identity.message, identity.evidence])}`;
     return ports.venueCheckpoint(key, async () => {
@@ -62,7 +65,8 @@ export function createSemanticService(ports: SemanticPorts) {
           input: { ...identity, context: { ...context, lore } } as Input,
           connectionId: initial.connectionId,
           model: initial.model,
-          output: Math.min(initial.maxOutputTokens ?? 2400, 2400),
+          output: Math.min(initial.maxOutputTokens ?? taskOutput, taskOutput),
+          outputPolicy: 2,
           budget: { inputTokens: 12000, plannedShards: 1 },
         };
       });
@@ -72,6 +76,19 @@ export function createSemanticService(ports: SemanticPorts) {
           : await ports.villagesLanguageModels().resolveForRequest({ connectionId: snapshot.connectionId });
       if (model.model !== snapshot.model)
         throw conflict("The saved System model changed. Explicitly retry this interpretation.");
+      // Explicit Retry may refresh allowance, never the frozen evidence or completed stages.
+      const budgetKey = key + ":output-budget:" + String(ports.venueDebugContext?.().attemptId ?? "explicit");
+      const savedBudget = ports.venueSavedCheckpoint?.<{ output: number; version: number }>(budgetKey);
+      const output =
+        savedBudget?.output ??
+        (ports.venueExplicitRetry?.()
+          ? (
+              await ports.venueCheckpoint(budgetKey, async () => ({
+                output: Math.min(model.maxOutputTokens ?? taskOutput, taskOutput),
+                version: 2,
+              }))
+            ).output
+          : snapshot.output);
       const hash = semanticHash(snapshot.input);
       const expansion = ports.venueSavedCheckpoint?.<{ sourceHash: string; memories: unknown[] }>(key + ":retrieval");
       const savedMemories = asRecord(asRecord(snapshot.input).context).memories;
@@ -99,29 +116,23 @@ export function createSemanticService(ports: SemanticPorts) {
         },
         { role: "user" as const, content: JSON.stringify({ sourceHash: effectiveHash, input: effectiveInput }) },
       ];
-      if (snapshot.output < 1024)
-        throw badGateway("System interpretation needs more context allowance; no request was made.");
-      const fitted = model.fitContext(messages, { maxTokens: snapshot.output });
+      if (output < 1024) throw badGateway("System interpretation needs more context allowance; no request was made.");
+      const fitted = model.fitContext(messages, { maxTokens: output });
       const inputTokens = fitted.estimatedTokensBefore ?? Buffer.byteLength(JSON.stringify(messages), "utf8");
       if (inputTokens > 12000 || fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(messages))
         throw badGateway("Essential System evidence does not fit; no request was made.");
-      if ((fitted.maxTokens ?? snapshot.output) < 1024)
+      if ((fitted.maxTokens ?? output) < 1024)
         throw badGateway("System output allowance is insufficient; no request was made.");
-      const answer = await ports.completeWithRoom(
-        model,
-        messages,
-        Math.min(fitted.maxTokens ?? snapshot.output, snapshot.output),
-        {
-          responseFormat: { type: "json_object" },
-          temperature: 0.1,
-          reasoningEffort: "low",
-          debugMode: false,
-          retryEmpty: false,
-          usagePurpose: "checks",
-          signal: ports.venueOperationSignal(),
-          checkpointId: key,
-        },
-      );
+      const answer = await ports.completeWithRoom(model, messages, Math.min(fitted.maxTokens ?? output, output), {
+        responseFormat: { type: "json_object" },
+        temperature: 0.1,
+        reasoningEffort: "low",
+        debugMode: false,
+        retryEmpty: false,
+        usagePurpose: "checks",
+        signal: ports.venueOperationSignal(),
+        checkpointId: key,
+      });
       try {
         if (answer.finishReason === "length")
           throw badGateway("System interpretation was truncated. Explicit retry required.");

@@ -94,12 +94,27 @@ try {
           value = { settings: { decisionsEnabled: false, compareSystem: true }, status: { available: false } };
         else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
         else if (path.endsWith("/rooms/end")) {
+          const endBody = route.request().postDataJSON();
+          if (count === 1) {
+            assert.equal(endBody.abandonOperationId, "failed-turn");
+            assert.equal(endBody.retryOfAttemptId, "failed-attempt");
+            assert.equal(endBody.expectedSceneRevision, session.sceneRevision);
+          }
           session.status = "closed";
           value = { session, recordEvents: [] };
         } else if (path.endsWith("/rooms/turn")) {
           turns++;
           const { message } = route.request().postDataJSON();
           session.lines.push({ id: "player", role: "user", speakerId: "", name: "", content: message, at: now });
+          if (count === 1)
+            session.operation = {
+              id: "failed-turn",
+              attemptId: "failed-attempt",
+              kind: "turn",
+              status: "interrupted",
+              input: {},
+              error: "Request interrupted",
+            };
           value = { session, recordEvents: [] };
         }
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
