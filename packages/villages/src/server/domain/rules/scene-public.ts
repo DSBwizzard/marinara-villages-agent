@@ -120,6 +120,8 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "semanticIntent",
             "semanticProvenance",
             "semanticAccess",
+            "residentActionReceipt",
+            "residentActions",
             "responseDiagnostics",
             "effectFailures",
             "speechSource",

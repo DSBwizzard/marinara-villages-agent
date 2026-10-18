@@ -380,6 +380,56 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     );
   }
 
+  async function retainRejectedCompletion(
+    current: Context,
+    stage: string,
+    result: { content?: unknown; finishReason?: unknown } | undefined,
+    detail?: RejectedResponseContext,
+  ) {
+    if (detail && typeof result?.content === "string") {
+      try {
+        const entry: RejectedResponse = {
+          model: String(detail.model ?? "unknown").slice(0, 160),
+          connectionId: String(detail.connectionId ?? "unknown").slice(0, 160),
+          reason: String(detail.reason ?? "unknown").slice(0, 80),
+          sceneId: current.sessionId,
+          operationId: current.operation.id,
+          attemptId: current.operation.attemptId,
+          stage,
+          capturedAt: new Date().toISOString(),
+          finishReason: String(result.finishReason ?? "unknown").slice(0, 80),
+          responseLength: result.content.length,
+          content: boundedRejectedText(result.content),
+          truncated: result.content.length > 24_000,
+          syntaxError: rejectedSyntaxError(result.content),
+        };
+        await createDocumentMutator(villagesDocuments)(
+          "villages-rejected-responses",
+          {
+            kind: "private-diagnostics",
+            name: "Rejected model responses",
+            description: "Latest five rejected Scene replies; server-only diagnostic evidence.",
+            coerce: (raw) => ({
+              entries: Array.isArray((raw as { entries?: unknown } | null)?.entries)
+                ? (raw as { entries: RejectedResponse[] }).entries
+                : [],
+            }),
+            label: () => "Rejected model responses",
+          },
+          (state) => {
+            state.entries = retainRejectedResponses(state.entries, entry);
+          },
+        );
+      } catch {
+        try {
+          villagesLogger().warn("[villages] Could not retain private rejected-response diagnostics");
+        } catch {
+          /* Diagnostics cannot replace rejection. */
+        }
+      }
+    }
+  }
+
   /** A returned but invalid result has a known outcome; explicit retry may replace it. */
   async function rejectVenueCompletion(
     detail?: RejectedResponseContext,
@@ -394,6 +444,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         delete current.operation.checkpoints[stage];
         for (const [key, attempt] of Object.entries(current.operation.attempts))
           if (key.startsWith(stage + ":") && attempt.status === "complete") {
+            await retainRejectedCompletion(
+              current,
+              stage,
+              attempt.result as { content?: unknown; finishReason?: unknown },
+              detail,
+            );
             attempt.status = "rejected";
             await rejectLateReceipt(current, key);
           }
@@ -409,6 +465,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       delete current.operation.checkpoints[stage];
       for (const [key, attempt] of Object.entries(current.operation.attempts))
         if (key.startsWith(stage + ":") && attempt.status === "complete") {
+          await retainRejectedCompletion(
+            current,
+            stage,
+            attempt.result as { content?: unknown; finishReason?: unknown },
+            detail,
+          );
           attempt.status = "rejected";
           await rejectLateReceipt(current, key);
         }
@@ -422,48 +484,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       current.operation.attempts[key] = { status: "rejected" };
       await rejectLateReceipt(current, key);
       await persist(current);
-      if (detail && typeof result?.content === "string") {
-        try {
-          const entry: RejectedResponse = {
-            model: String(detail.model ?? "unknown").slice(0, 160),
-            connectionId: String(detail.connectionId ?? "unknown").slice(0, 160),
-            reason: String(detail.reason ?? "unknown").slice(0, 80),
-            sceneId: current.sessionId,
-            operationId: current.operation.id,
-            attemptId: current.operation.attemptId,
-            stage: current.scope,
-            capturedAt: new Date().toISOString(),
-            finishReason: String(result.finishReason ?? "unknown").slice(0, 80),
-            responseLength: result.content.length,
-            content: boundedRejectedText(result.content),
-            truncated: result.content.length > 24_000,
-            syntaxError: rejectedSyntaxError(result.content),
-          };
-          await createDocumentMutator(villagesDocuments)(
-            "villages-rejected-responses",
-            {
-              kind: "private-diagnostics",
-              name: "Rejected model responses",
-              description: "Latest five rejected Scene replies; server-only diagnostic evidence.",
-              coerce: (raw) => ({
-                entries: Array.isArray((raw as { entries?: unknown } | null)?.entries)
-                  ? (raw as { entries: RejectedResponse[] }).entries
-                  : [],
-              }),
-              label: () => "Rejected model responses",
-            },
-            (state) => {
-              state.entries = retainRejectedResponses(state.entries, entry);
-            },
-          );
-        } catch {
-          try {
-            villagesLogger().warn("[villages] Could not retain private rejected-response diagnostics");
-          } catch {
-            /* Diagnostics cannot replace rejection. */
-          }
-        }
-      }
+      await retainRejectedCompletion(current, current.scope, result, detail);
     }
   }
 

@@ -1134,6 +1134,7 @@ export function createSceneCommands({
             ? admission.operation.input.writingContractVersion !== undefined
               ? {
                   writingContractVersion: admission.operation.input.writingContractVersion,
+                  ...(admission.operation.input.residentActionsVersion === 1 ? { residentActionsVersion: 1 } : {}),
                   ...(admission.operation.input.semanticPipelineVersion
                     ? { semanticPipelineVersion: admission.operation.input.semanticPipelineVersion }
                     : {}),
@@ -1148,7 +1149,7 @@ export function createSceneCommands({
             : {
                 writingContractVersion: 3,
                 ...(admission.semanticVersion === 2
-                  ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3 }
+                  ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3, residentActionsVersion: 1 }
                   : {}),
                 writingCapabilities: sceneWritingCapabilities(await readVillageState(), admission),
               };
@@ -1255,6 +1256,7 @@ export function createSceneCommands({
           effectFailures: reply.effectFailures,
           speechCapture: reply.speechCapture,
           accessEvents: savedAccessEvents(reply.roomInterpretation),
+          ...(reply.residentActionReceipt ? { residentActionReceipt: reply.residentActionReceipt } : {}),
           ...(state.semanticVersion === 2
             ? {
                 projectContexts: reply.projectContexts,
@@ -1703,6 +1705,17 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         : sceneWritingCapabilities(await readVillageState(), scene)
       : undefined;
     const payload = {
+      ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.residentActionsVersion === 1
+          ? { residentActionsVersion: 1 }
+          : {}
+        : prior
+          ? prior.semanticProvenance?.residentActionsVersion === 1
+            ? { residentActionsVersion: 1 }
+            : {}
+          : scene.semanticVersion === 2
+            ? { residentActionsVersion: 1 }
+            : {}),
       ...(scene.semanticVersion === 2
         ? scene.operation?.id === input.submissionId
           ? scene.operation.input.semanticPipelineVersion
@@ -2495,6 +2508,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         physicalContext: reply.physicalContext,
         liveProposals: bindLiveProposals(reply, playerLineId, replyLineIds),
         accessEvents: savedAccessEvents(reply.roomInterpretation),
+        ...(reply.residentActionReceipt ? { residentActionReceipt: reply.residentActionReceipt } : {}),
         requestMetrics: venueRequestMetrics(),
         ...(reply.sceneChange
           ? {

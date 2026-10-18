@@ -1,8 +1,18 @@
+import {
+  RESIDENT_ACTION_REVIEW,
+  reconcileResidentActions,
+  type ResidentAccessAction,
+} from "../../domain/rules/resident-actions.js";
 import type { SemanticIntent, SemanticExchange } from "../../domain/models/semantic-model.js";
 import type { VenueScene, VenueReplyLine } from "../../domain/models/scene-model.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import { readAccessCommand, managesAccess } from "../../domain/rules/venue-access.js";
-import { resolveVenueZone, canInviteToZone } from "../../domain/rules/venue-zones.js";
+import {
+  resolveVenueZone,
+  canInviteToZone,
+  canRevokeZonePermission,
+  zoneClosed,
+} from "../../domain/rules/venue-zones.js";
 import { venueInZone } from "../../domain/rules/venue-zones.js";
 import { venueInArea } from "../../domain/rules/venue-model.js";
 import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
@@ -44,7 +54,7 @@ export function createSemanticService(ports: SemanticPorts) {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = stage === "intent" ? 4096 : asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
     const identity = asRecord(input);
-    const key = `semantic-v2:${stage}:${semanticHash([identity.message, identity.evidence])}`;
+    const key = `semantic-v2:${stage}:${semanticHash([identity.message, identity.evidence, ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : [])])}`;
     return ports.venueCheckpoint(key, async () => {
       const requested = await ports.villagesConnectionIdFor("system");
       const initial = await ports.villagesLanguageModels().resolveForRequest({ connectionId: requested ?? undefined });
@@ -172,7 +182,10 @@ export function createSemanticService(ports: SemanticPorts) {
           await ports.venueCheckpoint(key + ":retrieval", async () => ({ sourceHash: hash, memories: requested }));
           throw badGateway("Additional System context is saved. Explicitly retry this stage to interpret it.");
         }
-        return validate(raw, effectiveHash, effectiveInput);
+        const result = validate(raw, effectiveHash, effectiveInput);
+        const receipt = asRecord(asRecord(result).effects).residentActionReceipt;
+        if (receipt) asRecord(receipt).systemResponse = answer.content;
+        return result;
       } catch (error) {
         await ports.rejectVenueCompletion(
           { model: model.model, connectionId: model.connectionId, reason: "semantic-" + stage },
@@ -287,6 +300,7 @@ export function createSemanticService(ports: SemanticPorts) {
     message: string,
     lines: VenueReplyLine[],
     prepared: SemanticIntent | null,
+    residentActions?: ResidentAccessAction[],
   ): Promise<SemanticExchange> {
     const state = await ports.readVillageState();
     const evidence = semanticEvidence(lines);
@@ -294,10 +308,18 @@ export function createSemanticService(ports: SemanticPorts) {
     const context = semanticContext(scene, state, message, combined);
     return ask(
       "exchange",
-      { message, evidence, prepared, context, ...(combined ? { pipelineVersion: 3 } : {}) },
-      (combined
-        ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. Include every meaningful input span in source order. Zone movements require exact existing zoneId. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
-        : "") +
+      {
+        message,
+        evidence,
+        prepared,
+        context,
+        ...(combined ? { pipelineVersion: 3 } : {}),
+        ...(residentActions ? { residentActions } : {}),
+      },
+      (residentActions ? RESIDENT_ACTION_REVIEW + " " : "") +
+        (combined
+          ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. Include every meaningful input span in source order. Zone movements require exact existing zoneId. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
+          : "") +
         "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash,consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false},action:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}}. Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
         "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
         "events independently discovers resident moves [{characterId,zoneId,segment:narration index}], playerMoves:[{zoneId,segment:narration index}] matching every prepared movement timeline span, departures/contactEnd [{source:speech index}], sceneEnded:{source}, residenceRequest:{source,venueId}, residenceDecision:{source,approved}, upgradeRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
@@ -316,7 +338,37 @@ export function createSemanticService(ports: SemanticPorts) {
           : undefined;
         if (interpretedIntent?.status === "unresolved")
           throw badGateway(interpretedIntent.reason || "The action needs clarification. The draft is preserved.");
+        const reconciliation = savedInput.residentActions
+          ? reconcileResidentActions(savedInput.residentActions, raw.residentActionReview, savedInput.evidence)
+          : undefined;
+        if (reconciliation) {
+          if (
+            !Array.isArray(raw.access) ||
+            raw.access.length ||
+            !Array.isArray(asRecord(raw.relationshipChanges).permissions) ||
+            (asRecord(raw.relationshipChanges).permissions as unknown[]).length
+          )
+            throw badGateway("Access effects must use the reviewed resident action ledger. Saved draft retained.");
+          for (const value of reconciliation.permissions) {
+            const venue = state.venues.find((v) => v.id === value.venueId),
+              zone = venue && resolveVenueZone(venue, String(value.zoneId));
+            if (
+              !venue ||
+              !zone ||
+              (value.action === "revoke"
+                ? !canRevokeZonePermission(venue, zone, String(value.controllerId))
+                : zoneClosed(state, venue, zone) || !canInviteToZone(venue, zone, String(value.controllerId)))
+            )
+              throw badGateway("Standing permission issuer or scope lacks current authority. Saved draft retained.");
+          }
+          raw = {
+            ...raw,
+            access: reconciliation.access,
+            relationshipChanges: { ...asRecord(raw.relationshipChanges), permissions: reconciliation.permissions },
+          };
+        }
         const effects = readSemanticEffects(raw, hash);
+        if (reconciliation) effects.residentActionReceipt = reconciliation.receipt;
         if (
           raw.action !== null &&
           (asRecord(raw.action).happened !== true || !Number.isInteger(asRecord(raw.action).segment))
@@ -474,7 +526,7 @@ export function createSemanticService(ports: SemanticPorts) {
         return {
           version: 2,
           ...(interpretedIntent ? { intent: interpretedIntent } : {}),
-          checkpointKey: `semantic-v2:exchange:${semanticHash([savedInput.message, savedInput.evidence])}`,
+          checkpointKey: `semantic-v2:exchange:${semanticHash([savedInput.message, savedInput.evidence, ...(savedInput.residentActions ? [savedInput.residentActions] : [])])}`,
           sourceHash: hash,
           authority,
           effects,

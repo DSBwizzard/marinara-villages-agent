@@ -1,3 +1,9 @@
+import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
+import {
+  venueSavedCheckpoint,
+  venueDebugContext,
+  venueExplicitRetry,
+} from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
 import { bindWishProposals } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
@@ -964,6 +970,186 @@ async function main() {
     assert.equal(closeWrites, 1, "Admitted close can recover after a storage failure without paid work");
     assert.equal(row("abandon").data.status, "closed");
     assert.deepEqual(row("abandon").data.operation.checkpoints["abandoned-request"], failed);
+    seed("typed-review");
+    row("typed-review").data = coerceSession({
+      ...row("typed-review").data,
+      semanticVersion: 2,
+      processingVersion: 1,
+      villageSeed: world.seed,
+    });
+    const typedInput = {
+      semanticPipelineVersion: 3,
+      residentActionsVersion: 1,
+      message: "Hello",
+      semanticBudget: { version: 1, requests: 2, inputTokens: 100000, outputTokens: 20000 },
+    };
+    let narrationDispatches = 0,
+      systemDispatches = 0,
+      acceptReview = false;
+    const typedModel = {
+      ...policyModel,
+      name: "System",
+      fitContext: (messages: unknown, options: any) => ({
+        messages,
+        ...options,
+        estimatedTokensBefore: 1000,
+        trimmed: false,
+      }),
+      chatComplete: async (messages: any[]) => {
+        systemDispatches++;
+        const packet = JSON.parse(messages[1].content);
+        return {
+          finishReason: "stop",
+          content: JSON.stringify({
+            sourceHash: packet.sourceHash,
+            consistent: true,
+            intent: {
+              status: "resolved",
+              instructions: "",
+              action: null,
+              movement: null,
+              timeline: [{ kind: "speech", text: "Hello" }],
+            },
+            authority: { physical: false, access: false, projects: false, standing: false },
+            action: null,
+            memoryChanges: [],
+            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+            wishChanges: [],
+            projectSpeech: [],
+            access: [],
+            events: { moves: [], departures: [], contactEnd: [] },
+            residentActionReview: {
+              version: 1,
+              additionalActions: [],
+              decisions: [],
+              coverage: [
+                {
+                  segment: 0,
+                  status: acceptReview ? "none" : "unresolved",
+                  actionIds: [],
+                  reason: acceptReview ? "No access act" : "Scope unclear",
+                },
+              ],
+            },
+          }),
+        };
+      },
+    };
+    const typedWork = async () => {
+      if (row("typed-review").data.submissions.some((s: any) => s.id === "typed")) return readSession("typed-review");
+      const story = await venueCheckpoint("writing-completion:typed", () =>
+        coordinatedCompletion(
+          "typed-narration",
+          async () => {
+            narrationDispatches++;
+            return {
+              residentActions: [],
+              lines: [{ kind: "narration", speakerId: "__venue_scene__", content: "The room is quiet.", heardBy: [] }],
+            };
+          },
+          undefined,
+          { inputTokens: 1000, outputTokens: 1000 },
+        ),
+      );
+      const restoredService = createSemanticService({
+        readVillageState: async () => world,
+        villagesConnectionIdFor: async () => "system",
+        villagesLanguageModels: () => ({ resolveForRequest: async () => typedModel }),
+        completeWithRoom: modelCalls.completeWithRoom,
+        venueCheckpoint,
+        venueSavedCheckpoint,
+        venueDebugContext,
+        venueExplicitRetry,
+        venueOperationSignal,
+        rejectVenueCompletion,
+      } as any);
+      const scene = { ...coerceSession(row("typed-review").data), operation: { input: typedInput } } as any;
+      const result = await restoredService.exchange(scene, "Hello", story.lines as any, null, story.residentActions);
+      await changeSession("typed-review", (current) => {
+        current.lines.push({
+          id: "typed-line",
+          role: "assistant",
+          speakerId: "__venue_scene__",
+          name: "Narration",
+          content: "The room is quiet.",
+          at: current.startedAt,
+          heardBy: [],
+        });
+        current.submissions.push({
+          id: "typed",
+          message: "Hello",
+          mode: "chat",
+          targetId: "",
+          residentActionReceipt: result.effects.residentActionReceipt,
+        } as any);
+      });
+      return readSession("typed-review");
+    };
+    await assert.rejects(
+      coordinateVenue("typed-review", "typed", "turn", typedInput, 0, undefined, typedWork),
+      /clarification/,
+    );
+    assert.equal(row("typed-review").data.lines.length, 0, "An unresolved action cannot publish a partial turn");
+    assert.equal(narrationDispatches, 1);
+    assert.equal(systemDispatches, 1);
+    assert(
+      records
+        .get("villages-rejected-responses")
+        .data.entries.some((e: any) => e.sceneId === "typed-review" && e.content.includes("residentActionReview")),
+      "Rejected System dispositions retained in existing private journal",
+    );
+    await assert.rejects(
+      coordinateVenue("typed-review", "typed", "turn", typedInput, undefined, undefined, typedWork, { recovery: true }),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    assert.equal(systemDispatches, 1, "Local recovery cannot purchase a replacement");
+    acceptReview = true;
+    const typedAttempt = (await readVenueOperation("typed-review"))!.attemptId;
+    const typedCommitted = await coordinateVenue(
+      "typed-review",
+      "typed",
+      "turn",
+      typedInput,
+      undefined,
+      typedAttempt,
+      typedWork,
+    );
+    assert.equal(narrationDispatches, 1, "Explicit System retry reuses the paid Narration");
+    assert.equal(systemDispatches, 2);
+    assert(typedCommitted.submissions[0].residentActionReceipt?.systemResponse?.includes("residentActionReview"));
+    await coordinateVenue("typed-review", "typed", "turn", typedInput, undefined, undefined, typedWork, {
+      recovery: true,
+    });
+    assert.equal(row("typed-review").data.lines.length, 1);
+    assert.equal(row("typed-review").data.submissions.length, 1);
+    assert.equal(systemDispatches, 2);
+    seed("typed-invalid-narration");
+    const invalidNarration = () =>
+      venueCheckpoint("turn-reply", async () => {
+        await venueCheckpoint("writing-completion:invalid", () =>
+          coordinatedCompletion("invalid-proposal", async () => ({
+            content: '{"residentActions":"invalid"}',
+            finishReason: "stop",
+          })),
+        );
+        await rejectVenueCompletion(
+          { model: "synthetic", connectionId: "narration", reason: "resident-actions" },
+          { preserveWriting: true, stages: ["writing-completion:invalid"] },
+        );
+        throw Error("Invalid proposal");
+      });
+    await assert.rejects(
+      coordinateVenue("typed-invalid-narration", "typed", "turn", {}, 0, undefined, invalidNarration),
+      /Invalid proposal/,
+    );
+    assert(
+      records
+        .get("villages-rejected-responses")
+        .data.entries.some(
+          (e: any) => e.sceneId === "typed-invalid-narration" && e.content.includes("residentActions"),
+        ),
+      "Targeted Narration rejection retains raw proposal diagnostics",
+    );
     console.log("villages-venue-coordinator: ok");
   } finally {
     release();

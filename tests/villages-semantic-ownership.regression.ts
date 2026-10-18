@@ -1,3 +1,15 @@
+import {
+  applyRelationshipReview,
+  defaultRelationshipState,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { applyAccessCommand, evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { parseRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import {
+  readResidentActions,
+  reconcileResidentActions,
+  assertResidentActionWitnesses,
+} from "../packages/villages/src/server/domain/rules/resident-actions.js";
+import { semanticEvidence } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import assert from "node:assert/strict";
 import {
   createSemanticService,
@@ -135,6 +147,8 @@ async function main() {
   let inputEstimate = 1000;
   let loreReads = 0;
   let accessRows: any[] = [];
+  let actionReview: ((packet: any) => any) | undefined;
+  let narrativeActions: unknown;
   let behavior: "valid" | "wrong-hash" | "length" | "missing-domain" | "needs-context" = "valid";
   let lastPacket: any;
   const model = {
@@ -196,7 +210,11 @@ async function main() {
         calls.push("narration");
         return {
           finishReason: "stop",
-          content: JSON.stringify({ segments: [{ kind: "narration", text: "The room is quiet." }], heardPlayerBy: [] }),
+          content: JSON.stringify({
+            segments: [{ kind: "narration", text: "The room is quiet." }],
+            heardPlayerBy: [],
+            ...(narrativeActions !== undefined ? { residentActions: narrativeActions } : {}),
+          }),
         };
       }
       const packet = JSON.parse(messages[1].content);
@@ -242,6 +260,20 @@ async function main() {
             timeline: packet.input.message ? [{ kind: "speech", text: packet.input.message }] : [],
           },
         });
+      if (packet.input.residentActions && actionReview) {
+        const review = actionReview(packet),
+          actions = [...packet.input.residentActions, ...(review?.additionalActions ?? [])];
+        Object.assign(result, {
+          residentActionReview: review,
+          access: [],
+          authority: {
+            physical: false,
+            projects: false,
+            access: actions.some((a) => a.duration === "visit"),
+            standing: actions.some((a) => a.duration === "standing"),
+          },
+        });
+      }
       if (behavior === "missing-domain") delete (result as Record<string, unknown>).memoryChanges;
       return {
         finishReason: behavior === "length" ? "length" : "stop",
@@ -579,6 +611,322 @@ async function main() {
     bindWishFacts([{ kind: "condition", quote: line.content, evidence: ["l"] }], "a", [line], String, true).length,
     1,
   );
+  // New resident actions share a single contract between Narration, System and authoritative effects.
+  const reviewFor = (evidence: any[], proposed: any[], additional: any[] = []) => ({
+    version: 1,
+    additionalActions: additional,
+    decisions: [...proposed, ...additional].map((a) => ({
+      id: a.id,
+      status: "accepted",
+      reason: "Current witnessed scope",
+    })),
+    coverage: evidence.flatMap((line, i) =>
+      line.playerHeard && line.speakerId !== "player"
+        ? [
+            {
+              segment: i,
+              status: [...proposed, ...additional].some((a) => a.source.quote === line.content) ? "actions" : "none",
+              actionIds: [...proposed, ...additional].filter((a) => a.source.quote === line.content).map((a) => a.id),
+              reason: "Current segment checked",
+            },
+          ]
+        : [],
+    ),
+  });
+  const makeAction = (quote: string, changes: any = {}) => ({
+    id: "invitation",
+    actorId: "host",
+    visitorId: "player",
+    source: { speakerId: "host", quote },
+    venueId: venue.id,
+    zoneId: "room",
+    outcome: "invite-now",
+    duration: "visit",
+    conditions: [],
+    accompanies: false,
+    ...changes,
+  });
+  const evidenceFor = (quote: string) => semanticEvidence([{ ...accessLine, content: quote }]);
+  for (const quote of [
+    "There's a place at my table for you.",
+    "The front room is yours to visit while we talk.",
+    "Come in, mind the crates.",
+  ]) {
+    const actions = readResidentActions([makeAction(quote)]),
+      evidence = evidenceFor(quote);
+    const reconciled = reconcileResidentActions(actions, reviewFor(evidence, actions), evidence);
+    assert.equal(reconciled.access[0].zoneId, "room");
+    assert.deepEqual(reconciled.access[0].evidence, [0]);
+    assert.equal(reconciled.permissions.length, 0, "A natural invitation grants only a visit");
+  }
+  assert.throws(() => readResidentActions(undefined), /metadata is incomplete/);
+  const actions = readResidentActions([makeAction("Sit beside me.")]),
+    evidence = evidenceFor("Sit beside me."),
+    review = reviewFor(evidence, actions);
+  for (const change of [
+    (r) => (r.decisions = []),
+    (r) => (r.decisions[0].status = "rejected"),
+    (r) => (r.decisions[0].status = "unresolved"),
+    (r) => (r.coverage = []),
+    (r) => (r.coverage[0].status = "none"),
+    (r) => (r.coverage[0].actionIds = []),
+    (r) => (r.additionalActions = [...actions]),
+  ]) {
+    const invalid = structuredClone(review);
+    change(invalid);
+    assert.throws(() => reconcileResidentActions(actions, invalid, evidence), /retained/);
+  }
+  const receipt = reconcileResidentActions(actions, review, evidence).receipt;
+  assert.throws(() => assertResidentActionWitnesses(receipt, [{ ...evidence[0]!, playerHeard: false }]), /witnessed/);
+  assert.throws(() => assertResidentActionWitnesses(receipt, [{ ...evidence[0]!, heardBy: [] }]), /witnessed/);
+  const discovered = reconcileResidentActions([], reviewFor(evidence, [], actions), evidence);
+  assert.equal(discovered.access.length, 1, "System can discover a Narration omission in the existing call");
+  for (const outcome of ["refuse", "dismiss", "ban-zone"]) {
+    const proposed = readResidentActions([makeAction("Please leave this space.", { outcome })]);
+    assert.equal(
+      reconcileResidentActions(
+        proposed,
+        reviewFor(evidenceFor("Please leave this space."), proposed),
+        evidenceFor("Please leave this space."),
+      ).access[0].outcome,
+      outcome,
+    );
+  }
+  for (const [first, second] of [
+    ["invite-now", "dismiss"],
+    ["invite-now", "revoke-standing"],
+  ]) {
+    const firstAction = makeAction("Sit beside me.", { outcome: first }),
+      secondAction = makeAction("That offer has ended.", {
+        id: "withdraw",
+        outcome: second,
+        duration: second === "revoke-standing" ? "standing" : "visit",
+      });
+    const ordered = [...evidence, ...evidenceFor("That offer has ended.")];
+    for (const [proposed, additional] of [
+      [[firstAction], [secondAction]],
+      [[secondAction], [firstAction]],
+    ]) {
+      assert.throws(
+        () =>
+          reconcileResidentActions(readResidentActions(proposed), reviewFor(ordered, proposed, additional), ordered),
+        /Conflicting/,
+      );
+    }
+  }
+  const conditional = readResidentActions([
+    makeAction("Sit beside me.", { conditions: ["after supper"], outcome: "unresolved" }),
+  ]);
+  assert.throws(
+    () => reconcileResidentActions(conditional, reviewFor(evidence, conditional), evidence),
+    /clarification/,
+  );
+  const escorted = readResidentActions([
+    makeAction("Sit beside me.", { conditions: ["accompanied"], accompanies: true }),
+  ]);
+  assert.equal(reconcileResidentActions(escorted, reviewFor(evidence, escorted), evidence).access[0].accompanies, true);
+  for (const outcome of ["invite-now", "revoke-standing"]) {
+    const proposed = readResidentActions([makeAction("Sit beside me.", { duration: "standing", outcome })]);
+    const r = reconcileResidentActions(proposed, reviewFor(evidence, proposed), evidence);
+    assert.equal(r.access.length, 0);
+    assert.equal(r.permissions[0].action, outcome === "invite-now" ? "grant" : "revoke");
+    const invalid = proposed.map((a) => ({ ...a, conditions: ["accompanied"] }));
+    assert.throws(
+      () => reconcileResidentActions(invalid, reviewFor(evidence, invalid), evidence),
+      /Standing permission/,
+    );
+  }
+  const repeated = readResidentActions([
+    ...actions,
+    { ...actions[0], id: "repeat", source: { speakerId: "host", quote: "Pull up the other chair." } },
+  ]);
+  const repeatedEvidence = [...evidence, ...evidenceFor("Pull up the other chair.")];
+  const folded = reconcileResidentActions(repeated, reviewFor(repeatedEvidence, repeated), repeatedEvidence);
+  assert.equal(folded.access.length, 1, "Repeated scoped invitations create one mechanical event");
+  assert.deepEqual(folded.access[0].evidence, [0, 1]);
+  assert.equal(
+    (publicSceneResponse({ residentActionReceipt: receipt, content: "Visible" }) as any).residentActionReceipt,
+    undefined,
+  );
+
+  behavior = "valid";
+  accessRows = [];
+  checkpoints.clear();
+  calls.length = 0;
+  narrativeActions = [];
+  actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
+  const actionScene = {
+    ...combinedScene,
+    operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 1 } },
+  } as typeof scene;
+  const actionWriter = createSceneWriting({
+    ...writerPorts,
+    venueOperationInput: () => ({
+      semanticPipelineVersion: 3,
+      residentActionsVersion: 1,
+      writingContractVersion: 3,
+      writingCapabilities: {
+        management: false,
+        movement: false,
+        residences: false,
+        residenceDecision: false,
+        editApproval: false,
+      },
+    }),
+  });
+  const actionResult = await actionWriter.generate(actionScene, "A quiet conversation", "chat", "", null);
+  assert.deepEqual(calls, ["narration", "exchange"], "Actions use exactly the existing two calls");
+  assert.equal(actionResult.semanticProvenance?.residentActionsVersion, 1);
+  assert(actionResult.residentActionReceipt?.systemResponse?.includes("residentActionReview"));
+  const decodedReceipt = coerceSession({
+    ...actionScene,
+    submissions: [{ id: "saved", residentActionReceipt: actionResult.residentActionReceipt }],
+  }).submissions[0]!.residentActionReceipt;
+  assert.deepEqual(
+    decodedReceipt,
+    actionResult.residentActionReceipt,
+    "Complete action decisions and raw System response survive saved Scene decoding",
+  );
+  await createSceneWriting({
+    ...writerPorts,
+    semantic: createSemanticService(ports),
+    venueOperationInput: () => ({
+      semanticPipelineVersion: 3,
+      residentActionsVersion: 1,
+      writingContractVersion: 3,
+      writingCapabilities: {
+        management: false,
+        movement: false,
+        residences: false,
+        residenceDecision: false,
+        editApproval: false,
+      },
+    }),
+  }).generate(actionScene, "A quiet conversation", "chat", "", null);
+  assert.equal(calls.length, 2, "Service reconstruction reuses saved Narration and parsed System response");
+  state.venues = [venue];
+  const checksBefore = calls.length;
+  const accessScene = { ...actionScene, placeId: venue.id };
+  const permitted = await service.exchange(
+    accessScene,
+    "A visit",
+    [accessLine],
+    null,
+    readResidentActions([makeAction(accessLine.content)]),
+  );
+  const room = venue.zones[0],
+    other = venue.zones[1],
+    context = { sceneId: scene.id };
+  assert.equal(evaluateZoneAccess(venue, room, "player", context).allowed, false);
+  const accessCommand = (permitted.access!.checks[0].facts as any).accessCommand;
+  const originalPosition = accessScene.zoneId,
+    originalSeen = room.seen;
+  applyAccessCommand(venue, accessCommand, "host", scene.startedAt, ["host", "player"], ["spoken-line"]);
+  assert.equal(
+    evaluateZoneAccess(venue, room, "player", context).allowed,
+    true,
+    "Accepted typed invitation opens movement permission",
+  );
+  assert.equal(
+    evaluateZoneAccess(venue, other, "player", context).allowed,
+    false,
+    "Permission never broadens to another Zone",
+  );
+  assert.equal(accessScene.zoneId, originalPosition, "Invitation never moves the player");
+  assert.equal(room.seen, originalSeen, "Permission never reveals unseen contents");
+  const applied = structuredClone(venue.access);
+  applyAccessCommand(venue, accessCommand, "host", scene.startedAt, ["host", "player"], ["spoken-line"]);
+  assert.deepEqual(venue.access, applied, "Same validated action receipt cannot duplicate permission or revision");
+  assert.equal(calls.length, checksBefore + 1);
+  assert(lastPacket.input.residentActions.length === 1);
+  const changed = readResidentActions([makeAction(accessLine.content, { zoneId: "other" })]);
+  await service.exchange(accessScene, "A visit", [accessLine], null, changed);
+  assert.equal(
+    lastPacket.input.residentActions[0].zoneId,
+    "other",
+    "Changed action scope cannot reuse an old frozen System packet",
+  );
+  assert.equal(calls.length, checksBefore + 2);
+  const unauthorized = readResidentActions([
+    makeAction(accessLine.content, {
+      actorId: "stranger",
+      source: { speakerId: "__venue_scene__", quote: accessLine.content },
+    }),
+  ]);
+  await assert.rejects(
+    service.exchange(accessScene, "Bad authority", [accessLine], null, unauthorized),
+    /source is missing/,
+  );
+  actionReview = () => undefined;
+  await assert.rejects(
+    service.exchange(accessScene, "Missing disposition", [accessLine], null, actions),
+    /review is incomplete/,
+  );
+  assert(
+    rejected.some((row) => row.detail?.reason === "semantic-exchange"),
+    "Failed review uses the existing retained-response journal",
+  );
+  actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
+  state.villagers = [{ characterId: "host", cardSnapshot: { name: "Host" } }] as any;
+  venue.zones[0].closed = true;
+  const standingGrant = readResidentActions([makeAction(accessLine.content, { duration: "standing" })]);
+  await assert.rejects(
+    service.exchange(accessScene, "Closed standing grant", [accessLine], null, standingGrant),
+    /authority/,
+  );
+  const standingRevoke = readResidentActions([
+    makeAction(accessLine.content, { duration: "standing", outcome: "revoke-standing" }),
+  ]);
+  actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
+  const revoked = await service.exchange(accessScene, "Closed standing withdrawal", [accessLine], null, standingRevoke);
+  const standingRows = (revoked.effects.relationshipChanges as any).permissions.map((p: any) => ({
+    ...p,
+    lineIds: ["saved-speech"],
+  }));
+  assert.equal(
+    parseRelationshipReview(
+      { changes: [], permissions: standingRows, disclosures: [] },
+      "withdrawal",
+      [{ ...accessLine, id: "saved-speech", role: "assistant", playerHeard: true }],
+      state,
+      true,
+    ).permissions[0].action,
+    "revoke",
+    "A closed Zone can still lose standing permission",
+  );
+  const legacyVenue = structuredClone(venue);
+  delete legacyVenue.access;
+  legacyVenue.zones[0].kind = "private-residence";
+  legacyVenue.zones[0].ownerId = "host";
+  legacyVenue.zones[0].closed = false;
+  const legacyVillage = { ...state, venues: [legacyVenue] },
+    relationshipState = defaultRelationshipState(state.seed),
+    stamp = scene.startedAt;
+  const standingGrantReview = {
+    changes: [],
+    disclosures: [],
+    permissions: [{ ...standingRows[0], id: "old-grant", action: "grant" }],
+  } as any;
+  applyRelationshipReview(relationshipState, standingGrantReview, legacyVillage, "grant", stamp, Date.parse(stamp));
+  legacyVenue.zones[0].closed = true;
+  const withdrawalReview = {
+    changes: [],
+    disclosures: [],
+    permissions: [{ ...standingRows[0], id: "new-revoke", action: "revoke" }],
+  } as any;
+  const later = new Date(Date.parse(stamp) + 1000).toISOString();
+  applyRelationshipReview(relationshipState, withdrawalReview, legacyVillage, "revoke", later, Date.parse(later));
+  assert.equal(
+    Object.values(relationshipState.grants)[0].revoked,
+    true,
+    "Closed legacy Zone withdrawal is applied, not silently skipped",
+  );
+  const once = structuredClone(relationshipState);
+  applyRelationshipReview(relationshipState, withdrawalReview, legacyVillage, "revoke", later, Date.parse(later));
+  assert.deepEqual(relationshipState, once, "Standing withdrawal replay is idempotent");
+  venue.zones[0].closed = false;
+  narrativeActions = undefined;
+  actionReview = undefined;
   console.log(
     "System ownership: connection routing, independent extraction, replay, failure isolation, evidence identity, privacy and legacy compatibility passed; fake providers only.",
   );
