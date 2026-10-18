@@ -1096,6 +1096,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releasePrivateSpaces = configurePrivateSpacePreparation(
     createPrivateSpacePreparation({
+      mutateDocument,
       readVillageLore,
       villagesLogger,
       villagesLanguageModels,

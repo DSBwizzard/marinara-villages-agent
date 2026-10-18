@@ -359,6 +359,8 @@ export function createResidences(ports: ResidencePorts) {
       ];
       const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1000, 1000) });
       const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 1000, {
+        responseFormat: { type: "json_object" },
+        retryEmpty: false,
         temperature: 0.4,
         debugMode: false,
       });

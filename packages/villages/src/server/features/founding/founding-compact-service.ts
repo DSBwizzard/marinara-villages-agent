@@ -103,6 +103,7 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
     await onModelStart(model.name);
     const started = performance.now();
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requested, {
+      responseFormat: { type: "json_object" },
       temperature: 0.3,
       reasoningEffort: "none",
       retryEmpty: false,

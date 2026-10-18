@@ -109,6 +109,7 @@ export const isolatedTests = new Set([
   "tests/villages-player-voice.regression.ts",
   "tests/villages-private-preparation-ownership.regression.ts",
   "tests/villages-private-spaces.regression.ts",
+  "tests/villages-space-json.regression.ts",
   "tests/villages-progress-engine.regression.ts",
   "tests/villages-progress-projects.regression.ts",
   "tests/villages-project-checks.regression.ts",

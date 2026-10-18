@@ -193,6 +193,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     let completion: CapabilityLanguageModelCompletion | null = null;
     try {
       completion = await completeWithRoom(model, fitted.messages, outputLimit, {
+        responseFormat: { type: "json_object" },
         temperature: limit === 800 ? 0 : 0.7,
         reasoningEffort: "low",
         debugMode: !backgroundCalls.getStore() && villagesDebugAgentsEnabled(),

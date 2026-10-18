@@ -277,6 +277,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest("The required resident backgrounds do not fit the System connection. No request was sent.");
     await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
+      responseFormat: { type: "json_object" },
       temperature: 0.7,
       reasoningEffort: "none",
       retryEmpty: false,

@@ -53,6 +53,8 @@ export function createScenarioImprint(ports: ScenarioImprintServicePorts) {
     ];
     const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1400, 1400) });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 1400, {
+      responseFormat: { type: "json_object" },
+      retryEmpty: false,
       temperature: 0.4,
       debugMode: false,
     });

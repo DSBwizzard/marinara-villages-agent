@@ -88,7 +88,11 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       { role: "user", content: JSON.stringify({ setting: setting.slice(0, MAX_SETTING_LENGTH), lore, venues: rows }) },
     ];
     const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2_500, 2_500) });
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2_500, { temperature: 0.7 });
+    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2_500, {
+      responseFormat: { type: "json_object" },
+      retryEmpty: false,
+      temperature: 0.7,
+    });
     const payload = extractJsonObject(completion.content ?? "");
     const descriptions = Array.isArray(payload?.descriptions) ? payload.descriptions : [];
     const known = new Set(rows.map((row) => row.id));
@@ -122,6 +126,8 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     villagesLogger().debugOverride(debugEnabled, "[villages] bootstrap prompt: %s", JSON.stringify(fitted.messages));
 
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
+      responseFormat: { type: "json_object" },
+      retryEmpty: false,
       temperature: BOOTSTRAP_TEMPERATURE,
       debugMode: debugEnabled,
       signal: options.signal,
@@ -163,6 +169,8 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     ];
     const fitted = model.fitContext(messages, { maxTokens: requestedMaxTokens });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
+      responseFormat: { type: "json_object" },
+      retryEmpty: false,
       temperature: BOOTSTRAP_TEMPERATURE,
     });
     const payload = extractJsonObject(completion.content ?? "");
@@ -308,6 +316,8 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     villagesLogger().debugOverride(debugEnabled, "[villages] reaction prompt: %s", JSON.stringify(fitted.messages));
 
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
+      responseFormat: { type: "json_object" },
+      retryEmpty: false,
       temperature: REACTION_TEMPERATURE,
       debugMode: debugEnabled,
       signal: options.signal,

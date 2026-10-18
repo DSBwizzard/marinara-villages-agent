@@ -371,7 +371,10 @@ assert.deepEqual(
 );
 assert.deepEqual(
   adapted.options.find((option) => option?.settings),
-  { maxTokens: 1000, settings: { temperature: 0.4, debugMode: false } },
+  {
+    maxTokens: 1000,
+    settings: { responseFormat: { type: "json_object" }, retryEmpty: false, temperature: 0.4, debugMode: false },
+  },
 );
 // Today's furniture remains while deliberately selected portable details are merged into its canonical Zone.
 adapted.room.state.items = ["Current lamp"];

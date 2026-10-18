@@ -375,6 +375,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
       if (fit.trimmed || (fit.messages && JSON.stringify(fit.messages) !== JSON.stringify(messages)))
         throw conflict("The complete spinoff does not fit the review connection. Keep it separate.");
       const result = await model.chatComplete(messages, {
+        responseFormat: { type: "json_object" },
         maxTokens: 2400,
         temperature: 0.1,
         signal: AbortSignal.timeout(90000),

@@ -339,7 +339,10 @@ async function main() {
       assert.deepEqual(calls, ["aqua", "feddy"], "failure stops later requests without implicit retries");
       assert.equal(state.venues[0].zones![1].preparation?.status, "ready");
       assert.equal(state.venues[2].zones![1].preparation?.status, "pending");
-      assert.match(state.foundingPreparation!.error, /Storage Bay.*Fixture System.*limit 3000.*finish/);
+      assert.match(
+        state.foundingPreparation!.error,
+        failure === "provider" ? /Storage Bay: Offline/ : /Storage Bay: Space response/,
+      );
       assert.doesNotMatch(state.foundingPreparation!.error, /PRIVATE CONTENT|private-secret/);
       await foundingPreparationSnapshot();
       await preparePrivateSpaces();

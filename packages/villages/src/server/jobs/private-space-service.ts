@@ -1,3 +1,10 @@
+import type { mutateDocument } from "../adapters/storage/document-store.js";
+import {
+  boundedRejectedText,
+  rejectedSyntaxError,
+  REJECTED_RESPONSE_LIMIT,
+} from "../domain/rules/rejected-response.js";
+import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import type { readVillageLore } from "../adapters/engine/lorebooks.js";
 import type { villagesLogger } from "../adapters/engine/runtime-host.js";
@@ -43,6 +50,7 @@ export function privatePreparationRooms(village: Pick<VillageState, "venues">) {
   );
 }
 export interface PrivateSpacePreparationPorts {
+  mutateDocument: typeof mutateDocument;
   readVillageLore: typeof readVillageLore;
   villagesLogger: typeof villagesLogger;
   villagesLanguageModels: typeof villagesLanguageModels;
@@ -55,6 +63,7 @@ export interface PrivateSpacePreparationPorts {
 /** One application owns the durable private-space preparation sequence. */
 export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPorts) {
   const {
+    mutateDocument,
     readVillageLore,
     villagesLogger,
     villagesLanguageModels,
@@ -160,7 +169,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         const model = await villagesLanguageModels().resolveForRequest({
           connectionId: await villagesConnectionIdFor("system"),
         });
-        modelName = model.name || model.model || "System model";
+        modelName = model.model || model.name || "System model";
         const requested = Math.min(model.maxOutputTokens ?? 3000, 3000);
         const messages: CapabilityLanguageModelMessage[] = [
           {
@@ -211,6 +220,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         if (!claimed) return;
         await progress("model");
         const result = await completeWithRoom(model, fitted.messages, outputLimit, {
+          responseFormat: { type: "json_object" },
           temperature: 0.7,
           reasoningEffort: "none",
           retryEmpty: false,
@@ -220,20 +230,79 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         });
         finishReason = result.finishReason ?? "unknown";
         await progress("validating");
-        if (finishReason === "length")
-          throw new Error("Output was truncated. Check the System output limit and retry deliberately.");
         const raw = extractJsonObject(result.content ?? "");
         const entries = Array.isArray(raw?.rooms) ? raw.rooms.map(asRecord) : [];
         const generated = entries[0];
-        if (
-          entries.length !== 1 ||
-          generated.venueId !== venue.id ||
-          generated.id !== zone.id ||
-          !asTrimmedString(generated.description)
-        )
-          throw new Error(
-            "No complete JSON for the requested space. Check the System connection and retry deliberately.",
-          );
+        const issues = !raw
+          ? ["invalid_json"]
+          : !Array.isArray(raw.rooms)
+            ? ["missing_rooms"]
+            : entries.length !== 1
+              ? ["room_count"]
+              : [
+                  ...(generated.venueId !== venue.id ? ["venue_id_mismatch"] : []),
+                  ...(generated.id !== zone.id ? ["space_id_mismatch"] : []),
+                  ...(!asTrimmedString(generated.description) ? ["missing_description"] : []),
+                ];
+        if (["length", "max_tokens"].includes(finishReason)) issues.unshift("truncated");
+        if (issues.length) {
+          const content = result.content ?? "";
+          const entry = {
+            ...responseDiagnostics(model, result, outputLimit, raw),
+            villageSeed: seed,
+            venueId: venue.id,
+            zoneId: zone.id,
+            claimId,
+            attempt,
+            capturedAt: new Date().toISOString(),
+            issues,
+            usage: result.usage
+              ? {
+                  promptTokens: result.usage.promptTokens,
+                  completionTokens: result.usage.completionTokens,
+                  completionReasoningTokens: result.usage.completionReasoningTokens,
+                }
+              : undefined,
+            content: boundedRejectedText(content),
+            truncated: content.length > 24_000,
+            syntaxError: raw ? "" : rejectedSyntaxError(content),
+          };
+          try {
+            await mutateDocument(
+              "villages-private-space-failures",
+              {
+                kind: "private-diagnostics",
+                name: "Rejected space responses",
+                description: "Server-only bounded space preparation failures.",
+                coerce: (value) => ({
+                  entries: Array.isArray(asRecord(value).entries) ? (asRecord(value).entries as (typeof entry)[]) : [],
+                }),
+                label: () => "Rejected space responses",
+              },
+              (state) => {
+                state.entries = [...state.entries, entry].slice(-REJECTED_RESPONSE_LIMIT);
+              },
+            );
+          } catch {
+            try {
+              villagesLogger().warn("[villages] Could not retain private space-response diagnostics");
+            } catch {
+              /* Diagnostics cannot replace rejection. */
+            }
+          }
+          const problem = issues.includes("truncated")
+            ? "Space response was truncated."
+            : issues.includes("invalid_json")
+              ? "Space response was not valid JSON."
+              : issues.includes("missing_rooms")
+                ? "Space response omitted rooms."
+                : issues.includes("room_count")
+                  ? "Space response must contain exactly one room."
+                  : issues.includes("venue_id_mismatch") || issues.includes("space_id_mismatch")
+                    ? "Space response used the wrong IDs."
+                    : "Space response omitted its description.";
+          throw new Error(problem + " Retry preparation.");
+        }
         signal?.throwIfAborted();
         await progress("saving");
         let stale = false;
@@ -292,11 +361,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         const detail = signal?.aborted
           ? "Preparation was interrupted. Retry deliberately; the previous request may have been charged."
           : safeFailureMessage(cause);
-        const error =
-          `${zone.name.slice(0, 80)} · ${modelName.slice(0, 60)} · limit ${outputLimit ?? "unavailable"} · finish ${finishReason}: ${detail}`.slice(
-            0,
-            300,
-          );
+        const error = `${zone.name.slice(0, 80)}: ${detail}`.slice(0, 300);
         await mutateVillageState((state) => {
           if (state.seed !== seed) return;
           const currentVenue = state.venues.find((entry) => entry.id === venue.id);

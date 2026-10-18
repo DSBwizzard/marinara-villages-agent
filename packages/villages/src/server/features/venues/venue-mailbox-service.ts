@@ -246,6 +246,8 @@ export function createVenueMailbox({
       ];
       const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1200, 1200) });
       const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 1200, {
+        responseFormat: { type: "json_object" },
+        retryEmpty: false,
         temperature: 0.5,
         debugMode: false,
       });
