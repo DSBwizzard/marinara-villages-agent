@@ -38,6 +38,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
     setFocusedRequestId,
     setMemoryLibrary,
     setMenuPage,
+    setReturningToDirectory,
     setPersonProfile,
     setProfileInspection,
     setScreen,
@@ -155,9 +156,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
         <div className={`${ELEMENT_TAG}-overlay-head`}>
           <h2 className={`${ELEMENT_TAG}-panel-title`}>Private wishes</h2>
         </div>
-        <p className={`${ELEMENT_TAG}-empty`}>
-          Private wishes can shape what a villager notices, says, and does. Their full routine is in Inspect → Agenda.
-        </p>
 
         {agendas === null ? (
           <p className={`${ELEMENT_TAG}-empty`}>Reading what the villagers wish…</p>
@@ -172,10 +170,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                   {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
                 </h3>
                 {villager.agenda === null ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>
-                    Not written for yet. The village works this out on the next part of the day it already runs on, so
-                    there is nothing to press.
-                  </p>
+                  <p className={`${ELEMENT_TAG}-empty`}>No wishes recorded.</p>
                 ) : villager.agenda.wishes.length === 0 ? (
                   <p className={`${ELEMENT_TAG}-empty`}>
                     {villager.agenda.personalizationFailure
@@ -401,7 +396,10 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
       setPersonProfile(null);
       setScreen(personProfile.returnTo);
       if (personProfile.returnTo === "home") setExploreSheet({ tab: "people" });
-      if (personProfile.returnTo === "menu") setMenuPage("villagers");
+      if (personProfile.returnTo === "menu") {
+        setReturningToDirectory(true);
+        setMenuPage("villagers");
+      }
       requestAnimationFrame(() => {
         for (const { selector, top } of profileOrigin.current.scroll) {
           const target = element.querySelector<HTMLElement>(selector);

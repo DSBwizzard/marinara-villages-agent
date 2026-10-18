@@ -189,6 +189,10 @@ try {
     await expect(page.getByText("No wishes shared yet.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to People" }).click();
     await page.getByRole("button", { name: /Feddy The Mill/ }).click();
+    await page
+      .getByRole("navigation", { name: "Villager profile sections" })
+      .getByRole("button", { name: "Venues", exact: true })
+      .click();
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
     await page.getByRole("button", { name: "Visit venue", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();

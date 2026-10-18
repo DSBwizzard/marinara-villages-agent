@@ -143,10 +143,6 @@ export function VillagesRelationships({
     `}</style>
       <header>
         <h2>Relationships</h2>
-        <p>
-          Warmth is how someone feels about your company. Trust is their confidence in you. Each villager has their own
-          feelings.
-        </p>
       </header>
       {error ? <p role="alert">{error}</p> : null}
       {!view ? (
@@ -220,7 +216,6 @@ export function VillagesRelationships({
                 </>
               ) : (
                 <>
-                  <p>Creator values are visible for this village. Exact reasons remain learned through gameplay.</p>
                   <button
                     type="button"
                     className={button}

@@ -309,6 +309,7 @@ try {
     await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: /^Villagers \(/u }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
+    await page.getByText("Manage", { exact: true }).click();
     const managerButton = page.getByRole("button", { name: /Manage sprites ·/u }).first();
     await managerButton.focus();
     await page.keyboard.press("Enter");

@@ -1,8 +1,12 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AvatarFace } from "./ResidentPanels.js";
+import { useEffect, useState } from "react";
 
 export function RosterScreen({ controller }: { controller: RosterScreenController }) {
+  const [opening] = useState(!controller.returningToDirectory);
+  const { setReturningToDirectory } = controller;
+  useEffect(() => setReturningToDirectory(false), [setReturningToDirectory]);
   const {
     addVillager,
     busy,
@@ -31,6 +35,7 @@ export function RosterScreen({ controller }: { controller: RosterScreenControlle
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
         <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
+          {opening ? <div className={`${ELEMENT_TAG}-directory-cover`} aria-hidden="true" /> : null}
           <header className={`${ELEMENT_TAG}-directory-head`}>
             <h1>Villagers</h1>
             <button type="button" onClick={() => setMenuPage("index")}>
@@ -48,16 +53,11 @@ export function RosterScreen({ controller }: { controller: RosterScreenControlle
               type="search"
               value={rosterSearch}
               onChange={(event) => setRosterSearch(event.target.value)}
-              placeholder="Search villagers by name, summary or tag…"
+              placeholder="Search villagers…"
               aria-label="Search villagers"
             />
           </div>
           <div className={`${ELEMENT_TAG}-directory-picker`}>
-            {" "}
-            <p className={`${ELEMENT_TAG}-empty`}>
-              Characters from your library live here. Moving someone out forgets nothing about the character card
-              itself.
-            </p>
             <div className={`${ELEMENT_TAG}-row`}>
               <button
                 type="button"
