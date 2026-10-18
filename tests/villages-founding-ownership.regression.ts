@@ -261,7 +261,7 @@ async function pendingSnapshotResumes() {
   const f = fixture("snapshot");
   await f.service.foundingPreparationSnapshot();
   assert.equal(f.counts().seedRequests, 0, "GET never starts provider work");
-  assert.equal(f.state().foundingPreparation?.status, "failed");
+  assert.equal(f.state().foundingPreparation?.status, "pending", "GET does not reconcile interrupted work");
   await f.service.retryFoundedVillagePreparation();
   await until(() => f.counts().seedRequests === 1);
   const pending = f.service.prepareFoundedVillage();

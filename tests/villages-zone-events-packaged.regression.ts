@@ -201,7 +201,7 @@ const model = {
       const packet = JSON.parse(messages[1].content);
       const intent = messages[0].content.includes("Interpret current player intent");
       semanticStages.push(intent ? "intent" : "exchange");
-      const response = intent ? semanticIntentAnswer : semanticExchangeAnswer;
+      const response = intent ? semanticIntentAnswer : { ...semanticExchangeAnswer, intent: semanticIntentAnswer };
       assert(response, "A labeled System response is required");
       return {
         content: JSON.stringify({ ...response, sourceHash: packet.sourceHash }),
@@ -299,7 +299,7 @@ async function turn(
   };
   const expectedCalls =
     state().semanticVersion === 2
-      ? 3
+      ? 2
       : 1 + (expectedChecks ?? (Array.isArray(effects.memoryChanges) && effects.memoryChanges.length ? 1 : 0));
   const payload = {
     sessionId: scene.id,
@@ -1113,7 +1113,7 @@ try {
       contactMoves: [{ segment: 999, characterId: "invented", zoneId: "invented" }],
     },
   );
-  assert.deepEqual(semanticStages, ["intent", "exchange"]);
+  assert.deepEqual(semanticStages, ["exchange"], "the packaged new contract uses one combined System check");
   assert.equal(state().submissions.at(-1).semanticReady, true);
   assert.equal(state().submissions.at(-1).processing.domains.memories.status, "applied");
   assert(
@@ -1138,37 +1138,21 @@ try {
     "Non-authority metadata failure preserves usable dialogue",
   );
   assert.equal(state().submissions.at(-1).processing.domains.memories.status, "failed");
-  const beforeBarrier = modelCalls;
-  const blocked = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/turn",
-    payload: {
-      sessionId: scene.id,
-      submissionId: "blocked-after-failure",
-      mode: "chat",
-      targetId: "",
-      message: "*waits*",
-      expectedSceneRevision: state().sceneRevision,
-    },
-  });
-  assert.equal(blocked.statusCode, 409, blocked.body);
-  assert.equal(modelCalls, beforeBarrier, "The continuity barrier runs before any provider dispatch");
-  const blockedClose = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/end",
-    payload: { sessionId: scene.id, expectedSceneRevision: state().sceneRevision },
-  });
-  assert.equal(blockedClose.statusCode, 409, blockedClose.body);
-  assert.equal(state().status, "active", "Conclude/reopen cannot bypass the unresolved-domain fence");
-  assert.equal(modelCalls, beforeBarrier);
+  await turn("after-optional-failure", "*waits*", [{ text: "The conversation continues." }]);
+  const failedMemoryTurn = () => state().submissions.find((row: any) => row.id === "semantic-missing-domain");
+  assert.equal(
+    failedMemoryTurn().processing.domains.memories.status,
+    "failed",
+    "optional failure remains visible without blocking play",
+  );
   const continued = await app.inject({
     method: "POST",
     url: `/api/villages/rooms/${scene.id}/changes/semantic-missing-domain/continue`,
     payload: { domain: "memories" },
   });
   assert.equal(continued.statusCode, 200, continued.body);
-  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "rejected");
-  assert(state().submissions.at(-1).semanticContinuedDomains.includes("memories"));
+  assert.equal(failedMemoryTurn().processing.domains.memories.status, "rejected");
+  assert(failedMemoryTurn().semanticContinuedDomains.includes("memories"));
   assert(
     Object.values(records.get("villages-village").data.semanticContinuations).some((domains: any) =>
       domains.includes("memories"),
@@ -1201,7 +1185,7 @@ try {
     payload: metadataPayload,
   });
   assert.equal(invalidMetadata.statusCode, 502, invalidMetadata.body);
-  assert.equal(modelCalls, beforeMetadata + 3);
+  assert.equal(modelCalls, beforeMetadata + 2);
   assert(!state().submissions.some((row: any) => row.id === metadataPayload.submissionId));
   const noAutomaticReplacement = await app.inject({
     method: "POST",
@@ -1209,7 +1193,7 @@ try {
     payload: metadataPayload,
   });
   assert.equal(noAutomaticReplacement.statusCode, 409, noAutomaticReplacement.body);
-  assert.equal(modelCalls, beforeMetadata + 3, "Rejected System output never triggers automatic replacement");
+  assert.equal(modelCalls, beforeMetadata + 2, "Rejected System output never triggers automatic replacement");
   semanticExchangeAnswer.events = { moves: [], departures: [], contactEnd: [] };
   const recoveredMetadata = await app.inject({
     method: "POST",
@@ -1217,7 +1201,7 @@ try {
     payload: { ...metadataPayload, retryOfAttemptId: state().operation.attemptId },
   });
   assert.equal(recoveredMetadata.statusCode, 200, recoveredMetadata.body);
-  assert.equal(modelCalls, beforeMetadata + 4, "Explicit retry replaces only the failed System stage");
+  assert.equal(modelCalls, beforeMetadata + 3, "Explicit retry replaces only the failed System stage");
   assert.equal(narrationCalls, beforeMetadataNarration + 1, "The saved narration is retained byte for byte");
   // A simple complete System verdict is consumed once, without Decisions or a second Wish judge.
   const liveWorld = records.get("villages-village").data;
@@ -1310,6 +1294,7 @@ try {
     playerSpeechCapture: { status: "silent", segments: [] },
     segments: [{ speakerId: "aqua", text: "Come through with me." }],
   };
+  semanticIntentAnswer = { status: "resolved", timeline: [], instructions: "", action: null, movement: null };
   const beforeOpening = modelCalls;
   const opening = await app.inject({
     method: "POST",
@@ -1458,17 +1443,11 @@ try {
   semanticExchangeAnswer.events = { moves: [], departures: [], contactEnd: [], sceneEnded: { source: 0 } };
   delete semanticExchangeAnswer.memoryChanges;
   await turn("semantic-conclusion-recovery", "*waits*", [{ speakerId: "feddy", text: "I'll see you next time." }]);
-  assert.equal(state().status, "active", "A natural conclusion waits behind failed domain continuity");
-  assert.equal(state().submissions.at(-1).semanticConclude, true);
-  const beforeConcludeRecovery = modelCalls;
-  const finishConclude = await app.inject({
-    method: "POST",
-    url: `/api/villages/rooms/${scene.id}/changes/semantic-conclusion-recovery/continue`,
-    payload: { domain: "memories" },
-  });
-  assert.equal(finishConclude.statusCode, 200, finishConclude.body);
-  assert.equal(state().status, "closed", "An explicit continuation finishes the saved natural conclusion locally");
-  assert.equal(modelCalls, beforeConcludeRecovery);
+  assert.equal(state().status, "closed", "Optional memory failure does not delay a natural conclusion");
+  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "failed");
+  const beforeConcludeRead = modelCalls;
+  await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+  assert.equal(modelCalls, beforeConcludeRead, "Reading the concluded Scene performs no paid recovery");
   console.log(
     "Archive-identical HTTP acceptance: legacy Zone events, sound/privacy, replay/restart plus v2 independent System discovery, forged narrator rejection, continuity/Continue and simple Wish settlement passed with synthetic providers.",
   );
