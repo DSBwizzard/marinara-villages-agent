@@ -231,6 +231,48 @@ async function main() {
     "existing lazy cleanup getters remain separate",
   );
   assert(unplayed.calls.includes("remove:" + SESSION_PREFIX + "same:7"));
+  for (const evidence of ["raw", "checkpoint", "unknown"]) {
+    const interrupted = fixture("saved-" + evidence);
+    interrupted.saved.lastActivityAt = "2020-01-01T00:00:00.000Z";
+    if (evidence === "unknown")
+      interrupted.saved.generationReceipts = [
+        {
+          operationId: "greeting",
+          attemptId: "paid",
+          stages: ["narration"],
+          outcome: "unknown",
+          acknowledgedAt: interrupted.saved.startedAt,
+        },
+      ];
+    else
+      interrupted.saved.operation = {
+        id: "greeting",
+        kind: "greet",
+        status: "interrupted",
+        attemptId: "paid",
+        token: "owner",
+        sceneRevision: 0,
+        input: {},
+        attempts:
+          evidence === "raw" ? { paid: { status: "complete", result: { content: "Saved paid greeting" } } } : {},
+        checkpoints: evidence === "checkpoint" ? { "greeting-reply": { lines: ["Saved paid greeting"] } } : {},
+      } as any;
+    const before = structuredClone({
+      operation: interrupted.saved.operation,
+      receipts: interrupted.saved.generationReceipts,
+    });
+    assert.equal(await interrupted.service.activeVenueSession(), null);
+    const archived = interrupted.sessions.get("same")!;
+    assert.equal(archived.status, "closed");
+    assert.equal(archived.endReason, "inactivity");
+    assert.equal(interrupted.active.sessionId, "");
+    assert.deepEqual({ operation: archived.operation, receipts: archived.generationReceipts }, before);
+    assert(
+      !interrupted.calls.includes("documents"),
+      "Expired unplayed Scene retains raw, checkpoint and uncertain billing evidence",
+    );
+    await assert.rejects(interrupted.service.requireLiveVenueSession("same"), (error: any) => error.statusCode === 410);
+  }
   const arrived = fixture("arrived");
   arrived.saved.lastActivityAt = "2020-01-01T00:00:00.000Z";
   arrived.onChange(() => arrived.setBusy(true));
