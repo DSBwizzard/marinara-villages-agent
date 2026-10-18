@@ -29,6 +29,88 @@ import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 
 async function main() {
+  // Enforce JSON-mode compatibility using actual Events and offscreen review prompts.
+  const { createVillageBootstrap } =
+    await import("../packages/villages/src/server/features/founding/village-bootstrap-service.js");
+  const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
+  const eventMoment = deriveVillageMoment({
+    foundedAt: "2026-10-16T00:00:00.000Z",
+    seed: "json-mode",
+    now: new Date("2026-10-16T12:00:00.000Z"),
+  });
+  const opportunity = {
+    id: "offered",
+    kind: "routine",
+    actorIds: ["a"],
+    venueId: "room",
+    startsAt: eventMoment.instant,
+    endsAt: eventMoment.instant,
+    facts: [],
+  };
+  const spokenLines = [{ speakerId: "a", text: "Tea is ready." }];
+  const jsonCalls: string[] = [];
+  const fakeSystem = {
+    model: "fake-system",
+    connectionId: "system",
+    maxOutputTokens: 4096,
+    fitContext: (messages: unknown, options: any) => ({ messages, ...options, trimmed: false }),
+  };
+  const events = createVillageBootstrap({
+    villagesLanguageModels: () => ({ resolveForRequest: async () => fakeSystem }),
+    villagesConnectionIdFor: async () => "system",
+    backgroundCalls: { getStore: () => undefined },
+    villagesDebugAgentsEnabled: () => false,
+    villagesLogger: () => ({ debugOverride: () => {} }),
+    completeWithRoom: async (_model: unknown, messages: any[], _tokens: number, options: any) => {
+      assert.equal(options.responseFormat?.type, "json_object");
+      assert(
+        messages.some((message) => message.role === "system" && /\bjson\b/i.test(message.content)),
+        "Strict provider rejects JSON mode without application-authored JSON instruction",
+      );
+      const review = messages[0].content.startsWith("Independently interpret");
+      jsonCalls.push(review ? "review" : "events");
+      if (review)
+        assert.deepEqual(JSON.parse(messages[1].content).lines, spokenLines, "Review preserves supplied speech");
+      return {
+        finishReason: "stop",
+        content: JSON.stringify(
+          review
+            ? { memoryChanges: [], relationshipReview: { changes: [], permissions: [], disclosures: [] } }
+            : {
+                happenings: [
+                  {
+                    opportunityId: opportunity.id,
+                    kind: opportunity.kind,
+                    actorIds: opportunity.actorIds,
+                    venueId: opportunity.venueId,
+                    narration: "A kettle steams.",
+                  },
+                ],
+                housingRequests: [],
+                social: { encounter: { lines: spokenLines } },
+              },
+        ),
+      };
+    },
+  } as any);
+  const eventResult = await events.proposeHappenings({
+    semanticVersion: 2,
+    village: "Test",
+    setting: "A quiet village",
+    moment: eventMoment,
+    residents: [],
+    recent: [],
+    venues: [],
+    opportunities: [opportunity],
+    lastSimulatedAt: eventMoment.instant,
+    forced: false,
+    social: { candidates: [], relationships: [] },
+  } as any);
+  assert.deepEqual(jsonCalls, ["events", "review"]);
+  assert.equal(eventResult.happenings.length, 1);
+  assert.equal((eventResult.social?.encounter as any).semanticVersion, 2);
+  assert.deepEqual((eventResult.social?.encounter as any).lines, spokenLines);
+
   const state = defaultVillageState();
   state.seed = "synthetic-semantic";
   const scene = coerceSession({

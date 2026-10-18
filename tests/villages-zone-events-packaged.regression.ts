@@ -190,7 +190,12 @@ const model = {
     estimatedTokensBefore: Math.ceil(JSON.stringify(messages).length / 4),
     estimatedTokensAfter: Math.ceil(JSON.stringify(messages).length / 4),
   }),
-  chatComplete: async (messages: any[]) => {
+  chatComplete: async (messages: any[], options: any) => {
+    if (options.responseFormat?.type === "json_object")
+      assert(
+        messages.some((message: any) => message.role === "system" && /\bjson\b/i.test(message.content)),
+        "JSON mode must be requested in application instructions, independent of player text",
+      );
     modelCalls++;
     if (messages[0].content.startsWith("You interpret Villages gameplay.")) {
       const packet = JSON.parse(messages[1].content);
