@@ -13,6 +13,7 @@ export interface ResidentRosterPorts {
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   findVillagerCard(id: string): Promise<VillagerCard | null>;
   queueVillagerAgenda(characterId: string): Promise<void>;
+  queueStartingTies?(): Promise<void>;
   retireBackgroundResident(state: VillageState, characterId: string): void;
 }
 
@@ -22,6 +23,7 @@ export function createResidentRoster({
   mutateVillageState,
   findVillagerCard,
   queueVillagerAgenda,
+  queueStartingTies,
   retireBackgroundResident,
 }: ResidentRosterPorts) {
   /**
@@ -101,6 +103,7 @@ export function createResidentRoster({
     // next part of the day.
     if (!alreadyResident) {
       await queueVillagerAgenda(characterId);
+      await queueStartingTies?.();
     }
   }
 

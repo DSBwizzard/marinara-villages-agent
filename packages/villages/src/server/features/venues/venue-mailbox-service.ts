@@ -4,7 +4,7 @@ import type { Handler } from "../../domain/models/background-model.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { VillageVenueMail } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { renderPlayerRoleContext } from "../../domain/rules/player-role.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NOTE_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
@@ -246,10 +246,12 @@ export function createVenueMailbox({
       ];
       const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1200, 1200) });
       const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 1200, {
+        responseFormat: { type: "json_object" },
+        retryEmpty: false,
         temperature: 0.5,
         debugMode: false,
       });
-      const payload = extractJsonObject(completion.content ?? "");
+      const payload = extractModelJsonObject(completion);
       const rows = Array.isArray(payload?.decisions) ? payload.decisions : [];
       const decisions = due.affectedIds.map((id) => {
         const row = rows.find((entry) => entry && typeof entry === "object" && entry.characterId === id);

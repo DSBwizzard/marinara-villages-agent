@@ -160,6 +160,7 @@ async function wishConnectionOwnership() {
         { id: "villages-wish-interpretation-criteria", revision: 1, data: { entries: [{ key: label, criteria }] } },
       ],
     ]);
+    const providerSignals: AbortSignal[] = [];
     let held = false,
       calls = 0,
       resolutions = 0;
@@ -185,7 +186,10 @@ async function wishConnectionOwnership() {
       async chatComplete(messages: any[], options: any) {
         assert.equal(this, model);
         assert.equal(activationScope(), scope);
-        assert.equal(options.signal, controller.signal);
+        assert(options.signal instanceof AbortSignal);
+        assert.notEqual(options.signal, controller.signal);
+        assert.equal(options.signal.aborted, false);
+        providerSignals.push(options.signal);
         calls++;
         assert(!messages[0].content.startsWith("Prepare"));
         await pause("completion");
@@ -322,6 +326,7 @@ async function wishConnectionOwnership() {
       entered,
       gate,
       controller,
+      providerSignals,
       records: ownedRecords,
       release: releaseOwned,
       releaseWish,
@@ -338,6 +343,29 @@ async function wishConnectionOwnership() {
         interpretError = error;
       },
     };
+  }
+
+  const cancelled = fixture("cancelled", "completion");
+  const clearCancelled = installDefaultActivation(cancelled.scope, () => {});
+  try {
+    const pending = interpretWishBatch([cancelled.input], "cancelled-scene", "cancelled-key");
+    const refusal = assert.rejects(pending, /cancelled by caller/);
+    await cancelled.entered.promise;
+    const reason = new Error("cancelled by caller");
+    cancelled.controller.abort(reason);
+    await refusal;
+    assert.equal(cancelled.providerSignals.length, 1);
+    assert.equal(cancelled.providerSignals[0].aborted, true);
+    assert.equal(cancelled.providerSignals[0].reason, reason);
+    cancelled.gate.resolve();
+    await Promise.resolve();
+    assert.equal(cancelled.calls(), 1, "Cancelled provider does not retry");
+  } finally {
+    cancelled.gate.resolve();
+    clearCancelled();
+    cancelled.release();
+    cancelled.releaseWish();
+    cancelled.scope.dispose();
   }
   for (const stage of ["criteria", "interpreter", "resolve", "completion"]) {
     const a = fixture("A", stage),

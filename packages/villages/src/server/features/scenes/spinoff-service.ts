@@ -1,3 +1,4 @@
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { randomUUID } from "node:crypto";
 import type {
   SceneOriginProvider,
@@ -375,13 +376,14 @@ export function createSpinoffs(ports: SpinoffPorts) {
       if (fit.trimmed || (fit.messages && JSON.stringify(fit.messages) !== JSON.stringify(messages)))
         throw conflict("The complete spinoff does not fit the review connection. Keep it separate.");
       const result = await model.chatComplete(messages, {
+        responseFormat: { type: "json_object" },
         maxTokens: 2400,
         temperature: 0.1,
         signal: AbortSignal.timeout(90000),
       });
       if (["length", "max_tokens"].includes(result.finishReason))
         throw conflict("Memory preparation ran out of output space. No memories were accepted.");
-      const review = readSpinoffReview(ports.parseJson(result.content ?? ""), { ...value, evidence });
+      const review = readSpinoffReview(extractModelJsonObject(result), { ...value, evidence });
       await current(sessionId); // Revalidate village/persona/resident after generation.
       const saved = await change(sessionId, value.id, (draft) => {
         if (draft.status !== "returned" || draft.interpretationAttempt !== attempt || draft.selectionIds !== undefined)

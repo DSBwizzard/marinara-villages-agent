@@ -260,6 +260,10 @@ for (const content of [
   `Example {"venues":[]}\nFinal ${reply}`,
   `{"venues":[${JSON.stringify(suggestions[0])},,]}`,
   "{'venues':[]}",
+  `${reply}, action: null`,
+  `{true} ${reply}`,
+  `${reply} {null}`,
+  `${reply} {false}`,
 ]) {
   assert.equal(
     extractFoundingVenueReply(content),

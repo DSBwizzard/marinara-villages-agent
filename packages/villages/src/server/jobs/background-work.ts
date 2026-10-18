@@ -63,3 +63,16 @@ export async function settleBackgroundWork(): Promise<void> {
 export async function previewBackgroundJobs(_defaultBatchSize?: number) {
   return binding.get().previewBackgroundJobs(_defaultBatchSize);
 }
+
+/** Private server-only frozen inputs and response receipts for deliberate migration. */
+export function backgroundJobSnapshot(kind: BackgroundKind, subjectId: string) {
+  return binding.get().backgroundJobSnapshot(kind, subjectId);
+}
+
+export function backgroundLegacyFounding(subjectId: string, seed: string, revision: string) {
+  return binding.get().backgroundLegacyFounding(subjectId, seed, revision);
+}
+
+export function retireLegacyFounding(...args: Parameters<BackgroundWorkService["retireLegacyFounding"]>) {
+  return binding.get().retireLegacyFounding(...args);
+}

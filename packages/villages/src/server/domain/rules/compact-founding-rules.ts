@@ -10,8 +10,11 @@ import type {
   VillageWish,
 } from "../models/world.js";
 import { villageAgendaDay } from "./agenda-plan.js";
-import { extractJsonObject } from "./json-reply.js";
+import { extractModelJsonObject } from "./json-reply.js";
 import { remapBlocks, VILLAGE_UNTRANSLATED_ACTIVITY } from "./native-remap.js";
+import { influenceSettings, scheduleSemanticSource, readPreparedInfluence } from "./owned-routine.js";
+import { semanticHash } from "./semantic-contract.js";
+import { readSemanticWishCriteria } from "./wish-criteria.js";
 import { routineDay, validRoutineRhythm } from "./owned-routine.js";
 import type { RoutineProfile } from "./owned-routine.js";
 import { boundText, coerceWish, MAX_ROUTINE_SUMMARY_LENGTH, MAX_VILLAGER_WISHES } from "./prompt-preset.js";
@@ -31,6 +34,10 @@ type PaletteEntry = {
 
 export type CompactFoundingContext = {
   openingProposal?: boolean;
+  sourceRevision?: string;
+  contractVersion?: 1;
+  circumstances?: unknown;
+  semanticVersion?: 2;
   wishAttemptId?: string;
   playerRole?: VillagePlayerRole | null;
   playerPersonaName?: string;
@@ -46,6 +53,7 @@ export type CompactFoundingContext = {
   schedule: NativeWeekSchedule | null;
   characterId?: string;
   influenceHints?: readonly string[];
+  influenceSettings?: import("./owned-routine.js").ScheduleInfluence;
 };
 
 export type CompactFoundingResult = {
@@ -135,12 +143,45 @@ export function parseCompactFounding(
   payload: Record<string, unknown>,
   context: CompactFoundingContext,
 ): CompactFoundingResult {
+  if (context.contractVersion === 1 && Array.isArray(payload.palette))
+    for (const value of payload.palette) {
+      const row = value as Record<string, unknown>;
+      if (
+        !row ||
+        typeof row !== "object" ||
+        typeof row.flexible !== "boolean" ||
+        typeof row.essential !== "boolean" ||
+        typeof row.duration !== "number" ||
+        !Number.isFinite(row.duration) ||
+        row.duration < 30 ||
+        row.duration > 240 ||
+        !Array.isArray(row.parts) ||
+        !row.parts.length ||
+        row.parts.some((part) => !Number.isInteger(part) || part < 0 || part > 3)
+      )
+        throw new Error("Routine activity fields are incomplete or invalid.");
+      if (
+        row.zoneId !== undefined &&
+        (typeof row.zoneId !== "string" ||
+          !(context.venues[Number(row.venue ?? row.venueNumber) - 1]?.zones ?? []).some(
+            (zone) => zone.id === row.zoneId && ["exterior", "public"].includes(zone.kind),
+          ))
+      )
+        throw new Error("Routine activity has an unavailable Zone identifier.");
+    }
   const palette = checkedPalette(payload.palette, context.venues);
+  if (context.contractVersion === 1 && (!Array.isArray(payload.palette) || payload.palette.length > 8))
+    throw new Error("Routine requires 6–8 activities.");
   const days = payload.days;
   if (
     !Array.isArray(days) ||
     days.length !== 7 ||
-    days.some((day) => !Array.isArray(day) || day.length !== 8 || day.some((id) => !validIndex(id, palette.length)))
+    days.some(
+      (day) =>
+        !Array.isArray(day) ||
+        !(context.contractVersion === 1 ? [8] : [4, 8]).includes(day.length) ||
+        day.some((id) => !validIndex(id, palette.length)),
+    )
   )
     throw new Error("The model did not provide a complete seven-day activity pattern.");
   if (typeof payload.routine !== "string" || !payload.routine.trim())
@@ -156,7 +197,11 @@ export function parseCompactFounding(
         at,
       );
       if (!wish || seen.has(compactKey(wish.wish))) continue;
-      validateGeneratedWishWording(wish.wish);
+      if (context.semanticVersion === 2) {
+        wish.semanticCriteria = readSemanticWishCriteria(raw.criteria, wish.wish);
+        if (!wish.semanticCriteria || raw.neutralWording !== true)
+          throw new Error("Wish interpretation is incomplete; explicitly retry.");
+      } else validateGeneratedWishWording(wish.wish);
       seen.add(compactKey(wish.wish));
       wishes.push(wish);
       if (wishes.length >= 1) break;
@@ -188,7 +233,76 @@ export function parseCompactFounding(
     return { startMinute: row.startMinute as number, endMinute: row.endMinute as number, activity: activity as number };
   });
   if (!validRoutineRhythm(rhythm)) throw new Error("Resident rest windows overlap.");
-  const profile: RoutineProfile = { version: 1, activities: palette, days: days as number[][], rhythm };
+  const profile: RoutineProfile = {
+    version: 1,
+    ...(context.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
+    activities: palette,
+    // A single supplied option per daypart is also a complete plan; duplicate only its choice slot.
+    days: (days as number[][]).map((day) => (day.length === 4 ? day.flatMap((id) => [id, id]) : [...day])),
+    rhythm,
+  };
+  const influence = payload.scheduleInfluence;
+  if (
+    context.semanticVersion === 2 &&
+    context.schedule &&
+    context.influenceSettings?.enabled &&
+    (!influence || typeof influence !== "object" || Array.isArray(influence))
+  )
+    throw new Error("System schedule interpretation is missing.");
+  if (influence && typeof influence === "object" && !Array.isArray(influence)) {
+    const row = influence as Record<string, unknown>;
+    profile.influence = {
+      version: 1,
+      signature: semanticHash(influence),
+      available: !!context.schedule,
+      enabled: true,
+      rhythms: Array.isArray(row.rhythms)
+        ? row.rhythms.filter(
+            (item: any) =>
+              typeof item.weekday === "string" &&
+              Number.isInteger(item.startMinute) &&
+              Number.isInteger(item.endMinute) &&
+              item.startMinute >= 0 &&
+              item.endMinute <= 1440,
+          )
+        : [],
+      busy: Array.isArray(row.busy)
+        ? row.busy.filter(
+            (item: any) =>
+              typeof item.weekday === "string" &&
+              Number.isInteger(item.part) &&
+              item.part >= 0 &&
+              item.part <= 3 &&
+              typeof item.free === "boolean",
+          )
+        : [],
+      interests: Array.isArray(row.interests)
+        ? row.interests.filter(
+            (item: unknown) => typeof item === "string" && palette.some((activity) => activity.activity === item),
+          )
+        : [],
+      entities: Array.isArray(row.entities)
+        ? row.entities.filter(
+            (item: unknown) => typeof item === "string" && context.venues.some((venue) => venue.id === item),
+          )
+        : [],
+      adopted: [],
+      unresolved: [],
+    };
+    if (
+      context.semanticVersion === 2 &&
+      (!readPreparedInfluence(profile.influence) ||
+        ["rhythms", "busy", "interests", "entities"].some(
+          (key) =>
+            !Array.isArray(row[key]) || (row[key] as unknown[]).length !== (profile.influence as any)[key].length,
+        ))
+    )
+      throw new Error("System schedule interpretation has invalid fields.");
+    profile.influenceSource = scheduleSemanticSource(
+      context.schedule,
+      context.influenceSettings ?? influenceSettings(undefined),
+    );
+  }
   const week = Object.fromEntries(
     VILLAGE_WEEKDAYS.map((weekday, index) => [
       weekday,
@@ -219,7 +333,7 @@ export function parseCompactFoundingCompletion(
   completion: { content?: string | null; finishReason?: string | null },
   context: CompactFoundingContext,
 ): CompactFoundingResult {
-  const payload = extractJsonObject(completion.content ?? "");
+  const payload = extractModelJsonObject(completion);
   if (completion.finishReason === "length")
     throw new Error("Routine output was truncated. Retry deliberately with enough output room.");
   if (!payload) throw new Error("The System model returned empty or invalid JSON for founding.");

@@ -79,13 +79,7 @@ export function VillagerMemoriesPanel({
     <div className={`${ELEMENT_TAG}-memory-library`}>
       <section className={`${ELEMENT_TAG}-memory-hero`}>
         <div>
-          <span className={`${ELEMENT_TAG}-memory-kicker`}>Continuity, with receipts</span>
-          <h3>What your villagers carry forward</h3>
-          <p>
-            Passing recollections keep conversations coherent for 24 hours. Durable memories retain witnessed
-            commitments, facts, boundaries, and meaningful experiences. Exact transcripts remain separate from character
-            knowledge.
-          </p>
+          <h2>Memories</h2>
         </div>
         <div className={`${ELEMENT_TAG}-memory-stats`}>
           <span>
@@ -96,24 +90,6 @@ export function VillagerMemoriesPanel({
           </span>
         </div>
       </section>
-
-      <div className={`${ELEMENT_TAG}-memory-layers`} aria-label="How Villages memory works">
-        <article>
-          <span>01</span>
-          <strong>Passing</strong>
-          <p>Useful context with a visible 24-hour expiry.</p>
-        </article>
-        <article>
-          <span>02</span>
-          <strong>Durable</strong>
-          <p>Promises, truths, boundaries, bonds, and significant experiences.</p>
-        </article>
-        <article>
-          <span>03</span>
-          <strong>Archive</strong>
-          <p>Word-for-word evidence, stored independently from character memory.</p>
-        </article>
-      </div>
 
       <div className={`${ELEMENT_TAG}-memory-toolbar`}>
         <div className={`${ELEMENT_TAG}-memory-tabs`} role="group" aria-label="Memory type">
@@ -152,7 +128,6 @@ export function VillagerMemoriesPanel({
               </span>
               <h3>Passing recollections</h3>
             </div>
-            <span>Quiet context · expires naturally</span>
           </div>
           <div className={`${ELEMENT_TAG}-memory-grid`}>
             {passing.map((entry) => {
@@ -164,29 +139,32 @@ export function VillagerMemoriesPanel({
                     <span>{recollectionTimeLeft(entry.expiresAt, now)}</span>
                   </div>
                   <p className={`${ELEMENT_TAG}-memory-text`}>{entry.text}</p>
-                  <dl>
-                    <div>
-                      <dt>About</dt>
-                      <dd>{memoryNames(entry.subjects)}</dd>
+                  <details className={`${ELEMENT_TAG}-memory-details`}>
+                    <summary>Details</summary>
+                    <dl>
+                      <div>
+                        <dt>About</dt>
+                        <dd>{memoryNames(entry.subjects)}</dd>
+                      </div>
+                      <div>
+                        <dt>Known by</dt>
+                        <dd>{memoryNames(entry.knownBy)}</dd>
+                      </div>
+                    </dl>
+                    {entry.reinforcementCount > 0 ? (
+                      <p className={`${ELEMENT_TAG}-memory-reinforced`}>
+                        ↻ Reinforced {entry.reinforcementCount} {entry.reinforcementCount === 1 ? "time" : "times"}
+                      </p>
+                    ) : null}
+                    <div className={`${ELEMENT_TAG}-memory-card-actions`}>
+                      <button type="button" onClick={() => void openEvidence(source.visitId, source.lineIds)}>
+                        View evidence
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => onForget("recollections", entry.id)}>
+                        Let go
+                      </button>
                     </div>
-                    <div>
-                      <dt>Known by</dt>
-                      <dd>{memoryNames(entry.knownBy)}</dd>
-                    </div>
-                  </dl>
-                  {entry.reinforcementCount > 0 ? (
-                    <p className={`${ELEMENT_TAG}-memory-reinforced`}>
-                      ↻ Reinforced {entry.reinforcementCount} {entry.reinforcementCount === 1 ? "time" : "times"}
-                    </p>
-                  ) : null}
-                  <div className={`${ELEMENT_TAG}-memory-card-actions`}>
-                    <button type="button" onClick={() => void openEvidence(source.visitId, source.lineIds)}>
-                      View evidence
-                    </button>
-                    <button type="button" disabled={busy} onClick={() => onForget("recollections", entry.id)}>
-                      Let go
-                    </button>
-                  </div>
+                  </details>
                 </article>
               );
             })}
@@ -203,7 +181,6 @@ export function VillagerMemoriesPanel({
               </span>
               <h3>Durable memories</h3>
             </div>
-            <span>Lasting meaning · no arbitrary Scene quota</span>
           </div>
           <div className={`${ELEMENT_TAG}-memory-grid`}>
             {durable.map((entry) => (
@@ -222,31 +199,34 @@ export function VillagerMemoriesPanel({
                   </span>
                 </div>
                 <p className={`${ELEMENT_TAG}-memory-text`}>{entry.text}</p>
-                <dl>
-                  <div>
-                    <dt>About</dt>
-                    <dd>{memoryNames(entry.subjects)}</dd>
-                  </div>
-                  <div>
-                    <dt>Known by</dt>
-                    <dd>{memoryNames(entry.knownBy)}</dd>
-                  </div>
-                </dl>
-                <div className={`${ELEMENT_TAG}-memory-card-actions`}>
-                  {entry.evidence ? (
-                    <button
-                      type="button"
-                      onClick={() => void openEvidence(entry.evidence!.visitId, entry.evidence!.lineIds)}
-                    >
-                      View evidence
+                <details className={`${ELEMENT_TAG}-memory-details`}>
+                  <summary>Details</summary>
+                  <dl>
+                    <div>
+                      <dt>About</dt>
+                      <dd>{memoryNames(entry.subjects)}</dd>
+                    </div>
+                    <div>
+                      <dt>Known by</dt>
+                      <dd>{memoryNames(entry.knownBy)}</dd>
+                    </div>
+                  </dl>
+                  <div className={`${ELEMENT_TAG}-memory-card-actions`}>
+                    {entry.evidence ? (
+                      <button
+                        type="button"
+                        onClick={() => void openEvidence(entry.evidence!.visitId, entry.evidence!.lineIds)}
+                      >
+                        View evidence
+                      </button>
+                    ) : (
+                      <span className={`${ELEMENT_TAG}-memory-legacy`}>No evidence link on this older memory</span>
+                    )}
+                    <button type="button" disabled={busy} onClick={() => onForget("durable", entry.id)}>
+                      Forget
                     </button>
-                  ) : (
-                    <span className={`${ELEMENT_TAG}-memory-legacy`}>No evidence link on this older memory</span>
-                  )}
-                  <button type="button" disabled={busy} onClick={() => onForget("durable", entry.id)}>
-                    Forget
-                  </button>
-                </div>
+                  </div>
+                </details>
               </article>
             ))}
           </div>
@@ -278,7 +258,6 @@ export function VillagerMemoriesPanel({
               ×
             </button>
           </div>
-          <p>Only the cited archive lines are shown. The full Scene remains in DEBUG → Scenes.</p>
           <ol>
             {evidence.visit.lines
               .filter((line) => evidence.lineIds.includes(line.id))

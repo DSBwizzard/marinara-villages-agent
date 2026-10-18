@@ -22,6 +22,8 @@ export type ExchangeEffectReceipt = {
   notice?: VenueRecordEvent;
 };
 export type WishProposal = {
+  semanticVerdict?: { outcome: "none" | "progress" | "fulfilled"; evidenceIds: string[]; reason: string };
+  semanticCriteria?: WishCriteria;
   conditionRevision?: number;
   conditionAt?: string;
   facts?: WishFactCandidate[];

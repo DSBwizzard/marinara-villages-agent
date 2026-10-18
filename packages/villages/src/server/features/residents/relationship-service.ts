@@ -13,20 +13,22 @@ import {
 import {
   captureRelationshipKnowledge,
   projectRelationshipProfiles,
-  proposeStartingTies,
 } from "../../domain/rules/relationship-knowledge.js";
 import type { readVillageState } from "../world/village-store.js";
 import type { mutateRelationships } from "./relationship-store.js";
 export type RelationshipPorts = {
+  prepareStartingTies?: () => Promise<void>;
+  applySavedStartingTies?: () => Promise<void>;
   readVillageLore: typeof readVillageLore;
   readVillageState: typeof readVillageState;
   mutateRelationships: typeof mutateRelationships;
 };
 /** Relationship views and creator edits retain their originating world connections. */
 export function createRelationships(ports: RelationshipPorts) {
-  const { readVillageLore, readVillageState, mutateRelationships } = ports;
+  const { readVillageState, mutateRelationships } = ports;
 
   async function readRelationshipsView() {
+    await ports.applySavedStartingTies?.();
     const village = await readVillageState();
     let current = village.relationshipContext;
     if (!current) return { profiles: [], starting: { pending: false, spoilers: false, summaries: [] } };
@@ -45,14 +47,8 @@ export function createRelationships(ports: RelationshipPorts) {
       .filter((person) => !current!.reviewedActorIds.includes(person.characterId))
       .map((person) => person.characterId);
     if (pendingIds.length && JSON.stringify(pendingIds) !== JSON.stringify(current.startingActorIds)) {
-      const lore = await readVillageLore(
-        village.selectedLorebookIds,
-        village.villagers.map((person) => person.cardSnapshot.name).join(" "),
-        undefined,
-        village.loreTokenBudget,
-      );
       current = await mutateRelationships(village.seed, (state) => {
-        state.startingTies = proposeStartingTies(village, state, lore);
+        state.startingTies = [];
         state.startingActorIds = pendingIds;
       });
     }
@@ -108,6 +104,10 @@ export function createRelationships(ports: RelationshipPorts) {
   }
 
   async function changeRelationshipCreator(value: unknown) {
+    if (asRecord(value).action === "prepare") {
+      await ports.prepareStartingTies?.();
+      return readRelationshipsView();
+    }
     const raw = asRecord(value),
       village = await readVillageState();
     await mutateRelationships(village.seed, (state) => {

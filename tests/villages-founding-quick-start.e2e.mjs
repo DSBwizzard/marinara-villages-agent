@@ -215,7 +215,7 @@ try {
       const savedRows = await page.evaluate(() => window.quickState.venues);
       await sheet.getByRole("button", { name: "Regenerate this Venue", exact: true }).click();
       await expect(sheet.getByRole("button", { name: "Regenerate this Venue", exact: true })).toBeEnabled();
-      await expect(sheet.getByLabel("Venue Name", { exact: true })).toHaveValue("My Last Ride");
+      await expect(sheet.getByLabel("Venue Name", { exact: true })).toHaveValue("The Last Ride");
       await expect(common.getByLabel("Name", { exact: true })).toHaveValue("My cabin");
       assert.deepEqual(
         (await page.evaluate(() => window.quickState.venues)).slice(1),
@@ -245,13 +245,13 @@ try {
       await expect(page.locator(".villages-workspace")).toBeVisible();
       await page.getByRole("button", { name: "Quick Start", exact: true }).click();
       await expect(page.getByRole("button", { name: "Edit Your residence", exact: true })).toContainText(
-        "My Last Ride",
+        "The Last Ride",
       );
       await page.getByRole("button", { name: "Save draft", exact: true }).click();
       await expect(page.getByText("Draft saved", { exact: true })).toBeVisible();
       await page.reload();
       await expect(page.getByRole("button", { name: "Edit Your residence", exact: true })).toContainText(
-        "My Last Ride",
+        "The Last Ride",
       );
       await expect(page.getByRole("button", { name: "Quick Start", exact: true })).toHaveAttribute(
         "aria-pressed",
@@ -277,7 +277,7 @@ try {
       release();
       await expect(page.getByRole("alert")).toHaveText(/people or setting changed/);
       await expect(page.getByRole("button", { name: "Edit Your residence", exact: true })).toContainText(
-        "My Last Ride",
+        "The Last Ride",
       );
       await page.getByRole("button", { name: "Review village", exact: true }).click();
       await expect(page.getByText("Review Tidebreak", { exact: true })).toBeVisible();

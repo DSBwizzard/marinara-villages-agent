@@ -6,7 +6,13 @@ import { WISH_SYSTEM_VERSION } from "./wish-definition.js";
 import { createHash } from "node:crypto";
 
 export type WishFactKind = "preference" | "concern" | "possibility" | "condition" | "result";
-export type WishFactCandidate = { kind: WishFactKind; quote: string; lineIds: string[]; supersedes?: string };
+export type WishFactCandidate = {
+  semanticVersion?: 2;
+  kind: WishFactKind;
+  quote: string;
+  lineIds: string[];
+  supersedes?: string;
+};
 export type WishJournalEvidence = InterpretationEvidence & { sceneId: string; submissionId: string };
 export type WishJournalFact = WishFactCandidate & {
   id: string;
@@ -152,6 +158,7 @@ export function bindWishFacts(
   actorId: string,
   lines: VenueLine[],
   resolve: (ref: unknown) => string,
+  semantic = false,
 ): WishFactCandidate[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 4).flatMap((value): WishFactCandidate[] => {
@@ -184,6 +191,7 @@ export function bindWishFacts(
     )
       return [];
     if (
+      !semantic &&
       kind === "condition" &&
       (/\b(?:only way|only solution)\b/iu.test(quote) ||
         !/\b(?:only|must|unless|require|need\b.{0,60}\bbefore|won['’]t\b.{0,60}\bwithout)\b/iu.test(quote) ||
@@ -192,6 +200,7 @@ export function bindWishFacts(
       return [];
     return [
       {
+        ...(semantic ? { semanticVersion: 2 as const } : {}),
         kind: kind as WishFactKind,
         quote,
         lineIds,
@@ -222,9 +231,10 @@ export function addWishFacts(
     if (
       candidate.supersedes &&
       (!prior ||
-        !/\b(?:actually|instead|no longer|changed my mind|don[’']t need|do not need|not necessary|forget|rather)\b/iu.test(
-          candidate.quote,
-        ))
+        (candidate.semanticVersion !== 2 &&
+          !/\b(?:actually|instead|no longer|changed my mind|don[’']t need|do not need|not necessary|forget|rather)\b/iu.test(
+            candidate.quote,
+          )))
     )
       continue;
     const id = createHash("sha256")

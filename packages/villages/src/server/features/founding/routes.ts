@@ -175,13 +175,16 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading founding preparation");
     }
   });
-  app.post("/setup/preparation/retry", async (_request, reply) => {
-    try {
-      return await retryFoundedVillagePreparation();
-    } catch (error) {
-      return fail(reply, error, "retrying founding preparation");
-    }
-  });
+  app.post<{ Body: import("../../../shared/contracts/founding-tasks.js").FoundingRetry }>(
+    "/setup/preparation/retry",
+    async (request, reply) => {
+      try {
+        return await retryFoundedVillagePreparation(request.body ?? {});
+      } catch (error) {
+        return fail(reply, error, "retrying founding preparation");
+      }
+    },
+  );
   app.post<{ Body: unknown }>("/setup/venue-image/generate", async (request, reply) => {
     try {
       return await generateFoundingVenueImage(request.body);

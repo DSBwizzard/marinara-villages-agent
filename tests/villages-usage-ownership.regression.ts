@@ -425,7 +425,11 @@ async function escapedModelAccounting() {
           providerCalls++;
           events.push({ stage: "provider", owner: activationScope() });
           assert.equal(receivedMessages, messages);
-          assert.equal(receivedOptions, options);
+          const { signal, ...forwarded } = receivedOptions!;
+          assert.deepEqual(forwarded, options);
+          assert.deepEqual(options, { maxTokens: 17 }, "Caller options remain untouched");
+          assert(signal instanceof AbortSignal);
+          assert.equal(signal.aborted, false);
           enteredProvider.resolve();
           if (pause === "provider") await releaseProvider.promise;
           return completion();

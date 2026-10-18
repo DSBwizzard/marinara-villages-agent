@@ -296,6 +296,7 @@ export function createWorldCoordination({
       state.opportunities = [...withoutDuplicate, opportunity].slice(-256);
     });
     const context: VillageTickContext = {
+      semanticVersion: 2,
       village: village.name,
       playerRole: village.playerRole,
       playerPersonaName: village.playerPersonaName,
@@ -387,7 +388,7 @@ export function createWorldCoordination({
             new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
           ) <= input.dateKey)),
     apply(state, input, proposal) {
-      const { forced, dateKey, opportunity, moment } = input;
+      const { forced, dateKey, opportunity } = input;
       const now = new ZonedDate(input.now, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 
       if (!forced && (state.storyPace === "off" || (!input.socialPlanId && state.lastCreativeDate >= dateKey))) return;

@@ -166,7 +166,9 @@ function fixture() {
   const model = {
     connectionId: "narration",
     fitContext: (messages: unknown[]) => ({ messages, trimmed: false }),
-    chatComplete: async () => {
+    chatComplete: async (messages: any[], options: any) => {
+      assert.deepEqual(options.responseFormat, { type: "json_object" });
+      assert.match(messages.map((message) => message.content).join("\n"), /json/i);
       calls++;
       await generationGate?.();
       if (failModel) throw new Error("synthetic provider failure");

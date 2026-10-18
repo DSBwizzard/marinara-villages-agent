@@ -3,7 +3,7 @@ import type { villagesLanguageModels } from "../../adapters/models/language-mode
 import type { VillageScenarioImprint } from "../../domain/models/world.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { readLoreTokenBudget, readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../../domain/rules/narrative-grounding.js";
 import { readScenarioImprint, record } from "../../domain/rules/scenario-rules.js";
@@ -53,10 +53,12 @@ export function createScenarioImprint(ports: ScenarioImprintServicePorts) {
     ];
     const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1400, 1400) });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 1400, {
+      responseFormat: { type: "json_object" },
+      retryEmpty: false,
       temperature: 0.4,
       debugMode: false,
     });
-    const payload = extractJsonObject(completion.content ?? "");
+    const payload = extractModelJsonObject(completion);
     if (!payload) throw badRequest("The starting-details draft was incomplete. Retry or write it yourself.");
     return { imprint: readScenarioImprint(payload) };
   }

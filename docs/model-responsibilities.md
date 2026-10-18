@@ -1,5 +1,7 @@
 # System and Narration responsibilities
 
+New Scenes targeting 0.7.3 use the [System ownership contracts and register](system-ownership.md). That document describes independent intent/exchange interpretation, authority receipts, recovery, finite lifecycle preparation and bounded context retrieval. The selective-check behavior below describes legacy saved Scene contracts.
+
 Narration writes the Scene: dialogue, observable action, characterization, pacing and proposed evidence metadata. Code determines witnesses and validates every authoritative effect. Model metadata is never authority by itself.
 
 System handles structured founding and venue preparation, background Wish/planning generation, and selective interpretation of consequential evidence. Existing room, Project and Wish checks retain their domain policies and optional Decisions routing. Ordinary conversation does not require a second model to review its prose.

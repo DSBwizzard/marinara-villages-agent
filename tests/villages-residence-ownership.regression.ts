@@ -197,6 +197,20 @@ assert.equal(a.preparations, 0);
 assert(!a.calls.includes("complete"));
 
 const changed = fixture("CAS");
+const recordedDecision = fixture("Recorded decision");
+await recordedDecision.service.proposeVillageResidence("same", "destination");
+await recordedDecision.service.decideVillageResidence("same", true, "villager", "semantic-decision");
+const recordedMove = structuredClone(recordedDecision.state.residences);
+await recordedDecision.service.decideVillageResidence("same", true, "villager", "semantic-decision");
+assert.deepEqual(
+  recordedDecision.state.residences,
+  recordedMove,
+  "Replay after a lost response must not decide a later move or fail because the first move advanced",
+);
+await assert.rejects(
+  recordedDecision.service.decideVillageResidence("same", false, "villager", "semantic-decision"),
+  /another request/,
+);
 changed.retryWith((state) => {
   state.venues[0]!.residentIds = ["other"];
   state.venues[0]!.occupancy.residentCharacterId = "other";
@@ -357,7 +371,10 @@ assert.deepEqual(
 );
 assert.deepEqual(
   adapted.options.find((option) => option?.settings),
-  { maxTokens: 1000, settings: { temperature: 0.4, debugMode: false } },
+  {
+    maxTokens: 1000,
+    settings: { responseFormat: { type: "json_object" }, retryEmpty: false, temperature: 0.4, debugMode: false },
+  },
 );
 // Today's furniture remains while deliberately selected portable details are merged into its canonical Zone.
 adapted.room.state.items = ["Current lamp"];

@@ -10,8 +10,10 @@ export function configureFoundingPreparation(service: FoundingPreparationService
 export function prepareFoundedVillage(): Promise<void> {
   return preparationBinding.get().prepareFoundedVillage();
 }
-export async function retryFoundedVillagePreparation(): Promise<VillageSnapshot> {
-  return preparationBinding.get().retryFoundedVillagePreparation();
+export async function retryFoundedVillagePreparation(
+  ...args: Parameters<FoundingPreparationService["retryFoundedVillagePreparation"]>
+): Promise<VillageSnapshot> {
+  return preparationBinding.get().retryFoundedVillagePreparation(...args);
 }
 export async function foundingPreparationSnapshot(): Promise<VillageSnapshot> {
   return preparationBinding.get().foundingPreparationSnapshot();

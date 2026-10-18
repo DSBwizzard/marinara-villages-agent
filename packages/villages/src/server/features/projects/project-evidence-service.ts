@@ -207,6 +207,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         if (
           interpreted.projectId !== projectId ||
           interpreted.kind !== kind ||
+          ((kind === "offer" || kind === "handoff") && interpreted.requirementId !== requirementId) ||
           interpreted.speakerId !== line.speakerId ||
           interpreted.citations[0]?.lineId !== lineId ||
           interpreted.revision !== task.definition.revision ||
@@ -216,6 +217,8 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         const reason = validateProjectSpeech(interpreted, [...turn.lines, ...turn.contextLines]);
         if (reason) return fail(reason);
       } else if (Number.isInteger(input.interpretationIndex)) return fail("The saved interpretation is unavailable.");
+      if (turn.semanticVersion === 2 && !interpreted?.contextual)
+        return fail("This exchange needs a saved System interpretation.");
       const context = turn.projectContexts.find((entry) => entry.projectId === projectId);
       if (
         input.automatic === true &&
@@ -335,10 +338,14 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
       } else {
         const requirement = flow.requirements.find((entry) => entry.id === requirementId && entry.needed);
         if (!requirement) return fail("Choose a currently needed Project supply.");
-        if (!line.content.toLocaleLowerCase().includes(requirement.title.toLocaleLowerCase()))
+        if (
+          !interpreted?.contextual &&
+          !line.content.toLocaleLowerCase().includes(requirement.title.toLocaleLowerCase())
+        )
           return fail("The resident must name this exact supply.");
         if (kind === "offer") {
-          if (!offerVerb.test(speech)) return fail("The resident must explicitly offer this finite supply.");
+          if (!interpreted?.contextual && !offerVerb.test(speech))
+            return fail("The resident must explicitly offer this finite supply.");
           if (flow.sources.some((entry) => entry.requirementId === requirementId))
             return fail("This supply already has a selected source. Revise its route before replacing it.");
           const key = sourceClaimKey(turn.venueId, line.speakerId, requirement.title);
@@ -371,7 +378,8 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
             source.acquiredAt
           )
             return fail("Record an available source at this venue before its handoff.");
-          if (!handoffVerb.test(speech)) return fail("The resident must explicitly hand over the named supply.");
+          if (!interpreted?.contextual && !handoffVerb.test(speech))
+            return fail("The resident must explicitly hand over the named supply.");
           if (source.kind === "resident-offer") {
             if (source.supplierId !== line.speakerId || Date.parse(turn.at) < Date.parse(source.at))
               return fail("The original supplier must hand over the offered item after the offer.");
@@ -426,11 +434,13 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
   /** Automatic saved-turn processing. Expected evidence rejections are diagnostics, not replay failures. */
   async function processProjectSpeechTurn(sessionId: string, submissionId: string): Promise<void> {
     const turn = await readProjectTurnEvidence(sessionId, submissionId);
+    const failures: string[] = [];
     if (turn.mode !== "chat" && turn.mode !== "ask" && turn.mode !== "contact") return;
     const tryRecord = async (projectId: string, input: Record<string, unknown>) => {
       try {
         await recordProjectSpokenEvidence(projectId, { ...input, sessionId, submissionId, automatic: true });
       } catch (error) {
+        if (turn.semanticVersion === 2 && error instanceof ProjectEvidenceRejected) failures.push(error.message);
         if (
           !(error instanceof ProjectEvidenceRejected) &&
           !(error instanceof VillagesRequestError && error.statusCode === 404)
@@ -443,7 +453,12 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         kind: proposal.kind,
         lineId: proposal.citations[0]?.lineId ?? "",
         interpretationIndex,
+        requirementId: proposal.requirementId,
       });
+    if (turn.semanticVersion === 2) {
+      if (failures.length) throw new WorkFailureError(metadataFailure(failures.join("; ").slice(0, 500)));
+      return;
+    }
     const state = await readVillageState();
 
     const projects = state.projects.filter(
@@ -704,3 +719,4 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
   };
 }
 export type ProjectEvidence = ReturnType<typeof createProjectEvidence>;
+import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failure.js";

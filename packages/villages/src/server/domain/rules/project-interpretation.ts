@@ -6,7 +6,8 @@ import { renovationTerms } from "./project-terms.js";
 export type ProjectSpeechContext = { projectId: string; revision: number; phase: string };
 export type ProjectSpeechProposal = ProjectSpeechContext & {
   version: 1;
-  kind: "approval" | "builder" | "requirements";
+  kind: "approval" | "builder" | "requirements" | "offer" | "handoff";
+  requirementId?: string;
   speakerId: string;
   citations: { lineId: string; quote: string }[];
   checklist: { category: "structure" | "equipment" | "finish"; title: string; needed: boolean; citation: number }[];
@@ -73,6 +74,7 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
         supplies: flow.requirements
           .filter((entry) => entry.needed)
           .map((entry) => ({ id: entry.id, title: entry.title })),
+        sources: flow.sources,
       });
     })
     .join(
@@ -92,12 +94,13 @@ export function bindProjectSpeech(
     const context = contexts.find((entry) => entry.projectId === row.projectId);
     if (!context) return [];
     const kind = row.kind;
-    if (kind !== "approval" && kind !== "builder" && kind !== "requirements") return [];
+    if (!["approval", "builder", "requirements", "offer", "handoff"].includes(String(kind))) return [];
     return [
       {
         ...context,
         version: 1 as const,
-        kind,
+        kind: kind as ProjectSpeechProposal["kind"],
+        ...(typeof row.requirementId === "string" ? { requirementId: row.requirementId } : {}),
         speakerId: asTrimmedString(row.speakerId),
         citations: Array.isArray(row.citations)
           ? row.citations.slice(0, 12).map((value) => {
@@ -135,12 +138,13 @@ export function coerceProjectSpeech(value: unknown): ProjectSpeechProposal[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 6).flatMap((value) => {
     const row = asRecord(value);
-    if (row.version !== 1 || (row.kind !== "approval" && row.kind !== "builder" && row.kind !== "requirements"))
+    if (row.version !== 1 || !["approval", "builder", "requirements", "offer", "handoff"].includes(String(row.kind)))
       return [];
     return [
       {
         version: 1 as const,
-        kind: row.kind,
+        kind: row.kind as ProjectSpeechProposal["kind"],
+        ...(typeof row.requirementId === "string" ? { requirementId: row.requirementId } : {}),
         projectId: asTrimmedString(row.projectId),
         revision: Number(row.revision),
         phase: asTrimmedString(row.phase),

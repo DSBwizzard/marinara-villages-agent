@@ -435,6 +435,9 @@ async function main() {
       max: 0,
     });
     assert.equal((await previewVillageBurst({ action: "agenda", characterId: "a" })).requests, 1);
+    await mutateVillageState((value) => {
+      value.villagers[0]!.agenda!.activeDay!.scheduleInformed = true;
+    });
     const persisted = await readVillageState();
     assert.ok(
       Object.keys(persisted.villagers[0]!.agenda!.plannedDays!).length >= 7,

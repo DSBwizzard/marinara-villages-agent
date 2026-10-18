@@ -220,6 +220,7 @@ export function readContactMoves(
   allowed: string[],
   requireSegment = false,
   allowLocalNoop: boolean | "redundant" = false,
+  semantic = false,
 ): ContactMove[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -246,17 +247,18 @@ export function readContactMoves(
       path?.length === 1 &&
       destination === (scene.zoneId ?? "exterior") &&
       zones.some((zone) => zone.id === destination) &&
-      !zones.some(
-        (zone) =>
-          zone.id !== destination &&
-          [zone.name].some((label) => !!words(label) && narratedWords.includes(" " + words(label) + " ")),
-      );
+      (semantic ||
+        !zones.some(
+          (zone) =>
+            zone.id !== destination &&
+            [zone.name].some((label) => !!words(label) && narratedWords.includes(" " + words(label) + " ")),
+        ));
     const citedMove =
       Number(segment) >= 0 &&
       narration?.kind === "narration" &&
       normalize(quote).length >= 8 &&
       normalize(narration.content).includes(normalize(quote)) &&
-      (localNoop || (!!name && normalize(quote).includes(normalize(name))));
+      (semantic || localNoop || (!!name && normalize(quote).includes(normalize(name))));
     const movementText = normalize(localNoop ? (narration?.content ?? "") : quote);
     // A validated current-Zone annotation is discarded by v3, never applied as movement.
     // Speech/thought intent elsewhere in its narration cannot make that no-op consequential.
@@ -266,8 +268,11 @@ export function readContactMoves(
       (requireSegment && segment === undefined) ||
       seen.has(actor) ||
       (segment === undefined ? !contactSpeech(lines, actor, quote) : !citedMove) ||
-      (qualifyMovement && segment !== undefined && /\b(?:would|could|will|plans?|intends?)\b/iu.test(movementText)) ||
-      (qualifyMovement && /\b(?:maybe|perhaps|might|unless|if|won't|can't|not)\b/iu.test(movementText)) ||
+      (!semantic &&
+        qualifyMovement &&
+        segment !== undefined &&
+        /\b(?:would|could|will|plans?|intends?)\b/iu.test(movementText)) ||
+      (!semantic && qualifyMovement && /\b(?:maybe|perhaps|might|unless|if|won't|can't|not)\b/iu.test(movementText)) ||
       !path ||
       (path.length < 2 && !localNoop) ||
       !lines.some((line) => line.kind === "narration")

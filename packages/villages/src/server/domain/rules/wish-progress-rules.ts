@@ -1,3 +1,5 @@
+import { readSemanticWishCriteria } from "./semantic-contract.js";
+import { semanticContinued } from "./semantic-continuity.js";
 import type { VenueLine, VenueRecordEvent } from "../models/scene-model.js";
 import type { PreparedWishVerdict, WishBatchInput, WishCheckInput, WishProposal } from "../models/wish-check-model.js";
 import type { WishCriteria } from "../models/wish-interpretation-model.js";
@@ -48,6 +50,7 @@ export function bindWishProposals(
   playerLineId: string,
   replyLineIds: string[],
   contexts?: { actorId: string; wishId: string; fingerprint: string }[],
+  semantic = false,
 ): { proposals: WishProposal[]; error: string } {
   if (!Array.isArray(value))
     return {
@@ -104,7 +107,7 @@ export function bindWishProposals(
           line.kind !== "narration" &&
           line.kind !== "whisper" &&
           !line.contactHidden &&
-          !/\b(?:if|perhaps|maybe|quoted|said that)\b/iu.test(line.content),
+          (semantic || !/\b(?:if|perhaps|maybe|quoted|said that)\b/iu.test(line.content)),
       )
     ) {
       errors.push("Wish disclosure needs this resident's own speech heard by the player");
@@ -117,11 +120,57 @@ export function bindWishProposals(
         (proposal.intent === raw.intent ||
           (["check", "progress"].includes(proposal.intent) && ["check", "progress"].includes(String(raw.intent)))),
     );
+    const semanticCriteria = semantic && wish ? readSemanticWishCriteria(raw.criteria, wish.wish) : undefined;
+    if (semantic && ["check", "progress"].includes(String(raw.intent)) && !semanticCriteria) {
+      errors.push("System Wish classification is missing or invalid; retry interpretation");
+      continue;
+    }
     if (existing) {
       existing.lineIds = [...new Set([...existing.lineIds, ...lineIds])];
       existing.facts = [
         ...(existing.facts ?? []),
-        ...bindWishFacts(raw.facts, actorId, lines, (ref) =>
+        ...bindWishFacts(
+          raw.facts,
+          actorId,
+          lines,
+          (ref) =>
+            ref === "player"
+              ? playerLineId
+              : Number.isInteger(ref) && Number(ref) >= 0
+                ? (replyLineIds[Number(ref)] ?? "")
+                : typeof ref === "string" && (ref === playerLineId || replyLineIds.includes(ref))
+                  ? ref
+                  : "",
+          semantic,
+        ),
+      ].slice(0, 4);
+      continue;
+    }
+    proposals.push({
+      ...(semantic &&
+      semanticCriteria?.kind === "conversation" &&
+      !semanticCriteria.requiresPhysical &&
+      asRecord(raw.verdict).completeContext === true &&
+      ["none", "progress", "fulfilled"].includes(String(asRecord(raw.verdict).outcome)) &&
+      Array.isArray(asRecord(raw.verdict).evidence)
+        ? {
+            semanticVerdict: {
+              outcome: asRecord(raw.verdict).outcome as "none" | "progress" | "fulfilled",
+              evidenceIds: (asRecord(raw.verdict).evidence as unknown[]).map((ref) =>
+                Number.isSafeInteger(ref) && Number(ref) >= 0 ? (replyLineIds[Number(ref)] ?? "") : "",
+              ),
+              reason: asTrimmedString(asRecord(raw.verdict).reason).slice(0, 320),
+            },
+          }
+        : {}),
+      actorId,
+      wishId,
+      fingerprint: wishFingerprint(wish),
+      facts: bindWishFacts(
+        raw.facts,
+        actorId,
+        lines,
+        (ref) =>
           ref === "player"
             ? playerLineId
             : Number.isInteger(ref) && Number(ref) >= 0
@@ -129,23 +178,9 @@ export function bindWishProposals(
               : typeof ref === "string" && (ref === playerLineId || replyLineIds.includes(ref))
                 ? ref
                 : "",
-        ),
-      ].slice(0, 4);
-      continue;
-    }
-    proposals.push({
-      actorId,
-      wishId,
-      fingerprint: wishFingerprint(wish),
-      facts: bindWishFacts(raw.facts, actorId, lines, (ref) =>
-        ref === "player"
-          ? playerLineId
-          : Number.isInteger(ref) && Number(ref) >= 0
-            ? (replyLineIds[Number(ref)] ?? "")
-            : typeof ref === "string" && (ref === playerLineId || replyLineIds.includes(ref))
-              ? ref
-              : "",
+        semantic,
       ),
+      ...(semanticCriteria ? { semanticCriteria } : {}),
       intent: raw.intent as WishProposal["intent"],
       lineIds,
     });
@@ -226,6 +261,7 @@ export function applyPreparedWishVerdict(
   verdict: PreparedWishVerdict,
 ): void {
   const id = effectId(input.sceneId, input.submissionId, input.proposal);
+  if (semanticContinued(state, input.sceneId, input.submissionId, "wishes")) return;
   if (state.exchangeReceipts[id] || state.seed !== input.seed) return;
   const wish = currentWish(state, input.proposal);
   if (verdict.decision) {
@@ -266,7 +302,7 @@ export function applyPreparedWishVerdict(
     { actorId: input.proposal.actorId, receipts: wishReceiptRecords(state, input.proposal.actorId) },
     wish,
   );
-  const requirements = localWishRequirements(wish);
+  const requirements = localWishRequirements(wish, input.proposal.semanticCriteria);
   const requiresPhysical =
     verdict.criteria.requiresPhysical ||
     (verdict.outcome === "fulfilled" && requirements.criteria.requiresPhysical) ||

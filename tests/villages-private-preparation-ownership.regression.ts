@@ -1,3 +1,4 @@
+import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 import assert from "node:assert/strict";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -136,6 +137,7 @@ function fixture(name: string) {
   };
   const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} };
   const ports: PrivateSpacePreparationPorts = {
+    mutateDocument: createDocumentMutator(() => documents),
     readVillageState: async () => structuredClone(state()),
     mutateVillageState: async (mutator) => {
       // A failed CAS re-evaluates the callback on a fresh copy, without sending a second request.

@@ -15,6 +15,7 @@ export type WorkFailure = {
     | "unknown_request"
     | "storage_application"
     | "insufficient_budget";
+  connectionIssue?: import("./connection-failure.js").ConnectionFailureKind;
   stage: string;
   message: string;
   finishReason?: string;
@@ -114,6 +115,9 @@ export function coerceWorkFailure(value: unknown): WorkFailure | undefined {
   const diagnostics = coerceResponseDiagnostics(raw.responseDiagnostics);
   return {
     cause: raw.cause as WorkFailure["cause"],
+    ...(["configuration", "request"].includes(String(raw.connectionIssue))
+      ? { connectionIssue: raw.connectionIssue as WorkFailure["connectionIssue"] }
+      : {}),
     stage: asTrimmedString(raw.stage).slice(0, 80),
     message: asTrimmedString(raw.message).slice(0, 500),
     ...(typeof raw.finishReason === "string" ? { finishReason: raw.finishReason.slice(0, 80) } : {}),

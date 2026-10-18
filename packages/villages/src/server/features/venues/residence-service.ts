@@ -5,7 +5,7 @@ import type { villagesLanguageModels } from "../../adapters/models/language-mode
 import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
 import type { VillageResidence, VillageSnapshot, VillageVenue } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { keepAgendaPlaces } from "../../domain/rules/resident-agenda.js";
 import { personalDestinationSpace } from "../../domain/rules/venue-authoring.js";
@@ -104,9 +104,18 @@ export function createResidences(ports: ResidencePorts) {
     characterValue: unknown,
     approved: boolean,
     actor: "player" | "villager",
+    operationId?: string,
   ): Promise<VillageSnapshot> {
     const characterId = residenceCharacterId(characterValue);
     await mutateVillageState((state) => {
+      if (operationId) {
+        const fingerprint = JSON.stringify([characterId, approved, actor]);
+        const prior = state.semanticRequestReceipts?.[operationId];
+        if (prior && prior !== fingerprint) throw conflict("That residence decision ID belongs to another request.");
+        if (prior) return;
+        state.semanticRequestReceipts ??= {};
+        state.semanticRequestReceipts[operationId] = fingerprint;
+      }
       const residence = state.residences.find((entry) => entry.characterId === characterId);
       if (!residence || residence.status !== "pending" || residence.proposedVenueId.length === 0) {
         throw badRequest("That villager has no pending residence change.");
@@ -350,10 +359,12 @@ export function createResidences(ports: ResidencePorts) {
       ];
       const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1000, 1000) });
       const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 1000, {
+        responseFormat: { type: "json_object" },
+        retryEmpty: false,
         temperature: 0.4,
         debugMode: false,
       });
-      const answer = extractJsonObject(completion.content ?? "");
+      const answer = extractModelJsonObject(completion);
       const description = boundText(answer?.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
       if (!description) throw new Error("Private space adaptation returned no description.");
       const selectedItems: unknown[] = Array.isArray(answer?.items) ? answer.items : [];

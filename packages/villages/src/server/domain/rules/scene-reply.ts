@@ -103,6 +103,10 @@ export function parseVenueReply(
 }
 export function quietContactReply(text: string, localIds: string[]) {
   return {
+    semanticAccess: undefined as InterpretationBatch | null | undefined,
+    semanticProvenance: undefined as import("../models/semantic-model.js").SemanticProvenance | undefined,
+    semanticPlayerMoves: [] as import("./semantic-timeline.js").SemanticPlayerMove[],
+    physicalContext: undefined as import("../models/scene-model.js").VenueSubmission["physicalContext"],
     lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }] as ReturnType<
       typeof parseVenueReply
     >["lines"],
@@ -161,6 +165,8 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
               venueId: String(facts.venueId),
               zoneId: typeof facts.zoneId === "string" ? facts.zoneId : null,
               accessRevision: Number(facts.accessRevision),
+              ...(facts.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
+              ...(facts.semanticVersion === 2 ? { accompanies: facts.accompanies === true } : {}),
               ...(facts.accessCommand
                 ? { accessCommand: structuredClone(facts.accessCommand) as SavedAccessEvent["facts"]["accessCommand"] }
                 : {}),

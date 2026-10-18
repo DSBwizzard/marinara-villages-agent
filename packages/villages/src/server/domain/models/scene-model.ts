@@ -91,6 +91,8 @@ export type VenueSubmission = {
   requestMode?: "act" | "fulfill";
   movement?: { operationId: string; originZoneId: string; destinationZoneId: string; transitionLineId: string };
   sceneChange?: VenueSceneChange;
+  semanticPlayerMoves?: import("../rules/semantic-timeline.js").SemanticPlayerMove[];
+  physicalContext?: { zoneId: string; witnessIds: string[]; segment: number };
   residenceSignal?: { kind: "request" | "decision"; characterId: string; venueId: string; approved?: boolean };
   upgradeSignal?: { characterId: string; venueId: string; quote: string };
   venueRequestSignal?: {
@@ -103,6 +105,7 @@ export type VenueSubmission = {
   /** Approved access interpretations saved with their exact witnessed reply; never sent to the client. */
   accessEvents?: SavedAccessEvent[];
   invitationSignal?: {
+    accessOperationId?: string;
     /** Minted by Villages after interpretation and evidence validation, never by narration. */
     interpretationVersion?: 1;
     residentId: string;
@@ -130,6 +133,10 @@ export type VenueSubmission = {
   };
   turnMemories?: VenueMemory[];
   recollections?: VenueRecollection[];
+  semanticReady?: boolean;
+  semanticConclude?: boolean;
+  semanticContinuedDomains?: import("./exchange-model.js").ExchangeDomain[];
+  semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
   liveProposals?: LiveExchangeProposals;
   wishContexts?: { actorId: string; wishId: string; fingerprint: string }[];
   requestMetrics?: VenueRequestMetrics;
@@ -164,6 +171,8 @@ export type VenueRecordEvent = {
 };
 export type VenueScene = {
   openingGatheringId?: string;
+  semanticVersion?: 2;
+  semanticIntent?: import("./semantic-model.js").SemanticIntent;
   spinoff?: import("./spinoff-model.js").VillageSpinoff;
   version: 1;
   processingVersion?: 1;
@@ -285,6 +294,8 @@ export type SavedAccessEvent = {
     venueId: string;
     zoneId: string | null;
     accessRevision: number;
+    semanticVersion?: 2;
+    accompanies?: boolean;
     accessCommand?: import("../../../shared/helpers/venue-access.js").AccessCommand;
   };
   outcome: string;

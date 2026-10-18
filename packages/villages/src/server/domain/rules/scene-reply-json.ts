@@ -1,7 +1,11 @@
+import { extractModelJsonObject, modelJsonWithinBounds } from "./json-reply.js";
 import { normalizeSceneJson, parseSceneObject } from "./scene-json-syntax.js";
 
 /** Recover syntax only; complete Scene validation remains the caller's responsibility. */
-export function extractSceneReply(content: string): Record<string, unknown> | null {
+export function extractSceneReply(content: string, finishReason?: string): Record<string, unknown> | null {
+  if (!modelJsonWithinBounds(content)) return null;
+  const complete = extractModelJsonObject({ content, finishReason });
+  if (complete) return complete;
   // One candidate only. Never choose between competing objects or unwrap a JSON array.
   const start = content.indexOf("{");
   if (start < 0 || /[\[\]}]/u.test(content.slice(0, start))) return null;
@@ -24,7 +28,7 @@ export function extractSceneReply(content: string): Record<string, unknown> | nu
     else if (char === "}" || char === "]") {
       if (stack.pop() !== char) return null;
       if (!stack.length) {
-        if (/[{}\[\]]/u.test(text.slice(index + 1))) return null;
+        if (/[{}\[\],:"]/u.test(text.slice(index + 1))) return null;
         const candidate = text.slice(0, index + 1);
         return parseSceneObject(candidate) ?? parseSceneObject(normalizeSceneJson(candidate));
       }

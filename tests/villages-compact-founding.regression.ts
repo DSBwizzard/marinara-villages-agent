@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
-import {
-  DEFAULT_PLAYER_ROLE,
-  renderPlayerRoleContext,
-} from "../packages/villages/src/server/domain/rules/player-role.js";
+import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/server/domain/rules/player-role.js";
 import {
   foundingNativeActivities,
   parseCompactFounding,
+  parseCompactFoundingCompletion,
 } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 
@@ -75,6 +73,55 @@ async function main() {
     assert.equal(blocks.at(-1)!.endMinute, 1440);
     assert.ok(blocks.some((block) => block.activity === "Tending the herb beds"));
   }
+  const compactDayparts = {
+    ...payload(0),
+    days: Array.from({ length: 7 }, () => [0, 1, 2, 3]),
+    wishes: [
+      {
+        wish: "An engraved keepsake",
+        intensity: 2,
+        neutralWording: true,
+        criteria: { kind: "action", requiresPhysical: true, predicate: "item-added", itemName: "engraved keepsake" },
+      },
+    ],
+  };
+  const semanticContext = { ...context(null), semanticVersion: 2 } as any;
+  const savedResponse = { content: JSON.stringify(compactDayparts), finishReason: "stop" };
+  const recovered = parseCompactFoundingCompletion(savedResponse, semanticContext).agenda;
+  assert.deepEqual(
+    recovered.routineProfile!.days,
+    Array.from({ length: 7 }, () => [0, 0, 1, 1, 2, 2, 3, 3]),
+    "one supplied option per daypart normalizes without inventing an activity or changing its daypart",
+  );
+  assert.equal(recovered.wishes[0]!.semanticCriteria!.target, "engraved keepsake");
+  assert.deepEqual(
+    JSON.parse(savedResponse.content),
+    compactDayparts,
+    "local recovery preserves the purchased response",
+  );
+  assert.deepEqual(
+    parseCompactFounding({ ...payload(0), wishes: [] }, semanticContext).agenda.routineProfile!.days,
+    days,
+    "existing eight-choice plans retain every supplied alternative",
+  );
+  for (const invalid of [[], [0, 1, 2], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4, 5, 0], [0, 1, 2, 99], [0, 1, 2, "3"]])
+    assert.throws(
+      () =>
+        parseCompactFounding(
+          { ...compactDayparts, days: [invalid, ...compactDayparts.days.slice(1)] },
+          semanticContext,
+        ),
+      /seven-day/,
+    );
+  assert.throws(
+    () => parseCompactFounding({ ...compactDayparts, days: compactDayparts.days.slice(1) }, semanticContext),
+    /seven-day/,
+  );
+  assert.throws(
+    () => parseCompactFoundingCompletion({ ...savedResponse, finishReason: "length" }, semanticContext),
+    /truncated/,
+  );
+
   for (const count of [50, 111]) {
     const native = schedule(count, count === 111);
     const unique = foundingNativeActivities(native);
@@ -110,7 +157,11 @@ async function main() {
       resolveForRequest: async () => ({
         name: "Flash-class test model",
         maxOutputTokens: 4_000,
-        fitContext: (messages: unknown[]) => ({ messages, maxTokens: 4_000, estimatedTokensAfter: 900 }),
+        fitContext: (messages: unknown[], options: any) => ({
+          messages,
+          maxTokens: options.maxTokens,
+          estimatedTokensAfter: 900,
+        }),
         chatComplete: async (_messages: unknown[], next: Record<string, unknown>) => {
           calls += 1;
           capturedPrompt = _messages.map((message: any) => message.content).join("\n");
@@ -149,17 +200,17 @@ async function main() {
       answer = payload(0);
       await proposeCompactFounding(roleContext as any, async () => {});
       assert.ok(
-        capturedPrompt.includes(renderPlayerRoleContext(roleContext)),
+        capturedPrompt.includes(JSON.stringify({ name: "Robin", ...playerRole })),
         "the role is separate from truncated scenery",
       );
       assert.equal(calls, before + 1, "role context adds no generation call");
     }
-    assert.match(capturedPrompt, /neutral description/);
+    assert.match(capturedPrompt, /Omit Wishes/);
     assert.doesNotMatch(
       capturedPrompt,
       /chocolate|identifying a tune|stuck in their head|borrowing a pencil|repair a favorite chair|arrange a picnic|perform a song|"activity":"reading"/,
     );
-    assert.equal(options.maxTokens, 4000);
+    assert.equal(options.maxTokens, 2048);
     assert.equal(options.reasoningEffort, "none");
   } finally {
     release();

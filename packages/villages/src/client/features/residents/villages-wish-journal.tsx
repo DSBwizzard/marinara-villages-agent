@@ -89,7 +89,6 @@ export function VillagerWishJournal({
   return (
     <section ref={root} className="villages-wish-journal" aria-label="Known wishes">
       <style>{`.villages-wish-journal{min-width:0;display:grid;gap:.75rem}.villages-wish-journal article{border-top:1px solid var(--border);padding:.75rem 0;overflow-wrap:anywhere}.villages-wish-journal h3{margin:.25rem 0}.villages-wish-journal ul{list-style:none;padding:0}.villages-wish-journal li{margin:.6rem 0;line-height:1.5}.villages-wish-journal small{color:var(--muted-foreground)}.villages-wish-journal button{min-height:44px}.villages-wish-journal [tabindex]:focus-visible{outline:2px solid var(--primary);outline-offset:3px}`}</style>
-      <h3>Known wishes</h3>
       {error ? <p role="alert">{error}</p> : null}
       {wishes === null ? (
         <p role="status">Reading known wishes…</p>
@@ -103,9 +102,6 @@ export function VillagerWishJournal({
             </p>
             <small>{wish.status ?? "active"}</small>
             <h4>What you’ve learned</h4>
-            <p>
-              <small>✓ means learned or observed.</small>
-            </p>
             <ul aria-label="Learned facts">
               <li>
                 <span aria-hidden="true">✓ </span>

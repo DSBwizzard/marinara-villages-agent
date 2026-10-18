@@ -178,7 +178,7 @@ export function openingView(state: VillageState): OpeningView | undefined {
 }
 
 /** Only the current resident's idea is supplied to an individual Scene. */
-export function openingSceneDirection(state: VillageState, scene: VenueScene): string {
+export function openingSceneDirection(state: VillageState, scene: VenueScene, legacySignals = true): string {
   const opening = state.opening;
   if (!opening || !openingActive(state)) return "";
   if (opening.stage === "gathering" && scene.id === opening.gatheringSceneId)
@@ -191,11 +191,11 @@ export function openingSceneDirection(state: VillageState, scene: VenueScene): s
     proposal &&
     !opening.reveals.some((proof) => proof.residentId === proposal.residentId)
   )
-    return `OPENING PITCH (private preparation, not established speech or consent): ${JSON.stringify(proposal)}. In this individual conversation, let this resident naturally pitch their own idea in their own voice, alongside getting to know the player. Explain its name, purpose and actual work aloud; do not disclose private motives or secrets. Use the proposed name when pitching it. Preserve their personality and ability to disagree. Pitching does not volunteer them as builder. Do not make player commitments. When their spoken dialogue actually explains this proposal, return openingSignal:{kind:"pitch",residentId:"${proposal.residentId}",quote:"exact substantial quote from their dialogue",playerQuote:""}. Do not also return venueRequest for this pitch.`;
+    return `OPENING PITCH (private preparation, not established speech or consent): ${JSON.stringify(proposal)}. In this individual conversation, let this resident naturally pitch their own idea in their own voice, alongside getting to know the player. Explain its name, purpose and actual work aloud; do not disclose private motives or secrets. Use the proposed name when pitching it. Preserve their personality and ability to disagree. Pitching does not volunteer them as builder. Do not make player commitments. ${legacySignals ? `When their spoken dialogue actually explains this proposal, return openingSignal:{kind:"pitch",residentId:"${proposal.residentId}",quote:"exact substantial quote from their dialogue",playerQuote:""}.` : ""} Do not also return venueRequest for this pitch.`;
   const project = state.projects.find((entry) => entry.id === opening.projectId);
   if (project?.status === "complete" && project.venueId === scene.placeId) {
     const chosen = opening.proposals.find((entry) => entry.residentId === project.requesterCharacterId);
-    return `OPENING FIRST USE: Intended use: ${chosen?.firstUse ?? project.venueDraft?.description}. Continue ordinary play; never perform the player's actions for them. Only if this current player exchange and visible response actually depict that use, return openingSignal:{kind:"first-use",residentId:"",quote:"exact response quote depicting use",playerQuote:"exact current player words participating in that use"}. Greetings, entering, promises and descriptions of possible use do not count. No invented physical effects.`;
+    return `OPENING FIRST USE: Intended use: ${chosen?.firstUse ?? project.venueDraft?.description}. Continue ordinary play; never perform the player's actions for them. ${legacySignals ? 'Only if this current player exchange and visible response actually depict that use, return openingSignal:{kind:"first-use",residentId:"",quote:"exact response quote depicting use",playerQuote:"exact current player words participating in that use"}.' : "Let actual player participation and visible responses establish the use."} Greetings, entering, promises and descriptions of possible use do not count. No invented physical effects.`;
   }
   return "";
 }

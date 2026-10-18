@@ -3,6 +3,7 @@ import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failu
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { ingestSavedProgressEvent } from "../../domain/rules/progress-runtime.js";
 import { physicalVenueEvents } from "../../domain/rules/venue-scene-state.js";
+import { semanticContinued } from "../../domain/rules/semantic-continuity.js";
 import type { VenueScene, VenueSubmission, VenueRecordEvent } from "../../domain/models/scene-model.js";
 export interface SceneReplayEffects {
   applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission): Promise<void>;
@@ -84,6 +85,7 @@ export function createSceneProgress({
       );
       if (hasAutomaticRoute)
         await mutateVillageState((state) => {
+          if (semanticContinued(state, sessionId, submissionId, "projects")) return;
           if (state.seed !== village.seed) return;
           for (const line of session.lines) {
             if (
@@ -265,6 +267,7 @@ export function createSceneProgress({
         entry.recordEvents = recordEvents;
         for (const [domain, result] of updates) {
           const prior = entry.processing.domains[domain];
+          if (entry.semanticContinuedDomains?.includes(domain)) continue;
           if (
             (prior.status === "applied" || prior.status === "rejected") &&
             (result.status === "pending" || result.status === "failed")

@@ -206,6 +206,11 @@
     },
     {
       "method": "post",
+      "path": "/rooms/:id/changes/:submissionId/continue",
+      "bodyLimit": 2048
+    },
+    {
+      "method": "post",
       "path": "/rooms/:id/changes/replay"
     },
     {

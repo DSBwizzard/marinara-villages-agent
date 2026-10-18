@@ -38,6 +38,7 @@ export function parseRelationshipReview(
   sourceId: string,
   lines: readonly RelationshipEvidenceLine[],
   village: VillageState,
+  semantic = false,
 ): RelationshipReview {
   const raw = asRecord(value),
     result = emptyRelationshipReview();
@@ -95,7 +96,7 @@ export function parseRelationshipReview(
       reason,
       lineIds,
       disclosed: row.disclosed === true && spokenToPlayer,
-      contact: substantiveContact(evidence, fromId, toId),
+      contact: semantic ? row.contact === true : substantiveContact(evidence, fromId, toId),
     };
     result.changes.push(change);
   }
@@ -127,20 +128,23 @@ export function parseRelationshipReview(
         : (village.villagers.find((person) => person.characterId === visitorId)?.cardSnapshot.name ?? "");
     if (
       !speech ||
-      /\b(?:unless|maybe|perhaps|if)\b/iu.test(speech) ||
-      (row.action === "grant" &&
-        (/\b(?:not|never|don't|cannot|can't|won't)\b/iu.test(speech) ||
-          !/\b(?:whenever|anytime|any time|always welcome|come and go|standing permission|from now on)\b/iu.test(
-            speech,
-          ))) ||
-      (row.action === "revoke" &&
-        !/\b(?:no longer|not welcome|withdraw|revoke|don't (?:come|enter)|cannot (?:come|enter))\b/iu.test(speech))
+      (!semantic &&
+        (/\b(?:unless|maybe|perhaps|if)\b/iu.test(speech) ||
+          (row.action === "grant" &&
+            (/\b(?:not|never|don't|cannot|can't|won't)\b/iu.test(speech) ||
+              !/\b(?:whenever|anytime|any time|always welcome|come and go|standing permission|from now on)\b/iu.test(
+                speech,
+              ))) ||
+          (row.action === "revoke" &&
+            !/\b(?:no longer|not welcome|withdraw|revoke|don't (?:come|enter)|cannot (?:come|enter))\b/iu.test(
+              speech,
+            ))))
     )
       throw new Error("Standing permission must be unconditional, explicit controller speech.");
     if (
       !visitorName ||
-      !speech.toLocaleLowerCase().includes(visitorName.toLocaleLowerCase()) ||
-      !speech.toLocaleLowerCase().includes(zone.name.toLocaleLowerCase())
+      (!semantic && !speech.toLocaleLowerCase().includes(visitorName.toLocaleLowerCase())) ||
+      (!semantic && !speech.toLocaleLowerCase().includes(zone.name.toLocaleLowerCase()))
     )
       throw new Error("Standing permission must name this visitor and Zone.");
     const lineIds = evidence.map((line) => line.id).sort();
@@ -200,6 +204,7 @@ export function parseRelationshipProposals(
   bind: (row: Record<string, unknown>, kind: RelationshipProposalRejection["kind"]) => Record<string, unknown> = (
     row,
   ) => row,
+  semantic = false,
 ) {
   const raw = asRecord(value),
     review = emptyRelationshipReview(),
@@ -215,6 +220,7 @@ export function parseRelationshipProposals(
           sourceId,
           lines,
           village,
+          semantic,
         );
         const row = parsed[kind][0];
         if (!row || seen.has(row.id)) throw new Error("Repeated relationship evidence in this exchange");

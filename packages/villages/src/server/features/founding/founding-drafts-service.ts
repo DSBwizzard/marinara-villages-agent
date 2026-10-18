@@ -6,7 +6,7 @@ import type { villagesLanguageModels } from "../../adapters/models/language-mode
 import type { VillageState, VillageVenueImage } from "../../domain/models/world.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { extractFoundingVenueReply } from "../../domain/rules/founding-venue-reply.js";
 import {
   LOCATION_IMAGE_WIDTH,
@@ -130,6 +130,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "Suggest the required starting Venues for this shared-life setting. These are editable drafts, not saved facts.",
             "A village may be indoors or already established. Living spaces may be rooms, cells, bunks, apartments, tents, or buildings. Follow the player's setting; do not assume cottages.",
             "A Residence can take literally any physical form supported by the context: a dumpster, apartment, house, train car, stolen hearse, or something else. Fit its spaces to that form; spaces need not be separate rooms. Respect a supplied nonempty physical form when suggesting its spaces.",
+            "Suggest a specific, setting-appropriate name for every Venue, replacing generic or existing names. Supplied names are context, not fixed choices.",
             "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
             "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Community Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
             ...(quickStart
@@ -192,7 +193,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest(
         "The System model returned an empty Venue reply. Your draft is unchanged; check the connection's output and thinking settings, then explicitly retry.",
       );
-    const payload = extractFoundingVenueReply(content);
+    const payload = extractFoundingVenueReply(content, completion.finishReason);
     if (!payload)
       throw badRequest(
         "The System reply did not contain one complete, readable set of Venue suggestions. Your draft is unchanged. Try generating again; if this repeats, check the System model’s response format and output limit.",
@@ -276,6 +277,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest("The required resident backgrounds do not fit the System connection. No request was sent.");
     await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
+      responseFormat: { type: "json_object" },
       temperature: 0.7,
       reasoningEffort: "none",
       retryEmpty: false,
@@ -283,7 +285,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       debugMode: false,
     });
     await onProgress?.({ stage: "validating" });
-    const payload = extractJsonObject(completion.content ?? "");
+    const payload = extractModelJsonObject(completion);
     const generated = Array.isArray(payload?.venues) ? payload.venues : [];
     const details: Record<string, SeededFoundingVenueDetails> = {};
     for (const row of rows) {

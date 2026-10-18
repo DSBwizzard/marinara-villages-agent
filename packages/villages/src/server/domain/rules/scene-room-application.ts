@@ -48,6 +48,20 @@ export function applyInterpretedRoomEvents(
       continue;
     }
     if (["invite-now", "invite-later"].includes(result.outcome)) {
+      if (facts.semanticVersion === 2 && result.outcome === "invite-now" && venue.id === session.placeId) {
+        session.dismissedZoneIds = session.dismissedZoneIds?.filter((id) => id !== zone.id);
+        session.grantedZoneIds = [...new Set([...(session.grantedZoneIds ?? []), zone.id])];
+        session.zoneGrants = [
+          ...(session.zoneGrants ?? []).filter((row) => row.zoneId !== zone.id),
+          { zoneId: zone.id, controllerId: actor },
+        ];
+        session.entryOffers = [
+          ...(session.entryOffers ?? []).filter((row) => row.zoneId !== zone.id),
+          { zoneId: zone.id, label: zone.name, controllerId: actor, accompanies: facts.accompanies === true },
+        ];
+        trace.applied = "Current System entry offer prepared; awaiting authority receipt";
+        continue;
+      }
       if (invitationCount !== 1) {
         trace.applied = "Unresolved: multiple invitation targets; clarification is needed";
         continue;
