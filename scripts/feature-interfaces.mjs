@@ -71,6 +71,8 @@ export const serverFeatureInterfaces = Object.freeze({
   "residents/relationship-social.ts": ["processSocialOutbox"],
   "residents/relationship-store.ts": ["readRelationshipState", "mutateRelationships", "persistRelationshipAuthority"],
   "residents/resident-agendas.ts": [
+    "readFoundingResidentContext",
+    "adoptFoundingRoutine",
     "queueVillagerAgenda",
     "backfillAgendas",
     "refreshVillagerRemaps",
@@ -82,6 +84,7 @@ export const serverFeatureInterfaces = Object.freeze({
   ],
   "residents/resident-cards.ts": ["buildVillageCatalog", "previewVillagerRefresh", "applyVillagerRefresh"],
   "residents/wishes/wish-lifecycle.ts": [
+    "queueFoundingWish",
     "retireResidentWish",
     "reserveInitialWishAllowance",
     "correctResidentWish",

@@ -207,7 +207,13 @@ export function useCloseRoom(ports: {
     try {
       const answer = await request<{ session: SceneView; recordEvents: RoomRecordEvent[] }>("/rooms/end", {
         method: "POST",
-        body: JSON.stringify({ sessionId: room.id, expectedSceneRevision: room.sceneRevision ?? 0 }),
+        body: JSON.stringify({
+          sessionId: room.id,
+          expectedSceneRevision: room.sceneRevision ?? 0,
+          ...(room.operation?.status === "interrupted"
+            ? { abandonOperationId: room.operation.id, retryOfAttemptId: room.operation.attemptId }
+            : {}),
+        }),
       });
       if (!lifetime.owns(claim) || leavingRoomPendingRef.current) return;
       setRoom(currentRoom(answer.session));

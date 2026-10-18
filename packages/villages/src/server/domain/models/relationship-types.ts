@@ -114,6 +114,8 @@ export type SocialPlan = {
   status: "planned" | "completed" | "cancelled";
 };
 export type SocialEncounter = {
+  semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
+  memoryChanges?: unknown;
   rejectedProposals?: import("../rules/relationship-review.js").RelationshipProposalRejection[];
   id: string;
   at: string;

@@ -82,6 +82,7 @@ let pageFailure = false,
 let mode: "fresh" | "none" | "repeat" | "uncertain" | "blank" | "empty" | "malformed" | "throw" | "compare-throw" =
   "fresh";
 let goalText: string | undefined;
+let neutralWordingResult = true;
 let optionalIdea = false;
 let onModel: (() => Promise<void>) | undefined;
 let comparisonId = "";
@@ -109,6 +110,8 @@ async function archiveConnectionOwnership() {
       at = new Date().toISOString();
     const state = coerceVillageState({
       seed: "equal-archive-seed",
+      timeZone: "UTC",
+      clock: { revision: 1, trustedAt: at, recovery: null, replayUntilDate: "", shiftTotalMs: 0 },
       wishSystemVersion: WISH_SYSTEM_VERSION,
       setupAt: at,
       foundedAt: at,
@@ -196,6 +199,11 @@ async function archiveConnectionOwnership() {
         await pause(target);
         if (failure && failureStage === target && !afterSave) throw failure;
         const old = records.get(input.id);
+        if (input.id === "villages-village" && !records.has(pointerId))
+          assert(
+            input.data.villagers[0].wishLifecycle.pendingOutcomes.length > 0,
+            "Clock initialization must preserve the unarchived outcome",
+          );
         if (input.id === "villages-village" && villageConflicts-- > 0) {
           records.set(input.id, {
             ...old,
@@ -614,6 +622,7 @@ function seed(count = 1): VillageState {
   debugEnabled = false;
   onModel = undefined;
   goalText = undefined;
+  neutralWordingResult = true;
   optionalIdea = false;
   const state = coerceVillageState({
     wishSystemVersion: 3,
@@ -754,12 +763,14 @@ const release = configureVillagesRuntime({
               mode === "none"
                 ? { wish: null }
                 : {
+                    neutralWording: neutralWordingResult,
                     matchedNeedId: mode === "repeat" ? comparisonId : "",
                     certain: mode !== "uncertain",
                     ...(optionalIdea
                       ? { routineIdea: { activity: "Sketching quietly", venueId: "", flexible: true } }
                       : {}),
                     wish: {
+                      criteria: { kind: "conversation", requiresPhysical: false },
                       wish:
                         goalText ??
                         (mode === "repeat"
@@ -957,7 +968,7 @@ async function run() {
     assert.equal(modelCalls.length, 2);
     assert.equal((await readVillageState()).villagers[0].agenda!.wishes.length, 1);
 
-    // Pronoun rejection uses explicit recovery; neutral music goals are not blacklisted.
+    // Labeled System rejection uses explicit recovery; code performs no pronoun classification.
     for (const text of [
       "Identify the tune in your head",
       "Find my missing notes",
@@ -966,6 +977,7 @@ async function run() {
     ]) {
       seed();
       goalText = text;
+      neutralWordingResult = false;
       await reconcileWishLifecycle(now, false, () => now);
       assert.equal((await readVillageState()).villagers[0].agenda!.wishes.length, 0);
       const failure = (await backgroundWorkSummaries()).find((job) => job.kind === "wish");
@@ -975,6 +987,7 @@ async function run() {
       assert.equal(modelCalls.length, 1, "no automatic wording repair");
       if (text.includes("your")) {
         goalText = "Identification of the tune stuck in their head";
+        neutralWordingResult = true;
         await retryBackgroundJob(failure!.id, failure!.attempt, "wording-retry");
         await settleBackgroundWork();
         assert.equal(modelCalls.length, 2, "deliberate retry replaces only the rejected response");

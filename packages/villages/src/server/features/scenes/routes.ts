@@ -27,7 +27,7 @@ import {
   retrySceneChangeInterpretation,
   sendVenueTurn,
 } from "./venue-session.js";
-import { dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
+import { continueSceneChange, dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
 import { activeVenueSession, touchVenueSession } from "./live-session.js";
 import { deleteAllVenueVisits, deleteVenueVisit, listVenueVisitSummaries, readVenueVisit } from "./archive.js";
 import type { FastifyInstance } from "fastify";
@@ -215,6 +215,24 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       }
     },
   );
+  app.post<{ Params: { id: string; submissionId: string }; Body: { domain: string } }>(
+    "/rooms/:id/changes/:submissionId/continue",
+    { bodyLimit: 2048 },
+    async (request, reply) => {
+      try {
+        const domain = request.body?.domain;
+        if (!["memories", "relationships", "wishes", "projects"].includes(domain))
+          throw badRequest("Choose a saved domain.");
+        return await continueSceneChange(
+          readChatId(request.params.id),
+          readChatId(request.params.submissionId),
+          domain as "memories" | "relationships" | "wishes" | "projects",
+        );
+      } catch (error) {
+        return fail(reply, error, "continuing after a failed semantic update");
+      }
+    },
+  );
   app.post<{ Params: { id: string } }>("/rooms/:id/changes/replay", async (request, reply) => {
     try {
       return await replaySceneChanges(readChatId(request.params.id));
@@ -322,20 +340,25 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       return fail(reply, error, "leaving a venue naturally");
     }
   });
-  app.post<{ Body: { sessionId?: unknown; expectedSceneRevision?: unknown; retryOfAttemptId?: string } }>(
-    "/rooms/end",
-    async (request, reply) => {
-      try {
-        return await closeVenueSessionWithReceipts(
-          readChatId(request.body?.sessionId),
-          readSceneRevision(request.body?.expectedSceneRevision),
-          request.body?.retryOfAttemptId,
-        );
-      } catch (error) {
-        return fail(reply, error, "ending a Scene");
-      }
-    },
-  );
+  app.post<{
+    Body: {
+      sessionId?: unknown;
+      expectedSceneRevision?: unknown;
+      retryOfAttemptId?: string;
+      abandonOperationId?: unknown;
+    };
+  }>("/rooms/end", async (request, reply) => {
+    try {
+      return await closeVenueSessionWithReceipts(
+        readChatId(request.body?.sessionId),
+        readSceneRevision(request.body?.expectedSceneRevision),
+        request.body?.retryOfAttemptId,
+        request.body?.abandonOperationId === undefined ? undefined : readSubmissionId(request.body.abandonOperationId),
+      );
+    } catch (error) {
+      return fail(reply, error, "ending a Scene");
+    }
+  });
   app.get<{ Querystring: { venueId?: string; characterId?: string; offset?: string; limit?: string } }>(
     "/rooms/archive",
     async (request, reply) => {

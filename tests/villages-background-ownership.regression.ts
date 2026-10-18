@@ -71,7 +71,10 @@ function fixture(label: string) {
       }) as any,
   );
   const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} };
-  const gate = deferred();
+  const gate = deferred(),
+    timingGate = deferred();
+  let holdTiming = false,
+    timingEntered = false;
   const calls: string[] = [],
     signals: AbortSignal[] = [];
   const settings: string[] = [];
@@ -91,6 +94,11 @@ function fixture(label: string) {
       return structuredClone(row);
     },
     async update(value: any) {
+      if (holdTiming && value.data?.steps?.some((step: any) => step.timing?.outcome === "pending")) {
+        timingEntered = true;
+        holdTiming = false;
+        await timingGate.promise;
+      }
       const old = records.get(value.id);
       if (value.id.startsWith("villages-background-") && conflicts-- > 0) return null;
       if (!old || old.revision !== value.expectedRevision) return null;
@@ -120,7 +128,7 @@ function fixture(label: string) {
       calls.push(text);
       signals.push(options.signal);
       await gate.promise;
-      if (fail) throw new Error("synthetic provider unavailable");
+      if (fail) throw new Error("401 Invalid API key");
       return { content: label + ":" + text, finishReason: "stop", usage: { totalTokens: 11 } };
     },
   } as CapabilityResolvedLanguageModel;
@@ -163,6 +171,11 @@ function fixture(label: string) {
     handlers: suppliedHandlers,
   });
   return {
+    holdTiming: () => {
+      holdTiming = true;
+    },
+    timingEntered: () => timingEntered,
+    timingGate,
     context,
     service,
     documents,
@@ -434,6 +447,45 @@ async function scopedDispatch() {
 async function main() {
   await independentQueues();
   await connectionAndPresenceIsolation();
+  const admission = fixture("superseded-admission");
+  admission.gate.resolve();
+  admission.holdTiming();
+  const stopAdmission = admission.service.startBackgroundWork({ now: () => 0 });
+  try {
+    await admission.service.queueBackgroundJob(input());
+    await until(admission.timingEntered);
+    await admission.service.queueBackgroundJob({ ...input(), revision: "replacement" });
+    admission.timingGate.resolve();
+    await admission.service.settleBackgroundWork();
+    assert.deepEqual(
+      admission.calls,
+      ["same"],
+      "supersession during timing persistence dispatches only the replacement",
+    );
+    assert.equal((await admission.service.backgroundWorkSummaries())[0].status, "completed");
+  } finally {
+    stopAdmission();
+    admission.timingGate.resolve();
+    await admission.service.settleBackgroundWork();
+  }
+  const replaced = fixture("late-config");
+  const stopReplaced = replaced.service.startBackgroundWork({ now: () => 0 });
+  try {
+    replaced.fail(true);
+    await replaced.service.queueBackgroundJob(input());
+    await until(() => replaced.calls.length === 1);
+    await replaced.service.queueBackgroundJob({ ...input(), revision: "new-input" });
+    replaced.gate.resolve();
+    await replaced.service.settleBackgroundWork();
+    // The replacement has its own configuration failure; the superseded attempt cannot create the pause.
+    const pauses = [...replaced.records.values()].filter((row) => row.kind === "background-connection");
+    assert.equal(replaced.calls.length, 2, "late failed attempt cannot block its replacement admission");
+    assert.equal(pauses.length, 1);
+  } finally {
+    stopReplaced();
+    replaced.gate.resolve();
+    await replaced.service.settleBackgroundWork();
+  }
   await nestedContexts();
   await defaultContextDispatch();
   await scopedDispatch();

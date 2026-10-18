@@ -46,6 +46,7 @@ export function createSceneQueryService({ readSession, readVillageState, village
     );
     return {
       sessionId,
+      semanticVersion: submission.semanticProvenance?.version,
       venueId: session.placeId,
       zoneId,
       submissionId,

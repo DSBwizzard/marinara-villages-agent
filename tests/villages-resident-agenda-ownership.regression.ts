@@ -200,13 +200,13 @@ assert.equal(b.jobs[0].input.context.village, "B");
 const founding = fixture("Founding");
 founding.state.foundingPreparation = { status: "pending" } as any;
 await founding.service.queueVillagerAgenda("same");
-assert.equal(founding.jobs[0].input.initialWishAttemptId, "wish-Founding");
-assert.equal(founding.jobs[0].input.context.allowInitialWish, true);
-assert(founding.calls.indexOf("allowance") < founding.calls.indexOf("lore"));
+assert.equal(founding.jobs[0].input.initialWishAttemptId, undefined);
+assert.equal(founding.jobs[0].input.context.allowInitialWish, false);
+assert(!founding.calls.includes("allowance"), "Routine does not reserve a Wish allowance");
 const unavailable = fixture("Unavailable");
 unavailable.missingCard();
 const retained = structuredClone(unavailable.resident.agenda);
-await unavailable.service.queueVillagerAgenda("same");
+await assert.rejects(unavailable.service.queueVillagerAgenda("same"), /identity is unavailable/);
 assert.equal(unavailable.jobs.length, 0);
 assert.equal(unavailable.generated, 0);
 assert.equal(unavailable.resident.agenda.personalizationPending, false);
@@ -216,7 +216,7 @@ const failed = fixture("Failed"),
   expected = new Error("Exact library failure");
 failed.fail(expected);
 await assert.rejects(failed.service.queueVillagerAgenda("same"), (error) => error === expected);
-assert.deepEqual(failed.calls, ["read", "progress:reading", "card"]);
+assert.deepEqual(failed.calls, ["read", "read", "progress:reading", "card"]);
 assert.equal(failed.jobs.length, 0);
 
 const deliberate = fixture("Deliberate");

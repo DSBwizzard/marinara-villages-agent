@@ -100,13 +100,19 @@ export function createUsagePreview({
       let requests = 0;
       if (
         action === "founding" &&
-        proposed.foundingPreparation?.status !== "ready" &&
         proposed.foundingPreparation &&
-        !proposed.foundingPreparation.completedIds.includes(resident.characterId) &&
-        resident.agenda?.personalizationPending
+        proposed.foundingPreparation.status !== "ready" &&
+        !proposed.foundingPreparation.completedIds.includes(resident.characterId)
       ) {
-        const saved = active("agenda", resident.characterId);
-        requests = remainingRequests(1, saved?.completedSteps ?? 0);
+        const tasks = proposed.foundingPreparation.tasks?.[resident.characterId];
+        for (const [task, kind] of [
+          ["routine", "agenda"],
+          ["wish", "wish"],
+        ] as const) {
+          if (tasks?.[task]?.status === "completed") continue;
+          const saved = active(kind, resident.characterId);
+          requests += saved?.remainingRequests ?? remainingRequests(1, saved?.completedSteps ?? 0);
+        }
       }
       if (
         action === "change" &&
@@ -206,12 +212,7 @@ export function createUsagePreview({
             ? { min, max }
             : null,
       unknownCosts,
-      note:
-        (action === "founding"
-          ? "One request per unfinished private space, plus unfinished resident routines and initial venue details. "
-          : "") +
-        (bootstrap ? "Includes one public-Venue suggestion request. " : "") +
-        "Read-only forecast for current state. Routine generation uses one request. Schedule influence and daily variation are local and spend no tokens. Reused saved responses do not require new requests. Token prices use configured full-context/output budgets; actual replies usually use less. Unknown image/provider costs are excluded. No spending limit.",
+      note: "Saved responses are reused. Costs may be unknown.",
     };
   }
 

@@ -163,16 +163,21 @@ export function VillagesRelationships({
                         </p>
                       ))}
                   </div>
-                  {view.starting.summaries.every((tie) => tie.status === "No established history") ? (
-                    <p>No established history was found. Unspecified ties begin neutral.</p>
-                  ) : null}
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy}
+                    onClick={() => void action({ action: "prepare" })}
+                  >
+                    Interpret
+                  </button>
                   <button
                     type="button"
                     className={button}
                     disabled={busy}
                     onClick={() => void action({ action: "accept" })}
                   >
-                    Accept suggested ties
+                    Accept
                   </button>{" "}
                   <button
                     type="button"

@@ -1,3 +1,5 @@
+import { mock } from "node:test";
+import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
 import assert from "node:assert/strict";
 import { safeFailureMessage } from "../packages/villages/src/server/domain/rules/errors.js";
 
@@ -75,6 +77,69 @@ const paid = (answer = "answer") =>
 
 async function main() {
   try {
+    seed("provider-timeout");
+    let providerCalls = 0;
+    let timeoutLate!: (value: string) => void;
+    const dispatched = deferred<void>();
+    const timeoutWork = () =>
+      venueCheckpoint("saved-intent", async () => "intent").then(() =>
+        venueCheckpoint("reply", () =>
+          coordinatedCompletion("timeout-provider", () =>
+            withProviderDeadline(async () => {
+              providerCalls++;
+              dispatched.resolve();
+              return new Promise<string>((resolve) => {
+                timeoutLate = resolve;
+              });
+            }),
+          ),
+        ),
+      );
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const request = coordinateVenue("provider-timeout", "turn", "turn", {}, 0, undefined, timeoutWork);
+      const failure = assert.rejects(request, /timed out after 30 seconds/);
+      await dispatched.promise;
+      mock.timers.tick(30_000);
+      await failure;
+      const saved = await readVenueOperation("provider-timeout");
+      assert.equal(saved!.status, "interrupted");
+      assert.equal(row("provider-timeout").data.operation.checkpoints["saved-intent"], "intent");
+      timeoutLate("late reply");
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.equal(
+        row("provider-timeout").data.operation.checkpoints.reply,
+        undefined,
+        "Late completion cannot commit a reply",
+      );
+      await recoverVenueOperations(async (id) => {
+        if (id === "provider-timeout")
+          await coordinateVenue(id, "turn", "turn", {}, undefined, undefined, timeoutWork, { recovery: true });
+      });
+      assert.equal(providerCalls, 1, "Startup recovery cannot dispatch again");
+      await assert.rejects(
+        coordinateVenue("provider-timeout", "turn", "turn", {}, 0, undefined, timeoutWork),
+        refused("OPERATION_INTERRUPTED"),
+      );
+      const current = await readVenueOperation("provider-timeout");
+      const retry = () =>
+        coordinateVenue("provider-timeout", "turn", "turn", {}, 0, current!.attemptId, () =>
+          venueCheckpoint("saved-intent", async () => assert.fail("Saved work must be reused")).then(() =>
+            venueCheckpoint("reply", () =>
+              coordinatedCompletion("timeout-provider", async () => {
+                providerCalls++;
+                return "recovered";
+              }),
+            ),
+          ),
+        );
+      assert.deepEqual(await Promise.all([retry(), retry()]), ["recovered", "recovered"]);
+      assert.equal(providerCalls, 2, "Explicit duplicate retries authorize only one replacement call");
+      assert.equal(row("provider-timeout").data.generationReceipts[0].outcome, "unknown");
+    } finally {
+      mock.timers.reset();
+    }
     seed("race");
     const started = deferred<void>(),
       finish = deferred<string>();
@@ -421,6 +486,164 @@ async function main() {
       [false, true],
     );
     assert(timing.stages.every((stage: any) => stage.elapsedMs >= 0));
+    seed("semantic-budget");
+    const budgetInput = { semanticBudget: { version: 1, requests: 1, inputTokens: 20, outputTokens: 10 } };
+    let budgetDispatches = 0;
+    const budgetWork = async () => {
+      await coordinatedCompletion(
+        "first-budgeted",
+        async () => {
+          budgetDispatches++;
+          return "saved";
+        },
+        undefined,
+        { inputTokens: 10, outputTokens: 5 },
+      );
+      return coordinatedCompletion(
+        "second-budgeted",
+        async () => {
+          budgetDispatches++;
+          return "second";
+        },
+        undefined,
+        { inputTokens: 10, outputTokens: 5 },
+      );
+    };
+    await assert.rejects(
+      coordinateVenue("semantic-budget", "budgeted", "turn", budgetInput, 0, undefined, budgetWork),
+      refused("SEMANTIC_BUDGET"),
+    );
+    assert.equal(budgetDispatches, 1, "The whole-attempt reservation stops additional dispatch before spending");
+    const budgetOperation = await readVenueOperation("semantic-budget");
+    await coordinateVenue(
+      "semantic-budget",
+      "budgeted",
+      "turn",
+      budgetInput,
+      0,
+      budgetOperation!.attemptId,
+      budgetWork,
+    );
+    assert.equal(
+      budgetDispatches,
+      2,
+      "An explicit attempt reuses the first saved result and reserves only its new request",
+    );
+    for (const [index, budget] of [
+      null,
+      { version: 2, requests: 1, inputTokens: 20, outputTokens: 10 },
+      { version: 1, requests: 1, inputTokens: "unknown", outputTokens: 10 },
+      { version: 1, requests: 1, outputTokens: 10 },
+    ].entries()) {
+      const id = "invalid-semantic-budget-" + index;
+      seed(id);
+      await assert.rejects(
+        coordinateVenue(id, "invalid", "turn", { semanticBudget: budget }, 0, undefined, () =>
+          coordinatedCompletion(
+            "invalid-budget",
+            async () => assert.fail("Invalid budget must not dispatch"),
+            undefined,
+            { inputTokens: 1, outputTokens: 1 },
+          ),
+        ),
+        refused("SEMANTIC_BUDGET"),
+      );
+    }
+    seed("missing-v2-budget");
+    row("missing-v2-budget").data.semanticVersion = 2;
+    await assert.rejects(
+      coordinateVenue("missing-v2-budget", "invalid", "turn", {}, 0, undefined, () =>
+        coordinatedCompletion(
+          "missing-budget",
+          async () => assert.fail("New semantic Scenes require an allowance"),
+          undefined,
+          { inputTokens: 1, outputTokens: 1 },
+        ),
+      ),
+      refused("SEMANTIC_BUDGET"),
+    );
+    seed("abandon");
+    await assert.rejects(
+      coordinateVenue("abandon", "failed", "turn", {}, 0, undefined, async () => {
+        await venueCheckpoint("turn-reply", async () => "saved narration");
+        throw new Error("truncated");
+      }),
+      /truncated/,
+    );
+    const failed = structuredClone(row("abandon").data.operation);
+    const closeInput = { abandonOperationId: "failed" };
+    const closeOptions = { abandonOfOperationId: "failed" };
+    for (const [revision, attempt] of [
+      [1, failed.attemptId],
+      [0, "stale"],
+    ] as const) {
+      await assert.rejects(
+        coordinateVenue(
+          "abandon",
+          "close",
+          "close",
+          closeInput,
+          revision,
+          attempt,
+          async () => assert.fail("stale close"),
+          closeOptions,
+        ),
+      );
+    }
+    row("abandon").data.submissions.push({ id: "earlier", semanticProvenance: { version: 2 }, semanticReady: false });
+    await assert.rejects(
+      coordinateVenue(
+        "abandon",
+        "close",
+        "close",
+        closeInput,
+        0,
+        failed.attemptId,
+        async () => assert.fail("committed barrier"),
+        closeOptions,
+      ),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    row("abandon").data.submissions = [];
+    await assert.rejects(
+      coordinateVenue(
+        "abandon",
+        "close",
+        "close",
+        closeInput,
+        0,
+        failed.attemptId,
+        async () => {
+          await assert.rejects(paid(), refused("OPERATION_INTERRUPTED"));
+          throw new Error("close storage failure");
+        },
+        closeOptions,
+      ),
+      /close storage failure/,
+    );
+    const interruptedClose = structuredClone(row("abandon").data.operation);
+    assert.deepEqual(
+      interruptedClose.checkpoints["abandoned-request"],
+      failed,
+      "Failed request and saved writing remain recoverable",
+    );
+    let closeWrites = 0;
+    await coordinateVenue(
+      "abandon",
+      "close",
+      "close",
+      interruptedClose.input,
+      0,
+      interruptedClose.attemptId,
+      async () => {
+        closeWrites++;
+        row("abandon").data.status = "closed";
+        return "closed";
+      },
+    );
+    assert.equal(closeWrites, 1, "Admitted close can recover after a storage failure without paid work");
+    assert.equal(row("abandon").data.status, "closed");
+    assert.deepEqual(row("abandon").data.operation.checkpoints["abandoned-request"], failed);
     console.log("villages-venue-coordinator: ok");
   } finally {
     release();

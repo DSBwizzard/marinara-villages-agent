@@ -1,3 +1,5 @@
+import { semanticUnit } from "../../domain/rules/semantic-contract.js";
+import { semanticContinued, semanticContinuationKey } from "../../domain/rules/semantic-continuity.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { DomainProcessing } from "../../domain/models/exchange-model.js";
 
@@ -97,19 +99,27 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         },
       );
     if (proposals.memoryChanges.length > 16) throw new WorkFailureError(metadataFailure("Too many memory proposals"));
+    if (turn.semanticProvenance?.version === 2) {
+      const units = proposals.memoryChanges.map((row) => semanticUnit("memory", row));
+      if (new Set(units).size !== units.length)
+        throw new WorkFailureError(metadataFailure("Duplicate memory units must be consolidated before application."));
+    }
     if (!proposals.memoryChanges.length) return { reason: "No memory changes proposed", receiptIds: [] };
     const { byId } = context ?? createLiveEvidenceContext(scene, proposals);
     const at = turn.at!;
     const receiptIds: string[] = [],
       errors: string[] = [];
+    const technical: string[] = [];
     await mutateVillageState((state) => {
+      if (semanticContinued(state, scene.id, turn.id, "memories")) return;
       if (state.seed !== scene.villageSeed) throw new Error("Village identity changed");
       receiptIds.length = 0;
       errors.length = 0;
+      technical.length = 0;
       const residents = new Set(state.villagers.map((person) => person.characterId));
       if (Array.isArray(proposals.memoryChanges))
         proposals.memoryChanges.forEach((value, index) => {
-          const id = `${scene.id}:${turn.id}:memory:${index}`;
+          const id = `${scene.id}:${turn.id}:memory:${turn.semanticProvenance?.version === 2 ? semanticUnit("memory", value) : index}`;
           const prior = state.exchangeReceipts[id];
           if (prior) {
             receiptIds.push(id);
@@ -120,6 +130,16 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           try {
             const row = asRecord(value),
               kind = row.kind;
+            if (
+              turn.semanticProvenance?.version === 2 &&
+              (typeof row.text !== "string" ||
+                !row.text.trim() ||
+                row.text.length > MAX_MEMORY_LENGTH ||
+                !["passing", "durable", "reinforce", "supersede"].includes(String(kind)) ||
+                !categories.includes(String(row.category)) ||
+                ![row.subjectCharacterIds, row.knownByCharacterIds, row.evidence].every(Array.isArray))
+            )
+              throw new WorkFailureError(metadataFailure("System memory row has invalid metadata."));
             if (typeof kind !== "string" || !["passing", "durable", "reinforce", "supersede"].includes(kind))
               throw new Error("Invalid memory kind");
             if (row.systemVerification === "rejected" || row.systemVerification === "unresolved")
@@ -262,6 +282,10 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
                 : {}),
             };
           } catch (error) {
+            if (error instanceof WorkFailureError) {
+              technical.push(error.message);
+              return;
+            }
             const reason = String(error).replace(/^Error: /u, "");
             errors.push(reason);
             state.exchangeReceipts[id] = {
@@ -279,8 +303,9 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         });
     });
     return {
-      status: errors.length ? "rejected" : "applied",
-      reason: errors.join("; ") || "Cited memory proposals applied",
+      status: technical.length ? "failed" : errors.length ? "rejected" : "applied",
+      ...(technical.length ? { failure: metadataFailure(technical.join("; ")) } : {}),
+      reason: technical.length ? technical.join("; ") : errors.join("; ") || "Cited memory proposals applied",
       receiptIds,
     };
   }
@@ -325,16 +350,24 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
       lines = (context ?? createLiveEvidenceContext(scene, proposals)).lines;
     const village = await readVillageState();
     if (village.seed !== scene.villageSeed) throw new Error("Village identity changed");
-    const { review, rejections } = parseRelationshipProposals(raw, scene.id + ":" + turn.id, lines, village, (row) => ({
-      ...row,
-      lineIds: refs(row.lineIds, proposals),
-    }));
+    const { review, rejections } = parseRelationshipProposals(
+      raw,
+      scene.id + ":" + turn.id,
+      lines,
+      village,
+      (row) => ({
+        ...row,
+        lineIds: refs(row.lineIds, proposals),
+      }),
+      turn.semanticProvenance?.version === 2,
+    );
     const actors = [...new Set(lines.map((line) => (line.role === "user" ? "player" : line.speakerId)))].filter(
       (id) => id === "player" || village.villagers.some((person) => person.characterId === id),
     );
     for (const fromId of actors.filter((id) => id !== "player"))
       for (const toId of actors) {
-        if (fromId === toId || !substantiveContact(lines, fromId, toId)) continue;
+        if (turn.semanticProvenance?.version === 2 || fromId === toId || !substantiveContact(lines, fromId, toId))
+          continue;
         review.changes.push({
           id: `${scene.id}:${turn.id}:contact:${fromId}:${toId}`,
           fromId,
@@ -352,7 +385,7 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
     const receiptIds = [...review.changes, ...review.permissions, ...review.disclosures].map((row) => row.id);
     if (!receiptIds.length)
       return {
-        status: rejections.length ? "rejected" : "applied",
+        status: rejections.length ? (turn.semanticProvenance?.version === 2 ? "failed" : "rejected") : "applied",
         reason: rejections.length
           ? "Relationship proposals rejected"
           : "No relationship changes or substantive contact",
@@ -360,10 +393,18 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         rejectedProposals: rejections,
       };
     await mutateVillageState((authority) => {
-      const fresh = parseRelationshipProposals(raw, scene.id + ":" + turn.id, lines, authority, (row) => ({
-        ...row,
-        lineIds: refs(row.lineIds, proposals),
-      }));
+      if (semanticContinued(authority, scene.id, turn.id, "relationships")) return;
+      const fresh = parseRelationshipProposals(
+        raw,
+        scene.id + ":" + turn.id,
+        lines,
+        authority,
+        (row) => ({
+          ...row,
+          lineIds: refs(row.lineIds, proposals),
+        }),
+        turn.semanticProvenance?.version === 2,
+      );
       for (const permission of fresh.review.permissions) {
         const venue = authority.venues.find((row) => row.id === permission.venueId);
         if (venue?.access)
@@ -374,12 +415,21 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
       }
     });
     await mutateRelationships(village.seed, async (state) => {
+      if (state.applied[semanticContinuationKey(scene.id, turn.id)]) return;
       const authority = await readVillageAuthority();
+      if (semanticContinued(authority, scene.id, turn.id, "relationships")) return;
       if (authority.seed !== village.seed) throw new Error("Village identity changed");
-      const fresh = parseRelationshipProposals(raw, scene.id + ":" + turn.id, lines, authority, (row) => ({
-        ...row,
-        lineIds: refs(row.lineIds, proposals),
-      }));
+      const fresh = parseRelationshipProposals(
+        raw,
+        scene.id + ":" + turn.id,
+        lines,
+        authority,
+        (row) => ({
+          ...row,
+          lineIds: refs(row.lineIds, proposals),
+        }),
+        turn.semanticProvenance?.version === 2,
+      );
       fresh.review.changes.push(
         ...review.changes.filter(
           (change) =>
@@ -406,7 +456,12 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
       captureRelationshipKnowledge(state, authority);
     });
     return {
-      status: !receiptIds.length && rejections.length ? "rejected" : "applied",
+      status:
+        turn.semanticProvenance?.version === 2 && rejections.length
+          ? "failed"
+          : !receiptIds.length && rejections.length
+            ? "rejected"
+            : "applied",
       reason:
         !receiptIds.length && rejections.length
           ? "Relationship proposals rejected against current authority"

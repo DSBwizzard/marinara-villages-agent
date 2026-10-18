@@ -27,6 +27,7 @@ import type { VillagesTurnBeat } from "../rules/turn-beats.js";
  * Legacy tells stay readable but are excluded from Scene writing. Essential conditions are
  * separately versioned, explicitly witnessed journal facts, not generated solution steps. */
 export type VillageWish = {
+  semanticCriteria?: import("./wish-interpretation-model.js").WishCriteria;
   size?: import("../rules/wish-definition.js").WishSize;
   conditionRevision?: number;
   learnedAt?: string;
@@ -1208,6 +1209,13 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  semanticRequestReceipts?: Record<string, string>;
+  semanticContinuations?: Record<string, import("./exchange-model.js").ExchangeDomain[]>;
+  semanticStartingTies?: {
+    sourceHash: string;
+    stateHash?: string;
+    ties: import("./relationship-types.js").StartingTie[];
+  };
   visitMemoryBackfilled?: boolean;
   wishSystemVersion: number;
   /** Prepared residents awaiting their one-time, finite post-reset Wish attempt. */
@@ -1291,6 +1299,11 @@ export type VillageState = {
   foundingPreparation?: {
     status: "pending" | "failed" | "ready";
     completedIds: string[];
+    tasksVersion?: 1;
+    tasks?: import("../../../shared/contracts/founding-tasks.js").FoundingResidentTasks;
+    retryActions?: string[];
+    selectedTasks?: string[];
+    currentTask?: "routine" | "wish";
     venueDetailsSeeded?: boolean;
     currentId: string;
     error: string;
@@ -1901,6 +1914,7 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
  * say that". Every field below exists so a human can see the join.
  */
 export type VillageAgendaView = {
+  canInterpretSchedule?: boolean;
   effectiveDays?: Record<string, VillageAgendaBlock[]>;
   wishHistoryCount?: number;
   wishAttempt?: Pick<

@@ -130,6 +130,8 @@ const documents = {
     return [...records.values()].filter((row) => row.packageId === packageId && row.kind === kind);
   },
   async create(input: any) {
+    // This fixture preserves pre-System Scene admissions; v2 is covered by semantic/packaged suites.
+    if (input.id.startsWith("villages-venue-visit-")) delete input.data.semanticVersion;
     documentWriteCalls++;
     if (failRelationshipStorage && input.id.startsWith("villages-relationships-"))
       throw new Error("relationship storage unavailable");

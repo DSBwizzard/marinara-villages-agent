@@ -53,3 +53,7 @@ export const wishBackgroundHandler: Handler = {
   valid: (...args: Parameters<NonNullable<Handler["valid"]>>) => binding.get().wishBackgroundHandler.valid(...args),
   apply: (...args: Parameters<NonNullable<Handler["apply"]>>) => binding.get().wishBackgroundHandler.apply(...args),
 };
+
+export function queueFoundingWish(...args: Parameters<WishLifecycleService["queueFoundingWish"]>) {
+  return binding.get().queueFoundingWish(...args);
+}

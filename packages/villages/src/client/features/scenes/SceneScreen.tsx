@@ -279,6 +279,16 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           changeStatus={room?.memoryMode === "live" ? roomChangeStatus : undefined}
           unresolvedChanges={roomUnresolvedChanges}
+          onContinueChange={(submissionId, domain) => {
+            if (!room?.id || roomBusy) return;
+            setRoomBusy(true);
+            void request(`/rooms/${encodeURIComponent(room.id)}/changes/${encodeURIComponent(submissionId)}/continue`, {
+              method: "POST",
+              body: JSON.stringify({ domain }),
+            })
+              .catch((cause) => setRoomError(messageFrom(cause, "Could not continue.")))
+              .finally(() => setRoomBusy(false));
+          }}
           onRetryChangeInterpretation={(submissionId, domain) => {
             if (!room?.id || roomBusy) return;
             setRoomBusy(true);
@@ -344,15 +354,14 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 />
                 Card-flip sprite changes
               </label>
-              <p className={ELEMENT_TAG + "-hint"}>
-                Flip when facing or artwork changes. Saved for this Village on every device.
-              </p>
-              <DecisionsControl
-                sceneId={room.id}
-                onError={reportDecisionsError}
-                busy={roomBusy || room.operation?.status === "running"}
-                api={request}
-              />
+              {room.semanticVersion !== 2 ? (
+                <DecisionsControl
+                  sceneId={room.id}
+                  onError={reportDecisionsError}
+                  busy={roomBusy || room.operation?.status === "running"}
+                  api={request}
+                />
+              ) : null}
               {room.memoryMode === "live" ? (
                 <SavedChangesDiagnostics
                   key={room.id}

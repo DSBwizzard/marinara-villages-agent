@@ -12,6 +12,8 @@ const inputLibraries = new Set([
   "@playwright/test",
   "pngjs",
   "zod",
+  // Reviewed pinned pure parser entry; stream/CLI subpaths remain opaque.
+  "jsonrepair",
   "react",
   "react-dom",
   "react-dom/client",

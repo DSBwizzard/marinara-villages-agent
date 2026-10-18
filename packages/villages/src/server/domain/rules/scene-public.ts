@@ -31,7 +31,21 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
       })
       .map((entry) => publicSceneResponse(entry, visibleIds, privateHearing)) as T;
   if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return value;
-  const row = value as Record<string, unknown>;
+  const row = { ...value } as Record<string, unknown>;
+  if (Array.isArray(row.lines) && Array.isArray(row.submissions)) {
+    const hidden = new Set(
+      row.submissions.flatMap((entry) => {
+        const turn = asRecord(entry);
+        return asRecord(turn.semanticProvenance).version === 2 && turn.semanticReady !== true
+          ? ((asRecord(turn.processing).lineIds as string[]) ?? [])
+          : [];
+      }),
+    );
+    row.lines = row.lines.filter((line) => !hidden.has(asRecord(line).id as string));
+    row.submissions = row.submissions.filter(
+      (entry) => asRecord(asRecord(entry).semanticProvenance).version !== 2 || asRecord(entry).semanticReady === true,
+    );
+  }
   privateHearing ||=
     (Array.isArray(row.submissions) && row.submissions.some((turn) => asRecord(turn).zoneEventsVersion === 1)) ||
     (asRecord(row.operation).input !== undefined &&
@@ -98,6 +112,14 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
         ([key]) =>
           !(privateHearing && ["heardBy", "heardPlayerBy", "heardHistory"].includes(key)) &&
           ![
+            "semanticReady",
+            "semanticConclude",
+            "semanticPlayerMoves",
+            "physicalContext",
+            "semanticContinuedDomains",
+            "semanticIntent",
+            "semanticProvenance",
+            "semanticAccess",
             "responseDiagnostics",
             "effectFailures",
             "speechSource",
@@ -111,6 +133,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "accompanying",
             "access",
             "accessEvents",
+            "accessOperationId",
             "accessPreviousZones",
             "pendingAccessClaim",
             "contactGeneration",

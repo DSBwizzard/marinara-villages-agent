@@ -51,6 +51,7 @@ export interface FoundingSetupPorts {
   listVillagerCards(): Promise<VillagerCard[]>;
   prepareFoundedVillage(): Promise<void>;
   queueVillagerAgenda(characterId: string): Promise<void>;
+  queueStartingTies?(): Promise<void>;
   queueMicrotask(work: () => void): void;
   readVillageLore: typeof readVillageLore;
   proposeVillage: typeof proposeVillage;
@@ -70,6 +71,7 @@ export function createFoundingSetup({
   listVillagerCards,
   prepareFoundedVillage,
   queueVillagerAgenda,
+  queueStartingTies,
   queueMicrotask,
   readVillageLore,
   proposeVillage,
@@ -383,6 +385,7 @@ export function createFoundingSetup({
         void prepareFoundedVillage();
       });
     else for (const card of addedResidents) await queueVillagerAgenda(card.id);
+    if (addedResidents.length) await queueStartingTies?.();
     return buildVillageSnapshot();
   }
 

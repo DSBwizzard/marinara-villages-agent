@@ -3,6 +3,8 @@ import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contr
 import { acousticFragment, bindAcousticPlan } from "../../domain/rules/scene-acoustics.js";
 import { interpretAcoustics } from "./acoustic-interpretation.js";
 import { acousticInstructions } from "./acoustic-prompt.js";
+import { semanticBlocker, semanticAuthorityDomain } from "../../domain/rules/semantic-continuity.js";
+import { readSemanticEffects, SEMANTIC_OPERATION_BUDGET } from "../../domain/rules/semantic-contract.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
 import { captureSceneLayout, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { villageNow, villageClockShiftMs } from "../../adapters/time/clock-gate.js";
@@ -16,7 +18,7 @@ import {
   validAttentionPlan,
   type AttentionPlan,
 } from "../../domain/rules/scene-attention.js";
-import { isPrivateInterior, observePrivateInterior } from "../../domain/rules/private-interior.js";
+import { observePrivateInterior } from "../../domain/rules/private-interior.js";
 import { claimZonePictureEntry, zonePictureContext } from "../../domain/rules/zone-picture.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { ACTIVE_ID, SESSION_PREFIX, activeSlot, sessionSlot } from "../../adapters/storage/scene-slots.js";
@@ -43,7 +45,6 @@ import {
   safeFailureMessage,
   VillagesRequestError,
 } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import {
   bindProjectSpeech,
   projectSpeechContexts,
@@ -78,6 +79,7 @@ import {
 } from "../../domain/rules/venue-contact.js";
 import { venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { movementTransition, readPlayerMovement } from "../../domain/rules/venue-movement.js";
+import { projectSemanticMovement } from "../../domain/rules/semantic-timeline.js";
 import {
   applyVenueSceneChange,
   physicalVenueEvents,
@@ -108,6 +110,7 @@ import { filterRelationshipNotices, relationshipChangeNotices } from "../../doma
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash, randomUUID } from "node:crypto";
 export interface SceneCommandPorts {
+  semantic?: import("../../domain/models/semantic-model.js").SemanticInterpreter;
   interpretRoomDraft: typeof import("./writing.js").interpretRoomDraft;
   generate: typeof import("./writing.js").generate;
   generateContactResponse: typeof import("./writing.js").generateContactResponse;
@@ -253,6 +256,7 @@ export function createSceneCommands({
   readVillageState,
   queueVillageVenueRequest,
   applyResidenceEditApproval,
+  semantic,
 }: SceneCommandPorts) {
   /** Only this explicit request may replace missing/invalid metadata with another interpretation. */
   async function retrySceneChangeInterpretation(
@@ -265,7 +269,11 @@ export function createSceneCommands({
       id,
       `change:${submissionId}:${domain}`,
       "change-interpretation",
-      { submissionId, domain },
+      {
+        submissionId,
+        domain,
+        ...((await readSession(id)).semanticVersion === 2 ? { semanticBudget: SEMANTIC_OPERATION_BUDGET } : {}),
+      },
       undefined,
       retryOfAttemptId,
       () => retrySceneChangeInterpretationOnce(id, submissionId, domain),
@@ -323,10 +331,10 @@ export function createSceneCommands({
     const memoryIds = Object.keys(proposals.memoryVersions);
     const memories = village.chronicle.filter((memory) => memoryIds.includes(memory.id) && !memory.supersededBy);
     const result = await venueCheckpoint("change-interpretation", async () => {
-      const model = await villagesLanguageModels().resolveForRequest({
+      let model = await villagesLanguageModels().resolveForRequest({
         connectionId: await villagesConnectionIdFor("system"),
       });
-      const messages: CapabilityLanguageModelMessage[] = [
+      let messages: CapabilityLanguageModelMessage[] = [
         {
           role: "system",
           content: `Interpret ONLY the supplied saved exchange for ${domain}. Do not rewrite narration, change physical state, or invent evidence. ${domain === "wishes" ? WISH_PROPOSAL_INSTRUCTION : domain === "projects" ? 'Return projectSpeech:[{projectId,kind:"approval|builder|requirements",speakerId,citations:[{lineId,quote}],checklist:[]}]. Cite exact saved lineIds and literal speech, preserving conditions/negation. Only supplied Project contexts/revisions are eligible. A promise is never completed work. Do not propose physical effects.' : domain === "relationships" ? 'Return relationshipChanges:{changes:[],permissions:[],disclosures:[]}. Changes use fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:[],disclosed:boolean. Trust needs demonstrated reliability or confidence/boundary interaction. Permissions require explicit unconditional standing authority; disclosures require actual heard speech. No rewards for mere co-location.' : 'Return memoryChanges:[{kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:[],memoryIds:[]}]. Every knower must witness every citation. Verify facts against supplied evidence; a speaker denial establishes only an attributed belief/statement, never historical absence. Partial history proves no absence. Preserve qualifications and distinguish promises from deeds. Durable entries need stable facts; reinforce/supersede cite supplied matching durable memoryIds. Unsupported factual memories must be omitted.'} Use exact saved evidence IDs, not numeric indexes. Return JSON only.`,
@@ -368,21 +376,46 @@ export function createSceneCommands({
           }),
         },
       ];
-      const fitted = model.fitContext(messages, { maxTokens: VENUE_REPLY_MAX_TOKENS });
+      if (turn.semanticProvenance?.version === 2)
+        messages[0].content +=
+          ' This is a v2 System-owned event. Interpret paraphrases and contextual short answers without phrase tests. Wish check/progress rows require criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} for the ORIGINAL goal. Relationship changes require contact:boolean for actual substantive shared contact. Project kinds also include offer/handoff with exact requirementId; a handoff requires an actual completed local transfer from a supplied existing source. No model-authored provenance or verification flags.';
+      const output = turn.semanticProvenance?.version === 2 ? 2400 : VENUE_REPLY_MAX_TOKENS;
+      const request = await venueCheckpoint("change-interpretation:input", async () => ({
+        messages,
+        connectionId: model.connectionId,
+        model: model.model,
+        output,
+      }));
+      if (model.connectionId !== request.connectionId || model.model !== request.model)
+        model = await villagesLanguageModels().resolveForRequest({ connectionId: request.connectionId });
+      if (model.model !== request.model) throw conflict("The saved System model changed.");
+      messages = request.messages;
+      const fitted = model.fitContext(messages, { maxTokens: request.output });
       if (JSON.stringify(fitted.messages) !== JSON.stringify(messages))
         throw badGateway("Saved evidence does not fit interpretation context.");
-      const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? VENUE_REPLY_MAX_TOKENS, {
-        responseFormat: { type: "json_object" },
-        temperature: 0,
-        reasoningEffort: null,
-        verbosity: null,
-        debugMode: false,
-        signal: venueOperationSignal(),
-        retryEmpty: false,
-      });
+      if (
+        turn.semanticProvenance?.version === 2 &&
+        (fitted.estimatedTokensBefore ?? Buffer.byteLength(JSON.stringify(messages))) > 12000
+      )
+        throw badGateway("Saved evidence exceeds the System context budget.");
+      const completion = await completeWithRoom(
+        model,
+        fitted.messages,
+        Math.min(fitted.maxTokens ?? request.output, request.output),
+        {
+          responseFormat: { type: "json_object" },
+          temperature: 0,
+          reasoningEffort: null,
+          verbosity: null,
+          debugMode: false,
+          signal: venueOperationSignal(),
+          retryEmpty: false,
+          usagePurpose: "checks",
+        },
+      );
       const raw = completeSceneObject(completion.content ?? "", completion.finishReason);
       const diagnostics = responseDiagnostics(model, completion, fitted.maxTokens ?? VENUE_REPLY_MAX_TOKENS, raw);
-      const value =
+      let value =
         domain === "memories"
           ? raw?.memoryChanges
           : domain === "wishes"
@@ -390,6 +423,15 @@ export function createSceneCommands({
             : domain === "projects"
               ? raw?.projectSpeech
               : raw?.relationshipChanges;
+      if (turn.semanticProvenance?.version === 2) {
+        const key = {
+          memories: "memoryChanges",
+          relationships: "relationshipChanges",
+          wishes: "wishChanges",
+          projects: "projectSpeech",
+        }[domain];
+        value = readSemanticEffects({ ...raw, sourceHash: "recovery" }, "recovery")[key];
+      }
       if (
         domain !== "relationships"
           ? !Array.isArray(value)
@@ -423,6 +465,9 @@ export function createSceneCommands({
           };
         });
         recoveredProjects = bindProjectSpeech(mapped, turn.projectContexts ?? [], lines);
+        if (turn.semanticProvenance?.version === 2)
+          for (const proposal of recoveredProjects)
+            proposal.contextual = { version: 1, source: "system", checkId: venueOperationId() };
         if (
           mapped.length > 6 ||
           recoveredProjects.length !== mapped.length ||
@@ -471,6 +516,7 @@ export function createSceneCommands({
           entry.liveProposals.playerLineId,
           entry.liveProposals.replyLineIds,
           entry.wishContexts,
+          entry.semanticProvenance?.version === 2,
         );
         entry.wishProposals = bound.proposals;
         entry.wishProposalError = bound.error;
@@ -481,11 +527,12 @@ export function createSceneCommands({
         entry.progressError = "";
       } else entry.liveProposals[domain === "memories" ? "memoryChanges" : "relationshipChanges"] = result.value;
       if (entry.effectFailures) delete entry.effectFailures[domain];
-      entry.liveProposals.memoryVersions = result.memoryVersions;
+      if (domain === "memories") entry.liveProposals.memoryVersions = result.memoryVersions;
       entry.requestMetrics = [...(entry.requestMetrics ?? []), ...(result.requests ?? [])];
       entry.processing.domains[domain].status = "pending";
     });
     await processSavedExchange(id, submissionId);
+    await finishSemanticScene(id);
     return readSceneChanges(id);
   }
 
@@ -601,6 +648,8 @@ export function createSceneCommands({
       await markZoneSeen(session, false);
       return refreshZoneParticipants(session, true);
     }
+    const blocker = semanticBlocker(session);
+    if (blocker) throw conflict(blocker);
     if (session.status !== "active") throw conflict("Wait for the current scene to finish opening.");
     const village = await readVillageState(),
       venue = village.venues
@@ -987,6 +1036,7 @@ export function createSceneCommands({
       version: 1,
       sceneRevision: 0,
       processingVersion: 1,
+      semanticVersion: 2,
       villageSeed: village.seed,
       stagingVersion: 1,
       id,
@@ -1083,6 +1133,9 @@ export function createSceneCommands({
             ? admission.operation.input.writingContractVersion !== undefined
               ? {
                   writingContractVersion: admission.operation.input.writingContractVersion,
+                  ...(admission.operation.input.semanticBudget
+                    ? { semanticBudget: admission.operation.input.semanticBudget }
+                    : {}),
                   ...([2, 3].includes(Number(admission.operation.input.writingContractVersion))
                     ? { writingCapabilities: admission.operation.input.writingCapabilities }
                     : {}),
@@ -1090,6 +1143,7 @@ export function createSceneCommands({
               : {}
             : {
                 writingContractVersion: 3,
+                ...(admission.semanticVersion === 2 ? { semanticBudget: SEMANTIC_OPERATION_BUDGET } : {}),
                 writingCapabilities: sceneWritingCapabilities(await readVillageState(), admission),
               };
         signal.throwIfAborted();
@@ -1125,7 +1179,16 @@ export function createSceneCommands({
     const readStarted = performance.now();
     const session = await requireLiveVenueSession(id);
     trace("session read", performance.now() - readStarted);
-    if (session.status !== "opening") return session;
+    if (session.status !== "opening") {
+      const saved = session.submissions.find((row) => row.id === "greeting");
+      if (saved?.semanticProvenance?.version === 2 && !saved.semanticReady) {
+        await processSavedExchange(id, saved.id);
+        await applyVenueRequests(session, saved);
+        await settleSemanticAuthority(session, saved);
+        return readSession(id);
+      }
+      return session;
+    }
     signal.throwIfAborted();
     const reply = await venueCheckpoint("greeting-reply", () =>
       generate(session, "", "greet", "", null, signal, trace),
@@ -1148,6 +1211,7 @@ export function createSceneCommands({
           "",
           savedLineIds,
           reply.wishContexts,
+          state.semanticVersion === 2,
         );
         state.submissions.push({
           id: "greeting",
@@ -1163,10 +1227,34 @@ export function createSceneCommands({
           wishProposals: wishes.proposals,
           wishProposalError: wishes.error,
           wishContexts: reply.wishContexts,
+          semanticProvenance: reply.semanticProvenance,
+          physicalContext: reply.physicalContext,
+          ...(reply.sceneChange
+            ? {
+                sceneChange: reply.sceneChange,
+                physicalOutcomeVersion: 1 as const,
+                action: { happened: true, ...reply.sceneChange },
+                areaAtTurn: state.area,
+                zoneIdAtTurn: state.zoneId,
+                privateOwnerIdAtTurn: state.privateOwnerId,
+              }
+            : {}),
           liveProposals: bindLiveProposals(reply, "", savedLineIds),
           effectFailures: reply.effectFailures,
           speechCapture: reply.speechCapture,
           accessEvents: savedAccessEvents(reply.roomInterpretation),
+          ...(state.semanticVersion === 2
+            ? {
+                projectContexts: reply.projectContexts,
+                projectSpeech: reply.projectSpeech,
+                projectInterpretationVersion: 1 as const,
+                invitationSignal: reply.invitationSignal ?? undefined,
+                editApprovalSignal: reply.editApprovalSignal ?? undefined,
+                residenceSignal: reply.residenceSignal ?? undefined,
+                upgradeSignal: reply.upgradeSignal ?? undefined,
+                venueRequestSignal: reply.venueRequestSignal ?? undefined,
+              }
+            : {}),
           requestMetrics: venueRequestMetrics(),
         });
       }
@@ -1181,12 +1269,49 @@ export function createSceneCommands({
                 line.content.includes(reply.invitationSignal!.quote),
             )
           ];
+      if (state.semanticVersion === 2) {
+        const greeting = state.submissions.find((row) => row.id === "greeting")!;
+        if (greeting.invitationSignal) greeting.invitationSignal.sourceLineId = reply.invitationSignal?.sourceLineId;
+        const sourceLineId = (actor: string, quote: string) =>
+          savedLineIds[reply.lines.findIndex((line) => line.speakerId === actor && line.content.includes(quote))];
+        if (greeting.venueRequestSignal)
+          greeting.venueRequestSignal.sourceLineId = sourceLineId(
+            greeting.venueRequestSignal.characterId,
+            greeting.venueRequestSignal.quote,
+          );
+        if (greeting.editApprovalSignal)
+          greeting.editApprovalSignal.sourceLineId = sourceLineId(
+            greeting.editApprovalSignal.residentId,
+            greeting.editApprovalSignal.quote,
+          );
+        state.accompanying = [
+          ...(state.accompanying ?? []).filter(
+            (row) => !reply.contactMoves.some((move) => move.characterId === row.characterId),
+          ),
+          ...reply.contactMoves.map((move) => ({ characterId: move.characterId, zoneId: move.zoneId })),
+        ];
+        state.departedIds = [...new Set([...(state.departedIds ?? []), ...reply.departures])];
+        state.activeIds = [
+          ...new Set([
+            ...state.activeIds,
+            ...reply.contactMoves.filter((move) => move.zoneId === state.zoneId).map((move) => move.characterId),
+          ]),
+        ].filter(
+          (id) =>
+            !state.departedIds?.includes(id) &&
+            !reply.contactMoves.some((move) => move.characterId === id && move.zoneId !== state.zoneId),
+        );
+      }
       if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now") {
         applyImmediateZoneInvitation(state, reply.invitationSignal);
       }
       applyInterpretedRoomEvents(state, reply.roomInterpretation, greetingVillage);
       state.status = "active";
     });
+    if (reply.semanticProvenance?.version === 2) {
+      const greeting = greeted.submissions.find((row) => row.id === "greeting");
+      if (greeting) await applySavedAccessEvents(greeted, greeting);
+    }
     if (reply.roomInterpretation) {
       await finalizeRoomInvitationDiagnostics(greeted, reply.roomInterpretation, reply.invitationSignal);
       await writeInterpretationDiagnostics(id, reply.roomInterpretation.traces).catch(() => {});
@@ -1205,6 +1330,11 @@ export function createSceneCommands({
     }
     await markZoneSeen(greeted, false);
     await processSavedExchange(id, "greeting");
+    const turn = (await readSession(id)).submissions.find((row) => row.id === "greeting");
+    if (turn) {
+      if (turn.semanticProvenance?.version === 2) await applyVenueRequests(greeted, turn);
+      await settleSemanticAuthority(greeted, turn);
+    }
     return refreshZoneParticipants(await readSession(id), true);
   }
 
@@ -1561,6 +1691,14 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         : sceneWritingCapabilities(await readVillageState(), scene)
       : undefined;
     const payload = {
+      ...(scene.semanticVersion === 2
+        ? {
+            semanticBudget:
+              scene.operation?.id === input.submissionId
+                ? (scene.operation.input.semanticBudget ?? SEMANTIC_OPERATION_BUDGET)
+                : SEMANTIC_OPERATION_BUDGET,
+          }
+        : {}),
       message: input.message,
       mode: input.mode,
       targetId: input.targetId,
@@ -1601,13 +1739,26 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     expectedSceneRevision?: number,
     retryOfAttemptId?: string,
   ) {
-    const prior = (await readSession(sessionId)).submissions.find((entry) => entry.id === submissionId);
+    const scene = await readSession(sessionId);
+    const prior = scene.submissions.find((entry) => entry.id === submissionId);
     if (!prior) await requireLiveVenueSession(sessionId);
     return coordinateVenue(
       sessionId,
       submissionId,
       "turn",
-      { message, mode: "leave", targetId: "" },
+      {
+        message,
+        mode: "leave",
+        targetId: "",
+        ...(scene.semanticVersion === 2
+          ? {
+              semanticBudget:
+                scene.operation?.id === submissionId
+                  ? (scene.operation.input.semanticBudget ?? SEMANTIC_OPERATION_BUDGET)
+                  : SEMANTIC_OPERATION_BUDGET,
+            }
+          : {}),
+      },
       expectedSceneRevision,
       retryOfAttemptId,
       () => leaveVenueSessionOnce(sessionId, submissionId, message),
@@ -1641,6 +1792,11 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     const compatibilityWishCheck = input.mode === "fulfill";
     const requestMode = input.mode === "act" || input.mode === "fulfill" ? input.mode : undefined;
     const prior = session.submissions.find((entry) => entry.id === input.submissionId);
+    if (!prior && session.semanticVersion === 2) {
+      await finishSemanticScene(session.id);
+      session = await readSession(session.id);
+      if (session.status === "closed") throw conflict("This Scene has concluded.");
+    }
     if (prior) {
       if (
         prior.message !== input.message ||
@@ -1661,6 +1817,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         (prior.invitationSignal.timing === "later" || prior.invitationSignal.venueId !== session.placeId)
       )
         await recordSpokenInvitation(session, prior.invitationSignal);
+      await settleSemanticAuthority(session, prior);
+      await finishSemanticScene(session.id);
       await markZoneSeen(session, false).catch((error) =>
         villagesLogger().warn("[villages] saved turn observation deferred for %s: %s", prior.id, String(error)),
       );
@@ -1676,6 +1834,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       };
     }
     session = await requireLiveVenueSession(session.id);
+    const blocker = semanticBlocker(session);
+    if (blocker) throw conflict(blocker);
     // Act and Fulfill aliases use the current Chat interpretation.
     if (requestMode) input = { ...input, mode: "chat" };
     const admitted = venueOperationSnapshot<unknown>();
@@ -1710,7 +1870,28 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     }
     if (input.mode !== "leave" && !input.message.trim()) throw badRequest("Write something before sending it.");
     if (input.message.length > 4000) throw badRequest("A line can be at most 4000 characters.");
-    if (!explicitSceneActions() && (input.mode === "chat" || input.mode === "ask")) {
+    if (session.semanticVersion === 2 && semantic && input.mode !== "leave") {
+      const intent = await semantic.intent(session, input.message);
+      if (intent.status === "unresolved") throw conflict(intent.reason || "The action needs clarification.");
+      session = { ...session, semanticIntent: intent };
+      const plannedMoves = intent.timeline.flatMap((step, segment) =>
+        step.kind === "movement" && step.zoneId ? [{ zoneId: step.zoneId, segment }] : [],
+      );
+      if (plannedMoves.length && !intent.movement) {
+        const state = await readVillageState();
+        const venue = state.venues.find((row) => row.id === session.placeId);
+        if (!venue) throw conflict("The Venue is unavailable.");
+        projectSemanticMovement(session, state, venue, plannedMoves, []);
+      }
+      if (intent.movement && !intent.timeline.some((step) => step.kind === "speech" || step.kind === "action"))
+        return {
+          session: await moveVenueZoneOnce(session.id, intent.movement.zoneId, { ...input, requestMode }),
+          verdict: null,
+          action: null,
+          recordEvents: [],
+        };
+    }
+    if (session.semanticVersion !== 2 && !explicitSceneActions() && (input.mode === "chat" || input.mode === "ask")) {
       const venue = movementVenue ?? (await readVillageState()).venues.find((entry) => entry.id === session.placeId);
       const movement = venue && readPlayerMovement(input.message, venue);
       if (movement)
@@ -1909,13 +2090,17 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     const eventScene =
       interactionVersion === 6 && input.mode !== "leave"
         ? zoneEventScene(session, movementVenue ?? village.venues.find((entry) => entry.id === session.placeId)!, {
-            targetId: input.targetId,
+            targetId: input.targetId || session.semanticIntent?.timeline.find((step) => step.targetId)?.targetId,
             message: input.message,
             zoneId: input.contact?.boundaryZoneId,
           })
         : session;
     if (interactionVersion === 6 && input.mode === "contact") {
-      if (readContactDelivery(input.contact ?? {}, input.message) === "device")
+      if (
+        (session.semanticVersion === 2
+          ? input.contact?.delivery
+          : readContactDelivery(input.contact ?? {}, input.message)) === "device"
+      )
         throw badRequest("Use a direct call or sound in Say / Do; device links are not part of Zone sound routing.");
       if (
         input.contact?.boundaryZoneId &&
@@ -1953,6 +2138,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         recordEvents: [],
       };
     if (
+      session.semanticVersion !== 2 &&
       contactIntentUsed &&
       /^(?:goodbye|bye|see you(?: later)?|talk (?:to you )?later)\b/iu.test(
         input.message.trim().replace(/^["“‘']+/u, ""),
@@ -2016,22 +2202,26 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     let projectFailure = reply.effectFailures?.projects;
     let projectInterpretation: Awaited<ReturnType<typeof interpretProjectDraft>> = null;
     try {
-      projectInterpretation = projectFailure
-        ? null
-        : input.mode === "chat" || input.mode === "ask" || input.mode === "contact"
-          ? await interpretProjectDraft(
-              session,
-              applicationVillage,
-              input.message,
-              reply.lines.filter(
-                (line) => ![5, 6].includes(Number(interactionVersion)) || !line.contactHidden || line.attentionEvidence,
-              ),
-              reply.heardPlayerBy,
-              input.submissionId,
-              reply.interpretationRouting,
-              reply.projectSpeech.map((proposal) => proposal.speakerId),
-            )
-          : null;
+      projectInterpretation =
+        session.semanticVersion === 2
+          ? null
+          : projectFailure
+            ? null
+            : input.mode === "chat" || input.mode === "ask" || input.mode === "contact"
+              ? await interpretProjectDraft(
+                  session,
+                  applicationVillage,
+                  input.message,
+                  reply.lines.filter(
+                    (line) =>
+                      ![5, 6].includes(Number(interactionVersion)) || !line.contactHidden || line.attentionEvidence,
+                  ),
+                  reply.heardPlayerBy,
+                  input.submissionId,
+                  reply.interpretationRouting,
+                  reply.projectSpeech.map((proposal) => proposal.speakerId),
+                )
+              : null;
     } catch (error) {
       if (venueOperationInput()?.writingContractVersion !== 3) throw error;
       projectFailure = {
@@ -2040,13 +2230,32 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         proposal: { projectSpeech: reply.projectSpeech, routing: reply.interpretationRouting },
       };
     }
-    if (projectInterpretation || applicationVillage.projects.some((project) => project.lifecycle)) {
+    if (
+      session.semanticVersion !== 2 &&
+      (projectInterpretation || applicationVillage.projects.some((project) => project.lifecycle))
+    ) {
       reply.projectSpeech = projectInterpretation ? projectProposals(projectInterpretation) : [];
       reply.projectContexts = projectSpeechContexts(
         applicationVillage,
         [...new Set(reply.lines.map((line) => line.speakerId).filter(Boolean))],
         "",
       );
+    }
+    let movementProjection: VenueScene | undefined;
+    if (reply.semanticPlayerMoves.length) {
+      await mutateVillageState((state) => {
+        if (state.seed !== session.villageSeed) throw conflict("The Village changed during this turn.");
+        const venue = state.venues.find((row) => row.id === session.placeId);
+        if (!venue) throw conflict("The Venue is unavailable.");
+        movementProjection = projectSemanticMovement(
+          session,
+          state,
+          venue,
+          reply.semanticPlayerMoves,
+          reply.contactMoves,
+          true,
+        );
+      });
     }
     const updated = await changeSession(session.id, (state) => {
       if (state.submissions.some((entry) => entry.id === input.submissionId)) return;
@@ -2173,9 +2382,11 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         playerLineId,
         replyLineIds,
         reply.wishContexts,
+        state.semanticVersion === 2,
       );
       if (
         compatibilityWishCheck &&
+        state.semanticVersion !== 2 &&
         state.lines.find((line) => line.id === playerLineId)?.heardBy.includes(input.targetId)
       ) {
         const cited = [
@@ -2250,6 +2461,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         wishProposals: wishChanges.proposals,
         wishProposalError: wishChanges.error,
         wishContexts: reply.wishContexts,
+        semanticProvenance: reply.semanticProvenance,
+        semanticPlayerMoves: reply.semanticPlayerMoves,
+        ...(session.semanticVersion === 2 && reply.sceneEnded ? { semanticConclude: true } : {}),
+        physicalContext: reply.physicalContext,
         liveProposals: bindLiveProposals(reply, playerLineId, replyLineIds),
         accessEvents: savedAccessEvents(reply.roomInterpretation),
         requestMetrics: venueRequestMetrics(),
@@ -2324,10 +2539,39 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           !reply.departures.includes(id) &&
           !reply.contactMoves.some((move) => move.characterId === id && move.zoneId !== state.zoneId),
       );
+      if (movementProjection) {
+        const projection = movementProjection;
+        state.enteredFromZoneId = projection.enteredFromZoneId;
+        state.zoneId = projection.zoneId;
+        state.area = projection.area;
+        state.spaceClass = projection.spaceClass;
+        state.privateOwnerId = projection.privateOwnerId;
+        state.privateSpaceId = projection.privateSpaceId;
+        state.grantedZoneIds = projection.grantedZoneIds;
+        state.entryOffers = projection.entryOffers;
+        for (const person of projection.participants)
+          if (!state.participants.some((row) => row.characterId === person.characterId))
+            state.participants.push(person);
+        for (const history of projection.heardHistory)
+          if (!state.heardHistory.some((row) => row.characterId === history.characterId))
+            state.heardHistory.push(history);
+        state.activeIds = sceneZoneOccupants(
+          state,
+          applicationVillage,
+          applicationVillage.venues.find((row) => row.id === state.placeId)!,
+          state.zoneId!,
+        ).map((row) => row.characterId);
+        state.submissions.find((row) => row.id === input.submissionId)!.activeIdsAfterTurn = [...state.activeIds];
+        state.doorwayContacts = [];
+        state.recap = "";
+      }
       const remaining = state.sceneAttendance?.occupants.some(
         (person) => !state.departedIds?.includes(person.characterId),
       );
-      if (reply.sceneEnded || (session.activeIds.length > 0 && state.activeIds.length === 0 && !remaining)) {
+      if (
+        session.semanticVersion !== 2 &&
+        (reply.sceneEnded || (session.activeIds.length > 0 && state.activeIds.length === 0 && !remaining))
+      ) {
         state.status = "closed";
         state.endedAt = at;
         state.endReason = "scene";
@@ -2359,6 +2603,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       await finalizeRoomInvitationDiagnostics(updated, reply.roomInterpretation, submission.invitationSignal);
       await writeInterpretationDiagnostics(updated.id, reply.roomInterpretation.traces).catch(() => {});
     }
+    await settleSemanticAuthority(updated, submission);
+    await finishSemanticScene(updated.id);
     let recordEvents = await receiptForTurn(updated, submission);
     let finalSession = updated;
     if (updated.status === "closed") {
@@ -2443,7 +2689,15 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           reject("Rejected: access changed after this speech was interpreted");
           continue;
         }
-        if (management.action && result.outcome !== "access-management") {
+        if (
+          management.action &&
+          result.outcome !== "access-management" &&
+          !(
+            facts.semanticVersion === 2 &&
+            management.action === "invite" &&
+            ["invite-now", "invite-later"].includes(result.outcome)
+          )
+        ) {
           reject("Rejected: the exact management change was not established by current speech");
           continue;
         }
@@ -2454,7 +2708,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           })
           .filter(
             (line): line is VenueLine =>
-              !!line && line.speakerId === actor && line.kind !== "narration" && turn.replyLineIds.includes(line.id),
+              !!line &&
+              ((line.speakerId === actor && line.kind !== "narration") ||
+                (facts.semanticVersion === 2 &&
+                  line.kind === "narration" &&
+                  line.heardBy.includes(actor) &&
+                  !line.contactHidden)) &&
+              turn.replyLineIds.includes(line.id),
           );
         if (!sources.length) {
           reject("Rejected: no saved current speech by the authorized actor");
@@ -2465,8 +2725,9 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         if (
           result.outcome.startsWith("ban-") &&
           (!managesAccess(venue, scope, actor) ||
-            !/\b(?:ban|banned|barred)\b/iu.test(speech) ||
-            /\b(?:not banned|not ban|won't ban|would|might|if|joking)\b/iu.test(speech))
+            (facts.semanticVersion !== 2 &&
+              (!/\b(?:ban|banned|barred)\b/iu.test(speech) ||
+                /\b(?:not banned|not ban|won't ban|would|might|if|joking)\b/iu.test(speech))))
         ) {
           reject("Rejected: a lasting ban requires explicit manager speech");
           continue;
@@ -2499,7 +2760,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
                 action: "invite",
                 duration: "visit",
                 sceneId: venue.id === scene.placeId ? scene.id : undefined,
-                accompanied: false,
+                accompanied: facts.semanticVersion === 2 && facts.accompanies === true,
                 outsideHours: true,
               },
               actor,
@@ -2637,6 +2898,12 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     session: VenueScene,
     signal: NonNullable<VenueSubmission["invitationSignal"]>,
   ): Promise<void> {
+    if (signal.accessOperationId) {
+      const venue = (await readVillageState()).venues.find((row) => row.id === signal.venueId);
+      const receipt = venue?.access?.receipts[signal.accessOperationId];
+      if (!receipt || receipt.outcome === "rejected") throw conflict("The saved invitation needs recovery.");
+      return;
+    }
     if (signal.interpretationVersion !== 1) {
       await holdLegacyRoomEffect(session.id);
       return;
@@ -2764,12 +3031,21 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         try {
           await proposeVillageResidence(signal.characterId, signal.venueId, "villager", `venue-move:${submission.id}`);
         } catch (error) {
+          if (submission.semanticProvenance?.version === 2) throw error;
           villagesLogger().warn("[villages] residence request was no longer valid: %s", String(error));
         }
       } else {
         try {
-          await decideVillageResidence(signal.characterId, signal.approved === true, "villager");
+          await decideVillageResidence(
+            signal.characterId,
+            signal.approved === true,
+            "villager",
+            submission.semanticProvenance?.version === 2
+              ? `semantic-residence:${session.id}:${submission.id}`
+              : undefined,
+          );
         } catch (error) {
+          if (submission.semanticProvenance?.version === 2) throw error;
           villagesLogger().warn("[villages] residence decision was no longer valid: %s", String(error));
         }
       }
@@ -2783,29 +3059,80 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           `venue-upgrade:${submission.id}`,
         );
       } catch (error) {
+        if (submission.semanticProvenance?.version === 2) throw error;
         villagesLogger().warn("[villages] upgrade request was no longer valid: %s", String(error));
       }
     }
   }
 
+  async function settleSemanticAuthority(scene: VenueScene, turn: VenueSubmission) {
+    if (turn.semanticProvenance?.version !== 2 || turn.semanticReady) return;
+    const currentScene = await readSession(scene.id);
+    const currentTurn = currentScene.submissions.find((row) => row.id === turn.id);
+    if (turn.semanticPlayerMoves?.length && currentScene.zoneId !== turn.semanticPlayerMoves.at(-1)!.zoneId)
+      throw conflict("The saved movement needs recovery before the turn can be displayed.");
+    if (
+      (turn.projectSpeech?.length || turn.action?.happened) &&
+      currentTurn?.processing?.domains.projects.status !== "applied"
+    )
+      throw conflict("The saved immediate outcome needs recovery.");
+    if (semanticAuthorityDomain(turn, "relationships")) {
+      const result = currentTurn?.processing?.domains.relationships;
+      if (result?.status !== "applied" || result.rejectedProposals?.some((row) => row.kind === "permissions"))
+        throw conflict("The saved standing permission needs recovery.");
+    }
+    if (turn.accessEvents?.length) {
+      const state = await readVillageState();
+      for (const event of turn.accessEvents) {
+        const venue = state.venues.find((row) => row.id === event.facts.venueId);
+        if (!venue?.access) continue;
+        const command = event.facts.accessCommand;
+        const operationId =
+          command?.operationId ??
+          "access-speech:" +
+            createHash("sha256")
+              .update(event.id + ":" + event.outcome)
+              .digest("hex");
+        const receipt = venue.access.receipts[operationId];
+        if (!receipt || receipt.outcome === "rejected") throw conflict("The saved access outcome needs recovery.");
+      }
+    }
+    if (turn.semanticProvenance.authority?.physical && !turn.action?.happened)
+      throw conflict("The saved physical outcome is missing its typed action.");
+    if (turn.action?.happened) {
+      const state = await readVillageState();
+      if (!state.exchangeReceipts[`venue-chat:${scene.id}:${turn.id}`]?.physicalOutcome?.actionReceipt?.happened)
+        throw conflict("The saved physical outcome could not commit. Recover the saved request.");
+    }
+    await changeSession(scene.id, (saved) => {
+      const entry = saved.submissions.find((row) => row.id === turn.id);
+      if (entry?.semanticProvenance?.sourceHash === turn.semanticProvenance?.sourceHash) entry.semanticReady = true;
+    });
+  }
   async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmission): Promise<void> {
     if (!submission.sceneChange) return;
     const area = submission.areaAtTurn ?? session.area;
-    const zoneId = submission.zoneIdAtTurn ?? session.zoneId;
-    if (area === "private") return;
+    const zoneId = submission.physicalContext?.zoneId ?? submission.zoneIdAtTurn ?? session.zoneId;
+    const witnesses = submission.physicalContext?.witnessIds ?? submission.activeIdsAtTurn ?? [];
+    if (area === "private" && submission.semanticProvenance?.version !== 2) return;
     const privateOwnerId = submission.privateOwnerIdAtTurn ?? session.privateOwnerId;
     const id = `venue-chat:${session.id}:${submission.id}`;
     await mutateVillageState((state) => {
       if (session.villageSeed && state.seed !== session.villageSeed) return;
       if (state.venues.some((venue) => venue.id === session.placeId && venue.constructionStatus === "worksite")) return;
       if (
+        submission.semanticProvenance?.version !== 2 &&
         area === "shared" &&
         state.venues.some((venue) => venue.id === session.placeId && venueResidentIds(venue).length > 0)
       )
         return;
       const controlledVenue = state.venues.find((venue) => venue.id === session.placeId);
       const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, zoneId ?? "");
-      if (controlledZone?.kind === "staff" || controlledZone?.kind === "restricted") return;
+      if (
+        submission.semanticProvenance?.version !== 2 &&
+        (controlledZone?.kind === "staff" || controlledZone?.kind === "restricted")
+      )
+        return;
       if (state.venueEvents.some((event) => event.id === id) || state.exchangeReceipts[id]?.physicalOutcome) return;
       const change = readVenueSceneChange(
         { happened: true, ...submission.sceneChange },
@@ -2817,7 +3144,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
               : venueInArea(place, area, session.spaceClass, privateOwnerId)
             : undefined;
         })(),
-        submission.activeIdsAtTurn ?? [],
+        witnesses,
         state.villagers.map((person) => person.characterId),
       );
       if (!change) return;
@@ -2865,7 +3192,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
                   happened: true,
                   ...change,
                   submissionId: submission.id,
-                  witnessIds: [...(submission.activeIdsAtTurn ?? [])],
+                  witnessIds: [...witnesses],
                   ...(change.removeItem && change.transferTo
                     ? { itemTransfer: { itemName: change.removeItem, recipientId: change.transferTo } }
                     : {}),
@@ -3017,9 +3344,27 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     id: string,
     expectedSceneRevision?: number,
     retryOfAttemptId?: string,
+    abandonOperationId?: string,
   ): Promise<VenueScene> {
-    return coordinateVenue(id, "close", "close", {}, expectedSceneRevision, retryOfAttemptId, () =>
-      closeVenueSessionOnce(id),
+    const scene = await readSession(id);
+    if (scene.status === "closed") return scene;
+    const resumingAbandon = scene.operation?.id === "close" && !!scene.operation.checkpoints?.["abandoned-request"];
+    const closeInput = resumingAbandon ? scene.operation!.input : abandonOperationId ? { abandonOperationId } : {};
+    return coordinateVenue(
+      id,
+      "close",
+      "close",
+      closeInput,
+      expectedSceneRevision,
+      retryOfAttemptId,
+      async () => {
+        if (!abandonOperationId && !resumingAbandon) return closeVenueSessionOnce(id);
+        const current = await readSession(id);
+        const blocker = semanticBlocker(current);
+        if (blocker) throw conflict(blocker);
+        return closeLiveScene(current);
+      },
+      { abandonOfOperationId: resumingAbandon ? undefined : abandonOperationId },
     );
   }
 
@@ -3030,11 +3375,19 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         villagesLogger().warn("[villages] deferred Scene recovery: %s", String(error)),
       );
     }
-    return closeLiveScene(await readSession(id));
+    const recovered = await readSession(id);
+    const blocker = semanticBlocker(recovered);
+    if (blocker) throw conflict(blocker);
+    return closeLiveScene(recovered);
   }
 
-  async function closeVenueSessionWithReceipts(id: string, expectedSceneRevision?: number, retryOfAttemptId?: string) {
-    const session = await closeVenueSession(id, expectedSceneRevision, retryOfAttemptId);
+  async function closeVenueSessionWithReceipts(
+    id: string,
+    expectedSceneRevision?: number,
+    retryOfAttemptId?: string,
+    abandonOperationId?: string,
+  ) {
+    const session = await closeVenueSession(id, expectedSceneRevision, retryOfAttemptId, abandonOperationId);
     return { session, recordEvents: await sceneReceipts(session) };
   }
 
@@ -3047,6 +3400,21 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     await clearActivePointer(session.id);
     await pruneVenueVisits();
     return closed;
+  }
+
+  /** Only saved local results can finish a deferred natural conclusion. */
+  async function finishSemanticScene(id: string): Promise<void> {
+    let scene = await readSession(id);
+    for (const turn of scene.submissions.filter((row) => row.semanticProvenance?.version === 2 && !row.semanticReady)) {
+      try {
+        await settleSemanticAuthority(scene, turn);
+      } catch (error) {
+        if (asRecord(error).statusCode === 409) return;
+        throw error;
+      }
+    }
+    scene = await readSession(id);
+    if (scene.submissions.some((turn) => turn.semanticConclude) && !semanticBlocker(scene)) await closeLiveScene(scene);
   }
 
   async function discardVenueVisitDebug(id: string): Promise<void> {
@@ -3167,6 +3535,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     discardVenueVisitDebug,
     recoverVenueSceneWork,
     sceneReplayEffects,
+    finishSemanticScene,
   };
 }
 export type SceneCommands = ReturnType<typeof createSceneCommands>;

@@ -60,7 +60,7 @@ export function createWishInterpretation(ports: WishInterpretationPorts) {
             ...context.evidence,
           ],
         };
-        const { criteria, physicalOnly } = localWishRequirements(wish);
+        const { criteria, physicalOnly } = localWishRequirements(wish, context.semanticCriteria);
         const check = wishInterpretationCheck(joined, wish, criteria, `${key}:${context.actorId}`, allowProgress);
         const admission = wishEvidenceAdmission(
           wish,
@@ -68,10 +68,11 @@ export function createWishInterpretation(ports: WishInterpretationPorts) {
           matchingWishReceipts(criteria, context, wish)
             .filter((receipt) => !context.currentReceiptIds || context.currentReceiptIds.includes(receipt.id))
             .map((receipt) => receipt.id),
+          context.semanticCriteria,
         );
         return {
           ...check,
-          decisionEligible: useDecisions && admission.admitted,
+          decisionEligible: !context.semanticCriteria && useDecisions && admission.admitted,
           decisionReason: useDecisions
             ? "Only bounded witnessed Wish evidence uses Decisions"
             : "One cited System batch; no preparatory request",

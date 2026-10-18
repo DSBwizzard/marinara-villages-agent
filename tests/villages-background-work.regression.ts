@@ -1,3 +1,4 @@
+import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
 import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import assert from "node:assert/strict";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
@@ -61,6 +62,7 @@ let calls: string[] = [],
   active = 0,
   maximum = 0;
 let failStep = "";
+let failure = "401 Invalid API key";
 let translationMode = false;
 let translationFail = false;
 let translationCalls = 0;
@@ -95,7 +97,7 @@ const model = {
         await new Promise<void>((resolve) => {
           providerGate = resolve;
         });
-      if (text === failStep) throw new Error("provider unavailable");
+      if (text === failStep) throw new Error(failure);
       await new Promise<void>((resolve) => setImmediate(resolve));
       return { content: text, finishReason: "stop", usage: { totalTokens: 11 } };
     } finally {
@@ -225,6 +227,21 @@ async function summary(subject: string) {
   return (await backgroundWorkSummaries()).find((job) => job.subjectId === subject)!;
 }
 async function main() {
+  for (const message of [
+    "The selected language model connection has no model.",
+    "Language model connection not found: gone",
+    "The selected connection has no base URL.",
+    "Choose a language model connection before generating content.",
+    "No language model connection is available in the random pool.",
+  ])
+    assert.equal(connectionFailureKind(new Error(message)), "configuration", message);
+  for (const message of [
+    "429 Too many requests",
+    "502 upstream unavailable",
+    "Provider request exceeded 30 seconds.",
+    "Invalid JSON response",
+  ])
+    assert.equal(connectionFailureKind(new Error(message), true), "request", message);
   try {
     await reset();
     blockStep = "first";
@@ -281,6 +298,34 @@ async function main() {
     await recoverBackgroundWork();
     await settleBackgroundWork();
     assert.equal(calls.at(-1), "other", "successful explicit retry resumes the connection");
+
+    await reset();
+    failure = "Provider request exceeded 30 seconds.";
+    failStep = "offline";
+    await queueBackgroundJob(work("offline", ["offline"]));
+    await settleBackgroundWork();
+    const timedOut = await summary("offline");
+    assert.equal(timedOut.connectionPaused, false);
+    assert.equal(timedOut.failure?.connectionIssue, "request");
+    const failedTiming = rows.get(timedOut.id).data.steps[0].timing;
+    assert.equal(failedTiming.outcome, "unknown");
+    assert.equal(failedTiming.firstResponseMs, null, "public host does not expose first-token timing");
+    assert.ok(failedTiming.hostMs >= 0 && failedTiming.queueMs >= 0);
+    await queueBackgroundJob(work("other", ["other"]));
+    await queueBackgroundJob(work("offline", ["offline"]));
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["offline", "other"], "transient failure blocks its own retry, not other work");
+    failStep = "";
+    await retryBackgroundJob(timedOut.id, timedOut.attempt, "retry-timeout");
+    await settleBackgroundWork();
+    const history = rows.get(timedOut.id).data.attemptHistory;
+    assert.equal(history.length, 1);
+    assert.equal(history[0].steps[0].timing.outcome, "unknown");
+    assert.equal(history[0].tokens, null);
+    assert.equal(history[0].steps[0].response, undefined);
+    await retryBackgroundJob(timedOut.id, timedOut.attempt, "retry-timeout");
+    assert.equal(rows.get(timedOut.id).data.attemptHistory.length, 1, "duplicate retry does not duplicate diagnostics");
+    failure = "401 Invalid API key";
 
     await reset();
     failStep = "offline";

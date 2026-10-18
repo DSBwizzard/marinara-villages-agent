@@ -3,7 +3,13 @@ import type { WishCriteria } from "../models/wish-interpretation-model.js";
 import type { VillageWish } from "../models/world.js";
 
 /** Hints route work; original Wish text remains the semantic judge's sole definition of the goal. */
-export function localWishRequirements(wish: VillageWish): { criteria: WishCriteria; physicalOnly: boolean } {
+export function localWishRequirements(
+  wish: VillageWish,
+  semantic?: WishCriteria,
+): { criteria: WishCriteria; physicalOnly: boolean } {
+  semantic ??= wish.semanticCriteria;
+  if (semantic?.semanticVersion === 2 && semantic.goal === wish.wish)
+    return { criteria: semantic, physicalOnly: semantic.requiresPhysical && semantic.kind !== "complex" };
   const text = wish.wish;
   const social =
     /\b(?:talk|chat|discuss|conversation|agree|recogniz\w*|acknowledg\w*|respect|authority|claim|trust|blessing|forgiv\w*|friend\w*|company|comfort|listen|reassur\w*)\b/iu.test(
@@ -41,8 +47,13 @@ export function localWishRequirements(wish: VillageWish): { criteria: WishCriter
 }
 
 /** Greetings and clearly unsupported physical plans need no model request. Saved receipts deduplicate replay. */
-export function wishEvidenceAdmission(wish: VillageWish, evidence: InterpretationEvidence[], receiptIds: string[]) {
-  const requirements = localWishRequirements(wish);
+export function wishEvidenceAdmission(
+  wish: VillageWish,
+  evidence: InterpretationEvidence[],
+  receiptIds: string[],
+  semantic?: WishCriteria,
+) {
+  const requirements = localWishRequirements(wish, semantic);
   if (receiptIds.length) return { admitted: true, reason: "New authoritative result", ...requirements };
   if (requirements.physicalOnly)
     return {
@@ -50,6 +61,8 @@ export function wishEvidenceAdmission(wish: VillageWish, evidence: Interpretatio
       reason: "No new witnessed physical receipt; plans and claims cannot advance this physical Wish",
       ...requirements,
     };
+  if (requirements.criteria.semanticVersion === 2)
+    return { admitted: true, reason: "System discovered current Wish evidence", ...requirements };
   const current = evidence.filter((line) => line.current && line.kind !== "claim" && line.kind !== "receipt");
   const meaningful = current.filter((line) => {
     const text = line.content.trim();

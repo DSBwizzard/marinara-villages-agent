@@ -1,6 +1,13 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 
+import {
+  continueSemanticDomain,
+  semanticContinuationKey,
+  semanticContinued,
+  semanticAuthorityDomain,
+} from "../../domain/rules/semantic-continuity.js";
+import type { ExchangeDomain } from "../../domain/models/exchange-model.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
@@ -12,6 +19,9 @@ import { filterRelationshipNotices, relationshipChangeNotices } from "../../doma
 import { knownWish } from "../../domain/rules/wish-journal.js";
 import { workFailureSummary } from "../../domain/rules/work-failure.js";
 export interface SceneChangesPorts {
+  finishSemanticScene?(id: string): Promise<void>;
+  mutateRelationships?: typeof import("../residents/relationship-store.js").mutateRelationships;
+  changeSession?: typeof import("../../adapters/storage/scene-store.js").changeSession;
   readSession(id: string): Promise<VenueScene>;
   readVillageSnapshot(): Promise<VillageState>;
   readVillageState(): Promise<VillageState>;
@@ -22,7 +32,10 @@ export interface SceneChangesPorts {
 }
 /** Inert saved diagnostics, dismissal and explicit replay with originating connections. */
 export function createSceneChanges({
+  finishSemanticScene,
+  mutateRelationships,
   readSession,
+  changeSession,
   readVillageSnapshot,
   readVillageState,
   mutateVillageState,
@@ -43,6 +56,7 @@ export function createSceneChanges({
     const size = Math.max(1, Math.min(50, Math.floor(Number(limit) || 20)));
     const changed = scene.submissions
       .map((turn, index) => ({ turn, sequence: turn.changeSequence || index + 1 }))
+      .filter(({ turn }) => turn.semanticProvenance?.version !== 2 || turn.semanticReady === true)
       .filter((entry) => entry.sequence > afterScene)
       .sort((a, b) => a.sequence - b.sequence);
     const turns = changed.slice(0, size);
@@ -175,6 +189,12 @@ export function createSceneChanges({
               submissionId: turn.id,
               domain,
               status: result.status,
+              continued: turn.semanticContinuedDomains?.includes(domain as ExchangeDomain) ?? false,
+              canContinue:
+                turn.semanticProvenance?.version === 2 &&
+                turn.semanticReady === true &&
+                result.status === "failed" &&
+                !semanticAuthorityDomain(turn, domain as ExchangeDomain),
               at: turn.at,
               reason:
                 result.status === "pending"
@@ -230,9 +250,55 @@ export function createSceneChanges({
     const scene = await readSession(id);
     for (const turn of scene.submissions.filter((turn) => turn.processing && unfinishedExchange(turn.processing)))
       await processSavedExchange(id, turn.id);
+    await finishSemanticScene?.(id);
     return readSceneChanges(id);
   }
 
-  return { readSceneChanges, dismissSceneNotice, replaySceneChanges };
+  async function continueSceneChange(id: string, submissionId: string, domain: ExchangeDomain) {
+    if (!changeSession) throw badRequest("Scene continuation is unavailable.");
+    const saved = await readSession(id);
+    const original = saved.submissions.find((row) => row.id === submissionId);
+    if (!original) throw notFound("No saved exchange.");
+    // Validate before writing either document. Wish tombstones fence delayed background application.
+    const recoverAccepted = semanticContinued(await readVillageState(), id, submissionId, domain);
+    continueSemanticDomain(structuredClone(original), domain, recoverAccepted);
+    const key = semanticContinuationKey(id, submissionId);
+    if (domain === "relationships" && !mutateRelationships)
+      throw badRequest("Relationship continuation is unavailable.");
+    await mutateVillageState((state) => {
+      if (state.seed !== saved.villageSeed) throw conflict("Village identity changed.");
+      state.semanticContinuations ??= {};
+      state.semanticContinuations[key] = [...new Set([...(state.semanticContinuations[key] ?? []), domain])];
+    });
+    if (domain === "relationships")
+      await mutateRelationships!(saved.villageSeed!, (state) => {
+        state.applied[key] = true;
+      });
+    if (domain === "wishes")
+      await mutateVillageState((state) => {
+        if (state.seed !== saved.villageSeed) throw conflict("Village identity changed.");
+        for (const proposal of original.wishProposals ?? []) {
+          const receiptId = `wish-change:${id}:${submissionId}:${proposal.wishId}:${proposal.intent}`;
+          state.exchangeReceipts[receiptId] ??= {
+            id: receiptId,
+            sceneId: id,
+            submissionId,
+            domain: "wishes",
+            at: original.at,
+            status: "rejected",
+            evidenceIds: proposal.lineIds,
+            reason: "Continued without this failed update",
+          };
+        }
+      });
+    await changeSession(id, (scene) => {
+      const turn = scene.submissions.find((row) => row.id === submissionId);
+      if (!turn) throw notFound("No saved exchange.");
+      continueSemanticDomain(turn, domain, recoverAccepted);
+    });
+    await finishSemanticScene?.(id);
+    return readSceneChanges(id);
+  }
+  return { readSceneChanges, dismissSceneNotice, replaySceneChanges, continueSceneChange };
 }
 export type SceneChanges = ReturnType<typeof createSceneChanges>;
