@@ -14,6 +14,8 @@ The Venue coordinator owns cancellation and the operation watchdog. Provider req
 
 For new admissions, pending memories and non-standing social updates do not block the next turn. Standing permission, physical, Project and Wish work retains its authority and required recovery behavior. Pending optional updates stay visible and retain their original evidence; background recovery must not invent a paid retry.
 
+A Scene still ends after 30 minutes of inactivity. Expiry retains raw responses, checkpoints and uncertain billing receipts even if no player line was committed. Closed Scenes are archived evidence; expiry does not authorize replaying their effects into a new Scene.
+
 ## Preparation
 
 Routine contract 2 asks for activities, allowed dayparts, optional weekday restrictions and fixed rhythms. Deterministic code constructs the seven-day choice structure and schedules. Contract 1 and legacy saved responses remain readable, including lossless four-daypart normalization. Long rest uses fixed rhythms; ordinary activity durations remain bounded.
