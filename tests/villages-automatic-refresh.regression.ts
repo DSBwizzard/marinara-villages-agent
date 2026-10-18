@@ -214,6 +214,7 @@ async function main() {
                     venue: 0,
                     status: "idle",
                     flexible: true,
+                    essential: false,
                     duration: 180,
                     parts: [0, 1, 2, 3],
                   })),

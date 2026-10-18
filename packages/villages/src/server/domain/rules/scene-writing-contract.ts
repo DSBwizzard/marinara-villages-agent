@@ -81,6 +81,7 @@ export function completeSceneObject(content: string, finishReason?: string): Rec
     .trim()
     .replace(/^```(?:json)?\s*\n/u, "")
     .replace(/\n```$/u, "");
+  if (!text.startsWith("{") || !text.endsWith("}")) return null;
   return extractModelJsonObject({ content: text, finishReason }) ?? parsePrematureEffectBoundary(text);
 }
 

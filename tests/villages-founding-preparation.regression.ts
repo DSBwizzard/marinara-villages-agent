@@ -231,7 +231,10 @@ const release = configureVillagesRuntime({
             JSON.parse(messages[1].content).identity.id,
             structuredClone(rows.get("villages-village").data),
           );
-        if (mode === "routine-timeout" && JSON.parse(messages[1].content).identity.id === "aqua")
+        if (
+          ["routine-timeout", "inherited-pause"].includes(mode) &&
+          JSON.parse(messages[1].content).identity.id === "aqua"
+        )
           throw new Error("Provider request exceeded 30 seconds.");
         if (mode === "json-unsupported") throw new Error("response_format json_object is not supported");
         assert.equal(options.maxTokens, Math.min(limit, 2048));
@@ -301,13 +304,39 @@ async function main() {
     );
 
     // Independent tasks survive each other's failure; retries never repeat successes.
-    for (const failure of ["routine-one-fail", "wish-one-fail", "routine-timeout"]) {
+    for (const failure of ["routine-one-fail", "wish-one-fail", "routine-timeout", "inherited-pause"]) {
       install();
       mode = failure;
+      if (failure === "inherited-pause") {
+        const pauseId = "villages-background-connection-" + backgroundRevision("fixture");
+        rows.set(pauseId, {
+          id: pauseId,
+          packageId: "villages",
+          kind: "background-connection",
+          data: { connectionId: "fixture" },
+          revision: 1,
+        });
+        await recoverBackgroundWork();
+        await mutateVillageState((state) => {
+          state.foundingPreparation!.tasksVersion = 1;
+          state.foundingPreparation!.retryActions = ["legacy-upgrade-retry"];
+        });
+      }
       await prepareFoundedVillage();
       state = await readVillageState();
       assert.equal(state.foundingPreparation?.status, "failed");
-      assert.equal(state.foundingPreparation?.completedIds.length, 2, failure);
+      assert.equal(
+        state.foundingPreparation?.completedIds.length,
+        2,
+        failure +
+          JSON.stringify({
+            calls,
+            marker: state.foundingPreparation,
+            jobs: [...rows.values()]
+              .filter((r) => r.kind === "background-work")
+              .map((r) => ({ status: r.data.status, error: r.data.error, retrying: r.data.retrying })),
+          }),
+      );
       assert.equal(
         calls.filter((call) => call === "routine").length,
         3,

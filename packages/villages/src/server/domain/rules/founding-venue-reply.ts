@@ -34,7 +34,7 @@ export function extractFoundingVenueReply(content: string, finishReason = "stop"
       ? wrapped
       : null;
   }
-  const value = extractModelJsonObject({ content: text, finishReason });
+  const value = extractModelJsonObject({ content: text, finishReason }) ?? wrappedVenueObject(text, finishReason);
   return value && Object.hasOwn(value, "venues") ? value : null;
 }
 
@@ -56,4 +56,41 @@ function closedArray(text: string): boolean {
     }
   }
   return !quoted && !stack.length && text.endsWith("]");
+}
+
+/** Allow prose placeholders around one complete answer, never a second JSON answer or partial container. */
+function wrappedVenueObject(text: string, finishReason: string): Record<string, unknown> | null {
+  const candidates: string[] = [];
+  let start = -1,
+    depth = 0,
+    quoted = false,
+    escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]!;
+    if (start < 0) {
+      if (char === "[" || (candidates.length && /[,:]/u.test(char))) return null;
+      if (char === "{") {
+        start = i;
+        depth = 1;
+      } else if (/[\]}"]/u.test(char)) return null;
+      continue;
+    }
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === "{") depth++;
+    else if (char === "}" && --depth === 0) {
+      const candidate = text.slice(start, i + 1);
+      if (/^\{\s*(?:true|false|null)\s*\}$/u.test(candidate)) return null;
+      if (!/^\{\s*[A-Za-z][A-Za-z0-9_-]*\s*\}$/u.test(candidate)) candidates.push(candidate);
+      start = -1;
+      if (candidates.length > 1) return null;
+    }
+  }
+  if (start >= 0 || quoted || candidates.length !== 1) return null;
+  return extractModelJsonObject({ content: candidates[0], finishReason });
 }

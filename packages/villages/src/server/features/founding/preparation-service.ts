@@ -1,3 +1,4 @@
+import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { foundingIdentity } from "../../domain/rules/founding-requests.js";
 import { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
 import { villageFoundingSetting, remapVenues } from "../../domain/rules/prompt-preset.js";
@@ -260,10 +261,9 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             });
             // Only definitive connection configuration/auth failures stop the pass.
             connectionBlocked =
-              !!summary?.connectionPaused ||
-              /(?:\b401\b|\b403\b|invalid api key|missing.*connection|unsupported.*(?:model|response.format))/i.test(
-                summary?.error ?? "",
-              );
+              summary?.failure?.connectionIssue === "configuration" ||
+              connectionFailureKind(summary?.error ?? "", true) === "configuration" ||
+              (summary?.status === "paused" && summary.connectionPaused);
           } catch (error) {
             await mutateVillageState((state) => {
               const task = state.foundingPreparation?.tasks?.[id]?.[kind];
@@ -272,10 +272,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
                 task.error = safeFailureMessage(error).slice(0, 300);
               }
             });
-            connectionBlocked =
-              /(?:\b401\b|\b403\b|invalid api key|missing.*connection|unsupported.*(?:model|response.format))/i.test(
-                String(error),
-              );
+            connectionBlocked = connectionFailureKind(error, true) === "configuration";
           }
         }
       }

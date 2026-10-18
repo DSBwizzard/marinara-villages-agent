@@ -1,3 +1,8 @@
+import {
+  foundingSlot,
+  foundingTaskRevision,
+  completeFoundingTask,
+} from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -59,6 +64,28 @@ function fixture(name: string) {
   let seedRequests = 0;
   let preparationRequests = 0;
   let conflicts = 2;
+  function finish(kind: "routine" | "wish", id: string, attempt = 2) {
+    const revision = foundingTaskRevision(state, id, kind),
+      slot = foundingSlot(kind, id);
+    jobs.set(slot, {
+      id: slot,
+      kind: kind === "routine" ? "agenda" : "wish",
+      subjectId: id,
+      attempt,
+      status: fail ? "interrupted" : "completed",
+      error: fail ? "Unknown paid outcome" : "",
+      input: { foundingContract: 1 },
+      revision,
+    });
+    if (!fail) {
+      if (kind === "routine") {
+        const resident = state.villagers.find((row) => row.characterId === id)!;
+        resident.agenda!.personalizationPending = false;
+        resident.agenda!.generatedAt = stamp;
+      }
+      completeFoundingTask(state, id, kind, revision);
+    }
+  }
   const ports: FoundingPreparationPorts = {
     readVillageState: async () => structuredClone(state),
     mutateVillageState: async (mutator) => {
@@ -86,31 +113,28 @@ function fixture(name: string) {
     preparePrivateSpaces: async () => {
       preparationRequests++;
     },
+    backgroundLegacyFounding: async () => null,
+    retireLegacyFounding: async () => {},
+    readFoundingResidentContext: async (id) => ({ sourceRevision: foundingTaskRevision(state, id, "routine") }) as any,
+    adoptFoundingRoutine: () => {},
+    backgroundJobSnapshot: async (kind, id) =>
+      structuredClone(jobs.get(foundingSlot(kind === "agenda" ? "routine" : "wish", id)) ?? null),
     queueVillagerAgenda: async (id, finite) => {
       assert.equal(finite, true);
       calls.push(id);
-      const resident = state.villagers.find((row) => row.characterId === id)!;
-      const status = fail ? "interrupted" : "completed";
-      jobs.set(id, {
-        id: `job-${id}`,
-        kind: "agenda",
-        subjectId: id,
-        attempt: 2,
-        status,
-        error: "Unknown paid outcome",
-      });
-      if (!fail) {
-        resident.agenda!.personalizationPending = false;
-        resident.agenda!.generatedAt = stamp;
-      }
+      finish("routine", id);
+    },
+    queueFoundingWish: async (id) => {
+      finish("wish", id);
     },
     settleBackgroundWork: async () => {},
-    backgroundStatus: async (_kind, id) => jobs.get(id)?.status ?? "none",
     backgroundWorkSummaries: async () => structuredClone([...jobs.values()]),
     retryBackgroundJob: async (id, attempt, requestId) => {
-      assert.equal(attempt, 2);
+      const job = jobs.get(id);
+      assert.equal(attempt, job.attempt);
       assert.ok(requestId);
       retries.push(id);
+      finish(job.kind === "agenda" ? "routine" : "wish", job.subjectId, job.attempt + 1);
       return {} as any;
     },
   };
@@ -150,23 +174,37 @@ async function independentFounding() {
     a.gate.resolve();
     await pendingA;
     assert.equal(a.state().foundingPreparation?.status, "failed");
-    assert.match(a.state().foundingPreparation!.error, /Unknown paid outcome/);
-    assert.deepEqual(a.calls, ["first"], "failure stops later resident requests");
+    assert.match(a.state().foundingPreparation!.error, /Resident preparation incomplete/);
+    assert.deepEqual(a.calls, ["first", "second"], "request failure leaves other tasks eligible");
     await a.service.foundingPreparationSnapshot();
     await a.service.prepareFoundedVillage();
-    assert.deepEqual(a.calls, ["first"], "discovery does not retry an interrupted paid request");
+    assert.deepEqual(a.calls, ["first", "second"], "discovery does not retry an interrupted paid request");
     await assert.rejects(a.service.assertFoundedVillageReady(), /still preparing/);
     a.setFailure(false);
     await a.service.retryFoundedVillagePreparation();
     await a.service.prepareFoundedVillage();
-    assert.deepEqual(a.retries, ["job-first"]);
-    assert.deepEqual(a.calls, ["first", "first", "second"]);
+    assert.deepEqual(a.retries, [
+      foundingSlot("routine", "first"),
+      foundingSlot("routine", "second"),
+      foundingSlot("wish", "first"),
+      foundingSlot("wish", "second"),
+    ]);
+    assert.deepEqual(a.calls, ["first", "second"]);
     assert.equal(a.counts().seedRequests, 1, "deliberate retry preserves completed Venue details");
     assert.equal(a.state().venues[0].state.condition, "A");
     assert.equal(a.state().foundingPreparation?.status, "ready");
     await a.service.assertFoundedVillageReady();
     await a.service.retryFoundedVillagePreparation();
-    assert.deepEqual(a.retries, ["job-first"], "repeated retry after completion sends no request");
+    assert.deepEqual(
+      a.retries,
+      [
+        foundingSlot("routine", "first"),
+        foundingSlot("routine", "second"),
+        foundingSlot("wish", "first"),
+        foundingSlot("wish", "second"),
+      ],
+      "repeated retry after completion sends no request",
+    );
     assert.deepEqual(b.calls, ["first", "second"], "another world's retry leaves this owner intact");
   } finally {
     a.gate.resolve();
@@ -222,6 +260,9 @@ async function scopedAndDefaultDispatch() {
 async function pendingSnapshotResumes() {
   const f = fixture("snapshot");
   await f.service.foundingPreparationSnapshot();
+  assert.equal(f.counts().seedRequests, 0, "GET never starts provider work");
+  assert.equal(f.state().foundingPreparation?.status, "failed");
+  await f.service.retryFoundedVillagePreparation();
   await until(() => f.counts().seedRequests === 1);
   const pending = f.service.prepareFoundedVillage();
   f.gate.resolve();

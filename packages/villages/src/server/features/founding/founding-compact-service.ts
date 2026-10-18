@@ -37,7 +37,10 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
       connectionId: await villagesConnectionIdFor("system"),
     });
     const requested = Math.min(model.maxOutputTokens ?? 2048, 2048);
+    if (requested < 1024) throw new Error("The System model has too little output room for a complete Routine.");
     const fitted = model.fitContext(messages, { maxTokens: requested });
+    if (Math.min(fitted.maxTokens ?? requested, requested) < 1024)
+      throw new Error("The System model has too little output room for a complete Routine.");
     if (JSON.stringify(fitted.messages) !== JSON.stringify(messages))
       throw new Error("The System context cannot fit the complete Routine request.");
     const debugMode = villagesDebugAgentsEnabled();

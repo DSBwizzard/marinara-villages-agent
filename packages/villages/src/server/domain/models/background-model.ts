@@ -36,6 +36,18 @@ export type Step = {
   status: "running" | "completed";
   response?: Awaited<ReturnType<BackgroundCompletion>>;
   responseDiagnostics?: ResponseDiagnostics;
+  timing?: {
+    queuedAt: string;
+    admittedAt: string;
+    hostStartedAt?: string;
+    hostFinishedAt?: string;
+    queueMs: number;
+    hostMs?: number;
+    requestedOutputTokens: number;
+    reasoningRequested?: string;
+    outcome: "pending" | "complete" | "unknown";
+    firstResponseMs: null;
+  };
 };
 export type BackgroundInput = {
   residentIds?: string[];
@@ -63,6 +75,13 @@ export type Job = BackgroundInput & {
     string,
     { status: "dispatching" | "complete" | "unknown"; elapsedMs: number; result?: unknown }
   >;
+  attemptHistory?: Array<{
+    attempt: number;
+    requests: number;
+    tokens: number | null;
+    failure?: WorkFailure;
+    steps: Array<Pick<Step, "key" | "status" | "timing" | "responseDiagnostics">>;
+  }>;
   settings: Record<string, unknown>;
   result?: unknown;
   hasResult: boolean;

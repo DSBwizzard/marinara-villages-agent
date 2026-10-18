@@ -1,3 +1,4 @@
+import { connectionFailureKind } from "../domain/rules/connection-failure.js";
 import {
   withVillageClockWork,
   assertVillageClockWrite,
@@ -181,29 +182,39 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     }
     throw new Error("Background work kept changing while it was saved.");
   }
-  async function persistConnectionPause(connectionId: string, paused: boolean): Promise<void> {
+  async function persistConnectionPause(connectionId: string, paused: boolean, assertActive = () => {}): Promise<void> {
     const documents = villagesDocuments();
     const id = "villages-background-connection-" + backgroundRevision(connectionId);
     for (let attempt = 0; attempt < 8; attempt++) {
       const current = await documents.getById(VILLAGES_PACKAGE_ID, id);
       if (!paused) {
         if (!current || (await documents.remove(VILLAGES_PACKAGE_ID, id, current.revision))) return;
-      } else if (current) return;
-      else {
+      } else if (current) {
+        assertActive();
+        return;
+      } else {
         const stamp = new Date().toISOString();
         try {
-          await documents.create({
+          assertActive();
+          const created = await documents.create({
             id,
             packageId: VILLAGES_PACKAGE_ID,
             kind: "background-connection",
             name: "Paused background connection",
-            description: "A deliberate successful retry is required",
-            data: { connectionId },
+            description: "Connection configuration rejected; explicit successful retry required",
+            data: { version: 2, connectionId, kind: "configuration" },
             createdAt: stamp,
             updatedAt: stamp,
           });
+          try {
+            assertActive();
+          } catch (error) {
+            await documents.remove(VILLAGES_PACKAGE_ID, id, created.revision);
+            throw error;
+          }
           return;
         } catch (error) {
+          assertActive();
           if (!(await documents.getById(VILLAGES_PACKAGE_ID, id))) throw error;
         }
       }
@@ -444,7 +455,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         runtimeDebug("background completion replay", { jobId: id, step: index, fingerprint });
         return saved.response!;
       }
+      const queuedAt = Date.now(),
+        queuedClock = performance.now();
       return requestTurn(async () => {
+        const admittedAt = Date.now(),
+          queueMs = Math.max(0, Math.round(performance.now() - queuedClock));
         if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
         if (!job!.finite && !hasVillagePresence()) throw new Paused("Waiting until Villages is visible.");
         if (pausedConnections.has(model.connectionId) && !job!.retrying) {
@@ -468,6 +483,29 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         });
         invoked = true;
         dispatched = true;
+        const timing = {
+          queuedAt: new Date(queuedAt).toISOString(),
+          admittedAt: new Date(admittedAt).toISOString(),
+          queueMs,
+          requestedOutputTokens: maxTokens,
+          ...(options.reasoningEffort ? { reasoningRequested: options.reasoningEffort } : {}),
+          outcome: "pending" as const,
+          firstResponseMs: null,
+        };
+        job = await changeJob(id, (current) => {
+          if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
+            throw new Obsolete("Request timing ownership changed.");
+          current.steps[index]!.timing = timing;
+          return current;
+        });
+        const assertActive = () => {
+          if (stopped || owner !== runOwner || controller.signal.aborted)
+            throw new Paused("Background generation stopped.");
+          if (superseded.has(runJobId)) throw new Obsolete("This job was replaced.");
+        };
+        assertActive();
+        const hostClock = performance.now();
+        const hostTiming = { ...timing, hostStartedAt: new Date().toISOString() };
         let response: Awaited<ReturnType<BackgroundCompletion>>;
         try {
           response = await withUsagePurpose(
@@ -484,23 +522,32 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               }),
           );
         } catch (error) {
-          if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
-          const definitive =
-            (!!options.responseFormat &&
-              /response[_ ]?format|json[_ ]?(?:object|mode|schema)/iu.test(String(error)) &&
-              /unsupported|not support|invalid|unknown|not allowed|unrecognized/iu.test(String(error))) ||
-            /(?:\b401\b|\b403\b|invalid api key|missing.*connection|unsupported.*(?:model|response.format)|rejected JSON mode)/i.test(
-              String(error),
-            );
-          const pause = asRecord(job!.input).foundingContract !== 1 || definitive;
+          assertActive();
+          const connectionIssue = connectionFailureKind(error, !!options.responseFormat);
+          const pause = connectionIssue === "configuration";
+          await changeJob(id, (current) => {
+            if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
+              throw new Obsolete("Request outcome ownership changed.");
+            assertActive();
+            current.connectionPaused = pause;
+            current.usageComplete = false;
+            current.steps[index]!.timing = {
+              ...hostTiming,
+              hostFinishedAt: new Date().toISOString(),
+              hostMs: Math.max(0, Math.round(performance.now() - hostClock)),
+              outcome: "unknown",
+            };
+            return current;
+          });
           if (pause) {
+            await persistConnectionPause(model.connectionId, true, assertActive);
+            assertActive();
             pausedConnections.add(model.connectionId);
-            await persistConnectionPause(model.connectionId, true);
           }
-          await changeJob(id, (current) => ({ ...current!, connectionPaused: pause, usageComplete: false }));
           throw new WorkFailureError({
             cause: "provider_exception",
             stage: "dispatch",
+            connectionIssue,
             message:
               options.responseFormat &&
               /response[_ ]?format|json[_ ]?(?:object|mode|schema)/iu.test(String(error)) &&
@@ -519,6 +566,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             fingerprint,
             status: "completed",
             response,
+            timing: {
+              ...hostTiming,
+              hostFinishedAt: new Date().toISOString(),
+              hostMs: Math.max(0, Math.round(performance.now() - hostClock)),
+              outcome: "complete",
+            },
             ...(options.responseFormat ? { responseDiagnostics: responseDiagnostics(model, response, maxTokens) } : {}),
           };
           const tokens =
@@ -872,6 +925,21 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (job.attempt !== expectedAttempt || !["failed", "interrupted", "paused"].includes(job.status))
         throw conflict("That job changed. Refresh its status before retrying.");
       if (running.has(id)) throw conflict("That job is still finishing.");
+      job.attemptHistory = [
+        ...(job.attemptHistory ?? []),
+        {
+          attempt: job.attempt,
+          requests: job.requests,
+          tokens: job.usageComplete ? job.tokens : null,
+          failure: job.failure,
+          steps: job.steps.map(({ key, status, timing, responseDiagnostics }) => ({
+            key,
+            status,
+            timing,
+            responseDiagnostics,
+          })),
+        },
+      ].slice(-8);
       if (recovered && job.id === savedPrior?.id) {
         job.result = recovered.result;
         job.hasResult = true;
