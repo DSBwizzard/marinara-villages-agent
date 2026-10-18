@@ -314,7 +314,9 @@ export async function verifyFoundingLayout(group) {
                     id: row.id,
                     name:
                       index === 0
-                        ? "Your living space"
+                        ? suggestionCalls === 1
+                          ? "Your living space"
+                          : "Renewed observatory quarters"
                         : row.venueClass === "community"
                           ? "Community Place"
                           : `${characters.find((person) => person.id === row.residentCharacterId)?.name}'s living space`,
@@ -1655,6 +1657,7 @@ export async function verifyFoundingLayout(group) {
           await open();
           await zone("Exterior");
           await inspector.getByLabel("Physical Form", { exact: true }).fill("Authored during suggestion");
+          await inspector.getByLabel("Venue Name", { exact: true }).fill("Edited while suggesting");
           releaseSuggestion();
           await mapView();
           await expect(forward("Suggest names & descriptions")).toBeEnabled();
@@ -1666,6 +1669,12 @@ export async function verifyFoundingLayout(group) {
         await mapView();
         await expect(forward("Suggest names & descriptions")).toBeEnabled();
         assert.equal(suggestionCalls, 2);
+        await open();
+        await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue(
+          width === 1366 ? "Edited while suggesting" : "Renewed observatory quarters",
+        );
+        await inspector.getByLabel("Venue Name", { exact: true }).fill("My observatory quarters");
+        await mapView();
         await page.mouse.move(0, 0);
         await pins.first().evaluate((el) => el.blur());
         const photo = pins.first().locator(".marinara-capability-villages-pin-photo-card");
@@ -2090,7 +2099,10 @@ export async function verifyFoundingLayout(group) {
           foundingPayload.foundingCharacterIds.slice().sort(),
           ["finn", "rosa", "lee"].slice(0, homeCount).sort(),
         );
-        assert.equal(foundingPayload.venues[0].name, "My observatory quarters");
+        assert.equal(
+          foundingPayload.venues[0].name,
+          width === 1366 ? "Renewed observatory quarters" : "My observatory quarters",
+        );
         assert.equal(foundingPayload.venues[0].description, "A blue door beside the telescope corridor.");
         assert.equal(foundingPayload.venues[0].privateSpaces[0].description, "My hammock and traveling journal.");
         assert.equal(

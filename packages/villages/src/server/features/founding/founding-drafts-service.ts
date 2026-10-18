@@ -130,6 +130,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "Suggest the required starting Venues for this shared-life setting. These are editable drafts, not saved facts.",
             "A village may be indoors or already established. Living spaces may be rooms, cells, bunks, apartments, tents, or buildings. Follow the player's setting; do not assume cottages.",
             "A Residence can take literally any physical form supported by the context: a dumpster, apartment, house, train car, stolen hearse, or something else. Fit its spaces to that form; spaces need not be separate rooms. Respect a supplied nonempty physical form when suggesting its spaces.",
+            "Suggest a specific, setting-appropriate name for every Venue, replacing generic or existing names. Supplied names are context, not fixed choices.",
             "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
             "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Community Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
             ...(quickStart
