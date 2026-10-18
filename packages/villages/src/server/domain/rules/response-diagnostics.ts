@@ -1,5 +1,5 @@
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { extractJsonObject } from "./json-reply.js";
+import { readModelJsonObject } from "./json-reply.js";
 
 export { extractJsonObject } from "./json-reply.js";
 
@@ -26,7 +26,7 @@ export function responseDiagnostics(
   model: { model: string; connectionId: string },
   completion: { content: string | null; finishReason?: string },
   requestedOutputTokens: number,
-  raw = extractJsonObject(completion.content ?? ""),
+  raw = readModelJsonObject(completion).value,
   salvaged = false,
   missingFields: string[] = [],
 ): ResponseDiagnostics {
@@ -36,7 +36,7 @@ export function responseDiagnostics(
     finishReason: (completion.finishReason ?? "unknown").slice(0, 80),
     requestedOutputTokens,
     responseLength: (completion.content ?? "").trim().length,
-    parseStatus: raw ? (salvaged ? "salvaged" : "complete") : "invalid",
+    parseStatus: raw ? (salvaged || readModelJsonObject(completion).repaired ? "salvaged" : "complete") : "invalid",
     missingFields: missingFields.slice(0, 16),
   };
 }

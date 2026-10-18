@@ -6,7 +6,7 @@ import type { villagesLanguageModels } from "../../adapters/models/language-mode
 import type { VillageState, VillageVenueImage } from "../../domain/models/world.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { extractFoundingVenueReply } from "../../domain/rules/founding-venue-reply.js";
 import {
   LOCATION_IMAGE_WIDTH,
@@ -193,7 +193,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest(
         "The System model returned an empty Venue reply. Your draft is unchanged; check the connection's output and thinking settings, then explicitly retry.",
       );
-    const payload = extractFoundingVenueReply(content);
+    const payload = extractFoundingVenueReply(content, completion.finishReason);
     if (!payload)
       throw badRequest(
         "The System reply did not contain one complete, readable set of Venue suggestions. Your draft is unchanged. Try generating again; if this repeats, check the System model’s response format and output limit.",
@@ -285,7 +285,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       debugMode: false,
     });
     await onProgress?.({ stage: "validating" });
-    const payload = extractJsonObject(completion.content ?? "");
+    const payload = extractModelJsonObject(completion);
     const generated = Array.isArray(payload?.venues) ? payload.venues : [];
     const details: Record<string, SeededFoundingVenueDetails> = {};
     for (const row of rows) {

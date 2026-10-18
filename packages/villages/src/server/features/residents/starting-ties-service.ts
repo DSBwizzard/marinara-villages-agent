@@ -2,7 +2,7 @@ import type { Handler } from "../../domain/models/background-model.js";
 import type { StartingTie } from "../../domain/models/relationship-types.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { semanticHash } from "../../domain/rules/semantic-contract.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 
 export interface StartingTiesPorts {
@@ -78,7 +78,7 @@ export function createStartingTies(ports: StartingTiesPorts) {
         usagePurpose: "checks",
         checkpointId: "starting-ties:" + input.sourceHash,
       });
-      const raw = extractJsonObject(answer.content ?? "");
+      const raw = extractModelJsonObject(answer);
       if (answer.finishReason === "length" || !Array.isArray(raw?.ties))
         throw new Error("Starting relationship interpretation is incomplete; explicitly retry.");
       const ids = new Set(["player", ...input.source.actors.map((actor: { id: string }) => actor.id)]);

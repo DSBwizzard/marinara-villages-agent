@@ -7,7 +7,7 @@ import { venueInZone } from "../../domain/rules/venue-zones.js";
 import { venueInArea } from "../../domain/rules/venue-model.js";
 import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { badGateway, conflict } from "../../domain/rules/errors.js";
 import {
   semanticContext,
@@ -136,7 +136,7 @@ export function createSemanticService(ports: SemanticPorts) {
       try {
         if (answer.finishReason === "length")
           throw badGateway("System interpretation was truncated. Explicit retry required.");
-        const raw = extractJsonObject(answer.content ?? "");
+        const raw = extractModelJsonObject(answer);
         if (!raw || raw.sourceHash !== effectiveHash)
           throw badGateway("System interpretation is incomplete or cites a different source. Explicit retry required.");
         if (raw.needsContext !== undefined) {

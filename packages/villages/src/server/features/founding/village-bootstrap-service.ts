@@ -3,7 +3,7 @@ import type { villagesLanguageModels } from "../../adapters/models/language-mode
 import type { backgroundCalls } from "../../adapters/operations/background-context.js";
 import type { VillageHappening } from "../../domain/models/world.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../../domain/rules/narrative-grounding.js";
 import {
   boundText,
@@ -93,7 +93,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       retryEmpty: false,
       temperature: 0.7,
     });
-    const payload = extractJsonObject(completion.content ?? "");
+    const payload = extractModelJsonObject(completion);
     const descriptions = Array.isArray(payload?.descriptions) ? payload.descriptions : [];
     const known = new Set(rows.map((row) => row.id));
     const result: Record<string, string> = {};
@@ -133,7 +133,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       signal: options.signal,
     });
 
-    const payload = extractJsonObject(completion.content ?? "");
+    const payload = extractModelJsonObject(completion);
     if (!payload) throw new Error("The village did not suggest any places. Try again, or write them yourself.");
 
     const proposal = coerceProposal(payload);
@@ -173,7 +173,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       retryEmpty: false,
       temperature: BOOTSTRAP_TEMPERATURE,
     });
-    const payload = extractJsonObject(completion.content ?? "");
+    const payload = extractModelJsonObject(completion);
     const names = [
       ...new Set(
         (Array.isArray(payload?.names) ? payload.names : [])
@@ -213,7 +213,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       signal: options.signal,
     });
 
-    const payload = extractJsonObject(completion.content ?? "");
+    const payload = extractModelJsonObject(completion);
     const diagnostics = responseDiagnostics(model, completion, fitted.maxTokens ?? requestedMaxTokens, payload);
     const fail = (missing = false) =>
       new WorkFailureError({
@@ -283,7 +283,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
         usagePurpose: "checks",
         signal: options.signal,
       });
-      const interpreted = extractJsonObject(judged.content ?? "");
+      const interpreted = extractModelJsonObject(judged);
       const review = interpreted?.relationshipReview as Record<string, unknown> | undefined;
       if (
         judged.finishReason === "length" ||
@@ -323,7 +323,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       signal: options.signal,
     });
 
-    const payload = extractJsonObject(completion.content ?? "");
+    const payload = extractModelJsonObject(completion);
     if (!payload) throw new Error("The village did not say what it saw.");
     // Seeded with the window and with the deed itself, so the one line that must
     // never come back as news is the thing that just happened, which the village

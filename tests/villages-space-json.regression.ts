@@ -136,10 +136,19 @@ async function main() {
   await assert.rejects(service.preparePrivateSpaces(), /Space response was not valid JSON/);
   assert.equal(zone.preparation.status, "failed", "Diagnostic write failure cannot replace rejection");
   failDiagnostics = false;
-  response = { ...response, content: JSON.stringify(valid), finishReason: "stop" };
+  response = {
+    ...response,
+    content: JSON.stringify({ rooms: [{ ...valid.rooms[0], facts: ["Dry"] }] }).replace('["Dry"]', '["Dry"'),
+    finishReason: "stop",
+  };
   await service.retryPrivateSpaces();
   assert.equal(zone.preparation?.status, "ready");
   assert.equal(zone.description, "Ordinary shelves");
+  assert.deepEqual(
+    zone.state.publicFacts,
+    ["Dry"],
+    "Syntax repair still goes through normal room validation and application",
+  );
   const beforeReady = calls;
   await service.preparePrivateSpaces();
   assert.equal(calls, beforeReady);

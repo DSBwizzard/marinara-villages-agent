@@ -39,7 +39,7 @@ import {
   residentLocalIdsAt,
 } from "../../domain/rules/resident-movement.js";
 import { badGateway, conflict } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractJsonObject, extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { selectPromptMemories, selectPromptRecollections } from "../../domain/rules/memory-selection.js";
 import {
   VENUE_SCENE_WRITING_FOUNDATION,
@@ -901,7 +901,8 @@ export function createSceneWriting({
         }
       }
     }
-    let originalRaw = recoveredRaw ?? materializedRaw ?? extractSceneReply(completion.content ?? "");
+    let originalRaw =
+      recoveredRaw ?? materializedRaw ?? extractSceneReply(completion.content ?? "", completion.finishReason);
     let completeRaw = sparse
       ? (recoveredRaw ?? materializedRaw ?? completeSceneObject(completion.content ?? "", completion.finishReason))
       : null;
@@ -1778,7 +1779,7 @@ export function createSceneWriting({
         for (const item of checkable) item.row.systemVerificationFailure = completionFailure;
         return;
       }
-      const results = asRecord(extractJsonObject(answer.content)).results;
+      const results = asRecord(extractModelJsonObject(answer)).results;
       if (!Array.isArray(results)) {
         for (const item of checkable)
           fail(item, "proposal-result", "System returned no valid verification results.", "missing_result");

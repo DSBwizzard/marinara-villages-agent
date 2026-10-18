@@ -12,7 +12,7 @@ import type { villagesLanguageModels } from "../adapters/models/language-models.
 import type { VillageState, VillageVenue, VillageVenueZone } from "../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../domain/rules/coerce.js";
 import { safeFailureMessage } from "../domain/rules/errors.js";
-import { extractJsonObject } from "../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../domain/rules/json-reply.js";
 import { renderResidentFoundingContext, RESIDENT_CONTINUITY_RULE } from "../domain/rules/resident-founding-context.js";
 import { venueZones, zoneControllerIds } from "../domain/rules/venue-zones.js";
 import type { reportFoundingProgress } from "../features/founding/founding-progress.js";
@@ -230,7 +230,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         });
         finishReason = result.finishReason ?? "unknown";
         await progress("validating");
-        const raw = extractJsonObject(result.content ?? "");
+        const raw = extractModelJsonObject(result);
         const entries = Array.isArray(raw?.rooms) ? raw.rooms.map(asRecord) : [];
         const generated = entries[0];
         const issues = !raw

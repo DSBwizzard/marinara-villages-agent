@@ -272,7 +272,8 @@ export async function analyzeArchitecture({
         if (
           !node.text.startsWith(".") &&
           !names.has(target(file, node.text)) &&
-          !["zod", "node:crypto"].includes(node.text)
+          // jsonrepair main exports are synchronous pure string transforms; its stream/CLI APIs remain excluded.
+          !["zod", "node:crypto", "jsonrepair"].includes(node.text)
         )
           failures.push(`${from}: rules/contracts cannot import effectful external dependency ${node.text}`);
       }

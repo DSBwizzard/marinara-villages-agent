@@ -14,7 +14,7 @@ import type { WishAttempt } from "../../../domain/models/wish-types.js";
 import type { VillageState } from "../../../domain/models/world.js";
 import { agendaDateKey } from "../../../domain/rules/agenda-week.js";
 import { notFound } from "../../../domain/rules/errors.js";
-import { extractJsonObject } from "../../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../../domain/rules/json-reply.js";
 import { addRoutineIdea } from "../../../domain/rules/owned-routine.js";
 import { coerceWish, villageCurrentSetting } from "../../../domain/rules/prompt-preset.js";
 import { venueCardProfile } from "../../../domain/rules/venue-writing.js";
@@ -202,7 +202,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       });
       const failure = completionFailure(completion, "wish-generation", outputLimit);
       if (failure) throw new WorkFailureError(failure);
-      const payload = extractJsonObject(completion.content ?? "");
+      const payload = extractModelJsonObject(completion);
       if (!payload)
         throw new WorkFailureError({
           cause: "invalid_json",

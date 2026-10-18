@@ -1,7 +1,7 @@
 import type { Handler } from "../../domain/models/background-model.js";
 import { semanticHash } from "../../domain/rules/semantic-contract.js";
 import { influenceSettings, readPreparedInfluence, scheduleSemanticSource } from "../../domain/rules/owned-routine.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { StartingTiesPorts } from "./starting-ties-service.js";
 
@@ -84,7 +84,7 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
         usagePurpose: "checks",
         checkpointId: "schedule-influence:" + input.sourceHash,
       });
-      const result = readPreparedInfluence(extractJsonObject(answer.content ?? ""));
+      const result = readPreparedInfluence(extractModelJsonObject(answer));
       if (
         answer.finishReason === "length" ||
         !result ||

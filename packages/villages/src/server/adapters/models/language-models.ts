@@ -1,3 +1,4 @@
+import { retainJsonRepair } from "../observability/json-repair-diagnostics.js";
 import { withProviderDeadline } from "./provider-deadline.js";
 import { guardedClockGeneration, assertVillageClockWrite } from "../time/clock-gate.js";
 import { requireHost } from "../engine/runtime-host.js";
@@ -21,12 +22,14 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
             // A usage claim may await storage; recheck before dispatching the provider.
             requireHost();
             await assertVillageClockWrite();
-            return measureModel(() =>
+            const result = await measureModel(() =>
               withProviderDeadline(
                 (signal) => model.chatComplete(messages, { ...requestOptions, signal }),
                 requestOptions?.signal,
               ),
             );
+            await retainJsonRepair(model, result, requestOptions?.maxTokens);
+            return result;
           }),
         );
       },

@@ -1,3 +1,4 @@
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { randomUUID } from "node:crypto";
 import type {
   SceneOriginProvider,
@@ -382,7 +383,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
       });
       if (["length", "max_tokens"].includes(result.finishReason))
         throw conflict("Memory preparation ran out of output space. No memories were accepted.");
-      const review = readSpinoffReview(ports.parseJson(result.content ?? ""), { ...value, evidence });
+      const review = readSpinoffReview(extractModelJsonObject(result), { ...value, evidence });
       await current(sessionId); // Revalidate village/persona/resident after generation.
       const saved = await change(sessionId, value.id, (draft) => {
         if (draft.status !== "returned" || draft.interpretationAttempt !== attempt || draft.selectionIds !== undefined)

@@ -1,3 +1,4 @@
+import { extractModelJsonObject, modelJsonWithinBounds } from "./json-reply.js";
 import type { VenueSubmission } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
@@ -74,12 +75,13 @@ function parsePrematureEffectBoundary(text: string): Record<string, unknown> | n
 }
 
 export function completeSceneObject(content: string, finishReason?: string): Record<string, unknown> | null {
+  if (!modelJsonWithinBounds(content)) return null;
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
   const text = content
     .trim()
     .replace(/^```(?:json)?\s*\n/u, "")
     .replace(/\n```$/u, "");
-  return parseSceneObject(text) ?? parsePrematureEffectBoundary(text);
+  return extractModelJsonObject({ content: text, finishReason }) ?? parsePrematureEffectBoundary(text);
 }
 
 /** Only a complete current-contract response may omit optional metadata. Never repair a supplied value. */

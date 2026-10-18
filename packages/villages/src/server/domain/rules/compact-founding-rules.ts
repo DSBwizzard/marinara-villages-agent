@@ -9,7 +9,7 @@ import type {
   VillageWish,
 } from "../models/world.js";
 import { villageAgendaDay } from "./agenda-plan.js";
-import { extractJsonObject } from "./json-reply.js";
+import { extractModelJsonObject } from "./json-reply.js";
 import { remapBlocks, VILLAGE_UNTRANSLATED_ACTIVITY } from "./native-remap.js";
 import { influenceSettings, scheduleSemanticSource, readPreparedInfluence } from "./owned-routine.js";
 import { semanticHash } from "./semantic-contract.js";
@@ -290,7 +290,7 @@ export function parseCompactFoundingCompletion(
   completion: { content?: string | null; finishReason?: string | null },
   context: CompactFoundingContext,
 ): CompactFoundingResult {
-  const payload = extractJsonObject(completion.content ?? "");
+  const payload = extractModelJsonObject(completion);
   if (completion.finishReason === "length")
     throw new Error("Routine output was truncated. Retry deliberately with enough output room.");
   if (!payload) throw new Error("The System model returned empty or invalid JSON for founding.");
