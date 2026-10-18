@@ -96,6 +96,13 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-links button { text-align:left; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px; }
 .${P}-dossier-links button small { grid-column:1; }
 .${P}-dossier-links button > span { grid-column:2; grid-row:1 / 3; align-self:center; }
+/* Size the portrait against the actual Engine panel, including its chrome. */
+.${P}-dossier-book { container-type:size; }
+.${P}-dossier-identity { padding:clamp(12px,3cqh,28px) 28px; scrollbar-color:#bda16b transparent; }
+.${P}-dossier-portrait { width:min(82%,360px,32cqh); }
+.${P}-dossier-journal h1 { font-size:clamp(26px,5cqh,48px); }
+.${P}-dossier-biography p { font-size:clamp(16px,3cqh,24px); }
+.${P}-signature-image { height:clamp(40px,9cqh,70px); }
 /* Section owners supply records. Semantic groups occupy either side of the binding. */
 .${P}-dossier-root .${P}-overlay { background:transparent; color:var(--dossier-ink); border:0; padding:0; box-shadow:none; min-width:0; }
 .${P}-dossier-content > :is(.villages-relationships,.${P}-overlay), .${P}-dossier-content > .${P}-dossier-sheet:has(.${P}-memory-library), .${P}-dossier-root .${P}-memory-library { display:contents; }
@@ -168,7 +175,7 @@ export const DOSSIER_STYLES = `
   .${P}-dossier-identity { padding:16px 14px 16px 20px; }
   .${P}-dossier-journal-content { gap:12px; }
   .${P}-dossier-journal h1 { font-size:29px; }
-  .${P}-dossier-portrait { width:min(85%,230px); padding:8px 8px 15px; }
+  .${P}-dossier-portrait { width:min(85%,230px,34cqh); padding:8px 8px 15px; }
   .${P}-dossier-biography p { font-size:17px; }
   .${P}-dossier-biography { max-height:160px; }
   .${P}-signature { margin-top:12px; }

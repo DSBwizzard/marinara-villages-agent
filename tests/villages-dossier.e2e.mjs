@@ -296,6 +296,7 @@ try {
         );
     await expect(profile).toBeVisible();
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
+    await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
     await expect(profile.locator(`.${P}-dossier-content`)).toBeEmpty();
     await tabs.getByRole("button", { name: "Venues", exact: true }).click();
     await expect(profile.getByText("Mara's workshop", { exact: true })).toBeVisible();
