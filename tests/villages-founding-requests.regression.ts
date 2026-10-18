@@ -197,5 +197,5 @@ assert.throws(
       },
       { ...context, contractVersion: 2 },
     ),
-  /Routine activity 1 duration must be 30–240 minutes \(received 360\)/,
+  /Routine activity 1 duration 360; expected 30–240 minutes/,
 );
