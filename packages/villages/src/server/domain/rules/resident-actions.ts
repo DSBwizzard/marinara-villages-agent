@@ -38,7 +38,13 @@ export const RESIDENT_ACTION_WRITING =
   RESIDENT_ACTION_SHAPE +
   '. Always include residentActions, even []. Only player access is in this contract; invitations to other residents are not player permission. Every invitation, refusal, dismissal, withdrawal or standing permission expressed by current resident speech or a player-witnessed gesture needs an attached action. This includes natural paraphrases; no special wording is needed. One visit never implies standing access. Unclear scope or unsupported conditions use unresolved and preserve the condition. Conditional accompaniment uses conditions:["accompanied"]. Never invent consent or a player move. Source must match one exact current segment; speakerId for narrated gestures is __venue_scene__. Hidden speech cannot grant player permission. These are proposals; System and code retain authority. Do not describe the player entering merely because a resident invites them.';
 export const RESIDENT_ACTION_REVIEW =
-  'Return residentActionReview:{version:1,additionalActions:[],decisions:[{id,status:"accepted|rejected|unresolved",reason}],coverage:[{segment:0,status:"none|actions|unresolved",actionIds:[],reason}]}. additionalActions uses the SAME residentActions action shape. Adjudicate EVERY supplied and additional action exactly once. Check every player-heard non-player segment, including narration, for missing or contradictory access actions; coverage must contain each such segment exactly once. Discover omitted invitations/refusals/withdrawals/standing permissions as additionalActions. Do not endorse empty metadata when the dialogue expresses an action. Check actual issuer intent, visitor, destination, conditions, timing and visit versus standing scope. Reject unsupported proposals; unresolved scope/conditions remain unresolved. Each action must be referenced by coverage of its exact source segment. No changes to proposed actions: a mismatch must be rejected, not silently broadened or substituted. Return access:[] and relationshipChanges.permissions:[]; code constructs these from accepted actions. Set authority flags for the resulting accepted actions. A visit invitation enables choice, never player movement. Standing grants require explicit unconditional controller speech, never a gesture or one-time welcome. outcome revoke-standing withdraws standing permission; dismiss ends current access. All unresolved/rejected dispositions hold this draft before commitment.';
+  'Return residentActionReview:{version:1,additionalActions:[],decisions:[{id,status:"accepted|rejected|unresolved",reason}],coverage:[{segment:0,status:"none|actions|unresolved",actionIds:[],reason}]}. additionalActions uses the SAME residentActions action shape. Adjudicate EVERY supplied and additional action exactly once. Check every player-heard non-player segment, including narration, for missing or contradictory access actions; coverage must contain each such segment exactly once. Discover omitted invitations/refusals/withdrawals/standing permissions as additionalActions. Do not endorse empty metadata when the dialogue expresses an action. Check actual issuer intent, visitor, destination, conditions, timing and visit versus standing scope. Reject unsupported proposals; unresolved scope/conditions remain unresolved. Each action must be referenced by coverage of its exact primary source segment. The same action ID may also be cited on corroborating current dialogue by that actor. Optional player coverage may only be none with empty actionIds. No changes to proposed actions: a mismatch must be rejected, not silently broadened or substituted. Return access:[] and relationshipChanges.permissions:[]; code constructs these from accepted actions. Set authority flags for the resulting accepted actions. A visit invitation enables choice, never player movement. Standing grants require explicit unconditional controller speech, never a gesture or one-time welcome. outcome revoke-standing withdraws standing permission; dismiss ends current access. All unresolved/rejected dispositions hold this draft before commitment.';
+
+// Exact pre-upgrade instruction preserves fingerprints of saved v1 raw completions.
+export const RESIDENT_ACTION_REVIEW_V1 = RESIDENT_ACTION_REVIEW.replace(
+  "Each action must be referenced by coverage of its exact primary source segment. The same action ID may also be cited on corroborating current dialogue by that actor. Optional player coverage may only be none with empty actionIds.",
+  "Each action must be referenced by coverage of its exact source segment.",
+);
 
 const outcomes = new Set([
   "invite-now",
@@ -133,7 +139,13 @@ export function reconcileResidentActions(
     return fail("Resident action dispositions are incomplete.");
   const sources = residentActionSources(actions, evidence);
   const required = evidence.flatMap((line, i) => (line.playerHeard && line.speakerId !== "player" ? [i] : []));
-  const coverage = review.coverage.map(asRecord);
+  const playerNone = (c: Record<string, unknown>) =>
+    Number.isInteger(c.segment) &&
+    evidence[Number(c.segment)]?.speakerId === "player" &&
+    c.status === "none" &&
+    Array.isArray(c.actionIds) &&
+    c.actionIds.length === 0;
+  const coverage = review.coverage.map(asRecord).filter((c) => !playerNone(c));
   if (
     coverage.length !== required.length ||
     new Set(coverage.map((c) => c.segment)).size !== required.length ||
@@ -147,7 +159,18 @@ export function reconcileResidentActions(
         c.reason.length > 600 ||
         !Array.isArray(c.actionIds) ||
         new Set(c.actionIds).size !== c.actionIds.length ||
-        c.actionIds.some((id) => sources.get(String(id)) !== c.segment) ||
+        c.actionIds.some((id) => {
+          const action = actions.find((a) => a.id === id),
+            line = evidence[Number(c.segment)];
+          return (
+            !action ||
+            (sources.get(String(id)) !== c.segment &&
+              (!line?.playerHeard ||
+                line.kind === "narration" ||
+                line.speakerId !== action.actorId ||
+                !line.heardBy.includes(action.actorId)))
+          );
+        }) ||
         (c.status === "none" && c.actionIds.length > 0) ||
         (c.status === "actions" && !c.actionIds.length),
     )

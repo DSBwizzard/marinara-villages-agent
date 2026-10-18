@@ -1183,7 +1183,9 @@ export function createSceneCommands({
             ? admission.operation.input.writingContractVersion !== undefined
               ? {
                   writingContractVersion: admission.operation.input.writingContractVersion,
-                  ...(admission.operation.input.residentActionsVersion === 1 ? { residentActionsVersion: 1 } : {}),
+                  ...([1, 2].includes(Number(admission.operation.input.residentActionsVersion))
+                    ? { residentActionsVersion: admission.operation.input.residentActionsVersion }
+                    : {}),
                   ...(admission.operation.input.semanticPipelineVersion
                     ? { semanticPipelineVersion: admission.operation.input.semanticPipelineVersion }
                     : {}),
@@ -1198,7 +1200,7 @@ export function createSceneCommands({
             : {
                 writingContractVersion: 3,
                 ...(admission.semanticVersion === 2
-                  ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3, residentActionsVersion: 1 }
+                  ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3, residentActionsVersion: 2 }
                   : {}),
                 writingCapabilities: sceneWritingCapabilities(await readVillageState(), admission),
               };
@@ -1758,15 +1760,15 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       : undefined;
     const payload = {
       ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.residentActionsVersion === 1
-          ? { residentActionsVersion: 1 }
+        ? [1, 2].includes(Number(scene.operation.input.residentActionsVersion))
+          ? { residentActionsVersion: scene.operation.input.residentActionsVersion }
           : {}
         : prior
-          ? prior.semanticProvenance?.residentActionsVersion === 1
-            ? { residentActionsVersion: 1 }
+          ? [1, 2].includes(Number(prior.semanticProvenance?.residentActionsVersion))
+            ? { residentActionsVersion: prior.semanticProvenance?.residentActionsVersion }
             : {}
           : scene.semanticVersion === 2
-            ? { residentActionsVersion: 1 }
+            ? { residentActionsVersion: 2 }
             : {}),
       ...(scene.semanticVersion === 2
         ? scene.operation?.id === input.submissionId
