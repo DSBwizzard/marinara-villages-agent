@@ -849,6 +849,17 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       const data = record.data as Record<string, unknown>;
       const operation = data.operation as VenueOperation | undefined;
       if (!operation || operation.status === "complete" || live.has(String(data.id))) continue;
+      // Expired, uncommitted generation is archived evidence, not work to resume at startup.
+      if (
+        data.status === "closed" &&
+        data.endReason === "inactivity" &&
+        ["turn", "greet"].includes(operation.kind) &&
+        !(data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === operation.id) &&
+        !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === operation.id) &&
+        !Object.hasOwn(operation.checkpoints, "turn-reply") &&
+        !Object.hasOwn(operation.checkpoints, "greeting-reply")
+      )
+        continue;
       await update(String(data.id), (saved) => {
         const op = saved.operation as VenueOperation;
         op.status = "interrupted";

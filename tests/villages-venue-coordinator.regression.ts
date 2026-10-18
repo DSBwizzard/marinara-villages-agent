@@ -154,6 +154,42 @@ async function main() {
     );
     assert.equal(reusedRaw.content, '{"valid":true}');
     assert.equal(policyCalls, 1, "Completed low-effort raw response replays without a parsed checkpoint or paid call");
+    seed("expired-evidence");
+    await assert.rejects(
+      coordinateVenue("expired-evidence", "turn", "turn", policyInput, 0, undefined, () =>
+        venueCheckpoint("system", async () => {
+          await coordinatedCompletion("archived-raw", async () => ({ content: "Saved response" }));
+          throw Error("Validation interrupted");
+        }),
+      ),
+      /Validation interrupted/,
+    );
+    row("expired-evidence").data.status = "closed";
+    row("expired-evidence").data.endReason = "inactivity";
+    const expired = structuredClone(row("expired-evidence"));
+    for (const evidence of ["submission", "navigation", "turn-reply", "greeting-reply"]) {
+      const id = "expired-" + evidence;
+      seed(id);
+      row(id).data = { ...structuredClone(expired.data), id };
+      if (evidence === "submission") row(id).data.submissions = [{ id: "turn" }];
+      else if (evidence === "navigation") row(id).data.navigationReceipts = [{ id: "turn" }];
+      else row(id).data.operation.checkpoints[evidence] = { saved: true };
+    }
+    const expiredRecoveries: string[] = [];
+    await recoverVenueOperations(async (id) => {
+      if (id.startsWith("expired-")) expiredRecoveries.push(id);
+    });
+    assert(!expiredRecoveries.includes("expired-evidence"), "Expired uncommitted generation is not resumed at startup");
+    assert.deepEqual(
+      row("expired-evidence"),
+      expired,
+      "Startup preserves archived request identity, error and raw evidence",
+    );
+    assert.deepEqual(
+      expiredRecoveries.sort(),
+      ["expired-greeting-reply", "expired-navigation", "expired-submission", "expired-turn-reply"],
+      "Committed or final work retains its recovery barriers",
+    );
     seed("policy-rejected");
     truncated = true;
     await assert.rejects(
