@@ -1,3 +1,5 @@
+import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
+import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import { connectionFailureKind } from "../domain/rules/connection-failure.js";
 import {
   withVillageClockWork,
@@ -98,6 +100,52 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     const job = structuredClone(record.data) as Job;
     if (!job || !Array.isArray(job.steps) || typeof job.id !== "string" || !handlers.has(job.kind))
       throw new Error("The saved background job could not be read. Restore it from a backup.");
+    return job;
+  }
+  const lateResponseId = (job: Job, index: number) =>
+    "villages-generation-response-" +
+    backgroundRevision([job.id, job.attempt, index, job.steps[index]?.key, job.steps[index]?.fingerprint]);
+  async function adoptLateResponses(id: string, original: Job): Promise<Job> {
+    let job = original;
+    for (const [index, step] of original.steps.entries()) {
+      const receiptId = lateResponseId(original, index);
+      const receipt = asRecord((await villagesDocuments().getById(VILLAGES_PACKAGE_ID, receiptId))?.data);
+      if (receipt.status !== "complete" || receipt.jobId !== original.id || receipt.fingerprint !== step.fingerprint)
+        continue;
+      job = await changeJob(id, (current) => {
+        if (
+          !current ||
+          current.id !== original.id ||
+          current.attempt !== original.attempt ||
+          current.steps[index]?.fingerprint !== step.fingerprint
+        )
+          throw new Obsolete("The saved response belongs to another background attempt.");
+        if (current.steps[index].status !== "completed") {
+          current.steps[index] = {
+            ...current.steps[index],
+            status: "completed",
+            lateResponse: true,
+            response: structuredClone(receipt.result) as Awaited<ReturnType<BackgroundCompletion>>,
+          };
+          current.failedStep = null;
+        }
+        return current;
+      });
+      await createDocumentMutator(villagesDocuments)(
+        receiptId,
+        {
+          kind: "generation-response",
+          name: "Saved background response",
+          description: "Private raw provider evidence",
+          coerce: (raw) => asRecord(raw),
+          label: () => "Saved background response",
+        },
+        (value) => {
+          if (value.status !== "complete") return false;
+          value.status = "consumed";
+        },
+      );
+    }
     return job;
   }
   async function retainFoundingJob(job: Job): Promise<void> {
@@ -522,6 +570,30 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               }),
           );
         } catch (error) {
+          const receiptId = lateResponseId(job!, index);
+          const documents = villagesDocuments();
+          retainLateProviderResponse(error, (value) =>
+            createDocumentMutator(() => documents)(
+              receiptId,
+              {
+                kind: "generation-response",
+                name: "Saved background response",
+                description: "Private raw provider evidence",
+                coerce: (raw) => asRecord(raw),
+                label: () => "Saved background response",
+              },
+              (receipt) => {
+                if (receipt.status) return false;
+                Object.assign(receipt, {
+                  status: "complete",
+                  jobId: runJobId,
+                  attempt: runAttempt,
+                  fingerprint,
+                  result: structuredClone(value),
+                });
+              },
+            ),
+          );
           assertActive();
           const connectionIssue = connectionFailureKind(error, !!options.responseFormat);
           const pause = connectionIssue === "configuration";
@@ -834,7 +906,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             ? current!.failedStep
             : current!.hasResult
               ? null
-              : paused || obsolete || !invoked || ["storage", "response-storage"].includes(stage)
+              : paused ||
+                  obsolete ||
+                  (!invoked && !current!.steps[lastIndex]?.lateResponse) ||
+                  ["storage", "response-storage"].includes(stage)
                 ? current!.failedStep
                 : Math.max(0, lastIndex),
           ...(obsolete
@@ -878,7 +953,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       throw badRequest("Invalid background retry.");
     // A newer validator may understand a previously rejected, purchased reply.
     // Recovery is pure and deliberate; an invalid reply still uses the normal retry path.
-    const savedPrior = await readJob(id);
+    const foundPrior = await readJob(id);
+    const savedPrior = foundPrior && !running.has(id) ? await adoptLateResponses(id, foundPrior) : foundPrior;
     let recovered: { result: unknown } | undefined;
     if (
       savedPrior &&
@@ -975,7 +1051,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, KIND);
     for (const record of records) {
       if (stopped || owner !== recoveryOwner) return;
-      const job = record.data as Job;
+      const job = await adoptLateResponses(record.id, record.data as Job);
       if (job.kind === "translation" && !["completed", "obsolete"].includes(job.status)) {
         await changeJob(record.id, (current) => ({
           ...current!,

@@ -403,7 +403,6 @@ export function useActiveSceneRestoration(ports: {
               const { session: greeted } = await request<{ session: SceneView }>("/rooms/greet", {
                 method: "POST",
                 body: JSON.stringify({ sessionId: session.id }),
-                signal: AbortSignal.timeout(30_000),
               });
               if (!owns()) return;
               const next = currentRoom(greeted);

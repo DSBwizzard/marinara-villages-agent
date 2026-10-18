@@ -77,7 +77,8 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       const initial = await readVillageState();
       seed = initial.seed;
       if (initial.foundingPreparation?.status !== "pending") return;
-      if (!initial.foundingPreparation.venueDetailsSeeded) {
+      const targeted = !!initial.foundingPreparation.selectedTasks?.length;
+      if (!targeted && !initial.foundingPreparation.venueDetailsSeeded) {
         try {
           await reportFoundingProgress(initial.seed, {
             phase: "venues",
@@ -130,7 +131,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           villagesLogger().warn("[villages] initial venue details unavailable: %s", String(error));
           await mutateVillageState((state) => {
             if (state.seed === initial.seed && state.foundingPreparation?.status === "pending")
-              state.foundingPreparation.venueDetailsSeeded = true;
+              state.foundingPreparation.error = safeFailureMessage(error).slice(0, 300);
           });
         }
       }
@@ -142,7 +143,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           currentId: "",
           attempt: undefined,
         });
-        await preparePrivateSpaces();
+        if (!targeted) await preparePrivateSpaces();
         const prepared = await readVillageState();
         if (prepared.seed !== initial.seed) return;
         const blocked = privatePreparationRooms(prepared).find(({ zone }) => zone.preparation?.status !== "ready");
@@ -153,11 +154,9 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       } catch (error) {
         await mutateVillageState((state) => {
           if (state.seed === initial.seed && state.foundingPreparation?.status === "pending") {
-            state.foundingPreparation.status = "failed";
             state.foundingPreparation.error = safeFailureMessage(error).slice(0, 300);
           }
         });
-        return;
       }
       await initializeTasks(initial.seed);
       let connectionBlocked = false;
@@ -286,8 +285,20 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             ),
           )
           .map((row) => row.characterId);
-        marker.status = marker.completedIds.length === state.villagers.length ? "ready" : "failed";
-        marker.error = marker.status === "failed" ? "Resident preparation incomplete." : "";
+        const spacesReady = privatePreparationRooms(state).every(({ zone }) => zone.preparation?.status === "ready");
+        marker.status =
+          marker.venueDetailsSeeded && spacesReady && marker.completedIds.length === state.villagers.length
+            ? "ready"
+            : "failed";
+        marker.error =
+          marker.status === "ready"
+            ? ""
+            : !marker.venueDetailsSeeded
+              ? "Venue preparation incomplete."
+              : !spacesReady
+                ? privatePreparationRooms(state).find(({ zone }) => zone.preparation?.status !== "ready")?.zone
+                    .preparation?.error || "Interior preparation incomplete."
+                : "Resident preparation incomplete.";
         marker.currentId = "";
         marker.currentTask = undefined;
         marker.stage = undefined;
@@ -429,6 +440,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
     }
   }
   async function retryFoundedVillagePreparation(input: FoundingRetry = {}): Promise<VillageSnapshot> {
+    await recoverFoundingPreparation();
     const requested = await readVillageState(),
       marker = requested.foundingPreparation;
     if (!marker) return buildVillageSnapshot();
@@ -477,7 +489,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       retryAdmissions--;
     }
   }
-  async function foundingPreparationSnapshot(): Promise<VillageSnapshot> {
+  async function recoverFoundingPreparation(): Promise<void> {
     // A read after restart may report interruption, but never authorizes a new request.
     const current = await readVillageState();
     if (!foundingWork && !retryAdmissions && current.foundingPreparation?.status === "pending")
@@ -489,6 +501,8 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
         for (const tasks of Object.values(marker.tasks ?? {}))
           for (const task of Object.values(tasks)) if (task.status === "running") task.status = "failed";
       });
+  }
+  async function foundingPreparationSnapshot(): Promise<VillageSnapshot> {
     return buildVillageSnapshot();
   }
   async function assertFoundedVillageReady(): Promise<void> {
@@ -500,6 +514,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
     prepareFoundedVillage,
     retryFoundedVillagePreparation,
     foundingPreparationSnapshot,
+    recoverFoundingPreparation,
     assertFoundedVillageReady,
   };
 }

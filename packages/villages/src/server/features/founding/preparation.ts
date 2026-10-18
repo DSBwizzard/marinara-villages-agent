@@ -21,3 +21,7 @@ export async function foundingPreparationSnapshot(): Promise<VillageSnapshot> {
 export async function assertFoundedVillageReady(): Promise<void> {
   return preparationBinding.get().assertFoundedVillageReady();
 }
+
+export async function recoverFoundingPreparation(): Promise<void> {
+  return preparationBinding.get().recoverFoundingPreparation();
+}

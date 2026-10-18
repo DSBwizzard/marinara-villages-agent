@@ -25,6 +25,10 @@ export function semanticBlocker(scene: Pick<VenueScene, "submissions">): string 
     for (const [domain, result] of Object.entries(turn.processing?.domains ?? {}))
       if (
         ["pending", "failed"].includes(result.status) &&
+        !(
+          turn.semanticProvenance.pipelineVersion === 3 &&
+          (domain === "memories" || (domain === "relationships" && !semanticAuthorityDomain(turn, "relationships")))
+        ) &&
         !turn.semanticContinuedDomains?.includes(domain as ExchangeDomain)
       )
         return result.status === "pending"

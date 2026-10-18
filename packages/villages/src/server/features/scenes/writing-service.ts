@@ -765,7 +765,8 @@ export function createSceneWriting({
   }
 
   async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessages>) {
-    const [session, message, mode] = args;
+    let [session] = args;
+    const [, message, mode] = args;
     const signal = args[5];
     const trace = args[6];
     const prepared = await prepareVenueTurnMessages(...args);
@@ -1015,6 +1016,7 @@ export function createSceneWriting({
       session.semanticVersion === 2 && semantic
         ? await semantic.exchange(session, message, parsed.lines, session.semanticIntent ?? null)
         : null;
+    if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
     const semanticAccess = semanticResult?.access;
     if (semanticResult) {
       // Ignore all narrator effect nominations, including omitted System sections.
@@ -1472,6 +1474,7 @@ export function createSceneWriting({
           ? ({
               version: 2 as const,
               sourceHash: semanticResult.sourceHash,
+              ...(venueOperationInput()?.semanticPipelineVersion === 3 ? { pipelineVersion: 3 as const } : {}),
               authority: semanticResult.authority,
               interpretedAt: new Date().toISOString(),
             } as import("../../domain/models/semantic-model.js").SemanticProvenance)
@@ -1837,7 +1840,10 @@ export function createSceneWriting({
           const venue = state.venues.find((row) => row.id === session.placeId);
           if (venue) session = zoneEventScene(session, venue);
         }
-        const intent = mode === "greet" ? null : (session.semanticIntent ?? (await semantic.intent(session, message)));
+        const intent =
+          mode === "greet" || venueOperationInput()?.semanticPipelineVersion === 3
+            ? null
+            : (session.semanticIntent ?? (await semantic.intent(session, message)));
         if (intent?.status === "unresolved") throw conflict(intent.reason || "The action needs clarification.");
         session = { ...session, ...(intent ? { semanticIntent: intent } : {}) };
         actionOutcome = intent ? JSON.stringify(intent) : undefined;
@@ -1919,18 +1925,14 @@ export function createSceneWriting({
     try {
       if (scene.semanticVersion === 2) {
         if (!semantic) throw conflict("System interpretation is not configured.");
-        const intent = scene.semanticIntent ?? (await semantic.intent(scene, message));
-        if (intent.status !== "resolved") throw conflict("The contact needs clarification.");
-        scene = { ...scene, semanticIntent: intent };
+        const intent =
+          venueOperationInput()?.semanticPipelineVersion === 3
+            ? null
+            : (scene.semanticIntent ?? (await semantic.intent(scene, message)));
+        if (intent && intent.status !== "resolved") throw conflict("The contact needs clarification.");
+        scene = { ...scene, ...(intent ? { semanticIntent: intent } : {}) };
       }
-      const reply = await generateOnce(
-        scene,
-        message,
-        "chat",
-        targetId,
-        null,
-        venueOperationSignal() ?? AbortSignal.timeout(90_000),
-      );
+      const reply = await generateOnce(scene, message, "chat", targetId, null, venueOperationSignal());
       const integrity = scene.semanticVersion === 2 ? null : venueReplyIntegrity(message, scene.lines, reply.lines);
       if (integrity) throw new VenueReplyFailure(integrity);
       await verifyConsequentialProposals(scene, await readVillageState(), reply, venueOperationSignal());

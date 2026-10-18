@@ -469,6 +469,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const completionOwner = activationScope();
   const releaseCompletions = configureModelCompletions(
     createModelCompletions({
+      mutateDocument: createDocumentMutator(villagesDocuments),
       readRuntimeDebug,
       runtimeDebug,
       backgroundCalls: background.backgroundCalls,

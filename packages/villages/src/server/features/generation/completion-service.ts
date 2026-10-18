@@ -1,3 +1,5 @@
+import { carryLateProviderResponse, retainLateProviderResponse } from "../../adapters/models/provider-deadline.js";
+import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import { isVillageClockError } from "../../adapters/time/clock-gate.js";
 import type { inferredPurpose, withUsagePurpose } from "../../adapters/models/usage-ledger.js";
 import type { readRuntimeDebug, runtimeDebug } from "../../adapters/observability/runtime-debug.js";
@@ -12,9 +14,10 @@ import type {
   CapabilityResolvedLanguageModel,
   CapabilityRuntimeLogger,
 } from "@marinara-engine/shared";
-import { createHash } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 
 export type ModelCompletionPorts = {
+  mutateDocument?: typeof mutateDocument;
   readRuntimeDebug: typeof readRuntimeDebug;
   runtimeDebug: typeof runtimeDebug;
   backgroundCalls: { getStore(): BackgroundCompletion | undefined };
@@ -37,15 +40,23 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
     villagesLogger,
     bindCallback,
   } = ports;
-  const RETRY_FLOOR = 1_600;
-
-  const RETRY_CEILING = 8_192;
-
-  function answered(completion: CapabilityLanguageModelCompletion): boolean {
-    return (completion.content ?? "").trim().length > 0;
+  const pending = new Map<string, { fingerprint: string; task: Promise<CapabilityLanguageModelCompletion> }>();
+  function completeWithRoom(...args: Parameters<typeof completeOnce>): ReturnType<typeof completeOnce> {
+    const key = args[3].savedRequest?.key;
+    if (!key) return completeOnce(...args);
+    const fingerprint = JSON.stringify(args[1]);
+    const running = pending.get(key);
+    if (running)
+      return running.fingerprint === fingerprint
+        ? running.task
+        : Promise.reject(new Error("Saved generation inputs changed."));
+    const task = completeOnce(...args).finally(() => {
+      if (pending.get(key)?.task === task) pending.delete(key);
+    });
+    pending.set(key, { fingerprint, task });
+    return task;
   }
-
-  async function completeWithRoom(
+  async function completeOnce(
     model: CapabilityResolvedLanguageModel,
     messages: CapabilityLanguageModelMessage[],
     maxTokens: number,
@@ -121,7 +132,7 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                 const unsupported =
                   /response[_ ]?format|json[_ ]?(?:object|mode|schema)/iu.test(message) &&
                   /unsupported|not support|invalid|unknown|not allowed|unrecognized/iu.test(message);
-                throw new WorkFailureError({
+                const failure = new WorkFailureError({
                   cause: "provider_exception",
                   stage: "dispatch",
                   requestedOutputTokens: tokens,
@@ -129,6 +140,8 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                     ? "The selected connection rejected JSON mode. Choose a connection supporting JSON responses, then explicitly retry. No fallback request was made."
                     : message,
                 });
+                carryLateProviderResponse(error, failure);
+                throw failure;
               }),
           ),
         ),
@@ -180,25 +193,59 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
       return completion;
     };
 
-    const first = await ask(maxTokens);
-    if (answered(first) || options.retryEmpty === false) return first;
-
-    const ceiling = model.maxOutputTokens ?? RETRY_CEILING;
-    const roomier = Math.min(Math.max(maxTokens * 2, RETRY_FLOOR), ceiling);
-    if (roomier <= maxTokens) return first;
-
-    // The messages were fitted against the SMALLER number, so this knowingly asks
-    // for more output room than the fit reserved. On a context too small to hold
-    // both, the provider says so and the caller reports that — which is still a
-    // better outcome for the player than an empty room and no explanation.
-    villagesLogger().debug(
-      "[villages] %s answered nothing at %d tokens (finish reason %s); asking again with %d",
-      model.model,
-      maxTokens,
-      first.finishReason,
-      roomier,
-    );
-    return ask(roomier);
+    // An empty result is still a purchased response; replacement requires explicit authorization.
+    if (!options.savedRequest) return ask(maxTokens);
+    if (!ports.mutateDocument) throw new Error("Saved model request storage is unavailable.");
+    type Receipt = {
+      fingerprint?: string;
+      token?: string;
+      status?: "dispatching" | "complete" | "rejected";
+      result?: CapabilityLanguageModelCompletion;
+      responses?: { token: string; result: CapabilityLanguageModelCompletion; valid: boolean }[];
+    };
+    const documentId =
+      "villages-generation-response-" + createHash("sha256").update(options.savedRequest.key).digest("hex");
+    const fingerprint = createHash("sha256").update(JSON.stringify(messages)).digest("hex");
+    const token = randomUUID();
+    const slot = {
+      kind: "generation-response",
+      name: "Saved generation response",
+      description: "Private model response receipt",
+      coerce: (value: unknown): Receipt =>
+        value && typeof value === "object" ? (structuredClone(value) as Receipt) : {},
+      label: () => "Saved generation response",
+    };
+    let saved: CapabilityLanguageModelCompletion | undefined;
+    await ports.mutateDocument(documentId, slot, (receipt) => {
+      if (receipt.fingerprint && receipt.fingerprint !== fingerprint)
+        throw new Error("Saved generation inputs changed. The response is preserved.");
+      if (receipt.status === "complete") saved = receipt.result;
+      else saved = receipt.responses?.findLast((response) => response.valid)?.result;
+      if (saved) return false;
+      if ((receipt.status === "dispatching" || receipt.status === "rejected") && !options.savedRequest!.retry)
+        throw new Error("The previous request may have been billed. Retry explicitly.");
+      Object.assign(receipt, { fingerprint, token, status: "dispatching" });
+    });
+    if (saved) return saved;
+    const retain = async (result: CapabilityLanguageModelCompletion) => {
+      await ports.mutateDocument!(documentId, slot, (receipt) => {
+        if (receipt.fingerprint !== fingerprint) return false;
+        const valid = !options.savedRequest?.valid || options.savedRequest.valid(result);
+        receipt.responses ??= [];
+        if (!receipt.responses.some((response) => response.token === token))
+          receipt.responses.push({ token, result: structuredClone(result), valid });
+        if (receipt.token === token)
+          Object.assign(receipt, { status: valid ? "complete" : "rejected", result: structuredClone(result) });
+      });
+    };
+    try {
+      const result = await ask(maxTokens);
+      await retain(result);
+      return result;
+    } catch (error) {
+      retainLateProviderResponse(error, (value) => retain(value as CapabilityLanguageModelCompletion));
+      throw error;
+    }
   }
   return { completeWithRoom };
 }

@@ -29,7 +29,7 @@ export const semanticHash = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 /** Shared context is server-only. Actor-scoped audiences remain explicit on every fact. */
-export function semanticContext(scene: VenueScene, state: VillageState, query: string) {
+export function semanticContext(scene: VenueScene, state: VillageState, query: string, compact = false) {
   const actors = [...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])])];
   const venue = state.venues.find((row) => row.id === scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
@@ -43,7 +43,10 @@ export function semanticContext(scene: VenueScene, state: VillageState, query: s
   return {
     worldSeed: state.seed,
     setting: state.setting,
-    loreSelection: { bookIds: state.selectedLorebookIds, tokenBudget: state.loreTokenBudget },
+    loreSelection: {
+      bookIds: state.selectedLorebookIds,
+      tokenBudget: compact ? Math.min(state.loreTokenBudget ?? 1200, 1200) : state.loreTokenBudget,
+    },
     worldFacts: state.worldFacts,
     sceneId: scene.id,
     revision: scene.sceneRevision,
@@ -53,7 +56,13 @@ export function semanticContext(scene: VenueScene, state: VillageState, query: s
       .map((row) => ({
         id: row.characterId,
         name: row.cardSnapshot.name,
-        character: row.cardSnapshot,
+        character: compact
+          ? {
+              description: row.cardSnapshot.description,
+              personality: row.cardSnapshot.personality,
+              backstory: row.cardSnapshot.backstory,
+            }
+          : row.cardSnapshot,
         founding: row.foundingContext,
         wishes: (row.agenda?.wishes ?? []).map((wish) => ({
           ...wish,

@@ -1,3 +1,4 @@
+import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import { semanticBlocker } from "../domain/rules/semantic-continuity.js";
 import type { VenueScene } from "../domain/models/scene-model.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
@@ -21,7 +22,7 @@ import { coerceInterpretationSettings, type InterpretationSettings } from "../do
 import { sceneRevision } from "../domain/rules/scene-revision.js";
 import { coerceWorkFailure } from "../domain/rules/work-failure.js";
 import type { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
 export interface VenueCoordinatorPorts {
   operations: VenueOperationContext;
@@ -229,6 +230,21 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       runtimeDebug("completion replay", { key });
       return structuredClone(prior.result) as T;
     }
+    const signature = JSON.stringify([
+      current.sessionId,
+      current.operation.id,
+      current.operation.sceneRevision,
+      current.operation.input,
+      key,
+    ]);
+    const lateId = "villages-generation-response-" + createHash("sha256").update(signature).digest("hex");
+    const late = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, lateId);
+    const lateData = asRecord(late?.data);
+    if (lateData.signature === signature && lateData.status === "complete") {
+      current.operation.attempts[key] = { status: "complete", result: structuredClone(lateData.result) };
+      await persist(current);
+      return structuredClone(lateData.result) as T;
+    }
     if (!current.allowPaid) {
       current.blocked.add(current.scope);
       throw venueRefusal(
@@ -279,7 +295,35 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     current.operation.attempts[key] = { status: "dispatching" };
     await persist(current);
     const started = performance.now();
-    const result = await work(current.controller.signal);
+    let result: T;
+    try {
+      result = await work(current.controller.signal);
+    } catch (error) {
+      retainLateProviderResponse(error, (value) =>
+        ports.operations.outsideVenueOperation(() =>
+          createDocumentMutator(villagesDocuments)(
+            lateId,
+            {
+              kind: "generation-response",
+              name: "Saved late response",
+              description: "Private provider response; no effects applied",
+              coerce: (raw) => asRecord(raw),
+              label: () => "Saved late response",
+            },
+            (saved) => {
+              if (saved.status === "complete") return false;
+              Object.assign(saved, {
+                signature,
+                status: "complete",
+                result: structuredClone(value),
+                attemptId: current.operation.attemptId,
+              });
+            },
+          ),
+        ),
+      );
+      throw error;
+    }
     assertVenueOwnership();
     current.operation.attempts[key] = {
       status: "complete",
@@ -298,6 +342,32 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     return result;
   }
 
+  async function rejectLateReceipt(current: Context, key: string) {
+    const signature = JSON.stringify([
+      current.sessionId,
+      current.operation.id,
+      current.operation.sceneRevision,
+      current.operation.input,
+      key,
+    ]);
+    const id = "villages-generation-response-" + createHash("sha256").update(signature).digest("hex");
+    if (!(await villagesDocuments().getById(VILLAGES_PACKAGE_ID, id))) return;
+    await createDocumentMutator(villagesDocuments)(
+      id,
+      {
+        kind: "generation-response",
+        name: "Saved late response",
+        description: "Private rejected provider evidence",
+        coerce: (raw) => asRecord(raw),
+        label: () => "Saved late response",
+      },
+      (saved) => {
+        if (saved.signature !== signature || saved.status === "rejected") return false;
+        saved.status = "rejected";
+      },
+    );
+  }
+
   /** A returned but invalid result has a known outcome; explicit retry may replace it. */
   async function rejectVenueCompletion(
     detail?: RejectedResponseContext,
@@ -311,7 +381,10 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       for (const stage of options.stages) {
         delete current.operation.checkpoints[stage];
         for (const [key, attempt] of Object.entries(current.operation.attempts))
-          if (key.startsWith(stage + ":") && attempt.status === "complete") attempt.status = "rejected";
+          if (key.startsWith(stage + ":") && attempt.status === "complete") {
+            attempt.status = "rejected";
+            await rejectLateReceipt(current, key);
+          }
       }
       await persist(current);
       return;
@@ -323,7 +396,10 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     for (const stage of writingStages) {
       delete current.operation.checkpoints[stage];
       for (const [key, attempt] of Object.entries(current.operation.attempts))
-        if (key.startsWith(stage + ":") && attempt.status === "complete") attempt.status = "rejected";
+        if (key.startsWith(stage + ":") && attempt.status === "complete") {
+          attempt.status = "rejected";
+          await rejectLateReceipt(current, key);
+        }
     }
     if (writingStages.length) await persist(current);
     const index = (current.counts.get(current.scope) ?? 0) - 1;
@@ -332,6 +408,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       const result = current.operation.attempts[key]?.result as
         { content?: unknown; finishReason?: unknown } | undefined;
       current.operation.attempts[key] = { status: "rejected" };
+      await rejectLateReceipt(current, key);
       await persist(current);
       if (detail && typeof result?.content === "string") {
         try {
@@ -506,6 +583,15 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             "SCENE_STALE",
             "The scene changed in another tab. Your draft is preserved; review the updated scene before sending again.",
           );
+        if (
+          options.recovery &&
+          prior?.id === id &&
+          prior.status !== "complete" &&
+          prior.sceneRevision !== sceneRevision(data) &&
+          !(data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === id) &&
+          !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
+        )
+          throw venueRefusal("SCENE_STALE", "The Scene changed after generation. Saved results are preserved.");
         if (prior?.id === id && prior.status !== "complete") {
           authorizedRetry = retryOfAttemptId === prior.attemptId;
           if (!options.recovery && !options.replay && retryOfAttemptId !== prior.attemptId)

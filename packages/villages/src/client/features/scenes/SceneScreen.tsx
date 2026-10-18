@@ -320,7 +320,8 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           debugDiscardEnabled={debugDiscardEnabled}
           onDebugDiscard={() => void discardRoomDebug()}
           onRetryGreeting={() => {
-            if (room.id) void greetRoom(room.id);
+            if (room.id && room.operation?.status === "interrupted") void retrySavedScene();
+            else if (room.id) void greetRoom(room.id);
             else {
               const place = snapshot?.settings.venues.find((candidate) => candidate.id === room.placeId);
               if (place) void openRoom(place);

@@ -31,6 +31,8 @@ export type BackgroundSummary = {
   failedAt?: string;
 };
 export type Step = {
+  /** Raw late evidence has been adopted but not yet validated by its generator. */
+  lateResponse?: boolean;
   key?: string;
   fingerprint: string;
   status: "running" | "completed";

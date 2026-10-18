@@ -106,7 +106,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       card: effectiveCard,
       characterId,
       sourceRevision: foundingTaskRevision(village, characterId, "routine"),
-      contractVersion: 1 as const,
+      contractVersion: 2 as const,
       allowInitialWish: false,
       circumstances: {
         worldFacts: village.worldFacts,
@@ -207,7 +207,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     recoverSavedResult: (input, steps) => {
       const saved = steps.find(
         (step) =>
-          ["owned-routine-profile", "founding-routine-v1"].includes(step.key ?? "") && step.status === "completed",
+          ["owned-routine-profile", "founding-routine-v1", "founding-routine-v2"].includes(step.key ?? "") &&
+          step.status === "completed",
       );
       if (!saved?.response) return undefined;
       return parseCompactFoundingCompletion(saved.response, { ...input.context, allowInitialWish: false }).agenda;
