@@ -457,7 +457,7 @@ export function createSceneWriting({
               JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
             ZONE_EVENT_CONTRACT.replace(
               ZONE_PLAYER_SPEECH_CONTRACT,
-              venueOperationInput()?.residentActionsVersion === 1
+              [1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
                 ? 'Player speech uses playerSpeechCapture only. Never put speakerId:"player" in segments; code materializes the exact captured source spans. Exclude actions/thoughts, recalled, hypothetical, imagined, example and negated speech. No player words on arrival or silent input.'
                 : ZONE_PLAYER_SPEECH_CONTRACT,
             )
@@ -735,10 +735,11 @@ export function createSceneWriting({
         )
           block.text = "";
       }
-      if (venueOperationInput()?.residentActionsVersion === 1) blocks.push({ text: RESIDENT_ACTION_WRITING });
+      if ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion)))
+        blocks.push({ text: RESIDENT_ACTION_WRITING });
       blocks.push({
         text:
-          (venueOperationInput()?.residentActionsVersion === 1
+          ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
             ? "System interprets consequences. Write Scene prose, exact speech/source, delivery metadata and residentActions only."
             : "System interprets consequences. Write Scene prose, exact speech/source and delivery metadata only.") +
           " Omit memoryChanges, relationshipChanges, wishChanges, projectSpeech, roomEvents, sceneChange and interpretationRouting. Existing cards and private audience boundaries still govern characterization.",
@@ -861,7 +862,7 @@ export function createSceneWriting({
           materializedRaw = materializePlayerSpeech(savedRaw, message);
           captureSources = playerSpeechCapture(materializedRaw, message, mode === "greet");
         } catch (error) {
-          if (venueOperationInput()?.residentActionsVersion === 1) {
+          if ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))) {
             await rejectVenueCompletion(
               { model: model.model, connectionId: model.connectionId, reason: "speech-capture" },
               { preserveWriting: true, stages: ["writing-completion:" + requestKey] },
@@ -1038,7 +1039,7 @@ export function createSceneWriting({
       });
     }
     let residentActions: ReturnType<typeof readResidentActions> | undefined;
-    if (venueOperationInput()?.residentActionsVersion === 1) {
+    if ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))) {
       try {
         residentActions = readResidentActions(raw?.residentActions);
       } catch (error) {
@@ -1519,7 +1520,9 @@ export function createSceneWriting({
               version: 2 as const,
               sourceHash: semanticResult.sourceHash,
               ...(venueOperationInput()?.semanticPipelineVersion === 3 ? { pipelineVersion: 3 as const } : {}),
-              ...(venueOperationInput()?.residentActionsVersion === 1 ? { residentActionsVersion: 1 as const } : {}),
+              ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
+                ? { residentActionsVersion: venueOperationInput()?.residentActionsVersion as 1 | 2 }
+                : {}),
               authority: semanticResult.authority,
               interpretedAt: new Date().toISOString(),
             } as import("../../domain/models/semantic-model.js").SemanticProvenance)

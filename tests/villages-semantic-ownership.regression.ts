@@ -148,7 +148,8 @@ async function main() {
   let loreReads = 0;
   let accessRows: any[] = [];
   let actionReview: ((packet: any) => any) | undefined;
-  let narrationPrompt = "";
+  let narrationPrompt = "",
+    systemPrompt = "";
   let narrativeActions: unknown;
   let behavior: "valid" | "wrong-hash" | "length" | "missing-domain" | "needs-context" = "valid";
   let lastPacket: any;
@@ -201,6 +202,7 @@ async function main() {
       assert.equal(options.usagePurpose, isSystem ? "checks" : "conversation");
       assert.ok(output <= (isSystem ? 8192 : 4096));
       if (isSystem) {
+        systemPrompt = messages.map((m) => m.content).join("\n");
         outputRequests.push(output);
         const combined = JSON.parse(messages[1].content).input.pipelineVersion === 3;
         assert.equal(options.reasoningEffort, combined ? "none" : "low");
@@ -678,6 +680,45 @@ async function main() {
     change(invalid);
     assert.throws(() => reconcileResidentActions(actions, invalid, evidence), /retained/);
   }
+  // A redundant player:none row and same-actor corroboration do not change the scoped action.
+  const redundantEvidence = semanticEvidence([
+    { ...accessLine, role: "user", speakerId: "player", content: "May I visit?" },
+    { ...accessLine, content: "Sit beside me." },
+    { ...accessLine, content: "A short visit suits me." },
+  ] as any);
+  const redundantReview = reviewFor(redundantEvidence, actions);
+  redundantReview.coverage.unshift({ segment: 0, status: "none", actionIds: [], reason: "Player request" });
+  redundantReview.coverage[2] = {
+    segment: 2,
+    status: "actions",
+    actionIds: ["invitation"],
+    reason: "Same actor confirms the visit",
+  };
+  assert.deepEqual(reconcileResidentActions(actions, redundantReview, redundantEvidence).access[0].evidence, [1]);
+  for (const mutation of [
+    (r: any, e: any[]) => {
+      r.coverage[0].status = "actions";
+      r.coverage[0].actionIds = ["invitation"];
+    },
+    (_r: any, e: any[]) => {
+      e[2].playerHeard = false;
+    },
+    (_r: any, e: any[]) => {
+      e[2].speakerId = "other";
+    },
+    (_r: any, e: any[]) => {
+      e[2].kind = "narration";
+      e[2].speakerId = "__venue_scene__";
+    },
+    (r: any) => {
+      r.coverage[1] = { segment: 1, status: "none", actionIds: [], reason: "Missing primary source" };
+    },
+  ]) {
+    const r = structuredClone(redundantReview),
+      e = structuredClone(redundantEvidence);
+    mutation(r, e);
+    assert.throws(() => reconcileResidentActions(actions, r, e), /retained/);
+  }
   const receipt = reconcileResidentActions(actions, review, evidence).receipt;
   assert.throws(() => assertResidentActionWitnesses(receipt, [{ ...evidence[0]!, playerHeard: false }]), /witnessed/);
   assert.throws(() => assertResidentActionWitnesses(receipt, [{ ...evidence[0]!, heardBy: [] }]), /witnessed/);
@@ -759,13 +800,13 @@ async function main() {
   actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
   const actionScene = {
     ...combinedScene,
-    operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 1 } },
+    operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 2 } },
   } as typeof scene;
   const actionWriter = createSceneWriting({
     ...writerPorts,
     venueOperationInput: () => ({
       semanticPipelineVersion: 3,
-      residentActionsVersion: 1,
+      residentActionsVersion: 2,
       writingContractVersion: 3,
       writingCapabilities: {
         management: false,
@@ -781,7 +822,8 @@ async function main() {
   assert.match(narrationPrompt, /Never put speakerId:"player" in segments/);
   assert.doesNotMatch(narrationPrompt, /Represent CURRENT player speech first/);
   assert.match(narrationPrompt, /Unquoted:\{text:"exact span",occurrence:1\}/);
-  assert.equal(actionResult.semanticProvenance?.residentActionsVersion, 1);
+  assert.doesNotMatch(systemPrompt, /access rows use|Permissions use|Relationship permissions describe standing/);
+  assert.equal(actionResult.semanticProvenance?.residentActionsVersion, 2);
   assert(actionResult.residentActionReceipt?.systemResponse?.includes("residentActionReview"));
   const decodedReceipt = coerceSession({
     ...actionScene,
@@ -797,7 +839,7 @@ async function main() {
     semantic: createSemanticService(ports),
     venueOperationInput: () => ({
       semanticPipelineVersion: 3,
-      residentActionsVersion: 1,
+      residentActionsVersion: 2,
       writingContractVersion: 3,
       writingCapabilities: {
         management: false,
@@ -809,6 +851,49 @@ async function main() {
     }),
   }).generate(actionScene, "A quiet conversation", "chat", "", null);
   assert.equal(calls.length, 2, "Service reconstruction reuses saved Narration and parsed System response");
+  // Simulate interruption after a raw completion, before the parsed checkpoint commits.
+  const rawReplies = new Map<string, unknown>();
+  let interruptParsed = true;
+  const upgradePorts = {
+    ...ports,
+    completeWithRoom: async (...args: Parameters<typeof ports.completeWithRoom>) => {
+      const fingerprint = JSON.stringify(args[1]);
+      if (rawReplies.has(fingerprint)) return structuredClone(rawReplies.get(fingerprint));
+      const result = await ports.completeWithRoom(...args);
+      rawReplies.set(fingerprint, structuredClone(result));
+      return result;
+    },
+    venueCheckpoint: async (key: string, work: () => Promise<unknown>) => {
+      if (checkpoints.has(key)) return structuredClone(checkpoints.get(key));
+      const result = await work();
+      if (interruptParsed && /^semantic-v2:exchange:[a-f0-9]{64}$/.test(key)) {
+        interruptParsed = false;
+        throw Error("Interrupted before parsed commit");
+      }
+      checkpoints.set(key, structuredClone(result));
+      return result;
+    },
+  } as unknown as SemanticPorts;
+  checkpoints.clear();
+  const upgradeService = createSemanticService(upgradePorts);
+  const legacyActionScene = {
+    ...actionScene,
+    operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 1 } },
+  } as typeof scene;
+  await assert.rejects(upgradeService.exchange(legacyActionScene, "Upgrade replay", [], null, []), /Interrupted/);
+  const rawCallsBeforeReplay = calls.length;
+  for (const [key, value] of checkpoints) if (key.endsWith(":input")) delete (value as any).instruction;
+  await upgradeService.exchange(legacyActionScene, "Upgrade replay", [], null, []);
+  assert.equal(calls.length, rawCallsBeforeReplay, "A v1 raw response survives upgrade without a parsed receipt");
+  checkpoints.clear();
+  interruptParsed = true;
+  await assert.rejects(upgradeService.exchange(actionScene, "Frozen prompt", [], null, []), /Interrupted/);
+  const frozenRawCalls = calls.length;
+  const promptSnapshot = [...checkpoints].find(([key]) => key.endsWith(":input"))![1] as any;
+  assert.equal(typeof promptSnapshot.instruction, "string");
+  // Changing the caller's contract cannot change the already-frozen request's messages.
+  await upgradeService.exchange(legacyActionScene, "Frozen prompt", [], null, []);
+  assert.equal(calls.length, frozenRawCalls, "Frozen instruction reuses the completed raw response");
   state.venues = [venue];
   const checksBefore = calls.length;
   const accessScene = { ...actionScene, placeId: venue.id };

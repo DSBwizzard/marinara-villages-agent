@@ -46,7 +46,7 @@ export type SemanticExchange = {
 
 export type SemanticProvenance = {
   pipelineVersion?: 3;
-  residentActionsVersion?: 1;
+  residentActionsVersion?: 1 | 2;
   authority?: SemanticExchange["authority"];
   version: 2;
   sourceHash: string;

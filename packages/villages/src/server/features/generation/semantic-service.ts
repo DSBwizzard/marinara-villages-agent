@@ -1,5 +1,7 @@
+import { RELATIONSHIP_PERMISSION_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
   RESIDENT_ACTION_REVIEW,
+  RESIDENT_ACTION_REVIEW_V1,
   reconcileResidentActions,
   type ResidentAccessAction,
 } from "../../domain/rules/resident-actions.js";
@@ -77,6 +79,7 @@ export function createSemanticService(ports: SemanticPorts) {
           model: initial.model,
           output: Math.min(initial.maxOutputTokens ?? taskOutput, taskOutput),
           outputPolicy: 3,
+          instruction,
           reasoningEffort: identity.pipelineVersion === 3 ? ("none" as const) : ("low" as const),
           budget: { inputTokens: 12000, plannedShards: 1 },
         };
@@ -123,7 +126,7 @@ export function createSemanticService(ports: SemanticPorts) {
             "Use ONLY supplied IDs and witnessed evidence. Distinguish statement, belief, plan, promise, attempt and completed deed. " +
             "No invented witnesses, consent, access, stock or capabilities. Explicit game rules constrain outcomes; ordinary meaning does not require special phrases. " +
             "The supplied history/memories are bounded retrieval, never proof of absence. Catalog hints locate sources only, not evidence. If more context is necessary, return {sourceHash,needsContext:[up to 8 exact catalog memory IDs],reason} instead of an outcome. Only one expansion is available, on an explicit new attempt; after expandedContext, insufficient/omitted scope must remain unresolved. No guessing from missing context. " +
-            instruction,
+            (snapshot.instruction ?? instruction),
         },
         { role: "user" as const, content: JSON.stringify({ sourceHash: effectiveHash, input: effectiveInput }) },
       ];
@@ -305,6 +308,7 @@ export function createSemanticService(ports: SemanticPorts) {
     const state = await ports.readVillageState();
     const evidence = semanticEvidence(lines);
     const combined = scene.operation?.input.semanticPipelineVersion === 3;
+    const actionContractV2 = scene.operation?.input.residentActionsVersion === 2;
     const context = semanticContext(scene, state, message, combined);
     return ask(
       "exchange",
@@ -316,20 +320,26 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
-      (residentActions ? RESIDENT_ACTION_REVIEW + " " : "") +
+      (residentActions ? (actionContractV2 ? RESIDENT_ACTION_REVIEW : RESIDENT_ACTION_REVIEW_V1) + " " : "") +
         (combined
           ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. Include every meaningful input span in source order. Zone movements require exact existing zoneId. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
           : "") +
         "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash,consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false},action:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}}. Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
         "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
         "events independently discovers resident moves [{characterId,zoneId,segment:narration index}], playerMoves:[{zoneId,segment:narration index}] matching every prepared movement timeline span, departures/contactEnd [{source:speech index}], sceneEnded:{source}, residenceRequest:{source,venueId}, residenceDecision:{source,approved}, upgradeRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
-        'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ' +
+        (actionContractV2
+          ? ""
+          : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
         'projectSpeech rows use {projectId,revision,kind:"approval|builder|requirements|offer|handoff",requirementId?:exact supply ID,speakerId,citations:[{segment,quote}],checklist:[]}. Cite exact speech; promises are not completed work. Offer establishes only a finite resident supply source; handoff requires a witnessed actual transfer from an existing supplied source in this Zone, never merely promised availability. Code retains inventory, quantities and source claims. ' +
-        LIVE_MEMORY_INSTRUCTION +
+        (actionContractV2
+          ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
+          : LIVE_MEMORY_INSTRUCTION) +
         " " +
         WISH_PROPOSAL_INSTRUCTION +
         " Use numeric indexes matching evidence draft:N for current memory evidence/relationship lineIds/Wish evidence. Consolidate memory facts sharing kind, category, subject IDs, knower IDs and evidence IDs into one row; never repeat a unit. Do not emit systemVerification fields. Every knower must witness ALL support and meaning-bearing context. Temporary seating/company may be passing, never automatically trust. " +
-        'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist. Relationship changes additionally use contact:boolean for substantive actual shared contact; private opinion changes alone are not contact. Relationship permissions describe standing grants/revocations only. Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words.',
+        'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist. Relationship changes additionally use contact:boolean for substantive actual shared contact; private opinion changes alone are not contact.' +
+        (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
+        " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words.",
       (raw, hash, savedInput): SemanticExchange => {
         if (raw.consistent !== true)
           throw badGateway("System could not establish a consistent Scene outcome. The draft is preserved.");
