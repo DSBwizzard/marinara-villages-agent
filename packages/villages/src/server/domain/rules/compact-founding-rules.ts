@@ -177,7 +177,7 @@ export function parseCompactFounding(
           row.duration > ROUTINE_CONTRACT.maxMinutes)
       )
         throw new Error(
-          `Routine activity ${index + 1} duration must be ${ROUTINE_CONTRACT.minMinutes}–${ROUTINE_CONTRACT.maxMinutes} minutes (received ${typeof row.duration === "number" && Number.isFinite(row.duration) ? row.duration : "non-numeric"}).`,
+          `Routine activity ${index + 1} duration ${typeof row.duration === "number" && Number.isFinite(row.duration) ? row.duration : "non-numeric"}; expected ${ROUTINE_CONTRACT.minMinutes}–${ROUTINE_CONTRACT.maxMinutes} minutes.`,
         );
       if (
         !row ||
