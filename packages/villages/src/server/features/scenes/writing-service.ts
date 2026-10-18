@@ -20,6 +20,7 @@ import {
   zoneEventReply,
   zoneEventHearingContext,
   ZONE_EVENT_CONTRACT,
+  ZONE_PLAYER_SPEECH_CONTRACT,
 } from "../../domain/rules/zone-events.js";
 import { contactPosition } from "../../domain/rules/venue-contact.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -455,12 +456,19 @@ export function createSceneWriting({
             "Input source quotes (text IDs, never audibility): " +
               JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
             ZONE_EVENT_CONTRACT.replace(
-              "Physical changes still need validated sceneChange: sound proves no repair, transfer, permission or lasting effect.",
-              "System must validate physical outcomes; sound proves no deed.",
-            ).replace(
-              "No recap, contactIntent, contactRelay or player movement.",
-              "No recap, contactIntent or contactRelay. Preserve System's ordered player movement between exact speech spans.",
-            ),
+              ZONE_PLAYER_SPEECH_CONTRACT,
+              venueOperationInput()?.residentActionsVersion === 1
+                ? 'Player speech uses playerSpeechCapture only. Never put speakerId:"player" in segments; code materializes the exact captured source spans. Exclude actions/thoughts, recalled, hypothetical, imagined, example and negated speech. No player words on arrival or silent input.'
+                : ZONE_PLAYER_SPEECH_CONTRACT,
+            )
+              .replace(
+                "Physical changes still need validated sceneChange: sound proves no repair, transfer, permission or lasting effect.",
+                "System must validate physical outcomes; sound proves no deed.",
+              )
+              .replace(
+                "No recap, contactIntent, contactRelay or player movement.",
+                "No recap, contactIntent or contactRelay. Preserve System's ordered player movement between exact speech spans.",
+              ),
             context.presentation,
             'Optional per-segment staging:[{characterId,position?:"left|center|right",expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]. Use listed active character/expression IDs; omission preserves the current pose. Visual cues establish no knowledge, consent or effects.',
             ...context.expressions,
