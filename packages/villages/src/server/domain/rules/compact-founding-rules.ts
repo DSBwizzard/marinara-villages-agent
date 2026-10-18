@@ -160,8 +160,19 @@ export function parseCompactFounding(
   context: CompactFoundingContext,
 ): CompactFoundingResult {
   if (context.contractVersion && Array.isArray(payload.palette))
-    for (const value of payload.palette) {
+    for (const [index, value] of payload.palette.entries()) {
       const row = value as Record<string, unknown>;
+      if (
+        row &&
+        typeof row === "object" &&
+        (typeof row.duration !== "number" ||
+          !Number.isFinite(row.duration) ||
+          row.duration < ROUTINE_CONTRACT.minMinutes ||
+          row.duration > ROUTINE_CONTRACT.maxMinutes)
+      )
+        throw new Error(
+          `Routine activity ${index + 1} duration must be ${ROUTINE_CONTRACT.minMinutes}–${ROUTINE_CONTRACT.maxMinutes} minutes (received ${typeof row.duration === "number" && Number.isFinite(row.duration) ? row.duration : "non-numeric"}).`,
+        );
       if (
         !row ||
         typeof row !== "object" ||

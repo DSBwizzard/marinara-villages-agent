@@ -187,3 +187,15 @@ assert.throws(
     ),
   /weekday/,
 );
+
+assert.throws(
+  () =>
+    parseCompactFounding(
+      {
+        ...ingredients,
+        palette: ingredients.palette.map((row, index) => (index === 0 ? { ...row, duration: 360 } : row)),
+      },
+      { ...context, contractVersion: 2 },
+    ),
+  /Routine activity 1 duration must be 30–240 minutes \(received 360\)/,
+);
