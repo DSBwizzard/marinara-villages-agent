@@ -34,7 +34,7 @@
     "note": "Recursively scans the complete client source prefix, including future prohibited estimator/re-enablement files; does not follow imports."
   },
   "tests/villages-connections.regression.ts": {
-    "sha256": "fe050e8a3073cb24308d3d9ec1aa58db805ee93a577a01a5cb81b405f05fca85",
+    "sha256": "563fbfe2889a61dbb436407580fe594c5d44167da858b6540f3870fb39e9ae71",
     "inputs": [
       "packages/villages/src/server/",
       "packages/villages/src/shared/",
@@ -79,7 +79,7 @@
     "note": "Extracts and executes archive-identical server payload; retain all HTTP/state assertions and generated server/builder dependencies."
   },
   "tests/villages-zone-events-packaged.regression.ts": {
-    "sha256": "e3c6c9c977fd61a060a14f4e1a4add0b31ebed816292e8015a3aac01274ec992",
+    "sha256": "99747ee8b9a41a52a6c46727b2ef724e6e8625858c98b1064073615367045f70",
     "inputs": ["packages/villages/src/server/", "packages/villages/src/shared/", "sources/"],
     "note": "Extracts and executes archive-identical server payload; retain payload equality, HTTP/recovery assertions and generated server/builder dependencies."
   },
@@ -89,7 +89,7 @@
     "note": "Fixed entry bundle replaces the application with an in-memory plugin; no repository loader escapes that server boundary."
   },
   "tests/villages-location-image.regression.ts": {
-    "sha256": "b2a74186da814c73da9c3b7417496fdfbfb60a7a238405aa7ef358e3b29ba167",
+    "sha256": "668ab7bc9023251366144d628357d2a4101652e673779bf8449b1210ff959d14",
     "inputs": ["packages/villages/src/", "packages/villages/engine-boundary.json", "sources/"],
     "note": "Recursively audits all package source and Engine boundary for image-generation paths; do not reduce to media modules."
   },

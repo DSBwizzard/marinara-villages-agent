@@ -179,7 +179,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.deepEqual((await f.refs()).completion, { roomId: "A", submissionId: "prior-marker" });
         assert.equal(f.requests.filter((r) => r.method === "POST").length, restored === "opening" ? 1 : 0);
         assert.equal(await f.page.evaluate(() => window.loads), 0);
-        assert.deepEqual(await f.page.evaluate(() => window.timeouts), restored === "opening" ? [30_000] : []);
+        assert.deepEqual(await f.page.evaluate(() => window.timeouts), []);
         if (!strict) assert.equal(f.requests.filter((r) => r.kind === "active").length, 1);
         if (restored !== null) {
           assert.equal((await f.state()).screen, "room");
@@ -314,7 +314,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.equal(value.status, ["active", "closed"].includes(recovered) ? recovered : "opening");
         assert.equal(value.greetingError === null, ["active", "closed"].includes(recovered));
         assert.equal(f.requests.filter((r) => r.method === "POST").length, 1);
-        assert.deepEqual(await f.page.evaluate(() => window.timeouts), [30_000, 5_000]);
+        assert.deepEqual(await f.page.evaluate(() => window.timeouts), [5_000]);
         assert.equal(await f.page.evaluate(() => window.loads), 0);
         await f.finish();
       }
