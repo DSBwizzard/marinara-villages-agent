@@ -64,6 +64,25 @@ const context = (native: ReturnType<typeof schedule> | null) => ({
   schedule: native,
 });
 
+// A single choice per daypart is complete and normalizes without inventing choices.
+{
+  const answer = {
+    ...payload(0),
+    wishes: [],
+    palette: palette.map((row) => ({ ...row, duration: 90, flexible: false, essential: true, parts: [0, 1, 2, 3] })),
+    days: Array.from({ length: 7 }, () => [0, 1, 2, 3]),
+  };
+  const contextV1 = { ...context(null), contractVersion: 1 as const, allowInitialWish: false };
+  assert.deepEqual(parseCompactFounding(answer, contextV1).agenda.routineProfile!.days[0], [0, 0, 1, 1, 2, 2, 3, 3]);
+  for (const invalid of [
+    [0, 1, 2],
+    [0, 1, 2, 99],
+  ])
+    assert.throws(
+      () => parseCompactFounding({ ...answer, days: [invalid, ...answer.days.slice(1)] }, contextV1),
+      /complete seven-day/,
+    );
+}
 // Ordinary activity bounds do not limit fixed overnight rest windows.
 for (const endMinute of [360, 480]) {
   const answer = {
@@ -80,7 +99,7 @@ for (const endMinute of [360, 480]) {
   answer.palette[0].duration = 360;
   assert.throws(
     () => parseCompactFounding(answer, strictContext),
-    /Routine activity 1 .*duration 360; expected 30�240 minutes/,
+    /Routine activity 1 .*duration 360; expected 30–240 minutes/,
   );
 }
 

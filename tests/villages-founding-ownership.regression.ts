@@ -4,6 +4,7 @@ import { villageFoundingSetting, remapVenues } from "../packages/villages/src/se
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   foundingSlot,
+  foundingCompletedIds,
   foundingTaskRevision,
   completeFoundingTask,
 } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
@@ -348,7 +349,29 @@ async function legacyOpeningRecovery() {
   await service.prepareFoundedVillage();
   assert.equal(f.state().opening?.proposals.length, 1, "Replay preserves the single saved proposal");
 }
+async function partialOpeningCount() {
+  const f = fixture("partial-opening");
+  f.state().foundingPreparation!.venueDetailsSeeded = true;
+  f.state().opening = initialOpening(["first", "second"], "same-venue", "partial-opening");
+  f.gate.resolve();
+  await f.service.prepareFoundedVillage();
+  assert.equal(f.state().foundingPreparation!.status, "failed");
+  assert.deepEqual(
+    f.state().foundingPreparation!.completedIds,
+    ["first", "second"],
+    "Missing proposals cannot roll back successful task counts",
+  );
+  const marker = f.state().foundingPreparation!;
+  marker.completedIds = [];
+  marker.tasks!.second!.routine!.status = "failed";
+  assert.deepEqual(
+    foundingCompletedIds(f.state()),
+    ["first"],
+    "Visible count follows current task receipts even if saved aggregate is stale",
+  );
+}
 async function main() {
+  await partialOpeningCount();
   await legacyOpeningRecovery();
   await independentFounding();
   await scopedAndDefaultDispatch();

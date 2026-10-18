@@ -6,7 +6,7 @@ import { villageFoundingSetting, remapVenues } from "../../domain/rules/prompt-p
 import { readSemanticWishCriteria } from "../../domain/rules/wish-criteria.js";
 import { coerceWish } from "../../domain/rules/prompt-preset.js";
 import type { FoundingRetry, FoundingTaskKind } from "../../../shared/contracts/founding-tasks.js";
-import { foundingSlot, foundingTaskRevision } from "../../domain/rules/founding-tasks.js";
+import { foundingCompletedIds, foundingSlot, foundingTaskRevision } from "../../domain/rules/founding-tasks.js";
 import { parseCompactFoundingCompletion } from "../../domain/rules/compact-founding-rules.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
@@ -280,23 +280,19 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       await mutateVillageState((state) => {
         const marker = state.foundingPreparation;
         if (state.seed !== initial.seed || marker?.status !== "pending") return;
-        marker.completedIds = state.villagers
-          .filter((row) =>
-            ["routine", "wish"].every(
-              (kind) => marker.tasks?.[row.characterId]?.[kind as FoundingTaskKind]?.status === "completed",
-            ),
-          )
-          .map((row) => row.characterId);
-        if (
-          state.opening?.residentIds.some(
-            (id) =>
-              state.villagers.some((resident) => resident.characterId === id) &&
-              !state.opening!.proposals.some((proposal) => proposal.residentId === id),
-          )
-        )
-          throw new Error("Opening proposal preparation is incomplete. Retry preparation.");
-        marker.status = marker.completedIds.length === state.villagers.length ? "ready" : "failed";
-        marker.error = marker.status === "failed" ? "Resident preparation incomplete." : "";
+        marker.completedIds = foundingCompletedIds(state);
+        const proposalsIncomplete = state.opening?.residentIds.some(
+          (id) =>
+            state.villagers.some((resident) => resident.characterId === id) &&
+            !state.opening!.proposals.some((proposal) => proposal.residentId === id),
+        );
+        marker.status =
+          !proposalsIncomplete && marker.completedIds.length === state.villagers.length ? "ready" : "failed";
+        marker.error = proposalsIncomplete
+          ? "Opening proposal preparation is incomplete. Retry preparation."
+          : marker.status === "failed"
+            ? "Resident preparation incomplete."
+            : "";
         marker.currentId = "";
         marker.currentTask = undefined;
         marker.stage = undefined;

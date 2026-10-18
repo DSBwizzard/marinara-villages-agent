@@ -152,7 +152,7 @@ export function parseCompactFounding(
         (typeof row.duration !== "number" || !Number.isFinite(row.duration) || row.duration < 30 || row.duration > 240)
       )
         throw new Error(
-          `Routine activity ${index + 1} (${typeof row.activity === "string" ? row.activity.slice(0, 80) : "unnamed"}) has duration ${String(row.duration).slice(0, 30)}; expected 30�240 minutes.`,
+          `Routine activity ${index + 1} (${typeof row.activity === "string" ? row.activity.slice(0, 80) : "unnamed"}) has duration ${String(row.duration).slice(0, 30)}; expected 30–240 minutes.`,
         );
       if (
         !row ||
@@ -185,10 +185,7 @@ export function parseCompactFounding(
     !Array.isArray(days) ||
     days.length !== 7 ||
     days.some(
-      (day) =>
-        !Array.isArray(day) ||
-        !(context.contractVersion === 1 ? [8] : [4, 8]).includes(day.length) ||
-        day.some((id) => !validIndex(id, palette.length)),
+      (day) => !Array.isArray(day) || ![4, 8].includes(day.length) || day.some((id) => !validIndex(id, palette.length)),
     )
   )
     throw new Error("The model did not provide a complete seven-day activity pattern.");

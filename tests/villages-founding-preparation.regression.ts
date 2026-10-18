@@ -440,7 +440,10 @@ async function main() {
         continue;
       }
       const previewWrites = writes;
-      assert.equal((await previewVillageBurst({ action: "founding" })).requests, recovery === "alias" ? 2 : 3);
+      assert.equal(
+        (await previewVillageBurst({ action: "founding" })).requests,
+        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
+      );
       assert.equal(writes, previewWrites, "recovery forecasts do not write");
       assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
       conflicts = 2;
@@ -451,7 +454,7 @@ async function main() {
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
       assert.equal(
         calls.length,
-        recovery === "alias" ? 2 : 3,
+        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
         "only invalid saved replies need replacement requests: " + recovery + JSON.stringify(calls),
       );
       assert.ok(
