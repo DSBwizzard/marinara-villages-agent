@@ -858,6 +858,8 @@ async function main() {
   assert.doesNotMatch(narrationPrompt, /Represent CURRENT player speech first/);
   assert.match(narrationPrompt, /Unquoted:\{text:"exact span",occurrence:1\}/);
   assert.doesNotMatch(systemPrompt, /access rows use|Permissions use|Relationship permissions describe standing/);
+  assert.match(systemPrompt, /Return the complete exchange JSON, never needsContext/);
+  assert.doesNotMatch(systemPrompt, /If more context is necessary, return/);
   assert.equal(actionResult.semanticProvenance?.residentActionsVersion, 2);
   assert(actionResult.residentActionReceipt?.systemResponse?.includes("residentActionReview"));
   const decodedReceipt = coerceSession({
@@ -917,7 +919,12 @@ async function main() {
   } as typeof scene;
   await assert.rejects(upgradeService.exchange(legacyActionScene, "Upgrade replay", [], null, []), /Interrupted/);
   const rawCallsBeforeReplay = calls.length;
-  for (const [key, value] of checkpoints) if (key.endsWith(":input")) delete (value as any).instruction;
+  for (const [key, value] of checkpoints)
+    if (key.endsWith(":input")) {
+      delete (value as any).instruction;
+      delete (value as any).systemPrompt;
+      delete (value as any).currentEvidenceOnly;
+    }
   await upgradeService.exchange(legacyActionScene, "Upgrade replay", [], null, []);
   assert.equal(calls.length, rawCallsBeforeReplay, "A v1 raw response survives upgrade without a parsed receipt");
   checkpoints.clear();
@@ -926,9 +933,41 @@ async function main() {
   const frozenRawCalls = calls.length;
   const promptSnapshot = [...checkpoints].find(([key]) => key.endsWith(":input"))![1] as any;
   assert.equal(typeof promptSnapshot.instruction, "string");
+  assert.equal(typeof promptSnapshot.systemPrompt, "string");
   // Changing the caller's contract cannot change the already-frozen request's messages.
   await upgradeService.exchange(legacyActionScene, "Frozen prompt", [], null, []);
   assert.equal(calls.length, frozenRawCalls, "Frozen instruction reuses the completed raw response");
+  checkpoints.clear();
+  state.chronicle = [
+    {
+      id: "needed-memory",
+      kind: "event",
+      scope: "private",
+      text: "A historical condition.",
+      actors: [{ id: "host", name: "Host" }],
+      knownByCharacterIds: ["host"],
+      at: scene.startedAt,
+    },
+  ] as any;
+  const currentContextScene = { ...actionScene, activeIds: ["host"] };
+  behavior = "needs-context";
+  const beforeCurrentContext = calls.length;
+  await assert.rejects(
+    service.exchange(currentContextScene, "Current verdict", [], null, []),
+    /did not finish the current Scene verdict/,
+  );
+  assert.equal(calls.length, beforeCurrentContext + 1, "Current-scene retrieval refusal adds no call");
+  assert(![...checkpoints.keys()].some((key) => key.endsWith(":retrieval")));
+  const oldPolicySnapshot = [...checkpoints].find(([key]) => key.endsWith(":input"))![1] as any;
+  delete oldPolicySnapshot.currentEvidenceOnly;
+  delete oldPolicySnapshot.systemPrompt;
+  await assert.rejects(
+    service.exchange(currentContextScene, "Current verdict", [], null, []),
+    /Additional System context is saved/,
+  );
+  assert.equal(calls.length, beforeCurrentContext + 2, "Older frozen v2 policy retains explicit retrieval behavior");
+  behavior = "valid";
+  state.chronicle = [];
   state.venues = [venue];
   const checksBefore = calls.length;
   const accessScene = { ...actionScene, placeId: venue.id };
