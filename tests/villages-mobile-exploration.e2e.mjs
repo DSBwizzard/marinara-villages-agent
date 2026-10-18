@@ -297,7 +297,15 @@ try {
     await expect(sharedPeople.locator("." + P + "-explore-row")).toHaveCount(1);
     await sharedPeople.getByRole("button", { name: /Mara Village Market/ }).click();
     await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
-    await expect(page.getByText("No wishes shared yet", { exact: true })).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Villager profile sections" })
+      .getByRole("button", { name: "Wishes", exact: true })
+      .click();
+    await expect(page.getByText("No wishes shared yet.", { exact: true })).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Villager profile sections" })
+      .getByRole("button", { name: "Venues", exact: true })
+      .click();
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
     const sharedPreview = venueCard("Village Market");
     await expect(sharedPreview.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
@@ -529,6 +537,10 @@ try {
     await screenshot("people");
     await sheet.getByRole("button", { name: /Mara Village Market/ }).click();
     await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Villager profile sections" })
+      .getByRole("button", { name: "Venues", exact: true })
+      .click();
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
     sheet = venueCard("Village Market");
     await expect(sheet.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();

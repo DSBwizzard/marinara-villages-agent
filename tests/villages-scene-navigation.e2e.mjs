@@ -149,10 +149,16 @@ try {
   });
   await expect(page.locator("#screen")).toHaveText("person");
   await expect(page.getByRole("button", { name: "Inspect", exact: true })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "View Venue", exact: true })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Move out", exact: true })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "A project" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Generate signature", exact: true })).toBeEnabled();
+  await page.getByText("Manage", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Move out", exact: true })).toBeEnabled();
+  await page.getByText("Manage", { exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Villager profile sections" })
+    .getByRole("button", { name: "Venues", exact: true })
+    .click();
+  await expect(page.getByRole("button", { name: "View Venue", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "A project" })).toBeEnabled();
   await page.getByRole("button", { name: "Wishes", exact: true }).click();
   await expect(page.getByRole("button", { name: "Retire wish", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Back to Scene" }).click();
