@@ -1,3 +1,9 @@
+import {
+  completeFoundingTask,
+  foundingTaskRevision,
+  ownsFoundingTask,
+  foundingSlot,
+} from "../../domain/rules/founding-tasks.js";
 import { copyDate, calendarDate } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
@@ -11,7 +17,7 @@ import {
   influenceSettings,
   validateRoutineDay,
 } from "../../domain/rules/owned-routine.js";
-import { remapVenues, villageCurrentSetting, villageFoundingSetting } from "../../domain/rules/prompt-preset.js";
+import { remapVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import {
   deriveVillageMoment,
@@ -53,7 +59,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     mutateVillageState,
     reportFoundingProgress,
     readEffectiveVillagerCard,
-    reserveInitialWishAllowance,
     readVillageLore,
     queueBackgroundJob,
     backgroundWorkSummaries,
@@ -74,7 +79,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     });
     return true;
   }
-  async function queueVillagerAgenda(characterId: string, finite = true): Promise<void> {
+  async function readFoundingResidentContext(characterId: string) {
     const village = await readVillageState();
     const villager = village.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
@@ -91,14 +96,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       });
       return;
     }
-    const agendaSetting =
-      village.foundingPreparation?.status === "pending"
-        ? villageFoundingSetting(village)
-        : villageCurrentSetting(village);
-    const initialWishAttemptId =
-      village.foundingPreparation?.status === "pending"
-        ? await reserveInitialWishAllowance(characterId, villageNow())
-        : undefined;
+    const agendaSetting = village.setting;
     await reportFoundingProgress(village.seed, { stage: "lore" }, characterId);
     const native = villager.scheduleInfluence?.enabled
       ? await readNativeScheduleSnapshot(villageNow(), [characterId])
@@ -107,8 +105,14 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       semanticVersion: 2 as const,
       card: effectiveCard,
       characterId,
-      wishAttemptId: initialWishAttemptId,
-      allowInitialWish: !!initialWishAttemptId,
+      sourceRevision: foundingTaskRevision(village, characterId, "routine"),
+      contractVersion: 1 as const,
+      allowInitialWish: false,
+      circumstances: {
+        worldFacts: village.worldFacts,
+        details: village.foundingDetails,
+        imprint: village.scenarioImprint,
+      },
       playerRole: village.playerRole,
       playerPersonaName: village.playerPersonaName,
       schedule: native?.schedules.find((row) => row.characterId === characterId) ?? null,
@@ -140,27 +144,60 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       // house can be named for. The houses are left out for the same reason the
       // translation leaves them out — see `remapVenues`.
       venues: remapVenues(village.venues),
-      name: effectiveCard.name,
-      summary: effectiveCard.summary,
-      tags: effectiveCard.tags,
-      personality: effectiveCard.personality,
-      description: effectiveCard.description,
-      routineSummary: "",
     };
+    return context;
+  }
+  async function queueVillagerAgenda(characterId: string, finite = true): Promise<void> {
+    let village = await readVillageState();
+    const villager = village.villagers.find((row) => row.characterId === characterId);
+    if (!villager) return;
+    const context = await readFoundingResidentContext(characterId);
+    if (!context) throw new Error("Character identity is unavailable.");
+    village = await readVillageState();
+    if (context.sourceRevision !== foundingTaskRevision(village, characterId, "routine"))
+      throw new Error("Resident context changed. Retry routine.");
+    const founding = village.foundingPreparation?.tasksVersion === 1 && village.foundingPreparation.status !== "ready";
+    const revision = founding
+      ? foundingTaskRevision(village, characterId, "routine")
+      : agendaRevision(village, characterId);
+    if (founding)
+      await mutateVillageState((state) => {
+        const marker = state.foundingPreparation;
+        if (
+          state.seed !== village.seed ||
+          !marker ||
+          marker.status !== "pending" ||
+          context.sourceRevision !== foundingTaskRevision(state, characterId, "routine")
+        )
+          throw new Error("Resident context changed. Retry routine.");
+        marker.tasks ??= {};
+        marker.tasks[characterId] ??= {};
+        const old = marker.tasks[characterId].routine;
+        if (old?.revision !== revision)
+          marker.tasks[characterId].routine = {
+            contract: 1,
+            revision,
+            jobId: foundingSlot("routine", characterId),
+            status: "pending",
+            attempt: 0,
+            error: "",
+          };
+      });
     await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
     await queueBackgroundJob({
       kind: "agenda",
+      retryActionId: founding ? village.foundingPreparation?.retryActions?.at(-1) : undefined,
       subjectId: characterId,
       seed: village.seed,
-      revision: agendaRevision(village, characterId),
+      revision,
       finite,
       label: villager.cardSnapshot.name + "'s agenda",
-      legacyError: villager.agenda?.personalizationFailure,
+      legacyError: founding ? undefined : villager.agenda?.personalizationFailure,
       input: {
         seed: village.seed,
         characterId,
-        initialWishAttemptId,
-        revision: agendaRevision(village, characterId),
+        foundingContract: founding ? 1 : undefined,
+        revision,
         context,
       },
     });
@@ -168,9 +205,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
 
   const agendaBackgroundHandler: Handler = {
     recoverSavedResult: (input, steps) => {
-      const saved = steps.find((step) => step.key === "owned-routine-profile" && step.status === "completed");
+      const saved = steps.find(
+        (step) =>
+          ["owned-routine-profile", "founding-routine-v1"].includes(step.key ?? "") && step.status === "completed",
+      );
       if (!saved?.response) return undefined;
-      return parseCompactFoundingCompletion(saved.response, input.context).agenda;
+      return parseCompactFoundingCompletion(saved.response, { ...input.context, allowInitialWish: false }).agenda;
     },
     generate: async (input) => {
       const job = (await backgroundWorkSummaries()).find(
@@ -185,8 +225,18 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     },
     valid: (state, input) =>
       state.villagers.some((resident) => resident.characterId === input.characterId) &&
-      agendaRevision(state, input.characterId) === input.revision,
-    apply: (state, input, agenda) => applyAgenda(state, input.characterId, agenda, input.initialWishAttemptId),
+      (input.foundingContract === 1
+        ? ownsFoundingTask(state, input.characterId, "routine", input.revision)
+        : agendaRevision(state, input.characterId) === input.revision),
+    apply: (state, input, agenda) => {
+      applyAgenda(
+        state,
+        input.characterId,
+        agenda,
+        input.foundingContract === 1 ? undefined : input.initialWishAttemptId,
+      );
+      if (input.foundingContract === 1) completeFoundingTask(state, input.characterId, "routine", input.revision);
+    },
   };
 
   /**
@@ -427,6 +477,11 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     await refreshVillagerRemaps(await readVillageState(), villageNow(), characterId);
   }
   return {
+    adoptFoundingRoutine: (state: VillageState, id: string, agenda: VillageAgenda, revision: string) => {
+      applyAgenda(state, id, agenda);
+      completeFoundingTask(state, id, "routine", revision);
+    },
+    readFoundingResidentContext,
     rollActiveAgendas,
     queueVillagerAgenda,
     backfillAgendas,

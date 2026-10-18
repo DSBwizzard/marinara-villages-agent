@@ -1,3 +1,4 @@
+import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { decodeVillageClock } from "../rules/clock-recovery.js";
@@ -2176,6 +2177,17 @@ export function coerceVillageState(value: unknown): VillageState {
         return null;
       return {
         status: preparation.status,
+        ...(preparation.tasksVersion === 1
+          ? {
+              tasksVersion: 1 as const,
+              tasks: coerceFoundingTasks(preparation.tasks),
+              retryActions: asStringArray(preparation.retryActions).slice(-32),
+              selectedTasks: asStringArray(preparation.selectedTasks),
+              ...(preparation.currentTask === "routine" || preparation.currentTask === "wish"
+                ? { currentTask: preparation.currentTask }
+                : {}),
+            }
+          : {}),
         completedIds: asStringArray(preparation.completedIds).slice(0, 12),
         venueDetailsSeeded: preparation.venueDetailsSeeded === true,
         currentId: asTrimmedString(preparation.currentId),

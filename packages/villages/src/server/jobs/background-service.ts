@@ -99,6 +99,40 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       throw new Error("The saved background job could not be read. Restore it from a backup.");
     return job;
   }
+  async function retainFoundingJob(job: Job): Promise<void> {
+    const historyId = "villages-background-history-" + job.id + "-" + job.attempt;
+    if (!(await villagesDocuments().getById(VILLAGES_PACKAGE_ID, historyId)))
+      await villagesDocuments().create({
+        id: historyId,
+        packageId: VILLAGES_PACKAGE_ID,
+        kind: "background-history",
+        name: "Retained founding request",
+        description: "Legacy request and billing evidence",
+        data: job,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+  }
+  async function retireLegacyFounding(job: Job): Promise<void> {
+    const state = await readVillageState(),
+      task = state.foundingPreparation?.tasks?.[job.subjectId]?.routine;
+    if (state.seed !== job.seed || task?.status !== "completed" || task.receipt !== task.revision) return;
+    await retainFoundingJob(job);
+    await changeJob(slotId(job), (current) => {
+      if (!current || current.id !== job.id || current.attempt !== job.attempt || running.has(slotId(job)))
+        throw conflict("Legacy founding job changed during recovery.");
+      return {
+        ...current,
+        status: "obsolete",
+        error: "Replaced by independent founding tasks.",
+        steps: [],
+        settings: {},
+        input: null,
+        result: undefined,
+        hasResult: false,
+      };
+    });
+  }
   async function backgroundStatus(
     kind: BackgroundKind,
     subjectId: string,
@@ -203,8 +237,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       tokens: null,
       error: work.legacyError ?? "",
       failedStep: null,
-      retryActions: [],
-      retrying: false,
+      retryActions: work.retryActionId ? [work.retryActionId] : [],
+      retrying: !!work.retryActionId,
       connectionId: "",
       highWaterDate: work.automaticDate ?? (previous?.seed === work.seed ? previous.highWaterDate : ""),
     };
@@ -290,6 +324,15 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     // Reserve before the first read or write: all callers share one admission.
     const task = (async () => {
       if (stopped) return;
+      const previous = await readJob(id);
+      if (
+        previous &&
+        previous.id !== jobId(work) &&
+        asRecord(work.input).foundingContract === 1 &&
+        asRecord(previous.input).foundingContract !== 1
+      ) {
+        await retainFoundingJob(previous);
+      }
       await changeJob(id, (previous) => {
         if (previous?.id === jobId(work)) {
           if (work.finite && !previous.finite) previous.finite = true;
@@ -442,9 +485,19 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           );
         } catch (error) {
           if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
-          pausedConnections.add(model.connectionId);
-          await persistConnectionPause(model.connectionId, true);
-          await changeJob(id, (current) => ({ ...current!, connectionPaused: true, usageComplete: false }));
+          const definitive =
+            (!!options.responseFormat &&
+              /response[_ ]?format|json[_ ]?(?:object|mode|schema)/iu.test(String(error)) &&
+              /unsupported|not support|invalid|unknown|not allowed|unrecognized/iu.test(String(error))) ||
+            /(?:\b401\b|\b403\b|invalid api key|missing.*connection|unsupported.*(?:model|response.format)|rejected JSON mode)/i.test(
+              String(error),
+            );
+          const pause = asRecord(job!.input).foundingContract !== 1 || definitive;
+          if (pause) {
+            pausedConnections.add(model.connectionId);
+            await persistConnectionPause(model.connectionId, true);
+          }
+          await changeJob(id, (current) => ({ ...current!, connectionPaused: pause, usageComplete: false }));
           throw new WorkFailureError({
             cause: "provider_exception",
             stage: "dispatch",
@@ -966,6 +1019,20 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             message: "Generation was interrupted. This request may already have incurred costs.",
           },
         }));
+      } else if (
+        (asRecord(job.input).foundingContract === 1 ||
+          (job.kind === "agenda" &&
+            (await readVillageState()).foundingPreparation?.status !== "ready" &&
+            !!(await readVillageState()).foundingPreparation)) &&
+        !job.hasResult &&
+        ["queued", "paused", "running"].includes(job.status)
+      ) {
+        await changeJob(record.id, (current) => ({
+          ...current!,
+          status: "interrupted",
+          owner,
+          error: "Preparation interrupted. Retry deliberately.",
+        }));
       } else if (["queued", "paused", "running"].includes(job.status)) launch(record.id);
     }
   }
@@ -1104,6 +1171,32 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   return {
     registerBackgroundHandler,
+    retireLegacyFounding,
+    backgroundJobSnapshot: (kind: BackgroundKind, subjectId: string) => readJob(slotId({ kind, subjectId })),
+    backgroundLegacyFounding: async (subjectId: string, seed: string, revision: string) => {
+      const current = await readJob(slotId({ kind: "agenda", subjectId }));
+      if (
+        current?.seed === seed &&
+        current.status !== "obsolete" &&
+        current.revision === revision &&
+        asRecord(current.input).foundingContract !== 1
+      )
+        return current;
+      const rows = await villagesDocuments().list(VILLAGES_PACKAGE_ID, "background-history");
+      return (
+        rows
+          .map((row) => row.data as Job)
+          .sort((a, b) => b.attempt - a.attempt)
+          .find(
+            (job) =>
+              job.seed === seed &&
+              job.kind === "agenda" &&
+              job.subjectId === subjectId &&
+              job.revision === revision &&
+              asRecord(job.input).foundingContract !== 1,
+          ) ?? null
+      );
+    },
     backgroundStatus,
     hasVillagePresence,
     villageBackgroundPresence,

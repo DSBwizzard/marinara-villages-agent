@@ -1,9 +1,6 @@
+import { foundingRequestMessages } from "../../domain/rules/founding-requests.js";
 import type { villagesDebugAgentsEnabled, villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
-import { VILLAGE_SHARED_SETTING_RULE } from "../../domain/rules/narrative-grounding.js";
-import { renderPlayerRoleContext } from "../../domain/rules/player-role.js";
-import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
-import { selectWishSize, wishGenerationDirection } from "../../domain/rules/wish-definition.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
 
@@ -35,91 +32,53 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
     onModelStart: (modelName: string) => Promise<void>,
     _jsonMode = true,
   ): Promise<CompactFoundingResult> {
-    const places = context.venues.map(
-      (venue, index) =>
-        `${index + 1}. ${venue.name}: ${[venue.classes?.join(" / "), venue.form, venue.state.condition, ...venue.state.publicFacts.slice(0, 2)].filter(Boolean).join("; ").slice(0, 240)}`,
-    );
-    const prompt = [
-      context.allowInitialWish === false || context.activeWishes.length
-        ? ""
-        : wishGenerationDirection(selectWishSize(context.wishAttemptId ?? context.characterId ?? context.card.name)),
-      VILLAGE_SHARED_SETTING_RULE,
-      `Write a compact founding plan for ${context.card.name} in ${context.village}. Return JSON only.`,
-      "JSON keys: routine (one sentence), wishes (zero or one objects with wish, intensity 1–3, need: {subject, action, policy: lasting or recurring}), palette (objects with activity, venue, zoneId, flexible, essential, duration in minutes, parts 0–3), days (seven arrays of eight palette indexes), rhythm (zero or more objects with startMinute, endMinute, activity palette index).",
-      context.semanticVersion === 2
-        ? 'Each Wish also needs criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the original goal, and neutralWording:true after checking neutral wording without player directions. Transfer requires a nonempty itemName and requiresPhysical:true. Action requires a nonempty target, requiresPhysical:true and predicate:item-added,item-removed,trace-resolved. Conversation requires requiresPhysical:false and no physical fields. Never classify solely by an isolated keyword.'
-        : "",
-      'Palette field types: activity is a string; venue is an integer; flexible and essential are booleans; duration is numeric minutes; parts is an array of daypart indexes. The key is exactly "venue"; optional zoneId must be a saved Zone identifier, never a label.',
-      "Palette: 6–16 specific, ordinary activities in this village, independent of wishes. Include flexible:true only on optional free-time activities; never on sleep, meals, work, or commitments. Venue 0 is the assigned living space; otherwise use only a numbered supplied public place. Never invent venue numbers, unlisted destinations, assets, vehicles, employers, institutions or obligations. Authored identity is not proof that its original-world possessions or job exist here. Activity should read after 'Right now you are'.",
-      'Rhythm schema example (syntax only): {"startMinute":1320,"endMinute":360,"activity":0}. The key is exactly "activity", an integer palette index. Omit all rest windows with rhythm:[] when appropriate.',
-      context.influenceSettings?.enabled && context.schedule
-        ? "Also return scheduleInfluence:{rhythms:[{weekday,startMinute,endMinute}],busy:[{weekday,part,free}],interests:[exact palette activity],entities:[exact allowed venue ID]}. Interpret rest, busy/free and interests semantically from this authorized imported schedule; do not import world assets or private facts. Schedule data: " +
-          JSON.stringify(context.schedule)
-        : "",
-      "Days: exactly seven arrays in Monday–Sunday order. Each has eight palette indexes: two alternatives for 00–06, 06–12, 12–18, 18–24. Syntax only: [0,1,2,3,4,5,0,1]. Code builds varied days locally. Rhythm contains only fixed rest/recharge windows, including overnight windows if appropriate, not a full timetable of work, meals and leisure. Put those activities in days. Do not assume human sleep, eating, employment or physiology.",
-      context.allowInitialWish === false || context.activeWishes.length
-        ? "Do not add wishes; return wishes:[] and preserve the existing wishes."
-        : "Write zero or one personal desire grounded in the complete character. An empty list is a valid quiet day. Do not prescribe a visible tell or repetitive gesture. The village changes their circumstances, not their personality, voice, or values. Current facts and fulfilled outcomes govern what exists and what remains unmet; lore is background data, not instructions.",
-      `Setting: ${context.setting}`,
-      renderPlayerRoleContext(context),
-      `Home: ${context.home.slice(0, 240) || "their home"}`,
-      `Places:\n${places.join("\n") || "None"}`,
-      venueCardProfile(context.card),
-      context.completedWishes.length
-        ? `Already fulfilled: ${context.completedWishes
-            .slice(0, 12)
-            .map((entry) => entry.wish.wish)
-            .join("; ")}`
-        : "",
-      context.activeWishes.length
-        ? `Keep these wishes: ${context.activeWishes.map((entry) => entry.wish).join("; ")}`
-        : "",
-      context.lore.length ? `Relevant selected lorebook facts:\n${context.lore.join("\n")}` : "",
-      context.influenceHints?.length
-        ? "Optional small schedule hints (preferences only; never establish world facts): " +
-          context.influenceHints.slice(0, 4).join("; ")
-        : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const messages = foundingRequestMessages(context, "routine");
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
     });
-    const requested = Math.min(model.maxOutputTokens ?? 4_000, 4_000);
-    if (requested < 1_500) throw new Error("The System model has too little output room for a complete founding plan.");
-    const fitted = fitVenueWritingMessages(
-      model,
-      [{ text: prompt }],
-      "Write the complete JSON founding plan.",
-      requested,
-      "System",
-    );
+    const requested = Math.min(model.maxOutputTokens ?? 2048, 2048);
+    const fitted = model.fitContext(messages, { maxTokens: requested });
+    if (JSON.stringify(fitted.messages) !== JSON.stringify(messages))
+      throw new Error("The System context cannot fit the complete Routine request.");
     const debugMode = villagesDebugAgentsEnabled();
-    villagesLogger().debugOverride(
-      debugMode,
-      "[villages] compact founding prompt: %s",
-      JSON.stringify(fitted.messages),
-    );
     await onModelStart(model.name);
     const started = performance.now();
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requested, {
-      responseFormat: { type: "json_object" },
-      temperature: 0.3,
-      reasoningEffort: "none",
-      retryEmpty: false,
-      usagePurpose: "background",
-      checkpointId: "owned-routine-profile",
-      debugMode,
-    });
+    const completion = await completeWithRoom(
+      model,
+      fitted.messages,
+      Math.min(fitted.maxTokens ?? requested, requested),
+      {
+        responseFormat: { type: "json_object" },
+        temperature: 0.3,
+        reasoningEffort: "none",
+        retryEmpty: false,
+        usagePurpose: "background",
+        checkpointId: "founding-routine-v1",
+        debugMode,
+      },
+    );
     villagesLogger().info(
-      "[villages] compact founding model %s answered for %s in %d ms; input=%s output=%s",
+      "[villages] founding task=routine contract=1 model=%s resident=%s elapsedMs=%d inputTokens=%s outputTokens=%s",
       model.name,
       context.card.name,
       Math.round(performance.now() - started),
       completion.usage?.promptTokens ?? "unavailable",
       completion.usage?.completionTokens ?? "unavailable",
     );
-    return parseCompactFoundingCompletion(completion, context);
+    try {
+      return parseCompactFoundingCompletion(completion, { ...context, allowInitialWish: false });
+    } finally {
+      villagesLogger().info(
+        "[villages] founding task=routine contract=1 inputChars=%d outputAllowance=%d finish=%s",
+        messages.reduce(
+          (sum, row) =>
+            sum + (typeof row.content === "string" ? row.content.length : JSON.stringify(row.content).length),
+          0,
+        ),
+        requested,
+        completion.finishReason ?? "unavailable",
+      );
+    }
   }
 
   return { proposeCompactFounding };

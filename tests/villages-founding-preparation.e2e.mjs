@@ -52,6 +52,7 @@ try {
       privateSpacesTotal: 4,
     };
     let retries = 0;
+    let retryBody;
     await page.route("http://villages.test/", (route) =>
       route.fulfill({
         contentType: "text/html",
@@ -62,6 +63,7 @@ try {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/setup/preparation/retry")) {
         retries++;
+        retryBody = route.request().postDataJSON();
         snapshot.foundingPreparation.status = "pending";
       }
       const response = path.endsWith("/catalog")
@@ -119,7 +121,7 @@ try {
       currentZoneId: "",
       privateSpacesReady: 4,
     };
-    await expect(details).toContainText("Waiting for Fixture System to write wishes and a routine profile for Aqua");
+    await expect(details).toContainText("Waiting for Fixture System to write a Routine for Aqua");
     snapshot.foundingPreparation = {
       status: "pending",
       completedIds: [],
@@ -133,12 +135,31 @@ try {
       status: "failed",
       error: "Signal Loft · Fixture System · limit 3000 · finish length: Output was truncated.",
     };
-    await expect(root.getByRole("button", { name: "Retry preparation", exact: true })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Retry failed", exact: true })).toBeVisible();
     await expect(root.getByRole("alert")).toContainText("Output was truncated");
-    await expect(details).toContainText("Completed work is saved");
-    await root.getByRole("button", { name: "Retry preparation", exact: true }).click();
+    await expect(root).not.toContainText("Completed work is saved");
+    await root.getByRole("button", { name: "Retry failed", exact: true }).click();
     await expect.poll(() => retries).toBe(1);
     await expect(details).toContainText("Preparing private spaces");
+    snapshot.foundingPreparation = {
+      ...snapshot.foundingPreparation,
+      status: "failed",
+      tasksVersion: 1,
+      tasks: {
+        aqua: {
+          routine: { contract: 1, revision: "r", jobId: "j", status: "completed", attempt: 1, error: "", receipt: "r" },
+          wish: { contract: 1, revision: "w", jobId: "k", status: "failed", attempt: 2, error: "Invalid response" },
+        },
+      },
+    };
+    await expect(root.getByRole("button", { name: "Retry Wish", exact: true })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Retry routine", exact: true })).toHaveCount(0);
+    await root.getByRole("button", { name: "Retry Wish", exact: true }).click();
+    await expect.poll(() => retries).toBe(2);
+    assert.equal(retryBody.characterId, "aqua");
+    assert.equal(retryBody.task, "wish");
+    assert.equal(retryBody.expectedAttempt, 2);
+    assert.match(retryBody.actionId, /^[a-zA-Z0-9-]+$/);
     assert.ok(
       await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       "no horizontal overflow",

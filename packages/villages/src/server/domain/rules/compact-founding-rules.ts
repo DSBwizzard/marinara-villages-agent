@@ -32,6 +32,9 @@ type PaletteEntry = {
 };
 
 export type CompactFoundingContext = {
+  sourceRevision?: string;
+  contractVersion?: 1;
+  circumstances?: unknown;
   semanticVersion?: 2;
   wishAttemptId?: string;
   playerRole?: VillagePlayerRole | null;
@@ -134,13 +137,44 @@ export function parseCompactFounding(
   payload: Record<string, unknown>,
   context: CompactFoundingContext,
 ): CompactFoundingResult {
+  if (context.contractVersion === 1 && Array.isArray(payload.palette))
+    for (const value of payload.palette) {
+      const row = value as Record<string, unknown>;
+      if (
+        !row ||
+        typeof row !== "object" ||
+        typeof row.flexible !== "boolean" ||
+        typeof row.essential !== "boolean" ||
+        typeof row.duration !== "number" ||
+        !Number.isFinite(row.duration) ||
+        row.duration < 30 ||
+        row.duration > 240 ||
+        !Array.isArray(row.parts) ||
+        !row.parts.length ||
+        row.parts.some((part) => !Number.isInteger(part) || part < 0 || part > 3)
+      )
+        throw new Error("Routine activity fields are incomplete or invalid.");
+      if (
+        row.zoneId !== undefined &&
+        (typeof row.zoneId !== "string" ||
+          !(context.venues[Number(row.venue ?? row.venueNumber) - 1]?.zones ?? []).some(
+            (zone) => zone.id === row.zoneId && ["exterior", "public"].includes(zone.kind),
+          ))
+      )
+        throw new Error("Routine activity has an unavailable Zone identifier.");
+    }
   const palette = checkedPalette(payload.palette, context.venues);
+  if (context.contractVersion === 1 && (!Array.isArray(payload.palette) || payload.palette.length > 8))
+    throw new Error("Routine requires 6–8 activities.");
   const days = payload.days;
   if (
     !Array.isArray(days) ||
     days.length !== 7 ||
     days.some(
-      (day) => !Array.isArray(day) || ![4, 8].includes(day.length) || day.some((id) => !validIndex(id, palette.length)),
+      (day) =>
+        !Array.isArray(day) ||
+        !(context.contractVersion === 1 ? [8] : [4, 8]).includes(day.length) ||
+        day.some((id) => !validIndex(id, palette.length)),
     )
   )
     throw new Error("The model did not provide a complete seven-day activity pattern.");

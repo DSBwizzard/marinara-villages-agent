@@ -107,5 +107,10 @@
     "sha256": "d93eded0ef68dffc7cec81abdd50ef818423f6889c88cd79026369e058ab7239",
     "inputs": ["packages/villages/", "sources/"],
     "note": "Whole-package definition/source audit and absent asset assertion retain future package additions; no unrelated scripts are read."
+  },
+  "tests/villages-founding-jobs-packaged.regression.ts": {
+    "sha256": "c13f10822908700c21df9af9cd198ba0198905816686a5a2ad3993caa1b8d93d",
+    "inputs": ["packages/villages/src/server/", "packages/villages/src/shared/", "sources/"],
+    "note": "Reviewed: archive-identical server read only; synthetic Fastify injection with process-local documents/models and no network listeners or real providers."
   }
 }

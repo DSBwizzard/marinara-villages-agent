@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  DEFAULT_PLAYER_ROLE,
-  renderPlayerRoleContext,
-} from "../packages/villages/src/server/domain/rules/player-role.js";
+import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/server/domain/rules/player-role.js";
 import {
   foundingNativeActivities,
   parseCompactFounding,
@@ -160,7 +157,11 @@ async function main() {
       resolveForRequest: async () => ({
         name: "Flash-class test model",
         maxOutputTokens: 4_000,
-        fitContext: (messages: unknown[]) => ({ messages, maxTokens: 4_000, estimatedTokensAfter: 900 }),
+        fitContext: (messages: unknown[], options: any) => ({
+          messages,
+          maxTokens: options.maxTokens,
+          estimatedTokensAfter: 900,
+        }),
         chatComplete: async (_messages: unknown[], next: Record<string, unknown>) => {
           calls += 1;
           capturedPrompt = _messages.map((message: any) => message.content).join("\n");
@@ -199,17 +200,17 @@ async function main() {
       answer = payload(0);
       await proposeCompactFounding(roleContext as any, async () => {});
       assert.ok(
-        capturedPrompt.includes(renderPlayerRoleContext(roleContext)),
+        capturedPrompt.includes(JSON.stringify({ name: "Robin", ...playerRole })),
         "the role is separate from truncated scenery",
       );
       assert.equal(calls, before + 1, "role context adds no generation call");
     }
-    assert.match(capturedPrompt, /neutral description/);
+    assert.match(capturedPrompt, /Omit Wishes/);
     assert.doesNotMatch(
       capturedPrompt,
       /chocolate|identifying a tune|stuck in their head|borrowing a pencil|repair a favorite chair|arrange a picnic|perform a song|"activity":"reading"/,
     );
-    assert.equal(options.maxTokens, 4000);
+    assert.equal(options.maxTokens, 2048);
     assert.equal(options.reasoningEffort, "none");
   } finally {
     release();

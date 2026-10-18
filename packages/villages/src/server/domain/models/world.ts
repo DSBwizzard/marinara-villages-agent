@@ -1299,6 +1299,11 @@ export type VillageState = {
   foundingPreparation?: {
     status: "pending" | "failed" | "ready";
     completedIds: string[];
+    tasksVersion?: 1;
+    tasks?: import("../../../shared/contracts/founding-tasks.js").FoundingResidentTasks;
+    retryActions?: string[];
+    selectedTasks?: string[];
+    currentTask?: "routine" | "wish";
     venueDetailsSeeded?: boolean;
     currentId: string;
     error: string;

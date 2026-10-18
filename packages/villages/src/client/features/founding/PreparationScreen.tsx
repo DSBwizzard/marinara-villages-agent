@@ -1,4 +1,3 @@
-import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { PreparationScreenController } from "./screen-contracts.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
@@ -27,7 +26,9 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
         ? "starting venue details"
         : phase === "private-spaces"
           ? "this private space"
-          : "wishes and a routine profile";
+          : preparation?.currentTask === "wish"
+            ? "an Initial Wish"
+            : "a Routine";
     const stageText =
       preparation?.stage === "reading"
         ? "Reading the character card"
@@ -45,7 +46,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
                     ? "Building varied days locally"
                     : preparation?.stage === "saving"
                       ? phase === "residents"
-                        ? "Saving this villager's wishes and routine"
+                        ? "Saving preparation"
                         : "Saving prepared details"
                       : phase === "venues"
                         ? "Preparing starting venue details"
@@ -68,13 +69,6 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
             🏡
           </div>
           <h1>{snapshot?.village.name ?? "Your village"} is settling in</h1>
-          <p>
-            {preparation?.status === "failed"
-              ? "The villagers need a hand before the gates open."
-              : current
-                ? `Making room for ${current}…`
-                : "Lighting windows and making plans…"}
-          </p>
           <p>{`${done} of ${total} villagers ready`}</p>
           <progress aria-label="Villagers ready" max={Math.max(1, total)} value={done} />
           {preparation?.privateSpacesTotal !== undefined ? (
@@ -90,23 +84,49 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
           <ul className="villages-forging-preparation-list">
             {(snapshot?.villagers ?? []).map((villager) => (
               <li key={villager.characterId}>
-                {preparation?.completedIds.includes(villager.characterId)
-                  ? "✓"
-                  : villager.characterId === preparation?.currentId
-                    ? "…"
-                    : "○"}{" "}
-                {villager.name}
-                {preparation?.completedIds.includes(villager.characterId)
-                  ? " · Ready"
-                  : villager.characterId === preparation?.currentId
-                    ? " · Preparing wishes and daily routine"
-                    : " · Waiting"}
+                <strong>{villager.name}</strong>
+                {(["routine", "wish"] as const).map((kind) => {
+                  const entry = preparation?.tasks?.[villager.characterId]?.[kind];
+                  const active =
+                    preparation?.status === "pending" &&
+                    preparation.currentId === villager.characterId &&
+                    preparation.currentTask === kind;
+                  const label = kind === "routine" ? "Routine" : "Initial Wish";
+                  const status =
+                    entry?.status === "completed" ||
+                    (!entry && preparation?.completedIds.includes(villager.characterId))
+                      ? "Ready"
+                      : active
+                        ? "Preparing"
+                        : entry?.status === "failed"
+                          ? "Failed"
+                          : "Waiting";
+                  return (
+                    <div key={kind}>
+                      {label} · {status}
+                      {active && preparation?.attempt ? ` · Attempt ${preparation.attempt}` : ""}
+                      {entry?.error ? <p className={`${ELEMENT_TAG}-error`}>{entry.error}</p> : null}
+                      {preparation?.status === "failed" && entry && entry.status !== "completed" ? (
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-button`}
+                          onClick={() =>
+                            void retryPreparation({
+                              characterId: villager.characterId,
+                              task: kind,
+                              expectedAttempt: entry.attempt,
+                            })
+                          }
+                        >
+                          {kind === "routine" ? "Retry routine" : "Retry Wish"}
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </li>
             ))}
           </ul>
-          <p>
-            Your place, starting spaces, and map are saved. Completed villagers stay ready if preparation needs a retry.
-          </p>
           <details>
             <summary>Preparation details</summary>
             <p>
@@ -117,9 +137,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
                   : "Resident preparation"}
             </p>
             {subject ? <p>{subject}</p> : null}
-            {preparation?.status === "failed" ? (
-              <p>Preparation stopped. Completed work is saved; retry to continue.</p>
-            ) : (
+            {preparation?.status === "failed" ? null : (
               <p>
                 {stageText}
                 {subject ? ` for ${subject}` : ""}.
@@ -146,7 +164,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
               </p>
 
               <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => void retryPreparation()}>
-                Retry preparation
+                Retry failed
               </button>
               <details>
                 <summary>Change connections</summary>

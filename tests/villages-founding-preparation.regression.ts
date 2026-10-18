@@ -1,4 +1,9 @@
+import { foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
+import { villageFoundingSetting } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import assert from "node:assert/strict";
+import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -17,6 +22,7 @@ import {
   foundingPreparationSnapshot,
 } from "../packages/villages/src/server/features/founding/preparation.js";
 import {
+  recoverBackgroundWork,
   startBackgroundWork,
   retryBackgroundJob,
   settleBackgroundWork,
@@ -34,6 +40,7 @@ let hold: (() => void) | undefined;
 let started: (() => void) | undefined;
 let conflicts = 0;
 let writes = 0;
+const sourceSnapshots = new Map<string, any>();
 
 function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
@@ -208,21 +215,40 @@ const release = configureVillagesRuntime({
             finishReason: "stop",
           };
         }
+        assert.match(messages[1].content, /STARTING-CONTEXT-/);
+        assert.equal(options.reasoningEffort, "none");
+        assert.equal(options.responseFormat.type, "json_object");
+        if (messages[0].content.includes("{wish:null}")) {
+          calls.push("wish");
+          if (mode === "wish-one-fail" && JSON.parse(messages[1].content).identity.id === "feddy")
+            return { content: "{}", finishReason: "stop" };
+          assert.equal(options.maxTokens, Math.min(limit, 1536));
+          return { content: JSON.stringify({ wish: null }), finishReason: "stop" };
+        }
         calls.push("routine");
-        assert.match(messages[0].content, /STARTING-CONTEXT-/);
-        assert.ok(
-          messages[0].content.includes('The key is exactly "venue"'),
-          "prompt supplies exact palette field names without concrete activity examples",
-        );
+        if (mode === "routine-invalid")
+          sourceSnapshots.set(
+            JSON.parse(messages[1].content).identity.id,
+            structuredClone(rows.get("villages-village").data),
+          );
+        if (mode === "routine-timeout" && JSON.parse(messages[1].content).identity.id === "aqua")
+          throw new Error("Provider request exceeded 30 seconds.");
+        if (mode === "json-unsupported") throw new Error("response_format json_object is not supported");
+        assert.equal(options.maxTokens, Math.min(limit, 2048));
         return {
           content: JSON.stringify({
             routine: "Quiet days at the station",
             wishes: [],
             palette: ["resting", "reading", "walking", "writing", "thinking", "tidying"].map((activity) => ({
               activity,
-              venue: mode === "routine-invalid" ? "0" : 0,
+              venue:
+                mode === "routine-invalid" ||
+                (mode === "routine-one-fail" && JSON.parse(messages[1].content).identity.id === "aqua")
+                  ? "0"
+                  : 0,
               status: "idle",
               flexible: true,
+              essential: false,
               duration: 90,
               parts: [0, 1, 2, 3],
             })),
@@ -247,7 +273,19 @@ async function main() {
     mode = "valid";
     install(false);
     await Promise.all([prepareFoundedVillage(), prepareFoundedVillage()]);
-    assert.deepEqual(calls, ["venues", "aqua", "feddy", "sneak", "hall", "routine", "routine", "routine"]);
+    assert.deepEqual(calls, [
+      "venues",
+      "aqua",
+      "feddy",
+      "sneak",
+      "hall",
+      "routine",
+      "routine",
+      "routine",
+      "wish",
+      "wish",
+      "wish",
+    ]);
     let state = await readVillageState();
     assert.equal(state.foundingPreparation?.status, "ready");
     assert.equal(state.foundingPreparation?.completedIds.length, 3);
@@ -262,6 +300,73 @@ async function main() {
       ),
     );
 
+    // Independent tasks survive each other's failure; retries never repeat successes.
+    for (const failure of ["routine-one-fail", "wish-one-fail", "routine-timeout"]) {
+      install();
+      mode = failure;
+      await prepareFoundedVillage();
+      state = await readVillageState();
+      assert.equal(state.foundingPreparation?.status, "failed");
+      assert.equal(state.foundingPreparation?.completedIds.length, 2, failure);
+      assert.equal(
+        calls.filter((call) => call === "routine").length,
+        3,
+        "a transient failure does not block other residents",
+      );
+      assert.equal(
+        calls.filter((call) => call === "wish").length,
+        3,
+        "Wish generation does not require a successful Routine",
+      );
+      const failedId = failure === "wish-one-fail" ? "feddy" : "aqua",
+        kind = failure === "wish-one-fail" ? "wish" : "routine";
+      const task = state.foundingPreparation!.tasks![failedId]![kind]!;
+      const other = JSON.stringify(state.foundingPreparation!.tasks![failedId]![kind === "wish" ? "routine" : "wish"]);
+      const before = calls.length;
+      await foundingPreparationSnapshot();
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.equal(calls.length, before, "reads and recovery never retry failed tasks");
+      mode = "valid";
+      const action = {
+        characterId: failedId,
+        task: kind,
+        expectedAttempt: task.attempt,
+        actionId: "target-" + failure,
+      } as const;
+      await assert.rejects(retryFoundedVillagePreparation({ ...action, expectedAttempt: 999 }), /changed/);
+      await Promise.all([retryFoundedVillagePreparation(action), retryFoundedVillagePreparation(action)]);
+      await prepareFoundedVillage();
+      state = await readVillageState();
+      assert.equal(state.foundingPreparation?.status, "ready");
+      assert.equal(calls.length, before + 1, "targeted retry uses exactly one replacement request");
+      assert.equal(
+        JSON.stringify(state.foundingPreparation!.tasks![failedId]![kind === "wish" ? "routine" : "wish"]),
+        other,
+        "the other task receipt survives",
+      );
+      await retryFoundedVillagePreparation(action);
+      assert.equal(calls.length, before + 1, "duplicate action remains idempotent after completion");
+    }
+    install();
+    mode = "json-unsupported";
+    await prepareFoundedVillage();
+    assert.equal(
+      calls.filter((call) => call === "routine").length,
+      1,
+      "unsupported JSON configuration stops further requests",
+    );
+    assert.equal(calls.filter((call) => call === "wish").length, 0);
+    // An explicit successful retry is required to clear the connection pause.
+    mode = "valid";
+    await retryFoundedVillagePreparation();
+    await prepareFoundedVillage();
+    assert.equal(
+      (await readVillageState()).foundingPreparation?.status,
+      "ready",
+      JSON.stringify((await readVillageState()).foundingPreparation),
+    );
+
     // Simulate the old validator rejecting a purchased venueNumber reply.
     // Retry must validate it locally before discarding its failed checkpoint.
     for (const recovery of ["alias", "dayparts", "malformed", "truncated", "stale"]) {
@@ -272,6 +377,18 @@ async function main() {
       const checkpoint = [...rows.values()].find(
         (row) => row.kind === "background-work" && row.data.kind === "agenda",
       )!;
+      if (recovery === "alias") {
+        const current = await readVillageState(),
+          old = sourceSnapshots.get("aqua");
+        const diffs = Object.keys(current).filter(
+          (key) => JSON.stringify((current as any)[key]) !== JSON.stringify(old[key]),
+        );
+        assert.equal(
+          checkpoint.data.revision,
+          foundingTaskRevision(current, "aqua", "routine"),
+          "source drift after Wish pass: " + JSON.stringify(diffs.map((key) => [key, (current as any)[key], old[key]])),
+        );
+      }
       const saved = checkpoint.data.steps[0].response;
       const response = JSON.parse(saved.content);
       response.palette = response.palette.map(({ venue: _venue, ...row }: any) => ({ ...row, venueNumber: 0 }));
@@ -279,6 +396,7 @@ async function main() {
       if (recovery === "dayparts") response.days = Array.from({ length: 7 }, () => [0, 1, 2, 3]);
       saved.content = recovery === "malformed" ? "{}" : JSON.stringify(response);
       if (recovery === "truncated") saved.finishReason = "length";
+      if (recovery === "alias") assert.ok(parseCompactFoundingCompletion(saved, checkpoint.data.input.context).agenda);
       mode = "valid";
       calls.length = 0;
       if (recovery === "stale") {
@@ -293,10 +411,7 @@ async function main() {
         continue;
       }
       const previewWrites = writes;
-      assert.equal(
-        (await previewVillageBurst({ action: "founding" })).requests,
-        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
-      );
+      assert.equal((await previewVillageBurst({ action: "founding" })).requests, recovery === "alias" ? 2 : 3);
       assert.equal(writes, previewWrites, "recovery forecasts do not write");
       assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
       conflicts = 2;
@@ -307,8 +422,8 @@ async function main() {
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
       assert.equal(
         calls.length,
-        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
-        "only invalid saved replies need replacement requests",
+        recovery === "alias" ? 2 : 3,
+        "only invalid saved replies need replacement requests: " + recovery + JSON.stringify(calls),
       );
       assert.ok(
         calls.every((call) => call === "routine"),
@@ -319,6 +434,132 @@ async function main() {
       await retryFoundedVillagePreparation();
       await prepareFoundedVillage();
       assert.equal(calls.length, before, "repeated actions after recovery generate nothing");
+    }
+
+    // Upgrade old combined jobs only after explicit retry, recovering each valid part.
+    for (const migration of [
+      "both-valid",
+      "routine-only",
+      "wish-only",
+      "neither",
+      "unknown",
+      "applied",
+      "applied-gap",
+    ]) {
+      install();
+      mode = "routine-invalid";
+      await prepareFoundedVillage();
+      await mutateVillageState((live) => {
+        live.villagers = live.villagers.slice(0, 1);
+        const marker = live.foundingPreparation!;
+        delete marker.tasks;
+        delete marker.tasksVersion;
+        marker.completedIds = [];
+        marker.status = "failed";
+        marker.error = "Legacy failure";
+        for (const row of rows.values())
+          if (row.kind === "background-work" && row.data.kind === "wish") {
+            rows.delete(row.id);
+            delete live.backgroundReceipts[row.id];
+          }
+      });
+      const legacyRow = [...rows.values()].find(
+        (row) => row.kind === "background-work" && row.data.kind === "agenda" && row.data.subjectId === "aqua",
+      )!;
+      state = await readVillageState();
+      const claim = state.villagers[0].wishLifecycle!.attempt!.id;
+      const legacy = legacyRow.data;
+      legacy.revision = agendaRevision(state, "aqua");
+      legacy.id = backgroundRevision([state.seed, "agenda", "aqua", legacy.revision]);
+      delete legacy.input.foundingContract;
+      legacy.input.revision = legacy.revision;
+      legacy.input.initialWishAttemptId = claim;
+      delete legacy.input.context.contractVersion;
+      legacy.input.context.allowInitialWish = true;
+      legacy.input.context.setting = villageFoundingSetting(state);
+      const response = JSON.parse(legacy.steps[0].response.content);
+      response.palette = response.palette.map((row: any) => ({ ...row, venue: 0 }));
+      const desire = {
+        wish: "An evening conversation about old journeys",
+        intensity: 1,
+        need: { subject: "shared travel stories", action: "conversation", policy: "recurring" },
+        criteria: { kind: "conversation", requiresPhysical: false },
+        neutralWording: true,
+      };
+      response.wishes = [desire];
+      if (["wish-only", "neither"].includes(migration)) response.days = [];
+      if (["routine-only", "neither"].includes(migration)) response.wishes = [{ ...desire, criteria: {} }];
+      legacy.steps[0].key = "owned-routine-profile";
+      legacy.steps[0].response.content = JSON.stringify(response);
+      if (migration === "unknown") {
+        legacy.steps[0] = { key: "owned-routine-profile", fingerprint: "uncertain", status: "running" };
+        legacy.usageComplete = false;
+        legacy.tokens = null;
+      }
+      if (migration.startsWith("applied")) {
+        const agenda = parseCompactFoundingCompletion(legacy.steps[0].response, legacy.input.context).agenda;
+        await mutateVillageState((live) => {
+          live.villagers[0].agenda = agenda;
+          live.foundingPreparation!.completedIds = migration === "applied-gap" ? [] : ["aqua"];
+          live.villagers[0].wishLifecycle!.attempt!.candidate = agenda.wishes[0];
+          live.villagers[0].wishLifecycle!.attempt!.reason = "Initial wish granted during preparation.";
+          live.backgroundReceipts[legacyRow.id] = legacy.id;
+        });
+        legacy.status = "completed";
+        legacy.input = null;
+        legacy.steps = [];
+      }
+      calls.length = 0;
+      mode = "valid";
+      await foundingPreparationSnapshot();
+      assert.equal(calls.length, 0, "upgrade reads do not dispatch");
+      await retryFoundedVillagePreparation({ actionId: "migrate-" + migration });
+      await prepareFoundedVillage();
+      state = await readVillageState();
+      assert.equal(
+        state.foundingPreparation?.status,
+        "ready",
+        migration + JSON.stringify(state.foundingPreparation?.tasks),
+      );
+      assert.equal(
+        calls.length,
+        ["both-valid", "applied", "applied-gap"].includes(migration)
+          ? 0
+          : ["routine-only", "wish-only"].includes(migration)
+            ? 1
+            : 2,
+        migration + ": reuse each independently valid purchased result",
+      );
+      assert.equal(state.villagers[0].wishLifecycle?.attempt?.id, claim, "migration reuses the original allowance");
+      if (["both-valid", "wish-only", "applied", "applied-gap"].includes(migration))
+        assert.equal(state.villagers[0].agenda?.wishes.length, 1);
+      if (migration === "unknown")
+        assert(
+          [...rows.values()].some((row) => row.kind === "background-history" && row.data.usageComplete === false),
+          "unknown billing evidence survives replacement",
+        );
+    }
+
+    for (const interruptedStatus of ["queued", "paused"]) {
+      install();
+      mode = "routine-invalid";
+      await prepareFoundedVillage();
+      const saved = [...rows.values()].find(
+        (row) => row.kind === "background-work" && row.data.kind === "agenda",
+      )!.data;
+      delete saved.input.foundingContract;
+      saved.revision = agendaRevision(await readVillageState(), saved.subjectId);
+      saved.input.revision = saved.revision;
+      saved.owner = "previous-process";
+      saved.status = interruptedStatus;
+      saved.steps = [];
+      saved.hasResult = false;
+      saved.requests = 0;
+      calls.length = 0;
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.equal(calls.length, 0, "legacy " + interruptedStatus + " work cannot dispatch at startup");
+      assert.equal(saved.requests, 0);
     }
 
     for (const failure of [
@@ -352,7 +593,19 @@ async function main() {
       await prepareFoundedVillage();
       state = await readVillageState();
       assert.equal(state.foundingPreparation?.status, "ready");
-      assert.deepEqual(calls, ["aqua", "feddy", "feddy", "sneak", "hall", "routine", "routine", "routine"]);
+      assert.deepEqual(calls, [
+        "aqua",
+        "feddy",
+        "feddy",
+        "sneak",
+        "hall",
+        "routine",
+        "routine",
+        "routine",
+        "wish",
+        "wish",
+        "wish",
+      ]);
       assert.equal(state.venues[1].zones![1].preparation?.attempt, 2);
       assert.equal(state.townMapImage, fixture().townMapImage);
     }
@@ -427,13 +680,13 @@ async function main() {
     install();
     const beforeWrites = writes;
     const preview = await previewVillageBurst({ action: "founding" });
-    assert.equal(preview.requests, 7, "four spaces plus three routines");
+    assert.equal(preview.requests, 10, "four spaces plus three routines and three initial Wishes");
     assert.equal(writes, beforeWrites);
     assert.equal(calls.length, 0);
     await mutateVillageState((current) => {
       current.venues[0].zones![1].preparation = { status: "ready" };
     });
-    assert.equal((await previewVillageBurst({ action: "founding" })).requests, 6);
+    assert.equal((await previewVillageBurst({ action: "founding" })).requests, 9);
     const cleanup = startPrivateSpacePreparation();
     await new Promise((resolve) => setTimeout(resolve, 10));
     cleanup();

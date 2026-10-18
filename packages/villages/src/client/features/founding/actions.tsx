@@ -1,3 +1,4 @@
+import { createVillagesClientId } from "../../shared/request-id.js";
 import {
   MAP_UPLOAD_FALLBACK,
   townMapFileSizeMessage,
@@ -598,10 +599,15 @@ export function useRetryPreparation(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setPreparationProblem, setSnapshot } = ports;
-  return useCallback(async () => {
+  return useCallback(async (target?: { characterId: string; task: "routine" | "wish"; expectedAttempt: number }) => {
     setPreparationProblem("");
     try {
-      setSnapshot(await request<VillageSnapshot>("/setup/preparation/retry", { method: "POST" }));
+      setSnapshot(
+        await request<VillageSnapshot>("/setup/preparation/retry", {
+          method: "POST",
+          body: JSON.stringify({ ...target, actionId: createVillagesClientId() }),
+        }),
+      );
     } catch (cause) {
       setPreparationProblem(messageFrom(cause, "Preparation could not be retried."));
     }

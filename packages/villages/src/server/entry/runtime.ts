@@ -1,3 +1,6 @@
+import { backgroundJobSnapshot, backgroundLegacyFounding, retireLegacyFounding } from "../jobs/background-work.js";
+import { readFoundingResidentContext, adoptFoundingRoutine } from "../features/residents/resident-agendas.js";
+import { queueFoundingWish } from "../features/residents/wishes/wish-lifecycle.js";
 import { createVillageClock } from "../adapters/time/clock-service.js";
 import { configureVillageClock } from "../adapters/time/clock-gate.js";
 import { createFoundingProgress } from "../features/founding/founding-progress-service.js";
@@ -1109,6 +1112,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseFounding = configureFoundingPreparation(
     createFoundingPreparation({
+      backgroundJobSnapshot,
+      backgroundLegacyFounding,
+      retireLegacyFounding,
+      readFoundingResidentContext,
+      adoptFoundingRoutine,
+      queueFoundingWish,
       readVillageState,
       mutateVillageState,
       buildVillageSnapshot,
@@ -1116,7 +1125,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       seedFoundingVenueDetails,
       reportFoundingProgress,
       preparePrivateSpaces,
-      backgroundStatus,
       backgroundWorkSummaries,
       retryBackgroundJob,
       settleBackgroundWork,

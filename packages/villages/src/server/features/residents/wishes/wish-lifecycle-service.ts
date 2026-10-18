@@ -1,3 +1,11 @@
+import { foundingRequestMessages } from "../../../domain/rules/founding-requests.js";
+import type { CompactFoundingContext } from "../../../domain/rules/compact-founding-rules.js";
+import {
+  foundingSlot,
+  foundingTaskRevision,
+  ownsFoundingTask,
+  completeFoundingTask,
+} from "../../../domain/rules/founding-tasks.js";
 import { readSemanticWishCriteria } from "../../../domain/rules/wish-criteria.js";
 import { ZonedDate } from "../../../../shared/helpers/zoned-date.js";
 import { calendarReplay } from "../../../domain/rules/clock-recovery.js";
@@ -56,7 +64,7 @@ export type WishLifecyclePorts = {
   readWishAttemptClock: typeof readWishAttemptClock;
   readVillageLore: typeof readVillageLore;
   villagesDebugAgentsEnabled: typeof villagesDebugAgentsEnabled;
-  villagesLogger(): Pick<ReturnType<typeof villagesLogger>, "warn">;
+  villagesLogger(): Pick<ReturnType<typeof villagesLogger>, "warn" | "info">;
   villagesLanguageModels(): Pick<ReturnType<typeof villagesLanguageModels>, "resolveForRequest">;
   backgroundCalls: Pick<typeof backgroundCalls, "getStore">;
   backgroundSetting: typeof backgroundSetting;
@@ -179,6 +187,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     job: WishAttempt,
     messages: CapabilityLanguageModelMessage[],
     limit: number,
+    founding = false,
   ): Promise<Record<string, unknown> | null> {
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
@@ -195,10 +204,11 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       completion = await completeWithRoom(model, fitted.messages, outputLimit, {
         responseFormat: { type: "json_object" },
         temperature: limit === 800 ? 0 : 0.7,
-        reasoningEffort: "low",
+        reasoningEffort: founding ? "none" : "low",
+        ...(founding ? { usagePurpose: "background" as const, checkpointId: "founding-wish-v1" } : {}),
         debugMode: !backgroundCalls.getStore() && villagesDebugAgentsEnabled(),
         retryEmpty: false,
-        signal: AbortSignal.timeout(90_000),
+        signal: AbortSignal.timeout(30_000),
       });
       const failure = completionFailure(completion, "wish-generation", outputLimit);
       if (failure) throw new WorkFailureError(failure);
@@ -213,96 +223,133 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         });
       return payload;
     } finally {
+      if (founding)
+        villagesLogger().info(
+          "[villages] founding task=wish contract=1 inputChars=%d outputAllowance=%d elapsedMs=%d finish=%s validation=%s",
+          messages.reduce(
+            (sum, row) =>
+              sum + (typeof row.content === "string" ? row.content.length : JSON.stringify(row.content).length),
+            0,
+          ),
+          outputLimit,
+          Math.round(performance.now() - started),
+          completion?.finishReason ?? "unavailable",
+          completion && extractModelJsonObject(completion) ? "json" : "incomplete",
+        );
       recordUsage(job, completion, performance.now() - started);
     }
   }
 
-  async function generateWish(input: { state: VillageState; characterId: string; now: string }): Promise<WishAttempt> {
+  async function generateWish(input: {
+    state: VillageState;
+    characterId: string;
+    now: string;
+    foundingContract?: 1;
+    foundingContext?: CompactFoundingContext;
+    savedProposal?: Record<string, unknown>;
+  }): Promise<WishAttempt> {
     const state = structuredClone(input.state),
       characterId = input.characterId,
       now = new ZonedDate(input.now, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
     const resident = state.villagers.find((entry) => entry.characterId === characterId)!;
     const job = resident.wishLifecycle!.attempt!;
+    const founding = input.foundingContract === 1;
+    if (founding) {
+      await mutateVillageState((live) => {
+        if (live.seed !== state.seed || !ownsFoundingTask(live, characterId, "wish", (input as any).revision, job.id))
+          return;
+        const marker = live.foundingPreparation!;
+        marker.stage = "model";
+        marker.stageStartedAt = villageNow().toISOString();
+      });
+      job.stage = "reserved";
+      job.calls = 0;
+      job.semanticVersion = 2;
+    }
     if (job.stage === "reserved") job.calls = 0;
     if (job.stage === "reserved") {
-      const slots = job.resetRefill ? [] : wishSlots(resident, state, now),
+      const slots = job.resetRefill || founding ? [] : wishSlots(resident, state, now),
         card = resident.cardSnapshot;
-      const lore = await backgroundSetting("wishLore", () =>
-        readVillageLore(
-          state.selectedLorebookIds,
-          [state.setting, card.name, card.summary, card.personality].join("\n"),
-          undefined,
-          Math.min(state.loreTokenBudget, 400),
-        ),
-      );
+      const lore = founding
+        ? []
+        : await backgroundSetting("wishLore", () =>
+            readVillageLore(
+              state.selectedLorebookIds,
+              [state.setting, card.name, card.summary, card.personality].join("\n"),
+              undefined,
+              Math.min(state.loreTokenBudget, 400),
+            ),
+          );
       const known = selectWishNeeds(
         [card.summary, card.personality, ...lore].join(" "),
         resident.agenda.wishes,
         resident.wishLifecycle?.needs ?? [],
       );
       const size = selectWishSize(job.id);
-      const messages: CapabilityLanguageModelMessage[] = [
-        {
-          role: "system",
-          content:
-            wishGenerationDirection(size) +
-            (job.semanticVersion === 2
-              ? ' Include wish.criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the original goal. Transfer requires a nonempty itemName and requiresPhysical:true. Action requires a nonempty target, requiresPhysical:true and predicate:item-added,item-removed,trace-resolved. Conversation requires requiresPhysical:false and no physical fields. Return neutralWording:true only if the goal is a neutral description without directing the player.'
-              : "") +
-            "\n" +
-            'Propose at most ONE personal desire grounded in the complete authored character, or none. Their circumstances may change; their personality, voice, and values are not rewritten by the village. Do not prescribe a visible tell or recurring gesture. JSON only: {"wish":null} or {"wish":{"wish":"...","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}}}. Also return matchedNeedId (exact supplied known id, or empty for a new need) and certain (false if uncertain). Match the same unmet need, not merely the same object; acquiring, repairing and using differ. Do not change a matched recurrence policy. ' +
-            (job.resetRefill
-              ? "This is a one-time Wish replacement only. Omit adjustment and routineIdea; do not change the routine. "
-              : "You may optionally return adjustment:{slot,activity,venueId,zoneId} using only a supplied future free-time slot and saved destination IDs. You may optionally include ONE routineIdea:{activity,venueId,zoneId,flexible:true} for an ordinary future optional activity; it establishes no asset, job or physical fact. ") +
-            " Never invent people, places, physical changes, injuries, debts, emergencies, or an object already owned. Wishes are personal interests, not player errands. Lasting achievements stay settled; recurring ordinary needs may return only after seven fulfilled days. Active wishes must not repeat. No suitable wish is a valid quiet day.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            village: state.name.slice(0, 100),
-            setting: villageCurrentSetting(state),
-            person: {
-              name: card.name,
-              profile: venueCardProfile({
-                ...villagerCardFromSnapshot(card),
-                foundingContext: resident.foundingContext,
+      const messages: CapabilityLanguageModelMessage[] = founding
+        ? foundingRequestMessages(input.foundingContext!, "wish", known)
+        : [
+            {
+              role: "system",
+              content:
+                wishGenerationDirection(size) +
+                (job.semanticVersion === 2
+                  ? ' Include wish.criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the original goal. Transfer requires a nonempty itemName and requiresPhysical:true. Action requires a nonempty target, requiresPhysical:true and predicate:item-added,item-removed,trace-resolved. Conversation requires requiresPhysical:false and no physical fields. Return neutralWording:true only if the goal is a neutral description without directing the player.'
+                  : "") +
+                "\n" +
+                'Propose at most ONE personal desire grounded in the complete authored character, or none. Their circumstances may change; their personality, voice, and values are not rewritten by the village. Do not prescribe a visible tell or recurring gesture. JSON only: {"wish":null} or {"wish":{"wish":"...","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}}}. Also return matchedNeedId (exact supplied known id, or empty for a new need) and certain (false if uncertain). Match the same unmet need, not merely the same object; acquiring, repairing and using differ. Do not change a matched recurrence policy. ' +
+                (job.resetRefill
+                  ? "This is a one-time Wish replacement only. Omit adjustment and routineIdea; do not change the routine. "
+                  : "You may optionally return adjustment:{slot,activity,venueId,zoneId} using only a supplied future free-time slot and saved destination IDs. You may optionally include ONE routineIdea:{activity,venueId,zoneId,flexible:true} for an ordinary future optional activity; it establishes no asset, job or physical fact. ") +
+                " Never invent people, places, physical changes, injuries, debts, emergencies, or an object already owned. Wishes are personal interests, not player errands. Lasting achievements stay settled; recurring ordinary needs may return only after seven fulfilled days. Active wishes must not repeat. No suitable wish is a valid quiet day.",
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                village: state.name.slice(0, 100),
+                setting: villageCurrentSetting(state),
+                person: {
+                  name: card.name,
+                  profile: venueCardProfile({
+                    ...villagerCardFromSnapshot(card),
+                    foundingContext: resident.foundingContext,
+                  }),
+                },
+                lore: lore.join("\n").slice(0, 1800),
+                active: resident.agenda.wishes.map(({ tell: _tell, ...wish }) => wish),
+                known: known.map((need) => ({
+                  id: need.id,
+                  subject: need.subject,
+                  action: need.action,
+                  policy: need.policy,
+                  aliases: need.aliases.slice(-2),
+                  fulfilledAt: need.lastFulfilledAt,
+                  state: need.state,
+                  latestAt: need.latestAt,
+                })),
+                influenceHints: resident.scheduleInfluence?.enabled
+                  ? resident.agenda.scheduleInfluenceSnapshot?.unresolved?.slice(0, 4)
+                  : [],
+                slots: slots.map((slot, index) => ({ slot: index + 1, ...slot })),
+                places: state.venues.slice(0, 24).map((venue) => ({
+                  id: venue.id,
+                  name: venue.name,
+                  condition: venue.state.condition.slice(0, 160),
+                  facts: venue.state.publicFacts.slice(0, 3).map((fact) => fact.slice(0, 120)),
+                  furniture: venue.state.furniture.slice(0, 3).map((item) => item.slice(0, 120)),
+                  zones: venueZones(venue)
+                    .filter(
+                      (zone) =>
+                        canOccupyZone(venue, zone, characterId, { relationships: state.relationshipContext }) &&
+                        !zoneClosed(state, venue, zone),
+                    )
+                    .map((zone) => ({ id: zone.id, kind: zone.kind })),
+                })),
               }),
             },
-            lore: lore.join("\n").slice(0, 1800),
-            active: resident.agenda.wishes.map(({ tell: _tell, ...wish }) => wish),
-            known: known.map((need) => ({
-              id: need.id,
-              subject: need.subject,
-              action: need.action,
-              policy: need.policy,
-              aliases: need.aliases.slice(-2),
-              fulfilledAt: need.lastFulfilledAt,
-              state: need.state,
-              latestAt: need.latestAt,
-            })),
-            influenceHints: resident.scheduleInfluence?.enabled
-              ? resident.agenda.scheduleInfluenceSnapshot?.unresolved?.slice(0, 4)
-              : [],
-            slots: slots.map((slot, index) => ({ slot: index + 1, ...slot })),
-            places: state.venues.slice(0, 24).map((venue) => ({
-              id: venue.id,
-              name: venue.name,
-              condition: venue.state.condition.slice(0, 160),
-              facts: venue.state.publicFacts.slice(0, 3).map((fact) => fact.slice(0, 120)),
-              furniture: venue.state.furniture.slice(0, 3).map((item) => item.slice(0, 120)),
-              zones: venueZones(venue)
-                .filter(
-                  (zone) =>
-                    canOccupyZone(venue, zone, characterId, { relationships: state.relationshipContext }) &&
-                    !zoneClosed(state, venue, zone),
-                )
-                .map((zone) => ({ id: zone.id, kind: zone.kind })),
-            })),
-          }),
-        },
-      ];
-      job.calls = 1;
-      const payload = await ask(job, messages, 4096),
+          ];
+      job.calls = input.savedProposal ? 0 : 1;
+      const payload = input.savedProposal ?? (await ask(job, messages, founding ? 1536 : 4096, founding)),
         raw = payload?.wish;
       const candidate =
         raw && typeof raw === "object" && !Array.isArray(raw)
@@ -315,11 +362,13 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
             stage: "wish-generation",
             message: "Wish generation returned no usable answer; explicit retry required.",
           });
-        job.routineIdea = job.resetRefill ? undefined : payload.routineIdea;
+        job.routineIdea = job.resetRefill || founding ? undefined : payload.routineIdea;
         job.stage = "done";
         job.reason = "No new wish today.";
         return job;
       }
+      if (founding && (!candidate.need?.subject || !candidate.need.action || candidate.need.policy === "unknown"))
+        throw new Error("Initial Wish needs a specific need identity.");
       if (job.semanticVersion === 2) {
         candidate.semanticCriteria = readSemanticWishCriteria(
           (raw as Record<string, unknown>).criteria,
@@ -335,6 +384,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       if (candidate.need) candidate.need.id = "";
       const adjustment =
         !job.resetRefill &&
+        !founding &&
         payload?.adjustment &&
         typeof payload.adjustment === "object" &&
         !Array.isArray(payload.adjustment)
@@ -388,6 +438,12 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     generate: generateWish,
     valid(state, input) {
       const resident = state.villagers.find((entry) => entry.characterId === input.characterId);
+      if (input.foundingContract === 1)
+        return (
+          !!resident?.agenda &&
+          resident.cardSnapshot.capturedAt === input.capturedAt &&
+          ownsFoundingTask(state, input.characterId, "wish", input.revision, input.id)
+        );
       return (
         (state.storyPace !== "off" || resident?.wishLifecycle?.attempt?.resetRefill === true) &&
         !!resident?.agenda &&
@@ -398,12 +454,13 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     },
     apply(state, input, result: WishAttempt, context) {
       const owner = state.villagers.find((entry) => entry.characterId === input.characterId)!;
-      if (!result.resetRefill && owner.agenda && result.routineIdea)
+      const founding = input.foundingContract === 1;
+      if (!founding && !result.resetRefill && owner.agenda && result.routineIdea)
         addRoutineIdea(owner.agenda, result.routineIdea, owner, state);
       const committedAt = (readWishAttemptClock(input.id) ?? (() => villageNow()))();
       const attempt = structuredClone(result);
       // A deliberate retry consumes the current allowance, even when its paid proposal was saved on an earlier day.
-      if (context.retrying || attempt.resetRefill) {
+      if (context.retrying || attempt.resetRefill || founding) {
         attempt.dateKey = agendaDateKey(committedAt);
         attempt.at = committedAt.toISOString();
         if (attempt.resetRefill && attempt.candidate)
@@ -413,12 +470,13 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         attempt.accepted &&
         attempt.candidate &&
         owner.agenda!.wishes.length < MAX_ACTIVE &&
-        (state.storyPace !== "off" || attempt.resetRefill === true) &&
+        (state.storyPace !== "off" || attempt.resetRefill === true || founding) &&
         attempt.dateKey === agendaDateKey(committedAt)
       ) {
         rememberWishNeed(owner, attempt.candidate, attempt.matchedNeedId);
         owner.agenda!.wishes.push(attempt.candidate);
         if (
+          !founding &&
           !attempt.resetRefill &&
           attempt.activity &&
           canApplyWishActivity(attempt.activity, owner, state, committedAt)
@@ -427,10 +485,72 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       } else if (attempt.accepted) attempt.reason = "State changed before commit; no wish granted.";
       attempt.stage = "done";
       owner.wishLifecycle!.attempt = attempt;
-      delete state.wishRefillIntents[input.characterId];
+      if (founding) completeFoundingTask(state, input.characterId, "wish", input.revision);
+      else delete state.wishRefillIntents[input.characterId];
     },
   };
 
+  async function queueFoundingWish(
+    characterId: string,
+    context: CompactFoundingContext,
+    savedProposal?: Record<string, unknown>,
+  ): Promise<void> {
+    await reserveInitialWishAllowance(characterId, villageNow());
+    const state = await readVillageState(),
+      resident = state.villagers.find((row) => row.characterId === characterId);
+    if (!resident?.agenda || !resident.wishLifecycle?.attempt)
+      throw new Error("Initial Wish allowance is unavailable.");
+    if (
+      context.sourceRevision !== foundingTaskRevision(state, characterId, "routine") ||
+      JSON.stringify(context.activeWishes) !== JSON.stringify(resident.agenda.wishes)
+    )
+      throw new Error("Resident context changed. Retry Wish.");
+    const id = resident.wishLifecycle.attempt.id,
+      revision = foundingTaskRevision(state, characterId, "wish");
+    await mutateVillageState((live) => {
+      const marker = live.foundingPreparation;
+      if (
+        live.seed !== state.seed ||
+        marker?.tasksVersion !== 1 ||
+        marker.status !== "pending" ||
+        foundingTaskRevision(live, characterId, "wish") !== revision
+      )
+        throw new Error("Resident context changed. Retry Wish.");
+      marker.tasks ??= {};
+      marker.tasks[characterId] ??= {};
+      if (marker.tasks[characterId].wish?.revision !== revision)
+        marker.tasks[characterId].wish = {
+          contract: 1,
+          revision,
+          jobId: foundingSlot("wish", characterId),
+          status: "pending",
+          attempt: 0,
+          error: "",
+          allowanceId: id,
+        };
+      else marker.tasks[characterId].wish!.allowanceId = id;
+    });
+    await queueBackgroundJob({
+      kind: "wish",
+      retryActionId: state.foundingPreparation?.retryActions?.at(-1),
+      subjectId: characterId,
+      seed: state.seed,
+      revision,
+      finite: true,
+      label: resident.cardSnapshot.name + "'s initial Wish",
+      input: {
+        state: { ...state, villagers: [resident] },
+        characterId,
+        id,
+        revision,
+        capturedAt: resident.cardSnapshot.capturedAt,
+        now: villageNow().toISOString(),
+        foundingContract: 1,
+        foundingContext: context,
+        savedProposal,
+      },
+    });
+  }
   async function processWishAttempt(characterId: string, id: string, now: Date, clock?: () => Date): Promise<void> {
     const clocks = wishAttemptClocks();
     const state = await readVillageState(),
@@ -633,6 +753,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
 
   return {
     retireResidentWish,
+    queueFoundingWish,
     reserveInitialWishAllowance,
     correctResidentWish,
     processWishAttempt,

@@ -50,6 +50,8 @@ export type BackgroundInput = {
   legacyError?: string;
   automaticDate?: string;
   expectedAttempt?: number;
+  /** Server-owned explicit retry admission for a replacement with changed source inputs. */
+  retryActionId?: string;
 };
 export type Job = BackgroundInput & {
   id: string;
