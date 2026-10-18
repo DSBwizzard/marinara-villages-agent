@@ -1,3 +1,5 @@
+import { mock } from "node:test";
+import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
 import assert from "node:assert/strict";
 import { safeFailureMessage } from "../packages/villages/src/server/domain/rules/errors.js";
 
@@ -75,6 +77,69 @@ const paid = (answer = "answer") =>
 
 async function main() {
   try {
+    seed("provider-timeout");
+    let providerCalls = 0;
+    let timeoutLate!: (value: string) => void;
+    const dispatched = deferred<void>();
+    const timeoutWork = () =>
+      venueCheckpoint("saved-intent", async () => "intent").then(() =>
+        venueCheckpoint("reply", () =>
+          coordinatedCompletion("timeout-provider", () =>
+            withProviderDeadline(async () => {
+              providerCalls++;
+              dispatched.resolve();
+              return new Promise<string>((resolve) => {
+                timeoutLate = resolve;
+              });
+            }),
+          ),
+        ),
+      );
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const request = coordinateVenue("provider-timeout", "turn", "turn", {}, 0, undefined, timeoutWork);
+      const failure = assert.rejects(request, /timed out after 30 seconds/);
+      await dispatched.promise;
+      mock.timers.tick(30_000);
+      await failure;
+      const saved = await readVenueOperation("provider-timeout");
+      assert.equal(saved!.status, "interrupted");
+      assert.equal(row("provider-timeout").data.operation.checkpoints["saved-intent"], "intent");
+      timeoutLate("late reply");
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.equal(
+        row("provider-timeout").data.operation.checkpoints.reply,
+        undefined,
+        "Late completion cannot commit a reply",
+      );
+      await recoverVenueOperations(async (id) => {
+        if (id === "provider-timeout")
+          await coordinateVenue(id, "turn", "turn", {}, undefined, undefined, timeoutWork, { recovery: true });
+      });
+      assert.equal(providerCalls, 1, "Startup recovery cannot dispatch again");
+      await assert.rejects(
+        coordinateVenue("provider-timeout", "turn", "turn", {}, 0, undefined, timeoutWork),
+        refused("OPERATION_INTERRUPTED"),
+      );
+      const current = await readVenueOperation("provider-timeout");
+      const retry = () =>
+        coordinateVenue("provider-timeout", "turn", "turn", {}, 0, current!.attemptId, () =>
+          venueCheckpoint("saved-intent", async () => assert.fail("Saved work must be reused")).then(() =>
+            venueCheckpoint("reply", () =>
+              coordinatedCompletion("timeout-provider", async () => {
+                providerCalls++;
+                return "recovered";
+              }),
+            ),
+          ),
+        );
+      assert.deepEqual(await Promise.all([retry(), retry()]), ["recovered", "recovered"]);
+      assert.equal(providerCalls, 2, "Explicit duplicate retries authorize only one replacement call");
+      assert.equal(row("provider-timeout").data.generationReceipts[0].outcome, "unknown");
+    } finally {
+      mock.timers.reset();
+    }
     seed("race");
     const started = deferred<void>(),
       finish = deferred<string>();
