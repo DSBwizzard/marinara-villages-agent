@@ -1,4 +1,7 @@
 import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
+import { mock } from "node:test";
+// Keep one fixture day across a UTC/local midnight; async timers remain real.
+mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00.000Z") });
 import { fixtureLocalAttention, fixtureAcousticModel } from "./fixtures/villages-attention.fixture.js";
 import { setVillageSendOnEnter } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
@@ -3643,6 +3646,7 @@ async function main() {
     console.log("villages-venue-session: ok");
   } finally {
     release();
+    mock.timers.reset();
   }
 }
 
