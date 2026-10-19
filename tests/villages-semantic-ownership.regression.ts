@@ -1214,6 +1214,24 @@ async function main() {
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
   assert(
+    systemPrompt.includes(
+      'checklist:[{category:"structure|equipment|finish",title:"1-100 characters",needed:boolean,citation:0}]',
+    ),
+    "System must receive the checklist item schema required by Project validation",
+  );
+  assert(
+    systemPrompt.includes(
+      "For requirements, include exactly three checklist entries, one each for structure, equipment and finish",
+    ),
+    "An empty requirements checklist interrupted a live opening planning conversation",
+  );
+  assert(
+    systemPrompt.includes("citation is a zero-based index into this row's citations array, not an evidence segment"),
+    "Checklist references must bind to the declared speech citations",
+  );
+  assert(systemPrompt.includes("If the saved speech cannot support all three categories, omit the requirements row"));
+
+  assert(
     systemPrompt.includes("Return {sourceHash,intent:{"),
     "The combined response example must contain required intent inside the single exchange object",
   );
