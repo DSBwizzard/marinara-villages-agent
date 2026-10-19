@@ -826,6 +826,7 @@ async function main() {
     (_r: any, e: any[]) => {
       e[2].kind = "narration";
       e[2].speakerId = "__venue_scene__";
+      e[2].heardBy = [];
     },
     (r: any) => {
       r.coverage[1] = { segment: 1, status: "none", actionIds: [], reason: "Missing primary source" };
@@ -836,7 +837,7 @@ async function main() {
     mutation(r, e);
     assert.throws(() => reconcileResidentActions(actions, r, e), /retained/);
   }
-  // Interrupted entry review: a redundant narration citation rejects an otherwise valid visit.
+  // Redundant witnessed narration cannot broaden the exact accepted dialogue invitation.
   // Reduced provider-free reproduction; saved personal Scene data stays outside the repository.
   const doorwayEvidence = semanticEvidence([
     { ...accessLine, role: "user", speakerId: "player", content: "May I come in?" },
@@ -853,10 +854,44 @@ async function main() {
     actionIds: ["invitation"],
     reason: "Opening the door corroborates the spoken invitation",
   };
-  assert.throws(
-    () => reconcileResidentActions(doorwayActions, doorwayReview, doorwayEvidence),
-    /Resident action coverage is incomplete or inconsistent/,
-  );
+  const originalDoorwayReview = structuredClone(doorwayReview);
+  const normalizedDoorway = reconcileResidentActions(doorwayActions, doorwayReview, doorwayEvidence);
+  assert.deepEqual(normalizedDoorway.access[0].evidence, [2]);
+  assert.deepEqual(normalizedDoorway.receipt.review, originalDoorwayReview);
+  assert.deepEqual(doorwayReview, originalDoorwayReview);
+  assert.deepEqual(normalizedDoorway.receipt.coverageNormalization, [{ segment: 1, actionIds: ["invitation"] }]);
+  for (const mutate of [
+    (r: any, e: any[]) => {
+      r.coverage[1].actionIds.push("unknown");
+    },
+    (r: any, e: any[]) => {
+      r.coverage[1].actionIds.push("invitation");
+    },
+    (r: any, e: any[]) => {
+      e[1].playerHeard = false;
+    },
+    (r: any, e: any[]) => {
+      e[1].heardBy = [];
+    },
+    (r: any) => {
+      r.decisions[0].status = "rejected";
+    },
+    (r: any) => {
+      r.decisions[0].status = "unresolved";
+    },
+    (r: any) => {
+      r.coverage[1].status = "unresolved";
+    },
+    (r: any) => {
+      r.coverage[2].actionIds = [];
+      r.coverage[2].status = "none";
+    },
+  ]) {
+    const r = structuredClone(doorwayReview),
+      e = structuredClone(doorwayEvidence);
+    mutate(r, e);
+    assert.throws(() => reconcileResidentActions(doorwayActions, r, e), /retained/);
+  }
   const primaryOnlyReview = structuredClone(doorwayReview);
   primaryOnlyReview.coverage[1] = {
     segment: 1,

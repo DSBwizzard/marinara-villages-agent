@@ -30,6 +30,7 @@ export type ResidentActionReceipt = {
   proposed: ResidentAccessAction[];
   review: unknown;
   systemResponse?: string;
+  coverageNormalization?: { segment: number; actionIds: string[] }[];
 };
 export const RESIDENT_ACTION_SHAPE =
   'residentActions:[{id:"unique action ID",actorId,visitorId:"player",source:{speakerId,quote:"exact full current segment text"},venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved|revoke-standing",duration:"visit|standing",conditions:[],accompanies:false,command?:exact supported access command}]';
@@ -146,6 +147,31 @@ export function reconcileResidentActions(
     Array.isArray(c.actionIds) &&
     c.actionIds.length === 0;
   const coverage = review.coverage.map(asRecord).filter((c) => !playerNone(c));
+  // Redundant witnessed narration adds no authority: retain only the exact primary source.
+  const redundantNarration = (c: Record<string, unknown>, id: unknown) => {
+    const action = actions.find((a) => a.id === id),
+      source = action && sources.get(action.id),
+      line = evidence[Number(c.segment)];
+    return !!(
+      action &&
+      source !== undefined &&
+      source !== c.segment &&
+      evidence[source]?.kind === "dialogue" &&
+      evidence[source]?.speakerId === action.actorId &&
+      line?.kind === "narration" &&
+      line.playerHeard &&
+      line.heardBy.includes(action.actorId) &&
+      c.status === "actions" &&
+      decisions.some((d) => d.id === id && d.status === "accepted") &&
+      coverage.some(
+        (primary) =>
+          primary.segment === source &&
+          primary.status === "actions" &&
+          Array.isArray(primary.actionIds) &&
+          primary.actionIds.includes(id),
+      )
+    );
+  };
   if (
     coverage.length !== required.length ||
     new Set(coverage.map((c) => c.segment)).size !== required.length ||
@@ -165,6 +191,7 @@ export function reconcileResidentActions(
           return (
             !action ||
             (sources.get(String(id)) !== c.segment &&
+              !redundantNarration(c, id) &&
               (!line?.playerHeard ||
                 line.kind === "narration" ||
                 line.speakerId !== action.actorId ||
@@ -188,6 +215,10 @@ export function reconcileResidentActions(
     actions.some((a) => a.outcome === "unresolved" || a.conditions.some((c) => c !== "accompanied"))
   )
     return fail("Resident action needs clarification.");
+  const coverageNormalization = coverage.flatMap((c) => {
+    const actionIds = (c.actionIds as string[]).filter((id) => redundantNarration(c, id));
+    return actionIds.length ? [{ segment: Number(c.segment), actionIds }] : [];
+  });
   const scopes = new Map<string, string>();
   for (const action of actions) {
     const scope = JSON.stringify([action.venueId, action.zoneId]);
@@ -254,7 +285,12 @@ export function reconcileResidentActions(
   return {
     access: fold(access, "evidence"),
     permissions: fold(permissions, "lineIds"),
-    receipt: { version: 1 as const, proposed, review: structuredClone(review) },
+    receipt: {
+      version: 1 as const,
+      proposed,
+      review: structuredClone(review),
+      ...(coverageNormalization.length ? { coverageNormalization } : {}),
+    },
   };
 }
 
