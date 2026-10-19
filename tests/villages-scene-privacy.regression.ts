@@ -32,6 +32,18 @@ async function main() {
     checkpoints: { saved: { secret: "private checkpoint sentinel" } },
     relationshipReview: { applied: true, receipts: [], raw: "private review sentinel" },
   };
+  Object.assign(scene, {
+    operation: {
+      id: "greeting",
+      kind: "greet",
+      status: "complete",
+      error: "Opening failed",
+      attemptId: "failed-opening",
+      stage: "greet",
+      checkpoints: { "greeting-reply": { secret: "private saved greeting sentinel" } },
+      attempts: { secret: "private attempt sentinel" },
+    },
+  });
   const before = structuredClone(scene);
   surface.get("/scene", async () => ({ session: scene }));
   surface.post("/archive", { bodyLimit: 1024 }, async () => ({ visit: scene }));
@@ -42,6 +54,8 @@ async function main() {
     const result = await handlers.get(route)!({}, {});
     assert.doesNotMatch(JSON.stringify(result), /private .* sentinel/);
     assert.equal(result[key].lines[0].content, "Visible dialogue");
+    assert.equal(result[key].operation.recoverable, true, "Recovery is derived before stripping checkpoints");
+    assert.equal(result[key].operation.error, "Opening failed");
     assert.deepEqual(result[key].lines[0].heardBy, ["visible"]);
     assert.deepEqual(result[key].submissions[0].processing, { version: 1, domains: { memory: { status: "pending" } } });
     assert.deepEqual(result[key].processingSummary, { pending: 1, failed: 0, rejected: 0 });

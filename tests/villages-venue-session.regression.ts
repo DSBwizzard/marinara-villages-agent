@@ -105,16 +105,23 @@ async function sendVenueTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {
   return sendVenueTurnRaw({
     ...input,
     expectedSceneRevision: session.sceneRevision,
-    retryOfAttemptId: session.operation?.status === "interrupted" ? session.operation.attemptId : undefined,
+    retryOfAttemptId:
+      session.operation?.status === "interrupted" || session.operation?.error ? session.operation.attemptId : undefined,
   });
 }
 async function greetVenue(id: string) {
   const session = records.get(key("villages", `villages-venue-visit-${id}`))?.data ?? {};
-  return greetVenueRaw(id, session.operation?.status === "interrupted" ? session.operation.attemptId : undefined);
+  return greetVenueRaw(
+    id,
+    session.operation?.status === "interrupted" || session.operation?.error ? session.operation.attemptId : undefined,
+  );
 }
 async function endVenueSession(id: string) {
   const session = records.get(key("villages", `villages-venue-visit-${id}`))?.data ?? {};
-  return endVenueSessionRaw(id, session.operation?.status === "interrupted" ? session.operation.attemptId : undefined);
+  return endVenueSessionRaw(
+    id,
+    session.operation?.status === "interrupted" || session.operation?.error ? session.operation.attemptId : undefined,
+  );
 }
 
 const records = new Map<string, any>();
@@ -212,6 +219,7 @@ let failGreetingOnce = false;
 let holdGreetingOnce = false;
 let greetingStarted: (() => void) | null = null;
 let releaseHeldGreeting: (() => void) | null = null;
+let truncatedGreetingOnce = false;
 let malformedGreetingOnce = false;
 let openingSegmentsOnce: Record<string, unknown>[] | null = null;
 let emptyOpeningFailures = 0;
@@ -531,7 +539,11 @@ const release = configureVillagesRuntime({
               };
             }
             if (user.startsWith("The player enters this space"))
-              assert.ok(options.maxTokens <= 1_600, "a brief greeting cannot spend a full-turn output budget");
+              assert.equal(
+                options.maxTokens,
+                4096,
+                "opening uses the configured conversation allowance, including reasoning and its structured envelope",
+              );
             if (system.includes("Distill one Scene")) {
               memoryCalls += 1;
               if (holdMemoryOnce) {
@@ -866,6 +878,10 @@ const release = configureVillagesRuntime({
                   });
                 greetingStarted?.();
               });
+            }
+            if (user.startsWith("The player enters this space") && truncatedGreetingOnce) {
+              truncatedGreetingOnce = false;
+              return { content: '{"segments":[', finishReason: "length" };
             }
             if (user.startsWith("The player enters this space") && malformedGreetingOnce) {
               malformedGreetingOnce = false;
@@ -2769,6 +2785,22 @@ async function main() {
     const speechScene = await greetVenue(speechOpening.id);
     assert.equal(speechScene.lines[0]?.speakerId, "tina", "a direct greeting can lead without narration");
     await endVenueSession(speechScene.id);
+    truncatedGreetingOnce = true;
+    const truncatedOpening = await enterVenue("park");
+    await assert.rejects(
+      () => greetVenue(truncatedOpening.id),
+      (error: any) => {
+        assert.match(error.message, /output limit/);
+        assert.equal(error.failure.cause, "output_limit");
+        return true;
+      },
+    );
+    const beforeContinue = calls;
+    const skippedOpening = await continueVenueWithoutGreeting(truncatedOpening.id);
+    assert.equal(skippedOpening.status, "active");
+    assert.equal(skippedOpening.operation?.error, "", "Skipping opening dismisses its terminal error");
+    assert.equal(calls, beforeContinue, "Continuing without opening makes no model request");
+    await endVenueSession(skippedOpening.id);
     emptyOpeningFailures = 1;
     const emptyOpening = await enterVenue("park");
     await assert.rejects(() => greetVenue(emptyOpening.id), /failed validation/u);

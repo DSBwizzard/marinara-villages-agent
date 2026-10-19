@@ -616,16 +616,20 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             "SCENE_STALE",
             "The scene changed in another tab. Your draft is preserved; review the updated scene before sending again.",
           );
+        const rejectedTerminal =
+          prior?.status === "complete" &&
+          !!prior.error &&
+          Object.values(prior.attempts).some((attempt) => attempt.status === "rejected");
         if (
-          options.recovery &&
+          (options.recovery || rejectedTerminal) &&
           prior?.id === id &&
-          prior.status !== "complete" &&
+          (prior.status !== "complete" || rejectedTerminal) &&
           prior.sceneRevision !== sceneRevision(data) &&
           !(data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === id) &&
           !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
         )
           throw venueRefusal("SCENE_STALE", "The Scene changed after generation. Saved results are preserved.");
-        if (prior?.id === id && prior.status !== "complete") {
+        if (prior?.id === id && (prior.status !== "complete" || rejectedTerminal)) {
           authorizedRetry = retryOfAttemptId === prior.attemptId;
           if (!options.recovery && !options.replay && retryOfAttemptId !== prior.attemptId)
             throw venueRefusal(

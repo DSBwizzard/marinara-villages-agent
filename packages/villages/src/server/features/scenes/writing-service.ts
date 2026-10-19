@@ -717,8 +717,8 @@ export function createSceneWriting({
         : mode === "leave" && !message.trim()
           ? "The player leaves without saying anything."
           : message;
-    // Keep the opening brief, with enough room for reasoning models.
-    const requestedMaxTokens = mode === "greet" ? 1_600 : VENUE_REPLY_MAX_TOKENS;
+    // A brief opening still needs room for reasoning and the complete structured envelope.
+    const requestedMaxTokens = VENUE_REPLY_MAX_TOKENS;
     const maxTokens = Math.min(model.maxOutputTokens ?? requestedMaxTokens, requestedMaxTokens);
     const fitStarted = performance.now();
     if (session.semanticVersion === 2) {
@@ -1970,7 +1970,11 @@ export function createSceneWriting({
       await rejectVenueCompletion();
       villagesLogger().warn("[villages] scene=%s draft rejected: %s; no automatic retry", session.id, cause.kind);
       throw Object.assign(
-        badGateway(`The Scene reply failed validation (${cause.kind}). Your draft is preserved; resend when ready.`),
+        badGateway(
+          cause.failure?.cause === "output_limit"
+            ? cause.failure.message
+            : `The Scene reply failed validation (${cause.kind}). Your draft is preserved; explicitly retry.`,
+        ),
         cause.failure ? { failure: cause.failure } : {},
       );
     }

@@ -1180,23 +1180,7 @@ export function createSceneCommands({
         signal.throwIfAborted();
         const writingInput =
           admission.operation?.id === "greeting"
-            ? admission.operation.input.writingContractVersion !== undefined
-              ? {
-                  writingContractVersion: admission.operation.input.writingContractVersion,
-                  ...([1, 2].includes(Number(admission.operation.input.residentActionsVersion))
-                    ? { residentActionsVersion: admission.operation.input.residentActionsVersion }
-                    : {}),
-                  ...(admission.operation.input.semanticPipelineVersion
-                    ? { semanticPipelineVersion: admission.operation.input.semanticPipelineVersion }
-                    : {}),
-                  ...(admission.operation.input.semanticBudget
-                    ? { semanticBudget: admission.operation.input.semanticBudget }
-                    : {}),
-                  ...([2, 3].includes(Number(admission.operation.input.writingContractVersion))
-                    ? { writingCapabilities: admission.operation.input.writingCapabilities }
-                    : {}),
-                }
-              : {}
+            ? admission.operation.input
             : {
                 writingContractVersion: 3,
                 ...(admission.semanticVersion === 2
@@ -1419,6 +1403,10 @@ export function createSceneCommands({
         throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
       if (state.status === "opening") state.status = "active";
       else if (state.status !== "active") throw conflict("That Scene has already ended.");
+      if (state.operation?.kind === "greet" && state.operation.status === "complete") {
+        state.operation.error = "";
+        delete state.operation.failure;
+      }
     });
     work.abortGreeting(id);
     return session;

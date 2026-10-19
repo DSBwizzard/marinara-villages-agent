@@ -35,7 +35,7 @@ export function publicSceneRoutes(
                     }
                   : undefined,
                 operation: operationSummary(
-                  scene.operation as import("../../domain/models/operation-model.js").VenueOperation | undefined,
+                  saved.operation as import("../../domain/models/operation-model.js").VenueOperation | undefined,
                 ),
               };
             }

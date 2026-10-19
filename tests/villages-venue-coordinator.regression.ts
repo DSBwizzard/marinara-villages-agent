@@ -337,6 +337,43 @@ async function main() {
     } finally {
       mock.timers.reset();
     }
+    seed("v3-opening-retry");
+    const frozenOpening = {
+      writingContractVersion: 3,
+      semanticBudget: { version: 1, requests: 2, inputTokens: 100000, outputTokens: 20000 },
+      semanticPipelineVersion: 3,
+      residentActionsVersion: 2,
+      writingCapabilities: { wishes: true },
+    };
+    row("v3-opening-retry").data.operation = {
+      id: "greeting",
+      input: frozenOpening,
+      status: "interrupted",
+      attemptId: "saved-opening-attempt",
+    };
+    const retryCommands = createSceneCommands({
+      activationScope: () => undefined,
+      sceneWork: () => createSceneWork(),
+      readSession,
+      villagesLogger: () => ({ info() {}, warn() {} }),
+      coordinateVenue: async (
+        _scene: string,
+        _id: string,
+        _kind: string,
+        input: unknown,
+        _revision: unknown,
+        attempt: string,
+      ) => {
+        assert.equal(
+          JSON.stringify(input),
+          JSON.stringify(frozenOpening),
+          "Opening retry preserves frozen admission bytes",
+        );
+        assert.equal(attempt, "saved-opening-attempt");
+        return readSession("v3-opening-retry");
+      },
+    } as any);
+    await retryCommands.greetVenue("v3-opening-retry", "saved-opening-attempt");
     seed("v3-replay");
     row("v3-replay").data = coerceSession({ ...row("v3-replay").data, semanticVersion: 2 });
     const replayCommands = createSceneCommands({
@@ -465,6 +502,41 @@ async function main() {
       );
     } finally {
       mock.timers.reset();
+    }
+    for (const legacyComplete of [false, true]) {
+      const sceneId = "rejected-replay-" + legacyComplete;
+      seed(sceneId);
+      let rejectedCalls = 0;
+      const rejectedWork = async () => {
+        const result = await coordinatedCompletion("turn-reply:writing", async () => {
+          rejectedCalls++;
+          return "malformed paid response";
+        });
+        await rejectVenueCompletion();
+        throw Error(result);
+      };
+      await assert.rejects(coordinateVenue(sceneId, "same", "turn", {}, 0, undefined, rejectedWork), /malformed paid/);
+      if (legacyComplete) row(sceneId).data.operation.status = "complete";
+      const attemptId = row(sceneId).data.operation.attemptId;
+      await assert.rejects(
+        coordinateVenue(sceneId, "same", "turn", {}, 0, undefined, rejectedWork),
+        refused("OPERATION_INTERRUPTED"),
+      );
+      assert.equal(rejectedCalls, 1, "Rejected same-ID replay requires explicit paid authorization");
+      await assert.rejects(coordinateVenue(sceneId, "same", "turn", {}, 0, attemptId, rejectedWork), /malformed paid/);
+      assert.equal(rejectedCalls, 2, "Matching explicit retry authorizes one replacement");
+      if (legacyComplete) {
+        const saved = structuredClone(row(sceneId).data.operation);
+        row(sceneId).data.sceneRevision = 1;
+        for (const recovery of [true, false]) {
+          await assert.rejects(
+            coordinateVenue(sceneId, "same", "turn", {}, 1, saved.attemptId, rejectedWork, { recovery }),
+            refused("SCENE_STALE"),
+          );
+          assert.deepEqual(row(sceneId).data.operation, saved, "Stale rejected evidence remains untouched");
+        }
+        assert.equal(rejectedCalls, 2, "Stale rejected evidence cannot cause another dispatch");
+      }
     }
     seed("race");
     const started = deferred<void>(),
