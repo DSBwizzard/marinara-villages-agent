@@ -1099,6 +1099,12 @@ async function main() {
       "Opening proposals are not Projects: report their pitch only in openingSignal, never projectSpeech.",
     ),
   );
+  assert(
+    systemPrompt.includes(
+      "Memory subjectCharacterIds and knownByCharacterIds contain resident IDs only, never player.",
+    ),
+  );
+  assert(systemPrompt.includes("Never use an opening proposal, its name, or a newly spoken desire as a Wish ID."));
   assert.doesNotMatch(systemPrompt, /lineIds:\["player",0\]/);
   assert.doesNotMatch(systemPrompt, /evidence:\["player",0\]/);
   assert.doesNotMatch(systemPrompt, /"player" means the latest player line/);
