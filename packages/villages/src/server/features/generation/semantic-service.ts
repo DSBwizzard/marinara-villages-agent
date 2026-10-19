@@ -397,12 +397,14 @@ export function createSemanticService(ports: SemanticPorts) {
         }
         const effects = readSemanticEffects(raw, hash);
         if (savedInput.context.opening) {
-          if (raw.openingSignal === undefined)
+          const opening = savedInput.context.opening;
+          const signalRequired = Boolean(opening.proposal || opening.firstUse);
+          if (raw.openingSignal === undefined && signalRequired)
             throw badGateway("System opening interpretation is incomplete. The draft is preserved.");
           const signal = readOpeningSignal(raw.openingSignal);
-          const opening = savedInput.context.opening;
           if (
             raw.openingSignal !== null &&
+            raw.openingSignal !== undefined &&
             (!signal ||
               !savedInput.evidence.some(
                 (line) =>

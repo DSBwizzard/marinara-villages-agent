@@ -566,6 +566,16 @@ async function main() {
     beforeReplay,
     "Saved System opening result replays without another request after context changes",
   );
+  state.opening.stage = "gathering";
+  openingSignal = undefined;
+  const gathering = await service.exchange(scene, "Ordinary gathering chat", [pitchLine], null);
+  assert.equal(gathering.effects.openingSignal, undefined);
+  assert.deepEqual(gathering.effects.openingContext, { stage: "gathering", projectId: "" });
+  openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
+  await assert.rejects(
+    service.exchange(scene, "Forged gathering pitch", [pitchLine], null),
+    /opening evidence did not validate/,
+  );
   state.opening.stage = "conversations";
   openingSignal = undefined;
   await assert.rejects(
