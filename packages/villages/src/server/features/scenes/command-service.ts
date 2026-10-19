@@ -86,8 +86,8 @@ import {
   sceneAccessContext,
 } from "../../domain/rules/venue-contact.js";
 import { venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
-import { movementTransition, readPlayerMovement } from "../../domain/rules/venue-movement.js";
-import { projectSemanticMovement } from "../../domain/rules/semantic-timeline.js";
+import { movementTransition, assertConversationalPlayerPosition } from "../../domain/rules/venue-movement.js";
+import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import {
   applyVenueSceneChange,
   physicalVenueEvents,
@@ -1801,6 +1801,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       : undefined;
     const payload = {
       ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.turnPolicyVersion === 1
+          ? { turnPolicyVersion: 1 }
+          : {}
+        : prior
+          ? {}
+          : { turnPolicyVersion: 1 }),
+      ...(scene.operation?.id === input.submissionId
         ? [1, 2].includes(Number(scene.operation.input.residentActionsVersion))
           ? { residentActionsVersion: scene.operation.input.residentActionsVersion }
           : {}
@@ -2015,6 +2022,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         throw conflict("This zone is closed. Move to another zone or leave the Venue.");
       movementVenue = venue;
     }
+    if (session.semanticVersion !== 2 && input.mode !== "leave" && movementVenue)
+      assertConversationalPlayerPosition(input.message, movementVenue, session.zoneId ?? "");
     if (input.mode !== "leave" && !input.message.trim()) throw badRequest("Write something before sending it.");
     if (input.message.length > 4000) throw badRequest("A line can be at most 4000 characters.");
     if (
@@ -2026,33 +2035,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       const intent = await semantic.intent(session, input.message);
       if (intent.status === "unresolved") throw conflict(intent.reason || "The action needs clarification.");
       session = { ...session, semanticIntent: intent };
-      const plannedMoves = intent.timeline.flatMap((step, segment) =>
-        step.kind === "movement" && step.zoneId ? [{ zoneId: step.zoneId, segment }] : [],
-      );
-      if (plannedMoves.length && !intent.movement) {
-        const state = await readVillageState();
-        const venue = state.venues.find((row) => row.id === session.placeId);
-        if (!venue) throw conflict("The Venue is unavailable.");
-        projectSemanticMovement(session, state, venue, plannedMoves, []);
-      }
-      if (intent.movement && !intent.timeline.some((step) => step.kind === "speech" || step.kind === "action"))
-        return {
-          session: await moveVenueZoneOnce(session.id, intent.movement.zoneId, { ...input, requestMode }),
-          verdict: null,
-          action: null,
-          recordEvents: [],
-        };
-    }
-    if (session.semanticVersion !== 2 && !explicitSceneActions() && (input.mode === "chat" || input.mode === "ask")) {
-      const venue = movementVenue ?? (await readVillageState()).venues.find((entry) => entry.id === session.placeId);
-      const movement = venue && readPlayerMovement(input.message, venue);
-      if (movement)
-        return {
-          session: await moveVenueZoneOnce(session.id, movement.zoneId, { ...input, requestMode }),
-          verdict: null,
-          action: null,
-          recordEvents: [],
-        };
+      semanticPlayerMoves([], session, []);
     }
     if (
       input.mode !== "contact" &&
@@ -2285,13 +2268,11 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       contactIntentUsed = reply.contactIntent;
       reply = await contactReply(session, contactIntentUsed);
     }
-    if (!explicitSceneActions() && !contactIntentUsed && reply.movementIntent)
-      return {
-        session: await moveVenueZoneOnce(session.id, reply.movementIntent.zoneId, { ...input, requestMode }),
-        verdict: null,
-        action: null,
-        recordEvents: [],
-      };
+    // Validate retained replies before any effects; only the explicit Move route owns travel.
+    if (reply.movementIntent && reply.movementIntent.zoneId !== session.zoneId)
+      throw badGateway("System invented player Zone travel. The draft is preserved.");
+    semanticPlayerMoves(reply.semanticPlayerMoves, session, reply.lines);
+
     if (
       session.semanticVersion !== 2 &&
       contactIntentUsed &&
@@ -2395,22 +2376,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         [...new Set(reply.lines.map((line) => line.speakerId).filter(Boolean))],
         "",
       );
-    }
-    let movementProjection: VenueScene | undefined;
-    if (reply.semanticPlayerMoves.length) {
-      await mutateVillageState((state) => {
-        if (state.seed !== session.villageSeed) throw conflict("The Village changed during this turn.");
-        const venue = state.venues.find((row) => row.id === session.placeId);
-        if (!venue) throw conflict("The Venue is unavailable.");
-        movementProjection = projectSemanticMovement(
-          session,
-          state,
-          venue,
-          reply.semanticPlayerMoves,
-          reply.contactMoves,
-          true,
-        );
-      });
     }
     const updated = await changeSession(session.id, (state) => {
       if (state.submissions.some((entry) => entry.id === input.submissionId)) return;
@@ -2709,32 +2674,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           !reply.departures.includes(id) &&
           !reply.contactMoves.some((move) => move.characterId === id && move.zoneId !== state.zoneId),
       );
-      if (movementProjection) {
-        const projection = movementProjection;
-        state.enteredFromZoneId = projection.enteredFromZoneId;
-        state.zoneId = projection.zoneId;
-        state.area = projection.area;
-        state.spaceClass = projection.spaceClass;
-        state.privateOwnerId = projection.privateOwnerId;
-        state.privateSpaceId = projection.privateSpaceId;
-        state.grantedZoneIds = projection.grantedZoneIds;
-        state.entryOffers = projection.entryOffers;
-        for (const person of projection.participants)
-          if (!state.participants.some((row) => row.characterId === person.characterId))
-            state.participants.push(person);
-        for (const history of projection.heardHistory)
-          if (!state.heardHistory.some((row) => row.characterId === history.characterId))
-            state.heardHistory.push(history);
-        state.activeIds = sceneZoneOccupants(
-          state,
-          applicationVillage,
-          applicationVillage.venues.find((row) => row.id === state.placeId)!,
-          state.zoneId!,
-        ).map((row) => row.characterId);
-        state.submissions.find((row) => row.id === input.submissionId)!.activeIdsAfterTurn = [...state.activeIds];
-        state.doorwayContacts = [];
-        state.recap = "";
-      }
       const remaining = state.sceneAttendance?.occupants.some(
         (person) => !state.departedIds?.includes(person.characterId),
       );

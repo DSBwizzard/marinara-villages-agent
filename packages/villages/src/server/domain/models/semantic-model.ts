@@ -11,6 +11,7 @@ export interface SemanticInterpreter {
     lines: VenueReplyLine[],
     prepared: SemanticIntent | null,
     residentActions?: import("../rules/resident-actions.js").ResidentAccessAction[],
+    residentActionsOmitted?: boolean,
   ): Promise<SemanticExchange>;
 }
 
@@ -45,6 +46,7 @@ export type SemanticExchange = {
 };
 
 export type SemanticProvenance = {
+  turnPolicyVersion?: 1;
   pipelineVersion?: 3;
   residentActionsVersion?: 1 | 2;
   authority?: SemanticExchange["authority"];

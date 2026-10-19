@@ -22,6 +22,7 @@ import {
 import { venueInZone } from "../../domain/rules/venue-zones.js";
 import { venueInArea } from "../../domain/rules/venue-model.js";
 import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
+import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { badGateway, conflict } from "../../domain/rules/errors.js";
@@ -70,7 +71,7 @@ export function createSemanticService(ports: SemanticPorts) {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = stage === "intent" ? 4096 : asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
     const identity = asRecord(input);
-    const key = `semantic-v2:${stage}:${semanticHash([identity.message, identity.evidence, ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : [])])}`;
+    const key = `semantic-v2:${stage}:${semanticHash([1, identity.residentActionsOmitted === true, identity.message, identity.evidence, ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : [])])}`;
     return ports.venueCheckpoint(key, async () => {
       const requested = await ports.villagesConnectionIdFor("system");
       const initial = await ports.villagesLanguageModels().resolveForRequest({ connectionId: requested ?? undefined });
@@ -294,8 +295,23 @@ export function createSemanticService(ports: SemanticPorts) {
     });
     if (timeline.filter((step) => step.kind === "movement").length > 8)
       throw badGateway("The movement timeline exceeds its supported step limit.");
+    semanticPlayerMoves(
+      [],
+      {
+        ...scene,
+        semanticIntent: {
+          timeline,
+          movement: typeof movement.zoneId === "string" ? { zoneId: movement.zoneId, quote: message } : null,
+        } as SemanticIntent,
+      },
+      [],
+    );
     return {
-      timeline,
+      timeline: timeline.map((step) => {
+        if (step.kind !== "movement") return step;
+        const { zoneId: _zoneId, ...local } = step;
+        return { ...local, kind: "action" as const };
+      }),
       version: 2,
       sourceHash: hash,
       // Empty greeting input contains no player decision to clarify. Do not alter the raw response.
@@ -311,7 +327,7 @@ export function createSemanticService(ports: SemanticPorts) {
       instructions: raw.instructions,
       action,
       movement:
-        typeof movement.zoneId === "string" && movement.quote === message
+        typeof movement.zoneId === "string" && movement.zoneId !== scene.zoneId && movement.quote === message
           ? { zoneId: movement.zoneId, quote: message }
           : null,
     };
@@ -321,11 +337,11 @@ export function createSemanticService(ports: SemanticPorts) {
     const state = await ports.readVillageState();
     return ask(
       "intent",
-      { message, context: semanticContext(scene, state, message) },
+      { message, turnPolicyVersion: 1, context: semanticContext(scene, state, message) },
       'Interpret current player intent and plausible supported action outcomes. Return {sourceHash,status:"resolved|unresolved",reason,instructions,action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:exact input span,targetId?,delivery?:"ordinary|whisper|shout"}]}. Timeline spans follow source order and cover meaningful input; code binds offsets. Never turn quoted/hypothetical words or private thoughts into actual speech. ' +
         "action, when justified, is a sceneChange object {happened:true,narration,conditionBefore?,conditionAfter?,featureId?,featureText?,publicFactBefore?,publicFactAfter?,resolveTraceId?,addItem?,removeItem?,transferTo?,traceKind?,traceText?,recipientId?,sceneNote?}. " +
         "Only existing supported effects and current reachable targets. Do not create resources without established source/capability. Required resident consent absent from evidence means requires-response in instructions and no completed action. " +
-        "For ordered Zone movement mixed with speech, include zoneId on EACH movement timeline span (at most 8); keep source order. movement:{zoneId,quote:exact whole input} is only the shortcut for a pure move. Each movement uses an existing permitted route; no retroactive witnessing. Multiple persistent physical steps needing intermediate receipts or unsupported effects remain unresolved. " +
+        "Only the explicit Move action changes the player Zone. Movement within context.zoneId, including walking toward furniture or people, is kind:action without a Zone change. For an actual player attempt to cross Zones in this input, identify it as kind:movement with its exact destination zoneId so code can block the turn; never complete it in the draft. Quoted, hypothetical and requested travel is not a completed crossing. Multiple persistent physical steps needing intermediate receipts or unsupported effects remain unresolved. " +
         "Instructions identify actual speech/delivery, addressees, thoughts, plans, action order and prepared outcomes for Narration; they are not character speech. No action means action:null. Conversational input is resolved. Unknown necessary meaning is unresolved.",
       (raw, hash, savedInput) => readIntent(raw, hash, savedInput, state, scene),
     );
@@ -337,16 +353,19 @@ export function createSemanticService(ports: SemanticPorts) {
     lines: VenueReplyLine[],
     prepared: SemanticIntent | null,
     residentActions?: ResidentAccessAction[],
+    residentActionsOmitted = false,
   ): Promise<SemanticExchange> {
     const state = await ports.readVillageState();
     const evidence = semanticEvidence(lines);
     const combined = scene.operation?.input.semanticPipelineVersion === 3;
-    const actionContractV2 = scene.operation?.input.residentActionsVersion === 2;
+    const actionContractV2 = residentActionsOmitted || scene.operation?.input.residentActionsVersion === 2;
     const context = semanticContext(scene, state, message, combined, actionContractV2);
     return ask(
       "exchange",
       {
         message,
+        turnPolicyVersion: 1,
+        residentActionsOmitted,
         evidence,
         prepared,
         context,
@@ -354,13 +373,16 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
-      (residentActions
-        ? (actionContractV2
-            ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
-            : RESIDENT_ACTION_REVIEW_V1) + " "
+      (residentActionsOmitted
+        ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no access actions. Independently discover every expressed access action in additionalActions and cover every player-heard non-player segment. "
         : "") +
+        (residentActions
+          ? (actionContractV2
+              ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
+              : RESIDENT_ACTION_REVIEW_V1) + " "
+          : "") +
         (combined
-          ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. An empty player input is normal for a Scene greeting: return resolved intent with empty instructions and timeline, null action and movement; still independently validate all draft evidence. Include every meaningful input span in source order. Zone movements require exact existing zoneId. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
+          ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. An empty player input is normal for a Scene greeting: return resolved intent with empty instructions and timeline, null action and movement; still independently validate all draft evidence. Include every meaningful input span in source order. Only explicit Move changes the player Zone. Local walking within the current Zone is kind:action, not movement. Identify an actual attempted crossing as kind:movement with exact destination zoneId; code blocks the entire turn. Never invent or complete a player crossing. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
           : "") +
         "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash," +
         (combined
@@ -376,7 +398,7 @@ export function createSemanticService(ports: SemanticPorts) {
         "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
         "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. For a witnessed completed resident supply handoff use action.projectSupplyTransfer copied exactly from context.projectSupplyTransfers, with narration describing the completed transfer. Only an existing eligible finite source, physically present supplier and actual completed local transfer qualify. Requests, promises, future plans and labor never qualify. Do not combine that transfer with room edits or another transfer, and omit redundant projectSpeech handoff rows. The physical receipt, never dialogue alone, grants carried materials. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
         "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures, contactEnd and sceneEnded sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact; ending an in-person visit is sceneEnded with exact resident farewell speech, or omit the event when unsupported. " +
-        "events independently discovers resident moves [{characterId,zoneId,segment:narration index}], playerMoves:[{zoneId,segment:narration index}] matching every prepared movement timeline span, departures/contactEnd [{source:speech index}], sceneEnded:{source}, residenceRequest:{source,venueId}, residenceDecision:{source,approved}, upgradeRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
+        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], sceneEnded:{source}, residenceRequest:{source,venueId}, residenceDecision:{source,approved}, upgradeRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
         (actionContractV2
           ? ""
           : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
@@ -406,6 +428,11 @@ export function createSemanticService(ports: SemanticPorts) {
           : undefined;
         if (interpretedIntent?.status === "unresolved")
           throw badGateway(interpretedIntent.reason || "The action needs clarification. The draft is preserved.");
+        semanticPlayerMoves(
+          asRecord(raw.events).playerMoves,
+          { ...scene, semanticIntent: interpretedIntent ?? prepared ?? undefined },
+          lines,
+        );
         const reconciliation = savedInput.residentActions
           ? reconcileResidentActions(savedInput.residentActions, raw.residentActionReview, savedInput.evidence)
           : undefined;
@@ -466,7 +493,11 @@ export function createSemanticService(ports: SemanticPorts) {
               : {}),
           };
         }
-        if (reconciliation) effects.residentActionReceipt = reconciliation.receipt;
+        if (reconciliation)
+          effects.residentActionReceipt = {
+            ...reconciliation.receipt,
+            ...(savedInput.residentActionsOmitted ? { proposalsOmitted: true } : {}),
+          };
         if (
           raw.action !== null &&
           (asRecord(raw.action).happened !== true || !Number.isInteger(asRecord(raw.action).segment))
@@ -648,7 +679,7 @@ export function createSemanticService(ports: SemanticPorts) {
         return {
           version: 2,
           ...(interpretedIntent ? { intent: interpretedIntent } : {}),
-          checkpointKey: `semantic-v2:exchange:${semanticHash([savedInput.message, savedInput.evidence, ...(savedInput.residentActions ? [savedInput.residentActions] : [])])}`,
+          checkpointKey: `semantic-v2:exchange:${semanticHash([1, savedInput.residentActionsOmitted === true, savedInput.message, savedInput.evidence, ...(savedInput.residentActions ? [savedInput.residentActions] : [])])}`,
           sourceHash: hash,
           authority,
           effects,

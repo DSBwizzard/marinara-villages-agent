@@ -442,15 +442,22 @@ async function explicitActionChecks() {
   assert.equal(local.session.lines.at(-1)!.viaDoorway, undefined);
   assert.ok(prompts.at(-1)!.includes("ACTION-BASED SOUND"));
   assert.doesNotMatch(prompts.at(-1)!, /CONTACT RESPONSE/);
-  const movedWords = await submitTurn({
-    sessionId: scene.id,
-    message: "I walk to Common Space",
-    mode: "chat",
-    targetId: "",
-    submissionId: "scoped-written-move",
-  });
-  assert.equal(movedWords.session.zoneId, "exterior", "only Move changes the player's Zone");
-  assert.equal(movedWords.session.submissions.at(-1)!.movement, undefined);
+  const beforeWrittenMove = structuredClone(records);
+  const beforeWrittenCalls = calls;
+  await assert.rejects(
+    submitTurn({
+      sessionId: scene.id,
+      message: "I walk to Common Space",
+      mode: "chat",
+      targetId: "",
+      submissionId: "scoped-written-move",
+    }),
+    /Use Move to change Zones/,
+  );
+  assert.equal(calls, beforeWrittenCalls, "Named travel is refused before generation");
+  assert.equal((await activeVenueSession())!.zoneId, "exterior");
+  records.clear();
+  for (const [key, record] of structuredClone(beforeWrittenMove)) records.set(key, record);
   behavior = "relay";
   const relayBefore = calls;
   const offered = await submitTurn({
@@ -633,21 +640,27 @@ async function main() {
     behavior = "answer";
     scene = await open();
     const nominationCalls = calls;
-    const nominations = await submitTurn({
-      sessionId: scene.id,
-      message: "I make my way into Common Space",
-      mode: "chat",
-      targetId: "",
-      submissionId: "ignored-nominations",
-    });
+    await assert.rejects(
+      submitTurn({
+        sessionId: scene.id,
+        message: "I make my way into Common Space",
+        mode: "chat",
+        targetId: "",
+        submissionId: "ignored-nominations",
+      }),
+      /Use Move to change Zones/,
+    );
     assert.equal(calls - nominationCalls, 1, "model nominations do not admit extra Contact or movement responses");
     assert.match(prompts.at(-1)!, /ACTION-BASED SOUND/);
     assert.doesNotMatch(prompts.at(-1)!, /CONTACT RESPONSE|RELAY RESPONSE/);
-    assert.equal(nominations.session.zoneId, "exterior");
-    assert.deepEqual(nominations.session.activeIds, []);
-    assert.deepEqual(nominations.session.doorwayContacts ?? [], []);
-    assert.equal(nominations.session.submissions.at(-1)?.movement, undefined);
-    assert.deepEqual(nominations.session.lines.at(-1)!.heardBy, []);
+    const nominations = (await activeVenueSession())!;
+    assert.equal(nominations.zoneId, "exterior");
+    assert.deepEqual(nominations.activeIds, []);
+    assert.deepEqual(nominations.doorwayContacts ?? [], []);
+    assert.equal(
+      nominations.submissions.some((turn) => turn.id === "ignored-nominations"),
+      false,
+    );
     await discardVenueVisitDebug(scene.id);
 
     scene = await open();

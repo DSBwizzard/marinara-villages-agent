@@ -1142,53 +1142,52 @@ async function main() {
     );
     const capturedAttendance = structuredClone(recoveredMove.sceneAttendance);
     const callsBeforeWrittenMove = paidCalls;
-    let written = await sendVenueTurn({
-      sessionId: recoveredMove.id,
-      message: "I walk to Exterior",
-      mode: "chat",
-      targetId: "",
-      submissionId: "written-exterior",
-      expectedSceneRevision: navigated.sceneRevision,
-    });
-    assert.equal(paidCalls, callsBeforeWrittenMove + 1, "Say / Do uses one local reply, not a movement operation");
-    assert.equal(written.session.zoneId, "stock", "written movement cannot change Zone");
-    assert.deepEqual(written.session.sceneAttendance, capturedAttendance);
-    assert.equal(written.session.id, recoveredMove.id);
-    assert.equal(written.session.submissions.at(-1)!.movement, undefined);
-    const lineId = written.session.lines.at(-1)!.id;
-    await sendVenueTurn({
-      sessionId: written.session.id,
-      message: "I walk to Exterior",
-      mode: "chat",
-      targetId: "",
-      submissionId: "written-exterior",
-    });
-    assert.equal((await activeVenueSession())!.lines.filter((line) => line.id === lineId).length, 1);
-    assert.equal(paidCalls, callsBeforeWrittenMove + 1, "written replay and refresh are free");
-    const mixed = await sendVenueTurn({
-      sessionId: written.session.id,
-      message: "I walk to Common Space and say hello",
-      mode: "chat",
-      targetId: "",
-      submissionId: "mixed-movement",
-    });
-    assert.equal(mixed.session.zoneId, "stock", "mixed prose also stays local");
-    await discardVenueVisitDebug(written.session.id);
+    const beforeWritten = structuredClone(records);
+    for (const [index, message] of [
+      "I walk to Exterior",
+      "I walk to Common Space and say hello",
+      'I walk into Common Space. "Hi Aqua!"',
+    ].entries()) {
+      await assert.rejects(
+        sendVenueTurn({
+          sessionId: recoveredMove.id,
+          message,
+          mode: "chat",
+          targetId: "",
+          submissionId: "blocked-legacy-" + index,
+          expectedSceneRevision: navigated.sceneRevision,
+        }),
+        /Use Move to change Zones/,
+      );
+      const blocked = (await activeVenueSession())!;
+      assert.equal(blocked.zoneId, "stock");
+      assert.deepEqual(blocked.sceneAttendance, capturedAttendance);
+      assert.deepEqual(blocked.lines, navigated.lines);
+      assert.deepEqual(blocked.submissions, navigated.submissions);
+      records.clear();
+      for (const [key, value] of structuredClone(beforeWritten)) records.set(key, value);
+    }
+    assert.equal(paidCalls, callsBeforeWrittenMove, "Legacy named travel is refused before generation");
+    await discardVenueVisitDebug(recoveredMove.id);
     let candidate = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "exterior")).id);
+    const beforeNominationState = structuredClone(records);
     nominatedMovement = { zoneId: "community", quote: "I drift into Common Space" };
     const beforeNomination = paidCalls;
-    written = await sendVenueTurn({
-      sessionId: candidate.id,
-      message: nominatedMovement.quote,
-      mode: "chat",
-      targetId: "",
-      submissionId: "nominated-movement",
-    });
-    assert.equal(paidCalls - beforeNomination, 1, "less direct movement uses the existing Narration request only");
-    assert.equal(written.session.zoneId, "exterior", "model movement nominations cannot move the player");
-    assert.equal(written.session.submissions.at(-1)!.movement, undefined);
+    await assert.rejects(
+      sendVenueTurn({
+        sessionId: candidate.id,
+        message: nominatedMovement.quote,
+        mode: "chat",
+        targetId: "",
+        submissionId: "nominated-movement",
+      }),
+      /Use Move to change Zones/,
+    );
+    assert.equal(paidCalls, beforeNomination + 1, "A legacy model nomination cannot authorize travel");
+    assert.equal((await activeVenueSession())!.zoneId, "exterior");
     nominatedMovement = null;
-    candidate = written.session;
+    records.clear();
+    for (const [key, value] of structuredClone(beforeNominationState)) records.set(key, value);
     const legacyRecord = records.get(`villages-venue-visit-${candidate.id}`)!;
     legacyRecord.data.operation = {
       ...legacyRecord.data.operation,
@@ -1205,18 +1204,12 @@ async function main() {
     const beforeLegacyRecovery = paidCalls;
     await recoverVenueSceneWork();
     candidate = (await activeVenueSession())!;
-    assert.equal(candidate.zoneId, publicZoneId, "an older admitted written move retains its recovery contract");
-    assert.equal(candidate.submissions.filter((turn) => turn.id === "legacy-written-move").length, 1);
-    candidate = await moveVenueZone(candidate.id, "exterior", candidate.sceneRevision, undefined, "after-legacy-move");
-    const replayedLegacy = await sendVenueTurn({
-      sessionId: candidate.id,
-      submissionId: "legacy-written-move",
-      message: "I walk to Common Space",
-      mode: "chat",
-      targetId: "",
-    });
-    assert.equal(replayedLegacy.session.zoneId, "exterior", "legacy turn replay cannot move the player back");
-    assert.equal(paidCalls, beforeLegacyRecovery, "legacy recovery and replay make no provider calls");
+    assert.equal(candidate.zoneId, "exterior", "Older interrupted text cannot recover into a Zone change");
+    assert.equal(candidate.submissions.filter((turn) => turn.id === "legacy-written-move").length, 0);
+    assert.match(candidate.operation!.error, /Use Move to change Zones/);
+    assert.equal(paidCalls, beforeLegacyRecovery);
+    records.clear();
+    for (const [key, value] of structuredClone(beforeNominationState)) records.set(key, value);
     await endVenueSession(candidate.id);
     await sendVenueTurn({
       sessionId: visit.id,

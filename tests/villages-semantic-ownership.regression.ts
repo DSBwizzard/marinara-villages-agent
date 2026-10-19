@@ -358,8 +358,19 @@ async function main() {
             timeline: packet.input.message ? [{ kind: "speech", text: packet.input.message }] : [],
           },
         });
-      if (packet.input.residentActions && actionReview) {
-        const review = actionReview(packet),
+      if (packet.input.residentActions && (actionReview || packet.input.residentActionsOmitted)) {
+        const review = actionReview
+            ? actionReview(packet)
+            : {
+                version: 1,
+                additionalActions: [],
+                decisions: [],
+                coverage: packet.input.evidence.flatMap((line: any, segment: number) =>
+                  line.playerHeard && line.speakerId !== "player"
+                    ? [{ segment, status: "none", actionIds: [], reason: "No access action in this fixture" }]
+                    : [],
+                ),
+              },
           actions = [...packet.input.residentActions, ...(review?.additionalActions ?? [])];
         Object.assign(result, {
           residentActionReview: review,
@@ -1103,11 +1114,10 @@ async function main() {
     operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 2 } },
   } as typeof scene;
   const topologyBefore = structuredClone(topologyScene);
-  const movedIntent = await topologyService.exchange(topologyAdmission, "I step through the doorway.", [], null);
-  assert.equal(
-    movedIntent.intent!.timeline[0].zoneId,
-    "unseen",
-    "Server-supplied access topology IDs can identify movement destinations without interior knowledge",
+  await assert.rejects(
+    topologyService.exchange(topologyAdmission, "I step through the doorway.", [], null),
+    /Use Move to change Zones/,
+    "Even a permitted destination cannot authorize player travel through conversation",
   );
   assert.deepEqual(topologyScene, topologyBefore);
   assert.equal(
@@ -1522,6 +1532,43 @@ async function main() {
     "The envelope cannot contradict required access proposals",
   );
   assert(actionResult.residentActionReceipt?.systemResponse?.includes("residentActionReview"));
+  checkpoints.clear();
+  calls.length = 0;
+  narrativeActions = undefined;
+  const omittedResult = await actionWriter.generate(actionScene, "A quiet conversation", "chat", "", null);
+  assert.deepEqual(calls, ["narration", "exchange"], "Omission recovery adds no model call");
+  assert.equal(lastPacket.input.residentActionsOmitted, true);
+  assert.deepEqual(lastPacket.input.residentActions, []);
+  assert.equal(omittedResult.residentActionReceipt?.proposalsOmitted, true);
+  assert.equal(omittedResult.residentActionReceipt?.review !== undefined, true);
+  checkpoints.clear();
+  const markerlessScene = { ...actionScene, operation: { input: { semanticPipelineVersion: 3 } } } as typeof scene;
+  const markerless = await createSceneWriting({
+    ...writerPorts,
+    venueOperationInput: () => ({ semanticPipelineVersion: 3 }),
+  }).generate(markerlessScene, "An older retained draft", "chat", "", null);
+  assert.equal(
+    markerless.residentActionReceipt?.proposalsOmitted,
+    true,
+    "Markerless interrupted drafts still require review",
+  );
+  assert.equal(lastPacket.input.residentActionsOmitted, true);
+  narrativeActions = null as any;
+  checkpoints.clear();
+  const beforeMalformed = calls.length;
+  await assert.rejects(
+    createSceneWriting({
+      ...writerPorts,
+      venueOperationInput: () => actionScene.operation!.input,
+      rejectVenueCompletion: async () => {},
+    }).generate(actionScene, "Malformed supplied actions", "chat", "", null),
+    /metadata is incomplete/,
+  );
+  assert.equal(calls.length, beforeMalformed + 1, "Malformed proposals do not reach System");
+  narrativeActions = [];
+  checkpoints.clear();
+  calls.length = 0;
+  await actionWriter.generate(actionScene, "A quiet conversation", "chat", "", null);
   const decodedReceipt = coerceSession({
     ...actionScene,
     submissions: [{ id: "saved", residentActionReceipt: actionResult.residentActionReceipt }],
@@ -1638,6 +1685,32 @@ async function main() {
     null,
     readResidentActions([makeAction(accessLine.content)]),
   );
+  actionReview = (p) => ({
+    ...reviewFor(p.input.evidence, [makeAction(accessLine.content)]),
+    additionalActions: [makeAction(accessLine.content)],
+  });
+  const discoveredCalls = calls.length;
+  const omittedInvitation = await service.exchange(
+    accessScene,
+    "A visit with omitted proposals",
+    [accessLine],
+    null,
+    [],
+    true,
+  );
+  assert.equal(calls.length, discoveredCalls + 1);
+  assert.equal(
+    omittedInvitation.access!.checks.length,
+    1,
+    "System discovers an invitation absent from writing proposals",
+  );
+  assert.equal((omittedInvitation.effects.residentActionReceipt as any).proposalsOmitted, true);
+  actionReview = () => ({ version: 1, additionalActions: [], decisions: [], coverage: [] });
+  await assert.rejects(
+    service.exchange(accessScene, "An incomplete omitted-proposal review", [accessLine], null, [], true),
+    /coverage/,
+  );
+  actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
   const room = venue.zones[0],
     other = venue.zones[1],
     context = { sceneId: scene.id };
@@ -1661,8 +1734,8 @@ async function main() {
   const applied = structuredClone(venue.access);
   applyAccessCommand(venue, accessCommand, "host", scene.startedAt, ["host", "player"], ["spoken-line"]);
   assert.deepEqual(venue.access, applied, "Same validated action receipt cannot duplicate permission or revision");
-  assert.equal(calls.length, checksBefore + 1);
-  assert(lastPacket.input.residentActions.length === 1);
+  assert.equal(calls.length, checksBefore + 3);
+  assert.equal((permitted.effects.residentActionReceipt as any).proposed.length, 1);
   const changed = readResidentActions([makeAction(accessLine.content, { zoneId: "other" })]);
   await service.exchange(accessScene, "A visit", [accessLine], null, changed);
   assert.equal(
@@ -1670,7 +1743,7 @@ async function main() {
     "other",
     "Changed action scope cannot reuse an old frozen System packet",
   );
-  assert.equal(calls.length, checksBefore + 2);
+  assert.equal(calls.length, checksBefore + 4);
   const unauthorized = readResidentActions([
     makeAction(accessLine.content, {
       actorId: "stranger",
@@ -1802,7 +1875,7 @@ async function main() {
       intentOverride = { ...original, ...extra };
       await assert.rejects(
         emptyService.exchange(emptyScene, intentMessage, [], null),
-        /player input is empty|timeline|source span/,
+        /player input is empty|timeline|source span|Use Move to change Zones/,
       );
     }
   }

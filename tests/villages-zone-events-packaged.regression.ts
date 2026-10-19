@@ -1433,24 +1433,78 @@ try {
     departures: [],
     contactEnd: [],
   };
-  await turn("semantic-mixed-movement", mixed, [
-    { speakerId: "player", text: "Before.", delivery: "whisper", targetId: "feddy" },
-    { text: "You step into the kitchen." },
-    { speakerId: "player", text: "Between.", delivery: "whisper", targetId: "neighbor" },
-    { text: "You return to the terrace." },
-    { speakerId: "player", text: "After.", delivery: "whisper", targetId: "feddy" },
+  const beforeBlocked = structuredClone(records);
+  const frozenScene = structuredClone(state());
+  const frozenWorld = structuredClone(records.get("villages-village"));
+  for (const mode of ["chat", "act", "fulfill"]) {
+    records.clear();
+    for (const [key, record] of structuredClone(beforeBlocked)) records.set(key, record);
+    answer = {
+      playerSpeechCapture: { status: "silent", utterances: [] },
+      residentActions: [],
+      segments: [{ text: "You remain on the terrace." }],
+    };
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: scene.id,
+        submissionId: "blocked-" + mode,
+        mode,
+        targetId: "",
+        message: mixed,
+        expectedSceneRevision: state().sceneRevision,
+      },
+    });
+    assert.equal(response.statusCode, 409, response.body);
+    assert.match(response.body, /Use Move to change Zones/);
+    assert.equal(state().zoneId, frozenScene.zoneId);
+    assert.deepEqual(state().lines, frozenScene.lines);
+    assert.deepEqual(state().submissions, frozenScene.submissions);
+    assert.deepEqual(state().heardHistory, frozenScene.heardHistory);
+    assert.deepEqual(records.get("villages-village"), frozenWorld, "Blocked travel commits no world effects");
+    const writingCalls = modelCalls;
+    const retry = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: scene.id,
+        submissionId: "blocked-" + mode,
+        mode,
+        targetId: "",
+        message: mixed,
+        expectedSceneRevision: state().sceneRevision,
+        retryOfAttemptId: state().operation.attemptId,
+      },
+    });
+    assert.equal(retry.statusCode, 409, retry.body);
+    assert.match(retry.body, /Use Move to change Zones/);
+    assert.equal(modelCalls, writingCalls + 1, "Explicit retry preserves writing and retries only interpretation");
+  }
+  records.clear();
+  for (const [key, record] of structuredClone(beforeBlocked)) records.set(key, record);
+
+  // The reported fountain walk is local even if System calls it movement.
+  const fountain = 'I walk over towards the fountain. "Sup gamers?"';
+  semanticIntentAnswer = {
+    status: "resolved",
+    instructions: "",
+    action: null,
+    movement: null,
+    timeline: [
+      { kind: "movement", text: "I walk over towards the fountain.", zoneId: "terrace" },
+      { kind: "speech", text: "Sup gamers?", delivery: "ordinary" },
+    ],
+  };
+  semanticExchangeAnswer.events = { moves: [], departures: [], contactEnd: [] };
+  await turn("same-zone-fountain", fountain, [
+    { text: "You walk toward the fountain on the terrace." },
+    { speakerId: "player", text: "Sup gamers?" },
+    { speakerId: "aqua", text: "Morning!" },
   ]);
   assert.equal(state().zoneId, "terrace");
-  const mixedTurn = state().submissions.at(-1),
-    mixedLines = mixedTurn.replyLineIds.map((id: string) => state().lines.find((line: any) => line.id === id));
-  assert.deepEqual(mixedLines[0].heardBy, ["feddy"]);
-  assert.deepEqual(mixedLines[2].heardBy, ["neighbor"]);
-  assert.deepEqual(mixedLines[4].heardBy, ["feddy"]);
-  assert.deepEqual(
-    mixedLines.map((line: any) => line.zoneId),
-    ["terrace", "kitchen", "kitchen", "terrace", "terrace"],
-  );
-  assert.equal(mixedTurn.semanticReady, true);
+  assert.deepEqual(state().submissions.at(-1).semanticPlayerMoves, []);
+
   const afterMovePhysical = {
     ...physical,
     segment: 1,
