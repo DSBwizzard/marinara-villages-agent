@@ -448,7 +448,7 @@ export function createSceneCommands({
           (!raw
             ? { cause: "invalid_json" as const, stage: "change-interpretation", message }
             : metadataFailure(message, diagnostics));
-        throw Object.assign(badGateway(message), { failure: { ...failure, responseDiagnostics: diagnostics } });
+        throw Object.assign(badGateway(failure.message), { failure: { ...failure, responseDiagnostics: diagnostics } });
       }
       let recoveredProjects: NonNullable<VenueSubmission["projectSpeech"]> | undefined;
       if (domain === "projects") {

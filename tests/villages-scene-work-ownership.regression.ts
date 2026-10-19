@@ -996,3 +996,49 @@ try {
   AbortSignal.timeout = originalGreetingTimeout;
   process.off("unhandledRejection", captureGreetingUnhandled);
 }
+
+// A saved interpretation retry exposes truncation and never dispatches an automatic second request.
+{
+  let calls = 0;
+  const current = commandFixture("Truncated wish recovery", ({ scene, world }) => {
+    const turn = scene.submissions[0];
+    turn.processing!.domains.wishes.status = "failed";
+    turn.semanticProvenance = { version: 2 } as any;
+    turn.liveProposals = {
+      version: 1,
+      memoryChanges: [],
+      relationshipChanges: {},
+      memoryVersions: {},
+      earlierLineIds: [],
+      playerLineId: "",
+      replyLineIds: [],
+    };
+    const model = {
+      connectionId: "fake",
+      model: "fake",
+      fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
+    };
+    return {
+      coordinateVenue: async (_id, _request, _kind, _input, _expected, _retry, run) => run(),
+      readVillageState: async () => world,
+      villagesDocuments: () => ({ list: async () => [] }) as any,
+      villagesConnectionIdFor: async () => "fake",
+      villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
+      venueCheckpoint: async (_key, run) => run(),
+      venueOperationSignal: () => new AbortController().signal,
+      completeWithRoom: async () => {
+        calls++;
+        return { content: "", finishReason: "length" };
+      },
+      rejectVenueCompletion: async () => {},
+    };
+  });
+  const before = JSON.stringify(current.scene);
+  await assert.rejects(
+    current.owner.run(() => current.service.retrySceneChangeInterpretation("same-scene", "same-turn", "wishes")),
+    (error: any) => error.failure?.cause === "output_limit" && /output limit/.test(error.message),
+  );
+  assert.equal(calls, 1);
+  assert.equal(JSON.stringify(current.scene), before, "A truncated retry preserves the saved exchange");
+  current.owner.dispose();
+}

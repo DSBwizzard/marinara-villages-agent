@@ -1094,6 +1094,11 @@ async function main() {
     ),
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
+  assert(
+    systemPrompt.includes(
+      "Opening proposals are not Projects: report their pitch only in openingSignal, never projectSpeech.",
+    ),
+  );
   assert.doesNotMatch(systemPrompt, /lineIds:\["player",0\]/);
   assert.doesNotMatch(systemPrompt, /evidence:\["player",0\]/);
   assert.doesNotMatch(systemPrompt, /"player" means the latest player line/);
