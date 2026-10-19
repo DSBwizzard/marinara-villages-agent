@@ -83,6 +83,9 @@ for (const effects of [
     memoryChanges: [],
   },
   { wishChanges: [], projectSpeech: [], interpretationRouting: [] },
+  { residentActions: [] },
+  { residentActions: [{ id: "invite", source: { speakerId: "host", quote: "Come in." } }] },
+  { residentActions: { malformed: "must remain supplied and fail action validation" } },
   { memoryChanges: { malformed: "must remain a failed domain, not discarded" } },
 ]) {
   const appended = coreJson + "," + JSON.stringify(effects).slice(1);
@@ -120,6 +123,8 @@ for (const invalid of [
   coreJson + ',"memoryChanges":[],"memoryChanges":[]}',
   coreJson + ',"memoryChanges":[],"\\u006demoryChanges":[]}',
   coreJson + ',"relationshipChanges":{"changes":[],"changes":[]}}',
+  coreJson + ',"residentActions":[],"residentActions":[]}',
+  coreJson + ',"residentActions":[],"unknown":[]}',
   coreJson + ',"segments":[]}',
   coreJson + ',"playerSpeechCapture":{}}',
   coreJson + ',{"memoryChanges":[]}',

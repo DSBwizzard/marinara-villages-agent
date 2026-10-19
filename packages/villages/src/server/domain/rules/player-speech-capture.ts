@@ -101,6 +101,13 @@ export function materializePlayerSpeech(raw: Record<string, unknown>, input: str
     const row = asRecord(value);
     const resolve = (value: unknown) => {
       const source = asRecord(value);
+      // A supplied quote ID is an exact source reference, not newly authored speech.
+      if (source.quote === undefined && source.id !== undefined && source.text === undefined) {
+        if (source.occurrence !== undefined || !Number.isSafeInteger(source.id) || !quotes[Number(source.id)])
+          return fail();
+        const quote = quotes[Number(source.id)];
+        return { text: quote.text, occurrence: quote.occurrence };
+      }
       if (source.quote !== undefined) {
         if (!Number.isSafeInteger(source.quote) || !quotes[Number(source.quote)]) return fail();
         const quote = quotes[Number(source.quote)];
