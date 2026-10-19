@@ -1078,6 +1078,11 @@ async function main() {
   assert.match(systemPrompt, /Return the complete exchange JSON, never needsContext/);
   assert.doesNotMatch(systemPrompt, /If more context is necessary, return/);
   assert.equal(actionResult.semanticProvenance?.residentActionsVersion, 2);
+  assert(
+    systemPrompt.includes(
+      "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}",
+    ),
+  );
   assert(narrationPrompt.includes("playerSpeechCapture, segments and residentActions (required even when [])"));
   assert(narrationPrompt.includes('"residentActions":[]'));
   assert.doesNotMatch(
