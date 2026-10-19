@@ -3,7 +3,7 @@ import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failu
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { ingestSavedProgressEvent } from "../../domain/rules/progress-runtime.js";
 import { physicalVenueEvents } from "../../domain/rules/venue-scene-state.js";
-import { semanticContinued } from "../../domain/rules/semantic-continuity.js";
+import { semanticContinued, projectInterpretationNeedsRecovery } from "../../domain/rules/semantic-continuity.js";
 import type { VenueScene, VenueSubmission, VenueRecordEvent } from "../../domain/models/scene-model.js";
 export interface SceneReplayEffects {
   applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission): Promise<void>;
@@ -190,6 +190,11 @@ export function createSceneProgress({
     const applyProjects = async () => {
       if (!valid)
         return { status: "rejected" as const, reason: "Village identity changed; saved effects cannot apply" };
+      if (projectInterpretationNeedsRecovery(turn))
+        throw new WorkFailureError(
+          turn.processing!.domains.projects.failure ??
+            metadataFailure("Saved Project interpretation needs reassessment"),
+        );
       await applyVenueTurnChange(scene, turn);
       if (
         turn.physicalOutcomeVersion &&

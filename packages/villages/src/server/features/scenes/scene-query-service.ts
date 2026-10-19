@@ -5,7 +5,7 @@ import { SESSION_KIND } from "../../adapters/storage/scene-slots.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import { wishFingerprint } from "../../domain/rules/wish-interpretation-rules.js";
-import { semanticContinued } from "../../domain/rules/semantic-continuity.js";
+import { semanticContinued, projectMetadataRejected } from "../../domain/rules/semantic-continuity.js";
 import type { InterpretationEvidence } from "../../domain/models/interpretation-check-model.js";
 import { conflict, notFound } from "../../domain/rules/errors.js";
 import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
@@ -67,7 +67,8 @@ export function createSceneQueryService({ readSession, readVillageState, village
       ],
       action: submission.action ?? null,
       projectContexts: submission.projectContexts ?? [],
-      projectSpeech: submission.projectSpeech ?? [],
+      projectSpeech: projectMetadataRejected(submission) ? [] : (submission.projectSpeech ?? []),
+      projectMetadataRejected: projectMetadataRejected(submission),
       contextualInterpretation: submission.projectInterpretationVersion === 1,
       contextLines: session.lines
         .slice(

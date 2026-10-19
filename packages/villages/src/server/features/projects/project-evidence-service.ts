@@ -113,6 +113,8 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
       });
       throw error;
     }
+    if (turn.projectMetadataRejected)
+      throw conflict("This saved Project interpretation was rejected; use a fresh exchange.");
     const line = turn.lines.find((entry) => entry.id === lineId);
     // Only persisted proposals can be selected. A request cannot submit its own interpretation.
     const interpreted = Number.isInteger(input.interpretationIndex)

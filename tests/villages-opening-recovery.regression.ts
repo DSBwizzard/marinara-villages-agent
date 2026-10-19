@@ -1,3 +1,14 @@
+import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
+import {
+  createVenueOperationContext,
+  type Context,
+} from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
+import { VillagesRequestError } from "../packages/villages/src/server/domain/rules/errors.js";
+import {
+  projectMetadataRejected,
+  rejectProjectMetadata,
+  semanticBlocker,
+} from "../packages/villages/src/server/domain/rules/semantic-continuity.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -165,3 +176,284 @@ assert.ok(!(await queries.progressBacklog()).some((entry) => entry.submissionId 
 console.log(
   "Opening recovery passed: inactivity, missing-pointer recovery, transcript preservation and interrupted opening receipts.",
 );
+
+// A committed labor-only offer must be reinterpreted BEFORE replay can grant a material source.
+{
+  const village = defaultVillageState();
+  village.seed = "project-recovery";
+  const processing = createExchangeProcessing({
+    seed: village.seed,
+    sceneId: "supply",
+    submissionId: "offer",
+    order: 0,
+    lineIds: ["player", "invite", "labor"],
+    actionReceiptIds: [],
+  });
+  for (const domain of Object.values(processing.domains)) domain.status = "applied";
+  processing.domains.projects = {
+    ...processing.domains.projects,
+    status: "failed",
+    reason: "Interpreted speech cannot authorize physical Project effects.",
+    failure: {
+      cause: "storage_application",
+      stage: "application",
+      message: "Interpreted speech cannot authorize physical Project effects.",
+    },
+  };
+  const scene = coerceSession({
+    id: "supply",
+    placeId: "venue",
+    status: "active",
+    processingVersion: 1,
+    villageSeed: village.seed,
+    lines: [
+      {
+        id: "player",
+        role: "user",
+        speakerId: "player",
+        content: "May I collect your contribution?",
+        heardBy: ["builder"],
+      },
+      {
+        id: "invite",
+        role: "assistant",
+        kind: "dialogue",
+        speakerId: "builder",
+        content: "Come in.",
+        heardBy: ["builder"],
+      },
+      {
+        id: "labor",
+        role: "assistant",
+        kind: "dialogue",
+        speakerId: "builder",
+        content: "My hands are free; I can sand. Linseed oil I do not have.",
+        heardBy: ["builder"],
+      },
+    ],
+    submissions: [
+      {
+        id: "offer",
+        processing,
+        semanticProvenance: {
+          version: 2,
+          pipelineVersion: 3,
+          sourceHash: "original-system",
+          authority: { projects: true, access: true, physical: false, standing: false },
+        },
+        action: null,
+        projectContexts: [{ projectId: "rail", revision: 2, phase: "materials" }],
+        projectSpeech: [
+          {
+            version: 1,
+            projectId: "rail",
+            revision: 2,
+            phase: "materials",
+            kind: "offer",
+            requirementId: "finish",
+            speakerId: "builder",
+            citations: [{ lineId: "labor", quote: "My hands are free; I can sand." }],
+            checklist: [],
+            contextual: { version: 1, source: "system", checkId: "original-system" },
+          },
+        ],
+        invitationSignal: { residentId: "builder", sourceLineId: "invite" },
+        liveProposals: {
+          version: 1,
+          playerLineId: "player",
+          replyLineIds: ["invite", "labor"],
+          earlierLineIds: [],
+          memoryVersions: {},
+          memoryChanges: [],
+          relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+        },
+        replyLineIds: ["invite", "labor"],
+        at: old,
+      },
+    ],
+  });
+  const originalLines = structuredClone(scene.lines),
+    originalProposal = structuredClone(scene.submissions[0].projectSpeech),
+    originalInvitation = structuredClone(scene.submissions[0].invitationSignal);
+  let systemCalls = 0,
+    replayedIncorrectOffer = false,
+    automaticFixture = false,
+    malformedRecovery = false;
+  let recoveryFailure: Error | undefined;
+  let failPersistence = false,
+    useReplayGuard = false;
+  const operations = createVenueOperationContext(() => ({ debug: () => {} }) as any);
+  const coordinator = createVenueCoordinator({
+    operations,
+    villagesDocuments: () => ({ getById: async () => null }) as any,
+    villagesLogger: () => ({ debug: () => {} }) as any,
+    runtimeDebug: () => {},
+    readInterpretationSettings: async () => ({}) as any,
+  });
+  const dispatch = async () => {
+    systemCalls++;
+    if (recoveryFailure) throw recoveryFailure;
+    return { content: malformedRecovery ? "malformed" : JSON.stringify({ projectSpeech: [] }), finishReason: "stop" };
+  };
+  const originalTurn = structuredClone(scene.submissions[0]);
+  const commands = createSceneCommands({
+    sceneWork: () => ({ isMoving: () => false }),
+    runtimeDebug: () => {},
+    villagesLogger: () => ({ warn: () => {}, debug: () => {} }),
+    readVillageSnapshot: async () => {
+      throw Error("stop-after-semantic-settlement");
+    },
+    rejectVenueCompletion: async () => {},
+    coordinateVenue: async (_id, _request, _kind, _input, _revision, _attempt, work) => work(),
+    readSession: async () => scene,
+    readVillageState: async () => village,
+    changeSession: async (_id, update) => {
+      if (
+        failPersistence &&
+        scene.submissions[0].interpretationHistory?.some((row) => row.source === "Automatic Project retry started")
+      )
+        throw new VillagesRequestError(502, "fixture storage failed");
+      update(scene);
+      return scene;
+    },
+    processSavedExchange: async () => {
+      if (scene.submissions[0].processing!.domains.projects.status === "rejected") return;
+      if (automaticFixture && scene.submissions[0].projectSpeech?.length) return;
+      if (scene.submissions[0].projectSpeech?.length) replayedIncorrectOffer = true;
+      scene.submissions[0].processing!.domains.projects.status = "applied";
+    },
+    villagesLanguageModels: () => ({
+      resolveForRequest: async () => ({
+        model: "fixture",
+        maxOutputTokens: 4096,
+        fitContext: (messages, options) => ({ messages, ...options }),
+      }),
+    }),
+    villagesConnectionIdFor: async () => "system",
+    venueCheckpoint: async (_key, work) => work(),
+    venueOperationSignal: () => undefined,
+    venueOperationId: () => "recovery",
+    venueRequestMetrics: () => [],
+    completeWithRoom: async () => {
+      return useReplayGuard ? coordinator.coordinatedCompletion("project-recovery", dispatch) : dispatch();
+    },
+    readSceneChanges: async () => ({ recovered: true }),
+  } as unknown as SceneCommandPorts);
+  await commands.retrySceneChangeInterpretation(scene.id, "offer", "projects");
+  assert.equal(systemCalls, 1, "Only System reinterprets the saved exchange; Narration never regenerates");
+  assert.equal(replayedIncorrectOffer, false, "The invalid original proposal must not apply before reassessment");
+  assert.deepEqual(scene.lines, originalLines);
+  assert.deepEqual(scene.submissions[0].invitationSignal, originalInvitation);
+  assert.deepEqual(scene.submissions[0].projectSpeech, []);
+  assert.deepEqual(scene.submissions[0].interpretationHistory![0].proposals, originalProposal);
+  assert.equal(scene.submissions[0].semanticProvenance?.sourceHash, "original-system");
+  assert.equal(scene.submissions[0].semanticReady, true);
+
+  assert.equal(scene.submissions[0].processing!.domains.projects.status, "applied");
+
+  // Ordinary saved-turn recovery does one System-only reassessment without a player metadata decision.
+  automaticFixture = true;
+  for (const malformed of [false, true]) {
+    scene.submissions = [structuredClone(originalTurn)];
+    scene.submissions[0].message = "May I collect your contribution?";
+    scene.submissions[0].mode = "chat";
+    scene.submissions[0].targetId = "";
+    scene.submissions[0].invitationSignal = { ...originalInvitation!, venueId: "venue", timing: "now" } as any;
+    malformedRecovery = malformed;
+    systemCalls = 0;
+    const input = {
+      sessionId: scene.id,
+      submissionId: "offer",
+      message: "May I collect your contribution?",
+      mode: "chat" as const,
+      targetId: "",
+    };
+    await assert.rejects(commands.sendVenueTurn(input), /stop-after-semantic-settlement/);
+    assert.equal(systemCalls, 1);
+    assert.equal(scene.submissions[0].semanticReady, true);
+    assert.equal(semanticBlocker(scene), null);
+    assert.deepEqual(scene.lines, originalLines);
+    if (malformed) {
+      assert.equal(projectMetadataRejected(scene.submissions[0]), true);
+      assert.deepEqual(
+        scene.submissions[0].projectSpeech,
+        originalProposal,
+        "Rejected original metadata remains intact and auditable",
+      );
+      const altered = structuredClone(scene.submissions[0]);
+      altered.semanticProvenance!.sourceHash = "other-exchange";
+      assert.equal(projectMetadataRejected(altered), false, "A disposition cannot settle another frozen exchange");
+      const physical = structuredClone(originalTurn);
+      physical.action = { happened: true, narration: "A completed action" };
+      assert.throws(() => rejectProjectMetadata(physical, "invalid", old), /cannot be rejected/);
+    }
+    await assert.rejects(commands.sendVenueTurn(input), /stop-after-semantic-settlement/);
+    assert.equal(systemCalls, 1, "Saved replay cannot repeatedly spend on interpretation recovery");
+  }
+  // Started is not a terminal result: cancellations, provider/storage errors and restart stay blocked.
+  for (const failure of [
+    new Error("fixture cancelled"),
+    new VillagesRequestError(502, "fixture provider failed"),
+    "storage",
+    "restart",
+    "replay-guard",
+  ]) {
+    scene.submissions = [structuredClone(originalTurn)];
+    Object.assign(scene.submissions[0], { message: "May I collect your contribution?", mode: "chat", targetId: "" });
+    scene.submissions[0].invitationSignal = { ...originalInvitation!, venueId: "venue", timing: "now" } as any;
+    systemCalls = 0;
+    malformedRecovery = true;
+    recoveryFailure = failure instanceof Error ? failure : undefined;
+    failPersistence = failure === "storage";
+    useReplayGuard = failure === "replay-guard";
+    if (failure === "restart")
+      scene.submissions[0].interpretationHistory = [
+        { at: old, domain: "projects", source: "Automatic Project retry started", proposals: {} },
+      ];
+    const input = {
+      sessionId: scene.id,
+      submissionId: "offer",
+      message: "May I collect your contribution?",
+      mode: "chat" as const,
+      targetId: "",
+    };
+    const current: Context = {
+      sessionId: scene.id,
+      allowPaid: false,
+      controller: new AbortController(),
+      scope: "change-interpretation",
+      counts: new Map(),
+      usedAttemptKeys: new Map(),
+      blocked: new Set(),
+      operation: {
+        id: "offer",
+        kind: "turn",
+        input: {},
+        token: "test",
+        attemptId: "test",
+        status: "running",
+        stage: "turn",
+        startedAt: old,
+        sceneRevision: 0,
+        snapshot: null,
+        checkpoints: {},
+        attempts: {},
+        error: "",
+      },
+    };
+    await assert.rejects(operations.context.run(current, () => commands.sendVenueTurn(input)));
+    assert.equal(projectMetadataRejected(scene.submissions[0]), false, String(failure));
+    assert.notEqual(scene.submissions[0].semanticReady, true);
+    const firstCalls = systemCalls;
+    failPersistence = false;
+    recoveryFailure = undefined;
+    useReplayGuard = false;
+    await assert.rejects(commands.sendVenueTurn(input), /saved immediate outcome needs recovery/);
+    assert.equal(systemCalls, firstCalls, "Interrupted recovery cannot dispatch again automatically");
+    assert.equal(projectMetadataRejected(scene.submissions[0]), false);
+    assert.notEqual(scene.submissions[0].semanticReady, true);
+    assert.deepEqual(scene.lines, originalLines);
+    assert.deepEqual(scene.submissions[0].projectSpeech, originalProposal);
+    if (failure === "replay-guard") assert.equal(systemCalls, 0, "Real coordinator forbids paid dispatch on replay");
+  }
+}

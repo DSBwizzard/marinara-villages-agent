@@ -1336,6 +1336,8 @@ async function main() {
     ),
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
+  assert(systemPrompt.includes("never labor, willingness to sand or drill"));
+  assert(systemPrompt.includes('"I can sand; I do not have linseed oil" cannot offer the finishing bundle'));
   const rootExchangeExample = systemPrompt.slice(
     systemPrompt.indexOf("Return {sourceHash"),
     systemPrompt.indexOf("Return exactly one JSON object."),

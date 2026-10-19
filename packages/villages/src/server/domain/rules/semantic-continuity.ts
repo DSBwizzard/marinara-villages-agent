@@ -62,3 +62,66 @@ export function continueSemanticDomain(turn: VenueSubmission, domain: ExchangeDo
     reason: "Continued without this failed update",
   };
 }
+
+/** Only failed nonphysical Project interpretation is eligible for bounded reassessment. Storage retries stay mechanical. */
+export function projectInterpretationNeedsRecovery(turn: VenueSubmission): boolean {
+  const result = turn.processing?.domains.projects;
+  return (
+    turn.semanticProvenance?.version === 2 &&
+    !turn.action?.happened &&
+    turn.semanticProvenance.authority?.physical !== true &&
+    !!turn.projectSpeech?.length &&
+    result?.status === "failed" &&
+    (result.failure?.stage === "metadata" ||
+      result.failure?.stage === "project-interpretation" ||
+      result.reason === "Interpreted speech cannot authorize physical Project effects.")
+  );
+}
+
+/** An audited negative disposition cannot settle or suppress a physical action. Original proposals remain intact. */
+export function projectMetadataRejected(turn: VenueSubmission): boolean {
+  if (
+    turn.action?.happened ||
+    turn.semanticProvenance?.authority?.physical === true ||
+    turn.processing?.domains.projects.status !== "rejected"
+  )
+    return false;
+  return (turn.interpretationHistory ?? []).some((row) => {
+    const audit = asRecord(row.proposals);
+    return (
+      row.domain === "projects" &&
+      row.source === "Project recovery rejected" &&
+      audit.submissionId === turn.id &&
+      audit.sourceHash === turn.semanticProvenance?.sourceHash &&
+      JSON.stringify(audit.originalProposals) === JSON.stringify(turn.projectSpeech ?? [])
+    );
+  });
+}
+
+export function rejectProjectMetadata(turn: VenueSubmission, reason: string, at: string): void {
+  if (projectMetadataRejected(turn)) return;
+  if (!projectInterpretationNeedsRecovery(turn))
+    throw conflict("This Project update cannot be rejected as nonphysical metadata.");
+  const rejectedProposals = (turn.projectSpeech ?? []).map((row, index) => ({ kind: row.kind, index, reason }));
+  turn.interpretationHistory ||= [];
+  turn.interpretationHistory.push({
+    at,
+    domain: "projects",
+    source: "Project recovery rejected",
+    proposals: {
+      submissionId: turn.id,
+      sourceHash: turn.semanticProvenance?.sourceHash,
+      originalProposals: structuredClone(turn.projectSpeech ?? []),
+      rejectedProposals,
+    },
+  });
+  turn.processing!.domains.projects = {
+    ...turn.processing!.domains.projects,
+    status: "rejected",
+    reason,
+    rejectedProposals,
+    updatedAt: at,
+  };
+  turn.progressProcessedAt = at;
+  turn.progressError = "";
+}
