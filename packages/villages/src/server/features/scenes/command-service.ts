@@ -1723,11 +1723,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     return (turn.requestMode ?? turn.mode) === mode;
   }
 
-  async function sendVenueTurn(input: VenueTurnInput) {
-    const scene = await readSession(input.sessionId);
-    const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
-    if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
-    if (!prior) await requireLiveVenueSession(input.sessionId);
+  async function venueTurnPayload(scene: VenueScene, input: VenueTurnInput, prior: VenueSubmission | undefined) {
     const admittedVersion =
       scene.operation?.id === input.submissionId ? scene.operation.input.interactionScopeVersion : 6;
     if (
@@ -1790,6 +1786,15 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           }
         : {}),
     };
+    return payload;
+  }
+
+  async function sendVenueTurn(input: VenueTurnInput) {
+    const scene = await readSession(input.sessionId);
+    const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
+    if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
+    if (!prior) await requireLiveVenueSession(input.sessionId);
+    const payload = await venueTurnPayload(scene, input, prior);
     if (prior && JSON.stringify(prior.contact ?? null) !== JSON.stringify(input.contact ?? null))
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");
     if (
@@ -1820,23 +1825,30 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     const scene = await readSession(sessionId);
     const prior = scene.submissions.find((entry) => entry.id === submissionId);
     if (!prior) await requireLiveVenueSession(sessionId);
+    const currentContract =
+      scene.operation?.id === submissionId ? scene.operation.input.writingContractVersion === 3 : !prior;
+    if (currentContract && !prior && !(await readVillageState()).venues.some((venue) => venue.id === scene.placeId))
+      throw conflict("This Venue is no longer available. End the Scene.");
+    const payload = currentContract
+      ? await venueTurnPayload(scene, { sessionId, submissionId, message, mode: "leave", targetId: "" }, prior)
+      : {
+          message,
+          mode: "leave",
+          targetId: "",
+          ...(scene.semanticVersion === 2
+            ? {
+                semanticBudget:
+                  scene.operation?.id === submissionId
+                    ? (scene.operation.input.semanticBudget ?? SEMANTIC_OPERATION_BUDGET)
+                    : SEMANTIC_OPERATION_BUDGET,
+              }
+            : {}),
+        };
     return coordinateVenue(
       sessionId,
       submissionId,
       "turn",
-      {
-        message,
-        mode: "leave",
-        targetId: "",
-        ...(scene.semanticVersion === 2
-          ? {
-              semanticBudget:
-                scene.operation?.id === submissionId
-                  ? (scene.operation.input.semanticBudget ?? SEMANTIC_OPERATION_BUDGET)
-                  : SEMANTIC_OPERATION_BUDGET,
-            }
-          : {}),
-      },
+      payload,
       expectedSceneRevision,
       retryOfAttemptId,
       () => leaveVenueSessionOnce(sessionId, submissionId, message),
@@ -2170,14 +2182,17 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           deviceFeatureId: selected.deviceFeatureId,
         };
     }
-    const eventScene =
-      interactionVersion === 6 && input.mode !== "leave"
-        ? zoneEventScene(session, movementVenue ?? village.venues.find((entry) => entry.id === session.placeId)!, {
-            targetId: input.targetId || session.semanticIntent?.timeline.find((step) => step.targetId)?.targetId,
-            message: input.message,
-            zoneId: input.contact?.boundaryZoneId,
-          })
-        : session;
+    const routesZoneEvents =
+      interactionVersion === 6 && (input.mode !== "leave" || venueOperationInput()?.writingContractVersion === 3);
+    const eventVenue = movementVenue ?? village.venues.find((entry) => entry.id === session.placeId);
+    if (routesZoneEvents && !eventVenue) throw conflict("This Venue is no longer available. End the Scene.");
+    const eventScene = routesZoneEvents
+      ? zoneEventScene(session, eventVenue!, {
+          targetId: input.targetId || session.semanticIntent?.timeline.find((step) => step.targetId)?.targetId,
+          message: input.message,
+          zoneId: input.contact?.boundaryZoneId,
+        })
+      : session;
     if (interactionVersion === 6 && input.mode === "contact") {
       if (
         (session.semanticVersion === 2
