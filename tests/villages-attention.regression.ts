@@ -1083,20 +1083,6 @@ try {
   await assert.rejects(send(scene, "raw-scene-result", "I throw a rock at the window."), /completed Scene result/);
   held = await activeVenueSession();
   const rawBeforeRetry = { ...counts };
-  await assert.rejects(
-    sendVenueTurn({
-      sessionId: scene.id,
-      submissionId: "edited-raw-result",
-      message: "An edited draft",
-      mode: "chat",
-      targetId: "",
-      expectedSceneRevision: held!.sceneRevision,
-      replaceOfOperationId: "raw-scene-result",
-      retryOfAttemptId: held!.operation!.attemptId,
-    }),
-    /Recover the saved request/,
-  );
-  assert.deepEqual(counts, rawBeforeRetry, "replacement cannot discard a purchased complete response");
   const rawRecovered = await send(
     held,
     "raw-scene-result",
@@ -1106,6 +1092,9 @@ try {
   );
   assert.deepEqual(counts, rawBeforeRetry);
   await discardVenueVisitDebug(rawRecovered.session.id);
+
+  // Edited replacement uses current admission; coordinator/session suites cover it.
+  // This fixture retains the legacy scope-5 contract to verify unchanged retries.
 
   scene = await open();
   behavior = "whisper";
