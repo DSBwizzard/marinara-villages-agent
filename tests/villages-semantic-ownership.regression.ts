@@ -1751,6 +1751,61 @@ async function main() {
   venue.zones[0].closed = false;
   narrativeActions = undefined;
   actionReview = undefined;
+  // A greeting has no player input: an empty intent is a no-op, not an unresolved player choice.
+  {
+    let intentMessage = "";
+    let intentOverride: any = {
+      status: "unresolved",
+      reason: "The player input is empty; there is no player speech, thought, action or movement to interpret.",
+      instructions: "",
+      action: null,
+      movement: null,
+      timeline: [],
+    };
+    const emptyService = createSemanticService({
+      ...ports,
+      venueSavedCheckpoint: () => undefined,
+      venueCheckpoint: async (_key, work) => work(),
+      completeWithRoom: async (_model, messages) => {
+        const packet = JSON.parse(messages[1].content);
+        return {
+          finishReason: "stop",
+          content: JSON.stringify({
+            sourceHash: packet.sourceHash,
+            intent: intentOverride,
+            consistent: true,
+            authority: { physical: false, access: false, projects: false, standing: false },
+            action: null,
+            memoryChanges: [],
+            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+            wishChanges: [],
+            projectSpeech: [],
+            access: [],
+            events: { moves: [], departures: [], contactEnd: [] },
+          }),
+        };
+      },
+    });
+    const emptyScene = { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as typeof scene;
+    const original = structuredClone(intentOverride);
+    const greeting = await emptyService.exchange(emptyScene, intentMessage, [], null);
+    assert.equal(greeting.intent?.status, "resolved", "Empty opening input cannot block a consistent greeting");
+    assert.deepEqual(intentOverride, original, "Raw System intent remains untouched");
+    intentMessage = "I might move";
+    await assert.rejects(emptyService.exchange(emptyScene, intentMessage, [], null), /player input is empty/);
+    intentMessage = "";
+    for (const extra of [
+      { instructions: "Move the player" },
+      { movement: { zoneId: "private", quote: "" } },
+      { timeline: [{ kind: "speech", text: "Invented" }] },
+    ]) {
+      intentOverride = { ...original, ...extra };
+      await assert.rejects(
+        emptyService.exchange(emptyScene, intentMessage, [], null),
+        /player input is empty|timeline|source span/,
+      );
+    }
+  }
   // Optional supply sources fail closed within the existing System response, never by losing valid chat.
   for (const availability of [
     undefined,

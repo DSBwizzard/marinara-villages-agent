@@ -298,7 +298,15 @@ export function createSemanticService(ports: SemanticPorts) {
       timeline,
       version: 2,
       sourceHash: hash,
-      status: raw.status as SemanticIntent["status"],
+      // Empty greeting input contains no player decision to clarify. Do not alter the raw response.
+      status:
+        !message.trim() &&
+        raw.instructions === "" &&
+        raw.action === null &&
+        raw.movement === null &&
+        rawTimeline.length === 0
+          ? "resolved"
+          : (raw.status as SemanticIntent["status"]),
       reason: typeof raw.reason === "string" ? raw.reason : "",
       instructions: raw.instructions,
       action,
@@ -352,7 +360,7 @@ export function createSemanticService(ports: SemanticPorts) {
             : RESIDENT_ACTION_REVIEW_V1) + " "
         : "") +
         (combined
-          ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. Include every meaningful input span in source order. Zone movements require exact existing zoneId. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
+          ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. An empty player input is normal for a Scene greeting: return resolved intent with empty instructions and timeline, null action and movement; still independently validate all draft evidence. Include every meaningful input span in source order. Zone movements require exact existing zoneId. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
           : "") +
         "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash," +
         (combined
