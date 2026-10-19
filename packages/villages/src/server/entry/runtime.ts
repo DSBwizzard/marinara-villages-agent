@@ -645,6 +645,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseWishProgress = configureWishProgress(
     createWishProgress({
+      backgroundJobSnapshot,
       finishSemanticScene,
       readEffectiveVillagerCard,
       backgroundCalls: background.backgroundCalls,

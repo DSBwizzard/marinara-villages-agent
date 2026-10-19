@@ -27,7 +27,7 @@ import {
 } from "../../../domain/rules/wish-journal.js";
 import { metadataFailure, type WorkFailure, WorkFailureError } from "../../../domain/rules/work-failure.js";
 import { backgroundRevision } from "../../../domain/rules/background-revision.js";
-import type { backgroundStatus, queueBackgroundJob } from "../../../jobs/background-work.js";
+import type { backgroundJobSnapshot, backgroundStatus, queueBackgroundJob } from "../../../jobs/background-work.js";
 import type { writeInterpretationDiagnostics } from "../../generation/interpretation-diagnostics.js";
 import type { sceneQueries } from "../../scenes/services.js";
 import type { mutateVillageState, readVillageState } from "../../world/village-store.js";
@@ -54,10 +54,11 @@ export type WishProgressPorts = {
   backgroundCalls: Pick<typeof backgroundCalls, "getStore">;
   backgroundSetting: typeof backgroundSetting;
   outsideVenueOperation: typeof outsideVenueOperation;
+  backgroundJobSnapshot: typeof backgroundJobSnapshot;
   backgroundStatus: typeof backgroundStatus;
   queueBackgroundJob: typeof queueBackgroundJob;
   writeInterpretationDiagnostics: typeof writeInterpretationDiagnostics;
-  sceneQueries(): Pick<ReturnType<typeof sceneQueries>, "processSavedExchange">;
+  sceneQueries(): Pick<ReturnType<typeof sceneQueries>, "processSavedExchange" | "readWishTurnEvidence">;
   mutateVillageState: typeof mutateVillageState;
   readVillageState: typeof readVillageState;
   cachedWishCriteria: typeof cachedWishCriteria;
@@ -70,6 +71,7 @@ export function createWishProgress(ports: WishProgressPorts) {
     backgroundCalls,
     backgroundSetting,
     outsideVenueOperation,
+    backgroundJobSnapshot,
     backgroundStatus,
     queueBackgroundJob,
     writeInterpretationDiagnostics,
@@ -364,6 +366,8 @@ export function createWishProgress(ports: WishProgressPorts) {
     const receiptIds: string[] = [],
       pending: string[] = [];
     const batchInputs: WishCheckInput[] = [];
+    const batchSubject = `wish-batch:${scene.id}:${turn.id}`;
+    let savedBatch: ReturnType<typeof backgroundJobSnapshot> | undefined;
     for (const proposal of proposals) {
       const id = effectId(scene.id, turn.id, proposal),
         prior = state.exchangeReceipts[id];
@@ -494,6 +498,40 @@ export function createWishProgress(ports: WishProgressPorts) {
       }
       const current = currentWish(state, proposal);
       if (!current) continue;
+      // Recovery uses the already admitted evidence. Only a new admission may read historical archives.
+      const legacyStatus = await backgroundStatus("wish-check", id);
+      if (legacyStatus && legacyStatus !== "obsolete") {
+        pending.push(`${legacyStatus}: saved Wish check`);
+        continue;
+      }
+      const frozenJob = await (savedBatch ??= backgroundJobSnapshot("wish-check", batchSubject));
+      const frozenInput = asRecord(frozenJob?.input);
+      const frozenItems = Array.isArray(frozenInput.items) ? frozenInput.items : [];
+      if (
+        frozenJob &&
+        frozenJob.status !== "obsolete" &&
+        frozenJob.seed === state.seed &&
+        frozenInput.seed === state.seed &&
+        frozenInput.sceneId === scene.id &&
+        frozenInput.submissionId === turn.id &&
+        frozenItems.some((value) => {
+          const item = asRecord(value),
+            savedProposal = asRecord(item.proposal);
+          return (
+            item.seed === state.seed &&
+            item.sceneId === scene.id &&
+            item.submissionId === turn.id &&
+            item.at === turn.at &&
+            savedProposal.actorId === proposal.actorId &&
+            savedProposal.wishId === proposal.wishId &&
+            savedProposal.fingerprint === proposal.fingerprint &&
+            savedProposal.intent === proposal.intent
+          );
+        })
+      ) {
+        pending.push(`${frozenJob.status}: relevant Wish evidence checking`);
+        continue;
+      }
       proposal.conditionAt = turn.at;
       proposal.conditionRevision = wishConditionRevision(state, proposal.actorId, current, turn.at);
       // Old per-Wish jobs remain recoverable; discovering them never authorizes replacement paid work.
@@ -525,6 +563,38 @@ export function createWishProgress(ports: WishProgressPorts) {
         (receipt) => proposal.receiptIds?.includes(receipt.id) || receipt.actionReceipt?.submissionId === turn.id,
       );
       const knowledge = wishCheckKnowledge(state, proposal.actorId, wish.id, turn.at);
+      const knownIds = new Set([...knowledge.evidence.map((line) => line.id), ...evidence.map((line) => line.id)]);
+      const historicalReceipts = Object.values(state.exchangeReceipts)
+        .filter(
+          (receipt) =>
+            receipt.domain === "wishes" &&
+            receipt.status === "applied" &&
+            receipt.actorId === proposal.actorId &&
+            receipt.wishId === wish.id &&
+            receipt.sceneId !== scene.id &&
+            receipt.at <= turn.at! &&
+            receipt.evidenceIds.some((id) => !knownIds.has(id)),
+        )
+        .sort((a, b) => a.at.localeCompare(b.at))
+        .slice(-4);
+      const restored = (
+        await Promise.all(
+          historicalReceipts.map((receipt) =>
+            sceneQueries().readWishTurnEvidence({
+              receiptId: receipt.id,
+              seed: state.seed,
+              actorId: proposal.actorId,
+              wishId: wish.id,
+              fingerprint: proposal.fingerprint,
+              at: turn.at!,
+            }),
+          ),
+        )
+      ).flat();
+      const history = [...new Map([...knowledge.evidence, ...restored].map((line) => [line.id, line])).values()]
+        .filter((line) => !evidence.some((current) => current.id === line.id))
+        .slice(-16);
+
       const context: WishInterpretationContext = {
         knowledge,
         ...(proposal.semanticCriteria ? { semanticCriteria: proposal.semanticCriteria } : {}),
@@ -538,7 +608,7 @@ export function createWishProgress(ports: WishProgressPorts) {
         wishes: [wish],
         claim: "Check the new cited evidence against this existing Wish",
         evidence: [
-          ...knowledge.evidence.filter((old) => !evidence.some((line) => line.id === old.id)),
+          ...history,
           ...evidence.map((line) => ({
             id: line.id,
             speakerId: line.role === "user" ? "player" : line.speakerId,
@@ -585,7 +655,6 @@ export function createWishProgress(ports: WishProgressPorts) {
         receiptIds.push(id);
         continue;
       }
-      const legacyStatus = await backgroundStatus("wish-check", id);
       if (
         turn.semanticProvenance?.version === 2 &&
         proposal.semanticVerdict &&
@@ -611,10 +680,6 @@ export function createWishProgress(ports: WishProgressPorts) {
           }),
         );
         receiptIds.push(id);
-        continue;
-      }
-      if (legacyStatus && legacyStatus !== "obsolete") {
-        pending.push(`${legacyStatus}: saved Wish check`);
         continue;
       }
       batchInputs.push(input);

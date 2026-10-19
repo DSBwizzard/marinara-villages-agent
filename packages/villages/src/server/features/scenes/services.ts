@@ -4,6 +4,7 @@ import { bindActivationService, createActivationBinding } from "../../adapters/e
 export interface SceneQueries {
   activeVenueSession: typeof import("./live-session.js").activeVenueSession;
   readProjectTurnEvidence: import("./scene-query-service.js").SceneQueryService["readProjectTurnEvidence"];
+  readWishTurnEvidence: import("./scene-query-service.js").SceneQueryService["readWishTurnEvidence"];
   progressBacklog: import("./scene-query-service.js").SceneQueryService["progressBacklog"];
   listVenueVisits: typeof import("./archive.js").listVenueVisits;
   processSavedExchange: typeof import("./progress.js").processSavedExchange;
