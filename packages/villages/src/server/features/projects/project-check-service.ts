@@ -1,3 +1,5 @@
+import { conflict } from "../../domain/rules/errors.js";
+import { applyRecordedProjectSupplyTransfer } from "../../domain/rules/project-check-rules.js";
 import type { InterpretationCheck, InterpretationEvidence } from "../../domain/models/interpretation-check-model.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type { VenueLine, VenueScene } from "../../domain/models/scene-model.js";
@@ -273,8 +275,27 @@ export function createProjectChecks({
   /** Allocate an already completed, inventory-debited pickup; interpretation cannot authorize the transfer itself. */
   async function applyProjectPickup(sceneId: string, submissionId: string) {
     const state = await readVillageState();
-    const event = physicalVenueEvents(state).find((item) => item.actionReceipt?.submissionId === submissionId);
+    const events = physicalVenueEvents(state);
+    const event =
+      events.find(
+        (item) =>
+          item.id === "venue-chat:" + sceneId + ":" + submissionId && item.actionReceipt?.submissionId === submissionId,
+      ) ??
+      events.find(
+        (item) => !item.actionReceipt?.projectSupplyTransfer && item.actionReceipt?.submissionId === submissionId,
+      );
     const proof = event?.actionReceipt;
+    if (event && proof?.projectSupplyTransfer) {
+      await mutateVillageState((current) => {
+        const durable = current.exchangeReceipts[event.id];
+        if (
+          (durable && (durable.sceneId !== sceneId || durable.submissionId !== submissionId)) ||
+          !applyRecordedProjectSupplyTransfer(current, event.id, submissionId)
+        )
+          throw conflict("The saved physical Project handoff needs recovery; its allocation changed.");
+      });
+      return;
+    }
     if (
       !event ||
       !proof?.happened ||

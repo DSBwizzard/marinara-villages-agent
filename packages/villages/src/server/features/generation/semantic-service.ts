@@ -1,3 +1,4 @@
+import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
 import { readOpeningSignal, openingProposalFingerprint } from "../../domain/rules/opening-project.js";
 import { RELATIONSHIP_PERMISSION_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
@@ -244,6 +245,12 @@ export function createSemanticService(ports: SemanticPorts) {
               : undefined,
             scene.activeIds,
             state.villagers.map((person) => person.characterId),
+            availableProjectSupplyTransfers(
+              state,
+              scene.placeId,
+              String(actionZone || scene.zoneId || ""),
+              scene.activeIds,
+            ),
           );
     if (raw.action !== null && !action) throw badGateway("System prepared action is incomplete.");
     if (
@@ -358,7 +365,7 @@ export function createSemanticService(ports: SemanticPorts) {
           : "") +
         (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
         "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
-        "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
+        "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. For a witnessed completed resident supply handoff use action.projectSupplyTransfer copied exactly from context.projectSupplyTransfers, with narration describing the completed transfer. Only an existing eligible finite source, physically present supplier and actual completed local transfer qualify. Requests, promises, future plans and labor never qualify. Do not combine that transfer with room edits or another transfer, and omit redundant projectSpeech handoff rows. The physical receipt, never dialogue alone, grants carried materials. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
         "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures, contactEnd and sceneEnded sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact; ending an in-person visit is sceneEnded with exact resident farewell speech, or omit the event when unsupported. " +
         "events independently discovers resident moves [{characterId,zoneId,segment:narration index}], playerMoves:[{zoneId,segment:narration index}] matching every prepared movement timeline span, departures/contactEnd [{source:speech index}], sceneEnded:{source}, residenceRequest:{source,venueId}, residenceDecision:{source,approved}, upgradeRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
         (actionContractV2

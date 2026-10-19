@@ -1,3 +1,4 @@
+import { projectSourceClaimKey as sourceClaimKey } from "../../domain/rules/project-supply-transfer.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageProject, VillageState } from "../../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
@@ -73,10 +74,6 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
     return (["structure", "equipment", "finish"] as const).map((category) => ({ category, ...found.get(category)! }));
   }
 
-  function sourceClaimKey(venueId: string, residentId: string, itemName: string): string {
-    return [venueId, residentId, itemName.trim().toLocaleLowerCase()].join("\u0000");
-  }
-
   /** The player points to one exact saved spoken line. Validation is local and never asks a judge model. */
   async function recordProjectSpokenEvidence(projectId: string, value: unknown): Promise<void> {
     const input = asRecord(value);
@@ -141,6 +138,36 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
       const project = projectFor(state, projectId);
       const flow = project.lifecycle!;
       if (flow.spokenProofs.some((entry) => entry.lineId === lineId)) return;
+      // A duplicate semantic row may acknowledge this turn's already committed physical handoff.
+      // It cannot create or upgrade that proof, or apply another turn's receipt.
+      if (
+        kind === "handoff" &&
+        interpreted &&
+        interpreted.speakerId === line?.speakerId &&
+        interpreted.projectId === project.id &&
+        interpreted.requirementId === requirementId
+      ) {
+        const receipt =
+          state.exchangeReceipts["venue-chat:" + sessionId + ":" + submissionId]?.physicalOutcome?.actionReceipt;
+        const transfer = receipt?.projectSupplyTransfer;
+        const task = progressProject(state, project);
+        if (
+          receipt?.happened &&
+          receipt.submissionId === submissionId &&
+          transfer?.projectId === project.id &&
+          transfer.requirementId === requirementId &&
+          transfer.supplierId === line.speakerId &&
+          transfer.revision === task?.definition.revision &&
+          task?.receipts.some(
+            (row) =>
+              row.requirementId === "acquired:" + requirementId &&
+              row.evidence.sourceId === "venue-chat:" + sessionId + ":" + submissionId,
+          )
+        )
+          return;
+      }
+      if (kind === "handoff" && turn.semanticVersion === 2)
+        throw conflict("A completed physical Project handoff receipt is required.");
       if (
         state.progressTasks.some(
           (task) =>
@@ -357,7 +384,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
             requirementId,
             kind: "resident-offer",
             venueId: turn.venueId,
-            zoneId: turn.zoneId,
+            zoneId: line.zoneId ?? turn.zoneId,
             itemName: requirement.title,
             supplierId: line.speakerId,
             evidenceId: line.id,

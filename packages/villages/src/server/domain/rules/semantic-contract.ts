@@ -1,3 +1,4 @@
+import { availableProjectSupplyTransfers } from "./project-supply-transfer.js";
 import { openingSemanticContext } from "./opening-context.js";
 import { createHash } from "node:crypto";
 import { asRecord } from "./coerce.js";
@@ -146,6 +147,7 @@ export function semanticContext(
             : {}),
         }))
       : [],
+    projectSupplyTransfers: availableProjectSupplyTransfers(state, scene.placeId, scene.zoneId, scene.activeIds),
     projects: projectSpeechPrompt(state, projectSpeechContexts(state, actors, "", query, scene.placeId)),
     requests: {
       venues: state.venues.map((row) => ({

@@ -1,3 +1,4 @@
+import type { ProjectSupplyTransfer } from "./venue-action-model.js";
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { ProgressTask } from "../rules/progress-engine.js";
@@ -800,6 +801,7 @@ export type VillageVenueEvent = {
   text: string;
   at: string;
   actionReceipt?: {
+    projectSupplyTransfer?: ProjectSupplyTransfer;
     submissionId: string;
     happened: boolean;
     narration: string;

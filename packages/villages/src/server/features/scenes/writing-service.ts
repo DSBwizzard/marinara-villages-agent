@@ -1,3 +1,4 @@
+import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
 import { openingSceneDirection, readOpeningSignal } from "../../domain/rules/opening-project.js";
 import {
   RESIDENT_ACTION_WRITING,
@@ -1346,6 +1347,12 @@ export function createSceneWriting({
             physicalContext && storedPlace ? venueInZone(storedPlace, physicalContext.zoneId) : place,
             physicalContext?.witnessIds ?? session.activeIds,
             village.villagers.map((person) => person.characterId),
+            availableProjectSupplyTransfers(
+              village,
+              session.placeId,
+              physicalContext?.zoneId ?? session.zoneId,
+              physicalContext?.witnessIds ?? session.activeIds,
+            ),
           );
       } catch (cause) {
         if (!semanticResult) await rejectVenueCompletion();

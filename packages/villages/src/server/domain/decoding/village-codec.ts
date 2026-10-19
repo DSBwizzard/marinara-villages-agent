@@ -1,3 +1,4 @@
+import { readProjectSupplyTransfer } from "../rules/project-supply-transfer.js";
 import { readOpening, OPENING_WORK_MS } from "../rules/opening-project.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
@@ -1242,6 +1243,9 @@ function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
           actionReceipt: {
             submissionId: asTrimmedString(receipt.submissionId),
             happened: receipt.happened === true,
+            ...(readProjectSupplyTransfer(receipt.projectSupplyTransfer)
+              ? { projectSupplyTransfer: readProjectSupplyTransfer(receipt.projectSupplyTransfer)! }
+              : {}),
             narration: boundText(receipt.narration, MAX_HAPPENING_LENGTH),
             ...Object.fromEntries(
               [

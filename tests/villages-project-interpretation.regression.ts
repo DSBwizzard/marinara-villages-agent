@@ -1,3 +1,6 @@
+import { processSavedExchange } from "../packages/villages/src/server/features/scenes/progress.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { availableProjectSupplyTransfers } from "../packages/villages/src/server/domain/rules/project-supply-transfer.js";
 import {
   bindProjectSpeech,
   projectSpeechContexts,
@@ -30,6 +33,7 @@ import type { VillageVenue, VillageVillager } from "../packages/villages/src/ser
 const records = new Map<string, any>();
 let failVillageWrites = 0;
 let failWritesAfterReply = 0;
+let reviseAfterPhysical = false;
 const warnings: string[] = [];
 const documents = {
   async getById(_packageId: string, id: string) {
@@ -56,6 +60,16 @@ const documents = {
     if (!previous || previous.revision !== input.expectedRevision) return null;
     const row = { ...previous, ...input, revision: previous.revision + 1 };
     records.set(input.id, row);
+    if (
+      reviseAfterPhysical &&
+      input.id === "villages-village" &&
+      Object.values(row.data.exchangeReceipts ?? {}).some(
+        (receipt: any) => receipt.physicalOutcome?.actionReceipt?.projectSupplyTransfer,
+      )
+    ) {
+      reviseAfterPhysical = false;
+      row.data.progressTasks.find((task: any) => task.definition.owner.kind === "project").definition.revision++;
+    }
     return row;
   },
   async remove(_packageId: string, id: string) {
@@ -64,6 +78,7 @@ const documents = {
 };
 const foundedAt = new Date().toISOString();
 const village = defaultVillageState();
+village.seed = "project-interpretation-test";
 village.setupAt = foundedAt;
 village.foundedAt = foundedAt;
 village.progressEngineVersion = 1;
@@ -531,6 +546,85 @@ async function main() {
       /cannot authorize physical/u,
     );
     assert.equal((await project()).lifecycle!.requirements.find((item) => item.id === timberId)!.carriedAt, "");
+    // Exercise the real saved-exchange physical writer, source claim and Project owner together.
+    const beforePhysical = structuredClone(await readVillageState());
+    const actual = saveTurn("Please hand me timber", "Ivo hands the timber to you.", "ivo");
+    const actualScene = records.get("villages-venue-visit-" + actual.sessionId).data;
+    const actualTurn = actualScene.submissions[0];
+    const sourceZone = beforePhysical.projects.find((row) => row.id === projectId)!.lifecycle!.sources[0].zoneId;
+    const transfer = availableProjectSupplyTransfers(beforePhysical, "mill", sourceZone, ["ivo"])[0];
+    assert.ok(transfer);
+    actualScene.processingVersion = 1;
+    actualScene.villageSeed = beforePhysical.seed;
+    actualScene.zoneId = sourceZone;
+    actualTurn.zoneIdAtTurn = sourceZone;
+    actualTurn.areaAtTurn = "public";
+    actualTurn.physicalContext = { zoneId: sourceZone, witnessIds: ["ivo"] };
+    actualTurn.physicalOutcomeVersion = 1;
+    actualTurn.sceneChange = { narration: "Ivo hands the timber to you.", projectSupplyTransfer: transfer };
+    actualTurn.action = { happened: true, ...actualTurn.sceneChange };
+    actualTurn.semanticProvenance = { version: 2, authority: { physical: true, projects: false } };
+    actualTurn.processing = createExchangeProcessing({
+      seed: beforePhysical.seed,
+      sceneId: actual.sessionId,
+      submissionId: actual.submissionId,
+      order: 0,
+      lineIds: [actual.lineId],
+      actionReceiptIds: [],
+    });
+    for (const [domain, row] of Object.entries(actualTurn.processing.domains))
+      if (domain !== "projects") (row as any).status = "applied";
+    const callsBeforePhysical = { modelCalls, interpretationCalls };
+    reviseAfterPhysical = true;
+    await processSavedExchange(actual.sessionId, actual.submissionId);
+    const held = await readVillageState();
+    assert.equal(
+      held.projects.find((row) => row.id === projectId)!.lifecycle!.requirements.find((row) => row.id === timberId)!
+        .carriedAt,
+      "",
+    );
+    const heldTurn = records.get("villages-venue-visit-" + actual.sessionId).data.submissions[0];
+    assert.equal(heldTurn.processing.domains.projects.status, "failed", "A changed allocation cannot silently settle");
+    assert.notEqual(heldTurn.semanticReady, true);
+    assert.equal(held.projectSourceClaims.length, beforePhysical.projectSourceClaims.length + 1);
+    await processSavedExchange(actual.sessionId, actual.submissionId);
+    assert.equal(
+      (await readVillageState()).projectSourceClaims.length,
+      held.projectSourceClaims.length,
+      "Recovery never consumes the source twice",
+    );
+    await mutateVillageState((current) => {
+      current.progressTasks.find((task) => task.definition.owner.id === projectId)!.definition.revision =
+        transfer.revision;
+    });
+    await processSavedExchange(actual.sessionId, actual.submissionId);
+    const physicallyAcquired = await readVillageState();
+    const eventId = "venue-chat:" + actual.sessionId + ":" + actual.submissionId;
+    assert.deepEqual(
+      physicallyAcquired.exchangeReceipts[eventId].physicalOutcome!.actionReceipt!.projectSupplyTransfer,
+      transfer,
+    );
+    assert.equal(
+      physicallyAcquired.projects
+        .find((row) => row.id === projectId)!
+        .lifecycle!.requirements.find((row) => row.id === timberId)!.carriedAt,
+      actual.at,
+    );
+    assert.equal(physicallyAcquired.projectSourceClaims.length, beforePhysical.projectSourceClaims.length + 1);
+    assert.deepEqual(
+      physicallyAcquired.venues.map((row) => row.state.furniture),
+      beforePhysical.venues.map((row) => row.state.furniture),
+      "Resident transfer never mints or removes unrelated room stock",
+    );
+    await processSavedExchange(actual.sessionId, actual.submissionId);
+    assert.deepEqual(
+      { modelCalls, interpretationCalls },
+      callsBeforePhysical,
+      "Physical receipt recovery makes no paid request or second judge",
+    );
+    assert.equal((await task()).receipts.filter((row) => row.requirementId === "acquired:" + timberId).length, 1);
+    // Restore only this provider-free test fixture so legacy saved-history compatibility remains covered below.
+    records.get("villages-village").data = beforePhysical;
     const wrongVenue = saveTurn(
       "Please hand over timber for Repair Kiosk",
       "Here is timber.",

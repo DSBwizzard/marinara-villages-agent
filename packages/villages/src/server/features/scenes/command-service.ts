@@ -1,3 +1,4 @@
+import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
 import { openingActive } from "../../domain/rules/opening-project.js";
 import { completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
 import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
@@ -3401,6 +3402,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         })(),
         witnesses,
         state.villagers.map((person) => person.characterId),
+        availableProjectSupplyTransfers(state, session.placeId, zoneId, witnesses),
       );
       if (!change) return;
       const at = submission.at || villageNow().toISOString();
