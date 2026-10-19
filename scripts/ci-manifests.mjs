@@ -38,7 +38,11 @@ export function assertManifestOrigin(manifest, run, commit, job, repository, pol
     assert.equal(receipt.inputsUnchanged, true);
     assert.equal(receipt.validationProfile ?? "qualification", manifest.validationProfile ?? "qualification");
     assert.equal(String(receipt.producer.runId), String(run.id));
-    assert.equal(receipt.producer.attempt, run.run_attempt);
+    assert.ok(
+      Number.isSafeInteger(receipt.producer.attempt) &&
+        receipt.producer.attempt >= 1 &&
+        receipt.producer.attempt <= run.run_attempt,
+    );
     for (const proof of receipt.checks) assertProofOrigin(proof, receipt.environment);
   }
   return manifest;
@@ -51,7 +55,12 @@ export function assertWorkerOrigin(receipt, run, job, jobs = []) {
       assertWorkerOrigin(
         worker,
         run,
-        jobs.find((candidate) => candidate.name === worker.producer.job),
+        jobs.find(
+          (candidate) =>
+            candidate.name === worker.producer.job &&
+            (candidate.run_attempt === worker.producer.attempt ||
+              (candidate.run_attempt === undefined && worker.producer.attempt === run.run_attempt)),
+        ),
         jobs,
       );
     const { workers, checks, ...rest } = receipt;
@@ -66,7 +75,10 @@ export function assertWorkerOrigin(receipt, run, job, jobs = []) {
   }
   assert.equal(receipt.schemaVersion, 3);
   assert.equal(String(receipt.producer.runId), String(run.id));
-  assert.equal(receipt.producer.attempt, run.run_attempt);
+  const attempt = receipt.producer.attempt;
+  assert.ok(Number.isSafeInteger(attempt) && attempt >= 1 && attempt <= run.run_attempt, "Invalid worker attempt");
+  if (attempt !== run.run_attempt || job?.run_attempt !== undefined)
+    assert.equal(job?.run_attempt, attempt, "Worker job attempt differs from receipt");
   assert.equal(receipt.inputsUnchanged, true);
   const expected =
     receipt.shard?.index > 0
@@ -75,7 +87,7 @@ export function assertWorkerOrigin(receipt, run, job, jobs = []) {
         ? "validate"
         : "validate-windows";
   assert.equal(receipt.producer.job, expected);
-  assert.equal(job?.name, expected);
+  assert.equal(job?.name, expected, "Worker job name differs from receipt");
   assert.equal(job.status, "completed");
   assert.equal(
     job.steps.find((step) => step.name === "Validate maintained source and package")?.conclusion,
@@ -85,9 +97,14 @@ export function assertWorkerOrigin(receipt, run, job, jobs = []) {
     assertProofOrigin(proof, receipt.environment);
     if (!proof.executed) continue;
     assert.equal(String(proof.origin.runId), String(run.id));
-    assert.equal(proof.origin.attempt, run.run_attempt);
+    assert.equal(proof.origin.attempt, attempt);
     assert.equal(proof.origin.sourceRevision, receipt.sourceRevision);
     assert.equal(proof.origin.job, expected);
+    assert.equal(
+      proof.origin.environmentDigest,
+      fingerprint(receipt.environment),
+      "Executed proof environment differs from worker",
+    );
     assert.equal(receipt.executor.platform, receipt.environment.platform, "Check executed on wrong platform");
     assert.equal(receipt.executor.node, receipt.environment.node, "Check executed on wrong Node");
     assert.ok(
@@ -170,12 +187,30 @@ export class GitHubEvidence {
     const run = this.api("actions/runs/" + runId);
     const artifact = this.artifact(runId, "villages-coverage");
     const manifest = await this.jsonFile(artifact, "coverage-manifest.json");
-    const jobs = this.api("actions/runs/" + runId + "/attempts/" + run.run_attempt + "/jobs?per_page=100").jobs;
+    // A targeted rerun replaces only its own artifact. Authenticate carried
+    // workers against the exact earlier attempt, never against the newest job.
+    const attempts = new Set([run.run_attempt]);
+    for (const receipt of Object.values(manifest.platforms))
+      for (const worker of receipt.workers ?? [receipt]) {
+        const attempt = worker.producer.attempt;
+        assert.ok(
+          Number.isSafeInteger(attempt) && attempt >= 1 && attempt <= run.run_attempt,
+          "Invalid worker attempt",
+        );
+        attempts.add(attempt);
+      }
+    const jobs = [...attempts].flatMap((attempt) =>
+      this.api("actions/runs/" + runId + "/attempts/" + attempt + "/jobs?per_page=100").jobs.map((job) => ({
+        ...job,
+        run_attempt: attempt,
+      })),
+    );
+
     assertManifestOrigin(
       manifest,
       run,
       this.api("git/commits/" + manifest.sourceRevision),
-      jobs.find((job) => job.name === "package-parity"),
+      jobs.find((job) => job.name === "package-parity" && job.run_attempt === run.run_attempt),
       this.repository,
       policyDigest,
     );
@@ -183,7 +218,7 @@ export class GitHubEvidence {
       assertWorkerOrigin(
         receipt,
         run,
-        jobs.find((job) => job.name === receipt.producer.job),
+        jobs.find((job) => job.name === receipt.producer.job && job.run_attempt === receipt.producer.attempt),
         jobs,
       );
     return { manifest, run, artifact };

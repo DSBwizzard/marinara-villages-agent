@@ -70,7 +70,12 @@ assert.throws(
   /Recover the saved request/,
 );
 assert.throws(() => sceneResend({ ...saved, status: "running" }, saved.input, "new"), /still responding/);
-assert.throws(() => sceneResend(saved, { ...saved.input, mode: "contact" }, "new"), /edits are preserved/);
+for (const mode of ["chat", "contact", "act", "fulfill", "leave"])
+  assert.deepEqual(sceneResend(saved, { message: "Edited", mode, targetId: "new-target" }, "new"), {
+    submissionId: "new",
+    retryOfAttemptId: "attempt",
+    replaceOfOperationId: "original",
+  });
 const interruptedMove = { ...saved, kind: "move", input: { zoneId: "common" } };
 assert.deepEqual(sceneResend(interruptedMove, { zoneId: "common" }, "new"), {
   submissionId: "original",

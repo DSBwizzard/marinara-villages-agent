@@ -54,7 +54,16 @@ export async function executeValidation({
     environmentDigest: fingerprint(target),
   };
   const record = (spec, code, extra = {}) =>
-    proofs.set(spec.id, { id: spec.id, key: spec.key, code, passed: code === 0, origin, executed: true, ...extra });
+    proofs.set(spec.id, {
+      id: spec.id,
+      key: spec.key,
+      code,
+      passed: code === 0,
+      origin,
+      environment: target,
+      executed: true,
+      ...extra,
+    });
   const run = async (args) => {
     if (execute) {
       try {

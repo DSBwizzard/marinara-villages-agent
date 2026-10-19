@@ -582,21 +582,19 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             );
           if (
             kind !== "turn" ||
-            input.mode !== "chat" ||
             prior.kind !== "turn" ||
-            prior.input.mode !== "chat" ||
             (!prior.error && prior.status === "complete") ||
             committed ||
-            Object.keys(prior.checkpoints).some((stage) => !attentionStages(prior).includes(stage)) ||
-            Object.entries(prior.attempts).some(
-              ([stage, attempt]) => attempt.status === "complete" && !attentionAttempt(prior, stage),
-            ) ||
+            (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === prior.id) ||
+            semanticBlocker({ submissions: (data.submissions ?? []) as VenueScene["submissions"] }) ||
             sceneRevision(data) !== prior.sceneRevision
           )
             throw venueRefusal(
               "OPERATION_INTERRUPTED",
-              "Recover the saved request before sending an edited message. Your edits are preserved.",
+              "The Scene changed after that message. Review the updated Scene and send again. Your draft is preserved.",
             );
+          // Generated/checkpointed content is not a committed turn. An explicit edited Send
+          // abandons it; the new token fences late results without replaying rejected output.
           acknowledgeUnknownAttempts(data, prior);
         }
         if (prior && prior.status !== "complete" && prior.id !== id && !options.replaceOfOperationId && !abandoned)
