@@ -612,6 +612,16 @@ async function main() {
       { kind: "conversation", goal: "talk about gardening", requiresPhysical: false },
       "social",
     );
+    assert(socialCheck.systemInstruction?.includes("at least one current non-claim player evidence ID"));
+    const residentOnly = {
+      source: "system" as const,
+      outcome: "fulfilled" as const,
+      evidenceIds: ["warm"],
+      reason: "Resident reports the gathering fulfilled the goal",
+      details: { proofKind: "conversation" },
+    };
+    assert.match(validateWishInterpretation(socialCheck, residentOnly), /player interaction/u);
+    assert.equal(validateWishInterpretation(socialCheck, { ...residentOnly, evidenceIds: ["spoken", "warm"] }), "");
     assert.match(
       validateWishInterpretation(socialCheck, {
         source: "decisions",
