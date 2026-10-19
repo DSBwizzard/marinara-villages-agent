@@ -1093,6 +1093,7 @@ async function main() {
       "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}",
     ),
   );
+  assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
   assert.doesNotMatch(systemPrompt, /lineIds:\["player",0\]/);
   assert.doesNotMatch(systemPrompt, /evidence:\["player",0\]/);
   assert.doesNotMatch(systemPrompt, /"player" means the latest player line/);
