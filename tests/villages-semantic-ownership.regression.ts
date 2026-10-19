@@ -836,6 +836,45 @@ async function main() {
     mutation(r, e);
     assert.throws(() => reconcileResidentActions(actions, r, e), /retained/);
   }
+  // Interrupted entry review: a redundant narration citation rejects an otherwise valid visit.
+  // Reduced provider-free reproduction; saved personal Scene data stays outside the repository.
+  const doorwayEvidence = semanticEvidence([
+    { ...accessLine, role: "user", speakerId: "player", content: "May I come in?" },
+    { ...accessLine, kind: "narration", speakerId: "__venue_scene__", content: "The host opens the door." },
+    { ...accessLine, content: "Come in, mind the bucket." },
+    { ...accessLine, content: "There is a dry stool inside." },
+  ] as any);
+  const doorwayActions = readResidentActions([makeAction("Come in, mind the bucket.")]);
+  const doorwayReview = reviewFor(doorwayEvidence, doorwayActions);
+  doorwayReview.coverage.unshift({ segment: 0, status: "none", actionIds: [], reason: "Player request" });
+  doorwayReview.coverage[1] = {
+    segment: 1,
+    status: "actions",
+    actionIds: ["invitation"],
+    reason: "Opening the door corroborates the spoken invitation",
+  };
+  assert.throws(
+    () => reconcileResidentActions(doorwayActions, doorwayReview, doorwayEvidence),
+    /Resident action coverage is incomplete or inconsistent/,
+  );
+  const primaryOnlyReview = structuredClone(doorwayReview);
+  primaryOnlyReview.coverage[1] = {
+    segment: 1,
+    status: "none",
+    actionIds: [],
+    reason: "Door opening is not the primary permission source",
+  };
+  const primaryOnly = reconcileResidentActions(doorwayActions, primaryOnlyReview, doorwayEvidence);
+  assert.deepEqual(primaryOnly.access[0].evidence, [2]);
+  assert.equal(primaryOnly.access[0].zoneId, "room");
+  assert.equal(primaryOnly.access[0].duration, "visit");
+  assert.deepEqual(primaryOnly.permissions, []);
+  const missingDoorwaySource = structuredClone(primaryOnlyReview);
+  missingDoorwaySource.coverage[2] = { segment: 2, status: "none", actionIds: [], reason: "Source omitted" };
+  assert.throws(
+    () => reconcileResidentActions(doorwayActions, missingDoorwaySource, doorwayEvidence),
+    /Resident action was omitted from its source review/,
+  );
   const receipt = reconcileResidentActions(actions, review, evidence).receipt;
   assert.throws(() => assertResidentActionWitnesses(receipt, [{ ...evidence[0]!, playerHeard: false }]), /witnessed/);
   assert.throws(() => assertResidentActionWitnesses(receipt, [{ ...evidence[0]!, heardBy: [] }]), /witnessed/);
