@@ -2,6 +2,7 @@ import { readOpeningSignal } from "../../domain/rules/opening-project.js";
 import { RELATIONSHIP_PERMISSION_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
   RESIDENT_ACTION_REVIEW,
+  RESIDENT_ACTION_PUBLIC_SOCIAL,
   RESIDENT_ACTION_REVIEW_V1,
   reconcileResidentActions,
   type ResidentAccessAction,
@@ -336,7 +337,11 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
-      (residentActions ? (actionContractV2 ? RESIDENT_ACTION_REVIEW : RESIDENT_ACTION_REVIEW_V1) + " " : "") +
+      (residentActions
+        ? (actionContractV2
+            ? RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
+            : RESIDENT_ACTION_REVIEW_V1) + " "
+        : "") +
         (combined
           ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. Include every meaningful input span in source order. Zone movements require exact existing zoneId. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
           : "") +
@@ -358,6 +363,7 @@ export function createSemanticService(ports: SemanticPorts) {
           .replace('"player" means the latest player line.', "Captured player speech uses its numeric segment index.")
           .replace('"player" for the current player line, or ', "") +
         " " +
+        " Inspect each context.actors entry's wishes independently using actor.id and wish.id. Natural player-heard disclosure of the listed desire supports reveal without the word wish. Actual new evidence toward that listed goal supports progress/check, including a goal first disclosed and achieved in this exchange. Evaluate the supplied semanticCriteria and witnessed current plus supplied earlier evidence; do not require a separate player claim or a Narration proposal. " +
         WISH_PROPOSAL_INSTRUCTION.replace('evidence:["player",0]', "evidence:[0]") +
         ' Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".' +
         " Memory subjectCharacterIds and knownByCharacterIds contain resident IDs only, never player. Never use an opening proposal, its name, or a newly spoken desire as a Wish ID. If there is no matching supplied Wish ID, return no Wish proposal. Use numeric indexes matching evidence draft:N for current memory evidence/relationship lineIds/Wish evidence. Consolidate memory facts sharing kind, category, subject IDs, knower IDs and evidence IDs into one row; never repeat a unit. Do not emit systemVerification fields. Every knower must witness ALL support and meaning-bearing context. Temporary seating/company may be passing, never automatically trust. " +

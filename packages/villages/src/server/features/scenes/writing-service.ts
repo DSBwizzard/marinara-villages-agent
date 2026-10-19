@@ -1,6 +1,7 @@
 import { openingSceneDirection, readOpeningSignal } from "../../domain/rules/opening-project.js";
 import {
   RESIDENT_ACTION_WRITING,
+  RESIDENT_ACTION_PUBLIC_SOCIAL,
   readResidentActions,
   assertResidentActionWitnesses,
 } from "../../domain/rules/resident-actions.js";
@@ -747,7 +748,11 @@ export function createSceneWriting({
           block.text = "";
       }
       if ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion)))
-        blocks.push({ text: RESIDENT_ACTION_WRITING });
+        blocks.push({
+          text:
+            RESIDENT_ACTION_WRITING +
+            (Number(venueOperationInput()?.residentActionsVersion) === 2 ? " " + RESIDENT_ACTION_PUBLIC_SOCIAL : ""),
+        });
       blocks.push({
         text:
           ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))

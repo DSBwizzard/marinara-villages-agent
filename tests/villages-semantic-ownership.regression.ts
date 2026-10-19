@@ -1094,6 +1094,9 @@ async function main() {
     ),
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
+  assert(narrationPrompt.includes("within the player's already occupied public Zone do not change access"));
+  assert(systemPrompt.includes("within the player's already occupied public Zone do not change access"));
+  assert(systemPrompt.includes("Inspect each context.actors entry's wishes independently using actor.id and wish.id."));
   assert(
     systemPrompt.includes(
       "Opening proposals are not Projects: report their pitch only in openingSignal, never projectSpeech.",

@@ -34,6 +34,8 @@ export type ResidentActionReceipt = {
 };
 export const RESIDENT_ACTION_SHAPE =
   'residentActions:[{id:"unique action ID",actorId,visitorId:"player",source:{speakerId,quote:"exact full current segment text"},venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved|revoke-standing",duration:"visit|standing",conditions:[],accompanies:false,command?:exact supported access command}]';
+export const RESIDENT_ACTION_PUBLIC_SOCIAL =
+  "Social invitations to sit, share food or join conversation within the player's already occupied public Zone do not change access; do not propose or discover an access action for that alone. Actual entry, restricted scope, visitor hours, accompaniment, standing permission, dismissal and withdrawal still require their supported access actions and issuer authority.";
 export const RESIDENT_ACTION_WRITING =
   "Decide resident access actions together with their dialogue. Return " +
   RESIDENT_ACTION_SHAPE +
