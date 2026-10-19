@@ -120,11 +120,7 @@ import { memoryVersion } from "../../domain/rules/live-exchange.js";
 import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
 import { createHash } from "node:crypto";
 import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
-import {
-  semanticPlayerMoves,
-  projectSemanticMovement,
-  semanticPhysicalContext,
-} from "../../domain/rules/semantic-timeline.js";
+import { semanticPlayerMoves, semanticPhysicalContext } from "../../domain/rules/semantic-timeline.js";
 export interface SceneWritingPorts {
   semantic?: import("../../domain/models/semantic-model.js").SemanticInterpreter;
   venueCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
@@ -478,8 +474,8 @@ export function createSceneWriting({
                 "System must validate physical outcomes; sound proves no deed.",
               )
               .replace(
-                "No recap, contactIntent, contactRelay or player movement.",
-                "No recap, contactIntent or contactRelay. Preserve System's ordered player movement between exact speech spans.",
+                "No recap, contactIntent, contactRelay or player Zone travel. Local actions remain in this Zone.",
+                "No recap, contactIntent, contactRelay or player Zone travel. Only the explicit Move action changes the player Zone. Walking within this Zone is an ordinary local action.",
               ),
             context.presentation,
             'Optional per-segment staging:[{characterId,position?:"left|center|right",expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]. Use listed active character/expression IDs; omission preserves the current pose. Visual cues establish no knowledge, consent or effects.',
@@ -762,6 +758,9 @@ export function createSceneWriting({
           " Omit memoryChanges, relationshipChanges, wishChanges, projectSpeech, roomEvents, sceneChange and interpretationRouting. Existing cards and private audience boundaries still govern characterization.",
       });
     }
+    blocks.push({
+      text: "Only the player's explicit Move action changes their Zone. Act/Do and conversation remain in the current Zone. Walking toward furniture or people here is an ordinary local action. Never narrate the player crossing into another Zone, following a villager across Zones, or accepting entry automatically. Villager movement remains subject to access; presence does not confer housing residency or permission.",
+    });
     const fitted = fitVenueWritingMessages(model, blocks, input, maxTokens);
     trace?.("context fit", performance.now() - fitStarted);
     const memoryIncluded = fitted.messages.some((message) => message.content.includes(memoryContext));
@@ -972,13 +971,10 @@ export function createSceneWriting({
       inputCharacters: fitted.messages.reduce((sum, message) => sum + message.content.length, 0),
     });
     const movementIntent: MovementIntent | null =
-      session.semanticVersion !== 2 &&
-      !explicitSceneActions() &&
-      !session.contactGeneration &&
-      (mode === "chat" || mode === "ask") &&
-      place
-        ? readPlayerMovement(message, place, raw?.movementIntent)
+      session.semanticVersion !== 2 && place && raw?.movementIntent
+        ? readPlayerMovement(message, place, raw.movementIntent)
         : null;
+    if (movementIntent && movementIntent.zoneId !== session.zoneId) throw conflict("Use Move to change Zones.");
     const extractedContact =
       !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")
         ? readContactIntent(raw?.contactIntent, message)
@@ -989,8 +985,6 @@ export function createSceneWriting({
         ...quietContactReply("Routing the contact request.", session.activeIds),
         contactIntent: extractedContact,
       };
-    if (movementIntent)
-      return { ...quietContactReply("Routing the movement request.", session.activeIds), movementIntent };
     let parsed: ReturnType<typeof parseVenueReply>;
     let eventRaw = raw;
     let effectFailures: NonNullable<import("../../domain/models/scene-model.js").VenueSubmission["effectFailures"]> =
@@ -1056,9 +1050,14 @@ export function createSceneWriting({
       });
     }
     let residentActions: ReturnType<typeof readResidentActions> | undefined;
-    if ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))) {
+    const residentActionsOmitted = raw?.residentActions === undefined && session.semanticVersion === 2 && !!semantic;
+    if (
+      (session.semanticVersion === 2 && semantic) ||
+      [1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
+    ) {
       try {
-        residentActions = readResidentActions(raw?.residentActions);
+        residentActions = readResidentActions(residentActionsOmitted ? [] : raw?.residentActions);
+        if (residentActionsOmitted) runtimeDebug("resident action proposals omitted", { sceneId: session.id });
       } catch (error) {
         await rejectVenueCompletion(
           { model: model.model, connectionId: model.connectionId, reason: "resident-actions" },
@@ -1069,7 +1068,14 @@ export function createSceneWriting({
     }
     const semanticResult =
       session.semanticVersion === 2 && semantic
-        ? await semantic.exchange(session, message, parsed.lines, session.semanticIntent ?? null, residentActions)
+        ? await semantic.exchange(
+            session,
+            message,
+            parsed.lines,
+            session.semanticIntent ?? null,
+            residentActions,
+            residentActionsOmitted,
+          )
         : null;
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
     const semanticAccess = semanticResult?.access;
@@ -1146,8 +1152,6 @@ export function createSceneWriting({
         }
       }
       const playerMoves = semanticResult ? semanticPlayerMoves(raw?.semanticPlayerMoves, session, parsed.lines) : [];
-      if (playerMoves.length && storedPlace)
-        projectSemanticMovement(session, village, storedPlace, playerMoves, contactMoves);
       if (session.contactGeneration?.zoneEvents && eventRaw)
         routeZoneEvents(eventRaw, session, parsed, contactMoves, playerMoves);
       const physicalContext =
@@ -1558,6 +1562,7 @@ export function createSceneWriting({
         semanticProvenance: semanticResult
           ? ({
               version: 2 as const,
+              turnPolicyVersion: 1 as const,
               sourceHash: semanticResult.sourceHash,
               ...(venueOperationInput()?.semanticPipelineVersion === 3 ? { pipelineVersion: 3 as const } : {}),
               ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))

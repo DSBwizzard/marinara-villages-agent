@@ -1,5 +1,5 @@
 import type { VillageVenue } from "../models/world.js";
-import { badRequest } from "./errors.js";
+import { badRequest, conflict } from "./errors.js";
 import type { VillageNarrationStyle } from "./narration-style.js";
 import { venueZones } from "./venue-zones.js";
 
@@ -60,6 +60,34 @@ export function readPlayerMovement(message: string, venue: VillageVenue, nominat
   }
   if (raw && raw.zoneId !== matches[0]!.id) return null;
   return { zoneId: matches[0]!.id, quote: message.trim() };
+}
+
+/** Legacy text shortcuts can refuse travel, but never authorize it. */
+export function assertConversationalPlayerPosition(message: string, venue: VillageVenue, zoneId: string) {
+  let movement: MovementIntent | null;
+  try {
+    movement = readPlayerMovement(message, venue);
+  } catch {
+    // The legacy parser also refuses mixed deeds. Only retain that refusal for a named other Zone;
+    // local furniture, quoted travel and hypothetical travel remain ordinary conversation.
+    const text = clean(message.split(/["“”]/u, 1)[0]);
+    if (
+      action.test(text) &&
+      !/\b(?:if|would|could|can|will|want|plan|said|says|told|yesterday|earlier)\b/iu.test(text) &&
+      venueZones(venue).some(
+        (zone) =>
+          zone.id !== zoneId &&
+          [zone.id, zone.name, ...(zone.kind === "exterior" ? ["outside", "exterior"] : [])].some((name) =>
+            new RegExp("(?:^|\\s)" + clean(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=$|[\\s.,!?])", "u").test(
+              text,
+            ),
+          ),
+      )
+    )
+      throw conflict("Use Move to change Zones.");
+    return;
+  }
+  if (movement && movement.zoneId !== zoneId) throw conflict("Use Move to change Zones.");
 }
 
 export function movementTransition(

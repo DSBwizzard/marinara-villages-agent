@@ -27,6 +27,7 @@ export type ResidentAccessAction = {
 };
 export type ResidentActionReceipt = {
   version: 1;
+  proposalsOmitted?: boolean;
   proposed: ResidentAccessAction[];
   review: unknown;
   systemResponse?: string;
