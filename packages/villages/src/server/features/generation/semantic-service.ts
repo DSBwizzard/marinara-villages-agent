@@ -351,9 +351,15 @@ export function createSemanticService(ports: SemanticPorts) {
         'When context.opening is present, also return openingSignal:null or {kind:"pitch|first-use",residentId,quote,playerQuote}. A pitch must be actual player-heard dialogue by the supplied proposal resident explaining that exact named proposal, purpose and work; never an invented commitment or private thought. A first-use requires context.opening.firstUse and actual current player participation plus player-heard response depicting that use. Entering, greetings, promises and hypothetical descriptions do not count. Cite exact current response and player input substrings. Omit venueRequest for the supplied opening pitch. ' +
         (actionContractV2
           ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
-          : LIVE_MEMORY_INSTRUCTION) +
+          : LIVE_MEMORY_INSTRUCTION
+        )
+          .replaceAll('evidence:["player",0]', "evidence:[0]")
+          .replaceAll('lineIds:["player",0]', "lineIds:[0]")
+          .replace('"player" means the latest player line.', "Captured player speech uses its numeric segment index.")
+          .replace('"player" for the current player line, or ', "") +
         " " +
-        WISH_PROPOSAL_INSTRUCTION +
+        WISH_PROPOSAL_INSTRUCTION.replace('evidence:["player",0]', "evidence:[0]") +
+        ' Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".' +
         " Use numeric indexes matching evidence draft:N for current memory evidence/relationship lineIds/Wish evidence. Consolidate memory facts sharing kind, category, subject IDs, knower IDs and evidence IDs into one row; never repeat a unit. Do not emit systemVerification fields. Every knower must witness ALL support and meaning-bearing context. Temporary seating/company may be passing, never automatically trust. " +
         'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist. Relationship changes additionally use contact:boolean for substantive actual shared contact; private opinion changes alone are not contact.' +
         (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +

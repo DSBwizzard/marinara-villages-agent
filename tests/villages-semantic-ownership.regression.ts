@@ -1093,6 +1093,14 @@ async function main() {
       "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}",
     ),
   );
+  assert.doesNotMatch(systemPrompt, /lineIds:\["player",0\]/);
+  assert.doesNotMatch(systemPrompt, /evidence:\["player",0\]/);
+  assert.doesNotMatch(systemPrompt, /"player" means the latest player line/);
+  assert(
+    systemPrompt.includes(
+      'Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".',
+    ),
+  );
   assert(narrationPrompt.includes("playerSpeechCapture, segments and residentActions (required even when [])"));
   assert(narrationPrompt.includes('"residentActions":[]'));
   assert.doesNotMatch(
