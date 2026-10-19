@@ -598,8 +598,13 @@ export function createSemanticService(ports: SemanticPorts) {
           projects: Array.isArray(effects.projectSpeech) && effects.projectSpeech.length > 0,
           standing: Array.isArray(permissions) && permissions.length > 0,
         };
-        if (Object.entries(authority).some(([key, value]) => asRecord(raw.authority)[key] !== value))
-          throw badGateway("System authority metadata is missing or inconsistent. The draft is preserved.");
+        const invalidAuthority = Object.entries(authority).find(
+          ([key, value]) => asRecord(raw.authority)[key] !== value,
+        );
+        if (invalidAuthority)
+          throw badGateway(
+            `System authority metadata is missing or inconsistent (${invalidAuthority[0]}). The draft is preserved.`,
+          );
         return {
           version: 2,
           ...(interpretedIntent ? { intent: interpretedIntent } : {}),

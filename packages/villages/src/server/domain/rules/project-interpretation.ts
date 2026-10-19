@@ -212,8 +212,8 @@ export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: Sp
     return "The builder has not explicitly defined all three checklist categories.";
   for (const item of proposal.checklist) {
     const citation = proposal.citations[item.citation];
-    if (!citation || !item.title || item.title.length > 100)
-      return "Checklist item has no valid citation or usable specification.";
+    if (!citation) return "Checklist item has no valid citation.";
+    if (!item.title || item.title.length > 100) return "Checklist specification must contain 1–100 characters.";
     if (
       !proposal.contextual &&
       !item.needed &&

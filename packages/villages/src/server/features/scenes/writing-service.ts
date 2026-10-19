@@ -1369,21 +1369,28 @@ export function createSceneWriting({
           message: "Project metadata cites an unavailable context.",
           proposal: raw.projectSpeech,
         };
-      if (
-        semanticResult?.authority.projects &&
-        (effectFailures.projects ||
-          projectSpeech.some((proposal) =>
-            validateProjectSpeech(
-              proposal,
-              parsed.lines.map((line, index) => ({ ...line, id: String(index) })),
-            ),
-          ) ||
-          (raw!.projectSpeech as unknown[]).some((value) => {
+      if (semanticResult?.authority.projects) {
+        const projectFailure =
+          effectFailures.projects?.message ||
+          projectSpeech
+            .map((proposal) =>
+              validateProjectSpeech(
+                proposal,
+                parsed.lines.map((line, index) => ({ ...line, id: String(index) })),
+              ),
+            )
+            .find(Boolean) ||
+          ((raw!.projectSpeech as unknown[]).some((value) => {
             const row = asRecord(value);
             return row.revision !== projectContexts.find((context) => context.projectId === row.projectId)?.revision;
-          }))
-      )
-        throw badGateway("System Project commitment metadata did not validate. The draft is preserved.");
+          })
+            ? "Project metadata cites a stale revision."
+            : "");
+        if (projectFailure)
+          throw badGateway(
+            "System Project commitment metadata did not validate. " + projectFailure + " The draft is preserved.",
+          );
+      }
       return {
         ...parsed,
         effectFailures,

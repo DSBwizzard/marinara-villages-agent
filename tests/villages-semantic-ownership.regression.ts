@@ -238,7 +238,7 @@ async function main() {
   let narrationPrompt = "",
     systemPrompt = "";
   let narrativeActions: unknown;
-  let behavior: "valid" | "wrong-hash" | "length" | "missing-domain" | "needs-context" = "valid";
+  let behavior: "valid" | "wrong-hash" | "length" | "missing-domain" | "needs-context" | "project-authority" = "valid";
   let lastPacket: any;
   let openingSignal: unknown = null;
   let spoofOpening = false;
@@ -347,6 +347,7 @@ async function main() {
             access: accessRows,
             events: { moves: [], departures: [], contactEnd: [] },
           };
+      if (behavior === "project-authority" && !intent) Object.assign(result, { projectSpeech: [{}] });
       if (!intent && packet.input.pipelineVersion === 3)
         Object.assign(result, {
           intent: {
@@ -574,6 +575,11 @@ async function main() {
   behavior = "valid";
   checkpoints.clear();
   calls.length = 0;
+  behavior = "project-authority";
+  await assert.rejects(service.exchange(scene, "Invalid Project authority", [], null), /inconsistent \(projects\)/u);
+  behavior = "valid";
+  checkpoints.clear();
+  calls.length = 0;
   const writerPorts = {
     ...ports,
     semantic: service,
@@ -727,6 +733,123 @@ async function main() {
   assert.deepEqual(calls, ["narration", "exchange"], "Current writer checks input and reply with one System request");
   assert.equal(combined.semanticProvenance?.pipelineVersion, 3);
   assert.equal(combined.semanticProvenance?.authority?.physical, false);
+  // Invalid Project metadata must retain the exact bounded rejection reason.
+  {
+    const projectWorld = structuredClone(state);
+    projectWorld.projects = [
+      {
+        id: "diagnostic-project",
+        title: "Shared shelf",
+        status: "active",
+        lifecycle: { phase: "requirements", builderId: "host", affectedIds: [], requirements: [], sources: [] },
+      },
+    ] as any;
+    projectWorld.progressTasks = [
+      { definition: { owner: { kind: "project", id: "diagnostic-project" }, revision: 1 } },
+    ] as any;
+    const projectScene = {
+      ...combinedScene,
+      activeIds: ["host"],
+      participants: [{ characterId: "host", name: "Host", doing: "Planning" }],
+    } as typeof combinedScene;
+    const speech = "We need timber, a clamp, and oil.";
+    const validProject = {
+      projectId: "diagnostic-project",
+      revision: 1,
+      kind: "requirements",
+      speakerId: "host",
+      citations: [{ segment: 0, quote: speech }],
+      checklist: [
+        { category: "structure", title: "timber", needed: true, citation: 0 },
+        { category: "equipment", title: "clamp", needed: true, citation: 0 },
+        { category: "finish", title: "oil", needed: true, citation: 0 },
+      ],
+    };
+    const cases = [
+      {
+        change: (row: typeof validProject) => {
+          row.projectId = "unavailable";
+        },
+        error: /unavailable context/u,
+      },
+      {
+        change: (row: typeof validProject) => {
+          row.revision = 2;
+        },
+        error: /stale revision/u,
+      },
+      {
+        change: (row: typeof validProject) => {
+          row.checklist[0].title = "x".repeat(101);
+        },
+        error: /1.100 characters/u,
+      },
+      {
+        change: (row: typeof validProject) => {
+          row.checklist.pop();
+        },
+        error: /all three checklist categories/u,
+      },
+      {
+        change: (row: typeof validProject) => {
+          row.citations[0].quote = "Unspoken consent";
+        },
+        error: /speaker's saved words/u,
+      },
+    ];
+    for (const fixture of cases) {
+      checkpoints.clear();
+      const row = structuredClone(validProject);
+      fixture.change(row);
+      let narrationReads = 0;
+      const before = JSON.stringify({ projectWorld, projectScene, row });
+      const diagnosticWriter = createSceneWriting({
+        ...writerPorts,
+        readVillageState: async () => projectWorld,
+        rejectVenueCompletion: async () => {},
+
+        readEffectiveVillagerCard: async () => ({ id: "host", name: "Host", description: "Builder" }),
+        venueOperationInput: () => ({
+          semanticPipelineVersion: 3,
+          writingContractVersion: 3,
+          writingCapabilities: {
+            management: false,
+            movement: false,
+            residences: false,
+            residenceDecision: false,
+            editApproval: false,
+          },
+        }),
+        semantic: {
+          exchange: async () => ({
+            version: 2,
+            sourceHash: "a".repeat(64),
+            authority: { projects: true },
+            effects: { projectSpeech: [row] },
+            access: null,
+          }),
+        },
+        completeWithRoom: async () => {
+          narrationReads++;
+          return {
+            finishReason: "stop",
+            content: JSON.stringify({
+              playerSpeechCapture: { status: "silent", utterances: [] },
+              heardPlayerBy: [],
+              segments: [{ kind: "dialogue", speakerId: "host", text: speech, heardBy: ["host"] }],
+            }),
+          };
+        },
+      } as unknown as SceneWritingPorts);
+      await assert.rejects(diagnosticWriter.generate(projectScene, "", "chat", "host", null), fixture.error);
+      assert.equal(narrationReads, 1, "Validation never regenerates the already-read response");
+      assert.equal(
+        JSON.stringify({ projectWorld, projectScene, row }),
+        before,
+        "Rejected evidence and Scene remain intact",
+      );
+    }
+  }
   const processing = createExchangeProcessing({
     seed: state.seed,
     sceneId: scene.id,
@@ -1280,6 +1403,11 @@ async function main() {
   );
   assert(narrationPrompt.includes("playerSpeechCapture, segments and residentActions (required even when [])"));
   assert(narrationPrompt.includes('"residentActions":[]'));
+  assert.doesNotMatch(
+    narrationPrompt,
+    /omit unused fields\/empty arrays/u,
+    "Required empty access-action arrays cannot also be forbidden",
+  );
   assert.doesNotMatch(
     narrationPrompt,
     /No effect metadata:/,
