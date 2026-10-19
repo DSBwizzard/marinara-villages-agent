@@ -350,7 +350,12 @@ export function createSemanticService(ports: SemanticPorts) {
         (combined
           ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
           : "") +
-        "consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}}. Return exactly one JSON object. " +
+        "consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
+        (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
+        "}. Return exactly one JSON object. " +
+        (actionContractV2
+          ? 'residentActionReview is required even when residentActions is empty: independently review every player-heard non-player segment. Populate coverage for each such segment; no access action means status:"none" with actionIds:[], not an omitted review or empty coverage. '
+          : "") +
         (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
         "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
         "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +

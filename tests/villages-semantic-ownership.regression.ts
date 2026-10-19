@@ -1336,6 +1336,15 @@ async function main() {
     ),
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
+  const rootExchangeExample = systemPrompt.slice(
+    systemPrompt.indexOf("Return {sourceHash"),
+    systemPrompt.indexOf("Return exactly one JSON object."),
+  );
+  assert(
+    rootExchangeExample.includes("residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}"),
+    "The required V2 review belongs in the complete root response example even with no proposed access actions",
+  );
+  assert(systemPrompt.includes("residentActionReview is required even when residentActions is empty"));
   assert(
     systemPrompt.includes(
       "Every projectSpeech citation must be dialogue spoken by that row's speakerId; never cite narration or player speech",
