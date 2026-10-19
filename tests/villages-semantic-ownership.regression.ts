@@ -11,7 +11,11 @@ import {
   reconcileResidentActions,
   assertResidentActionWitnesses,
 } from "../packages/villages/src/server/domain/rules/resident-actions.js";
-import { semanticEvidence, semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
+import {
+  semanticEvidence,
+  semanticContext,
+  semanticImmediate,
+} from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import assert from "node:assert/strict";
 import {
@@ -44,6 +48,29 @@ import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 
 async function main() {
+  // A door-closing narration is not a resident statement ending contact.
+  {
+    const farewell = [
+      { speakerId: "player", kind: "dialogue", content: "Good night!" },
+      { speakerId: "buster", kind: "dialogue", content: "Good night. Watch the step." },
+      { speakerId: "__venue_scene__", kind: "narration", content: "He holds the door." },
+      { speakerId: "buster", kind: "dialogue", content: "See you tomorrow." },
+      { speakerId: "__venue_scene__", kind: "narration", content: "The door clicks shut." },
+    ] as any;
+    const frozen = JSON.stringify(farewell);
+    assert.throws(
+      () => semanticImmediate({ moves: [], departures: [], contactEnd: [{ source: 4 }] }, farewell),
+      /invalid source/,
+    );
+    assert.throws(
+      () => semanticImmediate({ moves: [], departures: [], contactEnd: [], sceneEnded: { source: 0 } }, farewell),
+      /invalid source/,
+    );
+    const ended = semanticImmediate({ moves: [], departures: [], contactEnd: [], sceneEnded: { source: 1 } }, farewell);
+    assert.deepEqual(ended.sceneEnded, { source: 1, speakerId: "buster", quote: "Good night. Watch the step." });
+    assert.equal(JSON.stringify(farewell), frozen, "Rejected event binding never rewrites saved prose");
+  }
+
   // Ordinary multi-resident dialogue must not grow optional earlier history without a byte budget.
   {
     const historyState = defaultVillageState();
