@@ -31,6 +31,7 @@ const snapshot = {
     nextTransitionAt: "",
   },
   noticeboard: [],
+  projects: [],
   venueRequests: [],
   upgradeRequests: [],
   residences: [],

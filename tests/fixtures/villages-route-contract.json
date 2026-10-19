@@ -387,6 +387,10 @@
     },
     {
       "method": "post",
+      "path": "/projects/opening"
+    },
+    {
+      "method": "post",
       "path": "/projects"
     },
     {

@@ -1,5 +1,18 @@
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
 
+const lateResponses = new WeakMap<object, Promise<unknown>>();
+/** Retain evidence only; the callback cannot turn a cancelled request into a committed outcome. */
+export function retainLateProviderResponse(error: unknown, retain: (result: unknown) => Promise<void>): boolean {
+  const response = error && typeof error === "object" ? lateResponses.get(error) : undefined;
+  if (!response) return false;
+  void response.then(retain).catch(() => {});
+  return true;
+}
+export function carryLateProviderResponse(from: unknown, to: object): void {
+  const response = from && typeof from === "object" ? lateResponses.get(from) : undefined;
+  if (response) lateResponses.set(to, response);
+}
+
 export const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Bound one dispatched request even when a provider ignores cancellation. Never retries. */
@@ -31,14 +44,15 @@ export async function withProviderDeadline<T>(
       ),
     PROVIDER_REQUEST_TIMEOUT_MS,
   );
+  const response = Promise.resolve().then(() => {
+    controller.signal.throwIfAborted();
+    return request(controller.signal);
+  });
   try {
-    return await Promise.race([
-      Promise.resolve().then(() => {
-        controller.signal.throwIfAborted();
-        return request(controller.signal);
-      }),
-      deadline,
-    ]);
+    return await Promise.race([response, deadline]);
+  } catch (error) {
+    if (controller.signal.aborted && error && typeof error === "object") lateResponses.set(error, response);
+    throw error;
   } finally {
     clearTimeout(timer);
     parent?.removeEventListener("abort", onAbort);

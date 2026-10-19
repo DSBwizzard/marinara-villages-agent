@@ -1,3 +1,4 @@
+import { OpeningReminder } from "./OpeningReminder.js";
 import { useEffect, useState, type ReactNode } from "react";
 import type { useVillageController } from "./useVillageController.js";
 import { SpinoffPanel } from "../features/scenes/SpinoffPanel.js";
@@ -43,6 +44,7 @@ function VillageContent({ controller, children }: FrameProps) {
   }, [loadSnapshot]);
   return (
     <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <OpeningReminder controller={controller} />
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>{children}</div>
     </div>
   );

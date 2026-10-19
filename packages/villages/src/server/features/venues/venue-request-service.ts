@@ -1,3 +1,4 @@
+import { requireOrdinaryProjects } from "../../domain/rules/opening-project.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageState, VillageSnapshot } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
@@ -96,6 +97,7 @@ export function createVenueRequests({
 
   async function decideVillageHomeUpgrade(requestId: string, approved: boolean): Promise<VillageSnapshot> {
     await mutateVillageState((state) => {
+      requireOrdinaryProjects(state);
       const decision = state.pendingDecisions.find(
         (entry) => entry.id === requestId && entry.kind === "venue-upgrade" && entry.status === "pending",
       );

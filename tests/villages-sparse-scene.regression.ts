@@ -560,6 +560,37 @@ for (const supplied of [
       utterances: [{ quote: 1 }, { quote: 2, delivery: "whisper", targetId: "rosa" }],
     },
   };
+  const aliasInput = {
+    ...original,
+    playerSpeechCapture: {
+      status: "captured",
+      utterances: [{ id: 1 }, { id: 2, delivery: "whisper", targetId: "rosa" }],
+    },
+  };
+  const beforeAlias = structuredClone(aliasInput);
+  assert.deepEqual(
+    materializePlayerSpeech(aliasInput, input),
+    materializePlayerSpeech(original, input),
+    "Supplied quote IDs retain the same exact text, occurrence and audience",
+  );
+  assert.deepEqual(aliasInput, beforeAlias, "Saved raw capture is never rewritten");
+  for (const id of [-1, 99, "1", 1.5, null])
+    assert.throws(
+      () =>
+        materializePlayerSpeech(
+          { ...original, playerSpeechCapture: { status: "captured", utterances: [{ id }] } },
+          input,
+        ),
+      /capture/,
+    );
+  assert.throws(
+    () =>
+      materializePlayerSpeech(
+        { ...original, playerSpeechCapture: { status: "captured", utterances: [{ id: 1, occurrence: 1 }] } },
+        input,
+      ),
+    /capture/,
+  );
   const expanded = materializePlayerSpeech(original, input);
   const captured = playerSpeechCapture(expanded, input);
   assert.equal(captured.get(0)![0].start, input.lastIndexOf("mint"));

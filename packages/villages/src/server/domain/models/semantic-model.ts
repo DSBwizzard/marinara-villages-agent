@@ -10,6 +10,7 @@ export interface SemanticInterpreter {
     message: string,
     lines: VenueReplyLine[],
     prepared: SemanticIntent | null,
+    residentActions?: import("../rules/resident-actions.js").ResidentAccessAction[],
   ): Promise<SemanticExchange>;
 }
 
@@ -34,6 +35,7 @@ export type SemanticIntent = {
 
 /** Interpreter provenance is created by code, never accepted from Narration. */
 export type SemanticExchange = {
+  intent?: SemanticIntent;
   checkpointKey: string;
   authority: { physical: boolean; access: boolean; projects: boolean; standing: boolean };
   version: 2;
@@ -43,6 +45,8 @@ export type SemanticExchange = {
 };
 
 export type SemanticProvenance = {
+  pipelineVersion?: 3;
+  residentActionsVersion?: 1 | 2;
   authority?: SemanticExchange["authority"];
   version: 2;
   sourceHash: string;

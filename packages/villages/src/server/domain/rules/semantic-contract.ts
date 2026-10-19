@@ -1,8 +1,11 @@
+import { availableProjectSupplyTransfers } from "./project-supply-transfer.js";
+import { openingSemanticContext } from "./opening-context.js";
 import { createHash } from "node:crypto";
 import { asRecord } from "./coerce.js";
 import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
+import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { zoneEventHearingContext } from "./zone-events.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { memoryVersion } from "./live-exchange.js";
@@ -23,16 +26,26 @@ export const SEMANTIC_OPERATION_BUDGET = {
 } as const;
 export const semanticNarrationCore = (raw: Record<string, unknown>) =>
   Object.fromEntries(
-    Object.entries(raw).filter(([key]) => ["segments", "lines", "heardPlayerBy", "playerSpeechCapture"].includes(key)),
+    Object.entries(raw).filter(([key]) =>
+      ["segments", "lines", "heardPlayerBy", "playerSpeechCapture", "residentActions"].includes(key),
+    ),
   );
 export const semanticHash = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 /** Shared context is server-only. Actor-scoped audiences remain explicit on every fact. */
-export function semanticContext(scene: VenueScene, state: VillageState, query: string) {
+export function semanticContext(
+  scene: VenueScene,
+  state: VillageState,
+  query: string,
+  compact = false,
+  accessTopology = false,
+) {
   const actors = [...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])])];
   const venue = state.venues.find((row) => row.id === scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
+  // Audit remains in saved state; fresh compact packets need current authority, not past command fingerprints.
+  const { receipts: _receipts, changes: _changes, ...accessRules } = venue?.access ?? {};
   const memories = selectPromptMemories(state.chronicle, actors, query, 1800);
   const audience = (row: VillageState["chronicle"][number]) =>
     row.scope === "village" ? actors : (row.knownByCharacterIds ?? row.actors.map((actor) => actor.id));
@@ -40,10 +53,24 @@ export function semanticContext(scene: VenueScene, state: VillageState, query: s
     (row) => row.kind !== "tick" && !row.supersededBy && audience(row).some((id) => actors.includes(id)),
   );
   const catalog = available.slice(-64);
+  const recentHistory = scene.lines
+    .filter((row) => !row.contactReport && actors.some((id) => row.heardBy.includes(id)))
+    .slice(-18);
+  // Earlier context is optional enrichment. Keep whole rows and their witness metadata;
+  // never let a few long conversational turns crowd out the current exchange.
+  const history: typeof recentHistory = [];
+  for (const row of [...recentHistory].reverse()) {
+    if (compact && Buffer.byteLength(JSON.stringify([row, ...history]), "utf8") > 6000) continue;
+    history.unshift(row);
+  }
   return {
+    opening: openingSemanticContext(state, scene),
     worldSeed: state.seed,
     setting: state.setting,
-    loreSelection: { bookIds: state.selectedLorebookIds, tokenBudget: state.loreTokenBudget },
+    loreSelection: {
+      bookIds: state.selectedLorebookIds,
+      tokenBudget: compact ? Math.min(state.loreTokenBudget ?? 1200, 1200) : state.loreTokenBudget,
+    },
     worldFacts: state.worldFacts,
     sceneId: scene.id,
     revision: scene.sceneRevision,
@@ -53,7 +80,13 @@ export function semanticContext(scene: VenueScene, state: VillageState, query: s
       .map((row) => ({
         id: row.characterId,
         name: row.cardSnapshot.name,
-        character: row.cardSnapshot,
+        character: compact
+          ? {
+              description: row.cardSnapshot.description,
+              personality: row.cardSnapshot.personality,
+              backstory: row.cardSnapshot.backstory,
+            }
+          : row.cardSnapshot,
         founding: row.foundingContext,
         wishes: (row.agenda?.wishes ?? []).map((wish) => ({
           ...wish,
@@ -80,7 +113,7 @@ export function semanticContext(scene: VenueScene, state: VillageState, query: s
               : {}),
           }))
       : [],
-    access: venue?.access,
+    access: compact && venue?.access ? accessRules : venue?.access,
     accessManagement: accessManagementPrompt(state, actors),
     referenceActors: state.villagers.map(({ characterId, cardSnapshot }) => ({
       id: characterId,
@@ -103,17 +136,20 @@ export function semanticContext(scene: VenueScene, state: VillageState, query: s
         hint: row.text.slice(0, 160),
       })),
     },
-    history: scene.lines
-      .filter((row) => !row.contactReport && actors.some((id) => row.heardBy.includes(id)))
-      .slice(-18),
+    history,
+    ...(compact ? { historyBounded: history.length < recentHistory.length } : {}),
     reach: layout ? zoneEventHearingContext(scene, layout) : "",
     accessScopes: venue
       ? venueZones(venue).map((zone) => ({
           id: zone.id,
           ownerId: zone.ownerId,
           controllerIds: zoneControllerIds(venue, zone),
+          ...(accessTopology && layout
+            ? { kind: zone.kind, adjacentZoneIds: contactNeighborIds(venueZones(layout), zone.id) }
+            : {}),
         }))
       : [],
+    projectSupplyTransfers: availableProjectSupplyTransfers(state, scene.placeId, scene.zoneId, scene.activeIds),
     projects: projectSpeechPrompt(state, projectSpeechContexts(state, actors, "", query, scene.placeId)),
     requests: {
       venues: state.venues.map((row) => ({

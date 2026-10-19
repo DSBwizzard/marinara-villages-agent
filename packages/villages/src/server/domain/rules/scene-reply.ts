@@ -103,6 +103,7 @@ export function parseVenueReply(
 }
 export function quietContactReply(text: string, localIds: string[]) {
   return {
+    residentActionReceipt: undefined as import("./resident-actions.js").ResidentActionReceipt | undefined,
     semanticAccess: undefined as InterpretationBatch | null | undefined,
     semanticProvenance: undefined as import("../models/semantic-model.js").SemanticProvenance | undefined,
     semanticPlayerMoves: [] as import("./semantic-timeline.js").SemanticPlayerMove[],
@@ -116,6 +117,8 @@ export function quietContactReply(text: string, localIds: string[]) {
     effectFailures: {} as NonNullable<import("../models/scene-model.js").VenueSubmission["effectFailures"]>,
     interpretationRouting: undefined,
     roomEvents: undefined,
+    openingContext: undefined as import("../models/scene-model.js").VenueSubmission["openingContext"],
+    openingSignal: undefined as import("./opening-project.js").OpeningSignal | undefined,
     projectContexts: [],
     projectSpeech: [],
     sceneChange: null,

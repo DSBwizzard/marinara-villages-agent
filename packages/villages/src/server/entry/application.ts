@@ -1,3 +1,4 @@
+import { recoverFoundingPreparation } from "../features/founding/preparation.js";
 import { configureDecisionsAdapter } from "../adapters/engine/decisions-adapter.js";
 import {
   bindActivationService,
@@ -44,6 +45,7 @@ export interface ApplicationServices {
   readRuntimeDebug(): Promise<unknown>;
   warnRuntimeDebug(error: unknown): void;
   recoverVenueSceneWork(): Promise<unknown>;
+  recoverFoundingPreparation?(): Promise<void>;
   stopVenueCoordinator: Cleanup;
   routes: FastifyPluginAsync;
   startBackgroundWork(): Cleanup;
@@ -75,6 +77,7 @@ const applicationServices: ApplicationServices = {
     villagesLogger().warn("[villages] runtime logging settings could not be read: %s", String(error));
   },
   recoverVenueSceneWork,
+  recoverFoundingPreparation,
   stopVenueCoordinator,
   routes: villagesRoutes,
   startBackgroundWork,
@@ -142,6 +145,7 @@ async function assembleApplication({ api }: ActivationContext, services: Applica
     cleanups.push(services.configureDecisions(api.runtime));
     await services.readRuntimeDebug().catch(services.warnRuntimeDebug);
     cleanups.push(services.stopVenueCoordinator);
+    await services.recoverFoundingPreparation?.();
     await services.recoverVenueSceneWork();
     if (services.registerSpinoffs) cleanups.push(services.registerSpinoffs(api));
     cleanups.push(await api.registerPrivilegedRoutes(services.routes, { prefix: "/api/villages" }));

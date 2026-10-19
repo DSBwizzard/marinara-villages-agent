@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { initialOpening } from "../../domain/rules/opening-project.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
@@ -331,7 +333,14 @@ export function createFoundingSetup({
       // The stamp that closes the wizard. Written here and nowhere else, so a
       // village can only become founded by coming through this flow.
       state.setupAt = villageNow().toISOString();
-      if (founding) state.progressEngineVersion = 1;
+      if (founding) {
+        state.progressEngineVersion = 1;
+        state.opening = initialOpening(
+          [...assignedResidents],
+          venues.find((venue) => venue.category === "public-center")!.id,
+          randomUUID(),
+        );
+      }
       if (founding)
         state.foundingPreparation = {
           status: "pending",

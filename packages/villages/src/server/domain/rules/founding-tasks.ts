@@ -14,6 +14,7 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
     1,
     state.seed,
     kind,
+    kind === "routine" ? state.opening?.id : null,
     agendaRevision(state, id),
     state.foundingDetails,
     state.scenarioImprint,
@@ -87,4 +88,18 @@ export function coerceFoundingTasks(value: unknown): FoundingResidentTasks {
         ),
       ]),
   );
+}
+
+/** Derive the visible counter from the same receipts as the resident rows. */
+export function foundingCompletedIds(state: Pick<VillageState, "villagers" | "foundingPreparation">): string[] {
+  const marker = state.foundingPreparation;
+  return state.villagers
+    .filter((row) =>
+      marker?.tasksVersion === 1
+        ? ["routine", "wish"].every(
+            (kind) => marker.tasks?.[row.characterId]?.[kind as FoundingTaskKind]?.status === "completed",
+          )
+        : marker?.completedIds.includes(row.characterId),
+    )
+    .map((row) => row.characterId);
 }

@@ -440,7 +440,10 @@ async function main() {
         continue;
       }
       const previewWrites = writes;
-      assert.equal((await previewVillageBurst({ action: "founding" })).requests, recovery === "alias" ? 2 : 3);
+      assert.equal(
+        (await previewVillageBurst({ action: "founding" })).requests,
+        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
+      );
       assert.equal(writes, previewWrites, "recovery forecasts do not write");
       assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
       conflicts = 2;
@@ -451,7 +454,7 @@ async function main() {
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
       assert.equal(
         calls.length,
-        recovery === "alias" ? 2 : 3,
+        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
         "only invalid saved replies need replacement requests: " + recovery + JSON.stringify(calls),
       );
       assert.ok(
@@ -606,7 +609,11 @@ async function main() {
       await prepareFoundedVillage();
       state = await readVillageState();
       assert.equal(state.foundingPreparation?.status, "failed", failure);
-      assert.deepEqual(calls, ["aqua", "feddy"], "failure stops later requests without implicit retries");
+      assert.deepEqual(
+        calls,
+        ["aqua", "feddy", "routine", "routine", "routine", "wish", "wish", "wish"],
+        "interior failure preserves independent resident preparation",
+      );
       assert.equal(state.venues[0].zones![1].preparation?.status, "ready");
       assert.equal(state.venues[2].zones![1].preparation?.status, "pending");
       assert.match(
@@ -616,7 +623,11 @@ async function main() {
       assert.doesNotMatch(state.foundingPreparation!.error, /PRIVATE CONTENT|private-secret/);
       await foundingPreparationSnapshot();
       await preparePrivateSpaces();
-      assert.deepEqual(calls, ["aqua", "feddy"], "reads and direct discovery never resume a failed sequence");
+      assert.deepEqual(
+        calls,
+        ["aqua", "feddy", "routine", "routine", "routine", "wish", "wish", "wish"],
+        "reads and direct discovery never resume a failed sequence",
+      );
       mode = "valid";
       await Promise.all([retryFoundedVillagePreparation(), retryFoundedVillagePreparation()]);
       await prepareFoundedVillage();
@@ -625,15 +636,15 @@ async function main() {
       assert.deepEqual(calls, [
         "aqua",
         "feddy",
+        "routine",
+        "routine",
+        "routine",
+        "wish",
+        "wish",
+        "wish",
         "feddy",
         "sneak",
         "hall",
-        "routine",
-        "routine",
-        "routine",
-        "wish",
-        "wish",
-        "wish",
       ]);
       assert.equal(state.venues[1].zones![1].preparation?.attempt, 2);
       assert.equal(state.townMapImage, fixture().townMapImage);
@@ -720,6 +731,24 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 10));
     cleanup();
     assert.equal(calls.length, 0, "activation leaves founding preparation to its owning flow");
+    install();
+    mode = "routine-timeout";
+    await prepareFoundedVillage();
+    await mutateVillageState((current) => {
+      current.foundingPreparation!.venueDetailsSeeded = false;
+    });
+    const targeted = (await readVillageState()).foundingPreparation!.tasks!.aqua.routine!;
+    calls.length = 0;
+    mode = "valid";
+    await retryFoundedVillagePreparation({
+      characterId: "aqua",
+      task: "routine",
+      expectedAttempt: targeted.attempt,
+      actionId: "targeted-spending-scope",
+    });
+    await prepareFoundedVillage();
+    assert.deepEqual(calls, ["routine"], "Targeted Routine retry cannot spend on unrelated Venue/interior work");
+    assert.equal((await readVillageState()).foundingPreparation!.venueDetailsSeeded, false);
     console.log(
       "Founding preparation: Station Fields, single-space checkpoints, failures, retries, claims, fencing, progress and forecasts passed.",
     );

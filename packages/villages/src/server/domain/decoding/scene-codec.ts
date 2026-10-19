@@ -1,3 +1,4 @@
+import { readOpeningSignal } from "../rules/opening-project.js";
 import { readSceneLayout } from "../rules/scene-layout.js";
 import { savedVenueClassRecord } from "./venue-class-compat.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
@@ -165,6 +166,7 @@ export function coerceSession(value: unknown): VenueScene {
     generationReceipts: Array.isArray(raw.generationReceipts)
       ? (raw.generationReceipts as VenueScene["generationReceipts"])
       : [],
+    openingGatheringId: asTrimmedString(raw.openingGatheringId) || undefined,
     id: asTrimmedString(raw.id),
     placeId: asTrimmedString(raw.placeId),
     placeName: asTrimmedString(raw.placeName),
@@ -359,6 +361,17 @@ export function coerceSession(value: unknown): VenueScene {
                 ? { replyLineIds: row.replyLineIds.filter((id): id is string => typeof id === "string") }
                 : {}),
               ...(typeof row.progressProcessedAt === "string" ? { progressProcessedAt: row.progressProcessedAt } : {}),
+              openingProcessedAt: asTrimmedString(row.openingProcessedAt) || undefined,
+              openingContext: row.openingContext
+                ? {
+                    stage: asTrimmedString(asRecord(row.openingContext).stage),
+                    projectId: asTrimmedString(asRecord(row.openingContext).projectId),
+                    ...(Object.hasOwn(asRecord(row.openingContext), "proposalFingerprint")
+                      ? { proposalFingerprint: asTrimmedString(asRecord(row.openingContext).proposalFingerprint) }
+                      : {}),
+                  }
+                : undefined,
+              openingSignal: readOpeningSignal(row.openingSignal),
               ...(Array.isArray(row.projectContexts)
                 ? {
                     projectContexts: row.projectContexts.slice(0, 100).map((value) => {
@@ -418,6 +431,13 @@ export function coerceSession(value: unknown): VenueScene {
                 ? {
                     semanticContinuedDomains:
                       row.semanticContinuedDomains as VenueSubmission["semanticContinuedDomains"],
+                  }
+                : {}),
+              ...(asRecord(row.residentActionReceipt).version === 1
+                ? {
+                    residentActionReceipt: structuredClone(
+                      row.residentActionReceipt,
+                    ) as VenueSubmission["residentActionReceipt"],
                   }
                 : {}),
               ...(asRecord(row.semanticProvenance).version === 2

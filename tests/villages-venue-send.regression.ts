@@ -55,6 +55,20 @@ for (const mode of ["chat", "leave", "contact"])
     { submissionId: "next" },
     "A failed completed interpretation cannot block a new Scene operation",
   );
+for (const mode of ["chat", "leave", "contact"])
+  assert.deepEqual(
+    sceneResend(
+      { ...saved, kind: "greet", status: "complete", error: "invalid-json", input: {} },
+      { message: "Hello", mode },
+      "next",
+    ),
+    { submissionId: "next" },
+    "A terminal failed opening cannot be treated as the player turn to resend",
+  );
+assert.throws(
+  () => sceneResend({ ...saved, kind: "greet", input: {} }, { message: "Hello", mode: "chat" }, "next"),
+  /Recover the saved request/,
+);
 assert.throws(() => sceneResend({ ...saved, status: "running" }, saved.input, "new"), /still responding/);
 assert.throws(() => sceneResend(saved, { ...saved.input, mode: "contact" }, "new"), /edits are preserved/);
 const interruptedMove = { ...saved, kind: "move", input: { zoneId: "common" } };

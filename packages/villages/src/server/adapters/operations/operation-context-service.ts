@@ -20,6 +20,7 @@ export function operationSummary(operation?: VenueOperation) {
   return {
     id: operation.id,
     kind: operation.kind,
+    recoverable: operation.kind === "greet" && Object.hasOwn(operation.checkpoints, "greeting-reply"),
     attemptId: operation.attemptId,
     status: operation.status,
     stage: operation.stage,

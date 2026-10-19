@@ -133,6 +133,10 @@ export function canInviteToZone(venue: VillageVenue, zone: VillageVenueZone, act
   if (zone.kind === "restricted") return !!zone.controllerIds?.includes(actorId);
   return zone.kind === "shared-residence" && venueResidentIds(venue).includes(actorId);
 }
+/** Withdrawal requires controller authority, not availability to admit a visitor. */
+export function canRevokeZonePermission(venue: VillageVenue, zone: VillageVenueZone, actorId: string): boolean {
+  return venue.access ? mayInvite(venue, zone, actorId) : canInviteToZone(venue, { ...zone, closed: false }, actorId);
+}
 export function zoneClosed(
   state: Pick<VillageState, "projects">,
   venue: VillageVenue,

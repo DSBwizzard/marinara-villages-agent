@@ -12,7 +12,7 @@ import {
   relationshipScore,
   relationshipThreshold,
 } from "./relationship-policy.js";
-import { canInviteToZone, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 
 export const relationshipKey = (fromId: string, toId: string): string => JSON.stringify([fromId, toId]);
 export const permissionKey = (controllerId: string, visitorId: string, venueId: string, zoneId: string): string =>
@@ -325,7 +325,9 @@ export function applyRelationshipReview(
       !zone ||
       !residents.has(permission.controllerId) ||
       (permission.visitorId !== "player" && !residents.has(permission.visitorId)) ||
-      !canInviteToZone(venue, zone, permission.controllerId)
+      !(permission.action === "revoke"
+        ? canRevokeZonePermission(venue, zone, permission.controllerId)
+        : canInviteToZone(venue, zone, permission.controllerId))
     )
       continue;
     const key = permissionKey(permission.controllerId, permission.visitorId, venue.id, zone.id);

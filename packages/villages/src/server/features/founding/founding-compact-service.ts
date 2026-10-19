@@ -1,3 +1,5 @@
+import { readOpeningProposal } from "../../domain/rules/opening-project.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { foundingRequestMessages } from "../../domain/rules/founding-requests.js";
 import type { villagesDebugAgentsEnabled, villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
@@ -56,7 +58,7 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
         reasoningEffort: "none",
         retryEmpty: false,
         usagePurpose: "background",
-        checkpointId: "founding-routine-v1",
+        checkpointId: context.contractVersion === 2 ? "founding-routine-v2" : "founding-routine-v1",
         debugMode,
       },
     );
@@ -84,6 +86,45 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
     }
   }
 
-  return { proposeCompactFounding };
+  async function proposeOpeningIdea(context: CompactFoundingContext, key: string, retry: boolean) {
+    const model = await villagesLanguageModels().resolveForRequest({
+      connectionId: await villagesConnectionIdFor("system"),
+    });
+    const messages = foundingRequestMessages(context, "opening");
+    const requested = Math.min(model.maxOutputTokens ?? 1536, 1536);
+    const fitted = model.fitContext(messages, { maxTokens: requested });
+    if (
+      requested < 1024 ||
+      (fitted.maxTokens ?? requested) < 1024 ||
+      JSON.stringify(fitted.messages) !== JSON.stringify(messages)
+    )
+      throw new Error("The System context cannot fit the complete opening idea request.");
+    const read = (completion: Parameters<typeof parseCompactFoundingCompletion>[0]) => {
+      if (["length", "max_tokens"].includes(completion.finishReason ?? ""))
+        throw new Error("Opening idea was truncated.");
+      const payload = extractModelJsonObject(completion);
+      return readOpeningProposal(payload?.openingProposal, context.characterId ?? context.card.id);
+    };
+    const completion = await completeWithRoom(model, messages, requested, {
+      responseFormat: { type: "json_object" },
+      temperature: 0.3,
+      reasoningEffort: "none",
+      usagePurpose: "background",
+      savedRequest: {
+        key,
+        retry,
+        valid: (completion) => {
+          try {
+            read(completion);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      },
+    });
+    return read(completion);
+  }
+  return { proposeCompactFounding, proposeOpeningIdea };
 }
 export type CompactFoundingService = ReturnType<typeof createCompactFounding>;

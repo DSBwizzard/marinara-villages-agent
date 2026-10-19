@@ -61,6 +61,14 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
         ...context,
         title: project.title,
         detail: flow.change ? renovationTerms(flow.change) : (project.venueDraft?.description ?? "").slice(0, 500),
+        undertaking: project.opening
+          ? {
+              established: project.opening.established,
+              provenance: project.opening.provenance,
+              work: project.opening.work,
+              durationHours: 12,
+            }
+          : undefined,
         builderId: flow.builderId,
         affectedIds: flow.affectedIds,
         supplies: flow.requirements
@@ -184,6 +192,8 @@ export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: Sp
     )
       return "Interpretation citation does not match this speaker's saved words.";
   }
+  if ((proposal.kind === "offer" || proposal.kind === "handoff") && !asTrimmedString(proposal.requirementId))
+    return "Project supply proposal has no requirement ID.";
   if (proposal.kind !== "requirements") {
     if (proposal.contextual?.source === "decisions" && proposal.contextual.decisionEvidenceVersion !== 1)
       return "Legacy Decision evidence requires a new grounded interpretation.";
@@ -204,8 +214,8 @@ export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: Sp
     return "The builder has not explicitly defined all three checklist categories.";
   for (const item of proposal.checklist) {
     const citation = proposal.citations[item.citation];
-    if (!citation || !item.title || item.title.length > 100)
-      return "Checklist item has no valid citation or usable specification.";
+    if (!citation) return "Checklist item has no valid citation.";
+    if (!item.title || item.title.length > 100) return "Checklist specification must contain 1–100 characters.";
     if (
       !proposal.contextual &&
       !item.needed &&

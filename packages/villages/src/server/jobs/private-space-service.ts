@@ -49,6 +49,30 @@ export function privatePreparationRooms(village: Pick<VillageState, "venues">) {
       .map((zone) => ({ venue, zone })),
   );
 }
+function readPrivateReply(
+  completion: { content?: string | null; finishReason?: string | null },
+  venueId: string,
+  zoneId: string,
+) {
+  const raw = extractModelJsonObject(completion);
+  const entries = Array.isArray(raw?.rooms) ? raw.rooms.map(asRecord) : [];
+  const generated = entries[0];
+  const issues = !raw
+    ? ["invalid_json"]
+    : !Array.isArray(raw.rooms)
+      ? ["missing_rooms"]
+      : entries.length !== 1
+        ? ["room_count"]
+        : [
+            ...(generated.venueId !== venueId ? ["venue_id_mismatch"] : []),
+            ...(generated.id !== zoneId ? ["space_id_mismatch"] : []),
+            ...(!asTrimmedString(generated.description) ? ["missing_description"] : []),
+          ];
+  if (["length", "max_tokens"].includes(completion.finishReason ?? "")) issues.unshift("truncated");
+
+  return { raw, generated, issues };
+}
+
 export interface PrivateSpacePreparationPorts {
   mutateDocument: typeof mutateDocument;
   readVillageLore: typeof readVillageLore;
@@ -110,7 +134,6 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
       let claimed = false;
       let modelName = "System model";
       let outputLimit: number | undefined;
-      let finishReason = "unavailable";
       const progress = (stage: "lore" | "resolving" | "model" | "validating" | "saving", extra = {}) =>
         reportFoundingProgress(seed, {
           phase: "private-spaces",
@@ -220,6 +243,11 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         if (!claimed) return;
         await progress("model");
         const result = await completeWithRoom(model, fitted.messages, outputLimit, {
+          savedRequest: {
+            key: JSON.stringify([seed, venue.id, zone.id, key]),
+            retry: attempt > 1,
+            valid: (result) => readPrivateReply(result, venue.id, zone.id).issues.length === 0,
+          },
           responseFormat: { type: "json_object" },
           temperature: 0.7,
           reasoningEffort: "none",
@@ -228,23 +256,8 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           debugMode: false,
           signal,
         });
-        finishReason = result.finishReason ?? "unknown";
         await progress("validating");
-        const raw = extractModelJsonObject(result);
-        const entries = Array.isArray(raw?.rooms) ? raw.rooms.map(asRecord) : [];
-        const generated = entries[0];
-        const issues = !raw
-          ? ["invalid_json"]
-          : !Array.isArray(raw.rooms)
-            ? ["missing_rooms"]
-            : entries.length !== 1
-              ? ["room_count"]
-              : [
-                  ...(generated.venueId !== venue.id ? ["venue_id_mismatch"] : []),
-                  ...(generated.id !== zone.id ? ["space_id_mismatch"] : []),
-                  ...(!asTrimmedString(generated.description) ? ["missing_description"] : []),
-                ];
-        if (["length", "max_tokens"].includes(finishReason)) issues.unshift("truncated");
+        const { raw, generated, issues } = readPrivateReply(result, venue.id, zone.id);
         if (issues.length) {
           const content = result.content ?? "";
           const entry = {

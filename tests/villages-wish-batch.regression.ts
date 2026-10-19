@@ -1,12 +1,14 @@
+import { configureSceneQueries, sceneQueries } from "../packages/villages/src/server/features/scenes/services.js";
 import assert from "node:assert/strict";
 
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { interpretWishBatch } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
 import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
 import { localWishRequirements } from "../packages/villages/src/server/domain/rules/wish-admission.js";
 import { processWishExchange } from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
-import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
+import { backgroundJobSnapshot, settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 
@@ -21,7 +23,9 @@ async function main() {
     proofKind = "conversation",
     wireCharacters = 0,
     malformed = false,
-    truncated = false;
+    truncated = false,
+    historyRequired = false,
+    historyObserved = false;
   const contexts = ["a", "b", "c"].map((actorId) => ({
     actorId,
     village: "Village",
@@ -101,13 +105,21 @@ async function main() {
             wireCharacters += messages[1].content.length;
             assert.ok(messages[1].content.length <= 12000);
             const checks = fixtureInterpretationChecks(messages[1].content);
+            const hasHistory = checks.some((check) =>
+              check.evidence.some(
+                (line: any) => line.content === "We both grow roses by the river." && line.current === false,
+              ),
+            );
+            if (historyRequired) historyObserved = hasHistory;
             const content = JSON.stringify({
               results: malformed
                 ? []
                 : checks.map((check) => ({
                     id: check.id,
-                    outcome,
-                    evidenceIds: check.evidence.filter((line: any) => line.current).map((line: any) => line.id),
+                    outcome: historyRequired && !hasHistory ? "none" : outcome,
+                    evidenceIds: check.evidence
+                      .filter((line: any) => (historyRequired ? line.kind !== "claim" : line.current))
+                      .map((line: any) => line.id),
                     reason: "Actual planting agreement",
                     details: { proofKind },
                   })),
@@ -192,6 +204,122 @@ async function main() {
     await settleBackgroundWork();
     assert.equal(status.status, "failed");
     assert.equal(calls, afterMalformed, "invalid output cannot auto-repair or bill again");
+    // An unrevealed Wish must retain accepted witnessed progress across Scene boundaries.
+    malformed = false;
+    proofKind = "conversation";
+    outcome = "fulfilled";
+    historyRequired = true;
+    const prior = structuredClone(scene);
+    prior.id = "earlier-private-progress";
+    prior.processingVersion = 1;
+    prior.lines = [
+      {
+        id: "earlier-player",
+        speakerId: "",
+        role: "user",
+        name: "Player",
+        kind: "dialogue",
+        content: "We both grow roses by the river.",
+        at,
+        heardBy: ["a"],
+        contactHidden: true,
+        attentionEvidence: true,
+      },
+      {
+        id: "earlier-a",
+        speakerId: "a",
+        role: "assistant",
+        name: "a",
+        kind: "dialogue",
+        content: "Yes, we have talked about gardening. Let us choose a planting day next time.",
+        at,
+        heardBy: ["a"],
+      },
+    ];
+    prior.submissions[0].replyLineIds = ["earlier-player", "earlier-a"];
+    prior.submissions[0].wishProposals[0].intent = "progress";
+    prior.submissions[0].wishProposals[0].lineIds = ["earlier-player", "earlier-a"];
+    records.set("villages-venue-visit-" + prior.id, {
+      id: "villages-venue-visit-" + prior.id,
+      kind: "venue-visit",
+      revision: 1,
+      data: prior,
+    });
+    await mutateVillageState((live) => {
+      live.exchangeReceipts["wish-change:earlier-private-progress:turn:a:progress"] = {
+        id: "wish-change:earlier-private-progress:turn:a:progress",
+        domain: "wishes",
+        status: "applied",
+        actorId: "a",
+        wishId: "a",
+        sceneId: prior.id,
+        submissionId: "turn",
+        at,
+        evidenceIds: ["earlier-player", "earlier-a"],
+        reason: "New Wish evidence accepted",
+      };
+    });
+    const frozenBefore = await backgroundJobSnapshot("wish-check", "wish-batch:" + scene.id + ":turn");
+    const beforeFrozenReplay = calls;
+    let archivedReads = 0;
+    const originalQueries = sceneQueries();
+    const releaseQueries = configureSceneQueries({
+      ...originalQueries,
+      readWishTurnEvidence: async () => {
+        archivedReads++;
+        throw Error("Archived source unavailable");
+      },
+    });
+    try {
+      const frozenStatus = await processWishExchange(scene, "turn");
+      assert.equal(frozenStatus.status, "failed");
+      assert.equal(archivedReads, 0, "Existing frozen Wish work never rereads archives");
+      assert.equal(calls, beforeFrozenReplay);
+      assert.deepEqual(await backgroundJobSnapshot("wish-check", "wish-batch:" + scene.id + ":turn"), frozenBefore);
+    } finally {
+      releaseQueries();
+      configureSceneQueries(originalQueries);
+    }
+    const next = structuredClone(scene);
+    next.id = "later-private-completion";
+    next.processingVersion = 1;
+    next.submissions[0].id = "next-turn";
+    records.set("villages-venue-visit-" + next.id, {
+      id: "villages-venue-visit-" + next.id,
+      kind: "venue-visit",
+      revision: 1,
+      data: next,
+    });
+    const recovered = await sceneQueries().readWishTurnEvidence({
+      receiptId: "wish-change:earlier-private-progress:turn:a:progress",
+      seed: state.seed,
+      actorId: "a",
+      wishId: "a",
+      fingerprint: wishFingerprint(contexts[0].wishes[0]),
+      at,
+    });
+    assert.equal(recovered.length, 2, "Accepted source turn is available to the private evidence query");
+    const beforeContinuity = calls;
+    await processWishExchange(next, "next-turn");
+    await settleBackgroundWork();
+    const completed = await readVillageState();
+    assert.equal(
+      historyObserved,
+      true,
+      "The one existing Wish check receives accepted earlier witnessed evidence as historical",
+    );
+    assert.equal(
+      completed.villagers[0].agenda!.wishes.length,
+      0,
+      "Historical gardening plus the current agreement completes the original goal",
+    );
+    assert.equal(completed.villagers[0].wishLifecycle?.pendingOutcomes.at(-1)?.kind, "fulfilled");
+    assert.equal(completed.chronicle.filter((entry) => entry.kind === "favour").length, 1);
+    assert.equal(completed.wishKnowledge.a?.length ?? 0, 0, "Private proof does not disclose an unrevealed Wish");
+    assert.equal(calls, beforeContinuity + 1, "Continuity adds storage reads, not another provider stage");
+    await processWishExchange(next, "next-turn");
+    await settleBackgroundWork();
+    assert.equal(calls, beforeContinuity + 1, "Completed cross-Scene replay is provider-free");
     console.log(
       "Wish batch: three residents/one request, no preparation, mixed progress, receipt guards, idioms and invalid-output recovery passed",
     );

@@ -277,6 +277,19 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest("The required resident backgrounds do not fit the System connection. No request was sent.");
     await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
+      savedRequest: {
+        key: "founding-venue-details:" + village.seed,
+        retry: !!village.foundingPreparation?.retryActions?.length,
+        valid: (result) => {
+          const payload = extractModelJsonObject(result);
+          const venues = payload?.venues;
+          return (
+            !["length", "max_tokens"].includes(result.finishReason ?? "") &&
+            Array.isArray(venues) &&
+            rows.every((row) => venues.some((value: unknown) => record(value).id === row.id))
+          );
+        },
+      },
       responseFormat: { type: "json_object" },
       temperature: 0.7,
       reasoningEffort: "none",

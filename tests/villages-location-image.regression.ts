@@ -880,14 +880,14 @@ async function main() {
   });
   assert.equal(founded.statusCode, 200, founded.body);
   let preparation = (await readVillageState()).foundingPreparation;
-  for (let attempt = 0; attempt < 30 && !preparation?.venueDetailsSeeded; attempt++) {
+  for (let attempt = 0; attempt < 30 && preparation?.status !== "failed"; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 20));
     preparation = (await readVillageState()).foundingPreparation;
   }
   assert.equal(
     preparation?.venueDetailsSeeded,
-    true,
-    "failed detail seeding is recorded without holding up preparation",
+    false,
+    "failed detail seeding cannot claim a successful required receipt",
   );
   assert.equal((await readVillageState()).venues[0]?.state.condition, "", "seed failure leaves details empty");
   assert.equal(

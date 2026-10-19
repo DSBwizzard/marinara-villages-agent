@@ -1,4 +1,12 @@
+export type ProjectSupplyTransfer = {
+  projectId: string;
+  revision: number;
+  requirementId: string;
+  sourceId: string;
+  supplierId: string;
+};
 export type VenueActionResult = {
+  projectSupplyTransfer?: ProjectSupplyTransfer;
   happened: boolean;
   narration: string;
   addItem?: string;

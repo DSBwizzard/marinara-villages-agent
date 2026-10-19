@@ -122,14 +122,23 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
 }
 export function registerSceneOperationRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.post<{ Body: { sessionId?: unknown; retryOfAttemptId?: string } }>("/rooms/greet", async (request, reply) => {
-    try {
-      await assertFoundedVillageReady();
-      return { session: await greetVenue(readChatId(request.body?.sessionId), request.body?.retryOfAttemptId) };
-    } catch (error) {
-      return fail(reply, error, "opening a venue scene");
-    }
-  });
+  app.post<{ Body: { sessionId?: unknown; retryOfAttemptId?: string; recovery?: boolean } }>(
+    "/rooms/greet",
+    async (request, reply) => {
+      try {
+        await assertFoundedVillageReady();
+        return {
+          session: await greetVenue(
+            readChatId(request.body?.sessionId),
+            request.body?.retryOfAttemptId,
+            request.body?.recovery === true,
+          ),
+        };
+      } catch (error) {
+        return fail(reply, error, "opening a venue scene");
+      }
+    },
+  );
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/continue", async (request, reply) => {
     try {
       await assertFoundedVillageReady();

@@ -1,3 +1,4 @@
+import { projectSourceClaimKey } from "./project-supply-transfer.js";
 import { validDecisionEvidence } from "./decision-candidates.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { VenueScene } from "../models/scene-model.js";
@@ -89,6 +90,99 @@ export function applyRecordedProjectPickup(
     });
   }
   state.projectSourceClaims.push({ key: `acquired-transfer:${event.id}`, projectId, sourceId: event.id, submissionId });
+  flow.evidenceIds = [...new Set([...flow.evidenceIds, event.id])];
+  project.updatedAt = event.at;
+  return true;
+}
+
+/** Allocate only a committed, finite resident-source transfer. Semantic speech never supplies this proof. */
+export function applyRecordedProjectSupplyTransfer(
+  state: VillageState,
+  eventId: string,
+  submissionId: string,
+): boolean {
+  const event = physicalVenueEvents(state).find((event) => event.id === eventId),
+    receipt = event?.actionReceipt,
+    transfer = receipt?.projectSupplyTransfer;
+  if (
+    !event ||
+    !receipt?.happened ||
+    receipt.submissionId !== submissionId ||
+    !transfer ||
+    !receipt.witnessIds?.includes(transfer.supplierId) ||
+    !Number.isFinite(Date.parse(event.at))
+  )
+    return false;
+  const project = state.projects.find((project) => project.id === transfer.projectId),
+    flow = project?.lifecycle,
+    task = state.progressTasks.find(
+      (task) => task.definition.owner.kind === "project" && task.definition.owner.id === transfer.projectId,
+    ),
+    requirement = flow?.requirements.find((row) => row.id === transfer.requirementId && row.needed),
+    source = flow?.sources.find(
+      (row) => row.requirementId === transfer.requirementId && row.evidenceId === transfer.sourceId,
+    );
+  if (
+    project &&
+    task &&
+    requirement &&
+    source &&
+    task.definition.revision === transfer.revision &&
+    source.acquiredAt === event.at &&
+    requirement.carriedAt === event.at &&
+    task.receipts.some(
+      (row) =>
+        row.definitionRevision === transfer.revision &&
+        row.requirementId === "acquired:" + requirement.id &&
+        row.evidence.sourceId === event.id,
+    )
+  )
+    return true;
+  if (
+    !project ||
+    !flow ||
+    flow.phase !== "materials" ||
+    project.status === "abandoned" ||
+    !task ||
+    task.resolvedAt ||
+    task.definition.revision !== transfer.revision ||
+    task.definition.phases[task.phaseIndex]?.id !== "materials" ||
+    !requirement ||
+    requirement.carriedAt ||
+    requirement.deliveredAt ||
+    !source ||
+    source.kind !== "resident-offer" ||
+    source.acquiredAt ||
+    source.supplierId !== transfer.supplierId ||
+    source.venueId !== event.venueId ||
+    (source.zoneId && source.zoneId !== event.zoneId) ||
+    !Number.isFinite(Date.parse(source.at)) ||
+    Date.parse(event.at) < Date.parse(source.at) ||
+    !task.receipts.some(
+      (row) => row.requirementId === "source:" + requirement.id && row.evidence.sourceId === source.evidenceId,
+    ) ||
+    !state.projectSourceClaims.some(
+      (claim) =>
+        claim.key === projectSourceClaimKey(source.venueId, source.supplierId, source.itemName) &&
+        claim.projectId === project.id &&
+        claim.sourceId === source.evidenceId &&
+        claim.submissionId === submissionId,
+    )
+  )
+    return false;
+  source.acquiredAt = event.at;
+  requirement.carriedAt = event.at;
+  recordProjectProgress(state, project, "acquired:" + requirement.id, {
+    id: "handoff:" + event.id,
+    kind: "project-handoff",
+    at: event.at,
+    sourceId: event.id,
+    lineId: event.id,
+    speakerId: transfer.supplierId,
+    venueId: event.venueId,
+    zoneId: event.zoneId,
+    excerpt: "Verified handoff of " + source.itemName,
+  });
   flow.evidenceIds = [...new Set([...flow.evidenceIds, event.id])];
   project.updatedAt = event.at;
   return true;

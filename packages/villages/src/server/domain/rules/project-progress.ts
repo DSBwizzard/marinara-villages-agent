@@ -174,7 +174,13 @@ function verifyGate(
   const flow = project.lifecycle;
   if (!flow) return { status: "rejected" as const, reason: "Project lifecycle is missing." };
   const gate = route.params.gate;
-  if (evidence.grade === "cited-interpretation" && gate !== "approval" && gate !== "builder" && gate !== "plan")
+  if (
+    evidence.grade === "cited-interpretation" &&
+    gate !== "approval" &&
+    gate !== "builder" &&
+    gate !== "plan" &&
+    !(gate === "source" && evidence.kind === "project-source")
+  )
     return { status: "rejected" as const, reason: "Interpreted speech cannot authorize physical Project effects." };
   const requirementId = route.params.requirementId;
   const residentId = route.params.residentId;
@@ -187,7 +193,7 @@ function verifyGate(
         (venue) =>
           venue.id === project.venueId &&
           venue.buildProjectId === project.id &&
-          venue.constructionStatus === "worksite",
+          (venue.constructionStatus === "worksite" || project.opening?.established === true),
       )) ||
     (gate === "approval" &&
       evidence.kind === "project-approval" &&

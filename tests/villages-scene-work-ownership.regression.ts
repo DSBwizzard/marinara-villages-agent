@@ -996,3 +996,113 @@ try {
   AbortSignal.timeout = originalGreetingTimeout;
   process.off("unhandledRejection", captureGreetingUnhandled);
 }
+
+// A saved interpretation retry exposes truncation and never dispatches an automatic second request.
+{
+  let calls = 0;
+  const current = commandFixture("Truncated wish recovery", ({ scene, world }) => {
+    const turn = scene.submissions[0];
+    turn.processing!.domains.wishes.status = "failed";
+    turn.semanticProvenance = { version: 2 } as any;
+    turn.liveProposals = {
+      version: 1,
+      memoryChanges: [],
+      relationshipChanges: {},
+      memoryVersions: {},
+      earlierLineIds: [],
+      playerLineId: "",
+      replyLineIds: [],
+    };
+    const model = {
+      connectionId: "fake",
+      model: "fake",
+      fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
+    };
+    return {
+      coordinateVenue: async (_id, _request, _kind, _input, _expected, _retry, run) => run(),
+      readVillageState: async () => world,
+      villagesDocuments: () => ({ list: async () => [] }) as any,
+      villagesConnectionIdFor: async () => "fake",
+      villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
+      venueCheckpoint: async (_key, run) => run(),
+      venueOperationSignal: () => new AbortController().signal,
+      completeWithRoom: async () => {
+        calls++;
+        return { content: "", finishReason: "length" };
+      },
+      rejectVenueCompletion: async () => {},
+    };
+  });
+  const before = JSON.stringify(current.scene);
+  await assert.rejects(
+    current.owner.run(() => current.service.retrySceneChangeInterpretation("same-scene", "same-turn", "wishes")),
+    (error: any) => error.failure?.cause === "output_limit" && /output limit/.test(error.message),
+  );
+  assert.equal(calls, 1);
+  assert.equal(JSON.stringify(current.scene), before, "A truncated retry preserves the saved exchange");
+  current.owner.dispose();
+}
+
+// Conclude must admit the same current writing/privacy contract as an ordinary new turn.
+for (const legacy of [false, true]) {
+  let admitted: any;
+  const terminal = new Error("Admission observed");
+  const frozen = { message: "Good night.", mode: "leave", targetId: "", semanticBudget: { maxRequests: 4 } };
+  const current = commandFixture("Conclude admission", ({ scene, world }) => {
+    const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["community"] }, null);
+    venue.id = scene.placeId;
+    world.venues = [venue];
+    scene.semanticVersion = 2;
+    scene.submissions = [];
+    if (legacy) scene.operation = { id: "conclude", input: frozen } as any;
+    return {
+      requireLiveVenueSession: async () => scene,
+      readVillageState: async () => world,
+      coordinateVenue: async (_id, _submission, _kind, input) => {
+        admitted = input;
+        throw terminal;
+      },
+    };
+  });
+  await assert.rejects(
+    current.owner.run(() => current.service.leaveVenueSession("same-scene", "conclude", "Good night.")),
+    (error) => error === terminal,
+  );
+  if (legacy) assert.deepEqual(admitted, frozen, "Frozen legacy Conclude input is not upgraded on retry");
+  else {
+    assert.equal(admitted.interactionScopeVersion, 6);
+    assert.equal(admitted.writingContractVersion, 3);
+    assert.equal(admitted.semanticPipelineVersion, 3);
+    assert.equal(admitted.residentActionsVersion, 2);
+    assert(admitted.writingCapabilities);
+  }
+  assert.equal(current.modelAccess, 0);
+  current.owner.dispose();
+}
+
+// Missing live Venue authority must preserve the Scene and offer ordinary End before admission.
+{
+  let admitted = 0;
+  const current = commandFixture("Removed Venue Conclude", ({ scene, world }) => {
+    scene.semanticVersion = 2;
+    scene.submissions = [];
+    world.venues = [];
+    return {
+      requireLiveVenueSession: async () => scene,
+      readVillageState: async () => world,
+      coordinateVenue: async () => {
+        admitted++;
+        throw new Error("Unexpected admission");
+      },
+    };
+  });
+  const before = JSON.stringify(current.scene);
+  await assert.rejects(
+    current.owner.run(() => current.service.leaveVenueSession("same-scene", "conclude", "Good night.")),
+    /Venue is no longer available\. End the Scene/,
+  );
+  assert.equal(admitted, 0);
+  assert.equal(current.modelAccess, 0);
+  assert.equal(JSON.stringify(current.scene), before);
+  current.owner.dispose();
+}

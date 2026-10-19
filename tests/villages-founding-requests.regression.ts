@@ -72,9 +72,10 @@ const payload = {
   rhythm: [],
 };
 assert.equal(parseCompactFounding(payload, context).agenda.wishes.length, 0);
-assert.throws(
-  () => parseCompactFounding({ ...payload, days: Array.from({ length: 7 }, () => [0, 1, 2, 3]) }, context),
-  /seven-day/,
+assert.equal(
+  parseCompactFounding({ ...payload, days: Array.from({ length: 7 }, () => [0, 1, 2, 3]) }, context).agenda
+    .routineProfile!.days[0].length,
+  8,
 );
 assert.equal(
   parseCompactFounding(
@@ -136,4 +137,65 @@ assert.equal(
   foundingTaskRevision(state, "a", "routine"),
   presentation,
   "presentation normalization is not an authored identity edit",
+);
+
+const ingredients = {
+  ...payload,
+  days: undefined,
+  palette: palette.map((row) => ({ ...row, parts: [0, 1, 2, 3] })),
+  rhythm: [{ startMinute: 1320, endMinute: 360, activity: 0 }],
+};
+const compiled = parseCompactFounding(ingredients, { ...context, contractVersion: 2 });
+assert.deepEqual(
+  compiled.agenda.routineProfile!.days,
+  parseCompactFounding(ingredients, { ...context, contractVersion: 2 }).agenda.routineProfile!.days,
+);
+assert.equal(compiled.agenda.routineProfile!.days.length, 7);
+for (const blocks of Object.values(compiled.agenda.week!)) {
+  assert.equal(blocks[0].startMinute, 0);
+  assert.equal(blocks.at(-1)!.endMinute, 1440);
+  for (let i = 1; i < blocks.length; i++) assert.equal(blocks[i].startMinute, blocks[i - 1].endMinute);
+}
+assert.throws(
+  () =>
+    parseCompactFounding(
+      { ...ingredients, palette: ingredients.palette.map((row) => ({ ...row, parts: [0] })) },
+      { ...context, contractVersion: 2 },
+    ),
+  /every daypart/,
+);
+
+const weekdayIngredients = {
+  ...ingredients,
+  palette: ingredients.palette.map((row, index) => ({ ...row, weekdays: index < 3 ? [0] : [1, 2, 3, 4, 5, 6] })),
+};
+const weekdays = parseCompactFounding(weekdayIngredients, { ...context, contractVersion: 2 }).agenda.routineProfile!
+  .days;
+assert(
+  weekdays[0].every((index) => index < 3),
+  "Monday choices preserve resident weekday preferences",
+);
+assert(
+  weekdays.slice(1).every((day) => day.every((index) => index >= 3)),
+  "Other weekdays use their own allowed activities",
+);
+assert.throws(
+  () =>
+    parseCompactFounding(
+      { ...ingredients, palette: ingredients.palette.map((row) => ({ ...row, weekdays: [7] })) },
+      { ...context, contractVersion: 2 },
+    ),
+  /weekday/,
+);
+
+assert.throws(
+  () =>
+    parseCompactFounding(
+      {
+        ...ingredients,
+        palette: ingredients.palette.map((row, index) => (index === 0 ? { ...row, duration: 360 } : row)),
+      },
+      { ...context, contractVersion: 2 },
+    ),
+  /Routine activity 1 duration 360; expected 30–240 minutes/,
 );

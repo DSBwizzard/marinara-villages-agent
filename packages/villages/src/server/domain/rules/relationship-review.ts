@@ -2,11 +2,13 @@ import type { RelationshipChange, RelationshipEvidenceLine, RelationshipReview }
 import type { VillageState } from "../models/world.js";
 import { asRecord } from "./coerce.js";
 import { RELATIONSHIP_POLICY } from "./relationship-policy.js";
-import { canInviteToZone, resolveVenueZone } from "./venue-zones.js";
+import { canInviteToZone, canRevokeZonePermission, resolveVenueZone } from "./venue-zones.js";
 import { createHash } from "node:crypto";
 
 export const emptyRelationshipReview = (): RelationshipReview => ({ changes: [], permissions: [], disclosures: [] });
-export const RELATIONSHIP_REVIEW_INSTRUCTION = `Also return relationshipReview:{changes:[],permissions:[],disclosures:[]}. These decisions are INDEPENDENT of memory promotion. Never create a memory for a relationshipOnly input. Review substantive shared company, warmth, reliability, boundaries, conflict, and candid disclosures. Changes use {fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:["exact evidence ID"],disclosed:boolean}. Ordinary positive company may increase warmth, not trust. Trust needs demonstrated reliability or a meaningful confidence/boundary interaction; promises and player claims alone are not fulfilled deeds. Greetings, filler, mere co-location, and repeated wording give no reward. Do not force a change. Never score the player's feelings. A fromId must have witnessed all evidence. Disclosed means the villager explicitly explained this reason aloud to the player, not that the reviewer inferred it. Permissions use {controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}; require the controller's unconditional, explicit spoken standing invitation (not one visit) or revocation identifying the visitor and exact listed zone. Guest access grants no authority. Disclosures use {fromId,toId,text,kind:"explanation|preference|boundary",lineIds:[]}; quote or closely paraphrase explicit speech heard by the player. Use "player" as the toId for personal preferences/boundaries. Neither memories nor player knowledge must expose a private reason that was not shared. Use only listed IDs and evidence in this batch.`;
+export const RELATIONSHIP_PERMISSION_INSTRUCTION =
+  'Permissions use {controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}; require the controller\'s unconditional, explicit spoken standing invitation (not one visit) or revocation identifying the visitor and exact listed zone. Guest access grants no authority. ';
+export const RELATIONSHIP_REVIEW_INSTRUCTION = `Also return relationshipReview:{changes:[],permissions:[],disclosures:[]}. These decisions are INDEPENDENT of memory promotion. Never create a memory for a relationshipOnly input. Review substantive shared company, warmth, reliability, boundaries, conflict, and candid disclosures. Changes use {fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:["exact evidence ID"],disclosed:boolean}. Ordinary positive company may increase warmth, not trust. Trust needs demonstrated reliability or a meaningful confidence/boundary interaction; promises and player claims alone are not fulfilled deeds. Greetings, filler, mere co-location, and repeated wording give no reward. Do not force a change. Never score the player's feelings. A fromId must have witnessed all evidence. Disclosed means the villager explicitly explained this reason aloud to the player, not that the reviewer inferred it. ${RELATIONSHIP_PERMISSION_INSTRUCTION}Disclosures use {fromId,toId,text,kind:"explanation|preference|boundary",lineIds:[]}; quote or closely paraphrase explicit speech heard by the player. Use "player" as the toId for personal preferences/boundaries. Neither memories nor player knowledge must expose a private reason that was not shared. Use only listed IDs and evidence in this batch.`;
 
 function receiptId(sourceId: string, parts: unknown[]): string {
   return `${sourceId}:relationship:${createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24)}`;
@@ -113,7 +115,9 @@ export function parseRelationshipReview(
       visitorId === controllerId ||
       !venue ||
       !zone ||
-      !canInviteToZone(venue, zone, controllerId) ||
+      !(row.action === "revoke"
+        ? canRevokeZonePermission(venue, zone, controllerId)
+        : canInviteToZone(venue, zone, controllerId)) ||
       !["grant", "revoke"].includes(String(row.action))
     )
       throw new Error("A standing permission has no current controller or zone.");

@@ -2,9 +2,13 @@
 
 Target: 0.7.3. New Scenes use semantic contract 2. Existing Scenes and already admitted jobs retain their captured contracts; reading a save does not upgrade it or buy inference.
 
+Opening pitch meaning belongs to System. New combined pitch results carry a server-created fingerprint of the frozen prepared proposal. Application checks that identity against the current proposal and retains exact witnessed speech, Scene eligibility and once-only reveal guards; it does not require the entire authored title inside one quote. The fingerprint stays private. Older saved results retain their original title check.
+
 ## Calls and authority
 
 An ordinary Say / Do turn uses configured **System intent → Narration draft → System exchange**. An opening uses Narration → System exchange. Typed Move and Conclude remain deterministic. Narration supplies speech, visible prose, delivery and staging. Its memory, access, movement, physical, relationship, Wish and Project nominations are discarded before effect normalization. System independently discovers those effects from the complete current draft and scoped context. The old room/Project Decisions checks and selective consequential-proposal verifier are not stacked onto the new path. A complete simple conversational Wish verdict is consumed directly; compound, historical and receipt-dependent goals retain their specialist.
+
+New Wish checks can restore exact actor-witnessed excerpts from up to four earlier applied Wish receipts, retaining at most sixteen historical excerpts. The server verifies the current Wish identity, source Scene/turn, witness and time; rejected receipts supply no proof. This does not disclose an unrevealed Wish or add a model stage. Already admitted jobs reuse their frozen inputs without reading archives again.
 
 `features/generation/semantic-service.ts` owns System calls. `features/scenes/writing-service.ts` owns provisional prose and binds the independent exchange result. `features/scenes/command-service.ts` owns immediate application. Semantic provenance, hashes, operation IDs and authority flags are minted or checked by code. Model claims of verification or receipts confer no authority.
 

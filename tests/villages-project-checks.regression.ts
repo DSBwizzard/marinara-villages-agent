@@ -1,3 +1,10 @@
+import { availableProjectSupplyTransfers } from "../packages/villages/src/server/domain/rules/project-supply-transfer.js";
+import {
+  readVenueSceneChange,
+  applyVenueSceneChange,
+} from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { applyRecordedProjectSupplyTransfer } from "../packages/villages/src/server/domain/rules/project-check-rules.js";
 import assert from "node:assert/strict";
 import {
   projectProposals,
@@ -836,3 +843,157 @@ async function ownedChecks() {
   console.log("PASS owned Project checks, originating connections/metrics, CAS outcomes, early gates and diagnostics");
 }
 await ownedChecks();
+
+// A finite spoken source becomes carried only through an independently committed physical handoff.
+{
+  const stock = structuredClone(pickupCheckWorld!);
+  stock.venueEvents = [];
+  stock.projectSourceClaims = [];
+  const project = stock.projects[0],
+    source = project.lifecycle!.sources[0],
+    task = stock.progressTasks[0];
+  source.kind = "resident-offer";
+  source.supplierId = "a";
+  source.zoneId = undefined;
+  task.receipts = [];
+  recordProjectProgress(
+    stock,
+    project,
+    "source:wood",
+    { id: "spoken-offer", kind: "project-source", sourceId: source.evidenceId, at: source.at, venueId: source.venueId },
+    "resident-offer",
+  );
+  const room: any = {
+    id: "shop",
+    name: "Shop",
+    state: {
+      condition: "standing",
+      furniture: [],
+      publicFacts: [],
+      features: [],
+      traces: [],
+      upgrades: [],
+      updatedAt: source.at,
+    },
+  };
+  stock.venues = [room];
+  const options = availableProjectSupplyTransfers(stock, "shop", undefined, ["a"]);
+  assert.equal(options.length, 1);
+  assert.equal(project.lifecycle!.requirements[0].carriedAt, "", "An offer is not carried stock");
+  assert.equal(
+    applyRecordedProjectSupplyTransfer(stock, "promise", "act"),
+    false,
+    "A promise without a physical receipt grants nothing",
+  );
+  const action = { happened: true, narration: "Aqua hands Pat the cedar", projectSupplyTransfer: options[0] };
+  for (const option of [
+    { ...options[0], revision: options[0].revision + 1 },
+    { ...options[0], supplierId: "other" },
+    { ...options[0], sourceId: "invented" },
+    { ...options[0], requirementId: "different" },
+  ])
+    assert.throws(() =>
+      readVenueSceneChange({ ...action, projectSupplyTransfer: option }, room, ["a"], ["a"], options),
+    );
+  assert.throws(
+    () => readVenueSceneChange(action, room, [], [], availableProjectSupplyTransfers(stock, "shop", undefined, [])),
+    /could not record/,
+  );
+  assert.throws(() => readVenueSceneChange({ ...action, addItem: "free oil" }, room, ["a"], ["a"], options));
+  assert.deepEqual(availableProjectSupplyTransfers(stock, "elsewhere", undefined, ["a"]), []);
+  const zoned = structuredClone(stock);
+  zoned.projects[0].lifecycle!.sources[0].zoneId = "shop:private";
+  assert.deepEqual(availableProjectSupplyTransfers(zoned, "shop", "shop:common", ["a"]), []);
+  const change = readVenueSceneChange(action, room, ["a"], ["a"], options)!;
+  const at = "2026-10-01T10:01:00.000Z";
+  applyVenueSceneChange(stock, "shop", change, "act", at);
+  assert.equal(stock.projectSourceClaims.length, 1);
+  assert.equal(project.lifecycle!.requirements[0].carriedAt, "", "The source claim alone is not Project credit");
+  assert.throws(() => applyVenueSceneChange(stock, "shop", change, "again", at), /source changed/);
+  const event = {
+    id: "venue-chat:scene:act",
+    zoneId: "other",
+    venueId: "shop",
+    venueName: "Shop",
+    at,
+    text: change.narration,
+    actionReceipt: { happened: true, ...change, submissionId: "act", witnessIds: ["a"] },
+  };
+  stock.exchangeReceipts["venue-chat:scene:act"] = {
+    id: "venue-chat:scene:act",
+    sceneId: "scene",
+    submissionId: "act",
+    domain: "physical",
+    at,
+    committedAt: at,
+    status: "applied",
+    evidenceIds: [],
+    reason: "physical",
+    physicalOutcome: event,
+  };
+  for (const mutation of [
+    (current: VillageState) => {
+      current.exchangeReceipts["venue-chat:scene:act"].physicalOutcome!.actionReceipt!.witnessIds = [];
+    },
+    (current: VillageState) => {
+      current.exchangeReceipts["venue-chat:scene:act"].physicalOutcome!.actionReceipt!.projectSupplyTransfer!
+        .revision++;
+    },
+    (current: VillageState) => {
+      current.projectSourceClaims = [];
+    },
+    (current: VillageState) => {
+      current.exchangeReceipts["venue-chat:scene:act"].physicalOutcome!.venueId = "elsewhere";
+    },
+    (current: VillageState) => {
+      current.progressTasks[0].receipts = [];
+    },
+  ]) {
+    const invalid = structuredClone(stock);
+    mutation(invalid);
+    assert.equal(applyRecordedProjectSupplyTransfer(invalid, "venue-chat:scene:act", "act"), false);
+  }
+  const loaded = coerceVillageState(stock);
+  assert.deepEqual(
+    loaded.exchangeReceipts["venue-chat:scene:act"].physicalOutcome!.actionReceipt!.projectSupplyTransfer,
+    options[0],
+    "Saved physical transfer survives restart",
+  );
+  const colliding = structuredClone(loaded.exchangeReceipts["venue-chat:scene:act"]);
+  colliding.id = "venue-chat:other-scene:act";
+  colliding.sceneId = "other-scene";
+  colliding.physicalOutcome!.id = colliding.id;
+  loaded.venueEvents.unshift(colliding.physicalOutcome!);
+  loaded.exchangeReceipts[colliding.id] = colliding;
+  let providers = 0;
+  const checks = createProjectChecks({
+    readVillageState: async () => loaded,
+    mutateVillageState: async (update: any) => update(loaded),
+    interpretChecks: async () => {
+      providers++;
+      throw Error("Unexpected judge");
+    },
+    sceneQueries: () => {
+      throw Error("Receipt allocation needs no narrative re-interpretation");
+    },
+  } as any);
+  const priorRevision = loaded.progressTasks[0].definition.revision;
+  loaded.progressTasks[0].definition.revision++;
+  await assert.rejects(checks.applyProjectPickup("scene", "act"), /needs recovery/);
+  assert.equal(loaded.projects[0].lifecycle!.requirements[0].carriedAt, "");
+  assert.equal(loaded.projectSourceClaims.length, 1, "Failed allocation cannot debit the source again");
+  loaded.progressTasks[0].definition.revision = priorRevision;
+  await checks.applyProjectPickup("scene", "act");
+  assert.equal(providers, 0);
+  assert.equal(loaded.projects[0].lifecycle!.requirements[0].carriedAt, at);
+  assert.equal(loaded.projects[0].lifecycle!.requirements[0].deliveredAt, "");
+  assert.equal(loaded.projects[0].lifecycle!.sources[0].acquiredAt, at);
+  await checks.applyProjectPickup("scene", "act");
+  assert.equal(loaded.progressTasks[0].receipts.filter((row) => row.requirementId === "acquired:wood").length, 1);
+  assert.equal(
+    loaded.progressTasks[0].receipts.find((row) => row.requirementId === "acquired:wood")!.evidence.grade,
+    undefined,
+    "Physical receipt is not promoted dialogue",
+  );
+  assert.deepEqual(loaded.venues[0].state.furniture, [], "Resident source is consumed without minting room stock");
+}

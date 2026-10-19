@@ -1,4 +1,7 @@
 import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { mock } from "node:test";
+// Keep the scheduled cast on the seeded day; async timers remain real.
+mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00.000Z") });
 import { contactNeighborIds } from "../packages/villages/src/shared/helpers/zone-contact.js";
 import assert from "node:assert/strict";
 import {
@@ -1555,4 +1558,5 @@ try {
   );
 } finally {
   release();
+  mock.timers.reset();
 }

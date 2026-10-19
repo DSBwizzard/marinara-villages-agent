@@ -1,3 +1,4 @@
+import type { ProjectSupplyTransfer } from "./venue-action-model.js";
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { ProgressTask } from "../rules/progress-engine.js";
@@ -800,6 +801,7 @@ export type VillageVenueEvent = {
   text: string;
   at: string;
   actionReceipt?: {
+    projectSupplyTransfer?: ProjectSupplyTransfer;
     submissionId: string;
     happened: boolean;
     narration: string;
@@ -1124,6 +1126,14 @@ export type VillageProjectLifecycle = {
 };
 
 export type VillageProject = {
+  opening?: {
+    version: 1;
+    established: boolean;
+    provenance: string;
+    work: string;
+    firstUse: string;
+    durationMs: number;
+  };
   id: string;
   title: string;
   venueId: string;
@@ -1209,6 +1219,7 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  opening?: import("../rules/opening-project.js").OpeningRecord;
   semanticRequestReceipts?: Record<string, string>;
   semanticContinuations?: Record<string, import("./exchange-model.js").ExchangeDomain[]>;
   semanticStartingTies?: {
@@ -1867,6 +1878,7 @@ export type VillageMomentView = {
 type ClientVisibleSnapshot<T extends import("../../../shared/contracts/village.js").VillageSnapshot> = T;
 
 export type VillageSnapshot = ClientVisibleSnapshot<{
+  opening?: import("../../../shared/contracts/opening.js").OpeningView;
   clock?: import("../../../shared/contracts/clock.js").VillageClockView;
   relationshipStartingPending?: boolean;
   backgroundWork: import("./background-model.js").BackgroundSummary[];

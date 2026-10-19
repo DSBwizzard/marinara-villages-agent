@@ -327,9 +327,13 @@ async function checkOwnedConnections() {
         assert.deepEqual(a.tokens, []);
         assert.deepEqual(attempts, []);
       } else {
-        assert.equal((result as { content: string }).content, "A");
-        assert.deepEqual(a.tokens, [100, 1600]);
-        assert.deepEqual(attempts, [100, 1600]);
+        assert.equal(
+          (result as { content: string }).content,
+          " ",
+          "an empty response is retained without an automatic paid retry",
+        );
+        assert.deepEqual(a.tokens, [100]);
+        assert.deepEqual(attempts, [100]);
       }
       assert.equal(b.records.size, 0, "A saves cannot write B's settings");
       assert.deepEqual(b.tokens, [], "A completions cannot invoke B's provider");

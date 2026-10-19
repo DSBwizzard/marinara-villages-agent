@@ -1,3 +1,5 @@
+import { readOpeningProposal } from "../../domain/rules/opening-project.js";
+import { proposalSourceCompatible } from "../../domain/rules/opening-proposal-source.js";
 import {
   completeFoundingTask,
   foundingTaskRevision,
@@ -106,7 +108,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       card: effectiveCard,
       characterId,
       sourceRevision: foundingTaskRevision(village, characterId, "routine"),
-      contractVersion: 1 as const,
+      contractVersion: 2 as const,
       allowInitialWish: false,
       circumstances: {
         worldFacts: village.worldFacts,
@@ -207,10 +209,11 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     recoverSavedResult: (input, steps) => {
       const saved = steps.find(
         (step) =>
-          ["owned-routine-profile", "founding-routine-v1"].includes(step.key ?? "") && step.status === "completed",
+          ["owned-routine-profile", "founding-routine-v1", "founding-routine-v2"].includes(step.key ?? "") &&
+          step.status === "completed",
       );
       if (!saved?.response) return undefined;
-      return parseCompactFoundingCompletion(saved.response, { ...input.context, allowInitialWish: false }).agenda;
+      return parseCompactFoundingCompletion(saved.response, { ...input.context, allowInitialWish: false });
     },
     generate: async (input) => {
       const job = (await backgroundWorkSummaries()).find(
@@ -221,18 +224,30 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         await reportFoundingProgress(input.seed, { stage: "model", modelName }, input.characterId);
       });
       await reportFoundingProgress(input.seed, { stage: "applying" }, input.characterId);
-      return result.agenda;
+      return result;
     },
     valid: (state, input) =>
       state.villagers.some((resident) => resident.characterId === input.characterId) &&
       (input.foundingContract === 1
         ? ownsFoundingTask(state, input.characterId, "routine", input.revision)
         : agendaRevision(state, input.characterId) === input.revision),
-    apply: (state, input, agenda) => {
+    apply: (state, input, result) => {
+      if (
+        input.context.openingProposal &&
+        state.opening?.stage === "gathering" &&
+        proposalSourceCompatible({ input, revision: input.revision }, state, input.characterId) &&
+        !state.opening.proposals.some((row) => row.residentId === input.characterId)
+      ) {
+        try {
+          state.opening.proposals.push(readOpeningProposal(result.openingProposal, input.characterId));
+        } catch {
+          /* An invalid bundled idea cannot reject a valid Routine. */
+        }
+      }
       applyAgenda(
         state,
         input.characterId,
-        agenda,
+        result.agenda ?? result,
         input.foundingContract === 1 ? undefined : input.initialWishAttemptId,
       );
       if (input.foundingContract === 1) completeFoundingTask(state, input.characterId, "routine", input.revision);

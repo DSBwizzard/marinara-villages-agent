@@ -1,3 +1,5 @@
+import { readProjectSupplyTransfer } from "../rules/project-supply-transfer.js";
+import { readOpening, OPENING_WORK_MS } from "../rules/opening-project.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
@@ -1241,6 +1243,9 @@ function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
           actionReceipt: {
             submissionId: asTrimmedString(receipt.submissionId),
             happened: receipt.happened === true,
+            ...(readProjectSupplyTransfer(receipt.projectSupplyTransfer)
+              ? { projectSupplyTransfer: readProjectSupplyTransfer(receipt.projectSupplyTransfer)! }
+              : {}),
             narration: boundText(receipt.narration, MAX_HAPPENING_LENGTH),
             ...Object.fromEntries(
               [
@@ -1712,6 +1717,18 @@ function coerceProjects(value: unknown): VillageProject[] {
           id,
           title,
           kind: raw.kind,
+          ...(asRecord(raw.opening).version === 1
+            ? {
+                opening: {
+                  version: 1 as const,
+                  established: asRecord(raw.opening).established === true,
+                  provenance: asTrimmedString(asRecord(raw.opening).provenance),
+                  work: asTrimmedString(asRecord(raw.opening).work),
+                  firstUse: asTrimmedString(asRecord(raw.opening).firstUse),
+                  durationMs: OPENING_WORK_MS,
+                },
+              }
+            : {}),
           venueId: asTrimmedString(raw.venueId),
           participantIds: asStringArray(raw.participantIds),
           progress: Number.isFinite(Number(raw.progress)) ? Math.max(0, Math.min(100, Number(raw.progress))) : 0,
@@ -2170,6 +2187,7 @@ export function coerceVillageState(value: unknown): VillageState {
     residences: coerceResidences(raw.residences),
     // Left empty rather than stamped with "now": a record that predates the
     // setup flow should open the wizard, not claim it has been set up.
+    opening: readOpening(raw.opening),
     setupAt: asIsoString(raw.setupAt) ?? "",
     foundingPreparation: (() => {
       const preparation = asRecord(raw.foundingPreparation);

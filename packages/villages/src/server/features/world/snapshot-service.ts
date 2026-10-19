@@ -1,3 +1,5 @@
+import { foundingCompletedIds } from "../../domain/rules/founding-tasks.js";
+import { openingView } from "../../domain/rules/opening-project.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
@@ -149,6 +151,7 @@ export function createVillageSnapshot({
       foundingPreparation: village.foundingPreparation
         ? {
             ...village.foundingPreparation,
+            completedIds: foundingCompletedIds(village),
             privateSpacesTotal: privatePreparationRooms(village).length,
             privateSpacesReady: privatePreparationRooms(village).filter(
               ({ zone }) => zone.preparation?.status === "ready",
@@ -164,10 +167,12 @@ export function createVillageSnapshot({
           decision.status !== "countered" &&
           decision.venueDraft,
       ),
+      opening: openingView(village),
       projects: village.projects.map((project) =>
         project.lifecycle
           ? {
               ...project,
+              opening: project.opening ? { ...project.opening, provenance: "" } : undefined,
               lifecycle: {
                 ...project.lifecycle,
                 recordedItems: project.lifecycle.recordedItems.filter((item) => {

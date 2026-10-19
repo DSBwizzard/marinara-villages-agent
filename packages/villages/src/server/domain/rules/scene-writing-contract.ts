@@ -68,7 +68,9 @@ function parsePrematureEffectBoundary(text: string): Record<string, unknown> | n
       const combined = parseSceneObject(text.slice(0, index) + text.slice(index + 1));
       if (!combined) return null;
       const tail = Object.keys(combined).filter((key) => !Object.hasOwn(core, key));
-      return tail.length && tail.every((key) => EFFECT_FIELDS.includes(key)) ? combined : null;
+      return tail.length && tail.every((key) => EFFECT_FIELDS.includes(key) || key === "residentActions")
+        ? combined
+        : null;
     }
   }
   return null;

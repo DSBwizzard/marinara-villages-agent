@@ -148,6 +148,7 @@ export type BackgroundWork = {
 };
 
 export type VillageSnapshot = {
+  opening?: import("./opening.js").OpeningView;
   clock?: import("./clock.js").VillageClockView;
   backgroundWork?: BackgroundWork[];
   status: string;
@@ -251,6 +252,14 @@ export type VenueRequest = {
 };
 
 export type BuildProject = {
+  opening?: {
+    version: 1;
+    established: boolean;
+    provenance: string;
+    work: string;
+    firstUse: string;
+    durationMs: number;
+  };
   id: string;
   requesterCharacterId?: string;
   participantIds?: string[];
@@ -874,6 +883,7 @@ export type RoomRecollection = {
 };
 
 export type RoomOperation = {
+  recoverable?: boolean;
   id: string;
   kind: string;
   attemptId: string;

@@ -1,3 +1,4 @@
+import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import { semanticBlocker } from "../domain/rules/semantic-continuity.js";
 import type { VenueScene } from "../domain/models/scene-model.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
@@ -21,7 +22,7 @@ import { coerceInterpretationSettings, type InterpretationSettings } from "../do
 import { sceneRevision } from "../domain/rules/scene-revision.js";
 import { coerceWorkFailure } from "../domain/rules/work-failure.js";
 import type { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
 export interface VenueCoordinatorPorts {
   operations: VenueOperationContext;
@@ -229,6 +230,33 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       runtimeDebug("completion replay", { key });
       return structuredClone(prior.result) as T;
     }
+    const signature = JSON.stringify([
+      current.sessionId,
+      current.operation.id,
+      current.operation.sceneRevision,
+      current.operation.input,
+      key,
+    ]);
+    const lateId = "villages-generation-response-" + createHash("sha256").update(signature).digest("hex");
+    // A policy upgrade may replay a completed late response too. A newer exact attempt always wins.
+    for (const savedKey of current.operation.attempts[key] || !legacyKey ? [key] : [key, legacyKey]) {
+      const savedSignature = JSON.stringify([
+        current.sessionId,
+        current.operation.id,
+        current.operation.sceneRevision,
+        current.operation.input,
+        savedKey,
+      ]);
+      const savedId = "villages-generation-response-" + createHash("sha256").update(savedSignature).digest("hex");
+      const late = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, savedId);
+      const lateData = asRecord(late?.data);
+      if (lateData.signature === savedSignature && lateData.status === "complete") {
+        current.operation.attempts[savedKey] = { status: "complete", result: structuredClone(lateData.result) };
+        current.usedAttemptKeys.set(`${current.scope}:${index}`, savedKey);
+        await persist(current);
+        return structuredClone(lateData.result) as T;
+      }
+    }
     if (!current.allowPaid) {
       current.blocked.add(current.scope);
       throw venueRefusal(
@@ -279,7 +307,35 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     current.operation.attempts[key] = { status: "dispatching" };
     await persist(current);
     const started = performance.now();
-    const result = await work(current.controller.signal);
+    let result: T;
+    try {
+      result = await work(current.controller.signal);
+    } catch (error) {
+      retainLateProviderResponse(error, (value) =>
+        ports.operations.outsideVenueOperation(() =>
+          createDocumentMutator(villagesDocuments)(
+            lateId,
+            {
+              kind: "generation-response",
+              name: "Saved late response",
+              description: "Private provider response; no effects applied",
+              coerce: (raw) => asRecord(raw),
+              label: () => "Saved late response",
+            },
+            (saved) => {
+              if (saved.status === "complete") return false;
+              Object.assign(saved, {
+                signature,
+                status: "complete",
+                result: structuredClone(value),
+                attemptId: current.operation.attemptId,
+              });
+            },
+          ),
+        ),
+      );
+      throw error;
+    }
     assertVenueOwnership();
     current.operation.attempts[key] = {
       status: "complete",
@@ -298,6 +354,82 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     return result;
   }
 
+  async function rejectLateReceipt(current: Context, key: string) {
+    const signature = JSON.stringify([
+      current.sessionId,
+      current.operation.id,
+      current.operation.sceneRevision,
+      current.operation.input,
+      key,
+    ]);
+    const id = "villages-generation-response-" + createHash("sha256").update(signature).digest("hex");
+    if (!(await villagesDocuments().getById(VILLAGES_PACKAGE_ID, id))) return;
+    await createDocumentMutator(villagesDocuments)(
+      id,
+      {
+        kind: "generation-response",
+        name: "Saved late response",
+        description: "Private rejected provider evidence",
+        coerce: (raw) => asRecord(raw),
+        label: () => "Saved late response",
+      },
+      (saved) => {
+        if (saved.signature !== signature || saved.status === "rejected") return false;
+        saved.status = "rejected";
+      },
+    );
+  }
+
+  async function retainRejectedCompletion(
+    current: Context,
+    stage: string,
+    result: { content?: unknown; finishReason?: unknown } | undefined,
+    detail?: RejectedResponseContext,
+  ) {
+    if (detail && typeof result?.content === "string") {
+      try {
+        const entry: RejectedResponse = {
+          model: String(detail.model ?? "unknown").slice(0, 160),
+          connectionId: String(detail.connectionId ?? "unknown").slice(0, 160),
+          reason: String(detail.reason ?? "unknown").slice(0, 80),
+          sceneId: current.sessionId,
+          operationId: current.operation.id,
+          attemptId: current.operation.attemptId,
+          stage,
+          capturedAt: new Date().toISOString(),
+          finishReason: String(result.finishReason ?? "unknown").slice(0, 80),
+          responseLength: result.content.length,
+          content: boundedRejectedText(result.content),
+          truncated: result.content.length > 24_000,
+          syntaxError: rejectedSyntaxError(result.content),
+        };
+        await createDocumentMutator(villagesDocuments)(
+          "villages-rejected-responses",
+          {
+            kind: "private-diagnostics",
+            name: "Rejected model responses",
+            description: "Latest five rejected Scene replies; server-only diagnostic evidence.",
+            coerce: (raw) => ({
+              entries: Array.isArray((raw as { entries?: unknown } | null)?.entries)
+                ? (raw as { entries: RejectedResponse[] }).entries
+                : [],
+            }),
+            label: () => "Rejected model responses",
+          },
+          (state) => {
+            state.entries = retainRejectedResponses(state.entries, entry);
+          },
+        );
+      } catch {
+        try {
+          villagesLogger().warn("[villages] Could not retain private rejected-response diagnostics");
+        } catch {
+          /* Diagnostics cannot replace rejection. */
+        }
+      }
+    }
+  }
+
   /** A returned but invalid result has a known outcome; explicit retry may replace it. */
   async function rejectVenueCompletion(
     detail?: RejectedResponseContext,
@@ -311,7 +443,16 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       for (const stage of options.stages) {
         delete current.operation.checkpoints[stage];
         for (const [key, attempt] of Object.entries(current.operation.attempts))
-          if (key.startsWith(stage + ":") && attempt.status === "complete") attempt.status = "rejected";
+          if (key.startsWith(stage + ":") && attempt.status === "complete") {
+            await retainRejectedCompletion(
+              current,
+              stage,
+              attempt.result as { content?: unknown; finishReason?: unknown },
+              detail,
+            );
+            attempt.status = "rejected";
+            await rejectLateReceipt(current, key);
+          }
       }
       await persist(current);
       return;
@@ -323,7 +464,16 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     for (const stage of writingStages) {
       delete current.operation.checkpoints[stage];
       for (const [key, attempt] of Object.entries(current.operation.attempts))
-        if (key.startsWith(stage + ":") && attempt.status === "complete") attempt.status = "rejected";
+        if (key.startsWith(stage + ":") && attempt.status === "complete") {
+          await retainRejectedCompletion(
+            current,
+            stage,
+            attempt.result as { content?: unknown; finishReason?: unknown },
+            detail,
+          );
+          attempt.status = "rejected";
+          await rejectLateReceipt(current, key);
+        }
     }
     if (writingStages.length) await persist(current);
     const index = (current.counts.get(current.scope) ?? 0) - 1;
@@ -332,49 +482,9 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       const result = current.operation.attempts[key]?.result as
         { content?: unknown; finishReason?: unknown } | undefined;
       current.operation.attempts[key] = { status: "rejected" };
+      await rejectLateReceipt(current, key);
       await persist(current);
-      if (detail && typeof result?.content === "string") {
-        try {
-          const entry: RejectedResponse = {
-            model: String(detail.model ?? "unknown").slice(0, 160),
-            connectionId: String(detail.connectionId ?? "unknown").slice(0, 160),
-            reason: String(detail.reason ?? "unknown").slice(0, 80),
-            sceneId: current.sessionId,
-            operationId: current.operation.id,
-            attemptId: current.operation.attemptId,
-            stage: current.scope,
-            capturedAt: new Date().toISOString(),
-            finishReason: String(result.finishReason ?? "unknown").slice(0, 80),
-            responseLength: result.content.length,
-            content: boundedRejectedText(result.content),
-            truncated: result.content.length > 24_000,
-            syntaxError: rejectedSyntaxError(result.content),
-          };
-          await createDocumentMutator(villagesDocuments)(
-            "villages-rejected-responses",
-            {
-              kind: "private-diagnostics",
-              name: "Rejected model responses",
-              description: "Latest five rejected Scene replies; server-only diagnostic evidence.",
-              coerce: (raw) => ({
-                entries: Array.isArray((raw as { entries?: unknown } | null)?.entries)
-                  ? (raw as { entries: RejectedResponse[] }).entries
-                  : [],
-              }),
-              label: () => "Rejected model responses",
-            },
-            (state) => {
-              state.entries = retainRejectedResponses(state.entries, entry);
-            },
-          );
-        } catch {
-          try {
-            villagesLogger().warn("[villages] Could not retain private rejected-response diagnostics");
-          } catch {
-            /* Diagnostics cannot replace rejection. */
-          }
-        }
-      }
+      await retainRejectedCompletion(current, current.scope, result, detail);
     }
   }
 
@@ -506,7 +616,20 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             "SCENE_STALE",
             "The scene changed in another tab. Your draft is preserved; review the updated scene before sending again.",
           );
-        if (prior?.id === id && prior.status !== "complete") {
+        const rejectedTerminal =
+          prior?.status === "complete" &&
+          !!prior.error &&
+          Object.values(prior.attempts).some((attempt) => attempt.status === "rejected");
+        if (
+          (options.recovery || rejectedTerminal) &&
+          prior?.id === id &&
+          (prior.status !== "complete" || rejectedTerminal) &&
+          prior.sceneRevision !== sceneRevision(data) &&
+          !(data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === id) &&
+          !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
+        )
+          throw venueRefusal("SCENE_STALE", "The Scene changed after generation. Saved results are preserved.");
+        if (prior?.id === id && (prior.status !== "complete" || rejectedTerminal)) {
           authorizedRetry = retryOfAttemptId === prior.attemptId;
           if (!options.recovery && !options.replay && retryOfAttemptId !== prior.attemptId)
             throw venueRefusal(
@@ -751,6 +874,17 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       const data = record.data as Record<string, unknown>;
       const operation = data.operation as VenueOperation | undefined;
       if (!operation || operation.status === "complete" || live.has(String(data.id))) continue;
+      // Expired, uncommitted generation is archived evidence, not work to resume at startup.
+      if (
+        data.status === "closed" &&
+        data.endReason === "inactivity" &&
+        ["turn", "greet"].includes(operation.kind) &&
+        !(data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === operation.id) &&
+        !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === operation.id) &&
+        !Object.hasOwn(operation.checkpoints, "turn-reply") &&
+        !Object.hasOwn(operation.checkpoints, "greeting-reply")
+      )
+        continue;
       await update(String(data.id), (saved) => {
         const op = saved.operation as VenueOperation;
         op.status = "interrupted";

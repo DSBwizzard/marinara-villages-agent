@@ -52,6 +52,18 @@ export function createLiveScenes({
       current.clockShiftMs = total;
     });
   }
+  async function completeGathering(session: VenueScene): Promise<void> {
+    if (!session.openingGatheringId) return;
+    await mutateVillageState((state) => {
+      if (
+        state.seed === session.villageSeed &&
+        state.opening?.stage === "gathering" &&
+        state.opening.gatheringSceneId === session.id &&
+        state.opening.id === session.openingGatheringId
+      )
+        state.opening.stage = "conversations";
+    });
+  }
   async function activeVenueSession(): Promise<VenueScene | null> {
     const active = await readActive();
     if (!active.sessionId) return null;
@@ -60,6 +72,7 @@ export function createLiveScenes({
     if ((await observeVillageClock())?.paused) return session;
     session = await alignSceneClock(session);
     if (session.status === "closed") {
+      await completeGathering(session);
       await clearActivePointer(session.id);
       return null;
     }
@@ -81,8 +94,14 @@ export function createLiveScenes({
       state.endReason = "inactivity";
     });
     if (closed.status !== "closed") return;
+    await completeGathering(closed);
     await clearActivePointer(id);
-    if (!closed.lines.some((line) => line.role === "user")) {
+    // Inactivity ends play, never discards purchased or uncertain generation evidence.
+    const savedGeneration =
+      Object.keys(closed.operation?.attempts ?? {}).length > 0 ||
+      Object.keys(closed.operation?.checkpoints ?? {}).length > 0 ||
+      (closed.generationReceipts?.length ?? 0) > 0;
+    if (!savedGeneration && closed.lines.length === 0 && closed.submissions.length === 0) {
       const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
       if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
     }
