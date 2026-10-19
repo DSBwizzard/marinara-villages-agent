@@ -192,6 +192,8 @@ export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: Sp
     )
       return "Interpretation citation does not match this speaker's saved words.";
   }
+  if ((proposal.kind === "offer" || proposal.kind === "handoff") && !asTrimmedString(proposal.requirementId))
+    return "Project supply proposal has no requirement ID.";
   if (proposal.kind !== "requirements") {
     if (proposal.contextual?.source === "decisions" && proposal.contextual.decisionEvidenceVersion !== 1)
       return "Legacy Decision evidence requires a new grounded interpretation.";

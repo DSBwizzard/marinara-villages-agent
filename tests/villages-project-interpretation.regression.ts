@@ -241,6 +241,32 @@ function doorway(turn: ReturnType<typeof saveTurn>) {
 }
 
 async function main() {
+  // A saved live offer omitted the supply ID: it could pass speech validation,
+  // then fail only after committing the Scene and reaching the supply handler.
+  const supplySpeech = "Happy to contribute the medium and fine paper, oil and sound cloth.";
+  const supplyLines = [{ id: "0", speakerId: "rosa", kind: "dialogue", content: supplySpeech }];
+  for (const kind of ["offer", "handoff"] as const) {
+    const proposal = bindProjectSpeech(
+      [
+        {
+          projectId: "shelf",
+          kind,
+          speakerId: "rosa",
+          citations: [{ segment: 0, quote: supplySpeech }],
+          checklist: [],
+        },
+      ],
+      [{ projectId: "shelf", revision: 2, phase: "materials" }],
+      supplyLines,
+    )[0];
+    proposal.contextual = { version: 1, source: "system", checkId: "frozen-source" };
+    assert.match(validateProjectSpeech(proposal, supplyLines), /requirement ID/u);
+    proposal.requirementId = "shelf:2:finish";
+    assert.equal(validateProjectSpeech(proposal, supplyLines), "");
+    proposal.requirementId = " ";
+    assert.match(validateProjectSpeech(proposal, supplyLines), /requirement ID/u);
+  }
+
   try {
     await createNewVenueProject({ name: "Repair Kiosk", venueClass: "workplace", description: "Small repairs." });
     const projectId = (await readVillageState()).projects[0]!.id;

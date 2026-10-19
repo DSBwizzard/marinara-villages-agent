@@ -1337,6 +1337,15 @@ async function main() {
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
   assert(
+    systemPrompt.includes("For offer and handoff, requirementId is required"),
+    "The live source offer omitted its mandatory supply target under the old optional-field schema",
+  );
+  assert(
+    systemPrompt.includes("An offer alone sets projects:true and physical:false"),
+    "Project metadata authority is independent of a completed physical action",
+  );
+
+  assert(
     systemPrompt.includes(
       'checklist:[{category:"structure|equipment|finish",title:"1-100 characters",needed:boolean,citation:0}]',
     ),
