@@ -733,6 +733,67 @@ async function main() {
     !knownOnly.accessScopes.some((z) => Object.hasOwn(z, "adjacentZoneIds")),
     "Legacy packets keep their exact context shape",
   );
+  const topologyService = createSemanticService({
+    ...ports,
+    readVillageState: async () => topologyState,
+    venueSavedCheckpoint: () => undefined,
+    venueCheckpoint: async (_key: string, work: () => Promise<any>) => work(),
+    completeWithRoom: async (_model: any, messages: any[]) => {
+      const packet = JSON.parse(messages[1].content);
+      return {
+        finishReason: "stop",
+        content: JSON.stringify({
+          sourceHash: packet.sourceHash,
+          consistent: true,
+          authority: { physical: false, access: false, projects: false, standing: false },
+          action: null,
+          access: [],
+          memoryChanges: [],
+          wishChanges: [],
+          projectSpeech: [],
+          relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+          events: { moves: [], departures: [], contactEnd: [] },
+          intent: {
+            status: "resolved",
+            instructions: "",
+            action: null,
+            movement: null,
+            timeline: [{ kind: "movement", text: packet.input.message, zoneId: "unseen" }],
+          },
+        }),
+      };
+    },
+  } as any);
+  const topologyAdmission = {
+    ...topologyScene,
+    operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 2 } },
+  } as typeof scene;
+  const topologyBefore = structuredClone(topologyScene);
+  const movedIntent = await topologyService.exchange(topologyAdmission, "I step through the doorway.", [], null);
+  assert.equal(
+    movedIntent.intent!.timeline[0].zoneId,
+    "unseen",
+    "Server-supplied access topology IDs can identify movement destinations without interior knowledge",
+  );
+  assert.deepEqual(topologyScene, topologyBefore);
+  assert.equal(
+    topologyVenue.zones[1].seen,
+    false,
+    "Interpreting destination identity does not reveal its state or grant entry",
+  );
+  await assert.rejects(
+    topologyService.exchange(
+      {
+        ...topologyAdmission,
+        operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 1 } },
+      } as typeof scene,
+      "I step through the doorway.",
+      [],
+      null,
+    ),
+    /invalid or reordered spans/,
+    "Legacy context without authoritative topology retains its visible-zone restriction",
+  );
   const reviewFor = (evidence: any[], proposed: any[], additional: any[] = []) => ({
     version: 1,
     additionalActions: additional,

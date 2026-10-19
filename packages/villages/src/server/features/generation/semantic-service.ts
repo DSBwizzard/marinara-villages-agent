@@ -265,7 +265,11 @@ export function createSemanticService(ports: SemanticPorts) {
         (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery))) ||
         (raw.status === "resolved" && row.kind === "movement" && typeof row.zoneId !== "string") ||
         (row.zoneId !== undefined &&
-          (row.kind !== "movement" || !savedInput.context.zones.some((zone) => zone.id === row.zoneId)))
+          (row.kind !== "movement" ||
+            (!savedInput.context.zones.some((zone) => zone.id === row.zoneId) &&
+              !savedInput.context.accessScopes?.some(
+                (zone) => zone.id === row.zoneId && Object.hasOwn(zone, "adjacentZoneIds"),
+              ))))
       )
         throw badGateway("System source timeline has invalid or reordered spans.");
       cursor = start + text.length;
