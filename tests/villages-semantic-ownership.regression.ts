@@ -985,6 +985,88 @@ async function main() {
     !knownOnly.accessScopes.some((z) => Object.hasOwn(z, "adjacentZoneIds")),
     "Legacy packets keep their exact context shape",
   );
+  // Historical command audit is retained in storage, never repeated into each fresh compact System packet.
+  {
+    const ledgerVenue = structuredClone(topologyVenue);
+    assert.ok(ledgerVenue.access);
+    ledgerVenue.access.permissions.push({
+      id: "live-grant",
+      zoneId: "unseen",
+      visitorId: "player",
+      issuerId: "host",
+      duration: "standing",
+      sceneId: null,
+      accompaniedBy: null,
+      outsideHours: false,
+      revoked: false,
+      issuedAt: "2026-10-19T06:00:00.000Z",
+      sourceLineIds: ["spoken-grant"],
+    });
+    ledgerVenue.access.bans.push({
+      id: "live-ban",
+      zoneId: "unseen",
+      visitorId: "other",
+      issuerId: "host",
+      active: true,
+      issuedAt: "2026-10-19T06:00:00.000Z",
+      sourceLineIds: ["spoken-ban"],
+    });
+    ledgerVenue.access.exceptions.push({
+      id: "live-exception",
+      banIds: ["live-ban"],
+      permissionId: "live-grant",
+      issuerId: "host",
+      issuedAt: "2026-10-19T06:00:00.000Z",
+    });
+    ledgerVenue.access.visitDenials.push({
+      zoneId: "unseen",
+      visitorId: "other",
+      sceneId: "prior-scene",
+      issuerId: "host",
+    });
+    const originalLedger = structuredClone(ledgerVenue.access);
+    const ledgerState = { ...topologyState, venues: [ledgerVenue] };
+    const before = semanticContext(topologyScene, ledgerState, "May I visit?", true, true);
+    for (let index = 0; index < 100; index++) {
+      ledgerVenue.access!.receipts["old-operation-" + index] = {
+        fingerprint: "old-audit-only-".repeat(30),
+        revision: index,
+        outcome: "applied",
+      };
+      ledgerVenue.access!.changes.push({
+        id: "old-change-" + index,
+        revision: index,
+        actorId: "a",
+        zoneId: "unseen",
+        action: "invite",
+        at: "2026-10-19T06:00:00.000Z",
+        sourceLineIds: ["old-line-" + index],
+      });
+    }
+    const frozenLedger = structuredClone(ledgerVenue.access);
+    const current = semanticContext(topologyScene, ledgerState, "May I visit?", true, true);
+    const { receipts: _receipts, changes: _changes, ...authority } = frozenLedger!;
+    assert.deepEqual(
+      current.access,
+      authority,
+      "Every live access rule, permission, ban, exception and denial remains exact",
+    );
+    assert.deepEqual(
+      current.access,
+      before.access,
+      "Historical audit growth cannot consume the next turn's context budget",
+    );
+    assert.deepEqual(ledgerVenue.access, frozenLedger, "Prompt projection never edits the authoritative ledger");
+    assert.deepEqual(
+      semanticContext(topologyScene, ledgerState, "legacy", false).access,
+      frozenLedger,
+      "Legacy packet construction stays compatible",
+    );
+    assert.deepEqual(current.zones, before.zones);
+    assert.deepEqual(current.accessScopes, before.accessScopes);
+    assert.equal(current.accessManagement, before.accessManagement);
+    ledgerVenue.access = originalLedger;
+  }
   const topologyService = createSemanticService({
     ...ports,
     readVillageState: async () => topologyState,

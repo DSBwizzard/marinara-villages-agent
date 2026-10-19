@@ -44,6 +44,8 @@ export function semanticContext(
   const actors = [...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])])];
   const venue = state.venues.find((row) => row.id === scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
+  // Audit remains in saved state; fresh compact packets need current authority, not past command fingerprints.
+  const { receipts: _receipts, changes: _changes, ...accessRules } = venue?.access ?? {};
   const memories = selectPromptMemories(state.chronicle, actors, query, 1800);
   const audience = (row: VillageState["chronicle"][number]) =>
     row.scope === "village" ? actors : (row.knownByCharacterIds ?? row.actors.map((actor) => actor.id));
@@ -111,7 +113,7 @@ export function semanticContext(
               : {}),
           }))
       : [],
-    access: venue?.access,
+    access: compact && venue?.access ? accessRules : venue?.access,
     accessManagement: accessManagementPrompt(state, actors),
     referenceActors: state.villagers.map(({ characterId, cardSnapshot }) => ({
       id: characterId,
