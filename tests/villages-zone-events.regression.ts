@@ -689,7 +689,7 @@ assert.deepEqual(sparseReply.responseDiagnostics?.missingFields, []);
 assert.doesNotMatch(sentPrompt, /include them even when empty|Return wishChanges:\[\]/i);
 allowRejection = true;
 narrationFinish = "length";
-await assert.rejects(writing.generate(scene, message, "chat", "", null), /failed validation/);
+await assert.rejects(writing.generate(scene, message, "chat", "", null), /output limit/);
 narrationFinish = "stop";
 wireOverride = JSON.stringify({ segments: [{ kind: "narration", text: prose }], memoryChanges: null });
 await assert.rejects(writing.generate(scene, message, "chat", "", null), /failed validation/);

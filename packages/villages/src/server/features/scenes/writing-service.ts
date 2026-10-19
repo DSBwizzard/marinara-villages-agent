@@ -452,7 +452,16 @@ export function createSceneWriting({
     const responseContract = (context: Parameters<typeof buildVenueResponseContract>[0]) =>
       session.semanticVersion === 2
         ? [
-            'Return ONE complete JSON object containing playerSpeechCapture then segments. No outside prose. segments are {speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?,staging?:[]} for speech and {text,sound?:{sourceId,text,loud?:true},staging?:[]} for visible narration. Max24 segments,2000 characters each. Omit unused fields. No effect metadata: System independently interprets access, physical outcomes, requests, movement, memories, relationships, Wishes and Projects.',
+            "Return ONE complete JSON object containing " +
+              ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
+                ? "playerSpeechCapture, segments and residentActions (required even when [])."
+                : "playerSpeechCapture then segments.") +
+              ' No outside prose. segments are {speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?,staging?:[]} for speech and {text,sound?:{sourceId,text,loud?:true},staging?:[]} for visible narration. Max24 segments,2000 characters each. Omit unused optional fields. System independently validates consequences; residentActions are access proposals, never applied permission.',
+            ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
+              ? [
+                  'JSON structure for a silent input with no access action: {"playerSpeechCapture":{"status":"silent","utterances":[]},"segments":[{"text":"A visible response."}],"residentActions":[]}. Example is structure only; write the actual Scene and attach every expressed access action.',
+                ]
+              : []),
             PLAYER_CAPTURE_CONTRACT,
             "Input source quotes (text IDs, never audibility): " +
               JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),

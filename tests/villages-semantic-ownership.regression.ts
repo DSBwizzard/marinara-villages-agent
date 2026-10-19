@@ -1017,6 +1017,13 @@ async function main() {
   assert.match(systemPrompt, /Return the complete exchange JSON, never needsContext/);
   assert.doesNotMatch(systemPrompt, /If more context is necessary, return/);
   assert.equal(actionResult.semanticProvenance?.residentActionsVersion, 2);
+  assert(narrationPrompt.includes("playerSpeechCapture, segments and residentActions (required even when [])"));
+  assert(narrationPrompt.includes('"residentActions":[]'));
+  assert.doesNotMatch(
+    narrationPrompt,
+    /No effect metadata:/,
+    "The envelope cannot contradict required access proposals",
+  );
   assert(actionResult.residentActionReceipt?.systemResponse?.includes("residentActionReview"));
   const decodedReceipt = coerceSession({
     ...actionScene,
