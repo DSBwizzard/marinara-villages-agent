@@ -50,6 +50,16 @@ export function semanticContext(
     (row) => row.kind !== "tick" && !row.supersededBy && audience(row).some((id) => actors.includes(id)),
   );
   const catalog = available.slice(-64);
+  const recentHistory = scene.lines
+    .filter((row) => !row.contactReport && actors.some((id) => row.heardBy.includes(id)))
+    .slice(-18);
+  // Earlier context is optional enrichment. Keep whole rows and their witness metadata;
+  // never let a few long conversational turns crowd out the current exchange.
+  const history: typeof recentHistory = [];
+  for (const row of [...recentHistory].reverse()) {
+    if (compact && Buffer.byteLength(JSON.stringify([row, ...history]), "utf8") > 6000) continue;
+    history.unshift(row);
+  }
   return {
     opening: openingSemanticContext(state, scene),
     worldSeed: state.seed,
@@ -123,9 +133,8 @@ export function semanticContext(
         hint: row.text.slice(0, 160),
       })),
     },
-    history: scene.lines
-      .filter((row) => !row.contactReport && actors.some((id) => row.heardBy.includes(id)))
-      .slice(-18),
+    history,
+    ...(compact ? { historyBounded: history.length < recentHistory.length } : {}),
     reach: layout ? zoneEventHearingContext(scene, layout) : "",
     accessScopes: venue
       ? venueZones(venue).map((zone) => ({

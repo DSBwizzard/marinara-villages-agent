@@ -44,6 +44,59 @@ import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 
 async function main() {
+  // Ordinary multi-resident dialogue must not grow optional earlier history without a byte budget.
+  {
+    const historyState = defaultVillageState();
+    historyState.seed = "bounded-system-history";
+    historyState.villagers = ["a", "b", "c"].map((characterId) => ({
+      characterId,
+      cardSnapshot: { id: characterId, name: characterId },
+      completedWishes: [],
+    })) as any;
+    const rows = Array.from({ length: 18 }, (_, index) => ({
+      id: "earlier-" + index,
+      speakerId: "a",
+      role: "assistant",
+      kind: "dialogue",
+      content: "Unchanged witnessed supper conversation " + index + " " + "river ".repeat(100),
+      heardBy: ["a", "b", "c"],
+      at: "2026-10-19T06:00:00.000Z",
+      zoneId: "common:base",
+      delivery: "ordinary",
+      contactHidden: false,
+      staging: { prose: "render-only ".repeat(80) },
+    }));
+    const historyScene = {
+      id: "supper",
+      activeIds: ["a", "b", "c"],
+      lines: rows,
+      placeId: "missing",
+      zoneId: "common:base",
+      sceneRevision: 1,
+    } as any;
+    const original = JSON.stringify(historyScene);
+    const bounded = semanticContext(historyScene, historyState, "Tell me about yourselves", true);
+    assert(
+      Buffer.byteLength(JSON.stringify(bounded.history), "utf8") <= 6000,
+      "Earlier System history must stay bounded during ordinary three-resident conversation",
+    );
+    assert(bounded.history.length > 0 && bounded.history.length < rows.length);
+    for (const line of bounded.history) {
+      const source = rows.find((row) => row.id === line.id)!;
+      assert.equal(line.content, source.content, "Whole evidence text stays exact");
+      assert.deepEqual(line.heardBy, source.heardBy, "Witness scope stays exact");
+      assert.equal(line.contactHidden, source.contactHidden);
+      assert.equal(line.delivery, source.delivery);
+    }
+    assert.equal(bounded.history.at(-1)?.id, rows.at(-1)?.id, "Recent conversational context remains available");
+    assert.equal(JSON.stringify(historyScene), original, "Prompt projection never edits saved dialogue");
+    assert.equal(
+      semanticContext(historyScene, historyState, "legacy", false).history.length,
+      rows.length,
+      "Legacy fresh admissions retain their existing context shape",
+    );
+  }
+
   // Enforce JSON-mode compatibility using actual Events and offscreen review prompts.
   const { createVillageBootstrap } =
     await import("../packages/villages/src/server/features/founding/village-bootstrap-service.js");
