@@ -145,18 +145,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               ? [
                   {
                     id: "interrupted-" + room.operation.id,
-                    title: "Saved request interrupted",
-                    message: [
-                      room.operation.error,
-                      room.operation.kind === "turn"
-                        ? "The previous request may have been billed. Review your draft and press Send to resend when ready."
-                        : "The previous request may have been billed. Retry the saved request when ready.",
-                    ]
-                      .filter(Boolean)
-                      .join("\n\n"),
+                    title: room.operation.kind === "turn" ? "Message failed" : "Saved request interrupted",
+                    message: room.operation.error,
                     actions: (
                       <button type="button" disabled={roomBusy} onClick={() => void retrySavedScene()}>
-                        {room.operation.kind === "turn" ? "Recover saved request" : "Retry saved request"}
+                        {room.operation.kind === "turn" ? "Retry original message" : "Retry saved request"}
                       </button>
                     ),
                   },

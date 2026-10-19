@@ -335,6 +335,7 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       message?: unknown;
       expectedSceneRevision?: unknown;
       retryOfAttemptId?: string;
+      replaceOfOperationId?: unknown;
     };
   }>("/rooms/leave", async (request, reply) => {
     try {
@@ -344,6 +345,9 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
         typeof request.body?.message === "string" ? request.body.message : "",
         readSceneRevision(request.body?.expectedSceneRevision),
         request.body?.retryOfAttemptId,
+        request.body?.replaceOfOperationId === undefined
+          ? undefined
+          : readSubmissionId(request.body.replaceOfOperationId),
       );
     } catch (error) {
       return fail(reply, error, "leaving a venue naturally");

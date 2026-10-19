@@ -455,6 +455,64 @@ async function main() {
     } finally {
       mock.timers.reset();
     }
+    seed("late-after-edit");
+    let lateOriginal!: (value: string) => void;
+    const originalStarted = deferred<void>();
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const original = coordinateVenue(
+        "late-after-edit",
+        "original",
+        "turn",
+        { message: "Original", mode: "chat" },
+        0,
+        undefined,
+        () =>
+          venueCheckpoint("reply", () =>
+            coordinatedCompletion("same-provider", () =>
+              withProviderDeadline(async () => {
+                originalStarted.resolve();
+                return new Promise<string>((resolve) => {
+                  lateOriginal = resolve;
+                });
+              }),
+            ),
+          ),
+      );
+      const failed = assert.rejects(original, /timed out after 30 seconds/);
+      await originalStarted.promise;
+      mock.timers.tick(30_000);
+      await failed;
+      const saved = (await readVenueOperation("late-after-edit"))!;
+      const editedStarted = deferred<void>(),
+        editedFinish = deferred<string>();
+      const replacement = coordinateVenue(
+        "late-after-edit",
+        "edited",
+        "turn",
+        { message: "Edited", mode: "chat" },
+        0,
+        saved.attemptId,
+        () =>
+          venueCheckpoint("reply", () =>
+            coordinatedCompletion("same-provider", async () => {
+              editedStarted.resolve();
+              return editedFinish.promise;
+            }),
+          ),
+        { replaceOfOperationId: saved.id },
+      );
+      await editedStarted.promise;
+      lateOriginal("old late reply");
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(row("late-after-edit").data.operation.id, "edited");
+      assert.equal(row("late-after-edit").data.operation.checkpoints.reply, undefined);
+      assert.deepEqual(row("late-after-edit").data.submissions, []);
+      editedFinish.resolve("edited reply");
+      assert.equal(await replacement, "edited reply", "late original output cannot supply the edited reply");
+    } finally {
+      mock.timers.reset();
+    }
     seed("late-invalid");
     let finishInvalid!: (value: string) => void;
     const invalidStarted = deferred<void>();
@@ -702,12 +760,13 @@ async function main() {
     );
     assert.equal(row("editable").data.operation.input.message, "Edited draft");
 
-    for (const blockedCase of ["committed", "checkpoint", "contact"]) {
+    for (const blockedCase of ["committed", "navigation", "semantic"]) {
       const blocked = await failChat("edit-" + blockedCase);
       const data = row("edit-" + blockedCase).data;
       if (blockedCase === "committed") data.submissions.push({ id: "original" });
-      if (blockedCase === "checkpoint") data.operation.checkpoints["turn-reply"] = { saved: true };
-      if (blockedCase === "contact") data.operation.input.mode = "contact";
+      if (blockedCase === "navigation") data.navigationReceipts = [{ id: "original" }];
+      if (blockedCase === "semantic")
+        data.submissions.push({ id: "other", semanticProvenance: { version: 2 }, semanticReady: false });
       const beforeBlockedEdit = calls;
       await assert.rejects(
         () =>
@@ -716,9 +775,50 @@ async function main() {
           }),
         refused("OPERATION_INTERRUPTED"),
       );
-      assert.equal(calls, beforeBlockedEdit, "saved replies and effects must recover before edited replacement");
+      assert.equal(
+        calls,
+        beforeBlockedEdit,
+        "committed turns and unsettled effects cannot be discarded by edited replacement",
+      );
       assert.equal(data.operation.id, "original");
     }
+    // Error text and completed model work must not lock an uncommitted draft.
+    for (const failure of [
+      "Use Move to change Zones.",
+      "Invalid JSON",
+      "Connection not found",
+      "Provider timeout",
+      "Storage failed",
+    ])
+      for (const mode of ["chat", "contact", "act", "fulfill", "leave"]) {
+        const sceneId = "editable-results-" + failure + mode;
+        seed(sceneId);
+        await assert.rejects(
+          () =>
+            coordinateVenue(sceneId, "original", "turn", { ...oldInput, mode }, 0, undefined, async () => {
+              await venueCheckpoint("writing-completion", () => paid("old generated content"));
+              await venueCheckpoint("turn-reply", async () => ({ lines: ["uncommitted reply"] }));
+              throw new Error(failure);
+            }),
+          (error: Error) => error.message === failure,
+        );
+        const failed = (await readVenueOperation(sceneId))!;
+        assert.equal(failed.status, "interrupted");
+        const result = await coordinateVenue(
+          sceneId,
+          "edited",
+          "turn",
+          editedInput,
+          0,
+          failed.attemptId,
+          () => venueCheckpoint("writing-completion", () => paid("new generated content")),
+          { replaceOfOperationId: "original" },
+        );
+        assert.equal(result, "new generated content", "edited sends never reuse the original message's output");
+        assert.equal(row(sceneId).data.operation.input.message, "Edited draft");
+        assert.deepEqual(row(sceneId).data.submissions, [], "replacement does not commit abandoned content");
+      }
+
     assert.equal(
       safeFailureMessage(new Error("Bearer secret-value api_key=hidden https://example.test/?token=private")),
       "Bearer [redacted] api_key=[redacted] https://example.test/?token=[redacted]",

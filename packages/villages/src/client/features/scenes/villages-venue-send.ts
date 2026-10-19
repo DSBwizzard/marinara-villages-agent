@@ -44,7 +44,7 @@ export function sceneResend(
     prior.attentionChoice?.id === input.attentionChoice?.id &&
     prior.attentionChoice?.zoneId === input.attentionChoice?.zoneId;
   if (same) return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
-  if (saved.kind !== "turn" || prior.mode !== "chat" || input.mode !== "chat")
+  if (saved.kind !== "turn")
     throw new Error("Recover the saved request before changing this message or mode. Your edits are preserved.");
   return {
     submissionId: submissionId === saved.id ? createVillagesClientId() : submissionId,

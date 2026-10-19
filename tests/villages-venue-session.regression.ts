@@ -2992,6 +2992,38 @@ async function main() {
     );
     assert.equal(await activeVenueSession(), null);
 
+    const editedLeaving = await greetVenue((await enterVenue("park")).id);
+    const { coordinateVenue, venueCheckpoint, readVenueOperation } =
+      await import("../packages/villages/src/server/jobs/venue-coordinator.js");
+    await assert.rejects(
+      () =>
+        coordinateVenue(
+          editedLeaving.id,
+          "failed-before-leave",
+          "turn",
+          { message: "Original", mode: "chat", targetId: "" },
+          editedLeaving.sceneRevision,
+          undefined,
+          async () => {
+            await venueCheckpoint("turn-reply", async () => ({ lines: [] }));
+            throw new Error("Invalid generated reply");
+          },
+        ),
+      /Invalid generated reply/,
+    );
+    const failedLeaving = (await readVenueOperation(editedLeaving.id))!;
+    const editedFarewell = await leaveVenueSession(
+      editedLeaving.id,
+      "edited-leave",
+      "Goodbye.",
+      editedLeaving.sceneRevision,
+      failedLeaving.attemptId,
+      failedLeaving.id,
+    );
+    assert.equal(editedFarewell.session.status, "closed", "an edited Conclude replaces a failed turn without recovery");
+    assert.ok(editedFarewell.session.submissions.some((turn) => turn.id === "edited-leave"));
+    assert.ok(!editedFarewell.session.submissions.some((turn) => turn.id === failedLeaving.id));
+
     const spokenLeaving = await greetVenue((await enterVenue("park")).id);
     const spokenFarewell = await leaveVenueSession(spokenLeaving.id, "leave-spoken", "Goodbye, everyone.");
     assert.ok(

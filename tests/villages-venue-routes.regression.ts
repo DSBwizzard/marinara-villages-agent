@@ -75,6 +75,12 @@ assert.ok(
   routes.includes("await leaveVenueSession("),
   "leaving delegates receipt and recovery handling to the session service",
 );
+const leaveRoute = routes.slice(routes.indexOf('>("/rooms/leave"'), routes.indexOf('>("/rooms/end"'));
+assert.match(
+  leaveRoute,
+  /readSubmissionId\(request.body.replaceOfOperationId\)/u,
+  "Conclude forwards validated edited-send authorization",
+);
 assert.match(ui, /Open transcript/u);
 assert.match(sceneStore, /const ACTIVE_ID = "villages-active-venue"/u);
 assert.match(sceneModel, /heardHistory: \{ characterId: string; lineIds: string\[\] \}\[\]/u);

@@ -1885,6 +1885,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     message = "",
     expectedSceneRevision?: number,
     retryOfAttemptId?: string,
+    replaceOfOperationId?: string,
   ) {
     const scene = await readSession(sessionId);
     const prior = scene.submissions.find((entry) => entry.id === submissionId);
@@ -1916,7 +1917,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       expectedSceneRevision,
       retryOfAttemptId,
       () => leaveVenueSessionOnce(sessionId, submissionId, message),
-      { replay: !!prior },
+      { replay: !!prior, replaceOfOperationId },
     );
   }
 
