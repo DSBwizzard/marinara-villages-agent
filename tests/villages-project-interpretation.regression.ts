@@ -484,9 +484,35 @@ async function main() {
     await processSavedProgressSubmission(unsupported.sessionId, unsupported.submissionId);
     assert.equal((await project()).lifecycle!.sources.length, 0);
     const offer = saveTurn("Can you supply Repair Kiosk?", "I can supply timber.", "ivo");
+    const savedOffer = attach(offer, "offer");
+    savedOffer.projectSpeech[0].requirementId = timberId;
+    savedOffer.projectSpeech[0].contextual = { version: 1, source: "system", checkId: "saved-system-offer" };
+    savedOffer.projectInterpretationVersion = 1;
+    savedOffer.semanticProvenance = { version: 2 };
+    const beforeOffer = await readVillageState();
+    const beforeOfferCalls = { modelCalls, interpretationCalls };
     await processSavedProgressSubmission(offer.sessionId, offer.submissionId);
     assert.equal((await project()).lifecycle!.sources.length, 1);
-    assert.equal((await project()).lifecycle!.requirements.find((item) => item.id === timberId)!.carriedAt, "");
+    assert.equal((await project()).lifecycle!.sources[0]!.acquiredAt, "");
+    const offeredRequirement = (await project()).lifecycle!.requirements.find((item) => item.id === timberId)!;
+    assert.equal(offeredRequirement.carriedAt, "");
+    assert.equal(offeredRequirement.deliveredAt, "");
+    assert.equal(
+      (await task()).receipts.find((receipt) => receipt.requirementId === `source:${timberId}`)!.evidence.grade,
+      "cited-interpretation",
+    );
+    await processSavedProgressSubmission(offer.sessionId, offer.submissionId);
+    assert.equal((await project()).lifecycle!.sources.length, 1, "Saved offer replay records one finite source");
+    assert.equal((await task()).receipts.filter((receipt) => receipt.requirementId === `source:${timberId}`).length, 1);
+    const afterOffer = await readVillageState();
+    assert.deepEqual(afterOffer.projectSourceClaims, beforeOffer.projectSourceClaims);
+    assert.deepEqual(afterOffer.narrativeItems, beforeOffer.narrativeItems);
+    assert.deepEqual(afterOffer.venues, beforeOffer.venues, "An interpreted offer does not debit physical inventory");
+    assert.deepEqual(
+      { modelCalls, interpretationCalls },
+      beforeOfferCalls,
+      "Saved source replay never calls a provider",
+    );
     await assert.rejects(
       mutateVillageState((current) => {
         const target = current.projects.find((entry) => entry.id === projectId)!;
