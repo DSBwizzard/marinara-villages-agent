@@ -121,6 +121,10 @@ export async function checkBlueprint(
   };
 }
 
+// Hosted image revisions are provenance, not a selectable execution contract.
+// Node, OS runner family, architecture and lockfile-pinned tools define compatibility.
+export const executionContract = ({ platform, node, arch, runner }) => ({ platform, node, arch, runner });
+
 export function checkKeys(blueprint, environment) {
   if (
     !supportedPlatforms.includes(environment.platform) ||
@@ -133,11 +137,11 @@ export function checkKeys(blueprint, environment) {
   return platformSpecs(blueprint, environment.platform).map((spec) => ({
     ...spec,
     key: fingerprint({
-      schema: 3,
+      schema: 4,
       policy: blueprint.policyDigest,
       id: spec.id,
       scopeDigest: spec.scopeDigest,
-      environment,
+      environment: executionContract(environment),
       inputs: spec.inputs.map((path) => [path, catalog.get(path) ?? "missing"]),
     }),
   }));
@@ -185,6 +189,9 @@ export function assertCoverage(receipt, blueprint) {
 }
 
 export function assertProofOrigin(proof, environment) {
+  const actual = proof.environment ?? environment;
+  if (fingerprint(executionContract(actual)) !== fingerprint(executionContract(environment)))
+    throw Error("Incompatible check execution environment");
   const origin = proof.origin;
   if (
     !origin ||
@@ -199,7 +206,7 @@ export function assertProofOrigin(proof, environment) {
     !/^[a-f0-9]{40}$/.test(origin.sourceRevision ?? "") ||
     origin.platform !== environment.platform ||
     origin.node !== environment.node ||
-    origin.environmentDigest !== fingerprint(environment)
+    origin.environmentDigest !== fingerprint(actual)
   )
     throw Error("Invalid check execution origin");
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { assembleChecks, checkKeys, fingerprint, assertProofOrigin } from "./ci-checks.mjs";
+import { assembleChecks, checkKeys, fingerprint, assertProofOrigin, executionContract } from "./ci-checks.mjs";
 import { testCost } from "./test-costs.mjs";
 
 // Relative measured costs, not timeouts. Unknown suites have a conservative weight.
@@ -89,12 +89,23 @@ export function mergeShardReceipts(plan, platform, workers, { allowPartial = fal
     assert.equal(worker.policyDigest, plan.blueprint.policyDigest);
     assert.equal(worker.validationProfile, plan.blueprint.validationProfile);
     assert.equal(worker.inputsUnchanged, true);
-    assert.equal(fingerprint(worker.environment), fingerprint(first.environment), "CI shard environments differ");
+    assert.equal(
+      fingerprint(executionContract(worker.environment)),
+      fingerprint(executionContract(first.environment)),
+      "CI shard toolchains differ",
+    );
+    assertProofOrigin({ origin: worker.producer }, worker.environment);
     assert.equal(String(worker.producer.runId), String(first.producer.runId));
-    assert.equal(worker.producer.attempt, first.producer.attempt);
+    assert.ok(Number.isSafeInteger(worker.producer.attempt) && worker.producer.attempt >= 1);
     const assigned = shardSpecs(specs, count, index, plan.platforms[platform].pending);
     for (const proof of worker.checks) {
       assertProofOrigin(proof, worker.environment);
+      if (proof.executed && proof.environment)
+        assert.equal(
+          fingerprint(proof.environment),
+          fingerprint(worker.environment),
+          "Executed check environment differs from worker",
+        );
       if (proof.executed) {
         assert.ok(
           assigned.some((spec) => spec.id === proof.id && spec.key === proof.key),

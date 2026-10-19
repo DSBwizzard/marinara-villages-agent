@@ -147,6 +147,37 @@ try {
     checks,
   };
   assert.equal(assertCoverage(receipt, first).pending.length, 0);
+  assert.deepEqual(
+    checkKeys(first, { ...environment, image: "hosted-rollout" }),
+    specs,
+    "Hosted image revisions do not change the pinned execution contract",
+  );
+  const carriedChecks = checks.map((proof) => ({ ...proof, environment: structuredClone(environment) }));
+  assert.equal(
+    assertCoverage(
+      { ...receipt, checks: carriedChecks, environment: { ...environment, image: "hosted-rollout" } },
+      first,
+    ).pending.length,
+    0,
+  );
+  assert.throws(
+    () =>
+      assertCoverage(
+        {
+          ...receipt,
+          checks: carriedChecks.map((proof, index) =>
+            index
+              ? proof
+              : {
+                  ...proof,
+                  environment: { ...environment, image: "forged" },
+                },
+          ),
+        },
+        first,
+      ),
+    /origin/,
+  );
   for (const change of [{ passed: false }, { code: 1 }, { skipped: true }, { signal: "SIGTERM" }, { key: "stale" }])
     assert.equal(
       assembleChecks(

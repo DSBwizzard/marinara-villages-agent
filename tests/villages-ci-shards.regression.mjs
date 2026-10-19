@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { shardSpecs, shardAssignments, planShards, mergeShardReceipts, workerName } from "../scripts/ci-shards.mjs";
 import { checkKeys, fingerprint, assertCoverage } from "../scripts/ci-checks.mjs";
-import { assertWorkerOrigin } from "../scripts/ci-manifests.mjs";
+import { assertWorkerOrigin, GitHubEvidence } from "../scripts/ci-manifests.mjs";
 const environment = {
   platform: "linux",
   node: process.version,
@@ -83,6 +83,7 @@ const workers = [0, 1, 2].map((index) => {
       passed: true,
       executed: true,
       origin: producer,
+      environment,
     })),
   };
 });
@@ -97,7 +98,7 @@ for (const delta of [
   { policyDigest: "foreign" },
   { inputsUnchanged: false },
   { environment: { ...environment, image: "other" } },
-  { producer: { ...workers[1].producer, attempt: 2 } },
+  { producer: { ...workers[1].producer, attempt: 0 } },
 ])
   assert.throws(() => mergeShardReceipts(plan, "linux", [workers[0], { ...workers[1], ...delta }, workers[2]]));
 assert.throws(
@@ -139,6 +140,116 @@ assert.throws(
 console.log(
   "Balanced CI shards: complete coverage, source/environment/attempt binding, missing/duplicate/failed/foreign workers and authenticated aggregation passed.",
 );
+
+// Hosted image rollout and targeted rerun reproduce the production failures.
+const mixedWorkers = structuredClone(workers);
+for (const [index, image, attempt] of [
+  [1, "new-hosted-image", 2],
+  [2, "other-hosted-image", 1],
+]) {
+  const worker = mixedWorkers[index];
+  worker.environment = { ...worker.environment, image };
+  worker.producer.attempt = attempt;
+  worker.producer.environmentDigest = fingerprint(worker.environment);
+  for (const proof of worker.checks) {
+    proof.environment = structuredClone(worker.environment);
+    proof.origin = structuredClone(worker.producer);
+  }
+}
+const mixed = mergeShardReceipts(plan, "linux", mixedWorkers);
+assert.equal(mixed.coverageComplete, true);
+assertCoverage(mixed, blueprint);
+const attemptJobs = mixedWorkers.map((worker) => ({
+  ...jobs.find((job) => job.name === worker.producer.job),
+  run_attempt: worker.producer.attempt,
+}));
+assertWorkerOrigin(mixed, { ...run, run_attempt: 2 }, attemptJobs[0], attemptJobs);
+assert.throws(() => assertWorkerOrigin(mixed, run, attemptJobs[0], attemptJobs), /attempt/);
+assert.throws(
+  () =>
+    assertWorkerOrigin(
+      mixed,
+      { ...run, run_attempt: 2 },
+      attemptJobs[0],
+      attemptJobs.map((job) => (job.name === "browser-linux-1" ? { ...job, run_attempt: 1 } : job)),
+    ),
+  /attempt|name/,
+);
+assert.throws(() =>
+  assertWorkerOrigin(
+    mixed,
+    { ...run, run_attempt: 2 },
+    attemptJobs[0],
+    attemptJobs.map((job) =>
+      job.name === "browser-linux-1"
+        ? { ...job, steps: [{ name: "Validate maintained source and package", conclusion: "failure" }] }
+        : job,
+    ),
+  ),
+);
+for (const delta of [{ node: "v0.0.0" }, { runner: "ubuntu-latest" }, { arch: "arm64" }, { platform: "win32" }]) {
+  const invalid = structuredClone(mixedWorkers);
+  Object.assign(invalid[1].environment, delta);
+  invalid[1].producer.environmentDigest = fingerprint(invalid[1].environment);
+  assert.throws(() => mergeShardReceipts(plan, "linux", invalid), /toolchain|environment/);
+}
+const forgedImage = structuredClone(mixedWorkers);
+forgedImage[1].checks[0].environment.image = "forged";
+assert.throws(() => mergeShardReceipts(plan, "linux", forgedImage), /origin|environment/);
+const foreignRun = structuredClone(mixedWorkers);
+foreignRun[1].producer.runId = "456";
+assert.throws(() => mergeShardReceipts(plan, "linux", foreignRun));
+const changedSource = structuredClone(mixedWorkers);
+changedSource[1].sourceRevision = "d".repeat(40);
+assert.throws(() => mergeShardReceipts(plan, "linux", changedSource));
+assert.equal(
+  mergeShardReceipts(plan, "linux", [mixedWorkers[0], mixedWorkers[1]], { allowPartial: true }).coverageComplete,
+  false,
+);
+
+// Authenticate an actual collected manifest through the GitHub reader across attempts.
+const history = new GitHubEvidence({ repository: "example/villages" });
+const manifest = {
+  schemaVersion: 3,
+  sourceRevision: plan.sourceRevision,
+  policyDigest: blueprint.policyDigest,
+  inputDigest: blueprint.inputDigest,
+  inputsUnchanged: true,
+  ready: true,
+  blueprint,
+  validationProfile: blueprint.validationProfile,
+  producer: { runId: "123", attempt: 2, job: "package-parity" },
+  platforms: { linux: mixed },
+};
+const parityJob = {
+  name: "package-parity",
+  status: "completed",
+  conclusion: "success",
+  steps: [{ name: "Verify complete candidate coverage", conclusion: "success" }],
+};
+const queriedAttempts = [];
+history.artifact = () => ({ id: 7 });
+history.jsonFile = async () => manifest;
+history.api = (path) => {
+  if (path === "actions/runs/123")
+    return {
+      ...run,
+      run_attempt: 2,
+      path: ".github/workflows/ci.yml",
+      event: "pull_request",
+      head_sha: plan.sourceRevision,
+      head_repository: { full_name: "example/villages" },
+    };
+  if (path === "git/commits/" + plan.sourceRevision) return { sha: plan.sourceRevision };
+  const attempt = Number(path.match(/attempts\/(\d+)\/jobs/)[1]);
+  queriedAttempts.push(attempt);
+  return { jobs: [...attemptJobs.filter((job) => job.run_attempt === attempt), ...(attempt === 2 ? [parityJob] : [])] };
+};
+await history.coverage("123", blueprint.policyDigest);
+assert.deepEqual(queriedAttempts.sort(), [1, 2], "Every producing attempt is authenticated separately");
+const validApi = history.api;
+history.api = (path) => (path.includes("attempts/1/jobs") ? { jobs: [] } : validApi(path));
+await assert.rejects(() => history.coverage("123", blueprint.policyDigest), /attempt|name/);
 
 const partial = mergeShardReceipts(plan, "linux", workers.slice(1), { allowPartial: true });
 assert.equal(partial.coverageComplete, false);
