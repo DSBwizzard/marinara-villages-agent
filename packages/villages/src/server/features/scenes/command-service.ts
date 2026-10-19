@@ -1337,6 +1337,18 @@ export function createSceneCommands({
             : {}),
           liveProposals: bindLiveProposals(reply, "", savedLineIds),
           effectFailures: reply.effectFailures,
+          ...(asRecord(reply).projectOfferReview
+            ? {
+                interpretationHistory: [
+                  {
+                    at,
+                    domain: "projects" as const,
+                    source: "System offer availability review",
+                    proposals: asRecord(reply).projectOfferReview,
+                  },
+                ],
+              }
+            : {}),
           speechCapture: reply.speechCapture,
           accessEvents: savedAccessEvents(reply.roomInterpretation),
           ...(reply.residentActionReceipt ? { residentActionReceipt: reply.residentActionReceipt } : {}),
@@ -2592,6 +2604,18 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         openingSignal: reply.openingSignal,
         projectContexts: reply.projectContexts,
         projectInterpretationVersion: 1 as const,
+        ...(asRecord(reply).projectOfferReview
+          ? {
+              interpretationHistory: [
+                {
+                  at,
+                  domain: "projects" as const,
+                  source: "System offer availability review",
+                  proposals: asRecord(reply).projectOfferReview,
+                },
+              ],
+            }
+          : {}),
         projectSpeech: reply.projectSpeech.map((proposal) => ({
           ...proposal,
           citations: proposal.citations.map((citation) => ({

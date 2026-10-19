@@ -1422,6 +1422,9 @@ export function createSceneWriting({
             : undefined) as import("../../domain/models/scene-model.js").VenueSubmission["openingContext"],
         openingSignal: readOpeningSignal(raw?.openingSignal),
         projectContexts,
+        ...(semanticResult?.effects.projectOfferReview
+          ? { projectOfferReview: semanticResult.effects.projectOfferReview }
+          : {}),
         contactIntent:
           !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")
             ? readContactIntent(raw?.contactIntent, message)

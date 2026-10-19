@@ -1751,6 +1751,123 @@ async function main() {
   venue.zones[0].closed = false;
   narrativeActions = undefined;
   actionReview = undefined;
+  // Optional supply sources fail closed within the existing System response, never by losing valid chat.
+  for (const availability of [
+    undefined,
+    { materials: "partial", certainty: "uncertain", contribution: "materials" },
+    { materials: "complete", certainty: "uncertain", contribution: "materials" },
+    { materials: "none", certainty: "confirmed", contribution: "labor" },
+    { materials: "complete", certainty: "confirmed", contribution: "materials" },
+  ]) {
+    const local = new Map<string, any>();
+    let completions = 0;
+    const proposal = {
+      projectId: "rail",
+      revision: 2,
+      kind: "offer",
+      requirementId: "structure",
+      speakerId: "supplier",
+      citations: [{ segment: 0, quote: "I might have a plank, but I cannot promise the brackets." }],
+      checklist: [],
+      availability,
+    };
+    if (
+      availability?.materials === "complete" &&
+      availability.certainty === "confirmed" &&
+      availability.contribution === "materials"
+    )
+      proposal.citations[0].quote = "I have the complete plank, brackets, bolts and lip here, ready for you.";
+    const originalProposal = structuredClone(proposal);
+    const offerService = createSemanticService({
+      ...ports,
+      readVillageState: async () => defaultVillageState(),
+      venueSavedCheckpoint: (key) => local.get(key),
+      venueCheckpoint: async (key, work) => {
+        if (local.has(key)) return structuredClone(local.get(key));
+        const value = await work();
+        local.set(key, structuredClone(value));
+        return value;
+      },
+      completeWithRoom: async (_model, messages) => {
+        completions++;
+        const packet = JSON.parse(messages[1].content);
+        return {
+          finishReason: "stop",
+          content: JSON.stringify({
+            sourceHash: packet.sourceHash,
+            consistent: true,
+            authority: { physical: false, projects: true, access: false, standing: false },
+            action: null,
+            memoryChanges: [],
+            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+            wishChanges: [],
+            projectSpeech: [proposal],
+            access: [],
+            events: { moves: [], departures: [], contactEnd: [] },
+          }),
+        };
+      },
+    });
+    const offerScene = { ...scene, id: "offer-qualification", operation: undefined };
+    const lines = [
+      {
+        kind: "dialogue",
+        speakerId: "supplier",
+        content: proposal.citations[0].quote,
+        heardBy: ["supplier"],
+        role: "assistant",
+      },
+    ] as any;
+    const accepted =
+      availability?.materials === "complete" &&
+      availability.certainty === "confirmed" &&
+      availability.contribution === "materials";
+    const result = await offerService.exchange(offerScene, "Could you supply the complete kit?", lines, null);
+    assert.equal((result.effects.projectSpeech as any[]).length, accepted ? 1 : 0);
+    assert.equal(result.authority.projects, accepted);
+    assert.equal(result.authority.physical, false);
+    assert.equal((result.effects.projectOfferReview as any).reviews[0].accepted, accepted);
+    assert.deepEqual(
+      (result.effects.projectOfferReview as any).reviews[0].proposal,
+      JSON.parse(JSON.stringify(originalProposal)),
+      "Original proposed metadata remains in the review audit",
+    );
+    assert.deepEqual(proposal, originalProposal);
+    await offerService.exchange(offerScene, "Could you supply the complete kit?", lines, null);
+    assert.equal(
+      completions,
+      1,
+      "Classification uses the existing single System call and replays without another judge",
+    );
+    if (accepted) {
+      for (const quote of [
+        "I might help sand tomorrow, but I have the complete boards, bolts, brackets and lip here for you now.",
+        "I cannot promise labor, but the complete plank, brackets, bolts and lip are available now.",
+      ]) {
+        proposal.citations[0].quote = quote;
+        const confirmed = await offerService.exchange(offerScene, quote, [{ ...lines[0], content: quote }], null);
+        assert.equal(
+          (confirmed.effects.projectSpeech as any[]).length,
+          1,
+          "Unrelated labor uncertainty does not veto confirmed material availability",
+        );
+      }
+      proposal.citations[0].quote = originalProposal.citations[0].quote;
+    }
+    // A saved old input retains its original schema, even under new code.
+    const inputKey = [...local.keys()].find((key) => key.endsWith(":input"))!;
+    const oldPacket = local.get(inputKey);
+    delete oldPacket.input.offerAvailabilityVersion;
+    const completedKey = inputKey.slice(0, -6);
+    local.delete(completedKey);
+    const oldResult = await offerService.exchange(offerScene, "Could you supply the complete kit?", lines, null);
+    assert.equal(
+      (oldResult.effects.projectSpeech as any[]).length,
+      1,
+      "Frozen older interpretation is never rewritten by this fresh-admission policy",
+    );
+    assert.equal(oldResult.effects.projectOfferReview, undefined);
+  }
   console.log(
     "System ownership: connection routing, independent extraction, replay, failure isolation, evidence identity, privacy and legacy compatibility passed; fake providers only.",
   );
