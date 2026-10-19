@@ -6,6 +6,7 @@ import {
 import { applyAccessCommand, evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { parseRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
+  RESIDENT_ACTION_SHAPE,
   readResidentActions,
   reconcileResidentActions,
   assertResidentActionWitnesses,
@@ -1094,6 +1095,27 @@ async function main() {
     ),
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
+  assert(
+    systemPrompt.includes(RESIDENT_ACTION_SHAPE),
+    "System needs the full additional-action schema even when Narration proposes []",
+  );
+  assert.throws(
+    () =>
+      readResidentActions([
+        {
+          id: "aqua-standing-afternoons",
+          actorId: "host",
+          kind: "grant-standing",
+          venueId: "home",
+          zoneId: "common:base",
+          scope: "visit",
+          conditions: "afternoons",
+          source: 5,
+        },
+      ]),
+    /incomplete|invalid/i,
+    "The saved malformed additional action must remain rejected rather than inferred into permission",
+  );
   assert(narrationPrompt.includes("within the player's already occupied public Zone do not change access"));
   assert(systemPrompt.includes("within the player's already occupied public Zone do not change access"));
   assert(systemPrompt.includes("Inspect each context.actors entry's wishes independently using actor.id and wish.id."));

@@ -1,6 +1,7 @@
 import { readOpeningSignal } from "../../domain/rules/opening-project.js";
 import { RELATIONSHIP_PERMISSION_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
+  RESIDENT_ACTION_SHAPE,
   RESIDENT_ACTION_REVIEW,
   RESIDENT_ACTION_PUBLIC_SOCIAL,
   RESIDENT_ACTION_REVIEW_V1,
@@ -339,7 +340,7 @@ export function createSemanticService(ports: SemanticPorts) {
       },
       (residentActions
         ? (actionContractV2
-            ? RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
+            ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
             : RESIDENT_ACTION_REVIEW_V1) + " "
         : "") +
         (combined
