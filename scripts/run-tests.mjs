@@ -9,16 +9,14 @@ import { browserWorkerLimit, scheduleTests } from "./test-scheduler.mjs";
 import { caseMatches } from "./test-cases.mjs";
 
 const args = process.argv.slice(2);
-const group = args.find((arg) => !arg.startsWith("--")) ?? "regression";
+const group = args.find((arg) => !arg.startsWith("--")) ?? (args.includes("--list") ? "all" : "regression");
 const inventory = await testInventory();
-if (args.includes("--list")) {
-  console.log(JSON.stringify(inventory, null, 2));
-  process.exit(0);
-}
 if (!["regression", "browser", "engine", "review", "all"].includes(group))
   throw new Error(`Unknown test group: ${group}`);
 const filter = args.find((arg) => arg.startsWith("--filter="))?.slice(9);
 const selected = args.filter((arg) => arg.startsWith("--test=")).map((arg) => arg.slice(7));
+const shard = args.find((arg) => arg.startsWith("--shard="))?.slice(8);
+if (shard !== undefined && !/^[12]\/2$/.test(shard)) throw Error("Use --shard=1/2 or --shard=2/2");
 const cases = args.filter((arg) => arg.startsWith("--case=")).map((arg) => arg.slice(7));
 if (args.includes("--fail-fast") && args.includes("--keep-going")) throw new Error("Choose fail-fast or keep-going");
 const failFast = args.includes("--fail-fast") || (!args.includes("--keep-going") && process.env.CI !== "true");
@@ -34,7 +32,9 @@ for (const arg of args) {
     arg !== "--list" &&
     arg !== "--fail-fast" &&
     arg !== "--keep-going" &&
-    !["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs="].some((prefix) => arg.startsWith(prefix))
+    !["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs=", "--shard="].some((prefix) =>
+      arg.startsWith(prefix),
+    )
   )
     throw new Error(`Unknown test option: ${arg}`);
 }
@@ -59,7 +59,7 @@ for (const name of cases)
     !inventory.some((test) => test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)))
   )
     throw new Error("Unknown test case: " + name);
-const tests = inventory.filter(
+const scoped = inventory.filter(
   (test) =>
     (group === "all" || (group === "review" ? test.group !== "engine" : test.group === group)) &&
     (!filter || test.path.includes(filter)) &&
@@ -67,10 +67,15 @@ const tests = inventory.filter(
     (!cases.length ||
       test.cases.some((entry) => cases.some((name) => caseMatches(entry, name) || caseMatches(name, entry)))),
 );
+const tests = shard ? scoped.filter((_, index) => index % 2 === Number(shard[0]) - 1) : scoped;
 if (!tests.length) throw new Error("No tests matched; validation cannot pass an empty selection.");
 for (const name of cases)
   if (!tests.some((test) => test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry))))
     throw new Error("Requested test case is outside the selected files/group: " + name);
+if (args.includes("--list")) {
+  console.log(JSON.stringify(tests, null, 2));
+  process.exit(0);
+}
 const operation = await acquireCheckoutOperation(process.cwd());
 try {
   const root = ".build-tmp/test-results";
@@ -239,8 +244,9 @@ try {
       host: { ...host, freeMemoryAtEnd: freemem() },
       failFast,
       cases,
+      shard,
       durationMs: Date.now() - start,
-      completeInventory: !filter && !selected.length && !cases.length && !results.some((row) => row.skipped),
+      completeInventory: !shard && !filter && !selected.length && !cases.length && !results.some((row) => row.skipped),
       passed:
         results.every((result) => result.code === 0) &&
         cases.every((name) =>
