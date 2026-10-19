@@ -17,7 +17,7 @@ export function renderMenuIndexPage(ports: MenuIndexPagePorts) {
           Events
         </button>
         <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("villagers")}>
-          Village Management
+          Villagers
         </button>
         <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("general")}>
           General Settings
