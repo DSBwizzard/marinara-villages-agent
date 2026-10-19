@@ -674,6 +674,11 @@ async function main() {
     service.exchange(scene, "Unheard opening metadata", [{ ...pitchLine, contactHidden: true }], null),
     /opening evidence did not validate/,
   );
+  assert.doesNotMatch(
+    systemPrompt,
+    /intent belongs inside|Return \{sourceHash,intent:/,
+    "Legacy exchange prompts do not require combined intent",
+  );
   state.opening = undefined;
   scene.activeIds = [];
   openingSignal = null;
@@ -1175,6 +1180,10 @@ async function main() {
     ),
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
+  assert(
+    systemPrompt.includes("Return {sourceHash,intent:{"),
+    "The combined response example must contain required intent inside the single exchange object",
+  );
   assert(
     systemPrompt.includes(RESIDENT_ACTION_SHAPE),
     "System needs the full additional-action schema even when Narration proposes []",
