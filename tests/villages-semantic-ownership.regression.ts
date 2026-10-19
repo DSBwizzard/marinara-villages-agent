@@ -1337,6 +1337,12 @@ async function main() {
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
   assert(
+    systemPrompt.includes(
+      "Every projectSpeech citation must be dialogue spoken by that row's speakerId; never cite narration or player speech",
+    ),
+    "A saved supply offer repeatedly cited narration as the resident commitment",
+  );
+  assert(
     systemPrompt.includes("For offer and handoff, requirementId is required"),
     "The live source offer omitted its mandatory supply target under the old optional-field schema",
   );
