@@ -118,8 +118,14 @@ jobs:
   package-parity:
     name: package-parity
     needs: [validate, validate-windows, browser]
+    if: always()
     runs-on: ubuntu-24.04
     steps:
+      - name: Require all validation jobs
+        env:
+          VALIDATION_JOBS: ${{ toJSON(needs) }}
+        run: |
+          node -e 'const needs = JSON.parse(process.env.VALIDATION_JOBS); if (Object.values(needs).some(job => job.result !== "success")) process.exit(1);'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
