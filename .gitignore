@@ -10,3 +10,7 @@ node_modules/
 /packages/villages/locales/en.json
 # Obsolete capture copies from older local builders are not maintained source.
 /sources/engine/
+
+# Local agent instructions and credentials never enter product archives.
+/.codex/
+/AGENTS.override.md

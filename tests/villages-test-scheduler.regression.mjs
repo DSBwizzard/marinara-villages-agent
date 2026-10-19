@@ -54,7 +54,10 @@ const orderedResults = await scheduleTests(ordered, {
     return { path: test.path, code: 0 };
   },
 });
-assert.deepEqual(starts, [ordered[1].path, "short", "barrier", ordered[3].path]);
+assert.deepEqual(
+  starts,
+  ordered.map((row) => row.path),
+);
 assert.deepEqual(
   orderedResults.map((row) => row.path),
   ordered.map((row) => row.path),

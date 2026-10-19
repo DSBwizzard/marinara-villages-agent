@@ -20,8 +20,6 @@ if (!["regression", "browser", "engine", "review", "all"].includes(group))
 const filter = args.find((arg) => arg.startsWith("--filter="))?.slice(9);
 const selected = args.filter((arg) => arg.startsWith("--test=")).map((arg) => arg.slice(7));
 const cases = args.filter((arg) => arg.startsWith("--case=")).map((arg) => arg.slice(7));
-const reuse = args.includes("--reuse");
-if (reuse && process.env.CI === "true") throw Error("Local feedback receipts cannot satisfy CI coverage");
 if (args.includes("--fail-fast") && args.includes("--keep-going")) throw new Error("Choose fail-fast or keep-going");
 const failFast = args.includes("--fail-fast") || (!args.includes("--keep-going") && process.env.CI !== "true");
 const jobs = Number(args.find((arg) => arg.startsWith("--jobs="))?.slice(7) ?? 4);
@@ -36,7 +34,6 @@ for (const arg of args) {
     arg !== "--list" &&
     arg !== "--fail-fast" &&
     arg !== "--keep-going" &&
-    arg !== "--reuse" &&
     !["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs="].some((prefix) => arg.startsWith(prefix))
   )
     throw new Error(`Unknown test option: ${arg}`);
@@ -104,13 +101,6 @@ try {
     await lock.writeFile(JSON.stringify({ pid: process.pid, runId, group, startedAt: new Date().toISOString() }));
     await mkdir(directory);
     const start = Date.now();
-    const cache =
-      reuse &&
-      !process.env.VILLAGES_FEEDBACK_SCREENSHOTS &&
-      !process.env.VILLAGES_SCREENSHOT_DIR &&
-      !process.env.VILLAGES_VISUAL_OUTPUT
-        ? await (await import("./feedback-proof.mjs")).feedbackProof(process.cwd(), tests)
-        : null;
     console.log(
       `WORKERS total=${jobs} browsers=${browserJobs} cpus=${host.cpuCount} memoryGiB=${(host.memoryBytes / 1024 ** 3).toFixed(1)} freeGiB=${(host.freeMemoryBytes / 1024 ** 3).toFixed(1)}`,
     );
@@ -126,11 +116,6 @@ try {
         const testCases = cases.filter((name) =>
           test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
         );
-        const cached = await cache?.read(test, testCases);
-        if (cached) {
-          console.log(`REUSE ${test.path} (local feedback; exact unchanged inputs)`);
-          return cached;
-        }
         const caseReport = join(directory, test.path.split("/").pop() + ".cases.json");
         const result = await new Promise((resolve) => {
           const child = spawn(process.execPath, ["--import", "tsx", test.path], {
@@ -236,7 +221,7 @@ try {
               if (process.env.GITHUB_STEP_SUMMARY)
                 await appendFile(
                   process.env.GITHUB_STEP_SUMMARY,
-                  `First failing suite: \`${test.path}\`. Remaining coverage continues; successful checks will be retained.\n`,
+                  `First failing suite: \`${test.path}\`. Remaining coverage continues; logs identify failures.\n`,
                 );
             }
           }
@@ -244,16 +229,6 @@ try {
         return { ...result, output: undefined };
       },
     });
-    await cache?.unchanged();
-    if (cache)
-      for (const result of results) {
-        if (result.reused) continue;
-        const test = tests.find((test) => test.path === result.path);
-        const testCases = cases.filter((name) =>
-          test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
-        );
-        await cache.write(test, testCases, result);
-      }
     const report = {
       startedAt: new Date(start).toISOString(),
       completedAt: new Date().toISOString(),

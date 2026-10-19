@@ -1,325 +1,98 @@
 name: CI
-
 on:
-  workflow_dispatch:
-    inputs:
-      mode:
-        description: Candidate preparation or explicit full execution
-        type: choice
-        options: [prepare, full]
-        default: prepare
-      fresh:
-        description: Ignore prior CI evidence
-        type: boolean
-        default: false
   pull_request:
     branches: [staging, main]
-  push:
-    branches: [staging, main]
-
+  workflow_dispatch:
 permissions:
   contents: read
-  pull-requests: read
-  actions: read
-
 concurrency:
   group: villages-ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
-
+  cancel-in-progress: true
 env:
-  VILLAGES_CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-  VILLAGES_CI_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-  VILLAGES_CI_FRESH: ${{ inputs.fresh || 'false' }}
-  VILLAGES_CI_MODE: ${{ inputs.mode || 'prepare' }}
-  GH_TOKEN: ${{ github.token }}
   PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.build-tmp/playwright
   TZ: UTC
-
 jobs:
-  parallel-work:
-    name: parallel-work
-    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'staging'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-      - name: Check branch freshness and overlapping Villages PR files
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPOSITORY: ${{ github.repository }}
-        run: node scripts/check-parallel-work.mjs
-
-  prepare:
-    name: prepare
-    runs-on: ubuntu-24.04
-    outputs:
-      windows-needed: ${{ steps.plan.outputs.windows-needed }}
-      browser-matrix: ${{ steps.plan.outputs.browser-matrix }}
-      browser-workers: ${{ steps.plan.outputs.browser-workers }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 24.21.0
-          cache: npm
-      - run: npm ci
-      - name: Plan complete candidate coverage
-        id: plan
-        run: node scripts/ci-candidate.mjs --plan
-      - uses: actions/upload-artifact@v4
-        with:
-          name: villages-plan
-          path: .build-tmp/ci-plan.json
-          include-hidden-files: true
-          if-no-files-found: error
-
-  browser:
-    name: ${{ matrix.name }}
-    needs: prepare
-    if: needs.prepare.outputs.browser-workers == 'true'
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.browser-matrix) }}
-    concurrency:
-      group: villages-proof-${{ github.event.pull_request.head.sha || github.sha }}-${{ matrix.name }}
-      cancel-in-progress: false
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 24.21.0
-          cache: npm
-      - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: villages-plan
-          path: .build-tmp
-      - name: Select missing check execution
-        id: scope
-        run: node scripts/ci-validation.mjs --target=${{ matrix.platform }} --shard=${{ matrix.index }} --policy
-      - name: Restore browser test runtime
-        if: steps.scope.outputs.browser == 'true'
-        id: browser-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-      - name: Install browser system dependencies
-        if: matrix.platform == 'linux' && steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-      - name: Install browser test runtime
-        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-      - name: Save browser test runtime
-        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-      - name: Validate maintained source and package
-        env:
-          VILLAGES_CI_BROWSER_READY: ${{ steps.scope.outputs.browser }}
-        run: npm run validate:ci -- --target=${{ matrix.platform }} --shard=${{ matrix.index }}
-      - name: Retain validated package and source receipt
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: villages-${{ matrix.name }}
-          path: |
-            artifacts/villages-*.zip
-            .build-tmp/package-build.json
-            .build-tmp/ci-validation.json
-          include-hidden-files: true
-          if-no-files-found: warn
-          overwrite: true
-      - name: Retain validation diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: diagnostics-${{ matrix.name }}
-          path: .build-tmp/test-results/
-          include-hidden-files: true
-          if-no-files-found: ignore
-
   validate:
     name: validate
-    needs: prepare
-    concurrency:
-      group: villages-proof-${{ github.event.pull_request.head.sha || github.sha }}-linux
-      cancel-in-progress: false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.21.0
           cache: npm
       - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: villages-plan
-          path: .build-tmp
-      - name: Select missing check execution
-        id: scope
-        run: node scripts/ci-validation.mjs --target=linux --policy
-      - name: Restore browser test runtime
-        if: steps.scope.outputs.browser == 'true'
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: browser-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-      - name: Install browser system dependencies
-        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
+      - if: runner.os == 'Linux' && steps.browser-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
-      - name: Install browser test runtime
-        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
+      - if: steps.browser-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
-      - name: Save browser test runtime
-        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - run: npm run validate
+      - uses: actions/upload-artifact@v4
         with:
-          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-      - name: Validate maintained source and package
-        env:
-          VILLAGES_CI_BROWSER_READY: ${{ steps.scope.outputs.browser }}
-        run: npm run validate:ci -- --target=linux
-      - name: Retain validated package and source receipt
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: villages-validate
+          name: villages-linux
           path: |
             artifacts/villages-*.zip
             .build-tmp/package-build.json
-            .build-tmp/ci-validation.json
           include-hidden-files: true
-          if-no-files-found: warn
-          overwrite: true
-      - name: Retain validation diagnostics
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: diagnostics-validate
+          name: diagnostics-linux
           path: .build-tmp/test-results/
           include-hidden-files: true
           if-no-files-found: ignore
-
   validate-windows:
     name: validate-windows
-    needs: prepare
-    concurrency:
-      group: villages-proof-${{ github.event.pull_request.head.sha || github.sha }}-windows
-      cancel-in-progress: false
-    runs-on: ${{ needs.prepare.outputs.windows-needed == 'true' && 'windows-2025' || 'ubuntu-24.04' }}
+    runs-on: windows-2025
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.21.0
           cache: npm
       - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: villages-plan
-          path: .build-tmp
-      - name: Select missing check execution
-        id: scope
-        run: node scripts/ci-validation.mjs --target=win32 --policy
-      - name: Restore browser test runtime
-        if: steps.scope.outputs.browser == 'true'
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: browser-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-      - name: Install browser test runtime
-        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
+      - if: runner.os == 'Linux' && steps.browser-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - if: steps.browser-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
-      - name: Save browser test runtime
-        if: steps.scope.outputs.browser == 'true' && steps.browser-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - run: npm run validate
+      - uses: actions/upload-artifact@v4
         with:
-          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-      - name: Validate maintained source and package
-        env:
-          VILLAGES_CI_BROWSER_READY: ${{ steps.scope.outputs.browser }}
-        run: npm run validate:ci -- --target=win32
-      - name: Retain validated package and source receipt
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: villages-validate-windows
+          name: villages-windows
           path: |
             artifacts/villages-*.zip
             .build-tmp/package-build.json
-            .build-tmp/ci-validation.json
           include-hidden-files: true
-          if-no-files-found: warn
-          overwrite: true
-      - name: Retain validation diagnostics
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: diagnostics-validate-windows
+          name: diagnostics-windows
           path: .build-tmp/test-results/
           include-hidden-files: true
           if-no-files-found: ignore
-
   package-parity:
     name: package-parity
-    needs: [prepare, validate, validate-windows, browser]
-    if: always()
+    needs: [validate, validate-windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.21.0
-          cache: npm
-      - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: villages-plan
-          path: .build-tmp
       - uses: actions/download-artifact@v4
         with:
           pattern: villages-*
           path: .build-tmp/platforms
-      - name: Collect complete candidate evidence
-        id: collect
-        run: node scripts/ci-candidate.mjs --collect
-      - uses: actions/upload-artifact@v4
-        if: steps.collect.outputs.candidate == 'true'
-        with:
-          name: villages-candidate
-          path: .build-tmp/candidate/
-          include-hidden-files: true
-          if-no-files-found: error
-          overwrite: true
-      - name: Bind candidate artifact identity
-        run: node scripts/ci-candidate.mjs --seal
-      - uses: actions/upload-artifact@v4
-        with:
-          name: villages-coverage
-          path: .build-tmp/coverage-manifest.json
-          include-hidden-files: true
-          if-no-files-found: error
-          overwrite: true
-      - name: Verify complete candidate coverage
-        run: node scripts/ci-candidate.mjs --gate
+      - run: node scripts/package-parity.mjs .build-tmp/platforms/villages-linux .build-tmp/platforms/villages-windows
