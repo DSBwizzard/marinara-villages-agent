@@ -36,7 +36,6 @@
   },
   "scripts": {
     "check:changed": "node scripts/check-changed.mjs",
-    "validate:ci": "node scripts/ci-validation.mjs",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run check:engine-types && npm run check:architecture",
     "check:architecture": "node scripts/check-architecture.mjs",
     "typecheck": "tsc --project tsconfig.package.json --pretty false",
@@ -46,13 +45,12 @@
     "test:browser": "node scripts/run-tests.mjs browser",
     "test:engine": "node scripts/run-tests.mjs engine",
     "test:inventory": "node scripts/run-tests.mjs --list",
-    "validate": "npm run check && npm run build && npm run verify:package && npm run test:review",
+    "validate": "npm run check && npm run verify:build && npm run verify:package && npm run test:review",
     "format": "prettier --write \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs \"packages/villages/*.mjs\" \"sources/package-shared.ts\" tsconfig.package.json",
     "format:check": "prettier --check \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs \"packages/villages/*.mjs\" \"sources/package-shared.ts\" tsconfig.package.json",
     "lint": "eslint \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs \"packages/villages/*.mjs\" \"sources/package-shared.ts\"",
     "check:engine-types": "node scripts/engine-public-declarations.mjs",
     "test:review": "node scripts/run-tests.mjs review",
-    "verify:build": "node scripts/verify-build.mjs",
-    "test:impact": "node scripts/select-tests.mjs --explain"
+    "verify:build": "node scripts/verify-build.mjs"
   }
 }

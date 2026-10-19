@@ -9,19 +9,15 @@ import { browserWorkerLimit, scheduleTests } from "./test-scheduler.mjs";
 import { caseMatches } from "./test-cases.mjs";
 
 const args = process.argv.slice(2);
-const group = args.find((arg) => !arg.startsWith("--")) ?? "regression";
+const group = args.find((arg) => !arg.startsWith("--")) ?? (args.includes("--list") ? "all" : "regression");
 const inventory = await testInventory();
-if (args.includes("--list")) {
-  console.log(JSON.stringify(inventory, null, 2));
-  process.exit(0);
-}
 if (!["regression", "browser", "engine", "review", "all"].includes(group))
   throw new Error(`Unknown test group: ${group}`);
 const filter = args.find((arg) => arg.startsWith("--filter="))?.slice(9);
 const selected = args.filter((arg) => arg.startsWith("--test=")).map((arg) => arg.slice(7));
+const shard = args.find((arg) => arg.startsWith("--shard="))?.slice(8);
+if (shard !== undefined && !/^[12]\/2$/.test(shard)) throw Error("Use --shard=1/2 or --shard=2/2");
 const cases = args.filter((arg) => arg.startsWith("--case=")).map((arg) => arg.slice(7));
-const reuse = args.includes("--reuse");
-if (reuse && process.env.CI === "true") throw Error("Local feedback receipts cannot satisfy CI coverage");
 if (args.includes("--fail-fast") && args.includes("--keep-going")) throw new Error("Choose fail-fast or keep-going");
 const failFast = args.includes("--fail-fast") || (!args.includes("--keep-going") && process.env.CI !== "true");
 const jobs = Number(args.find((arg) => arg.startsWith("--jobs="))?.slice(7) ?? 4);
@@ -36,8 +32,9 @@ for (const arg of args) {
     arg !== "--list" &&
     arg !== "--fail-fast" &&
     arg !== "--keep-going" &&
-    arg !== "--reuse" &&
-    !["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs="].some((prefix) => arg.startsWith(prefix))
+    !["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs=", "--shard="].some((prefix) =>
+      arg.startsWith(prefix),
+    )
   )
     throw new Error(`Unknown test option: ${arg}`);
 }
@@ -62,7 +59,7 @@ for (const name of cases)
     !inventory.some((test) => test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)))
   )
     throw new Error("Unknown test case: " + name);
-const tests = inventory.filter(
+const scoped = inventory.filter(
   (test) =>
     (group === "all" || (group === "review" ? test.group !== "engine" : test.group === group)) &&
     (!filter || test.path.includes(filter)) &&
@@ -70,10 +67,15 @@ const tests = inventory.filter(
     (!cases.length ||
       test.cases.some((entry) => cases.some((name) => caseMatches(entry, name) || caseMatches(name, entry)))),
 );
+const tests = shard ? scoped.filter((_, index) => index % 2 === Number(shard[0]) - 1) : scoped;
 if (!tests.length) throw new Error("No tests matched; validation cannot pass an empty selection.");
 for (const name of cases)
   if (!tests.some((test) => test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry))))
     throw new Error("Requested test case is outside the selected files/group: " + name);
+if (args.includes("--list")) {
+  console.log(JSON.stringify(tests, null, 2));
+  process.exit(0);
+}
 const operation = await acquireCheckoutOperation(process.cwd());
 try {
   const root = ".build-tmp/test-results";
@@ -104,13 +106,6 @@ try {
     await lock.writeFile(JSON.stringify({ pid: process.pid, runId, group, startedAt: new Date().toISOString() }));
     await mkdir(directory);
     const start = Date.now();
-    const cache =
-      reuse &&
-      !process.env.VILLAGES_FEEDBACK_SCREENSHOTS &&
-      !process.env.VILLAGES_SCREENSHOT_DIR &&
-      !process.env.VILLAGES_VISUAL_OUTPUT
-        ? await (await import("./feedback-proof.mjs")).feedbackProof(process.cwd(), tests)
-        : null;
     console.log(
       `WORKERS total=${jobs} browsers=${browserJobs} cpus=${host.cpuCount} memoryGiB=${(host.memoryBytes / 1024 ** 3).toFixed(1)} freeGiB=${(host.freeMemoryBytes / 1024 ** 3).toFixed(1)}`,
     );
@@ -126,11 +121,6 @@ try {
         const testCases = cases.filter((name) =>
           test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
         );
-        const cached = await cache?.read(test, testCases);
-        if (cached) {
-          console.log(`REUSE ${test.path} (local feedback; exact unchanged inputs)`);
-          return cached;
-        }
         const caseReport = join(directory, test.path.split("/").pop() + ".cases.json");
         const result = await new Promise((resolve) => {
           const child = spawn(process.execPath, ["--import", "tsx", test.path], {
@@ -236,7 +226,7 @@ try {
               if (process.env.GITHUB_STEP_SUMMARY)
                 await appendFile(
                   process.env.GITHUB_STEP_SUMMARY,
-                  `First failing suite: \`${test.path}\`. Remaining coverage continues; successful checks will be retained.\n`,
+                  `First failing suite: \`${test.path}\`. Remaining coverage continues; logs identify failures.\n`,
                 );
             }
           }
@@ -244,16 +234,6 @@ try {
         return { ...result, output: undefined };
       },
     });
-    await cache?.unchanged();
-    if (cache)
-      for (const result of results) {
-        if (result.reused) continue;
-        const test = tests.find((test) => test.path === result.path);
-        const testCases = cases.filter((name) =>
-          test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
-        );
-        await cache.write(test, testCases, result);
-      }
     const report = {
       startedAt: new Date(start).toISOString(),
       completedAt: new Date().toISOString(),
@@ -264,8 +244,9 @@ try {
       host: { ...host, freeMemoryAtEnd: freemem() },
       failFast,
       cases,
+      shard,
       durationMs: Date.now() - start,
-      completeInventory: !filter && !selected.length && !cases.length && !results.some((row) => row.skipped),
+      completeInventory: !shard && !filter && !selected.length && !cases.length && !results.some((row) => row.skipped),
       passed:
         results.every((result) => result.code === 0) &&
         cases.every((name) =>
