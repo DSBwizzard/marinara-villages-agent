@@ -366,6 +366,9 @@ export function coerceSession(value: unknown): VenueScene {
                 ? {
                     stage: asTrimmedString(asRecord(row.openingContext).stage),
                     projectId: asTrimmedString(asRecord(row.openingContext).projectId),
+                    ...(Object.hasOwn(asRecord(row.openingContext), "proposalFingerprint")
+                      ? { proposalFingerprint: asTrimmedString(asRecord(row.openingContext).proposalFingerprint) }
+                      : {}),
                   }
                 : undefined,
               openingSignal: readOpeningSignal(row.openingSignal),

@@ -1,4 +1,8 @@
-import { initialOpening, openingSceneDirection } from "../packages/villages/src/server/domain/rules/opening-project.js";
+import {
+  initialOpening,
+  openingSceneDirection,
+  openingProposalFingerprint,
+} from "../packages/villages/src/server/domain/rules/opening-project.js";
 import {
   applyRelationshipReview,
   defaultRelationshipState,
@@ -367,6 +371,7 @@ async function main() {
           },
         });
       }
+      Object.assign(result, { openingContext: { proposalFingerprint: "model-forgery" } });
       if (behavior === "missing-domain") delete (result as Record<string, unknown>).memoryChanges;
       return {
         finishReason: behavior === "length" ? "length" : "stop",
@@ -639,6 +644,34 @@ async function main() {
   const pitched = await service.exchange(scene, "Tell me your idea", [pitchLine], null);
   assert.deepEqual(pitched.effects.openingSignal, openingSignal);
   assert.deepEqual(pitched.effects.openingContext, { stage: "conversations", projectId: "" });
+  const bound = await service.exchange(
+    { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as any,
+    "Bound opening proposal",
+    [pitchLine],
+    null,
+  );
+  assert.equal(
+    (bound.effects.openingContext as any).proposalFingerprint,
+    openingProposalFingerprint(state.opening.proposals[0]),
+    "System binds the actual frozen prepared proposal, never a field supplied by the model",
+  );
+  const boundCalls = calls.length,
+    frozenFingerprint = (bound.effects.openingContext as any).proposalFingerprint;
+  const originalWork = state.opening.proposals[0].work;
+  state.opening.proposals[0].work = "Changed work under the same title";
+  const boundReplay = await service.exchange(
+    { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as any,
+    "Bound opening proposal",
+    [pitchLine],
+    null,
+  );
+  assert.equal(calls.length, boundCalls, "Saved System result is reused without a new request");
+  assert.equal(
+    (boundReplay.effects.openingContext as any).proposalFingerprint,
+    frozenFingerprint,
+    "Replay retains frozen preparation identity",
+  );
+  state.opening.proposals[0].work = originalWork;
   const beforeReplay = calls.length;
   state.opening.stage = "ended";
   await service.exchange(scene, "Tell me your idea", [pitchLine], null);

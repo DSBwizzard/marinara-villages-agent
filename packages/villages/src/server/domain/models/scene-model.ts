@@ -49,7 +49,7 @@ export type SceneAttendance = {
 };
 export type VenueSubmission = {
   openingProcessedAt?: string;
-  openingContext?: { stage: string; projectId: string };
+  openingContext?: { stage: string; projectId: string; proposalFingerprint?: string };
   openingSignal?: import("../rules/opening-project.js").OpeningSignal;
   residentActionReceipt?: import("../rules/resident-actions.js").ResidentActionReceipt;
   speechCapture?: { version: 3; status: "captured" | "silent" };

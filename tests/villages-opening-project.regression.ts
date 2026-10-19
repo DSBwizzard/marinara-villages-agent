@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { semanticHash } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import {
   defaultVillageState,
   coerceVillageState,
@@ -92,6 +94,101 @@ function pitch(state: ReturnType<typeof world>, residentId: string) {
     openingSignal: { kind: "pitch", residentId, quote, playerQuote: "" },
   } as VenueSubmission;
   return { scene, turn };
+}
+
+// System can recognize the same prepared idea without requiring its full authored title in one quote.
+{
+  const state = world();
+  const idea = state.opening!.proposals[0];
+  idea.name = "Aqua's Perch Landing Rail";
+  const { scene, turn } = pitch(state, "a");
+  const quote = "I call it the Perch Landing Rail. It gives flying visitors a safe place to land.";
+  scene.lines[0].content = quote;
+  turn.openingSignal!.quote = quote;
+  const fingerprint = semanticHash([
+    idea.residentId,
+    idea.name,
+    idea.description,
+    idea.situation ?? "",
+    idea.venueClass,
+    idea.established,
+    idea.provenance,
+    idea.work,
+    idea.firstUse,
+  ]);
+  (turn.openingContext as any).proposalFingerprint = fingerprint;
+  turn.semanticProvenance = { version: 2, pipelineVersion: 3, sourceHash: "f".repeat(64) };
+  turn.semanticReady = true;
+  applyOpeningExchange(state, scene, turn);
+  assert.equal(
+    state.opening!.reveals.length,
+    1,
+    "A witnessed System-bound pitch must advance despite a natural shortened title",
+  );
+  applyOpeningExchange(state, scene, turn);
+  assert.equal(state.opening!.reveals.length, 1, "The reveal remains once-only");
+  const saved = coerceSession({ ...scene, submissions: [turn] });
+  assert.equal((saved.submissions[0].openingContext as any).proposalFingerprint, fingerprint);
+  assert.equal(
+    JSON.stringify(publicSceneResponse(saved)).includes(fingerprint),
+    false,
+    "Private proposal binding is never public",
+  );
+  assert.equal(
+    publicSceneResponse(saved).submissions[0].openingContext?.stage,
+    "conversations",
+    "Public proof test retains the visible turn",
+  );
+  for (const mutate of [
+    (s: typeof state, _t: VenueSubmission) => {
+      s.opening!.proposals[0].work = "Different work under the same title";
+    },
+    (_s: typeof state, t: VenueSubmission) => {
+      delete t.semanticProvenance;
+    },
+    (_s: typeof state, t: VenueSubmission) => {
+      delete t.semanticProvenance!.pipelineVersion;
+    },
+    (_s: typeof state, t: VenueSubmission) => {
+      t.semanticProvenance!.sourceHash = "invalid";
+    },
+    (_s: typeof state, t: VenueSubmission) => {
+      (t.openingContext as any).proposalFingerprint = "";
+    },
+    (_s: typeof state, t: VenueSubmission) => {
+      (t.openingContext as any).proposalFingerprint = 3;
+    },
+    (_s: typeof state, t: VenueSubmission) => {
+      t.activeIdsAtTurn = ["a", "b"];
+    },
+  ]) {
+    const next = structuredClone(state),
+      nextTurn = structuredClone(turn);
+    next.opening!.reveals = [];
+    mutate(next, nextTurn);
+    applyOpeningExchange(next, scene, nextTurn);
+    assert.equal(next.opening!.reveals.length, 0, "Unbound, stale or ineligible semantic proof fails closed");
+  }
+  const invalid = structuredClone(turn),
+    fullScene = structuredClone(scene),
+    invalidState = structuredClone(state);
+  invalidState.opening!.reveals = [];
+  invalid.openingSignal!.quote = "I propose Aqua's Perch Landing Rail for arriving neighbors.";
+  fullScene.lines[0].content = invalid.openingSignal!.quote;
+  (invalid.openingContext as any).proposalFingerprint = 3;
+  const invalidSaved = coerceSession({ ...fullScene, submissions: [invalid] });
+  assert(
+    Object.hasOwn(invalidSaved.submissions[0].openingContext!, "proposalFingerprint"),
+    "Malformed supplied metadata cannot disappear into legacy fallback",
+  );
+  applyOpeningExchange(invalidState, invalidSaved, invalidSaved.submissions[0]);
+  assert.equal(invalidState.opening!.reveals.length, 0, "A complete title cannot rescue malformed System binding");
+  const legacy = structuredClone(turn);
+  delete (legacy.openingContext as any).proposalFingerprint;
+  const old = structuredClone(state);
+  old.opening!.reveals = [];
+  applyOpeningExchange(old, scene, legacy);
+  assert.equal(old.opening!.reveals.length, 0, "Legacy abbreviated quotes retain their original rule");
 }
 
 // Player knowledge, exact witnesses, replay identity, and the whole founding roster.

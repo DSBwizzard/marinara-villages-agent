@@ -1,4 +1,4 @@
-import { readOpeningSignal } from "../../domain/rules/opening-project.js";
+import { readOpeningSignal, openingProposalFingerprint } from "../../domain/rules/opening-project.js";
 import { RELATIONSHIP_PERMISSION_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
   RESIDENT_ACTION_SHAPE,
@@ -437,7 +437,13 @@ export function createSemanticService(ports: SemanticPorts) {
           )
             throw badGateway("System opening evidence did not validate. The draft is preserved.");
           effects.openingSignal = signal;
-          effects.openingContext = { stage: opening.stage, projectId: opening.projectId };
+          effects.openingContext = {
+            stage: opening.stage,
+            projectId: opening.projectId,
+            ...(combined && signal?.kind === "pitch" && opening.proposal
+              ? { proposalFingerprint: openingProposalFingerprint(opening.proposal) }
+              : {}),
+          };
         }
         if (reconciliation) effects.residentActionReceipt = reconciliation.receipt;
         if (

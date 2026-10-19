@@ -1,9 +1,29 @@
+import { createHash } from "node:crypto";
 import { physicalVenueEvents } from "./venue-scene-state.js";
 import type { OpeningProposal, OpeningView } from "../../../shared/contracts/opening.js";
 import type { VillageState } from "../models/world.js";
 import type { VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord, asStringArray, asTrimmedString } from "./coerce.js";
 import { conflict } from "./errors.js";
+
+/** Exact private preparation identity, independent of object property order. */
+export function openingProposalFingerprint(proposal: OpeningProposal): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        proposal.residentId,
+        proposal.name,
+        proposal.description,
+        proposal.situation ?? "",
+        proposal.venueClass,
+        proposal.established,
+        proposal.provenance,
+        proposal.work,
+        proposal.firstUse,
+      ]),
+    )
+    .digest("hex");
+}
 
 export type OpeningSignal = { kind: "pitch" | "first-use"; residentId: string; quote: string; playerQuote: string };
 export type OpeningRecord = {
@@ -243,7 +263,12 @@ export function applyOpeningExchange(state: VillageState, scene: VenueScene, tur
     opening.proposals.some(
       (entry) =>
         entry.residentId === signal.residentId &&
-        signal.quote.toLocaleLowerCase().includes(entry.name.toLocaleLowerCase()),
+        (Object.hasOwn(turn.openingContext, "proposalFingerprint")
+          ? turn.semanticProvenance?.version === 2 &&
+            turn.semanticProvenance.pipelineVersion === 3 &&
+            /^[a-f0-9]{64}$/u.test(turn.semanticProvenance.sourceHash) &&
+            turn.openingContext.proposalFingerprint === openingProposalFingerprint(entry)
+          : signal.quote.toLocaleLowerCase().includes(entry.name.toLocaleLowerCase())),
     ) &&
     state.villagers.some((entry) => entry.characterId === signal.residentId) &&
     !opening.reveals.some((entry) => entry.residentId === signal.residentId)

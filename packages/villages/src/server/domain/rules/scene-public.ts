@@ -119,6 +119,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "semanticContinuedDomains",
             "semanticIntent",
             "semanticProvenance",
+            "proposalFingerprint",
             "semanticAccess",
             "residentActionReceipt",
             "residentActions",
