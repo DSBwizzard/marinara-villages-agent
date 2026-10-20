@@ -12,7 +12,6 @@ import { managerResidentSprite } from "../packages/villages/src/server/domain/ru
 const documents = new Map<string, unknown>();
 let village = coerceVillageState({});
 let calls = 0,
-  enabled = true,
   failImage = false,
   resolved = "",
   copied = 0;
@@ -25,15 +24,13 @@ const service = createSpriteSetup({
     documents.set(id, structuredClone(next));
   },
   villageEngineJson: async (path) => {
-    if (path === "/api/connections/system")
-      return {
-        defaultParameters: JSON.stringify({ imageCaptioningEnabled: enabled, imageCaptioningConnectionId: "vision" }),
-      };
+    if (path === "/api/connections/vision")
+      return { provider: "custom", defaultParameters: JSON.stringify({ imageCaptioningEnabled: false }) };
+    if (path === "/api/connections/pictures") return { provider: "image_generation" };
     if (path.startsWith("/api/characters/")) return { id: "bupkis" };
     if (path === "/api/sprites/bupkis") return libraryFiles.map((filename) => ({ filename }));
     throw Error(path);
   },
-  villagesConnectionIdFor: async () => "system",
   villagesLanguageModels: () => ({
     resolve: async (id) => {
       resolved = id;
@@ -95,21 +92,23 @@ assert.equal(calls, 0, "import never spends on vision");
 assert.ok(draft.assignments.every((item) => !item.name && !item.direction));
 await service.prepare("bupkis");
 assert.equal(copied, 2, "opening setup reuses independent copies");
-enabled = false;
-await assert.rejects(
-  service.analyze("bupkis", {
-    revision: draft.revision,
-    requestId: randomUUID(),
-    artworkIds: [draft.assignments[0].artworkId],
-  }),
-  /Enable Image Captioning/,
-);
-assert.equal(calls, 0);
-enabled = true;
+for (const connectionId of [undefined, "", "random", "pictures", "deleted"]) {
+  await assert.rejects(
+    service.analyze("bupkis", {
+      revision: draft.revision,
+      requestId: randomUUID(),
+      artworkIds: [draft.assignments[0].artworkId],
+      connectionId,
+    }),
+  );
+  assert.equal(calls, 0, "invalid selection never dispatches or falls back");
+  assert.equal((await service.read("bupkis")).revision, draft.revision);
+}
 const requestId = randomUUID();
 draft = await service.analyze("bupkis", {
   revision: draft.revision,
   requestId,
+  connectionId: "vision",
   artworkIds: [draft.assignments[0].artworkId],
 });
 assert.equal(resolved, "vision");
@@ -185,6 +184,7 @@ failImage = true;
 draft = await service.analyze("bupkis", {
   revision: draft.revision,
   requestId: randomUUID(),
+  connectionId: "vision",
   artworkIds: [draft.assignments[1].artworkId],
 });
 assert.match(draft.errors[draft.assignments[1].artworkId], /failed/);
@@ -194,7 +194,12 @@ abort.abort();
 await assert.rejects(
   service.analyze(
     "bupkis",
-    { revision: draft.revision, requestId: randomUUID(), artworkIds: [draft.assignments[1].artworkId] },
+    {
+      revision: draft.revision,
+      requestId: randomUUID(),
+      connectionId: "vision",
+      artworkIds: [draft.assignments[1].artworkId],
+    },
     abort.signal,
   ),
 );
