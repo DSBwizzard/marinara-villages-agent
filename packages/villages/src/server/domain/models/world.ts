@@ -1261,10 +1261,11 @@ export type VillageState = {
   setting: string;
   /** The player's reason for starting this village, kept apart from its visual setting. */
   foundingReason: string;
+  worldOrigin?: "same-world" | "different-worlds" | null;
   foundingDetails: string;
   foundingGuidance: string;
   /** Founding-only narrative role; null preserves legacy framing. */
-  playerRole: VillagePlayerRole | null;
+  playerBackground: VillagePlayerBackground | null;
   /** The reviewed starting point. Historical after setup; never a live plot instruction. */
   scenarioImprint: VillageScenarioImprint | null;
   /** Editable facts that still hold in the present village. */
@@ -1646,11 +1647,7 @@ export type VillagePersonaPreview = Pick<
 >;
 
 /** Community framing chosen at founding, separate from Persona identity. */
-export type VillagePlayerRole = {
-  enabled: boolean;
-  title: string;
-  explanation: string;
-};
+export type VillagePlayerBackground = string;
 
 /**
  * Who the player is: the Persona's cached name and prose, read straight off the
@@ -1762,10 +1759,11 @@ export type VillageSettingsView = {
   setting: string;
   settingMaxLength: number;
   foundingReason: string;
+  worldOrigin?: "same-world" | "different-worlds" | null;
   foundingDetails: string;
   foundingGuidance: string;
   /** Founding-only narrative role; null preserves legacy framing. */
-  playerRole: VillagePlayerRole | null;
+  playerBackground: VillagePlayerBackground | null;
   scenarioImprint: VillageScenarioImprint | null;
   worldFacts: string[];
   selectedLorebookIds: string[];

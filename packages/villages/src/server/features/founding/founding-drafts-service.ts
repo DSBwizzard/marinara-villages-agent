@@ -274,7 +274,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       village.villagers.some((person) => person.foundingContext) &&
       JSON.stringify(fitted.messages) !== JSON.stringify(messages)
     )
-      throw badRequest("The required resident backgrounds do not fit the System connection. No request was sent.");
+      throw badRequest("The required resident backstories do not fit the System connection. No request was sent.");
     await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
       savedRequest: {

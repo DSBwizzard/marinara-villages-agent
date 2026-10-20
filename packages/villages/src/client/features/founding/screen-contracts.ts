@@ -97,9 +97,10 @@ export type FoundingScreenController = {
   readonly setSetupMapSource: FoundingState["setSetupMapSource"];
   readonly setSetupName: FoundingState["setSetupName"];
   readonly setSetupPlacementError: FoundingState["setSetupPlacementError"];
-  readonly setSetupPlayerRole: FoundingState["setSetupPlayerRole"];
+  readonly setSetupPlayerBackground: FoundingState["setSetupPlayerBackground"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupResidentContexts: FoundingState["setSetupResidentContexts"];
+  readonly setSetupWorldOrigin: FoundingState["setSetupWorldOrigin"];
   readonly setSetupSetting: FoundingState["setSetupSetting"];
   readonly setSetupShowIssues: FoundingState["setSetupShowIssues"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
@@ -130,9 +131,10 @@ export type FoundingScreenController = {
   readonly setupMapSrc: string;
   readonly setupName: FoundingState["setupName"];
   readonly setupPlacementError: FoundingState["setupPlacementError"];
-  readonly setupPlayerRole: FoundingState["setupPlayerRole"];
+  readonly setupPlayerBackground: FoundingState["setupPlayerBackground"];
   readonly setupProblem: FoundingState["setupProblem"];
   readonly setupResidentContexts: FoundingState["setupResidentContexts"];
+  readonly setupWorldOrigin: FoundingState["setupWorldOrigin"];
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupShowIssues: FoundingState["setupShowIssues"];
   readonly setupStep: FoundingState["setupStep"];

@@ -289,6 +289,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
           })
         ) : menuPage === "village" ? (
           renderVillageSettingsPage({
+            setSnapshot,
             addVenue,
             backgroundPanel,
             busy: busy,

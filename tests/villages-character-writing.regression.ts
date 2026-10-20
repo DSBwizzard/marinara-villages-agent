@@ -133,11 +133,7 @@ async function run() {
     assert.ok(!prompt.includes("Narrate only an action the player explicitly submitted"));
     assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
     assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("Recent scene history:"));
-    row.data.playerRole = {
-      enabled: true,
-      title: "Local organizer",
-      explanation: "People know the player coordinates shared plans.",
-    };
+    row.data.playerBackground = "Neighbors know me through harbor projects.";
     for (const spaceClass of ["community", "residence"]) {
       const exterior = {
         ...session,
@@ -153,8 +149,7 @@ async function run() {
       const outsidePrompt = String(outside.fitted.messages[0].content);
       assert.match(outsidePrompt, /player is in this (?:Venue|Residence)'s Exterior Zone/);
       assert.ok(!outsidePrompt.includes("The player is outside this Venue."));
-      assert.ok(outsidePrompt.includes("Local organizer"));
-      assert.ok(outsidePrompt.includes("People know the player coordinates shared plans."));
+      assert.ok(outsidePrompt.includes("Neighbors know me through harbor projects."));
       assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));
       assert.match(outsidePrompt, /Activity captured at Scene start: Checking a map/);
       assert.match(outsidePrompt, /witnessed developments establish what is happening now/i);

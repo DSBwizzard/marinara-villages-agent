@@ -1,3 +1,4 @@
+import { WorldOriginSettings } from "./WorldOriginSettings.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { pinTone, placeSpot, playerDisplayName } from "../../shared/presentation.js";
@@ -6,7 +7,7 @@ import { isHouse } from "../../shared/venue.js";
 import { MapStage, PROJECT_BLUEPRINT_IMAGE, TOWN_MAP_FITS } from "../exploration/MapStage.js";
 import { PlayerIdentityEditor, VillageLorebookPicker, LoreTokenBudgetField } from "../founding/FoundingPanels.js";
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
-import { PlayerRoleSummary } from "../founding/villages-player-role.js";
+import { PlayerBackgroundSummary } from "../founding/villages-player-background.js";
 import type { VillageSettingsPagePorts } from "./page-contracts.js";
 import { VillageWritingSettings } from "./WritingSettings.js";
 
@@ -419,6 +420,11 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             />
           </div>
 
+          <WorldOriginSettings
+            key={snapshot.settings.worldOrigin ?? "legacy"}
+            onSaved={ports.setSnapshot}
+            initial={snapshot.settings.worldOrigin ?? null}
+          />
           <VillageLorebookPicker
             books={lorebooks}
             error={lorebooksError}
@@ -511,7 +517,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             storedMissing={snapshot.settings.playerPersonaMissing}
             disabled={busy}
           />
-          <PlayerRoleSummary role={snapshot.settings.playerRole} />
+          <PlayerBackgroundSummary background={snapshot.settings.playerBackground} />
 
           <div className={`${ELEMENT_TAG}-row`}>
             <button

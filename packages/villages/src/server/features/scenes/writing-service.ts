@@ -55,7 +55,7 @@ import {
   venueAdditionalWritingGuidance,
   venueWritingDirection,
 } from "../../domain/rules/narration-style.js";
-import { renderPlayerRoleWritingContext } from "../../domain/rules/player-role.js";
+import { renderPlayerBackgroundWritingContext } from "../../domain/rules/player-background.js";
 import {
   bindProjectSpeech,
   projectSpeechContexts,
@@ -534,7 +534,7 @@ export function createSceneWriting({
       circumstances: blocksFor([
         `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
         `The player is ${player.name}. ${player.description}`,
-        renderPlayerRoleWritingContext(village),
+        renderPlayerBackgroundWritingContext(village),
         session.contactGeneration?.acoustics || session.contactGeneration?.zoneEvents
           ? ""
           : (session.contactGeneration?.instruction ?? ""),

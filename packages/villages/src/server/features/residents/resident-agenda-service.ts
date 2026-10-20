@@ -119,7 +119,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         details: village.foundingDetails,
         imprint: village.scenarioImprint,
       },
-      playerRole: village.playerRole,
+      playerBackground: village.playerBackground,
       playerPersonaName: village.playerPersonaName,
       schedule: native?.schedules.find((row) => row.characterId === characterId) ?? null,
       influenceSettings: villager.scheduleInfluence,

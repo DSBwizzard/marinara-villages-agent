@@ -1,3 +1,4 @@
+import { residentBackgroundSourceKey } from "../../../shared/helpers/resident-founding-context.js";
 import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { randomUUID } from "node:crypto";
 import { initialOpening } from "../../domain/rules/opening-project.js";
@@ -21,7 +22,7 @@ import {
   readSelectedLorebookIds,
 } from "../../domain/rules/lore-policy.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
-import { assertPlayerRoleLocked, playerRoleForSetup } from "../../domain/rules/player-role.js";
+import { playerBackgroundForSetup } from "../../domain/rules/player-background.js";
 import {
   isHousePlace,
   TOWN_MAP_EXPECTED_WIDTH,
@@ -94,9 +95,10 @@ export function createFoundingSetup({
     timeZone?: unknown;
     setting?: unknown;
     foundingReason?: unknown;
+    worldOrigin?: unknown;
     foundingDetails?: unknown;
     foundingGuidance?: unknown;
-    playerRole?: unknown;
+    playerBackground?: unknown;
     scenarioImprint?: unknown;
     worldFacts?: unknown;
     selectedLorebookIds?: unknown;
@@ -124,6 +126,8 @@ export function createFoundingSetup({
       throw badRequest("Starting circumstances must be text of at most 2,000 characters.");
     }
     const foundingDetails = input.foundingDetails.trim();
+    if (input.worldOrigin != null && !["same-world", "different-worlds"].includes(String(input.worldOrigin)))
+      throw badRequest("Choose a valid world origin.");
     if (typeof (input.foundingGuidance ?? "") !== "string" || String(input.foundingGuidance ?? "").length > 500) {
       throw badRequest("Narrative direction must be text of at most 500 characters.");
     }
@@ -138,7 +142,7 @@ export function createFoundingSetup({
     const founding = !isVillageFounded(village);
     if (!founding && input.timeZone !== undefined && input.timeZone !== village.timeZone)
       throw badRequest("The village timezone is fixed after founding.");
-    const playerRole = playerRoleForSetup(village.playerRole, input.playerRole, founding);
+    const playerBackground = playerBackgroundForSetup(village.playerBackground, input.playerBackground, founding);
     validateFirstDayDescription(foundingDetails, founding);
     if (!founding)
       assertFoundingScenarioLocked(village, {
@@ -190,7 +194,7 @@ export function createFoundingSetup({
       ? readFoundingResidentContexts(input.foundingResidentContexts, [...assignedResidents])
       : {};
     if (!founding && input.foundingResidentContexts !== undefined)
-      throw badRequest("Resident starting backgrounds are fixed after founding.");
+      throw badRequest("Resident starting backstories are fixed after founding.");
     if (founding && input.foundingCharacterIds !== undefined)
       validateFoundingRoster(input.foundingCharacterIds, assignedResidents, new Set(cardNames.keys()));
     if (founding && privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
@@ -288,6 +292,19 @@ export function createFoundingSetup({
         throw conflict("Move the resident before changing or removing their home.");
     }
 
+    if (founding)
+      for (const context of Object.values(foundingContexts)) {
+        if (
+          context.integration?.sourceKey &&
+          context.integration.sourceKey !==
+            residentBackgroundSourceKey(
+              setting,
+              foundingDetails,
+              input.worldOrigin as "same-world" | "different-worlds" | null,
+            )
+        )
+          throw badRequest("The Village premise changed. Review resident backstories again.");
+      }
     const addedResidents: VillagerCard[] = [];
     await mutateVillageState((state) => {
       if (isVillageFounded(state) === founding)
@@ -306,8 +323,7 @@ export function createFoundingSetup({
         throw conflict("The village map changed during setup. Reload it before saving.");
       if (!founding)
         assertFoundingScenarioLocked(state, { foundingReason, foundingDetails, foundingGuidance, scenarioImprint });
-      if (!founding) assertPlayerRoleLocked(state.playerRole, playerRole);
-      state.playerRole = playerRole;
+      state.playerBackground = playerBackground;
       state.name = name;
       state.setting = setting;
       if (!founding && input.timeZone !== undefined && input.timeZone !== state.timeZone)
@@ -315,6 +331,8 @@ export function createFoundingSetup({
       if (founding && typeof input.timeZone === "string") state.timeZone = input.timeZone;
       state.foundingReason = foundingReason;
       state.foundingDetails = foundingDetails;
+      if (input.worldOrigin !== undefined)
+        state.worldOrigin = input.worldOrigin as "same-world" | "different-worlds" | null;
       state.foundingGuidance = foundingGuidance;
       state.scenarioImprint = scenarioImprint;
       state.worldFacts = worldFacts;

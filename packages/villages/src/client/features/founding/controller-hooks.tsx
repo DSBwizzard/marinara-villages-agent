@@ -11,7 +11,7 @@ import {
   SETUP_MIN_VILLAGER_COUNT,
 } from "./FoundingPanels.js";
 import { foundingZoneProblem } from "./villages-founding-zones";
-import { playerRoleProblem } from "./villages-player-role.js";
+import { playerBackgroundProblem } from "./villages-player-background.js";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 /** Initial values belong to this mounted founding workspace; effects update the same refs. */
@@ -175,11 +175,12 @@ export function useFoundingSetupDraftData(ports: {
   setupMapSource: import("../../shared/types.js").SetupMapSource;
   setupName: string;
   setupTimeZone?: string;
-  setupPlayerRole: import("../../../shared/contracts/player-role.js").PlayerRole;
+  setupPlayerBackground: import("../../../shared/contracts/player-background.js").PlayerBackground;
   setupResidentContexts: Record<
     string,
     import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext
   >;
+  setupWorldOrigin?: "same-world" | "different-worlds" | null;
   setupSetting: string;
   setupStep: number;
   setupSuggestionsBusy: boolean;
@@ -280,8 +281,9 @@ export function useFoundingSetupDraftData(ports: {
     setupMapSource,
     setupName,
     setupTimeZone,
-    setupPlayerRole,
+    setupPlayerBackground,
     setupResidentContexts,
+    setupWorldOrigin,
     setupSetting,
     setupStep,
     setupSuggestionsBusy,
@@ -299,10 +301,11 @@ export function useFoundingSetupDraftData(ports: {
       phase: SETUP_STEPS[setupStep],
       name: setupName,
       timeZone: setupTimeZone,
+      worldOrigin: setupWorldOrigin,
       setting: setupSetting,
       reason: setupFoundingReason,
       circumstances: setupFoundingDetails,
-      role: setupPlayerRole,
+      playerBackground: setupPlayerBackground,
       imprint: setupImprint,
       worldFacts: setupWorldFacts,
       venues: setupVenues,
@@ -345,10 +348,11 @@ export function useFoundingSetupDraftData(ports: {
       setupWorkspace,
       setupName,
       setupTimeZone,
+      setupWorldOrigin,
       setupSetting,
       setupFoundingReason,
       setupFoundingDetails,
-      setupPlayerRole,
+      setupPlayerBackground,
       setupImprint,
       setupWorldFacts,
       setupVenues,
@@ -514,7 +518,8 @@ export function useFoundingSetupBlocker(ports: {
   setupMapReviewed: boolean;
   setupMapSrc: string;
   setupName: string;
-  setupPlayerRole: import("../../../shared/contracts/player-role.js").PlayerRole;
+  setupPlayerBackground: import("../../../shared/contracts/player-background.js").PlayerBackground;
+  setupWorldOrigin?: "same-world" | "different-worlds" | null;
   setupSetting: string;
   setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
   setupWorldFacts: string[];
@@ -530,7 +535,8 @@ export function useFoundingSetupBlocker(ports: {
     setupMapReviewed,
     setupMapSrc,
     setupName,
-    setupPlayerRole,
+    setupPlayerBackground,
+    setupWorldOrigin,
     setupSetting,
     setupVenues,
     setupWorldFacts,
@@ -542,7 +548,8 @@ export function useFoundingSetupBlocker(ports: {
       if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
       if (!snapshot?.isFounded && !setupFoundingDetails.trim())
         return "Describe what brings you and the others together here.";
-      if (!snapshot?.isFounded && playerRoleProblem(setupPlayerRole)) return playerRoleProblem(setupPlayerRole);
+      if (!snapshot?.isFounded && playerBackgroundProblem(setupPlayerBackground))
+        return playerBackgroundProblem(setupPlayerBackground);
       const presentFacts = setupWorldFacts.map((line) => line.trim()).filter(Boolean);
       if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
         return "Use at most four current world facts of 160 characters each.";
@@ -613,9 +620,10 @@ export function useFoundingSetupBlocker(ports: {
       setupMapSrc,
       setupName,
       setupFoundingDetails,
-      setupPlayerRole,
+      setupPlayerBackground,
       snapshot?.isFounded,
       setupWorldFacts,
+      setupWorldOrigin,
       setupSetting,
     ],
   );

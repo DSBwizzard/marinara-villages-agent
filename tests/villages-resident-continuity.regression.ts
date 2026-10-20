@@ -340,7 +340,11 @@ async function setupPersistence() {
       assert.equal(docs.get("villages-village")?.data.setupAt ?? "", "");
     }
     const snapshot = await runVillageSetup({ ...input, foundingResidentContexts: { aqua: context } });
-    assert.deepEqual(snapshot.villagers[0].foundingContext, context);
+    assert.equal(
+      snapshot.villagers[0].foundingContext,
+      undefined,
+      "private backgrounds stay out of ordinary snapshots",
+    );
     const saved = coerceVillageState(docs.get("villages-village").data);
     assert.deepEqual(saved.villagers[0].foundingContext, context);
     assert.equal(saved.villagers[0].cardSnapshot.backstory, "Mecca remains in the full card.");

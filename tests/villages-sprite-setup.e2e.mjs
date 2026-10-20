@@ -175,6 +175,9 @@ try {
       page.getByText("28 total · 27 need analysis · 0 need review · 1 approved", { exact: true }),
     ).toBeVisible();
     const dialog = page.getByRole("dialog");
+    const box = await dialog.boundingBox();
+    assert.ok(Math.abs(box.x + box.width / 2 - viewport.width / 2) < 2);
+    assert.ok(Math.abs(box.y + box.height / 2 - viewport.height / 2) < 2);
     assert.ok(
       await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
       "dialog fits desktop and phone",

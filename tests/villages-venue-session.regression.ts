@@ -35,10 +35,10 @@ function fixtureJson(value: any) {
   );
 }
 import {
-  DEFAULT_PLAYER_ROLE,
-  renderPlayerRoleContext,
-  renderPlayerRoleWritingContext,
-} from "../packages/villages/src/server/domain/rules/player-role.js";
+  DEFAULT_PLAYER_BACKGROUND,
+  renderPlayerBackgroundContext,
+  renderPlayerBackgroundWritingContext,
+} from "../packages/villages/src/server/domain/rules/player-background.js";
 import { requestProjectMailbox } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
@@ -1505,7 +1505,7 @@ async function main() {
     );
     await mutateVillageState((state) => {
       state.name = "Fixture village";
-      state.playerRole = { ...DEFAULT_PLAYER_ROLE };
+      state.playerBackground = DEFAULT_PLAYER_BACKGROUND;
       state.setupAt = now.toISOString();
       state.foundedAt = now.toISOString();
       state.setting = "A quiet village";
@@ -1661,7 +1661,7 @@ async function main() {
     assert.equal((await activeVenueSession())?.status, "opening", "reload restores the opening room without blocking");
     group = await greetVenue(group.id);
     assert.ok(
-      lastVenueSystem.includes(renderPlayerRoleWritingContext(await readVillageState())),
+      lastVenueSystem.includes(renderPlayerBackgroundWritingContext(await readVillageState())),
       "venue greetings know the recognized role",
     );
     assert.doesNotMatch(
@@ -2948,12 +2948,12 @@ async function main() {
     });
     const unlockedFeatureId = featureVenue.state.features![0]!.id;
     featureProposal = { who: "bob", venueId: "park", featureId: unlockedFeatureId, text: "Bob repainted the wall" };
-    for (const playerRole of [DEFAULT_PLAYER_ROLE, { ...DEFAULT_PLAYER_ROLE, enabled: false }, null]) {
-      const roleContext = { ...featureContext(), playerRole, playerPersonaName: "Robin" };
+    for (const playerBackground of [DEFAULT_PLAYER_BACKGROUND, "", null]) {
+      const roleContext = { ...featureContext(), playerBackground, playerPersonaName: "Robin" };
       await proposeHappenings(roleContext as any);
-      if (playerRole)
+      if (playerBackground)
         assert.ok(
-          lastEventsSystem.includes(renderPlayerRoleContext(roleContext)),
+          lastEventsSystem.includes(renderPlayerBackgroundContext(roleContext)),
           "Events receive role context separately from scenery",
         );
       else assert.equal(lastEventsSystem.includes("Player's place in the village:"), false);
@@ -3145,7 +3145,7 @@ async function main() {
     mail = (await readVillageState()).venueMail.at(-1)!;
     assert.equal(mail.status, "approved");
     assert.ok(
-      lastMailboxSystem.includes(renderPlayerRoleContext(await readVillageState())),
+      lastMailboxSystem.includes(renderPlayerBackgroundContext(await readVillageState())),
       "Mailbox replies receive the same narrative framing",
     );
     assert.equal(

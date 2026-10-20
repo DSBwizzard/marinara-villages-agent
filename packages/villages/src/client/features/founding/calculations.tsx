@@ -13,7 +13,7 @@ export function calculateResidentContextProblem(ports: {
     Object.values(selectedResidentContexts).some((context) =>
       Object.values(residentFoundingProblems(context)).some(Boolean),
     )
-    ? "Complete the highlighted resident background fields in People."
+    ? "Complete unfinished backstories in People."
     : "";
 }
 export function calculateSetupHomeCount(ports: { setupFoundingVillagerIds: string[] }) {
@@ -32,6 +32,7 @@ export function calculateSetupBeginningSourceKey(ports: {
   setupFoundingReason: "custom" | "rebuild" | "pioneer" | "prosper" | "none";
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
+  setupWorldOrigin?: "same-world" | "different-worlds" | null;
   setupSetting: string;
   setupName?: string;
   setupWorldFacts?: string[];
@@ -55,6 +56,7 @@ export function calculateSetupBeginningSourceKey(ports: {
     name: ports.setupName,
     worldFacts: ports.setupWorldFacts,
     imprint: ports.setupImprint,
+    worldOrigin: ports.setupWorldOrigin,
     residentContexts: selectedResidentContexts,
     scenario: setupFoundingReason,
     premise: setupFoundingDetails.trim(),
@@ -104,6 +106,7 @@ export function calculateSetupMapGenerationKey(ports: {
   setupLoreTokenBudgetDraft: number;
   setupMapNegativePrompt: string;
   setupMapPrompt: string;
+  setupWorldOrigin?: "same-world" | "different-worlds" | null;
   setupSetting: string;
   setupWorldFacts: string[];
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;

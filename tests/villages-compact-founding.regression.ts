@@ -1,6 +1,5 @@
 import { routineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
-import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/server/domain/rules/player-role.js";
 import {
   foundingNativeActivities,
   parseCompactFounding,
@@ -226,21 +225,13 @@ async function main() {
       await proposeCompactFounding(context(native) as any, async () => {});
       assert.equal(calls, before + 1, "one package-level request handles this villager's full founding plan");
     }
-    for (const playerRole of [
-      DEFAULT_PLAYER_ROLE,
-      {
-        ...DEFAULT_PLAYER_ROLE,
-        title: "Harbor Patron",
-        explanation: "Neighbors bring me plans because I coordinate harbor repairs.",
-      },
-      { ...DEFAULT_PLAYER_ROLE, enabled: false },
-    ]) {
-      const roleContext = { ...context(null), setting: "S".repeat(4000), playerRole, playerPersonaName: "Robin" };
+    for (const playerBackground of ["", "I arrived to help the harbor."]) {
+      const roleContext = { ...context(null), setting: "S".repeat(4000), playerBackground, playerPersonaName: "Robin" };
       const before = calls;
       answer = payload(0);
       await proposeCompactFounding(roleContext as any, async () => {});
       assert.ok(
-        capturedPrompt.includes(JSON.stringify({ name: "Robin", ...playerRole })),
+        capturedPrompt.includes(JSON.stringify({ name: "Robin", startingBackground: playerBackground })),
         "the role is separate from truncated scenery",
       );
       assert.equal(calls, before + 1, "role context adds no generation call");

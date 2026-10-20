@@ -72,7 +72,7 @@ async function reviewNavigation() {
     setupMapBusy: false,
     setupMapSrc: "map",
     setupName: "Village",
-    setupPlayerRole: { enabled: true, title: "Project Coordinator", explanation: "" },
+    setupPlayerBackground: "I came to help the community.",
     setupSetting: "Coastal rooms",
     setupStep: 4,
     setupSuggestionsBusy: false,
@@ -88,6 +88,15 @@ async function reviewNavigation() {
   assert.equal(reviewed, true, "successful Review navigation incorporates map acknowledgment");
   assert.equal(step, 4);
   assert.equal(problem, "");
+  ports.setupStep = 0;
+  ports.connectionSetupProblem = "Choose a System connection.";
+  goto(1);
+  assert.equal(step, 1, "cast selection does not require configured model connections");
+  ports.setupStep = 1;
+  goto(2);
+  assert.equal(step, 0, "connection errors return to their first-page controls");
+  assert.equal(problem, ports.connectionSetupProblem);
+  ports.connectionSetupProblem = "";
   ports.setupStep = 0;
   ports.personaDraft = "";
   goto(1);

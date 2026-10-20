@@ -298,7 +298,7 @@ export function createWorldCoordination({
     const context: VillageTickContext = {
       semanticVersion: 2,
       village: village.name,
-      playerRole: village.playerRole,
+      playerBackground: village.playerBackground,
       playerPersonaName: village.playerPersonaName,
       setting: village.setting,
       worldFacts: village.worldFacts,

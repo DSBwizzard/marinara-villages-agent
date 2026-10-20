@@ -1,3 +1,8 @@
+import { ResidentBackgroundReview } from "../../shared/ResidentBackgroundReview.js";
+import {
+  DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+  type ResidentFoundingContext,
+} from "../../../shared/helpers/resident-founding-context.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AvatarFace } from "./ResidentPanels.js";
@@ -19,6 +24,8 @@ export function RosterScreen({
   useLayoutEffect(() => {
     if (content.current) content.current.scrollTop = readingPosition?.current ?? 0;
   }, [readingPosition]);
+  const joiningDrafts = useRef<Record<string, ResidentFoundingContext>>({});
+  const [joining, setJoining] = useState<{ id: string; name: string; context: ResidentFoundingContext } | null>(null);
   const {
     addVillager,
     busy,
@@ -53,7 +60,8 @@ export function RosterScreen({
             portrait={portraits[spriteCharacter.id]}
             onClose={() => setSpriteCharacter(null)}
             onDone={async (revision) => {
-              await addVillager(spriteCharacter.id, revision);
+              await addVillager(spriteCharacter.id, revision, joiningDrafts.current[spriteCharacter.id]);
+              delete joiningDrafts.current[spriteCharacter.id];
               setSpriteCharacter(null);
             }}
           />
@@ -70,6 +78,31 @@ export function RosterScreen({
             </button>
           }
         >
+          {joining ? (
+            <ResidentBackgroundReview
+              key={joining.id}
+              name={joining.name}
+              characterId={joining.id}
+              context={joining.context}
+              source={{
+                setting: snapshot?.settings.setting ?? "",
+                premise: snapshot?.settings.foundingDetails ?? "",
+                worldOrigin: snapshot?.settings.worldOrigin,
+              }}
+              initialRequest
+              onChange={(context) => {
+                joiningDrafts.current[joining.id] = context;
+                setJoining((current) => (current?.id === joining.id ? { ...current, context } : current));
+              }}
+              onCancel={() => setJoining(null)}
+              onAccept={async (context) => {
+                joiningDrafts.current[joining.id] = context;
+                setSpriteCharacter({ id: joining.id, name: joining.name });
+                setJoining(null);
+              }}
+              disabled={busy}
+            />
+          ) : null}
           <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
             <header className={`${ELEMENT_TAG}-directory-head`}>
               <h1>Villagers</h1>
@@ -147,7 +180,16 @@ export function RosterScreen({
                             <button
                               type="button"
                               className={`${ELEMENT_TAG}-button`}
-                              onClick={() => setSpriteCharacter({ id: entry.id, name: entry.name })}
+                              onClick={() =>
+                                setJoining({
+                                  id: entry.id,
+                                  name: entry.name,
+                                  context: joiningDrafts.current[entry.id] ?? {
+                                    ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+                                    integration: { text: "", direction: "", accepted: false },
+                                  },
+                                })
+                              }
                               disabled={busy || entry.inVillage}
                             >
                               {entry.inVillage ? "Lives here" : "Move in"}

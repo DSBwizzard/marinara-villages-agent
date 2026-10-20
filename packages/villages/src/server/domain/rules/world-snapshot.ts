@@ -74,7 +74,6 @@ export function projectVillager(
           })),
         }
       : null,
-    ...(villager.foundingContext ? { foundingContext: villager.foundingContext } : {}),
     name: cardName ?? villager.cardSnapshot.name,
     summary: villager.identityDescription?.text ?? "",
     identityDescription: {
@@ -180,9 +179,10 @@ export function villageSettings(
     maxNoticeLength: MAX_NOTICE_LENGTH,
     setting: village.setting,
     foundingReason: village.foundingReason,
+    worldOrigin: village.worldOrigin ?? null,
     foundingDetails: village.foundingDetails,
     foundingGuidance: village.foundingGuidance,
-    playerRole: village.playerRole,
+    playerBackground: village.playerBackground,
     scenarioImprint: village.scenarioImprint,
     worldFacts: village.worldFacts,
     selectedLorebookIds: village.selectedLorebookIds,

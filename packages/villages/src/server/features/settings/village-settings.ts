@@ -48,3 +48,7 @@ export function removeNoticeAt(...args: Parameters<VillageSettings["removeNotice
 export function setScenerySettings(...args: Parameters<VillageSettings["setScenerySettings"]>) {
   return villageSettings().setScenerySettings(...args);
 }
+
+export function setVillageWorldOrigin(...args: Parameters<VillageSettings["setVillageWorldOrigin"]>) {
+  return villageSettings().setVillageWorldOrigin(...args);
+}

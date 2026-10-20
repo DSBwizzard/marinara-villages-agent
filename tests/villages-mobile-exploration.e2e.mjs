@@ -443,7 +443,7 @@ try {
         await expect(card.locator("." + P + "-pin-name")).toHaveText(venue.name);
         const thumbnail = card.locator("." + P + "-pin-photo");
         const bounds = await thumbnail.boundingBox();
-        assert.equal(bounds.width, 48);
+        assert.ok(Math.abs(bounds.width - 48) < 0.01, "avatar width stays 48 CSS pixels within transform rounding");
         assert.equal(bounds.height, 48);
         await expect(thumbnail.locator("img")).toHaveCSS("object-fit", "cover");
         const names = fixture.villagers

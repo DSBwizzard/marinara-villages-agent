@@ -1,3 +1,4 @@
+import { draftResidentBackground } from "./resident-background.js";
 import {
   buildVillageAgendas,
   clearVillagerAgenda,
@@ -56,14 +57,28 @@ export function registerResidentRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{ Body: { characterId?: unknown; spriteSetupRevision?: number } }>("/villagers", async (request, reply) => {
+  app.post<{ Body: unknown }>("/villagers/background/draft", async (request, reply) => {
     try {
-      await addVillager(readCharacterId(request.body?.characterId), request.body?.spriteSetupRevision);
-      return await buildVillageSnapshot();
+      return await draftResidentBackground(request.body);
     } catch (error) {
-      return fail(reply, error, "adding a villager");
+      return fail(reply, error, "drafting resident background");
     }
   });
+  app.post<{ Body: { characterId?: unknown; background?: unknown; spriteSetupRevision?: number } }>(
+    "/villagers",
+    async (request, reply) => {
+      try {
+        await addVillager(
+          readCharacterId(request.body?.characterId),
+          request.body?.spriteSetupRevision,
+          request.body?.background,
+        );
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "adding a villager");
+      }
+    },
+  );
   app.get<{ Params: CharacterParams }>("/villagers/:characterId/refresh", async (request, reply) => {
     try {
       return await previewVillagerRefresh(readCharacterId(request.params.characterId));

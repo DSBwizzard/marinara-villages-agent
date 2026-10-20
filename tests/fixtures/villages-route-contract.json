@@ -133,6 +133,10 @@
     },
     {
       "method": "post",
+      "path": "/villagers/background/draft"
+    },
+    {
+      "method": "post",
       "path": "/villagers"
     },
     {

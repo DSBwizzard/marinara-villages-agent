@@ -133,6 +133,11 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
             founded ? "Willowbrook" : "",
             "Only founded names prefill; drafts restore independently",
           );
+          assert.equal(
+            values.setSetupWorldOrigin,
+            founded ? null : "different-worlds",
+            "New Villages default to different worlds while established saves preserve their framing",
+          );
           assert.equal(values.setSetupFoundingReason, reason);
           assert.equal(values.setSetupFoundingDetails, details);
           assert.equal(Object.hasOwn(values, "setSetupFoundingGuidance"), false);
@@ -273,6 +278,24 @@ export async function verifyFoundingLayout(group) {
         const spriteRevisions = {};
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname;
+          if (path.endsWith("/villagers/background/draft")) {
+            const body = route.request().postDataJSON();
+            return route.fulfill({
+              contentType: "application/json",
+              body: JSON.stringify({
+                text: JSON.stringify({
+                  player: "I came to help restore the observatory.",
+                  residents: Object.fromEntries(
+                    body.foundingCharacterIds.map((id) => [
+                      id,
+                      (characters.find((person) => person.id === id)?.name ?? "The resident") +
+                        " settled here to study the archives.",
+                    ]),
+                  ),
+                }),
+              }),
+            });
+          }
           if (/\/characters\/[^/]+\/sprites\/setup(?:\/save)?$/.test(path)) {
             const id = decodeURIComponent(path.match(/\/characters\/([^/]+)/)[1]);
             if (path.endsWith("/save")) {
@@ -487,6 +510,7 @@ export async function verifyFoundingLayout(group) {
         );
         await expect(root.locator(".villages-forging-steps button")).toHaveCount(0);
         await expect(root.getByRole("heading", { name: "Forging the Village", exact: true })).toBeVisible();
+        await expect(root.locator(".villages-founding-connections")).toBeVisible();
         await expect(root.getByText("Story direction", { exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Narrative direction", { exact: true })).toHaveCount(0);
         await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
@@ -549,7 +573,7 @@ export async function verifyFoundingLayout(group) {
           await expect(root.getByRole("note")).toHaveText(text);
           await bounds();
           await capture(label === "Setting" ? "setting-help" : "scenario-help");
-          await help.press("Escape");
+          await page.keyboard.press("Escape");
           await expect(help).toBeFocused();
           await expect(root.getByRole("note")).toHaveCount(0);
         }
@@ -567,7 +591,7 @@ export async function verifyFoundingLayout(group) {
         await expect(loreCard.getByRole("note")).toHaveText(
           "Selected lorebooks enrich your Village with information for places, stories, village life and image generation.",
         );
-        await loreHelp.press("Escape");
+        await page.keyboard.press("Escape");
         const loreBudget = root.getByLabel("Lorebook Token Budget", { exact: true });
         await expect(loreBudget).toHaveValue("1600");
         await expect(loreBudget).toHaveAttribute("autocomplete", "off");
@@ -584,7 +608,7 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("note")).toContainText(
           "Maximum tokens lorebooks can use in any lorebook-enabled prompt.",
         );
-        await budgetHelp.press("Escape");
+        await page.keyboard.press("Escape");
         const chooseLore = loreCard.getByRole("button", { name: "Choose Village Lorebooks", exact: true });
         await chooseLore.click();
         const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
@@ -690,16 +714,42 @@ export async function verifyFoundingLayout(group) {
         await personaDialog.getByPlaceholder("Search Personas").fill("patient");
         await personaDialog.getByRole("button").filter({ hasText: "Ada" }).click();
         await expect(root.getByText("View Persona details", { exact: true })).toHaveCount(0);
-        await root.getByLabel("Role Title", { exact: true }).fill(" ");
-        await forward("Continue to Map").click();
-        await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toContainText("title");
-        await root.getByLabel("Role Title", { exact: true }).fill("Harbor Patron");
-        await expect(root.getByLabel("Why villagers turn to you", { exact: true })).toHaveCount(0);
+        await expect(root.getByRole("textbox", { name: "Role Title", exact: true })).toHaveCount(0);
+        await root.getByRole("button", { name: "Help: Your backstory", exact: true }).click();
+        await expect(root.getByRole("note")).toContainText(
+          "In Villages, you (the player) coordinate with Villagers on major changes, improvements, and developments.",
+        );
+        await root.getByRole("button", { name: "Close Your backstory help", exact: true }).click();
         const selectResidents = async (names) => {
           for (const name of names) {
             await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
             const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
-            await picker.getByRole("button", { name: name + " · Select", exact: true }).click();
+            await expect(picker.getByRole("heading")).toHaveCount(0);
+            const search = picker.getByRole("searchbox");
+            await expect(search).toHaveAttribute("placeholder", "Search character cards...");
+            const close = await picker
+              .getByRole("button", { name: "Close Choose founding villagers", exact: true })
+              .boundingBox();
+            const searchBox = await search.boundingBox();
+            assert.ok(
+              Math.abs(close.y + close.height / 2 - searchBox.y - searchBox.height / 2) < 2,
+              "search and compact close share a row",
+            );
+            const add = picker.getByRole("button", { name: name + " · Add", exact: true });
+            const addBox = await add.boundingBox();
+            assert.equal(addBox.width, addBox.height, "Add control is square");
+            await add.click();
+            const sprites = page.getByRole("dialog", { name: name + " sprite setup", exact: true });
+            await expect(sprites.getByRole("button", { name: "Add without using sprites", exact: true })).toBeVisible();
+            const spriteBox = await sprites.boundingBox();
+            assert.ok(
+              Math.abs(spriteBox.x + spriteBox.width / 2 - width / 2) < 2,
+              "sprite window centers horizontally",
+            );
+            assert.ok(
+              Math.abs(spriteBox.y + spriteBox.height / 2 - height / 2) < 2,
+              "sprite window centers vertically",
+            );
             await page
               .getByRole("dialog", { name: name + " sprite setup" })
               .getByRole("button", { name: "Add without using sprites", exact: true })
@@ -709,306 +759,39 @@ export async function verifyFoundingLayout(group) {
         await selectResidents(
           ["Finn", "Rosa", "Lee, Keeper of the Observatory’s Long Forgotten Archives"].slice(0, homeCount),
         );
-        const choice = root.getByLabel("Finn backstory", { exact: true });
-        await expect(choice).toHaveValue("continue");
-        await expect(root.locator(".villages-backstories")).toHaveCount(0);
-        const finnCard = root
-          .locator(".villages-selected-villager")
-          .filter({ has: page.getByLabel("Finn backstory", { exact: true }) });
-        await finnCard.getByRole("button", { name: "Sprites", exact: true }).click();
-        await page
-          .getByRole("dialog", { name: "Finn sprite setup" })
-          .getByRole("button", { name: "Back", exact: true })
-          .click();
-        await expect(finnCard.getByRole("button", { name: "Finn \u00b7 Remove", exact: true })).toBeVisible();
-        await expect(finnCard.getByText("Finn", { exact: true })).toHaveCount(1);
-        await bounds();
-        await capture("people-merged");
-        const helpBackstory = finnCard.getByRole("button", { name: "Help: Finn backstory", exact: true });
-        const cardHeightBeforeHelp = await finnCard.evaluate((node) => node.getBoundingClientRect().height);
-        await helpBackstory.click();
-        await expect(finnCard.getByRole("note").locator("span")).toHaveText([
-          "Use original backstory: Preserves the character’s existing history wherever their card describes it.",
-          "Write custom backstory: Describe a custom backstory for Villages to use for this character.",
-        ]);
-        await bounds();
-        assert.equal(
-          await finnCard.evaluate((node) => node.getBoundingClientRect().height),
-          cardHeightBeforeHelp,
-          "help floats without expanding the card",
+        await expect(page.getByRole("dialog", { name: "Finn’s life here", exact: true })).toHaveCount(0);
+        await expect(root.getByText(/of 3 selected/)).toHaveCount(0);
+        await expect(root.getByRole("button", { name: "+ Add villager", exact: true })).toHaveCount(
+          homeCount < 3 ? 1 : 0,
         );
-        await capture("backstory-help");
-        await helpBackstory.press("Escape");
-        await expect(helpBackstory).toBeFocused();
-        await helpBackstory.click();
-        await finnCard.getByRole("note").click();
-        await expect(helpBackstory).toHaveAttribute("aria-expanded", "true");
-        await helpBackstory.click();
-        await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
-        await helpBackstory.click();
-        const outsideField = root.getByLabel("Role Title", { exact: true });
-        await outsideField.click();
-        await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
-        await expect(outsideField).toBeFocused();
-        await helpBackstory.click();
-        const outsideHeading = root.getByRole("heading", { name: "Forging the Village", exact: true });
-        const touchTrace = [];
-        await page.exposeFunction("foundingTouchTrace", (event) => {
-          touchTrace.push(event);
-          if (touchTrace.length > 30) touchTrace.shift();
-        });
-        await page.evaluate(() => {
-          window.foundingTouchTraceController = new AbortController();
-          for (const type of [
-            "touchstart",
-            "touchend",
-            "touchcancel",
-            "pointerdown",
-            "pointerup",
-            "pointercancel",
-            "click",
-          ])
-            document.addEventListener(
-              type,
-              (event) =>
-                window.foundingTouchTrace({
-                  type,
-                  target: event.target?.tagName,
-                  label: event.target?.getAttribute?.("aria-label"),
-                  time: event.timeStamp,
-                  trusted: event.isTrusted,
-                }),
-              { capture: true, signal: window.foundingTouchTraceController.signal },
-            );
-        });
-        if (width === 390 && height === 844) {
-          const body = root;
-          await body.evaluate((node) => {
-            node.scrollTop = 0;
-          });
-          const bodyBounds = await body.boundingBox();
-          assert.ok(bodyBounds);
-          const touch = await context.newCDPSession(page);
-          const x = bodyBounds.x + bodyBounds.width - 6;
-          const y = bodyBounds.y + bodyBounds.height * 0.75;
-          await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
-          for (let step = 1; step <= 6; step++) {
-            await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y - step * 24 }] });
-            await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
-          }
-          await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-          await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
-          await expect(helpBackstory).toHaveAttribute("aria-expanded", "true");
-          await touch.detach();
-          // Chromium suppresses taps while a touch scroll is coasting. Observe
-          // settlement before testing the next independent outside-tap action.
-          await body.evaluate(async (node) => {
-            let previous = node.scrollTop,
-              stable = 0;
-            for (let frame = 0; frame < 120; frame++) {
-              await new Promise((done) => requestAnimationFrame(done));
-              const current = node.scrollTop;
-              stable = Math.abs(current - previous) < 0.1 ? stable + 1 : 0;
-              if (stable >= 3) return;
-              previous = current;
-            }
-            throw Error("Touch scroll did not settle before outside-tap assertion");
-          });
-        }
-        if (width === 390 && height === 844) {
-          // Complete the independent native tap through the same gesture API as
-          // the raw touch-scroll probe, avoiding mixed protocol gesture state.
-          await outsideHeading.scrollIntoViewIfNeeded();
-          const box = await outsideHeading.boundingBox();
-          const gesture = await context.newCDPSession(page);
-          try {
-            await gesture.send("Input.synthesizeTapGesture", {
-              x: box.x + box.width / 2,
-              y: box.y + box.height / 2,
-              gestureSourceType: "touch",
-            });
-          } finally {
-            await gesture.detach();
-          }
-        } else if (width < 600) await outsideHeading.tap();
-        else await outsideHeading.click();
-        try {
-          await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
-        } catch (error) {
-          console.error("Founding native gesture events: " + JSON.stringify(touchTrace));
-          throw error;
-        } finally {
-          await page.evaluate(() => window.foundingTouchTraceController.abort());
-        }
-        await helpBackstory.click();
-        const roleHelp = root.getByRole("button", { name: "Help: Role Title", exact: true });
-        await roleHelp.click();
-        await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
-        await expect(roleHelp).toHaveAttribute("aria-expanded", "true");
-        await roleHelp.press("Escape");
-        await expect(roleHelp).toBeFocused();
-        await choice.selectOption("village");
-        const editBackstory = finnCard.getByRole("button", { name: "Edit Finn backstory", exact: true });
-        const backstoryEditor = root.getByRole("dialog", { name: "Finn’s backstory", exact: true });
-        const past = backstoryEditor.getByLabel("Backstory for This Village", { exact: true });
-        const missingBackstoryNotice = finnCard.getByRole("alert");
-        await expect(missingBackstoryNotice).toHaveCount(0);
-        await expect(choice).not.toHaveAttribute("aria-invalid", "true");
-        const roleTitle = root.getByLabel("Role Title", { exact: true });
-        await roleTitle.fill(" ");
-        await forward("Continue to Map").click();
-        await expect(roleTitle).toHaveAttribute("aria-invalid", "true");
-        await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toHaveText(
-          "Give your village role a title.",
-        );
-        await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
-        await expect(roleTitle).toBeFocused();
-        const scrollBeforeRoleFix = await root.evaluate((node) => node.scrollTop);
-        await roleTitle.fill("Harbor Patron");
-        await page.evaluate(
-          () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-        );
-        await expect(roleTitle).toBeFocused();
+        await expect(root.locator(".villages-founding-connections")).toBeHidden();
+        const cast = root.locator(".villages-people-columns>section").first();
+        const backstories = root.getByRole("region", { name: "Founding backstories", exact: true });
+        await expect(backstories.getByRole("heading", { name: "Life in Willowbrook", exact: true })).toBeVisible();
+        await expect(cast.locator(".villages-people-selected small, .villages-people-identity small")).toHaveCount(0);
+        const castBox = await cast.boundingBox(),
+          storyBox = await backstories.boundingBox();
         assert.ok(
-          Math.abs((await root.evaluate((node) => node.scrollTop)) - scrollBeforeRoleFix) <= 1,
-          "fixing Role does not scroll to the remaining backstory error",
+          width > 1000 ? storyBox.x >= castBox.x + castBox.width : storyBox.y >= castBox.y + castBox.height,
+          "backstories sit beside the cast on desktop and below it on phone",
         );
-        await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toHaveCount(0);
-        await expect(missingBackstoryNotice).toBeVisible();
+
+        await root.getByRole("button", { name: "Propose Backstories", exact: true }).click();
+        const past = root.getByLabel("Finn backstory", { exact: true });
+        await expect(past).toHaveValue(/settled here/);
+        await past.fill(" ");
         await forward("Continue to Map").click();
+        await expect(root.getByText("Complete unfinished backstories in People.", { exact: true })).toBeVisible();
         await expect(root).toHaveAttribute("data-step", "1");
-        await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
-        await expect(missingBackstoryNotice).toHaveCSS("color", "rgb(255, 155, 165)");
-        await expect(choice).toHaveAttribute("aria-invalid", "true");
-        await expect(choice).toBeFocused();
-        await choice.selectOption("continue");
-        await expect(missingBackstoryNotice).toHaveCount(0);
-        await expect(choice).not.toHaveAttribute("aria-invalid", "true");
-        await choice.selectOption("village");
-        await expect(missingBackstoryNotice).toHaveCount(0);
-        await forward("Continue to Map").click();
-        await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
-        await bounds();
-        await capture("backstory-required");
-        await expect(editBackstory).toBeVisible();
-        await expect(backstoryEditor).toHaveCount(0);
-        await expect(finnCard.getByRole("textbox")).toHaveCount(0);
-        await editBackstory.click();
-        await expect(backstoryEditor).toBeVisible();
-        const popupBounds = await backstoryEditor.boundingBox();
-        assert.ok(
-          popupBounds && popupBounds.height < height * 0.65,
-          "backstory popup fits its contents instead of filling the page",
-        );
-        const popupFooter = await backstoryEditor.locator("footer").boundingBox();
-        assert.ok(
-          popupFooter && popupBounds.y + popupBounds.height - popupFooter.y - popupFooter.height < 25,
-          "no empty area below popup actions",
-        );
-        await expect(backstoryEditor.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
-        await expect(backstoryEditor.locator("header").getByRole("button")).toHaveCount(0);
-        await expect(
-          backstoryEditor.locator("footer").getByRole("button", { name: "Close", exact: true }),
-        ).toBeVisible();
-        await past.fill("Discard this draft.");
-        if (width < 600) await page.touchscreen.tap(4, 4);
-        else await page.mouse.click(4, 4);
-        await expect(backstoryEditor).toBeVisible();
-        await expect(past).toHaveValue("Discard this draft.");
-        await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
-        await expect(choice).toHaveValue("village");
-        await expect(missingBackstoryNotice).toBeVisible();
-        await expect(editBackstory).toBeFocused();
-        await editBackstory.click();
-        await expect(past).toHaveValue("");
-        await past.fill("Discard with Escape.");
-        await past.press("Escape");
-        await expect(backstoryEditor).toBeVisible();
-        await expect(past).toHaveValue("Discard with Escape.");
-        await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
-        await expect(backstoryEditor).toHaveCount(0);
-        await expect(editBackstory).toBeFocused();
-        await editBackstory.click();
-        await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
-        await expect(backstoryEditor.getByRole("alert")).toHaveText("Write Finn’s backstory for this Village.");
-        await past.fill("   ");
-        await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
-        await expect(backstoryEditor.getByRole("alert")).toHaveText("Write Finn’s backstory for this Village.");
         await past.fill("Finn has always been guardian of a relic in the observatory.");
-        if (width === 390 && height === 844) {
-          await page.setViewportSize({ width, height: 460 });
-          await past.focus();
-          await past.scrollIntoViewIfNeeded();
-          const box = await past.boundingBox();
-          assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, "popup field fits phone keyboard width");
-          await page.setViewportSize({ width: 1366, height: 844 });
-          await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-          await page.setViewportSize({ width, height });
-        }
+        await root.getByLabel("Your backstory", { exact: true }).fill("I came to help restore the observatory.");
         await bounds();
-        await capture("people-popup");
-        if (process.env.VILLAGES_SCREENSHOT_DIR) {
-          await backstoryEditor.scrollIntoViewIfNeeded();
-          await page.screenshot({
-            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `backstory-editor-${width}.png`),
-          });
-        }
-        await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
-        await expect(choice).toHaveValue("village");
-        await expect(missingBackstoryNotice).toHaveCount(0);
-        await expect(choice).not.toHaveAttribute("aria-invalid", "true");
-        await root.getByRole("button", { name: "Finn · Remove", exact: true }).click();
-        await expect(root.locator(".villages-backstory-row")).toHaveCount(homeCount - 1);
-        await selectResidents(["Finn"]);
-        await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
+        await capture("people-backgrounds");
+        await forward("Save & exit").click();
+        await page.reload();
+        await page.addScriptTag({ content: foundingBundle });
+        await root.getByRole("button", { name: "Resume founding", exact: true }).click();
         await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-        await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
-        // Preserve and repair a partially authored legacy Custom draft after reload.
-        if (width === 1366) {
-          await forward("Save & exit").click();
-          await expect(root.getByRole("button", { name: "Resume founding", exact: true })).toBeVisible();
-          await page.reload();
-          await page.evaluate(async () => {
-            const db = await new Promise((resolve, reject) => {
-              const request = indexedDB.open("villages-founding-v2", 1);
-              request.onsuccess = () => resolve(request.result);
-              request.onerror = () => reject(request.error);
-            });
-            await new Promise((resolve, reject) => {
-              const transaction = db.transaction("drafts", "readwrite");
-              const cursor = transaction.objectStore("drafts").openCursor();
-              cursor.onsuccess = () => {
-                const row = cursor.result;
-                if (!row) return;
-                const saved = row.value;
-                saved.data.residentContexts.finn = {
-                  historyMode: "adapt",
-                  storyRole: "custom",
-                  customDescription: "",
-                  background: "Remembers a former life elsewhere. The observatory's wider world is undecided.",
-                };
-                row.update({ ...saved, revision: saved.revision + 1 });
-                row.continue();
-              };
-              transaction.oncomplete = resolve;
-              transaction.onerror = () => reject(transaction.error);
-            });
-            db.close();
-          });
-          await page.reload();
-          await page.addScriptTag({ content: foundingBundle });
-          await root.getByRole("button", { name: "Resume founding", exact: true }).click();
-          await expect(choice).toHaveValue("adapt");
-          await forward("Continue to Map").click();
-          await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
-          await expect(backstoryEditor.getByLabel("Finn custom place", { exact: true })).toHaveValue("");
-          await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
-          await expect(backstoryEditor.getByRole("alert")).toContainText("Describe their place here");
-          await backstoryEditor
-            .getByLabel("Finn custom place", { exact: true })
-            .fill("Guardian of a relic in the observatory.");
-          await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
-        }
         assert.equal(suggestionCalls, 0);
         assert.equal(imageCalls, 0);
         await bounds();
@@ -1049,11 +832,11 @@ export async function verifyFoundingLayout(group) {
           await capture("map-details-help");
           await note.click();
           await expect(mapHelp).toHaveAttribute("aria-expanded", "true");
-          await mapHelp.press("Escape");
+          await page.keyboard.press("Escape");
           await expect(mapHelp).toBeFocused();
           await expect(mapHelp).toHaveAttribute("aria-expanded", "false");
           await mapHelp.click();
-          await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
+          await mapDialog.getByRole("button", { name: "Close Map Details help", exact: true }).click();
           await expect(mapHelp).toHaveAttribute("aria-expanded", "false");
         }
         await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
@@ -1115,7 +898,7 @@ export async function verifyFoundingLayout(group) {
         await expect(mapDialog.getByRole("note")).toHaveText(
           "Describe what you want shown, arranged, or left out of the artwork.",
         );
-        await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
+        await mapDialog.getByRole("button", { name: "Close Map Details help", exact: true }).click();
         await expect(mapDialog.getByRole("note")).toHaveCount(0);
         await capture("map-details");
         const customStyle = mapDialog.getByLabel("Scenery Style Description", { exact: true });
@@ -1261,13 +1044,7 @@ export async function verifyFoundingLayout(group) {
         await bounds();
         await capture("map-page");
         await forward("Back").click();
-        await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
-        if (width === 1366)
-          await expect(backstoryEditor.getByLabel("Finn starting background", { exact: true })).toHaveValue(
-            "Remembers a former life elsewhere. The observatory's wider world is undecided.",
-          );
-        else await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-        await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
+        await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
         await forward("Back").click();
         await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Willowbrook");
         await forward("Continue to People").click();
@@ -1492,7 +1269,7 @@ export async function verifyFoundingLayout(group) {
         await expect(inspector.getByRole("note")).toHaveText(
           "Describe the entrance, approach and visible exterior of this Venue.",
         );
-        await entranceHelp.press("Escape");
+        await page.keyboard.press("Escape");
         const formHelp = inspector.getByRole("button", { name: "Help: Form", exact: true });
         const formLabel = await formHelp.locator("..").locator("..").locator("label").boundingBox();
         const formButton = await formHelp.boundingBox();
@@ -1533,7 +1310,7 @@ export async function verifyFoundingLayout(group) {
           beforeHelp,
           "floating help does not shift fields",
         );
-        await formHelp.press("Escape");
+        await page.keyboard.press("Escape");
         await expect(formHelp).toBeFocused();
         await expect(inspector.getByRole("note")).toHaveCount(0);
         await formHelp.evaluate((element) => element.blur());
@@ -1690,6 +1467,7 @@ export async function verifyFoundingLayout(group) {
         await capture("resident-room-specification");
         await inspector.getByRole("button", { name: "Help: Private interior", exact: true }).click();
         await expect(inspector.getByText(/prepared privately/)).toBeVisible();
+        await inspector.getByRole("button", { name: "Close Private interior help", exact: true }).click();
         await open();
         await mapView();
         await forward("Suggest names & descriptions").click();
@@ -2057,7 +1835,7 @@ export async function verifyFoundingLayout(group) {
         }
         await forward("Review village").click();
         await expect(root).toHaveAttribute("data-step", "4");
-        await expect(root.getByRole("button", { name: "Change people & role", exact: true })).toBeVisible();
+        await expect(root.getByRole("button", { name: "Change people & backstories", exact: true })).toBeVisible();
         await expect(root.locator(".villages-resident-review").filter({ hasText: "Finn" })).toContainText(
           /[Gg]uardian of a relic/,
         );
@@ -2117,21 +1895,9 @@ export async function verifyFoundingLayout(group) {
         await expect.poll(() => foundingPayload).toBeTruthy();
         assert.equal(foundingPayload.venues.length, homeCount + 2);
         assert.ok(foundingPayload.townMapImage.startsWith("data:image/png;base64,"));
-        assert.equal(foundingPayload.playerRole.title, "Harbor Patron");
-        if (width === 1366) {
-          assert.equal(foundingPayload.foundingResidentContexts.finn.storyRole, "custom");
-          assert.equal(
-            foundingPayload.foundingResidentContexts.finn.customDescription,
-            "Guardian of a relic in the observatory.",
-          );
-          assert.match(foundingPayload.foundingResidentContexts.finn.background, /wider world is undecided/);
-        } else {
-          assert.equal(foundingPayload.foundingResidentContexts.finn.historyMode, "village");
-          assert.equal(foundingPayload.foundingResidentContexts.finn.storyRole, "unspecified");
-          assert.match(foundingPayload.foundingResidentContexts.finn.villageBackstory, /always been guardian/);
-        }
-        assert.equal(foundingPayload.playerRole.explanation, "");
-        assert.equal(foundingPayload.loreTokenBudget, 0, "a cleared budget continues with zero");
+        assert.equal(foundingPayload.playerBackground, "I came to help restore the observatory.");
+        assert.equal(foundingPayload.foundingResidentContexts.finn.integration.accepted, true);
+        assert.match(foundingPayload.foundingResidentContexts.finn.integration.text, /always been guardian/);
         assert.deepEqual(
           Object.keys(foundingPayload.foundingResidentContexts).sort(),
           foundingPayload.foundingCharacterIds.slice().sort(),

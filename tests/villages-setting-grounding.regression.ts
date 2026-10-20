@@ -5,7 +5,7 @@ import { proposeCompactFounding } from "../packages/villages/src/server/features
 import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/server/domain/rules/narrative-grounding.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/server/domain/rules/player-role.js";
+import { DEFAULT_PLAYER_BACKGROUND } from "../packages/villages/src/server/domain/rules/player-background.js";
 import {
   villageCurrentSetting,
   villageFoundingSetting,
@@ -105,7 +105,7 @@ async function main() {
         foundingReason: "custom",
         foundingDetails: circumstances,
         setupAt: "2026-10-01T12:00:00Z",
-        playerRole: DEFAULT_PLAYER_ROLE,
+        playerBackground: DEFAULT_PLAYER_BACKGROUND,
       });
       const before = JSON.stringify(state);
       const current = villageCurrentSetting(state);
@@ -223,12 +223,12 @@ async function main() {
       setting: "Old harbor",
       foundingDetails: "On Day 1 we arrived.",
       promptKnowledge: "My custom prompt",
-      playerRole: { ...DEFAULT_PLAYER_ROLE, title: "Village Steward" },
+      playerBackground: "I arrived to help the harbor.",
     });
     assert.equal(legacy.foundingDetails, "On Day 1 we arrived.");
     assert.equal(legacy.promptKnowledge, "My custom prompt");
-    assert.equal(legacy.playerRole?.title, "Village Steward");
-    assert.equal(coerceVillageState({ wishSystemVersion: 3, setupAt: legacy.setupAt }).playerRole, null);
+    assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
+    assert.equal(coerceVillageState({ wishSystemVersion: 3, setupAt: legacy.setupAt }).playerBackground, "");
   } finally {
     release();
   }

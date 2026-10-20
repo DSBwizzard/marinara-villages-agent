@@ -1,4 +1,4 @@
-import type { PlayerRole } from "../../../shared/contracts/player-role.js";
+import type { PlayerBackground } from "../../../shared/contracts/player-background.js";
 import type { ScenarioImprint, SetupMapRequest, VillageLorebookOption } from "../../../shared/contracts/village.js";
 import type { ResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
@@ -8,7 +8,7 @@ import type { SetupDraftData } from "./draft-model.js";
 import type { SavedFoundingDraft } from "./villages-founding-draft.js";
 import { type AreaDraftCache } from "./villages-founding-editor";
 import { emptyFoundingWorkspace, type FoundingIssue } from "./villages-founding-workspace-state";
-import { DEFAULT_PLAYER_ROLE } from "./villages-player-role.js";
+import { DEFAULT_PLAYER_BACKGROUND } from "./villages-player-background.js";
 import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
@@ -29,13 +29,18 @@ export function useFoundingState() {
   const [setupName, setSetupName] = useState("");
   const [setupTimeZone, setSetupTimeZone] = useState("");
 
+  const [setupWorldOrigin, setSetupWorldOrigin] = useState<"same-world" | "different-worlds" | null>(
+    "different-worlds",
+  );
   const [setupSetting, setSetupSetting] = useState("");
 
   const [setupFoundingReason, setSetupFoundingReason] = useState<FoundingScenarioId>("custom");
 
   const [setupFoundingDetails, setSetupFoundingDetails] = useState<string>("");
 
-  const [setupPlayerRole, setSetupPlayerRole] = useState<PlayerRole | null>({ ...DEFAULT_PLAYER_ROLE });
+  const [setupPlayerBackground, setSetupPlayerBackground] = useState<PlayerBackground | null>(
+    DEFAULT_PLAYER_BACKGROUND,
+  );
 
   const [setupImprint, setSetupImprint] = useState<ScenarioImprint>(emptyScenarioImprint);
 
@@ -165,14 +170,16 @@ export function useFoundingState() {
     setSetupName,
     setupTimeZone,
     setSetupTimeZone,
+    setupWorldOrigin,
+    setSetupWorldOrigin,
     setupSetting,
     setSetupSetting,
     setupFoundingReason,
     setSetupFoundingReason,
     setupFoundingDetails,
     setSetupFoundingDetails,
-    setupPlayerRole,
-    setSetupPlayerRole,
+    setupPlayerBackground,
+    setSetupPlayerBackground,
     setupImprint,
     setSetupImprint,
     setupWorldFacts,

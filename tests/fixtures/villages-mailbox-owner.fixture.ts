@@ -95,7 +95,7 @@ function input(state: VillageState) {
     due,
     now: now.toISOString(),
     villageName: state.name,
-    playerRole: state.playerRole,
+    playerBackground: state.playerBackground,
     playerPersonaName: state.playerPersonaName,
     villagers: state.villagers
       .filter((v) => due.affectedIds.includes(v.characterId))

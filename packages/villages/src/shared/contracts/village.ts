@@ -1,6 +1,6 @@
 import type { StagingCue } from "../helpers/scene-staging.js";
 import type { SpeechDelivery, SpeechPresentation } from "../helpers/scene-speech.js";
-import type { PlayerRole } from "./player-role.js";
+import type { PlayerBackground } from "./player-background.js";
 import type { VillagesWalkBeat } from "./scene-beat.js";
 
 /** Client-visible wire data. Private saved-world and Scene records stay on the server. */
@@ -652,9 +652,10 @@ export type VillageSettings = {
   setting: string;
   settingMaxLength: number;
   foundingReason: string;
+  worldOrigin?: "same-world" | "different-worlds" | null;
   foundingDetails: string;
   foundingGuidance: string;
-  playerRole?: PlayerRole | null;
+  playerBackground?: PlayerBackground | null;
   scenarioImprint: ScenarioImprint | null;
   worldFacts: string[];
   selectedLorebookIds: string[];
