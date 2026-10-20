@@ -403,14 +403,16 @@ try {
       await element.decode();
     });
     await oldArt.scrollIntoViewIfNeeded();
-    const oldBounds = await oldArt.boundingBox();
-    const oldVisible = PNG.sync.read(await page.screenshot({ clip: oldBounds, animations: "disabled" }));
+    await expect(oldArt).toBeInViewport({ ratio: 1 });
+    // Element screenshots use the same scroll-aware clip for both captures.
+    // boundingBox is viewport-relative; a page screenshot clip is not.
+    const oldVisible = PNG.sync.read(await oldArt.screenshot({ animations: "disabled" }));
     await oldArt.evaluate((element) => {
-      element.style.visibility = "hidden";
+      element.style.opacity = "0";
     });
-    const notebookOnly = PNG.sync.read(await page.screenshot({ clip: oldBounds, animations: "disabled" }));
+    const notebookOnly = PNG.sync.read(await oldArt.screenshot({ animations: "disabled" }));
     await oldArt.evaluate((element) => {
-      element.style.visibility = "";
+      element.style.opacity = "";
     });
     const sample = (png, x, y) => Array.from(png.data.slice((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
     for (const [x, y] of [
@@ -421,7 +423,7 @@ try {
         paper = sample(notebookOnly, x, y);
       assert.ok(
         visible.every((value, channel) => Math.abs(value - paper[channel]) <= 1),
-        "Existing saved white fills reveal the notebook unchanged",
+        `Existing saved white fills reveal the notebook unchanged at ${width}x${height} (${x},${y}): ${JSON.stringify({ visible, paper })}`,
       );
     }
     const faintVisible = sample(oldVisible, 90, 14),
