@@ -20,6 +20,87 @@ try {
     { width: 1440, height: 1000 },
     { width: 390, height: 844 },
   ]) {
+    const coldPage = await browser.newPage({ viewport });
+    const cold = {
+      revision: 0,
+      manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
+      assignments: [],
+      suggestions: [],
+      defaultArtworkId: "",
+      useSprites: false,
+      errors: {},
+      analysisRequests: [],
+      files: [{ filename: "full_one.png", url: "/one.png" }],
+      resident: false,
+      residentToken: "",
+    };
+    let releaseRead, releaseImport;
+    let holdRead = true,
+      writes = 0;
+    await coldPage.route("http://villages.test/", (route) =>
+      route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
+    );
+    await coldPage.route("**/api/connections", (route) =>
+      route.fulfill({ contentType: "application/json", body: "[]" }),
+    );
+    await coldPage.route("**/api/villages/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/prepare"))
+        await new Promise((resolve) => {
+          releaseImport = resolve;
+        });
+      else if (route.request().method() === "POST") writes++;
+      else if (holdRead)
+        await new Promise((resolve) => {
+          releaseRead = resolve;
+        });
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(cold) }).catch(() => {});
+    });
+    await coldPage.goto("http://villages.test/");
+    await coldPage.addScriptTag({ content: bundle.outputFiles[0].text });
+    await coldPage.getByRole("button", { name: "Choose Bupkis" }).click();
+    await expect(coldPage.getByText("Loading sprites…", { exact: true })).toBeVisible();
+    await expect(coldPage.getByRole("button", { name: "Add without using sprites", exact: true })).toBeEnabled();
+    await coldPage.getByRole("button", { name: "Add without using sprites", exact: true }).click();
+    await expect(coldPage.getByText("Bupkis added", { exact: true })).toBeVisible();
+    assert.equal(await coldPage.locator("#app").getAttribute("data-sprite-revision"), "undefined");
+    holdRead = false;
+    releaseRead();
+    for (const exit of ["Back", "Add without using sprites"]) {
+      await coldPage.getByRole("button", { name: "Choose Bupkis" }).click();
+      await expect(coldPage.getByText("Importing sprites…", { exact: true })).toBeVisible();
+      await expect(coldPage.getByRole("button", { name: "Set up manually", exact: true })).toBeDisabled();
+      await expect(coldPage.getByRole("button", { name: exit, exact: true })).toBeEnabled();
+      await coldPage.getByRole("button", { name: exit, exact: true }).click();
+      await expect(coldPage.getByRole("dialog")).toHaveCount(0);
+      releaseImport();
+    }
+    assert.equal(writes, 0, "Leaving during import never queues a stale save or activates sprites.");
+    assert.equal(await coldPage.locator("#app").getAttribute("data-sprite-revision"), "undefined");
+    assert.equal(
+      await coldPage.locator("#app").getAttribute("data-closed-revision"),
+      "undefined",
+      "Back preserves a portrait-only selection without recording a sprite revision.",
+    );
+    await coldPage.getByRole("button", { name: "Use saved sprite choice", exact: true }).click();
+    await coldPage.getByRole("button", { name: "Choose Bupkis" }).click();
+    await expect(coldPage.getByText("Importing sprites…", { exact: true })).toBeVisible();
+    await coldPage.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(coldPage.getByRole("dialog")).toHaveCount(0);
+    releaseImport();
+    assert.equal(
+      await coldPage.locator("#app").getAttribute("data-closed-revision"),
+      "0",
+      "Back refreshes an existing sprite selection after canceled imports settle.",
+    );
+    await coldPage.getByRole("button", { name: "Fail next addition", exact: true }).click();
+    await coldPage.getByRole("button", { name: "Choose Bupkis" }).click();
+    await expect(coldPage.getByText("Importing sprites…", { exact: true })).toBeVisible();
+    await coldPage.getByRole("button", { name: "Add without using sprites", exact: true }).click();
+    releaseImport();
+    await expect(coldPage.getByText("Move-in failed.", { exact: true })).toBeVisible();
+    await expect(coldPage.getByRole("button", { name: "Set up manually", exact: true })).toBeEnabled();
+    await coldPage.close();
     const page = await browser.newPage({ viewport });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
