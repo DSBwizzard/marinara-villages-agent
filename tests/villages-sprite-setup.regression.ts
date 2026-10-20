@@ -144,6 +144,17 @@ draft = await service.save("bupkis", {
 await assert.rejects(service.save("bupkis", { ...draft, revision: stale }), /changed/);
 const manager = await service.preparedManager("bupkis", draft.revision);
 assert.equal(manager!.assignments.length, 1);
+const document = [...documents.values()][0] as { assignments: { approved?: boolean }[] };
+delete document.assignments[0].approved;
+const previousDraft = await service.read("bupkis");
+assert.equal(
+  previousDraft.assignments[0].approved,
+  false,
+  "Earlier automatically completed drafts are not treated as explicit approval.",
+);
+assert.equal(previousDraft.assignments[0].name, "Thoughtful", "Earlier draft values remain available for review.");
+await assert.rejects(service.preparedManager("bupkis", draft.revision), /approved default/);
+draft = await service.save("bupkis", draft);
 draft = await service.save("bupkis", {
   ...draft,
   assignments: draft.assignments.map((item, index) =>

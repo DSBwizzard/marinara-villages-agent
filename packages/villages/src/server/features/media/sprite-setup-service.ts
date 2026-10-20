@@ -60,7 +60,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       const saved = structuredClone(value) as SpriteSetupDraft;
       saved.assignments = saved.assignments.map((item) => ({
         ...item,
-        approved: item.approved ?? Boolean(complete(item)),
+        approved: item.approved === true,
       }));
       return saved;
     },
