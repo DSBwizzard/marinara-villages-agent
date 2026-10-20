@@ -286,18 +286,22 @@ export function SpriteSetupDialog({
       .villages-sprite-setup .sprite-preview-small .sprite-refresh{display:none}.villages-sprite-setup .sprite-select{display:none}.villages-sprite-setup .sprite-batch[open]+.sprite-editor .sprite-select{display:flex}.villages-sprite-setup .sprite-counts span{display:inline-block;white-space:nowrap}.villages-sprite-setup .sprite-thumb{min-width:86px}.villages-sprite-setup .sprite-progress{margin:0}.villages-sprite-setup .sprite-gallery{display:flex;gap:8px;overflow-x:auto;min-width:0;padding:3px 0 8px}.villages-sprite-setup .sprite-thumb{flex:0 0 76px;padding:4px;display:grid;gap:4px;font-size:12px}.villages-sprite-setup .sprite-thumb[aria-pressed=true]{outline:2px solid #b0d2ff;outline-offset:-2px;background:#36567a}.villages-sprite-setup .sprite-thumb img{width:66px;height:76px;object-fit:contain}.villages-sprite-setup .sprite-thumb span{white-space:nowrap}.villages-sprite-setup .sprite-navigation{display:flex;align-items:center;justify-content:space-between;gap:8px}.villages-sprite-setup .sprite-batch summary{cursor:pointer;padding:8px 0}.villages-sprite-setup .sprite-tile{grid-template-columns:minmax(120px,1fr) minmax(0,2fr);gap:16px}.villages-sprite-setup .sprite-inspector-image{min-width:0;display:grid;gap:6px;align-content:start}.villages-sprite-setup .sprite-inspector-image img{width:100%;height:260px;object-fit:contain;background:#233048;border-radius:8px}.villages-sprite-setup .sprite-fields{display:grid;gap:10px;min-width:0}.villages-sprite-setup .sprite-fields>.sprite-inline{display:inline-flex}.villages-sprite-setup .sprite-fields>.sprite-select{display:none}.villages-sprite-setup .sprite-tile textarea{resize:vertical}@media(max-width:480px){.villages-sprite-setup .sprite-tile{grid-template-columns:1fr}.villages-sprite-setup .sprite-inspector-image{grid-template-columns:110px minmax(0,1fr);align-items:center}.villages-sprite-setup .sprite-inspector-image img{height:140px}.villages-sprite-setup .sprite-fields{gap:8px}.villages-sprite-setup .sprite-preview-small p{margin:0 0 8px}}
     `}</style>
       <header>
-        <h2>{name}’s sprites</h2>
+        <div>
+          <h2>{name}’s sprites</h2>
+          {!data || importing ? (
+            <p role="status" style={{ margin: "4px 0 0", fontSize: "0.875rem", color: "#b9c6da" }}>
+              {importing ? "Preparing sprites…" : "Reading sprites…"}
+            </p>
+          ) : null}
+        </div>
         <button disabled={busy} onClick={() => void perform(close)}>
           Back
         </button>
       </header>
       <main>
         {error ? <p role="alert">{error}</p> : null}
-        {importing ? <p role="status">Importing sprites…</p> : null}
         <fieldset disabled={importing} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-          {!data ? (
-            <p role="status">Loading sprites…</p>
-          ) : (
+          {!data ? null : (
             <>
               <div className={`sprite-preview ${expanded ? "sprite-preview-small" : ""}`}>
                 {defaultArt ? (

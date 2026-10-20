@@ -59,7 +59,7 @@ try {
     await coldPage.goto("http://villages.test/");
     await coldPage.addScriptTag({ content: bundle.outputFiles[0].text });
     await coldPage.getByRole("button", { name: "Choose Bupkis" }).click();
-    await expect(coldPage.getByText("Loading sprites…", { exact: true })).toBeVisible();
+    await expect(coldPage.getByText("Reading sprites…", { exact: true })).toBeVisible();
     await expect(coldPage.getByRole("button", { name: "Add without using sprites", exact: true })).toBeEnabled();
     await coldPage.getByRole("button", { name: "Add without using sprites", exact: true }).click();
     await expect(coldPage.getByText("Bupkis added", { exact: true })).toBeVisible();
@@ -68,7 +68,12 @@ try {
     releaseRead();
     for (const exit of ["Back", "Add without using sprites"]) {
       await coldPage.getByRole("button", { name: "Choose Bupkis" }).click();
-      await expect(coldPage.getByText("Importing sprites…", { exact: true })).toBeVisible();
+      await expect(coldPage.getByText("Preparing sprites…", { exact: true })).toBeVisible();
+      if (exit === "Back") {
+        const status = await coldPage.getByText("Preparing sprites…", { exact: true }).boundingBox();
+        assert.ok(status.y >= 0 && status.y + status.height <= viewport.height, "Loading status stays in view.");
+        await coldPage.screenshot({ path: `.build-tmp/sprite-setup/loading-${viewport.width}.png`, fullPage: true });
+      }
       await expect(coldPage.getByRole("button", { name: "Set up manually", exact: true })).toBeDisabled();
       await expect(coldPage.getByRole("button", { name: exit, exact: true })).toBeEnabled();
       await coldPage.getByRole("button", { name: exit, exact: true }).click();
@@ -84,7 +89,7 @@ try {
     );
     await coldPage.getByRole("button", { name: "Use saved sprite choice", exact: true }).click();
     await coldPage.getByRole("button", { name: "Choose Bupkis" }).click();
-    await expect(coldPage.getByText("Importing sprites…", { exact: true })).toBeVisible();
+    await expect(coldPage.getByText("Preparing sprites…", { exact: true })).toBeVisible();
     await coldPage.getByRole("button", { name: "Back", exact: true }).click();
     await expect(coldPage.getByRole("dialog")).toHaveCount(0);
     releaseImport();
@@ -95,7 +100,7 @@ try {
     );
     await coldPage.getByRole("button", { name: "Fail next addition", exact: true }).click();
     await coldPage.getByRole("button", { name: "Choose Bupkis" }).click();
-    await expect(coldPage.getByText("Importing sprites…", { exact: true })).toBeVisible();
+    await expect(coldPage.getByText("Preparing sprites…", { exact: true })).toBeVisible();
     await coldPage.getByRole("button", { name: "Add without using sprites", exact: true }).click();
     releaseImport();
     await expect(coldPage.getByText("Move-in failed.", { exact: true })).toBeVisible();
