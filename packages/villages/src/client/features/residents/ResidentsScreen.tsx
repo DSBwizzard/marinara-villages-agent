@@ -1,3 +1,4 @@
+import { IdentityDescriptionEditor } from "./IdentityDescriptionEditor.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -493,6 +494,9 @@ export function ResidentsScreen({
           }}
           controls={
             <>
+              {person ? (
+                <IdentityDescriptionEditor key={person.characterId} villager={person} onSave={setSnapshot} />
+              ) : null}
               <button
                 type="button"
                 disabled={busy}

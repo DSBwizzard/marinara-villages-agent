@@ -8,7 +8,7 @@ import { previewVillagerRefresh, applyVillagerRefresh } from "./resident-cards.j
 import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
-import { addVillager, removeVillager } from "./resident-roster.js";
+import { addVillager, removeVillager, editIdentityDescription } from "./resident-roster.js";
 import { changeRelationshipCreator, readRelationshipsView } from "./relationships.js";
 import { generateResidentSignature, readResidentSignature } from "./resident-signature.js";
 import { readWishHistoryPage } from "./wishes/wish-archive.js";
@@ -45,6 +45,17 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
 }
 export function registerResidentRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.patch<{ Params: CharacterParams; Body: unknown }>(
+    "/villagers/:characterId/description",
+    async (request, reply) => {
+      try {
+        await editIdentityDescription(readCharacterId(request.params.characterId), request.body);
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "editing a Villager description");
+      }
+    },
+  );
   app.post<{ Body: { characterId?: unknown } }>("/villagers", async (request, reply) => {
     try {
       await addVillager(readCharacterId(request.body?.characterId));

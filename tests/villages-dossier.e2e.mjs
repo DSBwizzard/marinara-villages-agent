@@ -29,6 +29,8 @@ try {
     village.villagers = village.villagers.slice(0, 2);
     village.villagers[0].summary = "A curious explorer who enjoys meeting people and sharing stories.";
     if (width === 390) village.villagers[0].summary = village.villagers[0].summary.repeat(12);
+    village.villagers[0].identityDescription = { text: village.villagers[0].summary, revision: "description-1" };
+    let failDescription = false;
     village.villagers[0].tags = ["explorer", "friendly"];
     const secondName = width <= 390 ? "Eli of the Very Long and Winding Riverside Road" : "Eli";
     village.villagers[1].name = secondName;
@@ -188,7 +190,18 @@ try {
       else if (!path.endsWith("/background/presence") && !path.endsWith("/reconcile"))
         writes.push({ path, method: request.method(), body: request.postDataJSON() });
       let value = village;
-      if (path.endsWith("/town-map")) value = { image: mapImage };
+      if (path.endsWith("/villagers/mara/description")) {
+        if (failDescription)
+          return route.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "Description changed. Reopen the editor to try again." }),
+          });
+        const body = request.postDataJSON();
+        assert.equal(body.revision, village.villagers[0].identityDescription.revision);
+        village.villagers[0].identityDescription = { text: body.text, revision: "description-" + writes.length };
+        village.villagers[0].summary = body.text;
+      } else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (/\/villagers\/(mara|eli)\/signature$/.test(path)) {
         const resident = village.villagers.find((person) => path.includes(`/${person.characterId}/`));
         if (request.method() === "POST") {
@@ -294,8 +307,10 @@ try {
     );
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
+    if (width === 390 && height === 844) await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Close ×" }).click();
     await expect(people).toBeFocused();
+    if (width === 390 && height === 844) await page.setViewportSize({ width, height });
     assert.equal(
       await retainedMap.evaluate((node) => node.isConnected),
       true,
@@ -500,7 +515,7 @@ try {
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
     await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByText(/PRIVATE/)).toHaveCount(0);
-    await expect(page.getByText("No character summary recorded.", { exact: true })).toBeVisible();
+    await expect(page.getByText("No character summary recorded.", { exact: true })).toHaveCount(0);
     await expect(page.getByText(/Card missing · saved character remains available/)).toBeVisible();
     const otherSignature = page.getByRole("img", { name: `${secondName}'s signature`, exact: true });
     await expect(otherSignature).toBeVisible();
@@ -519,6 +534,42 @@ try {
       signatureUrl,
     );
     await profile.getByText("Manage", { exact: true }).click();
+
+    await profile.getByRole("button", { name: "Edit description", exact: true }).click();
+    const description = profile.getByRole("textbox", { name: "Description", exact: true });
+    const initialDescription = village.villagers[0].summary;
+    await description.fill("A reserved explorer with an interest in old machinery.");
+    await profile.getByText("Manage", { exact: true }).click();
+    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
+    await profile.getByText("Manage", { exact: true }).click();
+    await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
+    await profile.getByText("Manage", { exact: true }).click();
+    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await profile.getByText("Manage", { exact: true }).click();
+    await profile.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.equal(village.villagers[0].summary, initialDescription);
+    await profile.getByRole("button", { name: "Edit description", exact: true }).click();
+    await description.fill("A patient explorer who studies <b>old machinery</b>.");
+    failDescription = true;
+    await profile.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(profile.getByRole("alert")).toContainText("Description changed");
+    await expect(description).toHaveValue("A patient explorer who studies <b>old machinery</b>.");
+    failDescription = false;
+    await profile.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(profile.locator("." + P + "-dossier-biography")).toHaveText(
+      "A patient explorer who studies <b>old machinery</b>.",
+    );
+    await expect(profile.locator("." + P + "-dossier-biography b")).toHaveCount(0);
+    await profile.getByRole("button", { name: "Edit description", exact: true }).click();
+    await page.screenshot({ path: resolve(output, "description-editor-" + width + "-" + height + ".png") });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
+      false,
+      "Description editor fits viewport",
+    );
+    await description.fill("");
+    await profile.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(profile.locator("." + P + "-dossier-biography p")).toHaveCount(0);
     await profile.getByRole("button", { name: "Compare card", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Apply refresh", exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "Apply refresh", exact: true }).click();

@@ -1,3 +1,4 @@
+import { generatedIdentityDescription } from "./resident-description.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import type { VillagerCard } from "../models/catalog-model.js";
 import type {
@@ -34,6 +35,7 @@ type PaletteEntry = {
 };
 
 export type CompactFoundingContext = {
+  identityDescriptionRevision?: string;
   /** Legacy frozen requests may include a proposal; Routine validation ignores it. */
   openingProposal?: boolean;
   sourceRevision?: string;
@@ -59,6 +61,7 @@ export type CompactFoundingContext = {
 };
 
 export type CompactFoundingResult = {
+  identityDescription?: string;
   openingProposal?: unknown;
   agenda: VillageAgenda;
   moves: VillageRemapMove[];
@@ -350,6 +353,9 @@ export function parseCompactFounding(
     ]),
   );
   return {
+    ...(context.identityDescriptionRevision
+      ? { identityDescription: generatedIdentityDescription(payload.identityDescription) }
+      : {}),
     ...(context.openingProposal ? { openingProposal: payload.openingProposal } : {}),
     agenda: {
       routineProfile: profile,

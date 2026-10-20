@@ -7,6 +7,9 @@ export function configureResidentRoster(service: ResidentRoster): () => void {
 export async function addVillager(...args: Parameters<ResidentRoster["addVillager"]>) {
   return binding.get().addVillager(...args);
 }
+export async function editIdentityDescription(...args: Parameters<ResidentRoster["editIdentityDescription"]>) {
+  return binding.get().editIdentityDescription(...args);
+}
 export async function removeVillager(...args: Parameters<ResidentRoster["removeVillager"]>) {
   return binding.get().removeVillager(...args);
 }

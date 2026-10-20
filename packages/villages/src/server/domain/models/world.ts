@@ -392,6 +392,9 @@ export type VillageRemapFailure = {
 
 /** One library card the village has adopted. */
 export type VillageVillager = {
+  identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
+    initialGenerationComplete: boolean;
+  };
   signature?: import("../../../shared/helpers/resident-signature.js").ResidentSignatureImage;
   foundingContext?: import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext;
   wishLifecycle?: import("./wish-types.js").WishLifecycle;
@@ -1669,6 +1672,7 @@ export type VillagePlayerIdentity = {
 
 /** A villager as the tab renders it: live card fields where they exist, cached name otherwise. */
 export type VillageVillagerView = {
+  identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription;
   signature?: import("../../../shared/helpers/resident-signature.js").ResidentSignatureImage;
   signatureFallback?: import("../../../shared/helpers/resident-signature.js").ResidentSignature;
   foundingContext?: import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext;

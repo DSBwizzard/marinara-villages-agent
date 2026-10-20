@@ -106,6 +106,10 @@ Scene settings has one **Card-flip sprite changes** switch, saved with the Villa
 
 Scene notice dismissals send the complete saved receipt ID in a bounded JSON body. Relationship and memory receipts can exceed the host router's path-parameter limit; they now dismiss and stay dismissed after refresh without changing their IDs or requesting a model. The previous endpoint remains available for clients with short IDs.
 
+## Villager identity descriptions
+
+New Villagers receive one concise identity sentence during their initial routine preparation, using their adopted character and village continuity. It describes stable identity and traits, not residence or current events. The directory and journal display this saved sentence instead of card-summary prose. **Manage → Edit description** allows a plain-text description of up to 240 characters, including clearing it. Later card refreshes and routine changes never replace it. Description edits affect People display only; they do not change character behavior, cards or memories. No model request is made when viewing or editing it. Older residents remain blank unless manually edited.
+
 ## Villager journals and dossiers
 
 Villagers opens an illustrated notebook directory. Overview places the portrait, biography and signature on the left desktop page and leaves the right page blank. Relationships, Wishes, Memories, Agenda and Venues use the full spread. Phones show one page with vertically scrolling section content and fixed sticky-note navigation. Section changes turn a page; reduced motion skips the animations. Returning from a profile preserves the directory without replaying its opening. People on the map and Scene Wish notices open the same profile; Back returns to the directory, People, or the unchanged Scene. The notebook style and bundled OFL-licensed Kalam handwriting font are scoped to Villagers.

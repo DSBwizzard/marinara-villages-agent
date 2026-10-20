@@ -1,3 +1,4 @@
+import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { randomUUID } from "node:crypto";
 import { initialOpening } from "../../domain/rules/opening-project.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -359,6 +360,7 @@ export function createFoundingSetup({
         if (state.villagers.some((villager) => villager.characterId === card.id)) continue;
         state.villagers.push({
           characterId: card.id,
+          identityDescription: initialIdentityDescription(),
           ...(founding ? { foundingContext: foundingContexts[card.id] } : {}),
           cardSnapshot: {
             ...snapshotFromCard(card, 1),

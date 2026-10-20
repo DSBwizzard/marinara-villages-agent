@@ -190,6 +190,11 @@ assert.deepEqual(color.state.villagers[0]!.remap, retainedRemap);
 assert.deepEqual(color.state.villagers[0]!.remapFailure, retainedFailure);
 
 const prose = fixture("Prose");
+prose.state.villagers[0]!.identityDescription = {
+  text: "Player identity note.",
+  revision: "player-note",
+  initialGenerationComplete: true,
+};
 prose.card.description = "Changed authored prose";
 const firstVenue = venueDraft({ name: "First Venue", description: "A community place", classes: ["community"] }, null);
 const retryVenue = venueDraft(
