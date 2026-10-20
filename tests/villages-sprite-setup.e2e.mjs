@@ -48,6 +48,10 @@ try {
       state.assignments.push({ artworkId, name: "", useWhen: "", direction: "", included: true });
     }
     let analyses = 0;
+    let failAt = 0;
+    let holdAnalysis = false;
+    let releaseAnalysis;
+    const analyzedIds = [];
     await page.route("http://villages.test/", (route) =>
       route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
     );
@@ -71,10 +75,33 @@ try {
         state.suggestions = state.suggestions.filter((item) => body.pendingSuggestionIds.includes(item.artworkId));
       } else if (path.endsWith("/analyze")) {
         analyses++;
+        assert.equal(body.artworkIds.length, 1, "Each request analyzes one sprite and returns saved progress.");
+        assert.equal(body.revision, state.revision);
+        const artworkId = body.artworkIds[0];
+        analyzedIds.push(artworkId);
         state.revision++;
-        state.suggestions = [
-          { artworkId: "art-0", name: "Relaxed", useWhen: "Relaxed or listening.", direction: "left", included: true },
-        ];
+        if (holdAnalysis) {
+          await new Promise((resolve) => {
+            releaseAnalysis = resolve;
+          });
+          holdAnalysis = false;
+          await route.abort();
+          return;
+        }
+        if (analyses === failAt) state.errors[artworkId] = "Analysis failed. Select this image to retry.";
+        else {
+          delete state.errors[artworkId];
+          state.suggestions = [
+            ...state.suggestions.filter((item) => item.artworkId !== artworkId),
+            {
+              artworkId,
+              name: "Relaxed " + artworkId,
+              useWhen: "Relaxed or listening.",
+              direction: "left",
+              included: true,
+            },
+          ];
+        }
         state.suggestedDefaultArtworkId = "art-0";
       }
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(state) });
@@ -101,7 +128,8 @@ try {
     assert.equal(analyses, 0);
     await expect(page.locator(".sprite-grid")).toHaveCount(0);
     await page.getByRole("button", { name: "Set up manually" }).click();
-    await expect(page.locator(".sprite-tile")).toHaveCount(28);
+    await expect(page.locator(".sprite-thumb")).toHaveCount(28);
+    await expect(page.locator(".sprite-tile")).toHaveCount(1);
     const first = page.locator(".sprite-tile").first();
     await first.getByLabel("Expression", { exact: true }).fill("Listening");
     await first.getByLabel("Use when", { exact: true }).fill("Listening closely.");
@@ -111,12 +139,14 @@ try {
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
     await expect(page.getByText("1 ready · 27 unresolved")).toBeVisible();
     await page.getByRole("button", { name: "Review sprites" }).click();
+    await page.getByText("Batch edit", { exact: true }).click();
     await first.getByLabel("Select", { exact: true }).check();
-    await page.getByRole("button", { name: "Analyze sprites" }).click();
+    await page.getByText("Batch edit", { exact: true }).click();
+    await page.getByRole("button", { name: "Analyze selected" }).click();
     await expect(page.getByText("1 suggestions", { exact: true })).toBeVisible();
-    await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Listening");
+    await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed art-0");
     await page.getByRole("button", { name: "Apply suggestions", exact: true }).click();
-    await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed");
+    await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed art-0");
     await first.getByLabel("Use when", { exact: true }).fill("Calm and attentive.");
     const dialog = page.getByRole("dialog");
     assert.ok(
@@ -129,11 +159,57 @@ try {
     assert.equal(state.useSprites, true);
     assert.equal(state.assignments[0].useWhen, "Calm and attentive.");
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
+    await page.getByRole("button", { name: "Review sprites" }).click();
+    await page.getByText("Batch edit", { exact: true }).click();
+    await page.getByRole("button", { name: "Select all", exact: true }).click();
+    failAt = analyses + 8;
+    await page.getByRole("button", { name: "Analyze selected" }).click();
+    await expect(page.getByText("7 of 28 analyzed · Resume remaining", { exact: true })).toBeVisible();
+    assert.equal(state.suggestions.length, 7, "Completed suggestions survive a later sprite failure.");
+    const beforeResume = analyzedIds.length;
+    await page.getByRole("button", { name: "Analyze remaining" }).click();
+    await expect(page.getByText("21 of 21 analyzed", { exact: true })).toBeVisible();
+    assert.equal(state.suggestions.length, 28);
+    assert.deepEqual(
+      analyzedIds.slice(beforeResume),
+      Array.from({ length: 21 }, (_, index) => `art-${index + 7}`),
+      "Resuming skips every saved suggestion and retries only unfinished sprites.",
+    );
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed art-1");
+    await expect(page.locator(".sprite-tile")).toHaveCount(1);
+    await page.getByLabel("Batch facing", { exact: true }).selectOption("right");
+    await page.getByRole("button", { name: "Select all", exact: true }).click();
+    await page.getByRole("button", { name: "Apply to selected", exact: true }).click();
+    await expect(first.getByLabel("Facing", { exact: true })).toHaveValue("right");
+    await expect(page.getByRole("button", { name: "Apply suggestions", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    assert.ok(
+      state.assignments.every((item) => item.direction === "right" && item.name),
+      "Batch overrides accept proposals without losing their other fields.",
+    );
+    assert.equal(state.suggestions.length, 0);
+    await page.getByRole("button", { name: "Choose Bupkis" }).click();
+    await page.getByRole("button", { name: "Review sprites" }).click();
+    await expect(first.getByLabel("Facing", { exact: true })).toHaveValue("right");
+    await page.getByText("Batch edit", { exact: true }).click();
+    await page.getByRole("button", { name: "Select all", exact: true }).click();
+    holdAnalysis = true;
+    await page.getByRole("button", { name: "Analyze selected" }).click();
+    await expect(page.getByRole("button", { name: "Cancel analysis", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel analysis", exact: true }).click();
+    releaseAnalysis();
+    await expect(page.getByRole("button", { name: "Analyze remaining", exact: true })).toBeEnabled();
+    assert.equal(analyses, 31, "Cancellation prevents dispatching the next sprite.");
+    assert.ok(
+      state.assignments.every((item) => item.direction === "right"),
+      "Cancellation preserves reviewed assignments.",
+    );
     await page.getByRole("button", { name: "Add without using sprites", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     assert.equal(state.useSprites, false);
     assert.equal(state.manager.artwork.length, 28);
-    assert.equal(analyses, 1);
+    assert.equal(analyses, 31);
     assert.deepEqual(errors, []);
     await page.close();
   }
