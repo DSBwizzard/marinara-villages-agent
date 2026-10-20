@@ -286,6 +286,7 @@ export function FoundingVillagerPicker({
             {renderBackstory?.(person.id, person.name)}
             <button
               type="button"
+              className="villages-selected-sprites"
               disabled={disabled}
               onClick={() => setSpriteCharacter({ id: person.id, name: person.name })}
             >
