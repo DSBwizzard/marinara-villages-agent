@@ -162,7 +162,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     !!backgroundError ||
     setupProblem === "Choose an available Persona." ||
     setupProblem === "Choose one to three available founding villagers." ||
-    setupProblem === "Complete the highlighted resident background fields in People." ||
     (!!connectionSetupProblem && setupProblem === connectionSetupProblem);
   useEffect(() => {
     if (focusedValidationAttempt.current === validationAttempt) return;

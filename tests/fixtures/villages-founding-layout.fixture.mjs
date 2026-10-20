@@ -737,6 +737,10 @@ export async function verifyFoundingLayout(group) {
         await root.getByRole("button", { name: "Propose backgrounds", exact: true }).click();
         const past = root.getByLabel("Finn background", { exact: true });
         await expect(past).toHaveValue(/settled here/);
+        await past.fill(" ");
+        await forward("Continue to Map").click();
+        await expect(root.getByText("Complete unfinished backgrounds in People.", { exact: true })).toBeVisible();
+        await expect(root).toHaveAttribute("data-step", "1");
         await past.fill("Finn has always been guardian of a relic in the observatory.");
         await root.getByLabel("Your background", { exact: true }).fill("I came to help restore the observatory.");
         await bounds();
