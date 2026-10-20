@@ -201,13 +201,15 @@ export function createFoundingSetup({
     const initialResidents = initialResidentIds.map((characterId) => cardsById.get(characterId)!);
     const preparedSprites = new Map(
       await Promise.all(
-        initialResidentIds.map(
-          async (id) =>
-            [
-              id,
-              await preparedSpriteManager?.(id, asRecord(input.foundingSpriteRevisions)[id] as number | undefined),
-            ] as const,
-        ),
+        initialResidentIds
+          .filter((id) => !village.villagers.some((resident) => resident.characterId === id))
+          .map(
+            async (id) =>
+              [
+                id,
+                await preparedSpriteManager?.(id, asRecord(input.foundingSpriteRevisions)[id] as number | undefined),
+              ] as const,
+          ),
       ),
     );
     // Founding posts the houses placed in the wizard. Later setup runs keep the
