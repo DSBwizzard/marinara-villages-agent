@@ -41,8 +41,9 @@ const empty = (): SpriteSetupDraft => ({
   analysisRequests: [],
 });
 const documentId = (id: string) => "villages-sprite-setup-" + createHash("sha256").update(id).digest("hex");
-const ready = (item: SpriteSetupAssignment) =>
+const complete = (item: SpriteSetupAssignment) =>
   item.included && item.name.trim() && ["front", "left", "right"].includes(item.direction);
+const ready = (item: SpriteSetupAssignment) => item.approved === true && complete(item);
 const residentToken = (person: VillageState["villagers"][number]) =>
   createHash("sha256")
     .update(JSON.stringify([person.addedAt, person.spriteManager ?? null]))
@@ -54,8 +55,15 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     name: "Sprite setup",
     description: "Prepared character artwork and reviewed Scene assignments.",
     label: () => "Sprite setup",
-    coerce: (value: unknown): SpriteSetupDraft =>
-      asRecord(value).revision ? (structuredClone(value) as SpriteSetupDraft) : empty(),
+    coerce: (value: unknown): SpriteSetupDraft => {
+      if (!asRecord(value).revision) return empty();
+      const saved = structuredClone(value) as SpriteSetupDraft;
+      saved.assignments = saved.assignments.map((item) => ({
+        ...item,
+        approved: item.approved ?? Boolean(complete(item)),
+      }));
+      return saved;
+    },
   };
   async function draft(id: string) {
     return slot.coerce((await ports.villagesDocuments().getById("villages", documentId(id)))?.data);
@@ -133,6 +141,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
                   useWhen: "",
                   direction: "",
                   included: true,
+                  approved: false,
                 }) as SpriteSetupAssignment,
             ),
         ];
@@ -166,6 +175,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
         useWhen,
         direction: direction as SpriteSetupAssignment["direction"],
         included: item.included,
+        approved: item.approved === true,
       };
     });
   }
@@ -195,7 +205,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       if (item.artworkId === value.defaultArtworkId) manager.defaultExpressionId = expression.id;
     }
     if (!manager.defaultExpressionId)
-      throw badRequest("Choose an assigned default sprite or add without using sprites.");
+      throw badRequest("Choose an approved default sprite or add without using sprites.");
     return manager;
   }
   function save(id: string, body: unknown) {
@@ -208,7 +218,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
         defaultArtworkId: asString(input.defaultArtworkId),
         useSprites: input.useSprites === true,
       };
-      buildManager(updated);
+      if (input.validateForUse === true) buildManager(updated);
       const pendingIds = Array.isArray(input.pendingSuggestionIds) ? input.pendingSuggestionIds : null;
       await write(id, Number(input.revision), (next) => {
         Object.assign(next, updated);
@@ -299,6 +309,9 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
           )
             throw new Error("Invalid analysis result.");
           current = await write(id, current.revision, (next) => {
+            next.assignments = next.assignments.map((item) =>
+              item.artworkId === artId ? { ...item, approved: false } : item,
+            );
             next.suggestions = [
               ...next.suggestions.filter((item) => item.artworkId !== artId),
               {

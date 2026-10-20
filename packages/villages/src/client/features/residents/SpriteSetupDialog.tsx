@@ -13,7 +13,15 @@ type Props = {
   onDone(revision: number): void | Promise<void>;
   existing?: boolean;
 };
-const ready = (item: SpriteSetupAssignment) => item.included && Boolean(item.name.trim() && item.direction);
+const complete = (item: SpriteSetupAssignment) => item.included && Boolean(item.name.trim() && item.direction);
+const ready = (item: SpriteSetupAssignment) => item.approved === true && complete(item);
+const needsAnalysis = (item: SpriteSetupAssignment, data: SpriteSetupState) =>
+  item.included &&
+  !complete(item) &&
+  !item.name.trim() &&
+  !item.useWhen.trim() &&
+  !item.direction &&
+  !data.suggestions.some((suggestion) => suggestion.artworkId === item.artworkId);
 export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone, existing }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const abort = useRef<AbortController | null>(null);
@@ -79,14 +87,37 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
           ...prior,
           assignments: prior.assignments.map((item) =>
             item.artworkId === artworkId
-              ? { ...(prior.suggestions.find((suggestion) => suggestion.artworkId === artworkId) ?? item), ...patch }
+              ? {
+                  ...(prior.suggestions.find((suggestion) => suggestion.artworkId === artworkId) ?? item),
+                  ...patch,
+                  approved: false,
+                }
               : item,
           ),
           suggestions: prior.suggestions.filter((item) => item.artworkId !== artworkId),
         },
     );
   }
-  async function save(useSprites: boolean) {
+  function approve(ids: string[]) {
+    setData((prior) => {
+      const assignments = prior.assignments.map((item) => {
+        const candidate = prior.suggestions.find((suggestion) => suggestion.artworkId === item.artworkId) ?? item;
+        return ids.includes(item.artworkId) && complete(candidate) ? { ...candidate, approved: true } : item;
+      });
+      const approved = assignments.filter(ready).map((item) => item.artworkId);
+      return {
+        ...prior,
+        assignments,
+        suggestions: prior.suggestions.filter(
+          (item) => !ids.includes(item.artworkId) || !approved.includes(item.artworkId),
+        ),
+        defaultArtworkId:
+          prior.defaultArtworkId ||
+          (approved.includes(prior.suggestedDefaultArtworkId ?? "") ? prior.suggestedDefaultArtworkId! : ""),
+      };
+    });
+  }
+  async function save(useSprites: boolean, validateForUse = false) {
     if (!data) return null;
     const saved = await request<SpriteSetupState>(base + "/save", {
       method: "POST",
@@ -95,6 +126,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
         assignments: data.assignments,
         defaultArtworkId: data.defaultArtworkId,
         useSprites,
+        validateForUse,
         pendingSuggestionIds: data.suggestions.map((item) => item.artworkId),
       }),
     });
@@ -102,7 +134,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
     return saved;
   }
   async function finish(useSprites: boolean) {
-    const saved = await save(useSprites);
+    const saved = await save(useSprites, true);
     if (!saved) return;
     if (existing)
       await request(base + "/apply", {
@@ -117,9 +149,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
     const ids = selected.length
       ? selected.slice(0, 40)
       : saved.assignments
-          .filter(
-            (item) => !ready(item) && !saved.suggestions.some((suggestion) => suggestion.artworkId === item.artworkId),
-          )
+          .filter((item) => needsAnalysis(item, saved))
           .map((item) => item.artworkId)
           .slice(0, 40);
     if (!ids.length) {
@@ -161,6 +191,9 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
     }
   }
   const assigned = data?.assignments.filter(ready) ?? [];
+  const analysisCount = data?.assignments.filter((item) => needsAnalysis(item, data)).length ?? 0;
+  const excludedCount = data?.assignments.filter((item) => !item.included).length ?? 0;
+  const reviewCount = (data?.assignments.length ?? 0) - analysisCount - assigned.length - excludedCount;
   const defaultItem = assigned.find((item) => item.artworkId === data.defaultArtworkId);
   const defaultArt = defaultItem && data.manager.artwork.find((art) => art.id === defaultItem.artworkId);
   const activeIndex = Math.max(0, data?.manager.artwork.findIndex((art) => art.id === activeArtwork) ?? 0);
@@ -182,7 +215,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
       .villages-sprite-setup{background:#111d31;color:#f2f4fb;border:1px solid #66758f;border-radius:14px;padding:0;width:min(740px,calc(100vw - 24px));max-height:90dvh;overflow:hidden;box-sizing:border-box;font-family:system-ui,sans-serif}
       .villages-sprite-setup[open]{display:flex;flex-direction:column}.villages-sprite-setup header,.villages-sprite-setup footer{flex-shrink:0}.villages-sprite-setup main{overflow:auto;min-height:0}.villages-sprite-setup::backdrop{background:#080e19bd}.villages-sprite-setup header,.villages-sprite-setup footer{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:16px;flex-wrap:wrap}.villages-sprite-setup h2{margin:0;font-size:1.25rem}.villages-sprite-setup main{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}.villages-sprite-setup main>*{flex-shrink:0}.villages-sprite-setup button,.villages-sprite-setup input,.villages-sprite-setup select,.villages-sprite-setup textarea{font:inherit;color:inherit;background:#1a2b44;border:1px solid #62718a;border-radius:6px;padding:8px;box-sizing:border-box;max-width:100%}.villages-sprite-setup button{min-height:44px}.villages-sprite-setup button:disabled{opacity:.5}.villages-sprite-setup .sprite-primary{background:#36567a}.villages-sprite-setup .sprite-preview{display:flex;gap:18px;align-items:center;flex-wrap:wrap}.villages-sprite-setup .sprite-preview>img{height:160px;width:110px;object-fit:contain}.villages-sprite-setup .sprite-portrait{position:relative;display:flex;align-items:center;justify-content:center;flex:0 0 110px;width:110px;height:110px;overflow:hidden;border-radius:8px;background:#233048}.villages-sprite-setup .sprite-portrait>img{display:block;width:100%;height:100%;object-fit:cover}.villages-sprite-setup .sprite-portrait>svg{width:64px;height:64px}.villages-sprite-setup .sprite-actions{display:flex;gap:8px;flex-wrap:wrap}.villages-sprite-setup .sprite-tile{display:grid;gap:8px;align-content:start;min-width:0}.villages-sprite-setup label{display:grid;gap:4px}.villages-sprite-setup .sprite-inline{display:flex;align-items:center;gap:6px}.villages-sprite-setup small{overflow-wrap:anywhere;color:#b9c6da}.villages-sprite-setup .sprite-bulk{display:flex;gap:8px;flex-wrap:wrap}.villages-sprite-setup .sprite-bulk>*{flex:1;min-width:130px}.villages-sprite-setup [role=alert]{color:#ffbeb5;margin:0}.villages-sprite-setup .sprite-tile input:not([type=checkbox]):not([type=radio]),.villages-sprite-setup textarea,.villages-sprite-setup select{width:100%}@media(max-width:480px){.villages-sprite-setup input,.villages-sprite-setup select,.villages-sprite-setup textarea{font-size:16px}.villages-sprite-setup header,.villages-sprite-setup footer{padding:12px}.villages-sprite-setup main{padding:0 12px 12px}}
       .villages-sprite-setup .sprite-preview-small>.sprite-portrait,.villages-sprite-setup .sprite-preview-small>img,.villages-sprite-setup .sprite-preview-small strong{display:none}
-      .villages-sprite-setup .sprite-preview-small .sprite-refresh{display:none}.villages-sprite-setup .sprite-select{display:none}.villages-sprite-setup .sprite-batch[open]+.sprite-editor .sprite-select{display:flex}.villages-sprite-setup .sprite-progress{margin:0}.villages-sprite-setup .sprite-gallery{display:flex;gap:8px;overflow-x:auto;min-width:0;padding:3px 0 8px}.villages-sprite-setup .sprite-thumb{flex:0 0 76px;padding:4px;display:grid;gap:4px;font-size:12px}.villages-sprite-setup .sprite-thumb[aria-pressed=true]{outline:2px solid #b0d2ff;outline-offset:-2px;background:#36567a}.villages-sprite-setup .sprite-thumb img{width:66px;height:76px;object-fit:contain}.villages-sprite-setup .sprite-thumb span{white-space:nowrap}.villages-sprite-setup .sprite-navigation{display:flex;align-items:center;justify-content:space-between;gap:8px}.villages-sprite-setup .sprite-batch summary{cursor:pointer;padding:8px 0}.villages-sprite-setup .sprite-tile{grid-template-columns:minmax(120px,1fr) minmax(0,2fr);gap:16px}.villages-sprite-setup .sprite-inspector-image{min-width:0;display:grid;gap:6px;align-content:start}.villages-sprite-setup .sprite-inspector-image img{width:100%;height:260px;object-fit:contain;background:#233048;border-radius:8px}.villages-sprite-setup .sprite-fields{display:grid;gap:10px;min-width:0}.villages-sprite-setup .sprite-fields>.sprite-inline{display:inline-flex}.villages-sprite-setup .sprite-fields>.sprite-select{display:none}.villages-sprite-setup .sprite-tile textarea{resize:vertical}@media(max-width:480px){.villages-sprite-setup .sprite-tile{grid-template-columns:1fr}.villages-sprite-setup .sprite-inspector-image{grid-template-columns:110px minmax(0,1fr);align-items:center}.villages-sprite-setup .sprite-inspector-image img{height:140px}.villages-sprite-setup .sprite-fields{gap:8px}.villages-sprite-setup .sprite-preview-small p{margin:0 0 8px}}
+      .villages-sprite-setup .sprite-preview-small .sprite-refresh{display:none}.villages-sprite-setup .sprite-select{display:none}.villages-sprite-setup .sprite-batch[open]+.sprite-editor .sprite-select{display:flex}.villages-sprite-setup .sprite-counts span{display:inline-block;white-space:nowrap}.villages-sprite-setup .sprite-thumb{min-width:86px}.villages-sprite-setup .sprite-progress{margin:0}.villages-sprite-setup .sprite-gallery{display:flex;gap:8px;overflow-x:auto;min-width:0;padding:3px 0 8px}.villages-sprite-setup .sprite-thumb{flex:0 0 76px;padding:4px;display:grid;gap:4px;font-size:12px}.villages-sprite-setup .sprite-thumb[aria-pressed=true]{outline:2px solid #b0d2ff;outline-offset:-2px;background:#36567a}.villages-sprite-setup .sprite-thumb img{width:66px;height:76px;object-fit:contain}.villages-sprite-setup .sprite-thumb span{white-space:nowrap}.villages-sprite-setup .sprite-navigation{display:flex;align-items:center;justify-content:space-between;gap:8px}.villages-sprite-setup .sprite-batch summary{cursor:pointer;padding:8px 0}.villages-sprite-setup .sprite-tile{grid-template-columns:minmax(120px,1fr) minmax(0,2fr);gap:16px}.villages-sprite-setup .sprite-inspector-image{min-width:0;display:grid;gap:6px;align-content:start}.villages-sprite-setup .sprite-inspector-image img{width:100%;height:260px;object-fit:contain;background:#233048;border-radius:8px}.villages-sprite-setup .sprite-fields{display:grid;gap:10px;min-width:0}.villages-sprite-setup .sprite-fields>.sprite-inline{display:inline-flex}.villages-sprite-setup .sprite-fields>.sprite-select{display:none}.villages-sprite-setup .sprite-tile textarea{resize:vertical}@media(max-width:480px){.villages-sprite-setup .sprite-tile{grid-template-columns:1fr}.villages-sprite-setup .sprite-inspector-image{grid-template-columns:110px minmax(0,1fr);align-items:center}.villages-sprite-setup .sprite-inspector-image img{height:140px}.villages-sprite-setup .sprite-fields{gap:8px}.villages-sprite-setup .sprite-preview-small p{margin:0 0 8px}}
     `}</style>
       <header>
         <h2>{name}’s sprites</h2>
@@ -212,23 +245,21 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
               )}
               <div>
                 <strong>{defaultItem?.name || "Character portrait"}</strong>
-                <p role="status">
-                  {assigned.length} ready · {data.assignments.length - assigned.length} unresolved
+                <p role="status" className="sprite-counts">
+                  <span>{data.assignments.length} total</span> · <span>{analysisCount} need analysis</span> ·{" "}
+                  <span>{reviewCount} need review</span> · <span>{assigned.length} approved</span>
+                  {excludedCount ? <span> · {excludedCount} excluded</span> : null}
                 </p>
                 <div className="sprite-actions">
-                  <button disabled={busy || !data.manager.artwork.length} onClick={() => void perform(analyze)}>
+                  <button disabled={busy || (!selected.length && !analysisCount)} onClick={() => void perform(analyze)}>
                     {selected.length
                       ? "Analyze selected"
-                      : data.suggestions.length || progress
+                      : data.suggestions.length || progress || assigned.length || reviewCount
                         ? "Analyze remaining"
                         : "Analyze sprites"}
                   </button>
                   <button disabled={busy} onClick={() => setExpanded(!expanded)}>
-                    {expanded
-                      ? "Overview"
-                      : assigned.length || data.suggestions.length
-                        ? "Review sprites"
-                        : "Set up manually"}
+                    {expanded ? "Overview" : assigned.length || reviewCount ? "Review sprites" : "Set up manually"}
                   </button>
                   {analyzing ? <button onClick={() => abort.current?.abort()}>Cancel analysis</button> : null}
                   <button
@@ -247,35 +278,34 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                 {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
               </div>
             </div>
-            {progress ? (
+            {progress && (analyzing || progress.done < progress.total) ? (
               <p role="status" className="sprite-progress">
                 {analyzing
                   ? `Analyzing ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
-                  : `${progress.done} of ${progress.total} analyzed${progress.done < progress.total ? " · Resume remaining" : ""}`}
+                  : `Analysis stopped · ${progress.done} of ${progress.total} completed this run`}
               </p>
             ) : null}
-            {data.suggestions.length ? (
+            {reviewCount ? (
               <div className="sprite-actions">
-                <span>{data.suggestions.length} suggestions</span>
                 <button
-                  disabled={busy}
-                  onClick={() =>
-                    setData((prior) => ({
-                      ...prior,
-                      assignments: prior.assignments.map(
-                        (item) =>
-                          prior.suggestions.find((suggestion) => suggestion.artworkId === item.artworkId) ?? item,
-                      ),
-                      defaultArtworkId: prior.defaultArtworkId || prior.suggestedDefaultArtworkId || "",
-                      suggestions: [],
-                    }))
+                  disabled={
+                    busy ||
+                    !data.assignments.some(
+                      (item) =>
+                        complete(
+                          data.suggestions.find((suggestion) => suggestion.artworkId === item.artworkId) ?? item,
+                        ) && !ready(item),
+                    )
                   }
+                  onClick={() => approve(data.assignments.filter((item) => !ready(item)).map((item) => item.artworkId))}
                 >
-                  Apply suggestions
+                  Approve all
                 </button>
-                <button disabled={busy} onClick={() => setData({ ...data, suggestions: [] })}>
-                  Discard
-                </button>
+                {data.suggestions.length ? (
+                  <button disabled={busy} onClick={() => setData({ ...data, suggestions: [] })}>
+                    Discard
+                  </button>
+                ) : null}
               </div>
             ) : null}
             {expanded ? (
@@ -299,7 +329,13 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                         <img src={art.rendered.url} alt="" loading="lazy" />
                         <span>
                           {index + 1} ·{" "}
-                          {data.errors[art.id] ? "Retry" : suggestion ? "Review" : ready(item) ? "Ready" : "Set up"}
+                          {data.errors[art.id]
+                            ? "Retry"
+                            : ready(item)
+                              ? "Approved"
+                              : needsAnalysis(item, data)
+                                ? "Analyze"
+                                : "Review"}
                         </span>
                       </button>
                     );
@@ -376,6 +412,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                                   ...(bulkFacing
                                     ? { direction: bulkFacing as SpriteSetupAssignment["direction"] }
                                     : {}),
+                                  approved: false,
                                 }
                               : item,
                           ),
@@ -412,19 +449,10 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                             />
                             Select
                           </label>
-                          {suggestion ? (
+                          {!ready(item) ? (
                             <>
-                              <button
-                                disabled={busy}
-                                onClick={() => {
-                                  edit(art.id, suggestion);
-                                  setData((prior) => ({
-                                    ...prior,
-                                    suggestions: prior.suggestions.filter((item) => item.artworkId !== art.id),
-                                  }));
-                                }}
-                              >
-                                Use suggestion
+                              <button disabled={busy || !complete(item)} onClick={() => approve([art.id])}>
+                                Approve sprite
                               </button>
                             </>
                           ) : null}
@@ -483,7 +511,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                               autoComplete="off"
                               type="radio"
                               name="sprite-default"
-                              disabled={busy || !ready(item)}
+                              disabled={busy || !complete(item)}
                               checked={data.defaultArtworkId === art.id}
                               onChange={() => setData({ ...data, defaultArtworkId: art.id })}
                             />

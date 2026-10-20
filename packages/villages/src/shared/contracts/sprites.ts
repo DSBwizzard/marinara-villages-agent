@@ -40,6 +40,7 @@ export type SpriteManagerState = {
 export type SpriteLibraryItem = { filename: string; url: string; adoptedArtworkId?: string };
 
 export type SpriteSetupAssignment = {
+  approved?: boolean;
   artworkId: string;
   name: string;
   useWhen: string;

@@ -121,14 +121,48 @@ assert.equal(calls, 1, "replayed request cannot repeat a purchased call");
 const stale = draft.revision;
 draft = await service.save("bupkis", {
   ...draft,
-  assignments: draft.assignments.map((item, index) => (index ? item : draft.suggestions[0])),
+  assignments: draft.assignments.map((item, index) => (index ? item : { ...draft.suggestions[0], approved: false })),
   defaultArtworkId: draft.suggestions[0].artworkId,
   useSprites: true,
   pendingSuggestionIds: [],
 });
+assert.equal(
+  (await service.read("bupkis")).assignments[0].approved,
+  false,
+  "Edited values remain unapproved after saving.",
+);
+await assert.rejects(
+  service.preparedManager("bupkis", draft.revision),
+  /approved default/,
+  "A complete but unapproved sprite cannot become usable during founding or move-in.",
+);
+draft = await service.save("bupkis", {
+  ...draft,
+  assignments: draft.assignments.map((item, index) => (index ? item : { ...item, approved: true })),
+  validateForUse: true,
+});
 await assert.rejects(service.save("bupkis", { ...draft, revision: stale }), /changed/);
 const manager = await service.preparedManager("bupkis", draft.revision);
 assert.equal(manager!.assignments.length, 1);
+draft = await service.save("bupkis", {
+  ...draft,
+  assignments: draft.assignments.map((item, index) =>
+    index
+      ? {
+          ...item,
+          name: "Unapproved manual edit",
+          useWhen: "Listening",
+          direction: "front",
+          approved: false,
+        }
+      : item,
+  ),
+});
+assert.equal(
+  (await service.preparedManager("bupkis", draft.revision))!.assignments.length,
+  1,
+  "An approved default cannot accidentally activate other complete but unapproved sprites.",
+);
 const sprite = managerResidentSprite(manager)!;
 assert.equal(sprite.expressions[0].direction, "left");
 const image = { view: "side" as const, direction: "left" as const, label: "thinking", url: "/sprite" };

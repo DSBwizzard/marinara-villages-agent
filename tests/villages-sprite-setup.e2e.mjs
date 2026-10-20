@@ -45,7 +45,7 @@ try {
         rendered: { url: mapImage },
         warnings: [],
       });
-      state.assignments.push({ artworkId, name: "", useWhen: "", direction: "", included: true });
+      state.assignments.push({ artworkId, name: "", useWhen: "", direction: "", included: true, approved: false });
     }
     let analyses = 0;
     let failAt = 0;
@@ -91,6 +91,9 @@ try {
         if (analyses === failAt) state.errors[artworkId] = "Analysis failed. Select this image to retry.";
         else {
           delete state.errors[artworkId];
+          state.assignments = state.assignments.map((item) =>
+            item.artworkId === artworkId ? { ...item, approved: false } : item,
+          );
           state.suggestions = [
             ...state.suggestions.filter((item) => item.artworkId !== artworkId),
             {
@@ -109,7 +112,9 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
-    await expect(page.getByText("0 ready · 28 unresolved")).toBeVisible();
+    await expect(
+      page.getByText("28 total · 28 need analysis · 0 need review · 0 approved", { exact: true }),
+    ).toBeVisible();
     const portrait = page.locator(".sprite-portrait");
     await expect(portrait.locator("img")).toBeVisible();
     assert.ok(
@@ -135,19 +140,40 @@ try {
     await first.getByLabel("Use when", { exact: true }).fill("Listening closely.");
     await first.getByLabel("Facing", { exact: true }).selectOption("left");
     await first.getByLabel("Default", { exact: true }).check();
+    await expect(
+      page.getByText("28 total · 27 need analysis · 1 need review · 0 approved", { exact: true }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
-    await expect(page.getByText("1 ready · 27 unresolved")).toBeVisible();
+    await expect(
+      page.getByText("28 total · 27 need analysis · 1 need review · 0 approved", { exact: true }),
+    ).toBeVisible();
+    assert.equal(state.assignments[0].approved, false, "Manual editing and saving do not approve a sprite.");
     await page.getByRole("button", { name: "Review sprites" }).click();
     await page.getByText("Batch edit", { exact: true }).click();
     await first.getByLabel("Select", { exact: true }).check();
     await page.getByText("Batch edit", { exact: true }).click();
     await page.getByRole("button", { name: "Analyze selected" }).click();
-    await expect(page.getByText("1 suggestions", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Approve sprite", exact: true })).toBeEnabled();
     await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed art-0");
-    await page.getByRole("button", { name: "Apply suggestions", exact: true }).click();
+    await page.getByRole("button", { name: "Approve sprite", exact: true }).click();
     await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed art-0");
     await first.getByLabel("Use when", { exact: true }).fill("Calm and attentive.");
+    await expect(
+      page.getByText("28 total · 27 need analysis · 1 need review · 0 approved", { exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByRole("button", { name: "Choose Bupkis" }).click();
+    await page.getByRole("button", { name: "Review sprites" }).click();
+    await expect(first.getByLabel("Use when", { exact: true })).toHaveValue("Calm and attentive.");
+    await expect(
+      page.getByText("28 total · 27 need analysis · 1 need review · 0 approved", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add villager", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Approve all", exact: true }).click();
+    await expect(
+      page.getByText("28 total · 27 need analysis · 0 need review · 1 approved", { exact: true }),
+    ).toBeVisible();
     const dialog = page.getByRole("dialog");
     assert.ok(
       await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
@@ -164,11 +190,13 @@ try {
     await page.getByRole("button", { name: "Select all", exact: true }).click();
     failAt = analyses + 8;
     await page.getByRole("button", { name: "Analyze selected" }).click();
-    await expect(page.getByText("7 of 28 analyzed · Resume remaining", { exact: true })).toBeVisible();
+    await expect(page.getByText("Analysis stopped · 7 of 28 completed this run", { exact: true })).toBeVisible();
     assert.equal(state.suggestions.length, 7, "Completed suggestions survive a later sprite failure.");
     const beforeResume = analyzedIds.length;
     await page.getByRole("button", { name: "Analyze remaining" }).click();
-    await expect(page.getByText("21 of 21 analyzed", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("28 total · 0 need analysis · 28 need review · 0 approved", { exact: true }),
+    ).toBeVisible();
     assert.equal(state.suggestions.length, 28);
     assert.deepEqual(
       analyzedIds.slice(beforeResume),
@@ -182,13 +210,16 @@ try {
     await page.getByRole("button", { name: "Select all", exact: true }).click();
     await page.getByRole("button", { name: "Apply to selected", exact: true }).click();
     await expect(first.getByLabel("Facing", { exact: true })).toHaveValue("right");
-    await expect(page.getByRole("button", { name: "Apply suggestions", exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText("28 total · 0 need analysis · 28 need review · 0 approved", { exact: true }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Back", exact: true }).click();
     assert.ok(
       state.assignments.every((item) => item.direction === "right" && item.name),
-      "Batch overrides accept proposals without losing their other fields.",
+      "Batch overrides keep proposed fields without approving them.",
     );
     assert.equal(state.suggestions.length, 0);
+    assert.ok(state.assignments.every((item) => item.approved === false));
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
     await page.getByRole("button", { name: "Review sprites" }).click();
     await expect(first.getByLabel("Facing", { exact: true })).toHaveValue("right");
@@ -199,12 +230,17 @@ try {
     await expect(page.getByRole("button", { name: "Cancel analysis", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Cancel analysis", exact: true }).click();
     releaseAnalysis();
-    await expect(page.getByRole("button", { name: "Analyze remaining", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Cancel analysis", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Analyze remaining", exact: true })).toBeDisabled();
     assert.equal(analyses, 31, "Cancellation prevents dispatching the next sprite.");
     assert.ok(
       state.assignments.every((item) => item.direction === "right"),
       "Cancellation preserves reviewed assignments.",
     );
+    await page.getByRole("button", { name: "Approve all", exact: true }).click();
+    await expect(
+      page.getByText("28 total · 0 need analysis · 0 need review · 28 approved", { exact: true }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Add without using sprites", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     assert.equal(state.useSprites, false);
