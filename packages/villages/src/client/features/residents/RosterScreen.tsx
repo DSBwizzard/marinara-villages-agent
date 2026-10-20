@@ -2,8 +2,10 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import { useEffect, useState } from "react";
+import { SpriteSetupDialog } from "./SpriteSetupDialog.js";
 
 export function RosterScreen({ controller }: { controller: RosterScreenController }) {
+  const [spriteCharacter, setSpriteCharacter] = useState<{ id: string; name: string } | null>(null);
   const [opening] = useState(!controller.returningToDirectory);
   const { setReturningToDirectory } = controller;
   useEffect(() => setReturningToDirectory(false), [setReturningToDirectory]);
@@ -34,6 +36,18 @@ export function RosterScreen({ controller }: { controller: RosterScreenControlle
     );
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
+        {spriteCharacter ? (
+          <SpriteSetupDialog
+            characterId={spriteCharacter.id}
+            name={spriteCharacter.name}
+            portrait={portraits[spriteCharacter.id]}
+            onClose={() => setSpriteCharacter(null)}
+            onDone={async (revision) => {
+              await addVillager(spriteCharacter.id, revision);
+              setSpriteCharacter(null);
+            }}
+          />
+        ) : null}
         <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
           {opening ? <div className={`${ELEMENT_TAG}-directory-cover`} aria-hidden="true" /> : null}
           <header className={`${ELEMENT_TAG}-directory-head`}>
@@ -110,7 +124,7 @@ export function RosterScreen({ controller }: { controller: RosterScreenControlle
                         <button
                           type="button"
                           className={`${ELEMENT_TAG}-button`}
-                          onClick={() => void addVillager(entry.id)}
+                          onClick={() => setSpriteCharacter({ id: entry.id, name: entry.name })}
                           disabled={busy || entry.inVillage}
                         >
                           {entry.inVillage ? "Lives here" : "Move in"}

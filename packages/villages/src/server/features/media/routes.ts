@@ -30,9 +30,42 @@ import {
 } from "./sprite-manager.js";
 import { readVillageImageStyleCatalog } from "./image-generation.js";
 import type { FastifyInstance } from "fastify";
+import { spriteSetup } from "./sprite-setup.js";
 
 export function registerSpriteManagerRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.get<{ Params: CharacterParams }>("/characters/:characterId/sprites/setup", async (request, reply) => {
+    try {
+      return await spriteSetup().read(readCharacterId(request.params.characterId));
+    } catch (error) {
+      return fail(reply, error, "reading sprite setup");
+    }
+  });
+  for (const action of ["prepare", "save", "analyze", "frame", "apply"] as const) {
+    app.post<{ Params: CharacterParams; Body: unknown }>(
+      "/characters/:characterId/sprites/setup/" + action,
+      async (request, reply) => {
+        const controller = new AbortController();
+        const abort = () => {
+          if (!reply.raw.writableEnded) controller.abort();
+        };
+        reply.raw.on("close", abort);
+        try {
+          const service = spriteSetup(),
+            id = readCharacterId(request.params.characterId);
+          if (action === "prepare") return await service.prepare(id);
+          if (action === "save") return await service.save(id, request.body);
+          if (action === "frame") return await service.frame(id, request.body);
+          if (action === "apply") return await service.applyResident(id, request.body);
+          return await service.analyze(id, request.body, controller.signal);
+        } catch (error) {
+          return fail(reply, error, "preparing sprites");
+        } finally {
+          reply.raw.off("close", abort);
+        }
+      },
+    );
+  }
   app.get<{ Params: CharacterParams }>("/villagers/:characterId/sprites/manager", async (request, reply) => {
     try {
       return await readSpriteManager(readCharacterId(request.params.characterId));

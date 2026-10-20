@@ -6,7 +6,7 @@ import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profil
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageSnapshot, VillageState, VillageVenue } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
-import { asTrimmedString } from "../../domain/rules/coerce.js";
+import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
 import {
   assertFoundingScenarioLocked,
@@ -43,6 +43,10 @@ import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { proposeVillage, proposePublicVenueNames, draftVillageVenueDescriptions } from "./village-bootstrap.js";
 
 export interface FoundingSetupPorts {
+  preparedSpriteManager?(
+    id: string,
+    revision?: number,
+  ): Promise<import("../../../shared/contracts/sprites.js").SpriteManagerState | null>;
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
@@ -63,6 +67,7 @@ export interface FoundingSetupPorts {
 
 /** Setup keeps its specific validation, library, generation and preparation connections. Construction is inert. */
 export function createFoundingSetup({
+  preparedSpriteManager,
   readVillageState,
   mutateVillageState,
   buildVillageSnapshot,
@@ -82,6 +87,7 @@ export function createFoundingSetup({
 }: FoundingSetupPorts) {
   async function runVillageSetup(input: {
     foundingCharacterIds?: unknown;
+    foundingSpriteRevisions?: unknown;
     foundingResidentContexts?: unknown;
     name?: unknown;
     timeZone?: unknown;
@@ -193,6 +199,17 @@ export function createFoundingSetup({
     ];
     const cardsById = new Map(cards.map((card) => [card.id, card]));
     const initialResidents = initialResidentIds.map((characterId) => cardsById.get(characterId)!);
+    const preparedSprites = new Map(
+      await Promise.all(
+        initialResidentIds.map(
+          async (id) =>
+            [
+              id,
+              await preparedSpriteManager?.(id, asRecord(input.foundingSpriteRevisions)[id] as number | undefined),
+            ] as const,
+        ),
+      ),
+    );
     // Founding posts the houses placed in the wizard. Later setup runs keep the
     // other venues and require every saved pin to stay put; Village Settings owns
     // map replacement and its placement pass.
@@ -359,6 +376,7 @@ export function createFoundingSetup({
         if (state.villagers.some((villager) => villager.characterId === card.id)) continue;
         state.villagers.push({
           characterId: card.id,
+          spriteManager: preparedSprites.get(card.id),
           ...(founding ? { foundingContext: foundingContexts[card.id] } : {}),
           cardSnapshot: {
             ...snapshotFromCard(card, 1),

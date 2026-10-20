@@ -80,6 +80,7 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
       source: structuredClone(art.source),
       rendered: structuredClone(art.rendered),
       frame: structuredClone(art.frame),
+      direction: art.direction === "left" || art.direction === "right" ? art.direction : "front",
       ...(art.origin === "engine"
         ? {
             origin: "engine" as const,
@@ -144,6 +145,7 @@ export function managerResidentSprite(state: SpriteManagerState | null | undefin
     return [
       {
         view: assignment.view,
+        direction: art.direction,
         label: expression.id,
         expressionId: expression.id,
         name: expression.name,

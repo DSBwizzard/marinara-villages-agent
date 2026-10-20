@@ -82,6 +82,10 @@ Run `node --import tsx tests/villages-signatures.regression.ts` and `node tests/
 
 ## Individual sprite assignments (0.6.164)
 
+Villager selection opens a compact sprite preview during founding and later move-ins. Engine full-body artwork is imported as independent copies; filenames are identifiers only. Choose **Set up manually** or **Analyze sprites**, review expression names, **Use when**, original facing and a default, then add the villager. **Add without using sprites** keeps the portrait and retains imported artwork for later setup. **Import character sprites** in Sprite Manager supports that deferred setup and imports newly available art without replacing existing assignments.
+
+Analysis uses the Image Captioning selection saved in Engine Generation Parameters as the default for Villages’ System connection. Enable Image Captioning, choose a vision-capable Captioning Connection and use **Save as connection default**. Chat-only overrides do not apply during founding. Analysis runs only on explicit request; suggestions remain editable until applied, and failed/cancelled work retains completed suggestions. Import and analysis operate in groups of at most 40 images. Left/right means the original artwork’s facing; directional art mirrors for the opposite direction, while front artwork stays unmirrored.
+
 Select artwork in Sprite Manager and use **Remove Front assignment** or **Remove Side assignment** in the **Assignments** list beneath Facing. Each action removes only that saved expression/facing assignment and keeps the artwork, framing and other assignments. Save or discard edits to that artwork first. Removing an expression’s last assignment removes its unused expression metadata; if it was the default, another assigned expression becomes the default, or Scenes use the portrait when none remain. Stale requests cannot remove a replacement assignment.
 
 ## Compact Sprite Manager controls (0.6.163)

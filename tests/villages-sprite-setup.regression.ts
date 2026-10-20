@@ -1,0 +1,207 @@
+import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  createSpriteSetup,
+  type SpriteSetupPorts,
+} from "../packages/villages/src/server/features/media/sprite-setup-service.js";
+import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
+import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
+
+const documents = new Map<string, unknown>();
+let village = coerceVillageState({});
+let calls = 0,
+  enabled = true,
+  failImage = false,
+  resolved = "",
+  copied = 0;
+const libraryFiles = ["full_suicejejshe.png", "full_defeult-1.png", "happy.png"];
+const service = createSpriteSetup({
+  villagesDocuments: () => ({ getById: async (_pkg, id) => ({ data: structuredClone(documents.get(id)) }) }),
+  mutateDocument: async (id, slot, update) => {
+    const next = slot.coerce(documents.get(id));
+    await update(next);
+    documents.set(id, structuredClone(next));
+  },
+  villageEngineJson: async (path) => {
+    if (path === "/api/connections/system")
+      return {
+        defaultParameters: JSON.stringify({ imageCaptioningEnabled: enabled, imageCaptioningConnectionId: "vision" }),
+      };
+    if (path.startsWith("/api/characters/")) return { id: "bupkis" };
+    if (path === "/api/sprites/bupkis") return libraryFiles.map((filename) => ({ filename }));
+    throw Error(path);
+  },
+  villagesConnectionIdFor: async () => "system",
+  villagesLanguageModels: () => ({
+    resolve: async (id) => {
+      resolved = id;
+      return {
+        chatComplete: async (messages, options) => {
+          calls++;
+          assert.match(messages[1].images[0], /^data:image/);
+          assert.ok(!JSON.stringify(messages).includes("suicejejshe"), "arbitrary filenames do not influence analysis");
+          options.signal?.throwIfAborted();
+          if (failImage) throw Error("provider unavailable");
+          return {
+            content: JSON.stringify({
+              name: "Thoughtful",
+              useWhen: "Considering something carefully.",
+              direction: "left",
+              defaultCandidate: true,
+            }),
+          };
+        },
+      };
+    },
+  }),
+  manager: {
+    readImage: async () => "data:image/png;base64,AAAA",
+    prepareArtwork: async (name, _image, engineSource) => {
+      copied++;
+      return {
+        id: "a-" + randomUUID(),
+        name,
+        assetId: "villages-" + randomUUID(),
+        origin: "engine",
+        engineSource,
+        frame: { x: 0, y: 0, width: 64, height: 96, scale: 1, offsetX: 0, offsetY: 0 },
+        source: {
+          filename: "original.png",
+          url: "/original.png",
+          width: 64,
+          height: 96,
+          sha256: createHash("sha256").update(Buffer.from("AAAA", "base64")).digest("hex"),
+        },
+        rendered: { filename: "rendered.png", url: "/rendered.png" },
+        warnings: [],
+      };
+    },
+  },
+  writes: createSpriteWrites(),
+  readVillageState: async () => structuredClone(village),
+  mutateVillageState: async (update) => {
+    const next = structuredClone(village);
+    update(next);
+    village = next;
+    return next;
+  },
+} as unknown as SpriteSetupPorts);
+
+let draft = await service.prepare("bupkis");
+assert.equal(draft.manager.artwork.length, 2, "only Engine full-body images enter setup");
+assert.equal(calls, 0, "import never spends on vision");
+assert.ok(draft.assignments.every((item) => !item.name && !item.direction));
+await service.prepare("bupkis");
+assert.equal(copied, 2, "opening setup reuses independent copies");
+enabled = false;
+await assert.rejects(
+  service.analyze("bupkis", {
+    revision: draft.revision,
+    requestId: randomUUID(),
+    artworkIds: [draft.assignments[0].artworkId],
+  }),
+  /Enable Image Captioning/,
+);
+assert.equal(calls, 0);
+enabled = true;
+const requestId = randomUUID();
+draft = await service.analyze("bupkis", {
+  revision: draft.revision,
+  requestId,
+  artworkIds: [draft.assignments[0].artworkId],
+});
+assert.equal(resolved, "vision");
+assert.equal(draft.suggestions[0].direction, "left");
+assert.equal(draft.assignments[0].name, "", "suggestions do not activate assignments");
+assert.ok(draft.suggestedDefaultArtworkId);
+await service.analyze("bupkis", { revision: 0, requestId, artworkIds: [] });
+assert.equal(calls, 1, "replayed request cannot repeat a purchased call");
+const stale = draft.revision;
+draft = await service.save("bupkis", {
+  ...draft,
+  assignments: draft.assignments.map((item, index) => (index ? item : draft.suggestions[0])),
+  defaultArtworkId: draft.suggestions[0].artworkId,
+  useSprites: true,
+  pendingSuggestionIds: [],
+});
+await assert.rejects(service.save("bupkis", { ...draft, revision: stale }), /changed/);
+const manager = await service.preparedManager("bupkis", draft.revision);
+assert.equal(manager!.assignments.length, 1);
+const sprite = managerResidentSprite(manager)!;
+assert.equal(sprite.expressions[0].direction, "left");
+const image = { view: "side" as const, direction: "left" as const, label: "thinking", url: "/sprite" };
+assert.equal(selectSpriteImage([image], "thinking", "right")!.mirrored, true);
+assert.equal(selectSpriteImage([image], "thinking", "left")!.mirrored, false);
+assert.equal(selectSpriteImage([{ ...image, direction: "right" }], "thinking", "left")!.mirrored, true);
+assert.equal(selectSpriteImage([{ ...image, view: "front", direction: "front" }], "thinking", "left")!.mirrored, false);
+failImage = true;
+draft = await service.analyze("bupkis", {
+  revision: draft.revision,
+  requestId: randomUUID(),
+  artworkIds: [draft.assignments[1].artworkId],
+});
+assert.match(draft.errors[draft.assignments[1].artworkId], /failed/);
+assert.equal(draft.assignments[0].name, "Thoughtful", "failure preserves reviewed assignments");
+const abort = new AbortController();
+abort.abort();
+await assert.rejects(
+  service.analyze(
+    "bupkis",
+    { revision: draft.revision, requestId: randomUUID(), artworkIds: [draft.assignments[1].artworkId] },
+    abort.signal,
+  ),
+);
+const before = calls;
+draft = await service.save("bupkis", { ...draft, useSprites: false });
+assert.equal((await service.preparedManager("bupkis", draft.revision))!.assignments.length, 0);
+assert.equal((await service.read("bupkis")).manager.artwork.length, 2, "unassigned images stay available");
+assert.equal(calls, before);
+await assert.rejects(service.preparedManager("bupkis", draft.revision - 1), /changed/);
+village = coerceVillageState({
+  villagers: [
+    {
+      characterId: "bupkis",
+      addedAt: new Date().toISOString(),
+      cardSnapshot: {
+        id: "bupkis",
+        name: "Bupkis",
+        revision: 1,
+        capturedAt: new Date().toISOString(),
+        sourceStatus: "available",
+      },
+      spriteManager: await service.preparedManager("bupkis", draft.revision),
+    },
+  ],
+});
+draft = await service.save("bupkis", { ...draft, useSprites: true });
+const resident = await service.read("bupkis");
+await service.applyResident("bupkis", { revision: draft.revision, residentToken: resident.residentToken });
+assert.equal(
+  village.villagers[0].spriteManager!.assignments.length,
+  1,
+  "deferred setup activates already-owned but unassigned artwork",
+);
+assert.equal(village.villagers[0].spriteManager!.artwork[0].direction, "left");
+await assert.rejects(
+  service.applyResident("bupkis", { revision: draft.revision, residentToken: resident.residentToken }),
+  /changed/,
+);
+const assignedBeforeRefresh = structuredClone(draft.assignments);
+libraryFiles.push("full_new-art.png");
+draft = await service.prepare("bupkis");
+assert.equal(draft.manager.artwork.length, 3);
+assert.deepEqual(draft.assignments.slice(0, 2), assignedBeforeRefresh, "new imports preserve prepared assignments");
+libraryFiles.push(...Array.from({ length: 41 }, (_, index) => `full_more-${index}.png`));
+draft = await service.prepare("bupkis");
+assert.equal(
+  draft.manager.artwork.length,
+  43,
+  "large sets import in bounded groups without blocking portrait fallback",
+);
+draft = await service.save("bupkis", { ...draft, useSprites: false });
+assert.equal((await service.preparedManager("bupkis", draft.revision))!.assignments.length, 0);
+console.log(
+  "Sprite setup: import, review, captioning, cancellation, revision checks and directional rendering passed.",
+);

@@ -263,6 +263,8 @@ import { generateVillageTownMap } from "../features/media/town-map-image.js";
 import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.js";
 import { createSpriteManager } from "../features/media/sprite-manager-service.js";
 import { configureSpriteManager } from "../features/media/sprite-manager.js";
+import { createSpriteSetup } from "../features/media/sprite-setup-service.js";
+import { configureSpriteSetup, preparedSpriteManager } from "../features/media/sprite-setup.js";
 import {
   generateVillageImage,
   resolveVillageImageConnectionId,
@@ -933,6 +935,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseResidentRoster = configureResidentRoster(
     createResidentRoster({
+      preparedSpriteManager,
       readVillageState,
       mutateVillageState,
       findVillagerCard,
@@ -953,17 +956,29 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseTownMapReview = configureTownMapReview(
     createTownMapReview({ readVillageState, mutateVillageState, buildVillageSnapshot, inspectVillageImage }),
   );
-  const releaseSprites = configureSpriteManager(
-    createSpriteManager({
+  const spriteManagerService = createSpriteManager({
+    readVillageState,
+    mutateVillageState,
+    buildVillageSnapshot,
+    decodeSpriteImage: createSpriteImageDecoder(inspectVillageImage),
+    villageEngineJson,
+    readSpriteFile: (url) => fetch(villageEngineBaseUrl() + url),
+    deleteVillageSpriteFile,
+    villagesLogger,
+    writes: backendWork.spriteWrites,
+  });
+  const releaseSprites = configureSpriteManager(spriteManagerService);
+  const releaseSpriteSetup = configureSpriteSetup(
+    createSpriteSetup({
+      villagesDocuments,
+      mutateDocument,
+      villageEngineJson,
+      villagesLanguageModels,
+      villagesConnectionIdFor,
+      manager: spriteManagerService,
+      writes: backendWork.spriteWrites,
       readVillageState,
       mutateVillageState,
-      buildVillageSnapshot,
-      decodeSpriteImage: createSpriteImageDecoder(inspectVillageImage),
-      villageEngineJson,
-      readSpriteFile: (url) => fetch(villageEngineBaseUrl() + url),
-      deleteVillageSpriteFile,
-      villagesLogger,
-      writes: backendWork.spriteWrites,
     }),
   );
   const releaseSignatures = configureResidentSignatures(
@@ -982,6 +997,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseFoundingSetup = configureFoundingSetup(
     createFoundingSetup({
+      preparedSpriteManager,
       readVillageState,
       mutateVillageState,
       buildVillageSnapshot,
@@ -1149,6 +1165,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseZoneEdits();
     releaseSignatures();
     releaseSprites();
+    releaseSpriteSetup();
     releaseTownMapReview();
     releaseVenueRequests();
     releaseResidentRoster();

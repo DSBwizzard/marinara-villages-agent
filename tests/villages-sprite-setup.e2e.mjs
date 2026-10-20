@@ -1,0 +1,124 @@
+import assert from "node:assert/strict";
+import { build } from "esbuild";
+import { chromium } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import { fastExpect } from "./fixtures/fast-browser-expect.mjs";
+import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
+const expect = fastExpect({ timeout: 10000 });
+const bundle = await build({
+  entryPoints: ["tests/fixtures/sprite-setup-entry.tsx"],
+  bundle: true,
+  write: false,
+  platform: "browser",
+  format: "iife",
+  jsx: "automatic",
+});
+await mkdir(".build-tmp/sprite-setup", { recursive: true });
+const browser = await chromium.launch({ headless: true });
+try {
+  for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 390, height: 844 },
+  ]) {
+    const page = await browser.newPage({ viewport });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    const state = {
+      revision: 1,
+      manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
+      assignments: [],
+      suggestions: [],
+      defaultArtworkId: "",
+      suggestedDefaultArtworkId: "",
+      useSprites: false,
+      errors: {},
+      analysisRequests: [],
+      files: [],
+      resident: false,
+      residentToken: "",
+    };
+    for (let i = 0; i < 28; i++) {
+      const artworkId = `art-${i}`;
+      state.manager.artwork.push({
+        id: artworkId,
+        name: `full_arbitrary-${i}.png`,
+        rendered: { url: mapImage },
+        warnings: [],
+      });
+      state.assignments.push({ artworkId, name: "", useWhen: "", direction: "", included: true });
+    }
+    let analyses = 0;
+    await page.route("http://villages.test/", (route) =>
+      route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
+    );
+    await page.route("**/api/villages/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const body = route.request().postDataJSON();
+      if (path.endsWith("/save")) {
+        assert.equal(body.revision, state.revision);
+        state.revision++;
+        Object.assign(state, {
+          assignments: body.assignments,
+          defaultArtworkId: body.defaultArtworkId,
+          useSprites: body.useSprites,
+        });
+        state.suggestions = state.suggestions.filter((item) => body.pendingSuggestionIds.includes(item.artworkId));
+      } else if (path.endsWith("/analyze")) {
+        analyses++;
+        state.revision++;
+        state.suggestions = [
+          { artworkId: "art-0", name: "Relaxed", useWhen: "Relaxed or listening.", direction: "left", included: true },
+        ];
+        state.suggestedDefaultArtworkId = "art-0";
+      }
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(state) });
+    });
+    await page.goto("http://villages.test/");
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.getByRole("button", { name: "Choose Bupkis" }).click();
+    await expect(page.getByText("0 ready · 28 unresolved")).toBeVisible();
+    assert.equal(analyses, 0);
+    await expect(page.locator(".sprite-grid")).toHaveCount(0);
+    await page.getByRole("button", { name: "Set up manually" }).click();
+    await expect(page.locator(".sprite-tile")).toHaveCount(28);
+    const first = page.locator(".sprite-tile").first();
+    await first.getByLabel("Expression", { exact: true }).fill("Listening");
+    await first.getByLabel("Use when", { exact: true }).fill("Listening closely.");
+    await first.getByLabel("Facing", { exact: true }).selectOption("left");
+    await first.getByLabel("Default", { exact: true }).check();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByRole("button", { name: "Choose Bupkis" }).click();
+    await expect(page.getByText("1 ready · 27 unresolved")).toBeVisible();
+    await page.getByRole("button", { name: "Review sprites" }).click();
+    await first.getByLabel("Select", { exact: true }).check();
+    await page.getByRole("button", { name: "Analyze sprites" }).click();
+    await expect(page.getByText("1 suggestions", { exact: true })).toBeVisible();
+    await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Listening");
+    await page.getByRole("button", { name: "Apply suggestions", exact: true }).click();
+    await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed");
+    await first.getByLabel("Use when", { exact: true }).fill("Calm and attentive.");
+    const dialog = page.getByRole("dialog");
+    assert.ok(
+      await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+      "dialog fits desktop and phone",
+    );
+    await page.screenshot({ path: `.build-tmp/sprite-setup/review-${viewport.width}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Add villager", exact: true }).click();
+    await expect(page.getByText("Bupkis added", { exact: true })).toBeVisible();
+    assert.equal(state.useSprites, true);
+    assert.equal(state.assignments[0].useWhen, "Calm and attentive.");
+    await page.getByRole("button", { name: "Choose Bupkis" }).click();
+    await page.getByRole("button", { name: "Add without using sprites", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    assert.equal(state.useSprites, false);
+    assert.equal(state.manager.artwork.length, 28);
+    assert.equal(analyses, 1);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+  console.log(
+    "Sprite setup browser: compact preview, manual and vision review, saved drafts and portrait fallback passed on desktop/phone.",
+  );
+} finally {
+  await browser.close();
+}

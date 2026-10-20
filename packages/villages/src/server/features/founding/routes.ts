@@ -21,6 +21,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
   app.post<{
     Body: {
       foundingCharacterIds?: unknown;
+      foundingSpriteRevisions?: unknown;
       foundingResidentContexts?: unknown;
       name?: unknown;
       setting?: unknown;
@@ -48,6 +49,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       const body = request.body ?? {};
       return await runVillageSetup({
         foundingCharacterIds: body.foundingCharacterIds,
+        foundingSpriteRevisions: body.foundingSpriteRevisions,
         foundingResidentContexts: body.foundingResidentContexts,
         name: body.name,
         setting: body.setting,

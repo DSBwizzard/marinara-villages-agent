@@ -156,6 +156,7 @@ export function useFoundingSetupDraftData(ports: {
   }>;
   setupFoundingDetails: string;
   setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
+  setupSpriteRevisions?: Record<string, number>;
   setupFoundingVillagerIds: string[];
   setupImprint: import("../../../shared/contracts/village.js").ScenarioImprint;
   setupKeyboardSpot: { x: number; y: number };
@@ -260,6 +261,7 @@ export function useFoundingSetupDraftData(ports: {
     setupEditorZoneOriginal,
     setupFoundingDetails,
     setupFoundingReason,
+    setupSpriteRevisions,
     setupFoundingVillagerIds,
     setupImprint,
     setupKeyboardSpot,
@@ -305,6 +307,7 @@ export function useFoundingSetupDraftData(ports: {
       worldFacts: setupWorldFacts,
       venues: setupVenues,
       zoneDrafts: structuredClone(setupZoneDrafts.current),
+      spriteRevisions: setupSpriteRevisions ?? {},
       roster: setupFoundingVillagerIds,
       residentContexts: setupResidentContexts,
       persona: personaDraft,
@@ -349,6 +352,7 @@ export function useFoundingSetupDraftData(ports: {
       setupImprint,
       setupWorldFacts,
       setupVenues,
+      setupSpriteRevisions,
       setupFoundingVillagerIds,
       setupResidentContexts,
       personaDraft,

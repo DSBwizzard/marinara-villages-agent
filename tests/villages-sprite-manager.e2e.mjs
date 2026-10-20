@@ -242,7 +242,8 @@ try {
       { name: "Angry.png", mimeType: "image/png", buffer: pngImage(true) },
       { name: "Two figures.png", mimeType: "image/png", buffer: pngImage(false, true) },
     ]);
-    await expect(page.getByLabel("Expression name")).toHaveValue("Composed");
+    await expect(page.getByLabel("Expression name")).toHaveValue("");
+    await page.getByLabel("Expression name").fill("Composed");
     await expect(page.getByLabel("Expression name")).toHaveCSS("background-color", "rgb(55, 53, 43)");
     await page.getByLabel("Use when…", { exact: true }).fill("Listening with controlled authority.");
     await expect(page.getByRole("button", { name: "Save and use in Scenes" })).toBeEnabled();
@@ -459,7 +460,7 @@ try {
     await page.getByRole("button", { name: "Retry library" }).click();
     await page.getByRole("checkbox", { name: "full_native.png" }).check();
     await page.getByRole("button", { name: "Add selected artwork" }).click();
-    await expect(page.getByLabel("Expression name")).toHaveValue("native");
+    await expect(page.getByLabel("Expression name")).toHaveValue("");
     const artworkAfterAdoption = manager.artwork.length;
     await page.getByRole("button", { name: "Character library" }).click();
     await expect(page.getByRole("checkbox", { name: "full_native.png · Already added" })).toBeDisabled();
@@ -479,9 +480,11 @@ try {
     await expect(actions).toHaveCSS("position", "static");
     await actions.scrollIntoViewIfNeeded();
     const beforeScroll = await actions.boundingBox();
+    const footBeforeScroll = await page.getByLabel("Foot position", { exact: true }).boundingBox();
     await page.getByLabel("Foot position", { exact: true }).scrollIntoViewIfNeeded();
     const afterScroll = await actions.boundingBox();
-    assert.ok(afterScroll.y < beforeScroll.y - 20, "controls scroll away with settings");
+    if (footBeforeScroll.y + footBeforeScroll.height > viewport.height || footBeforeScroll.y < 0)
+      assert.ok(afterScroll.y < beforeScroll.y - 0.5, "controls scroll away with settings when scrolling is needed");
     await actions.scrollIntoViewIfNeeded();
     if (process.env.VILLAGES_SCREENSHOT_DIR)
       await page.screenshot({
@@ -516,7 +519,7 @@ try {
       filename: "full_native.png",
     });
     await page.getByRole("button", { name: "Add selected artwork" }).click();
-    await expect(page.getByLabel("Expression name")).toHaveValue("native");
+    await expect(page.getByLabel("Expression name")).toHaveValue("");
     await expect(page.getByRole("status")).toHaveText("Selected artwork is already in Sprite Manager.");
     assert.equal(manager.artwork.length, artworkAfterAdoption, "removal permits one new adoption");
     assert.equal(

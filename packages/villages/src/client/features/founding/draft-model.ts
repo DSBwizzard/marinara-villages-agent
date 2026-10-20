@@ -5,10 +5,11 @@ import type { emptyFoundingWorkspace } from "./villages-founding-workspace-state
 /** Stored founding drafts predate the optional workspace navigation field. */
 export type SetupDraftData = Omit<
   ReturnType<typeof useFoundingSetupDraftData>,
-  "workspace" | "phase" | "mapSource" | "styleProfileId"
+  "workspace" | "phase" | "mapSource" | "styleProfileId" | "spriteRevisions"
 > & {
   /** Legacy Simple map drafts are restored into an artwork choice. */
   mapSource: ReturnType<typeof useFoundingSetupDraftData>["mapSource"] | "none";
+  spriteRevisions?: Record<string, number>;
   styleProfileId?: string | null;
   phase?: FoundingPhase;
   workspace?: ReturnType<typeof emptyFoundingWorkspace>;

@@ -215,6 +215,8 @@ export function createSpriteManager({
       if (!name || name.length > 100 || useWhen.length > 1000)
         throw badRequest("Choose an expression name of 1–100 characters and a description of at most 1000 characters.");
       if (body.view !== "front" && body.view !== "side") throw badRequest("Choose front or side view.");
+      if (body.direction !== undefined && !["front", "left", "right"].includes(asString(body.direction)))
+        throw badRequest("Choose the artwork’s original direction.");
       const expressionId = asString(body.expressionId) || "e-" + randomUUID();
       if (body.expressionId && !manager.expressions.some((item) => item.id === expressionId))
         throw badRequest("That expression is no longer available.");
@@ -227,6 +229,7 @@ export function createSpriteManager({
         const current = findArtwork(next, art.id);
         if (current.rendered.url !== body.expectedUrl) throw conflict("This artwork changed. Reload Sprite Manager.");
         current.frame = frame;
+        current.direction = body.view === "front" ? "front" : body.direction === "left" ? "left" : "right";
         current.rendered = rendered;
         current.warnings = processed.warnings;
         const expression = next.expressions.find((item) => item.id === expressionId);
@@ -242,6 +245,25 @@ export function createSpriteManager({
       });
       return result(id);
     });
+  }
+
+  async function reframeArtwork(art: SpriteArtwork, frame: SpriteFrame): Promise<SpriteArtwork> {
+    const image = await readImage(art.source.url);
+    const bytes = decodeVillageImageDataUrl(image, { label: "sprite", maxBase64Length: 16_000_000 }).bytes;
+    if (digest(bytes) !== art.source.sha256) throw conflict("The saved original changed. Import the artwork again.");
+    let processed: ReturnType<typeof renderSpritePixels>;
+    try {
+      processed = renderSpritePixels(await decodeSpriteImage(image), frame);
+    } catch (error) {
+      throw badRequest(error instanceof Error ? error.message : "Check the artwork framing.");
+    }
+    if (processed.clipped) throw badRequest("Artwork exceeds the safe margin. Reduce its size or adjust its position.");
+    return {
+      ...art,
+      frame,
+      warnings: processed.warnings,
+      rendered: await saveImage(art.assetId, "r-" + randomUUID().replaceAll("-", ""), spritePng(processed.image)),
+    };
   }
   function setSpriteDefault(id: string, raw: unknown) {
     return serialize(id, async () => {
@@ -319,6 +341,9 @@ export function createSpriteManager({
   }
 
   return {
+    prepareArtwork,
+    reframeArtwork,
+    readImage,
     readSpriteManager,
     importSpriteArtwork,
     listSpriteLibrary,

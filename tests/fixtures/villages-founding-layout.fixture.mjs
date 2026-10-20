@@ -270,8 +270,32 @@ export async function verifyFoundingLayout(group) {
         let suggestionCalls = 0;
         let releaseSuggestion;
         let connections = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
+        const spriteRevisions = {};
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname;
+          if (/\/characters\/[^/]+\/sprites\/setup(?:\/save)?$/.test(path)) {
+            const id = decodeURIComponent(path.match(/\/characters\/([^/]+)/)[1]);
+            if (path.endsWith("/save")) {
+              assert.equal(route.request().postDataJSON().revision, spriteRevisions[id] ?? 0);
+              spriteRevisions[id] = (spriteRevisions[id] ?? 0) + 1;
+            }
+            return route.fulfill({
+              contentType: "application/json",
+              body: JSON.stringify({
+                revision: spriteRevisions[id] ?? 0,
+                manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
+                files: [],
+                assignments: [],
+                suggestions: [],
+                defaultArtworkId: "",
+                useSprites: false,
+                errors: {},
+                analysisRequests: [],
+                resident: false,
+                residentToken: "",
+              }),
+            });
+          }
           if (path.endsWith("/setup/venue-image/generate")) {
             imageCalls++;
             const imageBody = route.request().postDataJSON();
@@ -291,8 +315,15 @@ export async function verifyFoundingLayout(group) {
           }
           if (path.endsWith("/setup/venue-image") && route.request().method() === "PUT")
             return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(imageRef) });
-          if (path.endsWith("/setup") && route.request().method() === "POST")
+          if (path.endsWith("/setup") && route.request().method() === "POST") {
             foundingPayload = route.request().postDataJSON();
+            for (const id of foundingPayload.foundingCharacterIds ?? [])
+              assert.equal(
+                foundingPayload.foundingSpriteRevisions[id],
+                spriteRevisions[id],
+                "founding uses the exact reviewed sprite revision",
+              );
+          }
           if (path.endsWith("/connections") && route.request().method() === "PUT")
             connections = { ...connections, ...route.request().postDataJSON() };
           if (path.endsWith("/setup/venues/suggest")) {
@@ -665,10 +696,15 @@ export async function verifyFoundingLayout(group) {
         await root.getByLabel("Role Title", { exact: true }).fill("Harbor Patron");
         await expect(root.getByLabel("Why villagers turn to you", { exact: true })).toHaveCount(0);
         const selectResidents = async (names) => {
-          await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
-          const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
-          for (const name of names) await picker.getByRole("button", { name: name + " · Select", exact: true }).click();
-          await picker.getByRole("button", { name: "Done", exact: true }).click();
+          for (const name of names) {
+            await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
+            const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
+            await picker.getByRole("button", { name: name + " · Select", exact: true }).click();
+            await page
+              .getByRole("dialog", { name: name + " sprite setup" })
+              .getByRole("button", { name: "Add without using sprites", exact: true })
+              .click();
+          }
         };
         await selectResidents(
           ["Finn", "Rosa", "Lee, Keeper of the Observatory’s Long Forgotten Archives"].slice(0, homeCount),
@@ -679,6 +715,11 @@ export async function verifyFoundingLayout(group) {
         const finnCard = root
           .locator(".villages-selected-villager")
           .filter({ has: page.getByLabel("Finn backstory", { exact: true }) });
+        await finnCard.getByRole("button", { name: "Sprites", exact: true }).click();
+        await page
+          .getByRole("dialog", { name: "Finn sprite setup" })
+          .getByRole("button", { name: "Back", exact: true })
+          .click();
         await expect(finnCard.getByRole("button", { name: "Finn \u00b7 Remove", exact: true })).toBeVisible();
         await expect(finnCard.getByText("Finn", { exact: true })).toHaveCount(1);
         await bounds();
