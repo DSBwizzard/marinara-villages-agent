@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mock } from "node:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -16,6 +17,8 @@ import { heardLines } from "../packages/villages/src/server/domain/rules/scene-r
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 
 // Archive-identical server and actual HTTP handlers, with synthetic storage/models only.
+// Clock checkpoints must not race assertions about a rejected turn's world effects.
+mock.timers.enable({ apis: ["Date"], now: Date.now() });
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8"));
 const zip = new AdmZip(receipt.retainedArchivePath ?? receipt.archivePath ?? receipt.archive);
 assert.deepEqual(
@@ -1560,4 +1563,5 @@ try {
   await stop?.();
   await app.close();
   globalThis.fetch = originalFetch;
+  mock.timers.reset();
 }
