@@ -61,7 +61,8 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         else if (tab === "more") {
           setExploreSheet(null);
           openMenu("index");
-        } else setExploreSheet({ tab });
+        } else if (tab === "people") openMenu("villagers");
+        else setExploreSheet({ tab });
       }}
     />
   );

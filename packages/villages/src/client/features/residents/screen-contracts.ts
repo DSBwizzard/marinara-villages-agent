@@ -25,7 +25,6 @@ import type { useAddVillager } from "./actions.js";
 
 /** Values and actions used by ResidentsScreen; independent of shell implementation. */
 export type ResidentsScreenController = {
-  readonly setReturningToDirectory: ResidentsState["setReturningToDirectory"];
   readonly agendas: ResidentsState["agendas"];
   readonly applyVillagerRefresh: ReturnType<typeof useApplyVillagerRefresh>;
   readonly busy: boolean;
@@ -72,8 +71,6 @@ export type ResidentsScreenController = {
 
 /** Values and actions used by RosterScreen; independent of shell implementation. */
 export type RosterScreenController = {
-  readonly returningToDirectory: ResidentsState["returningToDirectory"];
-  readonly setReturningToDirectory: ResidentsState["setReturningToDirectory"];
   readonly addVillager: ReturnType<typeof useAddVillager>;
   readonly busy: boolean;
   readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];

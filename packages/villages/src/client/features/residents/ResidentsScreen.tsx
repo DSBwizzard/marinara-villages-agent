@@ -8,7 +8,15 @@ import { AvatarFace, VillagerMemoriesPanel, WishHistory, wishLifetimeLabel } fro
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
 import { SpriteManager } from "./villages-sprite-manager.js";
 
-export function ResidentsScreen({ controller }: { controller: ResidentsScreenController }) {
+export function ResidentsScreen({
+  controller,
+  onDirectory,
+  onClose,
+}: {
+  controller: ResidentsScreenController;
+  onDirectory?: () => void;
+  onClose?: () => void;
+}) {
   const {
     element,
     agendas,
@@ -38,7 +46,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
     setFocusedRequestId,
     setMemoryLibrary,
     setMenuPage,
-    setReturningToDirectory,
     setPersonProfile,
     setProfileInspection,
     setScreen,
@@ -397,7 +404,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
       setScreen(personProfile.returnTo);
       if (personProfile.returnTo === "home") setExploreSheet({ tab: "people" });
       if (personProfile.returnTo === "menu") {
-        setReturningToDirectory(true);
         setMenuPage("villagers");
       }
       requestAnimationFrame(() => {
@@ -429,7 +435,8 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
           links={relatedLinks}
           error={error}
           onInspectSection={setProfileInspection}
-          onBack={back}
+          onBack={onDirectory ?? back}
+          onClose={onClose}
           onVenue={(id) => {
             const venue = snapshot?.settings.venues.find((entry) => entry.id === id);
             if (venue) {
