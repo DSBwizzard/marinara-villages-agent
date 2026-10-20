@@ -174,6 +174,32 @@ try {
     "A patient resident with a lasting interest in local history.",
   );
   assert.equal(marker.tasks.b.wish.status, "completed");
+  const initialDescription = records.get("villages-village").data.villagers[0].identityDescription;
+  const manualText = "A reserved resident with a lasting interest in local history.";
+  const savedDescription = await app.inject({
+    method: "PATCH",
+    url: "/api/villages/villagers/a/description",
+    payload: { text: manualText, revision: initialDescription.revision },
+  });
+  assert.equal(savedDescription.statusCode, 200, savedDescription.body);
+  assert.equal(savedDescription.json().villagers[0].summary, manualText);
+  const staleDescription = await app.inject({
+    method: "PATCH",
+    url: "/api/villages/villagers/a/description",
+    payload: { text: "Stale edit.", revision: initialDescription.revision },
+  });
+  assert.equal(staleDescription.statusCode, 409);
+  assert.equal(records.get("villages-village").data.villagers[0].identityDescription.text, manualText);
+  const oversizedDescription = await app.inject({
+    method: "PATCH",
+    url: "/api/villages/villagers/a/description",
+    payload: {
+      text: "x".repeat(241),
+      revision: records.get("villages-village").data.villagers[0].identityDescription.revision,
+    },
+  });
+  assert.equal(oversizedDescription.statusCode, 400);
+  assert.equal(calls, 4, "Editing uses no model request.");
   const before = calls;
   await stop!();
   app = Fastify();
@@ -181,6 +207,11 @@ try {
   await app.inject({ method: "GET", url: "/api/villages/setup/preparation" });
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(calls, before, "startup and reads make no replacement request");
+  assert.equal(
+    records.get("villages-village").data.villagers[0].identityDescription.text,
+    manualText,
+    "Player edits survive reactivation.",
+  );
   const publicResponse = await app.inject({ method: "GET", url: "/api/villages/setup/preparation" });
   assert(
     !/foundingContext|savedProposal|needComparison/.test(publicResponse.body),

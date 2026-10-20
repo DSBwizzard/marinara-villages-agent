@@ -1,12 +1,22 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AvatarFace } from "./ResidentPanels.js";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
+import { PeopleBook } from "./PeopleBook.js";
 
-export function RosterScreen({ controller }: { controller: RosterScreenController }) {
-  const [opening] = useState(!controller.returningToDirectory);
-  const { setReturningToDirectory } = controller;
-  useEffect(() => setReturningToDirectory(false), [setReturningToDirectory]);
+export function RosterScreen({
+  controller,
+  onClose,
+  readingPosition,
+}: {
+  controller: RosterScreenController;
+  onClose?: () => void;
+  readingPosition?: { current: number };
+}) {
+  const content = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (content.current) content.current.scrollTop = readingPosition?.current ?? 0;
+  }, [readingPosition]);
   const {
     addVillager,
     busy,
@@ -34,127 +44,152 @@ export function RosterScreen({ controller }: { controller: RosterScreenControlle
     );
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
-        <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
-          {opening ? <div className={`${ELEMENT_TAG}-directory-cover`} aria-hidden="true" /> : null}
-          <header className={`${ELEMENT_TAG}-directory-head`}>
-            <h1>Villagers</h1>
-            <button type="button" onClick={() => setMenuPage("index")}>
-              Back to menu
+        <PeopleBook
+          label="People notebook"
+          toolbar={
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-notebook-close`}
+              onClick={onClose ?? (() => setMenuPage("index"))}
+            >
+              Close ×
             </button>
-          </header>
-          {error ? (
-            <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
-              {error}
-            </p>
-          ) : null}
-          <div className={`${ELEMENT_TAG}-directory-tools`}>
-            <input
-              autoComplete="off"
-              type="search"
-              value={rosterSearch}
-              onChange={(event) => setRosterSearch(event.target.value)}
-              placeholder="Search villagers…"
-              aria-label="Search villagers"
-            />
-          </div>
-          <div className={`${ELEMENT_TAG}-directory-picker`}>
-            <div className={`${ELEMENT_TAG}-row`}>
+          }
+        >
+          <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
+            <header className={`${ELEMENT_TAG}-directory-head`}>
+              <h1>Villagers</h1>
+            </header>
+            {error ? (
+              <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
+                {error}
+              </p>
+            ) : null}
+            <div className={`${ELEMENT_TAG}-directory-tools`}>
+              <input
+                autoComplete="off"
+                type="search"
+                value={rosterSearch}
+                onChange={(event) => setRosterSearch(event.target.value)}
+                placeholder="Search villagers…"
+                aria-label="Search villagers"
+              />
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
                 onClick={() => setPickerOpen((open) => !open)}
                 disabled={busy}
               >
-                {pickerOpen ? "Close the list" : "Add a villager"}
+                {pickerOpen ? "Back to villagers" : "Add a villager"}
               </button>
             </div>
-            {pickerOpen ? (
-              <div className={`${ELEMENT_TAG}-field`}>
-                <input
-                  autoComplete="off"
-                  className={`${ELEMENT_TAG}-search`}
-                  type="search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search by name, note or tag…"
-                  aria-label="Search your character library"
-                />
-                {catalog === null ? (
-                  <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
-                    Reading your library…
-                  </p>
-                ) : visibleCatalog.length === 0 ? (
-                  <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
-                    No characters match that search.
-                  </p>
-                ) : (
-                  <div className={`${ELEMENT_TAG}-picker-list`}>
-                    {visibleCatalog.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className={`${ELEMENT_TAG}-picker-item`}
-                        data-resident={entry.inVillage ? "true" : "false"}
+            <div
+              className={`${ELEMENT_TAG}-directory-reading`}
+              ref={content}
+              onScroll={() => {
+                if (readingPosition && content.current) readingPosition.current = content.current.scrollTop;
+              }}
+            >
+              <div className={`${ELEMENT_TAG}-directory-picker`}>
+                {pickerOpen ? (
+                  <div className={`${ELEMENT_TAG}-field`}>
+                    <input
+                      autoComplete="off"
+                      className={`${ELEMENT_TAG}-search`}
+                      type="search"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search by name, note or tag…"
+                      aria-label="Search your character library"
+                    />
+                    {catalog === null ? (
+                      <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
+                        Reading your library…
+                      </p>
+                    ) : visibleCatalog.length === 0 ? (
+                      <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
+                        No characters match that search.
+                      </p>
+                    ) : (
+                      <div className={`${ELEMENT_TAG}-picker-list`}>
+                        {visibleCatalog.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className={`${ELEMENT_TAG}-picker-item`}
+                            data-resident={entry.inVillage ? "true" : "false"}
+                          >
+                            <AvatarFace
+                              portrait={portraits[entry.id]}
+                              name={entry.name}
+                              className={`${ELEMENT_TAG}-avatar`}
+                            />
+                            <div className={`${ELEMENT_TAG}-picker-text`}>
+                              <div className={`${ELEMENT_TAG}-villager-name`}>{entry.name}</div>
+                              <div className={`${ELEMENT_TAG}-villager-role`}>
+                                {entry.comment || entry.tags.slice(0, 3).join(" · ")}
+                              </div>
+                              {entry.summary ? <p className={`${ELEMENT_TAG}-tile-summary`}>{entry.summary}</p> : null}
+                            </div>
+                            <button
+                              type="button"
+                              className={`${ELEMENT_TAG}-button`}
+                              onClick={() => void addVillager(entry.id)}
+                              disabled={busy || entry.inVillage}
+                            >
+                              {entry.inVillage ? "Lives here" : "Move in"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+              <div className={`${ELEMENT_TAG}-directory-grid`} hidden={pickerOpen}>
+                {[
+                  villagers.slice(0, Math.ceil(villagers.length / 2)),
+                  villagers.slice(Math.ceil(villagers.length / 2)),
+                ].map((page, index) => (
+                  <div className={`${ELEMENT_TAG}-directory-page`} key={index}>
+                    {page.map((person) => (
+                      <button
+                        type="button"
+                        key={person.characterId}
+                        className={`${ELEMENT_TAG}-directory-card`}
+                        aria-label={`Open ${person.name} profile`}
+                        onClick={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
                       >
                         <AvatarFace
-                          portrait={portraits[entry.id]}
-                          name={entry.name}
+                          portrait={portraits[person.characterId]}
+                          name={person.name}
                           className={`${ELEMENT_TAG}-avatar`}
                         />
-                        <div className={`${ELEMENT_TAG}-picker-text`}>
-                          <div className={`${ELEMENT_TAG}-villager-name`}>{entry.name}</div>
-                          <div className={`${ELEMENT_TAG}-villager-role`}>
-                            {entry.comment || entry.tags.slice(0, 3).join(" · ")}
-                          </div>
-                          {entry.summary ? <p className={`${ELEMENT_TAG}-tile-summary`}>{entry.summary}</p> : null}
-                        </div>
-                        <button
-                          type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          onClick={() => void addVillager(entry.id)}
-                          disabled={busy || entry.inVillage}
-                        >
-                          {entry.inVillage ? "Lives here" : "Move in"}
-                        </button>
-                      </div>
+                        <span className={`${ELEMENT_TAG}-directory-text`}>
+                          <strong>{person.name}</strong>
+                          {person.summary ? <small>{person.summary}</small> : null}
+                          <span className={`${ELEMENT_TAG}-dossier-tags`}>
+                            {person.tags.slice(0, 4).map((tag, index) => (
+                              <span key={`${tag}-${index}`}>{tag}</span>
+                            ))}
+                          </span>
+                          {person.missing ? <small>Card missing</small> : null}
+                        </span>
+                        <span aria-hidden="true">›</span>
+                      </button>
                     ))}
                   </div>
-                )}
+                ))}
               </div>
-            ) : null}
-          </div>
-          <div className={`${ELEMENT_TAG}-directory-grid`}>
-            {villagers.map((person) => (
-              <button
-                type="button"
-                key={person.characterId}
-                className={`${ELEMENT_TAG}-directory-card`}
-                aria-label={`Open ${person.name} profile`}
-                onClick={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
-              >
-                <AvatarFace
-                  portrait={portraits[person.characterId]}
-                  name={person.name}
-                  className={`${ELEMENT_TAG}-avatar`}
-                />
-                <strong>{person.name}</strong>
-                {person.summary ? <small>{person.summary}</small> : null}
-                <span className={`${ELEMENT_TAG}-dossier-tags`}>
-                  {person.tags.slice(0, 4).map((tag, index) => (
-                    <span key={`${tag}-${index}`}>{tag}</span>
-                  ))}
-                </span>
-                {person.missing ? <small>Card missing</small> : null}
-              </button>
-            ))}
-          </div>
-          {!snapshot ? (
-            <p role="status">Reading villagers…</p>
-          ) : !snapshot.villagers.length ? (
-            <p>Nobody lives here yet. Add a villager from your character library.</p>
-          ) : !villagers.length ? (
-            <p>No villagers match your search.</p>
-          ) : null}
-        </main>
+              {!snapshot ? (
+                <p role="status">Reading villagers…</p>
+              ) : !snapshot.villagers.length ? (
+                <p>No villagers yet.</p>
+              ) : !villagers.length ? (
+                <p>No villagers match your search.</p>
+              ) : null}
+            </div>
+          </main>
+        </PeopleBook>
       </div>
     );
   }

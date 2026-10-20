@@ -200,7 +200,9 @@ try {
   await page.getByRole("button", { name: "Open Mara profile" }).click();
   await page.getByRole("button", { name: "Inspect", exact: true }).click();
   await page.getByText("Manage", { exact: true }).click();
-  await expect(page.getByText("Mara's agenda", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Mara profile", exact: true }).getByText("Mara's agenda", { exact: true }),
+  ).toBeVisible();
   if (process.env.VILLAGES_BACKGROUND_SCREENSHOT)
     await page.screenshot({ path: process.env.VILLAGES_BACKGROUND_SCREENSHOT });
   await page.evaluate(() => {

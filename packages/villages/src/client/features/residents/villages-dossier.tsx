@@ -1,3 +1,4 @@
+import { PeopleBook } from "./PeopleBook.js";
 import type { ResidentSignature, ResidentSignatureImage } from "../../../shared/helpers/resident-signature.js";
 import { VenuePolaroid } from "../exploration/villages-venue-polaroid.js";
 import { type RelationshipView, VillagesRelationships } from "./villages-relationships.js";
@@ -121,6 +122,7 @@ export function VillagerDossier({
   inspectors,
   onInspectSection,
   onBack,
+  onClose,
   onVenue,
   error,
 }: {
@@ -143,6 +145,7 @@ export function VillagerDossier({
   inspectors: Partial<Record<DossierSection, ReactNode>>;
   onInspectSection: (section: DossierSection | null) => void;
   onBack: () => void;
+  onClose?: () => void;
   onVenue: (id: string) => void;
   error?: string;
 }) {
@@ -242,206 +245,201 @@ export function VillagerDossier({
   if (spriteManager) return <div className={`${P}-root ${P}-sprite-manager-root`}>{spriteManager}</div>;
   return (
     <div className={`${P}-root ${P}-dossier-root`}>
-      <section
-        className={`${P}-dossier-desk`}
-        aria-label={`${name} profile`}
-        data-inspect={inspect}
-        data-overview={section === "overview" && !!villager}
-        data-section={section}
-      >
-        <header className={`${P}-dossier-toolbar`}>
-          <button type="button" className={`${P}-dossier-back`} onClick={onBack}>
-            {navigation.returnTo === "room"
-              ? "Back to Scene"
-              : navigation.returnTo === "home"
-                ? "Back to People"
-                : "← Back to Villagers"}
-          </button>
-          {section !== "overview" || !villager ? <h1>{name}</h1> : null}
-          {villager ? (
-            <details className={`${P}-dossier-management`} open={manageOpen}>
-              <summary
-                onClick={(event) => {
-                  event.preventDefault();
-                  setManageOpen((open) => !open);
-                }}
-              >
-                Manage
-              </summary>
-              <div className={`${P}-dossier-controls`} role="group" aria-label="Villager management">
-                {controls}
-                {inspect ? inspectors.overview : null}
-              </div>
-            </details>
-          ) : null}
-        </header>
-        <div className={`${P}-dossier-book`}>
-          <div className={`${P}-dossier-rings`} aria-hidden="true">
-            {Array.from({ length: 8 }, (_, index) => (
-              <span key={index} />
-            ))}
-          </div>
-          <div className={`${P}-dossier-identity`}>
-            <article className={`${P}-dossier-journal`} aria-label={`${name} journal`}>
-              <div className={`${P}-dossier-journal-content`}>
-                <div className={`${P}-dossier-portrait`}>{portrait}</div>
-                <h1>{name}</h1>
-                <div className={`${P}-dossier-biography`}>
-                  {villager?.summary ? <p>{villager.summary}</p> : null}
-                  {villager?.missing ? (
-                    <p className={`${P}-dossier-warning`}>Card missing · saved character remains available.</p>
-                  ) : null}
+      <PeopleBook
+        label={`${name} profile`}
+        overview={section === "overview" && !!villager}
+        section={section}
+        inspect={inspect}
+        toolbar={
+          <>
+            <button type="button" className={`${P}-dossier-back`} onClick={onBack}>
+              ← Back to Villagers
+            </button>
+            {section !== "overview" || !villager ? <h1>{name}</h1> : null}
+            {villager ? (
+              <details className={`${P}-dossier-management`} open={manageOpen}>
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setManageOpen((open) => !open);
+                  }}
+                >
+                  Manage
+                </summary>
+                <div className={`${P}-dossier-controls`} role="group" aria-label="Villager management">
+                  {controls}
+                  {inspect ? inspectors.overview : null}
                 </div>
-              </div>
-              <div className={`${P}-dossier-tags`}>
-                {villager?.tags?.map((tag, index) => (
-                  <span key={`${tag}-${index}`}>{tag}</span>
-                ))}
-              </div>
-              {villager ? (
-                <VillagerSignature
-                  key={navigation.actorId}
-                  actorId={navigation.actorId}
-                  name={name}
-                  signature={villager.signatureFallback}
-                  saved={villager.signature}
-                  request={request}
-                />
-              ) : null}
-            </article>
-          </div>
-          <main className={`${P}-dossier-workspace`}>
-            <nav className={`${P}-dossier-tabs`} aria-label="Villager profile sections">
-              <div>
-                {sections.map((tab) => (
-                  <button type="button" key={tab} aria-pressed={section === tab} onClick={() => choose(tab)}>
-                    {titles[tab]}
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                className={`${P}-dossier-inspect`}
-                aria-pressed={inspect}
-
-                onClick={() => setInspect(!inspect)}
-              >
-                <DossierIcon name="inspect" />
-                {inspect ? "Leave Inspect" : "Inspect"}
+              </details>
+            ) : null}
+            {onClose ? (
+              <button type="button" className={`${P}-notebook-close`} onClick={onClose}>
+                Close ×
               </button>
-            </nav>
-            <div
-              ref={content}
-              className={`${P}-dossier-content`}
-              role="region"
-              tabIndex={section === "overview" ? -1 : 0}
-              aria-label={`${titles[section]} content`}
-            >
-              {error ? (
-                <p role="alert" className={`${P}-dossier-warning`}>
-                  {error}
-                </p>
-              ) : null}
-              {readError ? (
-                <p role="alert">
-                  {readError}{" "}
-                  <button type="button" onClick={() => setRevision(revision + 1)}>
-                    Retry profile
-                  </button>
-                </p>
-              ) : null}
-              {!villager ? (
-                <Sheet title="This villager has moved out">
-                  <p>Saved history retained.</p>
-                </Sheet>
-              ) : (
-                <>
-                  {section === "overview" ? null : section === "relationships" ? (
-                    <VillagesRelationships
-                      request={request}
-                      prefix={P}
-                      onVenue={onVenue}
-                      characterId={navigation.actorId}
-                      inspect={inspect}
-                      view={relationships}
-                      onView={setRelationships}
-                    />
-                  ) : section === "wishes" ? (
-                    inspect ? (
-                      inspectors.wishes
-                    ) : (
-                      <Sheet title="Shared wishes" icon="wishes">
-                        <VillagerWishJournal
-                          request={request}
-                          characterId={navigation.actorId}
-                          prefix={P}
-                          focusWishId={navigation.wishId}
-                          wishes={relationships ? (profile?.knownWishes ?? []) : null}
-                          onWishes={(knownWishes) =>
-                            setRelationships((current) =>
-                              current
-                                ? {
-                                    ...current,
-                                    profiles: current.profiles.map((entry) =>
-                                      entry.characterId === navigation.actorId ? { ...entry, knownWishes } : entry,
-                                    ),
-                                  }
-                                : current,
-                            )
-                          }
-                        />
-                      </Sheet>
-                    )
-                  ) : section === "memories" ? (
-                    inspect ? (
-                      inspectors.memories
-                    ) : (
-                      <Sheet title="Memories" icon="memories">
-                        <button type="button" onClick={() => setInspect(true)}>
-                          Inspect memories
-                        </button>
-                      </Sheet>
-                    )
-                  ) : section === "agenda" ? (
-                    inspect ? (
-                      inspectors.agenda
-                    ) : (
-                      <Sheet title="Known routine" icon="agenda">
-                        {profile?.knownAt ? (
-                          <>
-                            <p>
-                              {profile.friend ? "Current shared information" : "Last known information"} ·{" "}
-                              {new Date(profile.knownAt).toLocaleString()}
-                            </p>
-                            <ul>
-                              {profile.routine?.map((line, index) => (
-                                <li key={index}>{line}</li>
-                              ))}
-                            </ul>
-                            <p>{profile.interests || "No interests shared yet."}</p>
-                          </>
-                        ) : (
-                          <p>Their routine has not been shared yet.</p>
-                        )}
-                      </Sheet>
-                    )
-                  ) : (
-                    <>
-                      <Sheet title="Relevant Venues" icon="venues">
-                        {venueCards()}
-                      </Sheet>
-                      <Sheet title="Related Projects and Venue Requests">{related}</Sheet>
-                    </>
-                  )}
-                </>
-              )}
+            ) : null}
+          </>
+        }
+      >
+        <div className={`${P}-dossier-identity`}>
+          <article className={`${P}-dossier-journal`} aria-label={`${name} journal`}>
+            <div className={`${P}-dossier-journal-content`}>
+              <div className={`${P}-dossier-portrait`}>{portrait}</div>
+              <h1>{name}</h1>
+              <div className={`${P}-dossier-biography`}>
+                {villager?.summary ? <p>{villager.summary}</p> : null}
+                {villager?.missing ? (
+                  <p className={`${P}-dossier-warning`}>Card missing · saved character remains available.</p>
+                ) : null}
+              </div>
             </div>
-          </main>
-          {turn.id > 0 ? (
-            <div key={turn.id} className={`${P}-dossier-turn`} data-backwards={turn.backwards} aria-hidden="true" />
-          ) : null}
+            <div className={`${P}-dossier-tags`}>
+              {villager?.tags?.map((tag, index) => (
+                <span key={`${tag}-${index}`}>{tag}</span>
+              ))}
+            </div>
+            {villager ? (
+              <VillagerSignature
+                key={navigation.actorId}
+                actorId={navigation.actorId}
+                name={name}
+                signature={villager.signatureFallback}
+                saved={villager.signature}
+                request={request}
+              />
+            ) : null}
+          </article>
         </div>
-      </section>
+        <main className={`${P}-dossier-workspace`}>
+          <nav className={`${P}-dossier-tabs`} aria-label="Villager profile sections">
+            <div>
+              {sections.map((tab) => (
+                <button type="button" key={tab} aria-pressed={section === tab} onClick={() => choose(tab)}>
+                  {titles[tab]}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className={`${P}-dossier-inspect`}
+              aria-pressed={inspect}
+
+              onClick={() => setInspect(!inspect)}
+            >
+              <DossierIcon name="inspect" />
+              {inspect ? "Leave Inspect" : "Inspect"}
+            </button>
+          </nav>
+          <div
+            ref={content}
+            className={`${P}-dossier-content`}
+            role="region"
+            tabIndex={section === "overview" ? -1 : 0}
+            aria-label={`${titles[section]} content`}
+          >
+            {error ? (
+              <p role="alert" className={`${P}-dossier-warning`}>
+                {error}
+              </p>
+            ) : null}
+            {readError ? (
+              <p role="alert">
+                {readError}{" "}
+                <button type="button" onClick={() => setRevision(revision + 1)}>
+                  Retry profile
+                </button>
+              </p>
+            ) : null}
+            {!villager ? (
+              <Sheet title="This villager has moved out">
+                <p>Saved history retained.</p>
+              </Sheet>
+            ) : (
+              <>
+                {section === "overview" ? null : section === "relationships" ? (
+                  <VillagesRelationships
+                    request={request}
+                    prefix={P}
+                    onVenue={onVenue}
+                    characterId={navigation.actorId}
+                    inspect={inspect}
+                    view={relationships}
+                    onView={setRelationships}
+                  />
+                ) : section === "wishes" ? (
+                  inspect ? (
+                    inspectors.wishes
+                  ) : (
+                    <Sheet title="Shared wishes" icon="wishes">
+                      <VillagerWishJournal
+                        request={request}
+                        characterId={navigation.actorId}
+                        prefix={P}
+                        focusWishId={navigation.wishId}
+                        wishes={relationships ? (profile?.knownWishes ?? []) : null}
+                        onWishes={(knownWishes) =>
+                          setRelationships((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  profiles: current.profiles.map((entry) =>
+                                    entry.characterId === navigation.actorId ? { ...entry, knownWishes } : entry,
+                                  ),
+                                }
+                              : current,
+                          )
+                        }
+                      />
+                    </Sheet>
+                  )
+                ) : section === "memories" ? (
+                  inspect ? (
+                    inspectors.memories
+                  ) : (
+                    <Sheet title="Memories" icon="memories">
+                      <button type="button" onClick={() => setInspect(true)}>
+                        Inspect memories
+                      </button>
+                    </Sheet>
+                  )
+                ) : section === "agenda" ? (
+                  inspect ? (
+                    inspectors.agenda
+                  ) : (
+                    <Sheet title="Known routine" icon="agenda">
+                      {profile?.knownAt ? (
+                        <>
+                          <p>
+                            {profile.friend ? "Current shared information" : "Last known information"} ·{" "}
+                            {new Date(profile.knownAt).toLocaleString()}
+                          </p>
+                          <ul>
+                            {profile.routine?.map((line, index) => (
+                              <li key={index}>{line}</li>
+                            ))}
+                          </ul>
+                          <p>{profile.interests || "No interests shared yet."}</p>
+                        </>
+                      ) : (
+                        <p>Their routine has not been shared yet.</p>
+                      )}
+                    </Sheet>
+                  )
+                ) : (
+                  <>
+                    <Sheet title="Relevant Venues" icon="venues">
+                      {venueCards()}
+                    </Sheet>
+                    <Sheet title="Related Projects and Venue Requests">{related}</Sheet>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </main>
+        {turn.id > 0 ? (
+          <div key={turn.id} className={`${P}-dossier-turn`} data-backwards={turn.backwards} aria-hidden="true" />
+        ) : null}
+      </PeopleBook>
     </div>
   );
 }

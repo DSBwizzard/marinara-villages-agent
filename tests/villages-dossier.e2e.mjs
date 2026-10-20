@@ -286,13 +286,74 @@ try {
     );
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    const retainedMap = await page.locator(`.${P}-home-full`).elementHandle();
+    const people = page
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "People", exact: true });
+    await people.click();
+    const selector = page.getByRole("main", { name: "Villagers directory" });
+    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
+    await expect(selector.locator(`.${P}-directory-page`)).toHaveCount(2);
+    const bookBox = await page.locator(`.${P}-dossier-book`).boundingBox();
+    await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
+    await selector.getByRole("searchbox").fill("nobody-matches");
+    await expect(selector.getByText("No villagers match your search.")).toBeVisible();
+    await selector.getByRole("searchbox").fill("");
+    await selector.getByRole("button", { name: "Open Mara profile" }).click();
+    assert.deepEqual(
+      await page.locator(`.${P}-dossier-book`).boundingBox(),
+      bookBox,
+      "Directory and profile share the same book dimensions",
+    );
+    await page.getByRole("button", { name: "← Back to Villagers" }).click();
+    await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
+    await page.getByRole("button", { name: "Close ×" }).click();
+    await expect(people).toBeFocused();
+    assert.equal(
+      await retainedMap.evaluate((node) => node.isConnected),
+      true,
+      "Map stays mounted throughout notebook browsing",
+    );
+    if (width === 1440 || (width === 390 && height === 844)) {
+      const savedVillagers = village.villagers;
+      village.villagers = [
+        ...Array.from({ length: 40 }, (_, index) => ({
+          ...savedVillagers[1],
+          characterId: `extra-${index}`,
+          name: `Neighbor ${index}`,
+          summary: "",
+          tags: [],
+        })),
+        ...savedVillagers,
+      ];
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await people.click();
+      await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(42);
+      const list = selector.locator(`.${P}-directory-reading`);
+      const position = await list.evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+        return node.scrollTop;
+      });
+      assert.ok(position > 0, "Large rosters scroll inside the book");
+      await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
+      await page.getByRole("button", { name: "← Back to Villagers" }).click();
+      assert.equal(
+        await list.evaluate((node) => node.scrollTop),
+        position,
+        "Directory reading position survives profile browsing",
+      );
+      await page.getByRole("button", { name: "Close ×" }).click();
+      await expect(people).toBeFocused();
+      village.villagers = savedVillagers;
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    }
     await page.getByRole("button", { name: "More", exact: true }).click();
     const menu = page.getByRole("navigation", { name: "Village menu pages" });
     for (const name of ["Relationships", "Memories", "Villager Agendas", "DEBUG: Villager Wishes"])
       await expect(menu.getByRole("button", { name, exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: /^Villagers \(/ }).click();
     const directory = page.getByRole("main", { name: "Villagers directory" });
-    await expect(directory.locator(`.${P}-directory-cover`)).toHaveCount(1);
+    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await expect(menu).toHaveCount(0);
     await directory.getByRole("searchbox", { name: "Search villagers" }).fill("explorer");
     await expect(directory.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(1);
@@ -447,7 +508,7 @@ try {
     await profile.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveValue("explorer");
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeFocused();
-    await expect(directory.locator(`.${P}-directory-cover`)).toHaveCount(0);
+    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await directory.getByRole("searchbox", { name: "Search villagers" }).fill("");
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
     await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toHaveAttribute("aria-pressed", "false");
@@ -515,11 +576,11 @@ try {
     await expect(page.getByRole("heading", { name: "This villager has moved out" })).toBeVisible();
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toHaveCount(0);
-    await directory.getByRole("button", { name: "Back to menu", exact: true }).click();
+    await page.getByRole("button", { name: "Close ×", exact: true }).click();
     await page.getByRole("button", { name: /^Villagers \(/ }).click();
-    await expect(directory.locator(`.${P}-directory-cover`)).toHaveCount(1);
+    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await expect(directory.locator(`.${P}-directory-cover`)).toBeHidden();
+    await expect(page.locator(`.${P}-notebook-cover`)).toBeHidden();
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
     await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
     await expect(page.locator(`.${P}-dossier-turn`)).toBeHidden();

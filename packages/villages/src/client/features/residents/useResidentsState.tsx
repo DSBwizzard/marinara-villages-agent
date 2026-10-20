@@ -46,7 +46,6 @@ export function useResidentsState() {
   const [profileInspection, setProfileInspection] = useState<DossierSection | null>(null);
 
   const [rosterSearch, setRosterSearch] = useState("");
-  const [returningToDirectory, setReturningToDirectory] = useState(false);
 
   const profileOrigin = useRef<{ selector: string; scroll: Array<{ selector: string; top: number }> }>({
     selector: "",
@@ -130,8 +129,6 @@ export function useResidentsState() {
     rosterSearch,
     setRosterSearch,
     profileOrigin,
-    returningToDirectory,
-    setReturningToDirectory,
     spriteManagerId,
     setSpriteManagerId,
     spriteLeaveGuard,

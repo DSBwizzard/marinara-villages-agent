@@ -1,5 +1,7 @@
 # Villages
 
+**People notebook:** People opens the Villagers directory inside the shared notebook. Select a villager to browse their profile tabs; Back to Villagers retains the directory search and reading position. Close returns to the originating map, menu, or Scene. Direct profile links open that villager immediately, and Scene drafts and reading position remain intact while browsing. Entry and exit animations respect reduced motion.
+
 ## Guided opening Project (0.7.3)
 
 New villages begin with their founding residents together at the placed Community Venue. After this Scene, individual conversations reveal one prepared proposal per founder. The player hears every remaining founder before choosing one proposal as offered. Resident move-outs remove unchosen proposals from eligibility; temporary absence does not. Existing villages do not adopt the opening.

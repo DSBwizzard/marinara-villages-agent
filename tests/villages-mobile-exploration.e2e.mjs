@@ -264,9 +264,10 @@ try {
       page.locator("." + P + "-venue-profile").filter({ has: page.getByRole("heading", { name, exact: true }) });
     const returnFromVenue = async () => {
       await page.getByRole("button", { name: "Back", exact: true }).click();
-      if (await page.getByRole("button", { name: "Back to People", exact: true }).isVisible())
-        await page.getByRole("button", { name: "Back to People", exact: true }).click();
+      if (await page.getByRole("button", { name: "Close ×", exact: true }).isVisible())
+        await page.getByRole("button", { name: "Close ×", exact: true }).click();
       if (await page.getByRole("dialog").count()) await page.keyboard.press("Escape");
+      await expect(page.locator("." + P + "-notebook-session")).toHaveCount(0);
     };
     const sharedMapBox = await stage.boundingBox();
     await nav.getByRole("button", { name: "Places", exact: true }).click();
@@ -291,11 +292,11 @@ try {
     await sharedPanel.getByRole("searchbox").fill("");
     await page.keyboard.press("Escape");
     await nav.getByRole("button", { name: "People", exact: true }).click();
-    const sharedPeople = page.getByRole("dialog", { name: "People", exact: true });
-    await expect(sharedPeople.getByRole("button", { name: /Taro Current location unavailable/ })).toBeEnabled();
+    const sharedPeople = page.getByRole("main", { name: "Villagers directory", exact: true });
+    await expect(sharedPeople.getByRole("button", { name: "Open Taro profile" })).toBeEnabled();
     await sharedPeople.getByRole("searchbox").fill("Mara");
-    await expect(sharedPeople.locator("." + P + "-explore-row")).toHaveCount(1);
-    await sharedPeople.getByRole("button", { name: /Mara Village Market/ }).click();
+    await expect(sharedPeople.locator("." + P + "-directory-card")).toHaveCount(1);
+    await sharedPeople.getByRole("button", { name: "Open Mara profile" }).click();
     await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
     await page
       .getByRole("navigation", { name: "Villager profile sections" })
@@ -319,13 +320,13 @@ try {
     fixture.villagers = [];
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await nav.getByRole("button", { name: "People", exact: true }).click();
-    await expect(sharedPeople.getByRole("status")).toHaveText("Nothing to show here yet.");
+    await expect(sharedPeople.getByText("No villagers yet.")).toBeVisible();
     await sharedPeople.getByRole("searchbox").fill("missing name");
-    await expect(sharedPeople.getByRole("status")).toHaveText("No matches. Try another name.");
+    await expect(sharedPeople.getByText("No villagers yet.")).toBeVisible();
     await sharedPeople.getByRole("searchbox").fill("");
     fixture.villagers = savedPeople;
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(sharedPeople.getByRole("button", { name: /Mara Village Market/ })).toBeVisible();
+    await expect(sharedPeople.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
     await page.keyboard.press("Escape");
     await home.getByRole("button", { name: "Notices (1)", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Noticeboard", level: 1 })).toBeVisible();
@@ -502,16 +503,16 @@ try {
     await page.keyboard.press("Escape");
     await expect(nav.getByRole("button", { name: "Places", exact: true })).toBeFocused();
     await nav.getByRole("button", { name: "People", exact: true }).click();
-    sheet = page.getByRole("dialog", { name: "People", exact: true });
-    await expect(sheet.getByRole("button", { name: /Taro Current location unavailable/ })).toBeEnabled();
-    await expect(sheet.locator("." + P + "-explore-face img")).toHaveCount(4);
-    for (const row of await sheet.locator("." + P + "-explore-row").all()) {
-      const face = row.locator("." + P + "-explore-face");
+    sheet = page.getByRole("main", { name: "Villagers directory", exact: true });
+    await expect(sheet.getByRole("button", { name: "Open Taro profile" })).toBeEnabled();
+    await expect(sheet.locator("." + P + "-avatar img")).toHaveCount(4);
+    for (const row of await sheet.locator("." + P + "-directory-card").all()) {
+      const face = row.locator("." + P + "-avatar");
       const bounds = await face.boundingBox();
-      assert.equal(bounds.width, 36);
-      assert.equal(bounds.height, 36);
+      assert.equal(bounds.width, 48);
+      assert.equal(bounds.height, 60);
       const rowBounds = await row.boundingBox();
-      assert.ok(rowBounds.height >= 60 && rowBounds.height <= 85, "People stays a compact row list");
+      assert.ok(rowBounds.height >= 60 && rowBounds.height <= 150, "People stays a compact row list");
       await expect(face).toHaveCSS("position", "relative");
       await expect(face).toHaveCSS("overflow", "hidden");
       const cropped = face.locator('img[style*="position: absolute"]');
@@ -521,21 +522,21 @@ try {
           "saved rectangle crop belongs to its portrait frame",
         );
     }
-    const eli = sheet.getByRole("button", { name: /Eli Village Market/ }).locator("." + P + "-explore-face img");
+    const eli = sheet.getByRole("button", { name: "Open Eli profile" }).locator("." + P + "-avatar img");
     await expect(eli).toHaveCSS("position", "absolute");
     assert.equal(await eli.evaluate((img) => img.style.width), "200%");
     assert.equal(await eli.evaluate((img) => img.style.height), "400%");
-    await expect(sheet.getByRole("button", { name: /Lina Village Market/ }).locator("img")).toHaveCSS(
+    await expect(sheet.getByRole("button", { name: "Open Lina profile" }).locator("img")).toHaveCSS(
       "transform",
       /matrix\(2,/,
     );
-    await expect(sheet.getByRole("button", { name: /Taro Current location unavailable/ }).locator("img")).toHaveCSS(
+    await expect(sheet.getByRole("button", { name: "Open Taro profile" }).locator("img")).toHaveCSS(
       "object-fit",
       "contain",
     );
-    await expect(sheet.getByRole("button", { name: /Noor Village Market/ }).locator("img")).toHaveCount(0);
+    await expect(sheet.getByRole("button", { name: "Open Noor profile" }).locator("img")).toHaveCount(0);
     await screenshot("people");
-    await sheet.getByRole("button", { name: /Mara Village Market/ }).click();
+    await sheet.getByRole("button", { name: "Open Mara profile" }).click();
     await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
     await page
       .getByRole("navigation", { name: "Villager profile sections" })
