@@ -415,6 +415,9 @@ try {
       element.style.opacity = "";
     });
     const sample = (png, x, y) => Array.from(png.data.slice((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
+    // Separate browser composites can differ by a few 8-bit levels at subpixel
+    // positions. Opaque white paper differs by dozens of levels on this notebook.
+    const pixelTolerance = 4;
     for (const [x, y] of [
       [5, 5],
       [90, 65],
@@ -422,14 +425,14 @@ try {
       const visible = sample(oldVisible, x, y),
         paper = sample(notebookOnly, x, y);
       assert.ok(
-        visible.every((value, channel) => Math.abs(value - paper[channel]) <= 1),
+        visible.every((value, channel) => Math.abs(value - paper[channel]) <= pixelTolerance),
         `Existing saved white fills reveal the notebook unchanged at ${width}x${height} (${x},${y}): ${JSON.stringify({ visible, paper })}`,
       );
     }
     const faintVisible = sample(oldVisible, 90, 14),
       faintPaper = sample(notebookOnly, 90, 14);
     assert.ok(
-      faintVisible.every((value, channel) => value <= faintPaper[channel]),
+      faintVisible.every((value, channel) => value <= faintPaper[channel] + pixelTolerance),
       "Old matte edges cannot brighten the notebook",
     );
     await page.screenshot({ path: resolve(output, `signature-white-matte-${width}-${height}.png`) });
