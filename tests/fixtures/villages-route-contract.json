@@ -104,6 +104,14 @@
       "bodyLimit": 8065536
     },
     {
+      "method": "patch",
+      "path": "/villagers/:characterId/description"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/background/draft"
+    },
+    {
       "method": "post",
       "path": "/villagers"
     },

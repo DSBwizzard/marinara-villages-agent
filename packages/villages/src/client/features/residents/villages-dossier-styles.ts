@@ -24,7 +24,7 @@ export const DOSSIER_STYLES = `
 }
 .${P}-dossier-root button:hover:not(:disabled), .${P}-directory-root button:hover:not(:disabled) { filter:brightness(.96); }
 .${P}-dossier-root button:disabled, .${P}-directory-root button:disabled { opacity:.55; cursor:default; }
-.${P}-dossier-root :is(button,input,select,summary,a,[tabindex]):focus-visible, .${P}-directory-root :is(button,input,select,summary,a):focus-visible { outline:3px solid #395d78; outline-offset:3px; }
+.${P}-dossier-root :is(button,input,textarea,select,summary,a,[tabindex]):focus-visible, .${P}-directory-root :is(button,input,select,summary,a):focus-visible { outline:3px solid #395d78; outline-offset:3px; }
 .${P}-dossier-root :is(p,li,small), .${P}-directory-root p { line-height:1.55; overflow-wrap:anywhere; }
 .${P}-dossier-root :is(h1,h2,h3,h4), .${P}-directory-root :is(h1,h2,h3) { color:var(--dossier-ink); font-family:var(--notebook-hand); font-weight:400; overflow-wrap:anywhere; }
 .${P}-dossier-root :is(input,select,textarea), .${P}-directory-root input { color:var(--dossier-ink); background:#fff7e7; border:1px solid #b7a787; border-radius:4px; padding:9px; min-height:44px; max-width:100%; font:inherit; }
@@ -36,6 +36,9 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-management { margin-left:auto; position:relative; z-index:8; }
 .${P}-dossier-management > summary { list-style:none; }
 .${P}-dossier-controls { position:absolute; right:0; top:100%; margin-top:6px; width:min(520px,85vw); max-height:65vh; overflow:auto; display:flex; flex-wrap:wrap; gap:10px; padding:14px; border:1px solid #bba27a; background:#fff3dd; border-radius:6px; box-shadow:0 4px 16px #30201940; }
+.${P}-description-editor { width:100%; min-width:0; }
+.${P}-description-editor label, .${P}-description-editor textarea { display:block; width:100%; box-sizing:border-box; }
+.${P}-description-editor textarea { resize:vertical; margin:6px 0; }
 .${P}-dossier-controls > .${P}-row { flex-wrap:wrap; }
 .${P}-dossier-controls details > button { display:block; margin-top:6px; }
 .${P}-dossier-refresh { width:100%; border-top:1px solid var(--dossier-line); padding-top:10px; }

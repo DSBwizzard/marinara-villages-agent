@@ -319,3 +319,45 @@ await assert.rejects(
 console.log(
   "Resident roster ownership: inert connections, local arrival/capacity retry, departure privacy, existing failure ordering, originating activation and cleanup passed (mocked storage/library/Agenda admission).",
 );
+
+// A description belongs to the resident, never their source card or later incarnation.
+const descriptions = fixture("Descriptions");
+await descriptions.service.addVillager("same");
+const freshDescription = descriptions.state.villagers[0]!.identityDescription!;
+assert.equal(freshDescription.initialGenerationComplete, false);
+const originalCard = structuredClone(descriptions.state.villagers[0]!.cardSnapshot);
+await descriptions.service.editIdentityDescription("same", {
+  text: "A quiet collector.",
+  revision: freshDescription.revision,
+});
+const editedDescription = descriptions.state.villagers[0]!.identityDescription!;
+assert.equal(editedDescription.text, "A quiet collector.");
+assert.equal(editedDescription.initialGenerationComplete, true);
+assert.deepEqual(descriptions.state.villagers[0]!.cardSnapshot, originalCard);
+assert.deepEqual(coerceVillageState(descriptions.state).villagers[0]!.identityDescription, editedDescription);
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: "Stale", revision: freshDescription.revision }),
+  /Description changed/,
+);
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: "x".repeat(241), revision: editedDescription.revision }),
+  /at most 240/,
+);
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: null, revision: editedDescription.revision }),
+  /at most 240/,
+);
+await descriptions.service.editIdentityDescription("same", { text: "", revision: editedDescription.revision });
+assert.equal(descriptions.state.villagers[0]!.identityDescription!.text, "");
+const removedRevision = descriptions.state.villagers[0]!.identityDescription!.revision;
+await descriptions.service.removeVillager("same");
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: "Absent", revision: removedRevision }),
+  /does not live here/,
+);
+await descriptions.service.addVillager("same");
+assert.notEqual(descriptions.state.villagers[0]!.identityDescription!.revision, removedRevision);
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: "Old incarnation", revision: removedRevision }),
+  /Description changed/,
+);

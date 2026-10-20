@@ -75,6 +75,10 @@ export function foundingRequestMessages(
     task === "routine" && context.influenceSettings?.enabled && context.schedule
       ? " Also return scheduleInfluence:{rhythms:[{weekday,startMinute,endMinute}],busy:[{weekday,part,free}],interests:[exact palette activity],entities:[exact allowed venue ID]} interpreting the supplied schedule without importing assets or private facts."
       : "";
+  const description =
+    task === "routine" && context.identityDescriptionRevision
+      ? " Also return identityDescription:string: exactly one concise, neutral third-person dossier sentence identifying the person at a high level, targeting 15–25 words and at most 240 characters. Use defining identity, personality, enduring skills or roles, interpreted within the Village setting and chosen continuity/background. Exclude residence, current activities, Wishes, relationships, temporary circumstances, secrets, narrator-only truths and promotional language. Do not invent facts, copy a card biography, import an original-world job into the Village, or describe village status. This is display copy, not behavior guidance."
+      : "";
   return [
     {
       role: "system",
@@ -85,7 +89,9 @@ export function foundingRequestMessages(
             : ROUTINE_INSTRUCTIONS
           : task === "opening"
             ? "Return JSON only: {openingProposal:{...}}. " + OPENING_PROPOSAL_INSTRUCTIONS
-            : WISH_INSTRUCTIONS) + influence,
+            : WISH_INSTRUCTIONS) +
+        influence +
+        description,
     },
     { role: "user", content: JSON.stringify(data) },
   ];

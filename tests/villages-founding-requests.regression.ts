@@ -7,7 +7,10 @@ import {
   ROUTINE_INSTRUCTIONS,
   WISH_INSTRUCTIONS,
 } from "../packages/villages/src/server/domain/rules/founding-requests.js";
-import { parseCompactFounding } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
+import {
+  parseCompactFounding,
+  parseCompactFoundingCompletion,
+} from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import { coerceFoundingTasks } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 const card = {
   id: "feddy-fixture",
@@ -198,4 +201,30 @@ assert.throws(
       { ...context, contractVersion: 2 },
     ),
   /Routine activity 1 duration 360; expected 30–240 minutes/,
+);
+
+const withDescription = { ...context, identityDescriptionRevision: "first-adoption" };
+for (const invalid of [
+  undefined,
+  null,
+  "",
+  "x".repeat(241),
+  "Two sentences. Another sentence.",
+  "- A bullet.",
+  "A line.\nAnother line.",
+]) {
+  const parsed = parseCompactFounding({ ...payload, identityDescription: invalid }, withDescription);
+  assert.equal(parsed.identityDescription, "");
+  assert(parsed.agenda.routineProfile);
+}
+const sentence = "An adventurous bird anthro who favors a low-tech way of life.";
+assert.equal(
+  parseCompactFounding({ ...payload, identityDescription: sentence }, withDescription).identityDescription,
+  sentence,
+);
+const savedReply = { content: JSON.stringify({ ...payload, identityDescription: sentence }), finishReason: "stop" };
+assert.equal(parseCompactFoundingCompletion(savedReply as any, withDescription).identityDescription, sentence);
+assert.equal(
+  parseCompactFounding({ ...payload, identityDescription: sentence }, context).identityDescription,
+  undefined,
 );

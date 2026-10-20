@@ -118,6 +118,7 @@ export function ResidentBackgroundReview({
       <label style={{ display: "grid", gap: ".5rem" }}>
         Background
         <textarea
+          autoComplete="off"
           aria-label={name + " background"}
           rows={6}
           maxLength={1200}
@@ -151,6 +152,7 @@ export function ResidentBackgroundReview({
         <label style={{ display: "grid", gap: ".5rem" }}>
           Direction
           <textarea
+            autoComplete="off"
             aria-label={name + " background direction"}
             rows={2}
             maxLength={500}

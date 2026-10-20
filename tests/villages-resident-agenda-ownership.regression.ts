@@ -1,3 +1,4 @@
+import { initialIdentityDescription } from "../packages/villages/src/server/domain/rules/resident-description.js";
 import assert from "node:assert/strict";
 import {
   bindActivationService,
@@ -369,4 +370,63 @@ await assert.rejects(
 );
 console.log(
   "Resident Agenda ownership: inert ports, input/revision admission, recovery without regeneration, current-day preservation, independent owners and bound background callbacks passed (mocked storage, schedules and generation).",
+);
+
+const identity = fixture("Identity");
+identity.state.villagers[0]!.identityDescription = initialIdentityDescription();
+await identity.service.queueVillagerAgenda("same");
+const identityInput = identity.jobs[0].input;
+assert.equal(
+  identityInput.context.identityDescriptionRevision,
+  identity.state.villagers[0]!.identityDescription!.revision,
+);
+const identityResult = {
+  agenda: { ...structuredClone(identity.resident.agenda), generatedAt: new Date().toISOString() },
+  identityDescription: "A patient gardener with an interest in herbs.",
+};
+identity.service.agendaBackgroundHandler.apply(identity.state, identityInput, identityResult, { retrying: false });
+assert.equal(identity.state.villagers[0]!.identityDescription!.text, identityResult.identityDescription);
+assert.equal(identity.state.villagers[0]!.identityDescription!.initialGenerationComplete, true);
+await identity.service.clearVillagerAgenda("same", "later-routine");
+assert.equal(identity.jobs.at(-1).input.context.identityDescriptionRevision, undefined);
+identity.service.agendaBackgroundHandler.apply(
+  identity.state,
+  identity.jobs.at(-1).input,
+  { ...identityResult, identityDescription: "Unexpected replacement." },
+  { retrying: false },
+);
+assert.equal(identity.state.villagers[0]!.identityDescription!.text, identityResult.identityDescription);
+const editedIdentity = fixture("Edited during preparation");
+editedIdentity.state.villagers[0]!.identityDescription = initialIdentityDescription();
+await editedIdentity.service.queueVillagerAgenda("same");
+editedIdentity.state.villagers[0]!.identityDescription = {
+  text: "",
+  revision: "player-edit",
+  initialGenerationComplete: true,
+};
+editedIdentity.service.agendaBackgroundHandler.apply(
+  editedIdentity.state,
+  editedIdentity.jobs[0].input,
+  identityResult,
+  { retrying: false },
+);
+assert.equal(
+  editedIdentity.state.villagers[0]!.identityDescription!.text,
+  "",
+  "Even an intentional blank wins over delayed generation.",
+);
+const invalidIdentity = fixture("Invalid description");
+invalidIdentity.state.villagers[0]!.identityDescription = initialIdentityDescription();
+await invalidIdentity.service.queueVillagerAgenda("same");
+invalidIdentity.service.agendaBackgroundHandler.apply(
+  invalidIdentity.state,
+  invalidIdentity.jobs[0].input,
+  { ...identityResult, identityDescription: "Two sentences. Not one." },
+  { retrying: false },
+);
+assert.equal(invalidIdentity.state.villagers[0]!.identityDescription!.text, "");
+assert.equal(invalidIdentity.state.villagers[0]!.identityDescription!.initialGenerationComplete, true);
+assert(
+  invalidIdentity.state.villagers[0]!.agenda!.generatedAt,
+  "An invalid description does not reject a valid agenda.",
 );

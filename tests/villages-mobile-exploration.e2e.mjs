@@ -443,7 +443,7 @@ try {
         await expect(card.locator("." + P + "-pin-name")).toHaveText(venue.name);
         const thumbnail = card.locator("." + P + "-pin-photo");
         const bounds = await thumbnail.boundingBox();
-        assert.equal(bounds.width, 48);
+        assert.ok(Math.abs(bounds.width - 48) < 0.01, "avatar width stays 48 CSS pixels within transform rounding");
         assert.equal(bounds.height, 48);
         await expect(thumbnail.locator("img")).toHaveCSS("object-fit", "cover");
         const names = fixture.villagers
@@ -509,8 +509,8 @@ try {
     for (const row of await sheet.locator("." + P + "-directory-card").all()) {
       const face = row.locator("." + P + "-avatar");
       const bounds = await face.boundingBox();
-      assert.equal(bounds.width, 48);
-      assert.equal(bounds.height, 60);
+      assert.ok(Math.abs(bounds.width - 48) < 0.01, "avatar width stays 48 CSS pixels within transform rounding");
+      assert.ok(Math.abs(bounds.height - 60) < 0.01, "avatar height stays 60 CSS pixels within transform rounding");
       const rowBounds = await row.boundingBox();
       assert.ok(rowBounds.height >= 60 && rowBounds.height <= 150, "People stays a compact row list");
       await expect(face).toHaveCSS("position", "relative");
