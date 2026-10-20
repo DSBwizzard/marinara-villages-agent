@@ -9,6 +9,7 @@ import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound, safeFailureMessage, statusCodeOf } from "../../domain/rules/errors.js";
 import {
   signaturePrompt,
+  signatureNegativePrompt,
   signatureEvidence,
   previousSignaturePrompt,
   legacySignaturePrompt,
@@ -225,8 +226,7 @@ export function createResidentSignatures({
           connectionId,
           name: `${data.name} signature`,
           prompt: data.prompt,
-          negativePrompt:
-            "separate illustration, hobby icons, stacked emblem, stamp, brand logo, polished typography, multicolor outlines, drop shadow, presentation scene, paper texture, mockup, watermark, explanatory caption",
+          negativePrompt: signatureNegativePrompt,
           width: 1536,
           height: 1024,
           maxBase64Length: LIMIT,
