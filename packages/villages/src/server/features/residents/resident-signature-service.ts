@@ -225,7 +225,8 @@ export function createResidentSignatures({
           connectionId,
           name: `${data.name} signature`,
           prompt: data.prompt,
-          negativePrompt: "presentation scene, paper texture, mockup, watermark, explanatory caption",
+          negativePrompt:
+            "separate illustration, hobby icons, stacked emblem, stamp, brand logo, polished typography, multicolor outlines, drop shadow, presentation scene, paper texture, mockup, watermark, explanatory caption",
           width: 1536,
           height: 1024,
           maxBase64Length: LIMIT,
