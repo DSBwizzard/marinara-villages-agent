@@ -10,7 +10,6 @@ import type { villagesLanguageModels } from "../../adapters/models/language-mode
 import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import type { villagesDocuments } from "../../adapters/engine/runtime-host.js";
 import type { villageEngineJson } from "../../adapters/engine/engine-transport.js";
-import type { villagesConnectionIdFor } from "../settings/connections.js";
 import type { SpriteManager } from "./sprite-manager-service.js";
 import type { SpriteWrites } from "./sprite-writes.js";
 import type { VillageState } from "../../domain/models/world.js";
@@ -24,7 +23,6 @@ export interface SpriteSetupPorts {
   mutateDocument: typeof mutateDocument;
   villageEngineJson: typeof villageEngineJson;
   villagesLanguageModels: typeof villagesLanguageModels;
-  villagesConnectionIdFor: typeof villagesConnectionIdFor;
   manager: Pick<SpriteManager, "prepareArtwork" | "readImage" | "reframeArtwork">;
   writes: SpriteWrites;
   readVillageState(): Promise<VillageState>;
@@ -227,29 +225,16 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       return read(id);
     });
   }
-  async function captionModel() {
-    const systemId = await ports.villagesConnectionIdFor("system");
-    if (!systemId || systemId === "random")
-      throw badRequest("Save Image Captioning defaults on the System connection in Engine Generation Parameters.");
-    const connection = asRecord(await ports.villageEngineJson(`/api/connections/${encodeURIComponent(systemId)}`));
-    let defaults: Record<string, unknown>;
-    try {
-      defaults = asRecord(
-        typeof connection.defaultParameters === "string"
-          ? JSON.parse(connection.defaultParameters)
-          : connection.defaultParameters,
-      );
-    } catch {
-      defaults = {};
-    }
-    if (defaults.imageCaptioningEnabled !== true)
-      throw badRequest(
-        "Enable Image Captioning and save as the System connection default in Engine Generation Parameters.",
-      );
-    const selected = asString(defaults.imageCaptioningConnectionId).trim() || systemId;
-    if (selected === "random")
-      throw badRequest("Choose a specific Captioning Connection in Engine Generation Parameters.");
-    return ports.villagesLanguageModels().resolve(selected);
+  async function analysisModel(raw: unknown) {
+    const connectionId = asString(raw).trim();
+    if (!connectionId || connectionId === "random")
+      throw badRequest("Choose a specific vision-capable sprite analysis connection.");
+    const connection = asRecord(await ports.villageEngineJson(`/api/connections/${encodeURIComponent(connectionId)}`));
+    if (
+      ["image_generation", "video_generation", "decision", "audio_generation"].includes(asString(connection.provider))
+    )
+      throw badRequest("Choose a vision-capable chat connection for sprite analysis.");
+    return ports.villagesLanguageModels().resolve(connectionId);
   }
   function analyze(id: string, raw: unknown, signal?: AbortSignal) {
     return ports.writes.serialize("setup:" + id, async () => {
@@ -268,7 +253,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
         ids.some((artId) => !current.manager.artwork.some((art) => art.id === artId))
       )
         throw badRequest("Select imported sprites to analyze.");
-      const model = await captionModel();
+      const model = await analysisModel(input.connectionId);
       signal?.throwIfAborted();
       current = await write(id, current.revision, (next) => {
         next.analysisRequests = [...next.analysisRequests, requestId];

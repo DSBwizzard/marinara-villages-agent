@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { SpriteFrame, SpriteSetupAssignment, SpriteSetupState } from "../../../shared/contracts/sprites.js";
-import { request, messageFrom } from "../../shared/api.js";
+import { request, requestHost, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import type { Portrait } from "../../shared/types.js";
+import type { EngineConnectionRow, VillageConnectionOption, Portrait } from "../../shared/types.js";
+import { connectionOptionsFrom } from "../../shared/presentation.js";
 import { AvatarFace } from "./ResidentPanels.js";
 
 type Props = {
@@ -13,6 +14,7 @@ type Props = {
   onDone(revision: number): void | Promise<void>;
   existing?: boolean;
 };
+const analysisConnectionKey = "villages-sprite-analysis-connection";
 const complete = (item: SpriteSetupAssignment) => item.included && Boolean(item.name.trim() && item.direction);
 const ready = (item: SpriteSetupAssignment) => item.approved === true && complete(item);
 const needsAnalysis = (item: SpriteSetupAssignment, data: SpriteSetupState) =>
@@ -30,6 +32,15 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
+  const [connections, setConnections] = useState<VillageConnectionOption[]>([]);
+  const [connectionId, setConnectionId] = useState(() => {
+    try {
+      return window.localStorage.getItem(analysisConnectionKey) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [connectionError, setConnectionError] = useState("");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [activeArtwork, setActiveArtwork] = useState("");
   const [framing, setFraming] = useState<string>("");
@@ -43,6 +54,15 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
   useEffect(() => {
     const controller = new AbortController();
     dialog.current?.showModal();
+    void requestHost<EngineConnectionRow[]>("/api/connections", { signal: controller.signal })
+      .then((rows) =>
+        setConnections(
+          connectionOptionsFrom(rows).filter((item) => item.category === "language" && item.id !== "random"),
+        ),
+      )
+      .catch((cause) => {
+        if (!controller.signal.aborted) setConnectionError(messageFrom(cause, "Could not load analysis connections."));
+      });
     void request<SpriteSetupState>(base, { signal: controller.signal })
       .then(async (value) => {
         setData(value);
@@ -144,6 +164,10 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
     await onDone(saved.revision);
   }
   async function analyze() {
+    if (!connections.some((item) => item.id === connectionId)) {
+      setError("Choose a vision-capable sprite analysis connection.");
+      return;
+    }
     const saved = await save(data.useSprites);
     if (!saved) return;
     const ids = selected.length
@@ -173,6 +197,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
             revision: latest.revision,
             requestId: createVillagesClientId(),
             artworkIds: [artworkId],
+            connectionId,
           }),
         });
         setData(latest);
@@ -250,8 +275,42 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                   <span>{reviewCount} need review</span> · <span>{assigned.length} approved</span>
                   {excludedCount ? <span> · {excludedCount} excluded</span> : null}
                 </p>
+                <label>
+                  Sprite analysis connection
+                  <select
+                    aria-label="Sprite analysis connection"
+                    value={connectionId}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setConnectionId(event.target.value);
+                      try {
+                        window.localStorage.setItem(analysisConnectionKey, event.target.value);
+                      } catch {
+                        // The current choice still works when browser storage is unavailable.
+                      }
+                    }}
+                  >
+                    <option value="">Choose a vision-capable connection</option>
+                    {connectionId && !connections.some((item) => item.id === connectionId) ? (
+                      <option value={connectionId}>Unavailable connection</option>
+                    ) : null}
+                    {connections.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {connectionError ? <p role="alert">{connectionError}</p> : null}
                 <div className="sprite-actions">
-                  <button disabled={busy || (!selected.length && !analysisCount)} onClick={() => void perform(analyze)}>
+                  <button
+                    disabled={
+                      busy ||
+                      !connections.some((item) => item.id === connectionId) ||
+                      (!selected.length && !analysisCount)
+                    }
+                    onClick={() => void perform(analyze)}
+                  >
                     {selected.length
                       ? "Analyze selected"
                       : data.suggestions.length || progress || assigned.length || reviewCount

@@ -47,6 +47,13 @@ try {
       });
       state.assignments.push({ artworkId, name: "", useWhen: "", direction: "", included: true, approved: false });
     }
+    let connectionRows = [
+      { id: "vision", name: "Vision model", provider: "custom" },
+      { id: "images", name: "Pictures", provider: "image_generation" },
+    ];
+    await page.route("**/api/connections", (route) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify(connectionRows) }),
+    );
     let analyses = 0;
     let failAt = 0;
     let holdAnalysis = false;
@@ -74,6 +81,7 @@ try {
         });
         state.suggestions = state.suggestions.filter((item) => body.pendingSuggestionIds.includes(item.artworkId));
       } else if (path.endsWith("/analyze")) {
+        assert.equal(body.connectionId, "vision", "Only the explicitly chosen connection is used.");
         analyses++;
         assert.equal(body.artworkIds.length, 1, "Each request analyzes one sprite and returns saved progress.");
         assert.equal(body.revision, state.revision);
@@ -131,6 +139,11 @@ try {
     );
     await page.screenshot({ path: `.build-tmp/sprite-setup/compact-${viewport.width}.png`, fullPage: true });
     assert.equal(analyses, 0);
+    const connection = page.getByLabel("Sprite analysis connection", { exact: true });
+    await expect(page.getByRole("button", { name: "Analyze sprites", exact: true })).toBeDisabled();
+    await expect(connection.locator("option")).toHaveCount(2);
+    await connection.selectOption("vision");
+    assert.equal(analyses, 0, "Selecting a connection does not make a model call.");
     await expect(page.locator(".sprite-grid")).toHaveCount(0);
     await page.getByRole("button", { name: "Set up manually" }).click();
     await expect(page.locator(".sprite-thumb")).toHaveCount(28);
@@ -148,6 +161,7 @@ try {
     await expect(
       page.getByText("28 total · 27 need analysis · 1 need review · 0 approved", { exact: true }),
     ).toBeVisible();
+    await expect(connection).toHaveValue("vision");
     assert.equal(state.assignments[0].approved, false, "Manual editing and saving do not approve a sprite.");
     await page.getByRole("button", { name: "Review sprites" }).click();
     await page.getByText("Batch edit", { exact: true }).click();
@@ -249,6 +263,16 @@ try {
     assert.equal(state.useSprites, false);
     assert.equal(state.manager.artwork.length, 28);
     assert.equal(analyses, 31);
+    connectionRows = [];
+    await page.getByRole("button", { name: "Choose Bupkis" }).click();
+    await expect(connection).toHaveValue("vision");
+    await expect(connection.locator("option:checked")).toHaveText("Unavailable connection");
+    await page.getByRole("button", { name: "Review sprites" }).click();
+    await page.getByText("Batch edit", { exact: true }).click();
+    await page.getByRole("button", { name: "Select all", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Analyze selected", exact: true })).toBeDisabled();
+    await expect(first.getByLabel("Expression", { exact: true })).toBeEnabled();
+    assert.equal(analyses, 31, "A missing saved connection does not trigger fallback.");
     assert.deepEqual(errors, []);
     await page.close();
   }
