@@ -1,4 +1,9 @@
 export const VILLAGES_FORGING_STYLES = `
+.villages-forging-v2 .villages-founding-dialog[data-header-input]>header { display:flex; gap:.6rem; padding:0; background:transparent; align-items:center; }
+.villages-founding-dialog[data-header-input]>header>input { flex:1; min-width:0; width:auto; margin:0; }
+.villages-founding-dialog[data-header-input]>header>button { flex:none; width:44px; height:44px; padding:0; }
+.villages-character-choice { border:1px solid #596b9b; background:#192c4c; color:#f3f3ff; }
+.villages-forging-v2 .villages-character-add { flex:none; width:44px; height:44px; padding:0; border-radius:.4rem; font-size:.8rem; }
 /* Helpers stay in the top layer, leaving form geometry unchanged. */
 .villages-founding-help-popup { position:fixed; inset:auto; margin:0; max-width:calc(100vw - 32px); max-height:calc(100dvh - 32px); overflow:auto; box-sizing:border-box; padding:1rem; border:1px solid #596b9b; border-radius:.6rem; background:#19213b; color:#f3f3ff; box-shadow:0 .5rem 2rem #0006; font:inherit; }
 .villages-founding-help-popup:popover-open { display:block; }

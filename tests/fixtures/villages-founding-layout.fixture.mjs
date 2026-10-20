@@ -510,6 +510,7 @@ export async function verifyFoundingLayout(group) {
         );
         await expect(root.locator(".villages-forging-steps button")).toHaveCount(0);
         await expect(root.getByRole("heading", { name: "Forging the Village", exact: true })).toBeVisible();
+        await expect(root.locator(".villages-founding-connections")).toBeVisible();
         await expect(root.getByText("Story direction", { exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Narrative direction", { exact: true })).toHaveCount(0);
         await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
@@ -723,7 +724,32 @@ export async function verifyFoundingLayout(group) {
           for (const name of names) {
             await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
             const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
-            await picker.getByRole("button", { name: name + " · Select", exact: true }).click();
+            await expect(picker.getByRole("heading")).toHaveCount(0);
+            const search = picker.getByRole("searchbox");
+            await expect(search).toHaveAttribute("placeholder", "Search character cards...");
+            const close = await picker
+              .getByRole("button", { name: "Close Choose founding villagers", exact: true })
+              .boundingBox();
+            const searchBox = await search.boundingBox();
+            assert.ok(
+              Math.abs(close.y + close.height / 2 - searchBox.y - searchBox.height / 2) < 2,
+              "search and compact close share a row",
+            );
+            const add = picker.getByRole("button", { name: name + " · Add", exact: true });
+            const addBox = await add.boundingBox();
+            assert.equal(addBox.width, addBox.height, "Add control is square");
+            await add.click();
+            const sprites = page.getByRole("dialog", { name: name + " sprite setup", exact: true });
+            await expect(sprites.getByRole("button", { name: "Add without using sprites", exact: true })).toBeVisible();
+            const spriteBox = await sprites.boundingBox();
+            assert.ok(
+              Math.abs(spriteBox.x + spriteBox.width / 2 - width / 2) < 2,
+              "sprite window centers horizontally",
+            );
+            assert.ok(
+              Math.abs(spriteBox.y + spriteBox.height / 2 - height / 2) < 2,
+              "sprite window centers vertically",
+            );
             await page
               .getByRole("dialog", { name: name + " sprite setup" })
               .getByRole("button", { name: "Add without using sprites", exact: true })
@@ -734,6 +760,11 @@ export async function verifyFoundingLayout(group) {
           ["Finn", "Rosa", "Lee, Keeper of the Observatory’s Long Forgotten Archives"].slice(0, homeCount),
         );
         await expect(page.getByRole("dialog", { name: "Finn’s life here", exact: true })).toHaveCount(0);
+        await expect(root.getByText(/of 3 selected/)).toHaveCount(0);
+        await expect(root.getByRole("button", { name: "+ Add villager", exact: true })).toHaveCount(
+          homeCount < 3 ? 1 : 0,
+        );
+        await expect(root.locator(".villages-founding-connections")).toBeHidden();
         const cast = root.locator(".villages-people-columns>section").first();
         const backstories = root.getByRole("region", { name: "Founding backstories", exact: true });
         await expect(backstories.getByRole("heading", { name: "Life in Willowbrook", exact: true })).toBeVisible();

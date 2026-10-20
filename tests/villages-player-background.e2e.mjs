@@ -93,10 +93,22 @@ try {
           "rgba(0, 0, 0, 0.25)",
         );
       } else {
+        const surface = page.locator(".villages-forging-v2");
+        const panel = await surface.boundingBox();
         assert.ok(
-          box.x >= before.x + before.width,
-          "desktop helper floats to the right of the textbox when room permits",
+          box.x >= panel.x && box.x + box.width <= panel.x + panel.width,
+          "help stays inside the Villages panel",
         );
+        await surface.evaluate((el) => (el.style.width = "480px"));
+        await expect
+          .poll(async () => {
+            const popupBox = await popup.boundingBox(),
+              panelBox = await surface.boundingBox();
+            return popupBox.x >= panelBox.x && popupBox.x + popupBox.width <= panelBox.x + panelBox.width;
+          })
+          .toBe(true);
+        await expect(popup).toBeVisible();
+        await surface.evaluate((el) => (el.style.width = ""));
       }
       await popup.getByRole("button", { name: "Close " + label + " help", exact: true }).click();
       await expect(popup).toHaveCount(0);

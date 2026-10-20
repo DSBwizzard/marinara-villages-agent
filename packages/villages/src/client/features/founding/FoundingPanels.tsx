@@ -94,6 +94,7 @@ function FoundingIdentityRow({
   selected,
   disabled,
   action,
+  actionButton = false,
   onClick,
 }: {
   id: string;
@@ -103,27 +104,41 @@ function FoundingIdentityRow({
   selected: boolean;
   disabled: boolean;
   action: string;
+  actionButton?: boolean;
   onClick(): void;
 }) {
+  const Row = actionButton ? "div" : "button";
   return (
-    <button
-      type="button"
-      className="villages-people-identity"
+    <Row
+      type={actionButton ? undefined : "button"}
+      className={"villages-people-identity" + (actionButton ? " villages-character-choice" : "")}
       data-identity={id}
-      aria-label={name + " · " + action}
-      aria-pressed={selected}
-      disabled={disabled}
-      onClick={onClick}
+      aria-label={actionButton ? undefined : name + " · " + action}
+      aria-pressed={actionButton ? undefined : selected}
+      disabled={actionButton ? undefined : disabled}
+      onClick={actionButton ? undefined : onClick}
     >
       <AvatarFace portrait={portrait} name={name} className={ELEMENT_TAG + "-identity-card-face"} glyph="person" />
       <span>
         <strong>{name}</strong>
         {summary ? <small>{summary}</small> : null}
       </span>
-      <span className="villages-people-action" aria-hidden="true">
-        {action}
-      </span>
-    </button>
+      {actionButton ? (
+        <button
+          type="button"
+          className="villages-character-add"
+          aria-label={name + " · " + action}
+          disabled={disabled}
+          onClick={onClick}
+        >
+          {action}
+        </button>
+      ) : (
+        <span className="villages-people-action" aria-hidden="true">
+          {action}
+        </span>
+      )}
+    </Row>
   );
 }
 
@@ -271,7 +286,6 @@ export function FoundingVillagerPicker({
           }}
         />
       ) : null}
-      <small role="status">{selectedIds.length} of 3 selected</small>
       <div className="villages-people-selected">
         {selected.map((person) => (
           <div className="villages-selected-villager" key={person.id}>
@@ -303,31 +317,38 @@ export function FoundingVillagerPicker({
           </div>
         ))}
       </div>
-      <button
-        type="button"
-        disabled={disabled || catalog === null || selectedIds.length >= 3}
-        onClick={() => {
-          setQuery("");
-          setOpen(true);
-        }}
-      >
-        + Add villager
-      </button>
+      {selectedIds.length < 3 ? (
+        <button
+          type="button"
+          disabled={disabled || catalog === null}
+          onClick={() => {
+            setQuery("");
+            setOpen(true);
+          }}
+        >
+          + Add villager
+        </button>
+      ) : null}
       {catalog === null ? (
         <p role="status">Reading character cards…</p>
       ) : !catalog?.length ? (
         <p>Add character cards to your library before founding.</p>
       ) : null}
       {open ? (
-        <FoundingDialog title="Choose founding villagers" onClose={() => setOpen(false)}>
-          <input
-            autoComplete="off"
-            type="search"
-            aria-label="Search character cards by name"
-            placeholder="Search characters"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
+        <FoundingDialog
+          title="Choose founding villagers"
+          onClose={() => setOpen(false)}
+          headerContent={
+            <input
+              autoComplete="off"
+              type="search"
+              aria-label="Search character cards by name"
+              placeholder="Search character cards..."
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          }
+        >
           <div className="villages-people-choices" role="group" aria-label="Choose founding villagers">
             {choices.map((person) => (
               <FoundingIdentityRow
@@ -338,7 +359,8 @@ export function FoundingVillagerPicker({
                 portrait={portraits[person.id]}
                 selected={selectedIds.includes(person.id)}
                 disabled={disabled || (!selectedIds.includes(person.id) && selectedIds.length >= 3)}
-                action={selectedIds.includes(person.id) ? "✓" : "Select"}
+                action={selectedIds.includes(person.id) ? "✓" : "Add"}
+                actionButton
                 onClick={() => {
                   if (selectedIds.includes(person.id)) toggle(person.id);
                   else {

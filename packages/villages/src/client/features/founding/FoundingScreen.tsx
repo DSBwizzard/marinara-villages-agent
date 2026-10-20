@@ -360,17 +360,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   onChange={chooseRoster}
                   disabled={busy || !!snapshot?.isFounded}
                 />
-                <div className="villages-people-connections">
-                  <details open={!!connectionSetupProblem}>
-                    <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
-                    {connectionSetupProblem && validatedFields.includes("connections") ? (
-                      <p role="alert" data-founding-problem tabIndex={-1}>
-                        {connectionSetupProblem}
-                      </p>
-                    ) : null}
-                    <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
-                  </details>
-                </div>
               </section>
               {!snapshot?.isFounded ? (
                 <FoundingBackgrounds
@@ -556,6 +545,17 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </div>
             </>
           ) : null}
+          <div className="villages-forging-card villages-founding-connections" hidden={setupStep !== 0}>
+            <details open={!!connectionSetupProblem}>
+              <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
+              {connectionSetupProblem && validatedFields.includes("connections") ? (
+                <p role="alert" data-founding-problem tabIndex={-1}>
+                  {connectionSetupProblem}
+                </p>
+              ) : null}
+              <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
+            </details>
+          </div>
           {setupStep === 2 ? (
             <section className="villages-forging-card villages-map-panel" aria-label="Map artwork">
               <h3 aria-label="Map">Map</h3>
@@ -1018,6 +1018,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               setValidatedFields((fields) => [
                 ...new Set([
                   ...fields,
+                  "connections",
                   "place-name",
                   "place-setting",
                   "place-circumstance",
@@ -1026,7 +1027,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         "persona",
                         "playerBackground",
                         "villagers",
-                        "connections",
                         ...setupFoundingVillagerIds.map((id) => "backstory:" + id),
                       ]
                     : []),

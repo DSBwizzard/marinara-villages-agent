@@ -33,19 +33,22 @@ function HelpPopup({
     if (!node || !button) return;
     const win = node.ownerDocument.defaultView!;
     const focus = restoreFocus;
+    const surface = button.closest(".villages-forging-v2");
     const position = () => {
       if (mobile) return;
       const anchor = button.getBoundingClientRect();
+      const panel = surface?.getBoundingClientRect();
+      const left = Math.max(0, panel?.left ?? 0) + 16;
+      const right = Math.min(win.innerWidth, panel?.right ?? win.innerWidth) - 16;
       const field = (button.closest(".villages-founding-field") ?? button.closest("section"))
         ?.querySelector("input,textarea,select")
         ?.getBoundingClientRect();
       const rightEdge = field?.right ?? anchor.right;
-      const room = win.innerWidth - rightEdge - 24;
-      const width = room >= 240 ? Math.min(448, room) : Math.min(360, win.innerWidth - 32);
+      const room = right - rightEdge - 8;
+      const width = room >= 240 ? Math.min(448, room) : Math.min(360, right - left);
       node.style.width = width + "px";
       const height = node.getBoundingClientRect().height;
-      node.style.left =
-        Math.max(16, Math.min(room >= 240 ? rightEdge + 8 : anchor.right + 8, win.innerWidth - width - 16)) + "px";
+      node.style.left = Math.max(left, Math.min(room >= 240 ? rightEdge + 8 : anchor.right + 8, right - width)) + "px";
       node.style.top =
         Math.max(
           16,
@@ -60,10 +63,13 @@ function HelpPopup({
     if (mobile) node.showModal();
     else node.showPopover();
     position();
+    const observer = new ResizeObserver(position);
+    if (surface) observer.observe(surface);
     win.addEventListener("resize", resize);
     win.addEventListener("scroll", position, true);
     return () => {
       node.removeEventListener("toggle", toggle);
+      observer.disconnect();
       win.removeEventListener("resize", resize);
       win.removeEventListener("scroll", position, true);
       if (mobile) node.close();

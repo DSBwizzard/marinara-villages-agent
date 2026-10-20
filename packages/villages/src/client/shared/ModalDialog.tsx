@@ -9,6 +9,7 @@ export function ModalDialog({
   scrollBody = false,
   dismissible = true,
   showCloseButton = true,
+  headerContent,
 }: {
   title: string;
   onClose(): void;
@@ -17,6 +18,7 @@ export function ModalDialog({
   scrollBody?: boolean;
   dismissible?: boolean;
   showCloseButton?: boolean;
+  headerContent?: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -35,7 +37,9 @@ export function ModalDialog({
       className="villages-founding-dialog"
       data-compact={compact || undefined}
       data-scroll-body={scrollBody || undefined}
-      aria-labelledby={titleId}
+      data-header-input={headerContent ? true : undefined}
+      aria-labelledby={headerContent ? undefined : titleId}
+      aria-label={headerContent ? title : undefined}
       onCancel={(event) => {
         event.preventDefault();
         if (dismissible) onClose();
@@ -53,7 +57,7 @@ export function ModalDialog({
       }}
     >
       <header>
-        <h3 id={titleId}>{title}</h3>
+        {headerContent ?? <h3 id={titleId}>{title}</h3>}
         {showCloseButton ? (
           <button type="button" aria-label={"Close " + title} onClick={onClose}>
             ×
