@@ -11,14 +11,17 @@ const bundle = await build({
     resolveDir: process.cwd(),
     contents: `
 import {createRoot} from 'react-dom/client';import {useState,StrictMode} from 'react';
+import {RosterScreen} from './packages/villages/src/client/features/residents/RosterScreen.tsx';
 import {ResidentBackgroundReview} from './packages/villages/src/client/shared/ResidentBackgroundReview.tsx';
 import {WorldOriginSettings} from './packages/villages/src/client/features/settings/WorldOriginSettings.tsx';
 import {VILLAGES_FORGING_STYLES} from './packages/villages/src/client/features/founding/villages-forging-styles.ts';
 const defaults={historyMode:'continue',storyRole:'unspecified',background:'',customDescription:''};
-function App(){const [context,setContext]=useState(()=>JSON.parse(localStorage.getItem('draft')||'null')||defaults),[open,setOpen]=useState(false),[initial,setInitial]=useState(false),[source,setSource]=useState({setting:'A harbor town',premise:'Visitors arrive through a portal.',worldOrigin:'different-worlds'});
+function App(){const [roster,setRoster]=useState(false);const [context,setContext]=useState(()=>JSON.parse(localStorage.getItem('draft')||'null')||defaults),[open,setOpen]=useState(false),[initial,setInitial]=useState(false),[source,setSource]=useState({setting:'A harbor town',premise:'Visitors arrive through a portal.',worldOrigin:'different-worlds'});
 window.changeSource=()=>setSource(s=>({...s,premise:'A new premise'}));window.context=context;window.source=source;
 const change=value=>{localStorage.setItem('draft',JSON.stringify(value));setContext(value)};
-return <><style>{VILLAGES_FORGING_STYLES}</style><WorldOriginSettings initial={source.worldOrigin} onSaved={saved=>setSource(s=>({...s,worldOrigin:saved.settings.worldOrigin}))}/>
+const entry={id:"mara",name:"Mara",summary:"Guard",tags:[],inVillage:false};
+if(roster)return <><style>{VILLAGES_FORGING_STYLES}</style><RosterScreen controller={{busy:false,catalog:[entry],visibleCatalog:[entry],error:"",menuPage:"villagers",openPerson:()=>{},pickerOpen:true,portraits:{},rosterSearch:"",screen:"menu",search:"",setMenuPage:()=>{},setPickerOpen:()=>{},setRosterSearch:()=>{},setSearch:()=>{},snapshot:{villagers:[],settings:{setting:source.setting,foundingDetails:source.premise,worldOrigin:source.worldOrigin}},addVillager:async(id,context)=>{window.rosterAccepted=context;return true}}}/></>;
+return <><style>{VILLAGES_FORGING_STYLES}</style><button onClick={()=>setRoster(true)}>Test move-in</button><WorldOriginSettings initial={source.worldOrigin} onSaved={saved=>setSource(s=>({...s,worldOrigin:saved.settings.worldOrigin}))}/>
 <button onClick={()=>{change({...defaults,integration:{text:'',direction:'',accepted:false}});setInitial(true);setOpen(true)}}>Select Mara</button>
 <button onClick={()=>{setInitial(false);setOpen(true)}}>Edit background</button>
 {open?<ResidentBackgroundReview name='Mara' characterId='mara' source={source} context={context} initialRequest={initial} onChange={change} onAccept={value=>{change(value);window.accepted=value;setOpen(false)}} onCancel={()=>setOpen(false)}/>:null}</>}
@@ -142,6 +145,20 @@ try {
       await text.fill("Mara stays here while searching.");
       await dialog.getByRole("button", { name: "Accept", exact: true }).click();
       assert.equal(await page.evaluate(() => window.accepted.integration.accepted), true);
+      await page.getByRole("button", { name: "Test move-in", exact: true }).click();
+      await page.getByRole("button", { name: "Move in", exact: true }).click();
+      await expect(text).toHaveValue(/following a lead/);
+      await text.fill("A canceled move-in keeps this background.");
+      const paidBeforeCancel = calls;
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      await page.getByRole("button", { name: "Move in", exact: true }).click();
+      await expect(text).toHaveValue("A canceled move-in keeps this background.");
+      assert.equal(calls, paidBeforeCancel, "reopening a canceled move-in does not spend again");
+      await dialog.getByRole("button", { name: "Accept", exact: true }).click();
+      assert.equal(
+        await page.evaluate(() => window.rosterAccepted.integration.text),
+        "A canceled move-in keeps this background.",
+      );
       assert.deepEqual(errors, []);
       await context.close();
     });

@@ -23,6 +23,7 @@ export function RosterScreen({
   useLayoutEffect(() => {
     if (content.current) content.current.scrollTop = readingPosition?.current ?? 0;
   }, [readingPosition]);
+  const joiningDrafts = useRef<Record<string, ResidentFoundingContext>>({});
   const [joining, setJoining] = useState<{ id: string; name: string; context: ResidentFoundingContext } | null>(null);
   const {
     addVillager,
@@ -75,14 +76,17 @@ export function RosterScreen({
                 worldOrigin: snapshot?.settings.worldOrigin,
               }}
               initialRequest
-              onChange={(context) =>
-                setJoining((current) => (current?.id === joining.id ? { ...current, context } : current))
-              }
+              onChange={(context) => {
+                joiningDrafts.current[joining.id] = context;
+                setJoining((current) => (current?.id === joining.id ? { ...current, context } : current));
+              }}
               onCancel={() => setJoining(null)}
               onAccept={async (context) => {
                 const saved = await addVillager(joining.id, context);
-                if (saved) setJoining(null);
-                else throw new Error("Could not move in. Your background is kept; try accepting again.");
+                if (saved) {
+                  delete joiningDrafts.current[joining.id];
+                  setJoining(null);
+                } else throw new Error("Could not move in. Your background is kept; try accepting again.");
               }}
               disabled={busy}
             />
@@ -168,7 +172,7 @@ export function RosterScreen({
                                 setJoining({
                                   id: entry.id,
                                   name: entry.name,
-                                  context: {
+                                  context: joiningDrafts.current[entry.id] ?? {
                                     ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
                                     integration: { text: "", direction: "", accepted: false },
                                   },
