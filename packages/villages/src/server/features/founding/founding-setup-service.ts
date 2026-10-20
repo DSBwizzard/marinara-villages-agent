@@ -22,7 +22,7 @@ import {
   readSelectedLorebookIds,
 } from "../../domain/rules/lore-policy.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
-import { assertPlayerRoleLocked, playerRoleForSetup } from "../../domain/rules/player-role.js";
+import { playerBackgroundForSetup } from "../../domain/rules/player-background.js";
 import {
   isHousePlace,
   TOWN_MAP_EXPECTED_WIDTH,
@@ -98,7 +98,7 @@ export function createFoundingSetup({
     worldOrigin?: unknown;
     foundingDetails?: unknown;
     foundingGuidance?: unknown;
-    playerRole?: unknown;
+    playerBackground?: unknown;
     scenarioImprint?: unknown;
     worldFacts?: unknown;
     selectedLorebookIds?: unknown;
@@ -142,7 +142,7 @@ export function createFoundingSetup({
     const founding = !isVillageFounded(village);
     if (!founding && input.timeZone !== undefined && input.timeZone !== village.timeZone)
       throw badRequest("The village timezone is fixed after founding.");
-    const playerRole = playerRoleForSetup(village.playerRole, input.playerRole, founding);
+    const playerBackground = playerBackgroundForSetup(village.playerBackground, input.playerBackground, founding);
     validateFirstDayDescription(foundingDetails, founding);
     if (!founding)
       assertFoundingScenarioLocked(village, {
@@ -323,8 +323,7 @@ export function createFoundingSetup({
         throw conflict("The village map changed during setup. Reload it before saving.");
       if (!founding)
         assertFoundingScenarioLocked(state, { foundingReason, foundingDetails, foundingGuidance, scenarioImprint });
-      if (!founding) assertPlayerRoleLocked(state.playerRole, playerRole);
-      state.playerRole = playerRole;
+      state.playerBackground = playerBackground;
       state.name = name;
       state.setting = setting;
       if (!founding && input.timeZone !== undefined && input.timeZone !== state.timeZone)

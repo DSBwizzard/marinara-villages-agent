@@ -18,7 +18,7 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
     agendaRevision(state, id),
     state.foundingDetails,
     state.scenarioImprint,
-    state.playerRole,
+    state.playerBackground,
     state.playerPersonaName,
     foundingIdentity({ ...resident?.cardSnapshot, foundingContext: resident?.foundingContext }),
     resident?.scheduleInfluence,

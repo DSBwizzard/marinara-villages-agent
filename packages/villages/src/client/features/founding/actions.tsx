@@ -5,7 +5,7 @@ import {
   townMapImageProblem,
   townMapUploadError,
 } from "../../../shared/helpers/town-map-upload.js";
-import type { PlayerRole } from "../../../shared/contracts/player-role.js";
+import type { PlayerBackground } from "../../../shared/contracts/player-background.js";
 import type {
   ScenarioImprint,
   SetupMapRequest,
@@ -26,7 +26,6 @@ import { venueHasCommon } from "./villages-founding-editor";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
-import { DEFAULT_PLAYER_ROLE } from "./villages-player-role.js";
 import { type SetStateAction, useCallback } from "react";
 
 export function useUpdateSetupMapRequest(ports: {
@@ -263,7 +262,7 @@ export function useOpenSetup(ports: {
   setSetupMapSource: React.Dispatch<SetStateAction<SetupMapSource>>;
   setSetupName: React.Dispatch<SetStateAction<string>>;
   setSetupPlacementError: React.Dispatch<SetStateAction<string>>;
-  setSetupPlayerRole: React.Dispatch<SetStateAction<PlayerRole>>;
+  setSetupPlayerBackground: React.Dispatch<SetStateAction<PlayerBackground>>;
   setSetupProblem: React.Dispatch<SetStateAction<string>>;
   setSetupResidentContexts: React.Dispatch<SetStateAction<Record<string, ResidentFoundingContext>>>;
   setSetupWorldOrigin?: React.Dispatch<SetStateAction<"same-world" | "different-worlds" | null>>;
@@ -311,7 +310,7 @@ export function useOpenSetup(ports: {
     setSetupMapSource,
     setSetupName,
     setSetupPlacementError,
-    setSetupPlayerRole,
+    setSetupPlayerBackground,
     setSetupProblem,
     setSetupResidentContexts,
     setSetupWorldOrigin,
@@ -354,13 +353,7 @@ export function useOpenSetup(ports: {
           : savedDetails;
       setSetupFoundingReason(reason);
       setSetupFoundingDetails(details);
-      setSetupPlayerRole(
-        fresh
-          ? { ...DEFAULT_PLAYER_ROLE }
-          : village?.isFounded
-            ? (village.settings.playerRole ?? null)
-            : { ...(village?.settings.playerRole ?? DEFAULT_PLAYER_ROLE), enabled: true },
-      );
+      setSetupPlayerBackground(fresh ? "" : (village?.settings.playerBackground ?? ""));
       if (fresh) setSetupResidentContexts({});
       setSetupImprint(fresh ? emptyScenarioImprint() : (village?.settings.scenarioImprint ?? emptyScenarioImprint()));
       setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
@@ -445,7 +438,7 @@ export function useFoundVillage(ports: {
   setupMapSrc: string;
   setupName: string;
   setupTimeZone?: string;
-  setupPlayerRole: PlayerRole;
+  setupPlayerBackground: PlayerBackground;
   setupWorldOrigin?: "same-world" | "different-worlds" | null;
   setupSetting: string;
   setupVenues: VillageVenue[];
@@ -482,7 +475,7 @@ export function useFoundVillage(ports: {
     setupMapSource,
     setupMapSrc,
     setupName,
-    setupPlayerRole,
+    setupPlayerBackground,
     setupWorldOrigin,
     setupSetting,
     setupVenues,
@@ -535,7 +528,7 @@ export function useFoundVillage(ports: {
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
           foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
           ...(snapshot?.isFounded ? { foundingGuidance: snapshot.settings.foundingGuidance } : {}),
-          playerRole: snapshot?.isFounded ? (snapshot.settings.playerRole ?? null) : setupPlayerRole,
+          playerBackground: snapshot?.isFounded ? (snapshot.settings.playerBackground ?? "") : setupPlayerBackground,
           scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts.map((line) => line.trim()).filter(Boolean) : [],
           selectedLorebookIds: setupLorebookDraft,
@@ -582,7 +575,7 @@ export function useFoundVillage(ports: {
     snapshot?.settings.foundingReason,
     snapshot?.settings.foundingDetails,
     snapshot?.settings.foundingGuidance,
-    snapshot?.settings.playerRole,
+    snapshot?.settings.playerBackground,
     snapshot?.settings.scenarioImprint,
     residentContextProblem,
     selectedResidentContexts,
@@ -600,7 +593,7 @@ export function useFoundVillage(ports: {
     ports.setupTimeZone,
     setupFoundingReason,
     setupFoundingDetails,
-    setupPlayerRole,
+    setupPlayerBackground,
     setupWorldFacts,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,

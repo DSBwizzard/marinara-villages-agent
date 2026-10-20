@@ -5,7 +5,7 @@ import type { villagesLanguageModels } from "../../adapters/models/language-mode
 import type { VillageVenueMail } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
-import { renderPlayerRoleContext } from "../../domain/rules/player-role.js";
+import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NOTE_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
@@ -191,7 +191,7 @@ export function createVenueMailbox({
           due,
           now: now.toISOString(),
           villageName: village.name,
-          playerRole: village.playerRole,
+          playerBackground: village.playerBackground,
           playerPersonaName: village.playerPersonaName,
           venueName: village.venues.find((entry) => entry.id === due.venueId)?.name,
           villagers: village.villagers
@@ -226,7 +226,7 @@ export function createVenueMailbox({
           role: "system",
           content: [
             'Answer as each affected villager to a grounded Venue proposal. Each can accept or decline. Keep each reply short and in character. Return JSON only: {"decisions":[{"characterId":"exact ID","accepted":true,"reply":"short message"}]}. Include every listed person exactly once.',
-            renderPlayerRoleContext(input),
+            renderPlayerBackgroundContext(input),
             "Consider your own feelings toward the player alongside personal benefit and availability. Neutral villagers may accept and volunteer. A score is not a veto, and changed feelings never cancel an already accepted commitment.",
           ]
             .filter(Boolean)

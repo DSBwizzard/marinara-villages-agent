@@ -72,7 +72,7 @@ async function reviewNavigation() {
     setupMapBusy: false,
     setupMapSrc: "map",
     setupName: "Village",
-    setupPlayerRole: { enabled: true, title: "Project Coordinator", explanation: "" },
+    setupPlayerBackground: { enabled: true, title: "Project Coordinator", explanation: "" },
     setupSetting: "Coastal rooms",
     setupStep: 4,
     setupSuggestionsBusy: false,

@@ -182,7 +182,7 @@ export function villageSettings(
     worldOrigin: village.worldOrigin ?? null,
     foundingDetails: village.foundingDetails,
     foundingGuidance: village.foundingGuidance,
-    playerRole: village.playerRole,
+    playerBackground: village.playerBackground,
     scenarioImprint: village.scenarioImprint,
     worldFacts: village.worldFacts,
     selectedLorebookIds: village.selectedLorebookIds,

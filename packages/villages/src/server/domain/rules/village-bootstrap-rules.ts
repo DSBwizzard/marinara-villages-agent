@@ -2,11 +2,11 @@ import type {
   VillageAgenda,
   VillageHappening,
   VillageOpportunity,
-  VillagePlayerRole,
+  VillagePlayerBackground,
   VillageVenue,
 } from "../models/world.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { renderPlayerRoleContext } from "./player-role.js";
+import { renderPlayerBackgroundContext } from "./player-background.js";
 import {
   boundText,
   HAPPENING_RULES,
@@ -123,7 +123,7 @@ export type VillageTickResident = {
 export type VillageTickContext = {
   semanticVersion?: 2;
   social?: { candidates: import("../../domain/models/relationship-types.js").SocialPlan[]; relationships: string[] };
-  playerRole?: VillagePlayerRole | null;
+  playerBackground?: VillagePlayerBackground | null;
   playerPersonaName?: string;
   village: string;
   /** The player's description of the place. Empty is allowed: the village still has a name. */
@@ -227,7 +227,7 @@ export function buildTickMessages(context: VillageTickContext): CapabilityLangua
     `Write a brief visual Events update for ${context.village}, a shared place. This feed has no effect on the village or its residents.`,
     "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Do not give them a new turn in an Event. Mention a player action only when it is already established in the supplied village record; never invent what they do next.",
     context.setting.trim() ? `Setting: ${boundText(context.setting, 500)}` : "",
-    renderPlayerRoleContext(context),
+    renderPlayerBackgroundContext(context),
     context.worldFacts?.length ? `Current world facts: ${context.worldFacts.join("; ")}` : "",
     `Now: ${describeMoment(context.moment)}; weather: ${context.moment.weather}.`,
     `Elapsed time: ${describeGap(gapSince(context.lastSimulatedAt, context.moment, context.forced))}`,

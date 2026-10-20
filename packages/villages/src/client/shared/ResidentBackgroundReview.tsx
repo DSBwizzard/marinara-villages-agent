@@ -4,6 +4,7 @@ import { messageFrom, request } from "./api.js";
 import { createVillagesClientId } from "./request-id.js";
 import {
   residentBackgroundSourceKey,
+  residentHistoryForOrigin,
   WORLD_ORIGINS,
   type ResidentFoundingContext,
   type BackgroundReview,
@@ -181,12 +182,7 @@ export function ResidentBackgroundReview({
             const origin = review.worldOrigin ?? source.worldOrigin;
             const accepted = {
               ...context,
-              historyMode:
-                context.historyMode === "village" || context.historyMode === "new"
-                  ? context.historyMode
-                  : origin === "same-world"
-                    ? ("adapt" as const)
-                    : ("continue" as const),
+              historyMode: residentHistoryForOrigin(context, origin),
               integration: {
                 ...review,
                 worldOrigin: origin ?? undefined,

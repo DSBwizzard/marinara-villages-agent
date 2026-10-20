@@ -7,7 +7,7 @@ import { isHouse } from "../../shared/venue.js";
 import { MapStage, PROJECT_BLUEPRINT_IMAGE, TOWN_MAP_FITS } from "../exploration/MapStage.js";
 import { PlayerIdentityEditor, VillageLorebookPicker, LoreTokenBudgetField } from "../founding/FoundingPanels.js";
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
-import { PlayerRoleSummary } from "../founding/villages-player-role.js";
+import { PlayerBackgroundSummary } from "../founding/villages-player-background.js";
 import type { VillageSettingsPagePorts } from "./page-contracts.js";
 import { VillageWritingSettings } from "./WritingSettings.js";
 
@@ -517,7 +517,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             storedMissing={snapshot.settings.playerPersonaMissing}
             disabled={busy}
           />
-          <PlayerRoleSummary role={snapshot.settings.playerRole} />
+          <PlayerBackgroundSummary background={snapshot.settings.playerBackground} />
 
           <div className={`${ELEMENT_TAG}-row`}>
             <button

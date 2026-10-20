@@ -128,7 +128,7 @@ export function readResidentFoundingContext(value: unknown): ResidentFoundingCon
 }
 export const RESIDENT_CONTINUITY_RULE =
   "Resident starting backgrounds are circumstances separate from complete authored identity. " +
-  "The Village setting, established world facts and verified current state govern present circumstances. " +
+  "The Village setting, established world facts and verified current state govern present circumstances. Starting backgrounds describe an initial situation, not permanent titles, relationships, occupations or obligations; later established developments take precedence. " +
   "Card and lore references alone never relocate the Village or recreate former homes, workplaces or obligations. " +
   "Do not invent an arrival bridge or resolve an undecided world connection. " +
   "Preserve authored secrets, amnesia and knowledge limits: narrator-only truths are not resident knowledge, and backgrounds are not automatically public. " +
@@ -165,4 +165,15 @@ export function renderResidentFoundingContext(name: string, context?: ResidentFo
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+export function residentHistoryForOrigin(
+  context: ResidentFoundingContext,
+  origin?: WorldOrigin | null,
+): ResidentFoundingContext["historyMode"] {
+  return context.historyMode === "village" || context.historyMode === "new"
+    ? context.historyMode
+    : origin === "same-world"
+      ? "adapt"
+      : "continue";
 }

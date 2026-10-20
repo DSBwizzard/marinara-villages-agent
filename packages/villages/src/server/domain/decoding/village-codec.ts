@@ -58,7 +58,7 @@ import { MAX_MEMORY_LENGTH } from "../rules/memory-policy.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "../rules/native-remap.js";
 import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
-import { coercePlayerRole } from "../rules/player-role.js";
+import { coercePlayerBackground } from "../rules/player-background.js";
 import { coerceProgressTasks, readProgressInterpretation } from "../rules/progress-engine.js";
 import {
   boundText,
@@ -154,7 +154,7 @@ export function defaultVillageState(): VillageState {
     worldOrigin: null,
     foundingDetails: "",
     foundingGuidance: "",
-    playerRole: null,
+    playerBackground: "",
     scenarioImprint: null,
     worldFacts: [],
     venueCapacityPolicy: "sixteen-total-v1",
@@ -2156,7 +2156,7 @@ export function coerceVillageState(value: unknown): VillageState {
     worldOrigin: raw.worldOrigin === "same-world" || raw.worldOrigin === "different-worlds" ? raw.worldOrigin : null,
     foundingDetails: boundText(raw.foundingDetails, 2_000),
     foundingGuidance: boundText(raw.foundingGuidance, 500),
-    playerRole: coercePlayerRole(raw.playerRole),
+    playerBackground: coercePlayerBackground(raw.playerBackground),
     scenarioImprint: coerceScenarioImprint(raw.scenarioImprint),
     worldFacts: coerceWorldFacts(raw.worldFacts),
     venueCapacityPolicy:

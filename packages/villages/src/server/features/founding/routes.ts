@@ -29,7 +29,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       worldOrigin?: unknown;
       foundingDetails?: unknown;
       foundingGuidance?: unknown;
-      playerRole?: unknown;
+      playerBackground?: unknown;
       scenarioImprint?: unknown;
       worldFacts?: unknown;
       selectedLorebookIds?: unknown;
@@ -58,7 +58,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
         worldOrigin: body.worldOrigin,
         foundingDetails: body.foundingDetails,
         foundingGuidance: body.foundingGuidance,
-        playerRole: body.playerRole,
+        playerBackground: body.playerBackground,
         scenarioImprint: body.scenarioImprint,
         worldFacts: body.worldFacts,
         selectedLorebookIds: body.selectedLorebookIds,

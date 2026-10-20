@@ -10,6 +10,7 @@ import {
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   readResidentFoundingContext,
   renderResidentFoundingContext,
+  residentHistoryForOrigin,
   residentBackgroundSourceKey,
 } from "../packages/villages/src/shared/helpers/resident-founding-context.js";
 import { projectVillager } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
@@ -223,6 +224,21 @@ for (const [index, reply] of invalidReplies.entries()) {
 }
 completion = good;
 
+const sameWorldContext = {
+  ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+  historyMode: residentHistoryForOrigin(DEFAULT_RESIDENT_FOUNDING_CONTEXT, "same-world"),
+  integration: {
+    text: "Mara grew up beside this observatory.",
+    direction: "",
+    accepted: true,
+    worldOrigin: "same-world" as const,
+  },
+};
+assert.match(renderResidentFoundingContext("Mara", sameWorldContext), /except for changes explicitly described below/);
+assert.match(
+  renderResidentFoundingContext("Mara", sameWorldContext),
+  /later established developments take precedence/i,
+);
 const context = {
   ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   integration: {
@@ -281,6 +297,90 @@ assert.deepEqual(coerceVillageState(village).villagers[0]!.foundingContext, cont
 const view = projectVillager(village.villagers[0]!, "Mara", "Guard", [], "", "", null);
 assert.equal("foundingContext" in view, false, "private background is absent from ordinary snapshots");
 assert.equal(village.venues.length, 0, "background does not create a workplace or residence");
+const batchService = createResidentBackgrounds(ports);
+const batchInput = {
+  foundingCast: true,
+  actionId: "cast-request-001",
+  foundingCharacterIds: ["mara", "ellis"],
+  playerPersonaId: "draft-player",
+  playerBackground: "I came here to study.",
+  setting: "The observatory",
+  premise: "Travelers meet here.",
+  worldOrigin: "different-worlds",
+  foundingResidentContexts: {
+    mara: {
+      ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+      historyMode: "village",
+      villageBackstory: "Mara has always lived at the observatory.",
+    },
+  },
+};
+completion = {
+  content: JSON.stringify({
+    player: "I came here to study the observatory.",
+    residents: {
+      mara: "Mara helps visitors at her childhood observatory.",
+      ellis: "Ellis arrived to study the stars.",
+    },
+  }),
+  finishReason: "stop",
+};
+const beforeBatch = calls;
+const batch = await batchService.draftResidentBackground(batchInput);
+assert.equal(calls, beforeBatch + 1, "one request proposes the whole cast");
+assert.equal(requests.at(-1)!.tokens, 8192);
+assert.match(messages.at(-1)!, /Draft player/);
+assert.match(messages.at(-1)!, /Ellis/);
+assert.match(messages.at(-1)!, /authoritative personal past/);
+assert.match(messages.at(-1)!, /not a checklist to summarize/);
+const recoveredInput = {
+  ...batchInput,
+  retrieveOnly: true,
+  foundingCharacterIds: ["ellis", "mara"],
+  foundingResidentContexts: {
+    mara: {
+      ...batchInput.foundingResidentContexts.mara,
+      integration: { text: "", direction: "", accepted: false, actionId: batchInput.actionId, proposalReceived: false },
+    },
+  },
+};
+assert.deepEqual(
+  await createResidentBackgrounds(ports).draftResidentBackground(recoveredInput),
+  batch,
+  "metadata and selection order do not break durable retrieval",
+);
+assert.equal(calls, beforeBatch + 1);
+gate = new Promise<void>((resolve) => {
+  release = resolve;
+});
+const concurrentBatch = batchService.draftResidentBackground({ ...batchInput, actionId: "cast-request-pending" });
+while (calls < beforeBatch + 2) await new Promise((resolve) => setTimeout(resolve, 0));
+await assert.rejects(
+  batchService.draftResidentBackground({ ...input, actionId: "individual-during-cast" }),
+  /already being proposed/,
+);
+await assert.rejects(
+  batchService.draftResidentBackground({ ...batchInput, foundingCharacterIds: ["ellis"], actionId: "cast-disjoint" }),
+  /already being proposed/,
+);
+release!();
+await concurrentBatch;
+gate = undefined;
+completion = {
+  content: JSON.stringify({ player: "A visitor.", residents: { mara: "Only one entry." } }),
+  finishReason: "stop",
+};
+await assert.rejects(
+  batchService.draftResidentBackground({ ...batchInput, actionId: "cast-incomplete" }),
+  /incomplete/,
+);
+const afterInvalid = calls;
+await assert.rejects(
+  batchService.draftResidentBackground({ ...batchInput, actionId: "cast-incomplete", retrieveOnly: true }),
+  /incomplete/,
+);
+assert.equal(calls, afterInvalid, "incomplete cast cannot trigger an automatic replacement");
+batchService.stop();
 service.stop();
 overlapping.stop();
 await assert.rejects(service.draftResidentBackground({ ...input, actionId: "background-stopped" }), /restarting/);

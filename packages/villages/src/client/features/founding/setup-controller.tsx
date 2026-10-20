@@ -9,7 +9,7 @@ import type { FoundingState } from "./useFoundingState.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
 import { personalSpaceDraft } from "./villages-founding-editor";
 import { draftZonePolicy } from "./villages-founding-zones";
-import { playerRoleProblem } from "./villages-player-role.js";
+import { playerBackgroundProblem } from "./villages-player-background.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { mergeQuickStartSpaces } from "./quick-start-drafts.js";
 import { requestFoundingSuggestions } from "./suggestion-request.js";
@@ -248,7 +248,7 @@ export function createFoundingGotoSetupStep(ports: {
   readonly setupMapBusy: FoundingState["setupMapBusy"];
   readonly setupMapSrc: string | null;
   readonly setupName: FoundingState["setupName"];
-  readonly setupPlayerRole: FoundingState["setupPlayerRole"];
+  readonly setupPlayerBackground: FoundingState["setupPlayerBackground"];
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupStep: FoundingState["setupStep"];
   readonly setupSuggestionsBusy: FoundingState["setupSuggestionsBusy"];
@@ -277,7 +277,7 @@ export function createFoundingGotoSetupStep(ports: {
       setupMapBusy,
       setupMapSrc,
       setupName,
-      setupPlayerRole,
+      setupPlayerBackground,
       setupSetting,
       setupStep,
       setupSuggestionsBusy,
@@ -295,7 +295,7 @@ export function createFoundingGotoSetupStep(ports: {
           ? "Choose an available Persona."
           : residentContextProblem ||
             connectionSetupProblem ||
-            (!snapshot?.isFounded ? playerRoleProblem(setupPlayerRole) : "") ||
+            (!snapshot?.isFounded ? playerBackgroundProblem(setupPlayerBackground) : "") ||
             (!snapshot?.isFounded &&
             (setupHomeCount < 1 ||
               setupHomeCount > 3 ||

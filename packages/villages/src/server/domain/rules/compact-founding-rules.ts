@@ -4,7 +4,7 @@ import type { VillagerCard } from "../models/catalog-model.js";
 import type {
   VillageAgenda,
   VillageCompletedWish,
-  VillagePlayerRole,
+  VillagePlayerBackground,
   VillageRemap,
   VillageRemapMove,
   VillageVenue,
@@ -43,7 +43,7 @@ export type CompactFoundingContext = {
   circumstances?: unknown;
   semanticVersion?: 2;
   wishAttemptId?: string;
-  playerRole?: VillagePlayerRole | null;
+  playerBackground?: VillagePlayerBackground | null;
   playerPersonaName?: string;
   allowInitialWish?: boolean;
   village: string;

@@ -1,17 +1,13 @@
+import { FoundingBackgrounds } from "./FoundingBackgrounds.js";
 import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { useEffect, useRef, useState } from "react";
-import {
-  DEFAULT_RESIDENT_FOUNDING_CONTEXT,
-  RESIDENT_HISTORY_MODES,
-  RESIDENT_STORY_ROLES,
-} from "../../../shared/helpers/resident-founding-context.js";
+import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/helpers/resident-founding-context.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
-import { AvatarFace } from "../residents/ResidentPanels.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
 import {
   FoundingPersonaSelector,
@@ -26,8 +22,7 @@ import { FoundingWorkspace } from "./villages-founding-workspace";
 import { QuickStartVenues } from "./QuickStartVenues.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-workspace-state";
-import { DEFAULT_PLAYER_ROLE, PlayerRoleFields, PlayerRoleSummary, playerRoleProblem } from "./villages-player-role.js";
-import { ResidentFoundingEditors } from "./villages-resident-founding.js";
+import { PlayerBackgroundSummary, playerBackgroundProblem } from "./villages-player-background.js";
 
 const MAP_EXAMPLES = [
   "An inn beside the river, with homes around a central square.",
@@ -96,7 +91,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupMapSource,
     setSetupName,
     setSetupPlacementError,
-    setSetupPlayerRole,
+    setSetupPlayerBackground,
     setSetupProblem,
     setSetupResidentContexts,
     setSetupSetting,
@@ -127,7 +122,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupMapSrc,
     setupName,
     setupPlacementError,
-    setupPlayerRole,
+    setupPlayerBackground,
     setupProblem,
     setupResidentContexts,
     setupWorldOrigin,
@@ -147,13 +142,14 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     uploadSetupImage,
   } = controller;
 
-  const [backgroundSelection, setBackgroundSelection] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const [validationAttempt, setValidationAttempt] = useState(0);
   const focusedValidationAttempt = useRef(0);
   const [validatedFields, setValidatedFields] = useState<string[]>([]);
   const clearFieldValidation = (field: string) => setValidatedFields((fields) => fields.filter((key) => key !== field));
-  const roleError = validatedFields.includes("role") ? playerRoleProblem(setupPlayerRole) : "";
+  const backgroundError = validatedFields.includes("playerBackground")
+    ? playerBackgroundProblem(setupPlayerBackground)
+    : "";
   const personaError =
     validatedFields.includes("persona") && (!personaDraft || !personas?.some((persona) => persona.id === personaDraft));
   const villagersError =
@@ -163,7 +159,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       setupFoundingVillagerIds.some((id) => !catalog?.some((person) => person.id === id)));
   const inlineProblem =
     Object.values(PLACE_ERRORS).includes(setupProblem) ||
-    !!roleError ||
+    !!backgroundError ||
     setupProblem === "Choose an available Persona." ||
     setupProblem === "Choose one to three available founding villagers." ||
     setupProblem === "Complete the highlighted resident background fields in People." ||
@@ -185,7 +181,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       target?.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [setupProblem, inlineProblem, roleError, validationAttempt]);
+  }, [setupProblem, inlineProblem, backgroundError, validationAttempt]);
 
   if (screen === "setup") {
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
@@ -303,13 +299,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       </div>
     );
     const chooseRoster = (ids: string[]) => {
-      const added = ids.find((id) => !setupFoundingVillagerIds.includes(id));
-      if (added && !setupResidentContexts[added])
-        setSetupResidentContexts((current) => ({
-          ...current,
-          [added]: { ...DEFAULT_RESIDENT_FOUNDING_CONTEXT, integration: { text: "", direction: "", accepted: false } },
-        }));
-      setBackgroundSelection(added ?? null);
       clearFieldValidation("villagers");
       setSetupFoundingVillagerIds(ids);
       setSetupMapReviewed(false);
@@ -355,25 +344,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   }}
                   disabled={busy}
                 />
-
-                {!snapshot?.isFounded ? (
-                  <>
-                    <div className="villages-founding-role-editor">
-                      <PlayerRoleFields
-                        compact
-                        problem={roleError}
-                        role={setupPlayerRole ?? DEFAULT_PLAYER_ROLE}
-                        onChange={(role) => {
-                          setSetupPlayerRole(role);
-                          clearFieldValidation("role");
-                        }}
-                        disabled={busy}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <PlayerRoleSummary role={setupPlayerRole} />
-                )}
               </section>
               <section className="villages-forging-card">
                 <h3 aria-label="Founding villagers">Founding villagers</h3>
@@ -389,52 +359,31 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   catalog={catalog}
                   portraits={portraits}
                   selectedIds={setupFoundingVillagerIds}
-                  renderBackstory={
-                    !snapshot?.isFounded
-                      ? (id, name) => (
-                          <ResidentFoundingEditors
-                            embedded
-                            autoOpen={backgroundSelection === id}
-                            source={{
-                              founding: true,
-                              playerPersonaId: personaDraft,
-                              foundingCharacterIds: setupFoundingVillagerIds,
-                              foundingResidentContexts: Object.fromEntries(
-                                Object.entries(setupResidentContexts).filter(
-                                  ([key, context]) =>
-                                    key !== id && (!context.integration || context.integration.accepted),
-                                ),
-                              ),
-                              setting: setupSetting,
-                              premise: setupFoundingDetails,
-                              worldOrigin: setupWorldOrigin,
-                              selectedLorebookIds: setupLorebookDraft,
-                              loreTokenBudget: setupLoreTokenBudgetDraft,
-                            }}
-                            people={[{ characterId: id, name }]}
-                            contexts={setupResidentContexts}
-                            showErrors={validatedFields.includes("backstory:" + id)}
-                            onChange={(characterId, context) => {
-                              clearFieldValidation("backstory:" + characterId);
-                              setSetupResidentContexts((current) => ({ ...current, [characterId]: context }));
-                              setSetupProblem("");
-                            }}
-                            avatar={(characterId, characterName) => (
-                              <AvatarFace
-                                portrait={portraits[characterId]}
-                                name={characterName}
-                                className={ELEMENT_TAG + "-identity-card-face"}
-                                glyph="person"
-                              />
-                            )}
-                            disabled={busy}
-                          />
-                        )
-                      : undefined
-                  }
                   onChange={chooseRoster}
                   disabled={busy || !!snapshot?.isFounded}
                 />
+                {!snapshot?.isFounded ? (
+                  <FoundingBackgrounds
+                    people={wizardVillagers}
+                    playerBackground={setupPlayerBackground ?? ""}
+                    contexts={setupResidentContexts}
+                    onPlayer={setSetupPlayerBackground}
+                    onContexts={setSetupResidentContexts}
+                    disabled={busy}
+                    source={{
+                      founding: true,
+                      playerPersonaId: personaDraft,
+                      foundingCharacterIds: setupFoundingVillagerIds,
+                      setting: setupSetting,
+                      premise: setupFoundingDetails,
+                      worldOrigin: setupWorldOrigin,
+                      selectedLorebookIds: setupLorebookDraft,
+                      loreTokenBudget: setupLoreTokenBudgetDraft,
+                    }}
+                  />
+                ) : (
+                  <PlayerBackgroundSummary background={setupPlayerBackground} />
+                )}
                 <div className="villages-people-connections">
                   <details open={!!connectionSetupProblem}>
                     <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
@@ -896,9 +845,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <div>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
-                      <h3>People & role</h3>
-                      <button type="button" onClick={() => gotoSetupStep(0)}>
-                        Change people & role
+                      <h3>People & backgrounds</h3>
+                      <button type="button" onClick={() => gotoSetupStep(1)}>
+                        Change people & backgrounds
                       </button>
                     </div>
                     <p>{personas?.find((person) => person.id === personaDraft)?.name ?? "Selected Persona"} · You</p>
@@ -928,8 +877,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         </div>
                       );
                     })}
-                    <PlayerRoleSummary role={setupPlayerRole} />
-                    <p>Your role and founding circumstances become fixed after founding.</p>
+                    <PlayerBackgroundSummary background={setupPlayerBackground} />
+                    <p>Backgrounds describe the starting situation; events can change it.</p>
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
@@ -1076,7 +1025,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   ...(setupStep >= 1
                     ? [
                         "persona",
-                        "role",
+                        "playerBackground",
                         "villagers",
                         "connections",
                         ...setupFoundingVillagerIds.map((id) => "backstory:" + id),

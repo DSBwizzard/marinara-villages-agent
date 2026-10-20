@@ -278,17 +278,24 @@ export async function verifyFoundingLayout(group) {
         const spriteRevisions = {};
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname;
-          if (path.endsWith("/villagers/background/draft"))
+          if (path.endsWith("/villagers/background/draft")) {
+            const body = route.request().postDataJSON();
             return route.fulfill({
-              status: 200,
               contentType: "application/json",
               body: JSON.stringify({
-                text:
-                  (characters.find((person) => person.id === route.request().postDataJSON().characterId)?.name ??
-                    "The resident") +
-                  " settled at the observatory to study its archives and helps maintain the telescope.",
+                text: JSON.stringify({
+                  player: "I came to help restore the observatory.",
+                  residents: Object.fromEntries(
+                    body.foundingCharacterIds.map((id) => [
+                      id,
+                      (characters.find((person) => person.id === id)?.name ?? "The resident") +
+                        " settled here to study the archives.",
+                    ]),
+                  ),
+                }),
               }),
             });
+          }
           if (/\/characters\/[^/]+\/sprites\/setup(?:\/save)?$/.test(path)) {
             const id = decodeURIComponent(path.match(/\/characters\/([^/]+)/)[1]);
             if (path.endsWith("/save")) {
@@ -706,11 +713,12 @@ export async function verifyFoundingLayout(group) {
         await personaDialog.getByPlaceholder("Search Personas").fill("patient");
         await personaDialog.getByRole("button").filter({ hasText: "Ada" }).click();
         await expect(root.getByText("View Persona details", { exact: true })).toHaveCount(0);
-        await root.getByLabel("Role Title", { exact: true }).fill(" ");
-        await forward("Continue to Map").click();
-        await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toContainText("title");
-        await root.getByLabel("Role Title", { exact: true }).fill("Harbor Patron");
-        await expect(root.getByLabel("Why villagers turn to you", { exact: true })).toHaveCount(0);
+        await expect(root.getByRole("textbox", { name: "Role Title", exact: true })).toHaveCount(0);
+        await root.getByRole("button", { name: "Help: Your background", exact: true }).click();
+        await expect(root.getByRole("note")).toContainText(
+          "In Villages, you oversee major changes, improvements, and developments.",
+        );
+        await root.getByRole("button", { name: "Help: Your background", exact: true }).click();
         const selectResidents = async (names) => {
           for (const name of names) {
             await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
@@ -720,39 +728,24 @@ export async function verifyFoundingLayout(group) {
               .getByRole("dialog", { name: name + " sprite setup" })
               .getByRole("button", { name: "Add without using sprites", exact: true })
               .click();
-            const review = page.getByRole("dialog", { name: name + "’s life here", exact: true });
-            await expect(review.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
-            await review.getByRole("button", { name: "Accept", exact: true }).click();
           }
         };
         await selectResidents(
           ["Finn", "Rosa", "Lee, Keeper of the Observatory’s Long Forgotten Archives"].slice(0, homeCount),
         );
-        const finnCard = root
-          .locator(".villages-selected-villager")
-          .filter({ has: page.getByRole("button", { name: "Finn · Remove", exact: true }) });
-        await expect(finnCard.getByRole("button", { name: "Edit background", exact: true })).toBeVisible();
-        const editBackstory = finnCard.getByRole("button", { name: "Edit background", exact: true });
-        const backstoryEditor = page.getByRole("dialog", { name: "Finn’s life here", exact: true });
-        const past = backstoryEditor.getByLabel("Finn background", { exact: true });
-        await editBackstory.click();
+        await expect(page.getByRole("dialog", { name: "Finn’s life here", exact: true })).toHaveCount(0);
+        await root.getByRole("button", { name: "Propose backgrounds", exact: true }).click();
+        const past = root.getByLabel("Finn background", { exact: true });
+        await expect(past).toHaveValue(/settled here/);
         await past.fill("Finn has always been guardian of a relic in the observatory.");
-        await backstoryEditor.getByRole("button", { name: "Cancel", exact: true }).click();
-        await finnCard.getByRole("button", { name: "Review background", exact: true }).click();
-        await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-        await past.fill("   ");
-        await expect(backstoryEditor.getByRole("button", { name: "Accept", exact: true })).toBeDisabled();
-        await past.fill("Finn has always been guardian of a relic in the observatory.");
+        await root.getByLabel("Your background", { exact: true }).fill("I came to help restore the observatory.");
         await bounds();
-        await capture("people-popup");
-        await backstoryEditor.getByRole("button", { name: "Accept", exact: true }).click();
+        await capture("people-backgrounds");
         await forward("Save & exit").click();
         await page.reload();
         await page.addScriptTag({ content: foundingBundle });
         await root.getByRole("button", { name: "Resume founding", exact: true }).click();
-        await root.getByRole("button", { name: "Edit background", exact: true }).first().click();
         await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-        await backstoryEditor.getByRole("button", { name: "Cancel", exact: true }).click();
         assert.equal(suggestionCalls, 0);
         assert.equal(imageCalls, 0);
         await bounds();
@@ -1005,9 +998,7 @@ export async function verifyFoundingLayout(group) {
         await bounds();
         await capture("map-page");
         await forward("Back").click();
-        await root.getByRole("button", { name: "Edit background", exact: true }).first().click();
         await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-        await backstoryEditor.getByRole("button", { name: "Cancel", exact: true }).click();
         await forward("Back").click();
         await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Willowbrook");
         await forward("Continue to People").click();
@@ -1797,7 +1788,7 @@ export async function verifyFoundingLayout(group) {
         }
         await forward("Review village").click();
         await expect(root).toHaveAttribute("data-step", "4");
-        await expect(root.getByRole("button", { name: "Change people & role", exact: true })).toBeVisible();
+        await expect(root.getByRole("button", { name: "Change people & backgrounds", exact: true })).toBeVisible();
         await expect(root.locator(".villages-resident-review").filter({ hasText: "Finn" })).toContainText(
           /[Gg]uardian of a relic/,
         );
@@ -1857,7 +1848,7 @@ export async function verifyFoundingLayout(group) {
         await expect.poll(() => foundingPayload).toBeTruthy();
         assert.equal(foundingPayload.venues.length, homeCount + 2);
         assert.ok(foundingPayload.townMapImage.startsWith("data:image/png;base64,"));
-        assert.equal(foundingPayload.playerRole.title, "Harbor Patron");
+        assert.equal(foundingPayload.playerBackground, "I came to help restore the observatory.");
         assert.equal(foundingPayload.foundingResidentContexts.finn.integration.accepted, true);
         assert.match(foundingPayload.foundingResidentContexts.finn.integration.text, /always been guardian/);
         assert.deepEqual(

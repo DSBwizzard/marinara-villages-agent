@@ -126,7 +126,7 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupMapSource: FoundingState["setSetupMapSource"];
   readonly setSetupName: FoundingState["setSetupName"];
   readonly setSetupTimeZone?: FoundingState["setSetupTimeZone"];
-  readonly setSetupPlayerRole: FoundingState["setSetupPlayerRole"];
+  readonly setSetupPlayerBackground: FoundingState["setSetupPlayerBackground"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupResidentContexts: FoundingState["setSetupResidentContexts"];
   readonly setSetupWorldOrigin: FoundingState["setSetupWorldOrigin"];
@@ -179,7 +179,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupMapSize,
       setSetupMapSource,
       setSetupName,
-      setSetupPlayerRole,
+      setSetupPlayerBackground,
       setSetupProblem,
       setSetupResidentContexts,
       setSetupWorldOrigin,
@@ -215,7 +215,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupSetting(data.setting);
     setSetupFoundingReason(data.reason);
     setSetupFoundingDetails(data.circumstances);
-    setSetupPlayerRole(data.role);
+    setSetupPlayerBackground(data.playerBackground ?? "");
     setSetupImprint(data.imprint);
     setSetupWorldFacts(data.worldFacts);
     const inactive = { ...data.workspace?.inactive };
