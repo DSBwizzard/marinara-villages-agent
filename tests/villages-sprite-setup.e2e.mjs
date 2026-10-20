@@ -145,6 +145,7 @@ try {
     let holdAnalysis = false;
     let releaseAnalysis;
     const analyzedIds = [];
+    const finalizations = [];
     await page.route("http://villages.test/", (route) =>
       route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
     );
@@ -173,6 +174,8 @@ try {
         assert.equal(body.revision, state.revision);
         const artworkId = body.artworkIds[0];
         analyzedIds.push(artworkId);
+        finalizations.push(body.finalize);
+        state.suggestedDefaultArtworkId = "";
         state.revision++;
         if (holdAnalysis) {
           await new Promise((resolve) => {
@@ -199,7 +202,7 @@ try {
             },
           ];
         }
-        state.suggestedDefaultArtworkId = "art-0";
+        if (body.finalize && !state.errors[artworkId]) state.suggestedDefaultArtworkId = artworkId;
       }
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(state) });
     });
@@ -301,6 +304,16 @@ try {
       page.getByText("28 total · 0 need analysis · 28 need review · 0 approved", { exact: true }),
     ).toBeVisible();
     assert.equal(state.suggestions.length, 28);
+    assert.ok(finalizations.slice(beforeResume, -1).every((value) => value === false));
+    assert.equal(finalizations.at(-1), true, "Only the final image completes default selection.");
+    assert.equal(state.suggestedDefaultArtworkId, "art-27");
+    await page.getByRole("button", { name: "Approve all", exact: true }).click();
+    await expect(first.getByLabel("Default", { exact: true })).toBeChecked();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    assert.equal(state.defaultArtworkId, "art-0", "Approval preserves the manually selected default.");
+    await page.getByRole("button", { name: "Choose Bupkis" }).click();
+    await page.getByRole("button", { name: "Review sprites" }).click();
+    await page.getByText("Batch edit", { exact: true }).click();
     assert.deepEqual(
       analyzedIds.slice(beforeResume),
       Array.from({ length: 21 }, (_, index) => `art-${index + 7}`),

@@ -54,6 +54,13 @@ export type SpriteSetupDraft = {
   suggestions: SpriteSetupAssignment[];
   defaultArtworkId: string;
   suggestedDefaultArtworkId?: string;
+  analysisTraits?: Record<
+    string,
+    {
+      expression: "neutral" | "mild" | "strong" | "unknown";
+      pose: "relaxed-standing" | "other" | "unknown";
+    }
+  >;
   useSprites: boolean;
   errors: Record<string, string>;
   analysisRequests: string[];
