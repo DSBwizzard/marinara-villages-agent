@@ -11,7 +11,7 @@ import { MenuScreen } from "./MenuScreen.js";
 import { VenueScreen } from "../features/venues/VenueScreen.js";
 import { useVillageController } from "./useVillageController.js";
 import { VillagesFrame } from "./VillagesFrame.js";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export function VillagesView({ element }: { element: HTMLElement }) {
   const controller = useVillageController({ element });
@@ -20,12 +20,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [phase, setPhase] = useState("opening");
   const readingPosition = useRef(0);
   const notebook = useRef<HTMLDivElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (origin || !returnFocus.current) return;
+    const target = returnFocus.current;
+    returnFocus.current = null;
+    const tab = target.dataset.exploreTab;
+    const restored = target.isConnected
+      ? target
+      : tab
+        ? (element.shadowRoot ?? element).querySelector<HTMLElement>(`[data-explore-tab="${CSS.escape(tab)}"]`)
+        : null;
+    restored?.focus({ preventScroll: true });
+  }, [origin, element]);
   const bookVisible =
     controller.screen === "person" || (controller.screen === "menu" && controller.menuPage === "villagers");
-  const begin = () => {
+  const begin = (trigger?: HTMLElement | null) => {
     if (origin) return;
     readingPosition.current = 0;
-    const active = element.shadowRoot?.activeElement ?? document.activeElement;
+    const active = trigger ?? element.shadowRoot?.activeElement ?? document.activeElement;
     setOrigin({
       screen: controller.screen,
       menuPage: controller.menuPage,
@@ -36,7 +49,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const navigation = {
     ...controller,
     openMenu: (tab: Parameters<typeof controller.openMenu>[0]) => {
-      if (tab === "villagers") begin();
+      if (tab === "villagers")
+        begin(
+          controller.screen === "home" && controller.explorationReturnTab.current === "people"
+            ? controller.explorationOrigin.current
+            : undefined,
+        );
       controller.openMenu(tab);
     },
     openPerson: (person: Parameters<typeof controller.openPerson>[0]) => {
@@ -49,6 +67,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   useEffect(() => {
     if (!origin) return;
     if (!bookVisible && (controller.screen === "home" || controller.screen === "room")) {
+      returnFocus.current = origin.focus;
       setOrigin(null);
       return;
     }
@@ -80,8 +99,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setSpriteManagerId(null);
         setMenuPage(origin.menuPage);
         setScreen(origin.screen);
+        returnFocus.current = origin.focus;
         setOrigin(null);
-        requestAnimationFrame(() => origin.focus?.isConnected && origin.focus.focus({ preventScroll: true }));
       },
       window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1000,
     );

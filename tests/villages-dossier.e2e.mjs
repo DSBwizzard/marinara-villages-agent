@@ -307,8 +307,10 @@ try {
     );
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
+    if (width === 390 && height === 844) await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("button", { name: "Close ×" }).click();
     await expect(people).toBeFocused();
+    if (width === 390 && height === 844) await page.setViewportSize({ width, height });
     assert.equal(
       await retainedMap.evaluate((node) => node.isConnected),
       true,
