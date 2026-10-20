@@ -19,7 +19,7 @@ export async function prepareSignatureImage(decoded: DecodedVillageImage) {
       .toBuffer({ resolveWithObject: true });
     pixels = { ...info, data };
   }
-  const trimmed = trimSignaturePixels(pixels);
+  const trimmed = await trimSignatureImage(pixels);
   // A provider's canvas request is advisory. Fit the actual mark locally to
   // four times the CSS display size; initials fill height, long hands fill width.
   const { data, info } = await sharp(trimmed.bytes)
@@ -29,46 +29,52 @@ export async function prepareSignatureImage(decoded: DecodedVillageImage) {
   return { originalSize: size, bytes: data, width: info.width, height: info.height };
 }
 
+/** Estimate slowly varying light paper separately from the much thinner ink. */
+export async function trimSignatureImage(pixels: { width: number; height: number; data: Uint8Array }) {
+  const { default: sharp } = await import("sharp");
+  const { width, height, data } = pixels;
+  const paperSmall = await sharp(data, { raw: { width, height, channels: 4 } })
+    .flatten({ background: "#fff" })
+    .resize(256, 256, { fit: "inside", withoutEnlargement: true })
+    .median(9)
+    .png()
+    .toBuffer();
+  const paper = await sharp(paperSmall).resize(width, height).removeAlpha().raw().toBuffer();
+  const normalized = new Uint8Array(data);
+  for (let index = 0; index < width * height; index++) {
+    const offset = index * 3;
+    const low = Math.min(paper[offset]!, paper[offset + 1]!, paper[offset + 2]!);
+    const high = Math.max(paper[offset]!, paper[offset + 1]!, paper[offset + 2]!);
+    // Only light, near-neutral fields are plausible paper. Do not normalize
+    // colored marks or estimate paper from a dark, solid part of the artwork.
+    if (low < 180 || high - low > 15) continue;
+    for (let channel = 0; channel < 3; channel++) {
+      normalized[index * 4 + channel] = Math.min(
+        255,
+        Math.round((data[index * 4 + channel]! * 255) / paper[offset + channel]!),
+      );
+    }
+  }
+  return trimSignaturePixels({ width, height, data: normalized });
+}
+
 export function trimSignaturePixels(pixels: { width: number; height: number; data: Uint8Array }) {
   const { width, height, data } = pixels;
   let left = width,
     top = height,
     right = -1,
     bottom = -1;
-  // Preserve native transparency. Only an opaque canvas needs white extraction.
-  const background = new Uint8Array(width * height);
-  const opaque = data.every((value, index) => index % 4 !== 3 || value === 255);
-  if (opaque) {
-    const queue = new Uint32Array(width * height);
-    let count = 0;
-    const visit = (index: number) => {
-      if (background[index]) return;
-      const offset = index * 4;
-      if (data[offset]! < 245 || data[offset + 1]! < 245 || data[offset + 2]! < 245) return;
-      background[index] = 1;
-      queue[count++] = index;
-    };
-    for (let x = 0; x < width; x++) {
-      visit(x);
-      visit((height - 1) * width + x);
-    }
-    for (let y = 0; y < height; y++) {
-      visit(y * width);
-      visit(y * width + width - 1);
-    }
-    for (let cursor = 0; cursor < count; cursor++) {
-      const index = queue[cursor]!,
-        x = index % width;
-      if (x > 0) visit(index - 1);
-      if (x < width - 1) visit(index + 1);
-      if (index >= width) visit(index - width);
-      if (index < width * (height - 1)) visit(index + width);
-    }
-  }
+  // These are ink marks on white paper, not filled illustrations. Remove the
+  // white contribution everywhere, including enclosed holes and antialiased
+  // strokes. Keeping the observed RGB would leave a pale fringe on the notebook.
+  const alpha = new Uint8Array(width * height);
   for (let y = 0; y < height; y++)
     for (let x = 0; x < width; x++) {
-      const index = y * width + x;
-      if (!background[index] && data[index * 4 + 3]) {
+      const index = y * width + x,
+        offset = index * 4;
+      const coverage = 255 - Math.min(data[offset]!, data[offset + 1]!, data[offset + 2]!);
+      alpha[index] = coverage <= 10 ? 0 : Math.round((data[offset + 3]! * coverage) / 255);
+      if (alpha[index]) {
         left = Math.min(left, x);
         right = Math.max(right, x);
         top = Math.min(top, y);
@@ -86,10 +92,13 @@ export function trimSignaturePixels(pixels: { width: number; height: number; dat
     for (let x = left; x <= right; x++) {
       const offset = ((y - top) * result.width + x - left) * 4;
       const source = (y * width + x) * 4;
-      result.data[offset] = data[source]!;
-      result.data[offset + 1] = data[source + 1]!;
-      result.data[offset + 2] = data[source + 2]!;
-      result.data[offset + 3] = background[y * width + x] ? 0 : data[source + 3]!;
+      const coverage = 255 - Math.min(data[source]!, data[source + 1]!, data[source + 2]!);
+      for (let channel = 0; channel < 3; channel++) {
+        result.data[offset + channel] = alpha[y * width + x]
+          ? Math.round((255 * (data[source + channel]! - (255 - coverage))) / coverage)
+          : 0;
+      }
+      result.data[offset + 3] = alpha[y * width + x]!;
     }
   return { bytes: PNG.sync.write(result), width: result.width, height: result.height };
 }

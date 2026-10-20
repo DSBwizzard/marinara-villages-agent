@@ -21,6 +21,7 @@ import {
 } from "../packages/villages/src/server/features/residents/resident-signature.js";
 import {
   trimSignaturePixels,
+  trimSignatureImage,
   prepareSignatureImage,
 } from "../packages/villages/src/server/features/residents/signature-image.js";
 
@@ -62,28 +63,73 @@ const png = PNG.sync.read(trimmed.bytes);
 assert.equal(png.data[3], 0, "White margins become transparent");
 assert.equal(png.data[(10 * png.width + 10) * 4 + 3], 255, "Dark ink survives");
 assert.throws(() => trimSignaturePixels(new PNG({ width: 10, height: 10 })), /blank/);
-// Color, native transparency and enclosed whites belong to the mark.
+// White paper must disappear inside and outside a mark, including matte edges.
 const colored = new PNG({ width: 40, height: 60 });
 colored.data.fill(255);
 for (let y = 10; y < 50; y++) for (let x = 10; x < 30; x++) colored.data.set([245, 120, 20, 255], (y * 40 + x) * 4);
 colored.data.set([255, 255, 255, 255], (30 * 40 + 20) * 4);
 const colorCrop = PNG.sync.read(trimSignaturePixels(colored).bytes);
 assert.ok(
-  colorCrop.data.some((v, i) => i % 4 === 0 && v === 245 && colorCrop.data[i + 1] === 120),
-  "Original colors survive",
+  !colorCrop.data.some(
+    (v, i) =>
+      i % 4 === 0 &&
+      v >= 245 &&
+      colorCrop.data[i + 1]! >= 245 &&
+      colorCrop.data[i + 2]! >= 245 &&
+      colorCrop.data[i + 3]! > 0,
+  ),
+  "Enclosed white paper is transparent",
 );
-assert.ok(
-  colorCrop.data.some((v, i) => i % 4 === 0 && v === 255 && colorCrop.data[i + 3] === 255),
-  "Enclosed white detail survives",
-);
-assert.equal(colorCrop.data[3], 0, "Connected white background is removed");
+const ink = Array.from(colorCrop.data).findIndex((v, i) => i % 4 === 3 && v > 0) - 3;
+for (const [channel, observed] of [245, 120, 20].entries()) {
+  const opacity = colorCrop.data[ink + 3]! / 255;
+  assert.ok(
+    Math.abs(colorCrop.data[ink + channel]! * opacity + 255 * (1 - opacity) - observed) <= 1,
+    "Colored ink recomposes to the provider's color on white",
+  );
+}
+assert.equal(colorCrop.data[3], 0, "Outside white background is removed");
 const nativeAlpha = new PNG({ width: 30, height: 30 });
-for (let y = 10; y < 20; y++)
-  for (let x = 10; x < 20; x++) nativeAlpha.data.set([255, 255, 255, 128], (y * 30 + x) * 4);
+for (let y = 10; y < 20; y++) for (let x = 10; x < 20; x++) nativeAlpha.data.set([0, 0, 0, 128], (y * 30 + x) * 4);
+// A transparent corner must not prevent extraction of opaque white elsewhere.
+nativeAlpha.data.set([255, 255, 255, 255], (15 * 30 + 15) * 4);
 const alphaCrop = PNG.sync.read(trimSignaturePixels(nativeAlpha).bytes);
+assert.equal(
+  Math.max(...alphaCrop.data.filter((_, i) => i % 4 === 3)),
+  128,
+  "Existing translucent ink is not made opaque",
+);
 assert.ok(
-  alphaCrop.data.some((v, i) => i % 4 === 0 && v === 255 && alphaCrop.data[i + 3] === 128),
-  "Native white translucent artwork survives unchanged",
+  !alphaCrop.data.some((v, i) => i % 4 === 3 && v === 255),
+  "White is removed even from a partly transparent source",
+);
+const matteEdge = new PNG({ width: 20, height: 20 });
+matteEdge.data.fill(255);
+for (let y = 5; y < 15; y++) for (let x = 5; x < 15; x++) matteEdge.data.set([230, 230, 230, 255], (y * 20 + x) * 4);
+const edgeCrop = PNG.sync.read(trimSignaturePixels(matteEdge).bytes);
+const faint = Array.from(edgeCrop.data).findIndex((v, i) => i % 4 === 3 && v > 0) - 3;
+assert.deepEqual(
+  Array.from(edgeCrop.data.slice(faint, faint + 4)),
+  [0, 0, 0, 25],
+  "White-matted faint ink becomes translucent dark ink without a white halo",
+);
+// Native colored alpha keeps its white-paper appearance, without brightening dark backdrops.
+const translucentColor = new PNG({ width: 20, height: 20 });
+for (let y = 5; y < 15; y++)
+  for (let x = 5; x < 15; x++) translucentColor.data.set([100, 150, 200, 128], (y * 20 + x) * 4);
+const translucentCrop = PNG.sync.read(trimSignaturePixels(translucentColor).bytes);
+const nativeInk = Array.from(translucentCrop.data).findIndex((v, i) => i % 4 === 3 && v > 0) - 3;
+for (const [channel, observed] of [100, 150, 200].entries()) {
+  const opacity = translucentCrop.data[nativeInk + 3]! / 255;
+  const before = (observed * 128) / 255 + 255 * (1 - 128 / 255);
+  const after = translucentCrop.data[nativeInk + channel]! * opacity + 255 * (1 - opacity);
+  assert.ok(Math.abs(before - after) <= 1, "Colored native alpha retains its appearance over white paper");
+}
+assert.ok(translucentCrop.data[nativeInk + 3]! <= 128, "Extraction cannot increase native opacity");
+const darkBackdrop = 32;
+assert.ok(
+  (edgeCrop.data[faint]! * 25) / 255 + darkBackdrop * (1 - 25 / 255) < darkBackdrop,
+  "Faint dark strokes do not leave a bright fringe on dark backgrounds",
 );
 for (const [width, height] of [
   [20, 200],
@@ -98,6 +144,35 @@ for (const [width, height] of [
 const white = new PNG({ width: 10, height: 10 });
 white.data.fill(255);
 assert.throws(() => trimSignaturePixels(white), /blank/);
+// A photographed light paper field must not survive as a rectangular wash.
+const shadedPaper = new PNG({ width: 256, height: 256 });
+for (let y = 0; y < 256; y++)
+  for (let x = 0; x < 256; x++) {
+    const shade = 205 + Math.round((x + y) / 11);
+    shadedPaper.data.set([shade, shade, shade, 255], (y * 256 + x) * 4);
+  }
+for (let y = 80; y < 180; y++) for (let x = 80; x < 84; x++) shadedPaper.data.set([20, 20, 20, 255], (y * 256 + x) * 4);
+for (let y = 80; y < 180; y++)
+  for (let x = 130; x < 134; x++) shadedPaper.data.set([20, 60, 190, 255], (y * 256 + x) * 4);
+const shadedCrop = await trimSignatureImage(shadedPaper);
+assert.ok(shadedCrop.width < 100 && shadedCrop.height < 140, "Light paper shading does not determine artwork bounds");
+const shadedPNG = PNG.sync.read(shadedCrop.bytes);
+assert.ok(
+  shadedPNG.data.some((v, i) => i % 4 === 2 && v > 100 && shadedPNG.data[i - 2]! < 50 && shadedPNG.data[i + 1]! > 0),
+  "Colored strokes survive paper normalization",
+);
+// Invisible RGB is not paper and must not affect real ink extraction.
+const nativeGray = (hidden: number) => {
+  const image = new PNG({ width: 256, height: 256 });
+  for (let i = 0; i < image.data.length; i += 4) image.data.set([hidden, hidden, hidden, 0], i);
+  for (let y = 80; y < 180; y++) for (let x = 80; x < 84; x++) image.data.set([200, 200, 200, 255], (y * 256 + x) * 4);
+  return image;
+};
+assert.deepEqual(
+  (await trimSignatureImage(nativeGray(200))).bytes,
+  (await trimSignatureImage(nativeGray(255))).bytes,
+  "Hidden RGB cannot change or erase native transparent ink",
+);
 const richResident = structuredClone(village.villagers[0]!);
 richResident.cardSnapshot.backstory = "Signs fishing logs with a tiny hook.";
 richResident.cardSnapshot.exampleDialogue = "Aye, leave it to me.";

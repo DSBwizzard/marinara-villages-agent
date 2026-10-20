@@ -61,7 +61,7 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-tags span:nth-child(3n+2) { background:#e0c9e7; }
 .${P}-signature { margin-top:16px; max-width:100%; color:#59434c; }
 .${P}-signature-art { max-width:100%; width:280px; padding:8px 0; }
-.${P}-signature-image { display:block; width:auto; height:auto; max-width:100%; max-height:240px; object-fit:contain; object-position:left center; }
+.${P}-signature-image { display:block; width:auto; height:auto; max-width:100%; max-height:240px; object-fit:contain; object-position:left center; mix-blend-mode:multiply; }
 .${P}-signature-name { display:block; font:italic 38px/1.4 var(--notebook-hand); overflow-wrap:anywhere; padding:4px 0; }
 .${P}-signature-name[data-hand="bold"] { font-weight:700; }
 .${P}-dossier-root .${P}-signature-flourish { display:block; width:100%; height:20px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; }
