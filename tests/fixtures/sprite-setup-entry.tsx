@@ -12,6 +12,10 @@ function App() {
         <SpriteSetupDialog
           characterId="bupkis"
           name="Bupkis"
+          portrait={{
+            url: "http://villages.test/portrait.png",
+            crop: { srcX: 0.25, srcY: 0.1, srcWidth: 0.3, srcHeight: 0.3 },
+          }}
           onClose={() => setOpen(false)}
           onDone={() => {
             setAdded(true);

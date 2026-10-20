@@ -51,6 +51,12 @@ try {
     await page.route("http://villages.test/", (route) =>
       route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
     );
+    await page.route("http://villages.test/portrait.png", (route) =>
+      route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2400"><rect width="1600" height="2400" fill="#6085b0"/></svg>',
+      }),
+    );
     await page.route("**/api/villages/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       const body = route.request().postDataJSON();
@@ -77,6 +83,21 @@ try {
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
     await expect(page.getByText("0 ready · 28 unresolved")).toBeVisible();
+    const portrait = page.locator(".sprite-portrait");
+    await expect(portrait.locator("img")).toBeVisible();
+    assert.ok(
+      await portrait.evaluate((frame) => {
+        const bounds = frame.getBoundingClientRect();
+        return (
+          bounds.width <= 110 &&
+          bounds.height <= 110 &&
+          getComputedStyle(frame).overflow === "hidden" &&
+          frame.querySelector("img").offsetParent === frame
+        );
+      }),
+      "Engine's enlarged crop stays clipped inside the compact portrait frame",
+    );
+    await page.screenshot({ path: `.build-tmp/sprite-setup/compact-${viewport.width}.png`, fullPage: true });
     assert.equal(analyses, 0);
     await expect(page.locator(".sprite-grid")).toHaveCount(0);
     await page.getByRole("button", { name: "Set up manually" }).click();
