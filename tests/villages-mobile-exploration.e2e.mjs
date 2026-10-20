@@ -509,8 +509,8 @@ try {
     for (const row of await sheet.locator("." + P + "-directory-card").all()) {
       const face = row.locator("." + P + "-avatar");
       const bounds = await face.boundingBox();
-      assert.equal(bounds.width, 48);
-      assert.equal(bounds.height, 60);
+      assert.ok(Math.abs(bounds.width - 48) < 0.01, "People portrait is 48px wide within browser rounding");
+      assert.ok(Math.abs(bounds.height - 60) < 0.01, "People portrait is 60px tall within browser rounding");
       const rowBounds = await row.boundingBox();
       assert.ok(rowBounds.height >= 60 && rowBounds.height <= 150, "People stays a compact row list");
       await expect(face).toHaveCSS("position", "relative");
