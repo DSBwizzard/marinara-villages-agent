@@ -318,7 +318,7 @@ try {
     await page.getByRole("button", { name: "← Back to profile" }).click();
     await expect(managerButton).toBeFocused();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
-    await page.getByRole("button", { name: "Back to menu" }).click();
+    await page.getByRole("button", { name: "Close ×" }).click();
     await page.getByRole("button", { name: "Village Settings" }).click();
     await expect(page.getByRole("heading", { name: "Village Map" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Replace map" })).toBeVisible();

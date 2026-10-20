@@ -156,7 +156,7 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const nav = page.getByRole("navigation", { name: "Village exploration" });
     await nav.getByRole("button", { name: "People", exact: true }).click();
-    await page.getByRole("button", { name: /Feddy The Mill/ }).click();
+    await page.getByRole("button", { name: "Open Feddy profile" }).click();
     const profile = page.getByRole("region", { name: "Feddy profile" });
     await page
       .getByRole("navigation", { name: "Villager profile sections" })
@@ -180,15 +180,15 @@ try {
     await expect(profile.getByText("retired", { exact: true })).toBeVisible();
     await expect(profile.getByRole("button", { name: "Retire wish" })).toHaveCount(0);
     assert.equal(retirements, 1);
-    await profile.getByRole("button", { name: "Back to People" }).click();
-    await page.getByRole("button", { name: /Roxie Current location unavailable/ }).click();
+    await profile.getByRole("button", { name: "← Back to Villagers" }).click();
+    await page.getByRole("button", { name: "Open Roxie profile" }).click();
     await page
       .getByRole("navigation", { name: "Villager profile sections" })
       .getByRole("button", { name: "Wishes", exact: true })
       .click();
     await expect(page.getByText("No wishes shared yet.", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back to People" }).click();
-    await page.getByRole("button", { name: /Feddy The Mill/ }).click();
+    await page.getByRole("button", { name: "← Back to Villagers" }).click();
+    await page.getByRole("button", { name: "Open Feddy profile" }).click();
     await page
       .getByRole("navigation", { name: "Villager profile sections" })
       .getByRole("button", { name: "Venues", exact: true })
@@ -213,7 +213,9 @@ try {
     await expect(profile).toBeVisible();
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true, "Scene reader stays mounted");
     await expect(profile.locator('[data-wish-id="swim"]')).toBeFocused();
-    await profile.getByRole("button", { name: "Back to Scene" }).click();
+    await profile.getByRole("button", { name: "← Back to Villagers" }).click();
+    await page.getByRole("button", { name: "Open Roxie profile" }).click();
+    await page.getByRole("button", { name: "Close ×" }).click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveCount(0);
     await expect(reader).toHaveText(readingText);
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true);
