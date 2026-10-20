@@ -34,6 +34,7 @@ const world = coerceVillageState({
   },
   villagers: ["a", "b"].map((id) => ({
     characterId: id,
+    identityDescription: { text: "", revision: "initial-description-" + id, initialGenerationComplete: false },
     addedAt: now,
     cardSnapshot: {
       id,
@@ -92,6 +93,7 @@ const model = {
             ? {}
             : { wish: null }
           : {
+              identityDescription: "A patient resident with a lasting interest in local history.",
               routine: "Ordinary varied days",
               palette: Array.from({ length: 6 }, (_, i) => ({
                 activity: "Activity " + i,
@@ -167,6 +169,10 @@ try {
   let marker = records.get("villages-village").data.foundingPreparation;
   assert.equal(marker.status, "failed");
   assert.equal(marker.tasks.a.routine.status, "completed");
+  assert.equal(
+    records.get("villages-village").data.villagers[0].identityDescription.text,
+    "A patient resident with a lasting interest in local history.",
+  );
   assert.equal(marker.tasks.b.wish.status, "completed");
   const before = calls;
   await stop!();

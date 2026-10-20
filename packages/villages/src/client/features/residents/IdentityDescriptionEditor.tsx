@@ -33,6 +33,7 @@ export function IdentityDescriptionEditor({
   }
   return draft ? (
     <form
+      autoComplete="off"
       className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-description-editor`}
       onSubmit={(event) => {
         event.preventDefault();
@@ -42,6 +43,7 @@ export function IdentityDescriptionEditor({
       <label>
         Description
         <textarea
+          autoComplete="off"
           aria-label="Description"
           maxLength={MAX_IDENTITY_DESCRIPTION_LENGTH}
           rows={3}
