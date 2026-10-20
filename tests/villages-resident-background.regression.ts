@@ -32,6 +32,13 @@ let calls = 0,
   fail = false,
   release: (() => void) | undefined;
 let gate: Promise<void> | undefined;
+let outputLimit: number | null = null;
+let contextLimit: number | undefined;
+let completion = {
+  content: "Mara arrived three weeks ago, following a lead about her brother. She is staying while she investigates.",
+  finishReason: "stop",
+};
+const requests: { tokens: number; options: any; reply: typeof completion }[] = [];
 const messages: string[] = [];
 const ports: any = {
   villagesDocuments: () => documents,
@@ -55,21 +62,21 @@ const ports: any = {
   },
   villagesLanguageModels: () => ({
     resolveForRequest: async () => ({
-      maxOutputTokens: 800,
-      fitContext: (messages: unknown[]) => ({ messages, maxTokens: 800 }),
+      maxOutputTokens: outputLimit,
+      fitContext: (messages: unknown[], options: { maxTokens: number }) => ({
+        messages,
+        maxTokens: Math.min(options.maxTokens, contextLimit ?? options.maxTokens),
+      }),
     }),
   }),
   villagesConnectionIdFor: async () => "system-test",
-  async completeWithRoom(_model: unknown, input: unknown) {
+  async completeWithRoom(_model: unknown, input: unknown, tokens: number, options: any) {
     calls++;
     messages.push(JSON.stringify(input));
     if (gate) await gate;
     if (fail) throw new Error("provider unavailable");
-    return {
-      content:
-        "Mara arrived three weeks ago, following a lead about her brother. She is staying while she investigates.",
-      finishReason: "stop",
-    };
+    requests.push({ tokens, options, reply: structuredClone(completion) });
+    return structuredClone(completion);
   },
 };
 const service = createResidentBackgrounds(ports);
@@ -176,6 +183,45 @@ await service.draftResidentBackground({
 });
 assert.match(messages.at(-1)!, /never served the royal guard/);
 assert.match(messages.at(-1)!, /authoritative personal past/);
+
+assert.equal(requests[0]!.tokens, 4096, "reasoning and paragraph share a bounded output budget");
+assert.equal(requests[0]!.options.reasoningEffort, undefined, "preserve connection thinking settings");
+assert.equal(requests[0]!.options.savedRequest.retry, false);
+assert.equal(requests[0]!.options.savedRequest.valid(requests[0]!.reply), true);
+outputLimit = 1024;
+await service.draftResidentBackground({ ...input, actionId: "background-configured-limit" });
+assert.equal(requests.at(-1)!.tokens, 1024, "honor a smaller configured output limit");
+outputLimit = 16000;
+contextLimit = 1800;
+await service.draftResidentBackground({ ...input, actionId: "background-context-limit" });
+assert.equal(requests.at(-1)!.tokens, 1800, "honor remaining context room");
+contextLimit = undefined;
+await service.draftResidentBackground({ ...input, actionId: "background-bounded-limit" });
+assert.equal(requests.at(-1)!.tokens, 4096, "bound the request even on a larger connection");
+const good = completion;
+const invalidReplies = [
+  { content: "Mara arrived", finishReason: "length", usage: { completionTokens: 800, completionReasoningTokens: 777 } },
+  { content: "Mara arrived", finishReason: "max_tokens" },
+  { content: " ", finishReason: "stop" },
+  { content: "x".repeat(1201), finishReason: "stop" },
+];
+const receiptKeys = new Set<string>();
+for (const [index, reply] of invalidReplies.entries()) {
+  completion = reply;
+  const request = { ...input, actionId: "background-invalid-" + index };
+  const before = calls;
+  await assert.rejects(service.draftResidentBackground(request), /incomplete or too long/);
+  assert.equal(calls, before + 1, "invalid paid output never triggers a replacement");
+  const saved = requests.at(-1)!.options.savedRequest;
+  assert.equal(saved.retry, false);
+  assert.equal(saved.valid(reply), false, "retain rejected output without accepting it");
+  assert.equal(receiptKeys.has(saved.key), false, "explicit retries have independent receipts");
+  receiptKeys.add(saved.key);
+  await assert.rejects(service.draftResidentBackground({ ...request, retrieveOnly: true }), /incomplete or too long/);
+  await assert.rejects(service.draftResidentBackground(request), /incomplete or too long/);
+  assert.equal(calls, before + 1, "retrieving or replaying failure never spends again");
+}
+completion = good;
 
 const context = {
   ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,

@@ -16,6 +16,12 @@ import { readSelectedLorebookIds, readLoreTokenBudget } from "../../domain/rules
 import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
+import type { CapabilityLanguageModelCompletion } from "@marinara-engine/shared";
+
+const validBackgroundReply = (reply: CapabilityLanguageModelCompletion) => {
+  const text = reply.content?.trim() ?? "";
+  return !!text && text.length <= 1200 && !["length", "max_tokens"].includes(reply.finishReason ?? "");
+};
 
 const liveSubjects = new WeakMap<CapabilityDocumentStore, Map<string, string>>();
 type Attempt = { fingerprint: string; status: "running" | "complete" | "failed"; text: string; error: string };
@@ -164,6 +170,8 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
         const model = await ports
           .villagesLanguageModels()
           .resolveForRequest({ connectionId: await ports.villagesConnectionIdFor("system") });
+        // Output tokens include reasoning; leave room for it without changing the connection's settings.
+        const requested = Math.min(model.maxOutputTokens ?? 4096, 4096);
         const fitted = fitVenueWritingMessages(
           model,
           [
@@ -178,18 +186,19 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
             },
           ],
           "Write the proposed background paragraph.",
-          Math.min(model.maxOutputTokens ?? 800, 800),
+          requested,
           "System",
         );
         if (stopped) throw conflict("Background drafting stopped before the request was sent.");
-        const reply = await ports.completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 800, {
+        const reply = await ports.completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requested, {
           temperature: 0.7,
           retryEmpty: false,
           usagePurpose: "background",
           debugMode: false,
+          savedRequest: { key: documentId, retry: false, valid: validBackgroundReply },
         });
         const text = reply.content?.trim() ?? "";
-        if (!text || text.length > 1200 || ["length", "max_tokens"].includes(reply.finishReason ?? ""))
+        if (!validBackgroundReply(reply))
           throw badRequest(
             "The background proposal was incomplete or too long. Your edits are unchanged; try again or write it yourself.",
           );
