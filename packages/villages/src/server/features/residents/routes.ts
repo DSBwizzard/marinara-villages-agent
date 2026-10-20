@@ -56,9 +56,9 @@ export function registerResidentRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{ Body: { characterId?: unknown } }>("/villagers", async (request, reply) => {
+  app.post<{ Body: { characterId?: unknown; spriteSetupRevision?: number } }>("/villagers", async (request, reply) => {
     try {
-      await addVillager(readCharacterId(request.body?.characterId));
+      await addVillager(readCharacterId(request.body?.characterId), request.body?.spriteSetupRevision);
       return await buildVillageSnapshot();
     } catch (error) {
       return fail(reply, error, "adding a villager");

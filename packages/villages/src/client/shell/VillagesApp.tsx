@@ -85,7 +85,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             notebook.current?.querySelector<HTMLElement>("input,button")?.focus({ preventScroll: true });
         });
       },
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1050,
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350,
     );
     return () => window.clearTimeout(timer);
   }, [origin, bookVisible, phase, controller.screen, openingWishId, element]);
@@ -102,7 +102,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         returnFocus.current = origin.focus;
         setOrigin(null);
       },
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1000,
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350,
     );
     return () => window.clearTimeout(timer);
   }, [origin, phase, setMenuPage, setScreen, setPersonProfile, setProfileInspection, setSpriteManagerId]);
@@ -186,11 +186,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             ) : (
               <RosterScreen controller={navigation} onClose={close} readingPosition={readingPosition} />
             )}
-            {bookVisible ? (
-              <div className={`${ELEMENT_TAG}-notebook-cover`} aria-hidden="true">
-                <span>Villagers</span>
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}

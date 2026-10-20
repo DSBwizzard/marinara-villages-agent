@@ -659,7 +659,11 @@ try {
     await page.getByRole("button", { name: /^Villagers \(/ }).click();
     await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await expect(page.locator(`.${P}-notebook-cover`)).toBeHidden();
+    assert.equal(
+      await page.locator(`.${P}-notebook-motion`).evaluate((node) => getComputedStyle(node).animationName),
+      "none",
+      "Reduced motion disables the notebook transition",
+    );
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
     await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
     await expect(page.locator(`.${P}-dossier-turn`)).toBeHidden();

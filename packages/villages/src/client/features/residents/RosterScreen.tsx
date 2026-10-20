@@ -1,8 +1,9 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AvatarFace } from "./ResidentPanels.js";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { PeopleBook } from "./PeopleBook.js";
+import { SpriteSetupDialog } from "./SpriteSetupDialog.js";
 
 export function RosterScreen({
   controller,
@@ -13,6 +14,7 @@ export function RosterScreen({
   onClose?: () => void;
   readingPosition?: { current: number };
 }) {
+  const [spriteCharacter, setSpriteCharacter] = useState<{ id: string; name: string } | null>(null);
   const content = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (content.current) content.current.scrollTop = readingPosition?.current ?? 0;
@@ -44,6 +46,18 @@ export function RosterScreen({
     );
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
+        {spriteCharacter ? (
+          <SpriteSetupDialog
+            characterId={spriteCharacter.id}
+            name={spriteCharacter.name}
+            portrait={portraits[spriteCharacter.id]}
+            onClose={() => setSpriteCharacter(null)}
+            onDone={async (revision) => {
+              await addVillager(spriteCharacter.id, revision);
+              setSpriteCharacter(null);
+            }}
+          />
+        ) : null}
         <PeopleBook
           label="People notebook"
           toolbar={
@@ -133,7 +147,7 @@ export function RosterScreen({
                             <button
                               type="button"
                               className={`${ELEMENT_TAG}-button`}
-                              onClick={() => void addVillager(entry.id)}
+                              onClick={() => setSpriteCharacter({ id: entry.id, name: entry.name })}
                               disabled={busy || entry.inVillage}
                             >
                               {entry.inVillage ? "Lives here" : "Move in"}

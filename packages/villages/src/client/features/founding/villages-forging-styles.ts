@@ -133,6 +133,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-founding-role-editor .villages-founding-field>p { grid-column:1/-1; }
 .villages-forging-v2 .villages-founding-role-editor input::placeholder { color:#a6aed0; opacity:.75; }
 .villages-selected-villager { min-width:0; border:1px solid #aa87ff; border-radius:.65rem; background:#30305c; box-shadow:inset 0 0 0 1px #aa87ff; }
+.villages-forging-v2 .villages-selected-sprites { display:block; width:auto; min-height:32px; margin:.4rem .65rem .65rem; padding:.2rem .65rem; font-size:.8rem; line-height:1.2; }
 .villages-forging-v2 .villages-selected-villager>.villages-people-identity { border:0; box-shadow:none; background:transparent!important; }
 .villages-embedded-backstory { margin:0 .65rem; border-top:1px solid #596b9b; min-width:0; }
 .villages-forging-v2 .villages-embedded-backstory .villages-backstory-row { flex-wrap:wrap; }

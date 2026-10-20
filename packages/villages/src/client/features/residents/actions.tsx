@@ -168,19 +168,20 @@ export function useAddVillager(ports: {
 }) {
   const { loadCatalog, setBusy, setError, setSnapshot } = ports;
   return useCallback(
-    async (characterId: string) => {
+    async (characterId: string, spriteSetupRevision?: number) => {
       setBusy(true);
       try {
         setSnapshot(
           await request<VillageSnapshot>("/villagers", {
             method: "POST",
-            body: JSON.stringify({ characterId }),
+            body: JSON.stringify({ characterId, spriteSetupRevision }),
           }),
         );
         setError("");
         await loadCatalog();
       } catch (cause) {
         setError(messageFrom(cause, "That character could not move in."));
+        throw cause;
       } finally {
         setBusy(false);
       }

@@ -133,6 +133,14 @@ function fixture(name: string) {
       note("cards");
       return [structuredClone(card)];
     },
+    async preparedSpriteManager(id) {
+      note("sprites:" + id);
+      assert(
+        !state.villagers.some((resident) => resident.characterId === id),
+        "Existing residents retain their sprites.",
+      );
+      return null;
+    },
     async prepareFoundedVillage() {
       note("prepare");
       assert.equal(state.villagers.length, 1);
@@ -257,6 +265,13 @@ await assert.rejects(
   /locked/,
 );
 assert.deepEqual(direct.state, saved);
+await direct.service.runVillageSetup({ ...input("Direct"), foundingSpriteRevisions: { same: -1 } });
+assert.equal(
+  direct.calls.filter((call) => call === "sprites:same").length,
+  1,
+  "Later village setup does not consume an existing resident's obsolete sprite draft.",
+);
+assert.deepEqual(direct.state.villagers, saved.villagers);
 
 const suggestions = fixture("Suggestions");
 assert.deepEqual(await suggestions.service.suggestFoundingPlaces("Observatory", ["book"], 1600), {
