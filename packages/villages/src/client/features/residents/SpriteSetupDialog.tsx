@@ -307,7 +307,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       .villages-sprite-setup .sprite-inline input{flex:0 0 18px;width:18px;height:18px;min-width:18px;min-height:18px;padding:0;margin:0}
       .villages-sprite-setup small{overflow-wrap:anywhere;color:#b9c6da}.villages-sprite-setup [role=alert]{color:#ffbeb5}
       .villages-sprite-setup .sprite-counts{margin:0 0 14px;color:#b9c6da}.villages-sprite-setup .sprite-counts span{display:inline-block}
-      .villages-sprite-setup .sprite-analysis{display:grid;gap:2px;margin-bottom:14px}
+      .villages-sprite-setup .sprite-analysis{display:grid;gap:2px}
       .villages-sprite-setup .sprite-gallery{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
       .villages-sprite-setup .sprite-choice{min-width:0;display:grid;gap:6px;align-content:start}
       .villages-sprite-setup .sprite-thumb{position:relative;width:100%;display:grid;gap:6px;justify-items:center;align-content:start;min-width:0}
@@ -354,30 +354,17 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                 {excludedCount ? <span> · {excludedCount} excluded</span> : null}
                 {defaultItem ? <span> · Default: {defaultItem.name}</span> : null}
               </p>
-              {showAnalysis && !activeArtwork ? (
-                <div className="sprite-analysis">
-                  {connectionChooser}
-                  <div className="sprite-actions">
-                    <button
-                      disabled={busy || !connections.some((item) => item.id === connectionId) || !analysisCount}
-                      onClick={() => void perform(analyze)}
-                    >
-                      {progress ? "Analyze remaining" : "Analyze sprites"}
-                    </button>
-                    {analyzing ? <button onClick={() => abort.current?.abort()}>Cancel analysis</button> : null}
-                  </div>
-                </div>
-              ) : null}
-              {connectionError && showAnalysis && !activeArtwork ? <p role="alert">{connectionError}</p> : null}
-              {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
-              {progress && (analyzing || progress.done < progress.total) ? (
-                <p role="status" className="sprite-progress">
-                  {analyzing
-                    ? `Analyzing ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
-                    : `Analysis stopped · ${progress.done} of ${progress.total} completed this run`}
-                </p>
-              ) : null}
+              {showAnalysis && !activeArtwork ? <div className="sprite-analysis">{connectionChooser}</div> : null}
               <div className="sprite-actions">
+                {showAnalysis && !activeArtwork ? (
+                  <button
+                    disabled={busy || !connections.some((item) => item.id === connectionId) || !analysisCount}
+                    onClick={() => void perform(analyze)}
+                  >
+                    {progress ? "Analyze remaining" : "Analyze sprites"}
+                  </button>
+                ) : null}
+
                 <button
                   disabled={busy}
                   onClick={() =>
@@ -389,7 +376,17 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                 >
                   Refresh sprites
                 </button>
+                {analyzing ? <button onClick={() => abort.current?.abort()}>Cancel analysis</button> : null}
               </div>
+              {connectionError && showAnalysis && !activeArtwork ? <p role="alert">{connectionError}</p> : null}
+              {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
+              {progress && (analyzing || progress.done < progress.total) ? (
+                <p role="status" className="sprite-progress">
+                  {analyzing
+                    ? `Analyzing ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
+                    : `Analysis stopped · ${progress.done} of ${progress.total} completed this run`}
+                </p>
+              ) : null}
               {!importing && !candidates.length ? <p>No character sprites available.</p> : null}
               <>
                 <div className="sprite-gallery" aria-label="Sprites">
