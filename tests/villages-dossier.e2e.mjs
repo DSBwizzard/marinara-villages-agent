@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { PNG } from "pngjs";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
@@ -390,6 +391,82 @@ try {
     await expect(profile.getByRole("button", { name: "Regenerate signature", exact: true })).toBeVisible();
     await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
     assert.equal(writes.at(-1).path.endsWith("/villagers/mara/signature"), true);
+    // Old saved derivatives may contain both enclosed white fills and matte edges.
+    // Verify the actual notebook pixels, rather than only checking the CSS rule.
+    const oldArt = signature.locator("img");
+    await oldArt.evaluate(async (element) => {
+      element.src =
+        "data:image/svg+xml," +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="120"><rect width="180" height="120" fill="white"/><rect x="20" y="30" width="140" height="70" fill="black"/><rect x="40" y="45" width="100" height="40" fill="white"/><rect x="70" y="10" width="40" height="8" fill="rgb(230,230,230)"/></svg>',
+        );
+      await element.decode();
+    });
+    await oldArt.scrollIntoViewIfNeeded();
+    await expect(oldArt).toBeInViewport({ ratio: 1 });
+    // Element screenshots use the same scroll-aware clip for both captures.
+    // boundingBox is viewport-relative; a page screenshot clip is not.
+    const oldVisible = PNG.sync.read(await oldArt.screenshot({ animations: "disabled" }));
+    await oldArt.evaluate((element) => {
+      element.style.opacity = "0";
+    });
+    const notebookOnly = PNG.sync.read(await oldArt.screenshot({ animations: "disabled" }));
+    await oldArt.evaluate((element) => {
+      element.style.opacity = "";
+    });
+    const sample = (png, x, y) => Array.from(png.data.slice((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
+    // Separate browser composites can differ by a few 8-bit levels at subpixel
+    // positions. Opaque white paper differs by dozens of levels on this notebook.
+    const pixelTolerance = 4;
+    for (const [x, y] of [
+      [5, 5],
+      [90, 65],
+    ]) {
+      const visible = sample(oldVisible, x, y),
+        paper = sample(notebookOnly, x, y);
+      assert.ok(
+        visible.every((value, channel) => Math.abs(value - paper[channel]) <= pixelTolerance),
+        `Existing saved white fills reveal the notebook unchanged at ${width}x${height} (${x},${y}): ${JSON.stringify({ visible, paper })}`,
+      );
+    }
+    const faintVisible = sample(oldVisible, 90, 14),
+      faintPaper = sample(notebookOnly, 90, 14);
+    assert.ok(
+      faintVisible.every((value, channel) => value <= faintPaper[channel] + pixelTolerance),
+      "Old matte edges cannot brighten the notebook",
+    );
+    await page.screenshot({ path: resolve(output, `signature-white-matte-${width}-${height}.png`) });
+
+    for (const [markWidth, markHeight] of [
+      [200, 900],
+      [1200, 120],
+      [400, 400],
+    ]) {
+      const art = signature.locator("img");
+      await art.evaluate(
+        async (element, [w, h]) => {
+          element.src =
+            "data:image/svg+xml," +
+            encodeURIComponent(
+              `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#c34b82"/></svg>`,
+            );
+          await element.decode();
+        },
+        [markWidth, markHeight],
+      );
+      const bounds = await art.boundingBox();
+      assert.ok(bounds.width <= 280.5 && bounds.height <= 240.5, "Mark fits the responsive signature area");
+      assert.ok(
+        Math.abs(bounds.width / bounds.height - markWidth / markHeight) < 0.02,
+        "Artwork keeps its proportions",
+      );
+      await art.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: resolve(output, `signature-${markWidth}x${markHeight}-${width}-${height}.png`) });
+    }
+    await signature.locator("img").evaluate((element, url) => {
+      element.src = url;
+    }, signatureUrl);
+
     assert.equal(writes.at(-1).body.expectedAttempt, 0);
     failSignature = true;
     await profile.getByRole("button", { name: "Regenerate signature", exact: true }).click();
