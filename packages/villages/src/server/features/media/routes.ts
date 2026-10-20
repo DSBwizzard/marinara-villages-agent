@@ -34,6 +34,13 @@ import { spriteSetup } from "./sprite-setup.js";
 
 export function registerSpriteManagerRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.get<{ Params: CharacterParams }>("/characters/:characterId/sprites/setup/settled", async (request, reply) => {
+    try {
+      return await spriteSetup().settled(readCharacterId(request.params.characterId));
+    } catch (error) {
+      return fail(reply, error, "reading settled sprite setup");
+    }
+  });
   app.get<{ Params: CharacterParams }>("/characters/:characterId/sprites/setup", async (request, reply) => {
     try {
       return await spriteSetup().read(readCharacterId(request.params.characterId));
@@ -53,7 +60,7 @@ export function registerSpriteManagerRoutes(engine: FastifyInstance) {
         try {
           const service = spriteSetup(),
             id = readCharacterId(request.params.characterId);
-          if (action === "prepare") return await service.prepare(id);
+          if (action === "prepare") return await service.prepare(id, controller.signal);
           if (action === "save") return await service.save(id, request.body);
           if (action === "frame") return await service.frame(id, request.body);
           if (action === "apply") return await service.applyResident(id, request.body);

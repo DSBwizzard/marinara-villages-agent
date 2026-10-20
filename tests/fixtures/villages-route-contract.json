@@ -28,6 +28,10 @@
     },
     {
       "method": "get",
+      "path": "/characters/:characterId/sprites/setup/settled"
+    },
+    {
+      "method": "get",
       "path": "/characters/:characterId/sprites/setup"
     },
     {

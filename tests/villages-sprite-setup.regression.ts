@@ -16,6 +16,7 @@ let calls = 0,
   resolved = "",
   copied = 0;
 const libraryFiles = ["full_suicejejshe.png", "full_defeult-1.png", "happy.png"];
+let prepareGate: (() => Promise<void>) | undefined;
 const service = createSpriteSetup({
   villagesDocuments: () => ({ getById: async (_pkg, id) => ({ data: structuredClone(documents.get(id)) }) }),
   mutateDocument: async (id, slot, update) => {
@@ -28,7 +29,7 @@ const service = createSpriteSetup({
       return { provider: "custom", defaultParameters: JSON.stringify({ imageCaptioningEnabled: false }) };
     if (path === "/api/connections/pictures") return { provider: "image_generation" };
     if (path.startsWith("/api/characters/")) return { id: "bupkis" };
-    if (path === "/api/sprites/bupkis") return libraryFiles.map((filename) => ({ filename }));
+    if (path.startsWith("/api/sprites/")) return libraryFiles.map((filename) => ({ filename }));
     throw Error(path);
   },
   villagesLanguageModels: () => ({
@@ -57,6 +58,7 @@ const service = createSpriteSetup({
     readImage: async () => "data:image/png;base64,AAAA",
     prepareArtwork: async (name, _image, engineSource) => {
       copied++;
+      await prepareGate?.();
       return {
         id: "a-" + randomUUID(),
         name,
@@ -252,6 +254,64 @@ assert.equal(
 );
 draft = await service.save("bupkis", { ...draft, useSprites: false });
 assert.equal((await service.preparedManager("bupkis", draft.revision))!.assignments.length, 0);
+// Leaving setup must not wait for a batch, dispatch the next image, or lose the finished copy.
+libraryFiles.splice(0, libraryFiles.length, "full_one.png", "full_two.png");
+let entered!: () => void, release!: () => void;
+const started = new Promise<void>((resolve) => {
+  entered = resolve;
+});
+const held = new Promise<void>((resolve) => {
+  release = resolve;
+});
+prepareGate = async () => {
+  entered();
+  await held;
+};
+const firstImport = new AbortController(),
+  queuedImport = new AbortController();
+const beforeImports = copied;
+const firstWork = service.prepare("cold-one", firstImport.signal);
+await started;
+const queuedWork = service.prepare("cold-two", queuedImport.signal);
+const settledWork = service.settled("cold-one");
+assert.equal(await service.preparedManager("cold-one"), null, "Portrait selection bypasses pending sprite import.");
+assert.equal((await service.read("cold-one")).revision, 0, "Loading setup does not wait for image preparation.");
+queuedImport.abort();
+firstImport.abort();
+release();
+const [partial, cancelled] = await Promise.all([firstWork, queuedWork]);
+assert.equal(copied - beforeImports, 1, "Cancelled queued work never starts another image.");
+assert.equal(partial.manager.artwork.length, 1, "The image already processing is retained after leaving.");
+assert.equal(
+  (await settledWork).revision,
+  partial.revision,
+  "Returning to an existing selection uses the completed partial-import revision.",
+);
+assert.equal(cancelled.manager.artwork.length, 0);
+assert.deepEqual(partial.errors, {}, "Cancellation is not recorded as an image failure.");
+assert.equal(
+  await service.preparedManager("cold-one"),
+  null,
+  "Late imports cannot enable sprites for a portrait selection.",
+);
+prepareGate = undefined;
+const resumed = await service.prepare("cold-one");
+assert.equal(resumed.manager.artwork.length, 2);
+assert.equal(copied - beforeImports, 2, "Reopening resumes missing copies without importing completed artwork again.");
+libraryFiles.splice(0, libraryFiles.length, ...Array.from({ length: 40 }, (_, index) => `full_scale-${index}.png`));
+let activeImages = 0,
+  peakImages = 0;
+prepareGate = async () => {
+  activeImages++;
+  peakImages = Math.max(peakImages, activeImages);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  activeImages--;
+};
+const beforeScale = copied;
+const manyCharacters = await Promise.all(Array.from({ length: 15 }, (_, index) => service.prepare(`scale-${index}`)));
+assert.equal(peakImages, 1, "Fifteen characters cannot process hundreds of setup images concurrently.");
+assert.equal(copied - beforeScale, 600);
+assert.ok(manyCharacters.every((state) => state.manager.artwork.length === 40));
 console.log(
   "Sprite setup: import, review, captioning, cancellation, revision checks and directional rendering passed.",
 );

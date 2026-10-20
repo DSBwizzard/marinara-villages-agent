@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpriteFrame, SpriteSetupAssignment, SpriteSetupState } from "../../../shared/contracts/sprites.js";
 import { request, requestHost, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
@@ -11,8 +11,9 @@ type Props = {
   name: string;
   portrait?: Portrait;
   onClose(revision?: number): void;
-  onDone(revision: number): void | Promise<void>;
+  onDone(revision?: number): void | Promise<void>;
   existing?: boolean;
+  preserveSelection?: boolean;
 };
 const analysisConnectionKey = "villages-sprite-analysis-connection";
 const complete = (item: SpriteSetupAssignment) => item.included && Boolean(item.name.trim() && item.direction);
@@ -24,14 +25,24 @@ const needsAnalysis = (item: SpriteSetupAssignment, data: SpriteSetupState) =>
   !item.useWhen.trim() &&
   !item.direction &&
   !data.suggestions.some((suggestion) => suggestion.artworkId === item.artworkId);
-export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone, existing }: Props) {
+export function SpriteSetupDialog({
+  characterId,
+  name,
+  portrait,
+  onClose,
+  onDone,
+  existing,
+  preserveSelection,
+}: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const abort = useRef<AbortController | null>(null);
+  const importAbort = useRef<AbortController | null>(null);
   const working = useRef(false);
   const [data, setData] = useState<SpriteSetupState | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [connections, setConnections] = useState<VillageConnectionOption[]>([]);
   const [connectionId, setConnectionId] = useState(() => {
     try {
@@ -51,8 +62,27 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
     [bulkUse, setBulkUse] = useState(""),
     [bulkFacing, setBulkFacing] = useState("");
   const base = `/characters/${encodeURIComponent(characterId)}/sprites/setup`;
+  const importArtwork = useCallback(
+    async (controller = new AbortController()) => {
+      importAbort.current = controller;
+      setImporting(true);
+      try {
+        const value = await request<SpriteSetupState>(base + "/prepare", {
+          method: "POST",
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) setData(value);
+      } catch (cause) {
+        if (!controller.signal.aborted) setError(messageFrom(cause, "Could not import sprites."));
+      } finally {
+        setImporting(false);
+      }
+    },
+    [base],
+  );
   useEffect(() => {
     const controller = new AbortController();
+    importAbort.current = controller;
     dialog.current?.showModal();
     void requestHost<EngineConnectionRow[]>("/api/connections", { signal: controller.signal })
       .then((rows) =>
@@ -65,17 +95,12 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
       });
     void request<SpriteSetupState>(base, { signal: controller.signal })
       .then(async (value) => {
+        if (controller.signal.aborted) return;
         setData(value);
         if (
           value.files.some((file) => !value.manager.artwork.some((art) => art.engineSource?.filename === file.filename))
         ) {
-          setBusy(true);
-          try {
-            value = await request<SpriteSetupState>(base + "/prepare", { method: "POST", signal: controller.signal });
-            setData(value);
-          } finally {
-            setBusy(false);
-          }
+          await importArtwork(controller);
         }
       })
       .catch((cause) => {
@@ -83,9 +108,10 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
       });
     return () => {
       controller.abort();
+      importAbort.current?.abort();
       abort.current?.abort();
     };
-  }, [base]);
+  }, [base, importArtwork]);
   async function perform(action: () => Promise<void>) {
     if (working.current) return;
     working.current = true;
@@ -154,6 +180,16 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
     return saved;
   }
   async function finish(useSprites: boolean) {
+    if (!useSprites && (!data || importing)) {
+      importAbort.current?.abort();
+      try {
+        await onDone();
+      } catch (cause) {
+        setData(await request<SpriteSetupState>(base + "/settled"));
+        throw cause;
+      }
+      return;
+    }
     const saved = await save(useSprites, true);
     if (!saved) return;
     if (existing)
@@ -162,6 +198,17 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
         body: JSON.stringify({ revision: saved.revision, residentToken: data.residentToken }),
       });
     await onDone(saved.revision);
+  }
+  async function close() {
+    if (!data || importing) {
+      importAbort.current?.abort();
+      // An already selected founding character keeps its reviewed choice after partial imports.
+      const saved = preserveSelection ? await request<SpriteSetupState>(base + "/settled") : undefined;
+      onClose(saved?.revision);
+      return;
+    }
+    const saved = data.revision ? await save(data.useSprites) : data;
+    onClose(saved?.revision);
   }
   async function analyze() {
     if (!connections.some((item) => item.id === connectionId)) {
@@ -229,11 +276,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
       aria-label={`${name} sprite setup`}
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy)
-          void perform(async () => {
-            const saved = data?.revision ? await save(data.useSprites) : data;
-            onClose(saved?.revision);
-          });
+        if (!busy) void perform(close);
       }}
     >
       <style>{`
@@ -243,415 +286,417 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
       .villages-sprite-setup .sprite-preview-small .sprite-refresh{display:none}.villages-sprite-setup .sprite-select{display:none}.villages-sprite-setup .sprite-batch[open]+.sprite-editor .sprite-select{display:flex}.villages-sprite-setup .sprite-counts span{display:inline-block;white-space:nowrap}.villages-sprite-setup .sprite-thumb{min-width:86px}.villages-sprite-setup .sprite-progress{margin:0}.villages-sprite-setup .sprite-gallery{display:flex;gap:8px;overflow-x:auto;min-width:0;padding:3px 0 8px}.villages-sprite-setup .sprite-thumb{flex:0 0 76px;padding:4px;display:grid;gap:4px;font-size:12px}.villages-sprite-setup .sprite-thumb[aria-pressed=true]{outline:2px solid #b0d2ff;outline-offset:-2px;background:#36567a}.villages-sprite-setup .sprite-thumb img{width:66px;height:76px;object-fit:contain}.villages-sprite-setup .sprite-thumb span{white-space:nowrap}.villages-sprite-setup .sprite-navigation{display:flex;align-items:center;justify-content:space-between;gap:8px}.villages-sprite-setup .sprite-batch summary{cursor:pointer;padding:8px 0}.villages-sprite-setup .sprite-tile{grid-template-columns:minmax(120px,1fr) minmax(0,2fr);gap:16px}.villages-sprite-setup .sprite-inspector-image{min-width:0;display:grid;gap:6px;align-content:start}.villages-sprite-setup .sprite-inspector-image img{width:100%;height:260px;object-fit:contain;background:#233048;border-radius:8px}.villages-sprite-setup .sprite-fields{display:grid;gap:10px;min-width:0}.villages-sprite-setup .sprite-fields>.sprite-inline{display:inline-flex}.villages-sprite-setup .sprite-fields>.sprite-select{display:none}.villages-sprite-setup .sprite-tile textarea{resize:vertical}@media(max-width:480px){.villages-sprite-setup .sprite-tile{grid-template-columns:1fr}.villages-sprite-setup .sprite-inspector-image{grid-template-columns:110px minmax(0,1fr);align-items:center}.villages-sprite-setup .sprite-inspector-image img{height:140px}.villages-sprite-setup .sprite-fields{gap:8px}.villages-sprite-setup .sprite-preview-small p{margin:0 0 8px}}
     `}</style>
       <header>
-        <h2>{name}’s sprites</h2>
-        <button
-          disabled={busy}
-          onClick={() =>
-            void perform(async () => {
-              const saved = data?.revision ? await save(data.useSprites) : data;
-              onClose(saved?.revision);
-            })
-          }
-        >
+        <div>
+          <h2>{name}’s sprites</h2>
+          {!data || importing ? (
+            <p role="status" style={{ margin: "4px 0 0", fontSize: "0.875rem", color: "#b9c6da" }}>
+              {importing ? "Preparing sprites…" : "Reading sprites…"}
+            </p>
+          ) : null}
+        </div>
+        <button disabled={busy} onClick={() => void perform(close)}>
           Back
         </button>
       </header>
       <main>
         {error ? <p role="alert">{error}</p> : null}
-        {!data ? (
-          <p role="status">Loading sprites…</p>
-        ) : (
-          <>
-            <div className={`sprite-preview ${expanded ? "sprite-preview-small" : ""}`}>
-              {defaultArt ? (
-                <img src={defaultArt.rendered.url} alt={`${name} default sprite`} />
-              ) : (
-                <AvatarFace portrait={portrait} name={name} glyph="person" className="sprite-portrait" />
-              )}
-              <div>
-                <strong>{defaultItem?.name || "Character portrait"}</strong>
-                <p role="status" className="sprite-counts">
-                  <span>{data.assignments.length} total</span> · <span>{analysisCount} need analysis</span> ·{" "}
-                  <span>{reviewCount} need review</span> · <span>{assigned.length} approved</span>
-                  {excludedCount ? <span> · {excludedCount} excluded</span> : null}
-                </p>
-                <label>
-                  Sprite analysis connection
-                  <select
-                    aria-label="Sprite analysis connection"
-                    value={connectionId}
-                    disabled={busy}
-                    onChange={(event) => {
-                      setConnectionId(event.target.value);
-                      try {
-                        window.localStorage.setItem(analysisConnectionKey, event.target.value);
-                      } catch {
-                        // The current choice still works when browser storage is unavailable.
+        <fieldset disabled={importing} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+          {!data ? null : (
+            <>
+              <div className={`sprite-preview ${expanded ? "sprite-preview-small" : ""}`}>
+                {defaultArt ? (
+                  <img src={defaultArt.rendered.url} alt={`${name} default sprite`} />
+                ) : (
+                  <AvatarFace portrait={portrait} name={name} glyph="person" className="sprite-portrait" />
+                )}
+                <div>
+                  <strong>{defaultItem?.name || "Character portrait"}</strong>
+                  <p role="status" className="sprite-counts">
+                    <span>{data.assignments.length} total</span> · <span>{analysisCount} need analysis</span> ·{" "}
+                    <span>{reviewCount} need review</span> · <span>{assigned.length} approved</span>
+                    {excludedCount ? <span> · {excludedCount} excluded</span> : null}
+                  </p>
+                  <label>
+                    Sprite analysis connection
+                    <select
+                      aria-label="Sprite analysis connection"
+                      value={connectionId}
+                      disabled={busy}
+                      onChange={(event) => {
+                        setConnectionId(event.target.value);
+                        try {
+                          window.localStorage.setItem(analysisConnectionKey, event.target.value);
+                        } catch {
+                          // The current choice still works when browser storage is unavailable.
+                        }
+                      }}
+                    >
+                      <option value="">Choose a vision-capable connection</option>
+                      {connectionId && !connections.some((item) => item.id === connectionId) ? (
+                        <option value={connectionId}>Unavailable connection</option>
+                      ) : null}
+                      {connections.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {connectionError ? <p role="alert">{connectionError}</p> : null}
+                  <div className="sprite-actions">
+                    <button
+                      disabled={
+                        busy ||
+                        !connections.some((item) => item.id === connectionId) ||
+                        (!selected.length && !analysisCount)
                       }
-                    }}
-                  >
-                    <option value="">Choose a vision-capable connection</option>
-                    {connectionId && !connections.some((item) => item.id === connectionId) ? (
-                      <option value={connectionId}>Unavailable connection</option>
-                    ) : null}
-                    {connections.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {connectionError ? <p role="alert">{connectionError}</p> : null}
+                      onClick={() => void perform(analyze)}
+                    >
+                      {selected.length
+                        ? "Analyze selected"
+                        : data.suggestions.length || progress || assigned.length || reviewCount
+                          ? "Analyze remaining"
+                          : "Analyze sprites"}
+                    </button>
+                    <button disabled={busy} onClick={() => setExpanded(!expanded)}>
+                      {expanded ? "Overview" : assigned.length || reviewCount ? "Review sprites" : "Set up manually"}
+                    </button>
+                    {analyzing ? <button onClick={() => abort.current?.abort()}>Cancel analysis</button> : null}
+                    <button
+                      className="sprite-refresh"
+                      disabled={busy}
+                      onClick={() =>
+                        void perform(async () => {
+                          await save(data.useSprites);
+                          void importArtwork();
+                        })
+                      }
+                    >
+                      Refresh character sprites
+                    </button>
+                  </div>
+                  {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
+                </div>
+              </div>
+              {progress && (analyzing || progress.done < progress.total) ? (
+                <p role="status" className="sprite-progress">
+                  {analyzing
+                    ? `Analyzing ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
+                    : `Analysis stopped · ${progress.done} of ${progress.total} completed this run`}
+                </p>
+              ) : null}
+              {reviewCount ? (
                 <div className="sprite-actions">
                   <button
                     disabled={
                       busy ||
-                      !connections.some((item) => item.id === connectionId) ||
-                      (!selected.length && !analysisCount)
+                      !data.assignments.some(
+                        (item) =>
+                          complete(
+                            data.suggestions.find((suggestion) => suggestion.artworkId === item.artworkId) ?? item,
+                          ) && !ready(item),
+                      )
                     }
-                    onClick={() => void perform(analyze)}
-                  >
-                    {selected.length
-                      ? "Analyze selected"
-                      : data.suggestions.length || progress || assigned.length || reviewCount
-                        ? "Analyze remaining"
-                        : "Analyze sprites"}
-                  </button>
-                  <button disabled={busy} onClick={() => setExpanded(!expanded)}>
-                    {expanded ? "Overview" : assigned.length || reviewCount ? "Review sprites" : "Set up manually"}
-                  </button>
-                  {analyzing ? <button onClick={() => abort.current?.abort()}>Cancel analysis</button> : null}
-                  <button
-                    className="sprite-refresh"
-                    disabled={busy}
                     onClick={() =>
-                      void perform(async () => {
-                        await save(data.useSprites);
-                        setData(await request<SpriteSetupState>(base + "/prepare", { method: "POST" }));
-                      })
+                      approve(data.assignments.filter((item) => !ready(item)).map((item) => item.artworkId))
                     }
                   >
-                    Refresh character sprites
+                    Approve all
                   </button>
-                </div>
-                {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
-              </div>
-            </div>
-            {progress && (analyzing || progress.done < progress.total) ? (
-              <p role="status" className="sprite-progress">
-                {analyzing
-                  ? `Analyzing ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
-                  : `Analysis stopped · ${progress.done} of ${progress.total} completed this run`}
-              </p>
-            ) : null}
-            {reviewCount ? (
-              <div className="sprite-actions">
-                <button
-                  disabled={
-                    busy ||
-                    !data.assignments.some(
-                      (item) =>
-                        complete(
-                          data.suggestions.find((suggestion) => suggestion.artworkId === item.artworkId) ?? item,
-                        ) && !ready(item),
-                    )
-                  }
-                  onClick={() => approve(data.assignments.filter((item) => !ready(item)).map((item) => item.artworkId))}
-                >
-                  Approve all
-                </button>
-                {data.suggestions.length ? (
-                  <button disabled={busy} onClick={() => setData({ ...data, suggestions: [] })}>
-                    Discard
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            {expanded ? (
-              <>
-                <div className="sprite-gallery" aria-label="Sprites">
-                  {data.manager.artwork.map((art, index) => {
-                    const item = data.assignments.find((item) => item.artworkId === art.id)!;
-                    const suggestion = data.suggestions.find((item) => item.artworkId === art.id);
-                    return (
-                      <button
-                        key={art.id}
-                        type="button"
-                        className="sprite-thumb"
-                        aria-label={`Sprite ${index + 1}: ${suggestion?.name || item.name || "Needs assignment"}`}
-                        aria-pressed={index === activeIndex}
-                        onClick={() => {
-                          setActiveArtwork(art.id);
-                          setFraming("");
-                        }}
-                      >
-                        <img src={art.rendered.url} alt="" loading="lazy" />
-                        <span>
-                          {index + 1} ·{" "}
-                          {data.errors[art.id]
-                            ? "Retry"
-                            : ready(item)
-                              ? "Approved"
-                              : needsAnalysis(item, data)
-                                ? "Analyze"
-                                : "Review"}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="sprite-navigation">
-                  <button
-                    disabled={!activeIndex}
-                    onClick={() => {
-                      setActiveArtwork(data.manager.artwork[activeIndex - 1].id);
-                      setFraming("");
-                    }}
-                  >
-                    Previous
-                  </button>
-                  <span>
-                    {activeIndex + 1} / {data.manager.artwork.length}
-                  </span>
-                  <button
-                    disabled={activeIndex >= data.manager.artwork.length - 1}
-                    onClick={() => {
-                      setActiveArtwork(data.manager.artwork[activeIndex + 1].id);
-                      setFraming("");
-                    }}
-                  >
-                    Next
-                  </button>
-                </div>
-                <details className="sprite-batch">
-                  <summary>Batch edit</summary>
-                  <div className="sprite-bulk" aria-label="Batch edit sprites">
-                    <button disabled={busy} onClick={() => setSelected(data.manager.artwork.map((art) => art.id))}>
-                      Select all
+                  {data.suggestions.length ? (
+                    <button disabled={busy} onClick={() => setData({ ...data, suggestions: [] })}>
+                      Discard
                     </button>
-                    <button disabled={busy} onClick={() => setSelected([])}>
-                      Clear selection
-                    </button>
-                    <input
-                      autoComplete="off"
-                      aria-label="Batch expression"
-                      placeholder="Expression"
-                      value={bulkName}
-                      onChange={(event) => setBulkName(event.target.value)}
-                    />
-                    <input
-                      autoComplete="off"
-                      aria-label="Batch use when"
-                      placeholder="Use when"
-                      value={bulkUse}
-                      onChange={(event) => setBulkUse(event.target.value)}
-                    />
-                    <select
-                      aria-label="Batch facing"
-                      value={bulkFacing}
-                      onChange={(event) => setBulkFacing(event.target.value)}
-                    >
-                      <option value="">Facing</option>
-                      <option value="front">Front</option>
-                      <option value="left">Left</option>
-                      <option value="right">Right</option>
-                    </select>
+                  ) : null}
+                </div>
+              ) : null}
+              {expanded ? (
+                <>
+                  <div className="sprite-gallery" aria-label="Sprites">
+                    {data.manager.artwork.map((art, index) => {
+                      const item = data.assignments.find((item) => item.artworkId === art.id)!;
+                      const suggestion = data.suggestions.find((item) => item.artworkId === art.id);
+                      return (
+                        <button
+                          key={art.id}
+                          type="button"
+                          className="sprite-thumb"
+                          aria-label={`Sprite ${index + 1}: ${suggestion?.name || item.name || "Needs assignment"}`}
+                          aria-pressed={index === activeIndex}
+                          onClick={() => {
+                            setActiveArtwork(art.id);
+                            setFraming("");
+                          }}
+                        >
+                          <img src={art.rendered.url} alt="" loading="lazy" />
+                          <span>
+                            {index + 1} ·{" "}
+                            {data.errors[art.id]
+                              ? "Retry"
+                              : ready(item)
+                                ? "Approved"
+                                : needsAnalysis(item, data)
+                                  ? "Analyze"
+                                  : "Review"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="sprite-navigation">
                     <button
-                      disabled={busy || !selected.length || !(bulkName || bulkUse || bulkFacing)}
-                      onClick={() =>
-                        setData((prior) => ({
-                          ...prior,
-                          assignments: prior.assignments.map((item) =>
-                            selected.includes(item.artworkId)
-                              ? {
-                                  ...(prior.suggestions.find((suggestion) => suggestion.artworkId === item.artworkId) ??
-                                    item),
-                                  ...(bulkName ? { name: bulkName } : {}),
-                                  ...(bulkUse ? { useWhen: bulkUse } : {}),
-                                  ...(bulkFacing
-                                    ? { direction: bulkFacing as SpriteSetupAssignment["direction"] }
-                                    : {}),
-                                  approved: false,
-                                }
-                              : item,
-                          ),
-                          suggestions: prior.suggestions.filter((item) => !selected.includes(item.artworkId)),
-                        }))
-                      }
+                      disabled={!activeIndex}
+                      onClick={() => {
+                        setActiveArtwork(data.manager.artwork[activeIndex - 1].id);
+                        setFraming("");
+                      }}
                     >
-                      Apply to selected
+                      Previous
+                    </button>
+                    <span>
+                      {activeIndex + 1} / {data.manager.artwork.length}
+                    </span>
+                    <button
+                      disabled={activeIndex >= data.manager.artwork.length - 1}
+                      onClick={() => {
+                        setActiveArtwork(data.manager.artwork[activeIndex + 1].id);
+                        setFraming("");
+                      }}
+                    >
+                      Next
                     </button>
                   </div>
-                </details>
-                <div className="sprite-editor">
-                  {data.manager.artwork.slice(activeIndex, activeIndex + 1).map((art) => {
-                    const suggestion = data.suggestions.find((item) => item.artworkId === art.id);
-                    const item = suggestion ?? data.assignments.find((item) => item.artworkId === art.id)!;
-                    return (
-                      <section className="sprite-tile" key={art.id} aria-label={art.name}>
-                        <div className="sprite-inspector-image">
-                          <img src={art.rendered.url} alt={art.name} loading="lazy" />
-                          <small>{art.name}</small>
-                        </div>
-                        <div className="sprite-fields">
-                          <label className="sprite-inline sprite-select">
-                            <input
-                              autoComplete="off"
-                              type="checkbox"
-                              disabled={busy}
-                              checked={selected.includes(art.id)}
-                              onChange={(event) =>
-                                setSelected((prior) =>
-                                  event.target.checked ? [...prior, art.id] : prior.filter((id) => id !== art.id),
-                                )
-                              }
-                            />
-                            Select
-                          </label>
-                          {!ready(item) ? (
-                            <>
-                              <button disabled={busy || !complete(item)} onClick={() => approve([art.id])}>
-                                Approve sprite
-                              </button>
-                            </>
-                          ) : null}
-                          <label>
-                            Expression
-                            <input
-                              autoComplete="off"
-                              aria-label="Expression"
-                              disabled={busy}
-                              value={item.name}
-                              maxLength={100}
-                              onChange={(event) => edit(art.id, { name: event.target.value })}
-                            />
-                          </label>
-                          <label>
-                            Use when
-                            <textarea
-                              autoComplete="off"
-                              aria-label="Use when"
-                              disabled={busy}
-                              value={item.useWhen}
-                              maxLength={1000}
-                              rows={2}
-                              onChange={(event) => edit(art.id, { useWhen: event.target.value })}
-                            />
-                          </label>
-                          <label>
-                            Facing
-                            <select
-                              aria-label="Facing"
-                              disabled={busy}
-                              value={item.direction}
-                              onChange={(event) =>
-                                edit(art.id, { direction: event.target.value as SpriteSetupAssignment["direction"] })
-                              }
-                            >
-                              <option value="">Unassigned</option>
-                              <option value="front">Front</option>
-                              <option value="left">Left</option>
-                              <option value="right">Right</option>
-                            </select>
-                            {!item.direction ? <small>Choose the original facing.</small> : null}
-                          </label>
-                          <label className="sprite-inline">
-                            <input
-                              autoComplete="off"
-                              type="checkbox"
-                              disabled={busy}
-                              checked={item.included}
-                              onChange={(event) => edit(art.id, { included: event.target.checked })}
-                            />
-                            Include
-                          </label>
-                          <label className="sprite-inline">
-                            <input
-                              autoComplete="off"
-                              type="radio"
-                              name="sprite-default"
-                              disabled={busy || !complete(item)}
-                              checked={data.defaultArtworkId === art.id}
-                              onChange={() => setData({ ...data, defaultArtworkId: art.id })}
-                            />
-                            Default
-                          </label>
-                          {data.errors[art.id] ? <small role="alert">{data.errors[art.id]}</small> : null}
-                          <button
-                            disabled={busy}
-                            onClick={() => {
-                              setFraming(framing === art.id ? "" : art.id);
-                              setFrameDraft(art.frame);
-                            }}
-                          >
-                            Adjust framing
-                          </button>
-                          {framing === art.id && frameDraft ? (
-                            <>
-                              {(["scale", "offsetX", "offsetY"] as const).map((key) => (
-                                <label key={key}>
-                                  {{ scale: "Size", offsetX: "Horizontal position", offsetY: "Foot position" }[key]}
-                                  <input
-                                    autoComplete="off"
-                                    type="number"
-                                    disabled={busy}
-                                    value={frameDraft[key]}
-                                    step={key === "scale" ? 0.05 : 1}
-                                    onChange={(event) =>
-                                      setFrameDraft({ ...frameDraft, [key]: Number(event.target.value) })
-                                    }
-                                  />
-                                </label>
-                              ))}
-                              <button
+                  <details className="sprite-batch">
+                    <summary>Batch edit</summary>
+                    <div className="sprite-bulk" aria-label="Batch edit sprites">
+                      <button disabled={busy} onClick={() => setSelected(data.manager.artwork.map((art) => art.id))}>
+                        Select all
+                      </button>
+                      <button disabled={busy} onClick={() => setSelected([])}>
+                        Clear selection
+                      </button>
+                      <input
+                        autoComplete="off"
+                        aria-label="Batch expression"
+                        placeholder="Expression"
+                        value={bulkName}
+                        onChange={(event) => setBulkName(event.target.value)}
+                      />
+                      <input
+                        autoComplete="off"
+                        aria-label="Batch use when"
+                        placeholder="Use when"
+                        value={bulkUse}
+                        onChange={(event) => setBulkUse(event.target.value)}
+                      />
+                      <select
+                        aria-label="Batch facing"
+                        value={bulkFacing}
+                        onChange={(event) => setBulkFacing(event.target.value)}
+                      >
+                        <option value="">Facing</option>
+                        <option value="front">Front</option>
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                      </select>
+                      <button
+                        disabled={busy || !selected.length || !(bulkName || bulkUse || bulkFacing)}
+                        onClick={() =>
+                          setData((prior) => ({
+                            ...prior,
+                            assignments: prior.assignments.map((item) =>
+                              selected.includes(item.artworkId)
+                                ? {
+                                    ...(prior.suggestions.find(
+                                      (suggestion) => suggestion.artworkId === item.artworkId,
+                                    ) ?? item),
+                                    ...(bulkName ? { name: bulkName } : {}),
+                                    ...(bulkUse ? { useWhen: bulkUse } : {}),
+                                    ...(bulkFacing
+                                      ? { direction: bulkFacing as SpriteSetupAssignment["direction"] }
+                                      : {}),
+                                    approved: false,
+                                  }
+                                : item,
+                            ),
+                            suggestions: prior.suggestions.filter((item) => !selected.includes(item.artworkId)),
+                          }))
+                        }
+                      >
+                        Apply to selected
+                      </button>
+                    </div>
+                  </details>
+                  <div className="sprite-editor">
+                    {data.manager.artwork.slice(activeIndex, activeIndex + 1).map((art) => {
+                      const suggestion = data.suggestions.find((item) => item.artworkId === art.id);
+                      const item = suggestion ?? data.assignments.find((item) => item.artworkId === art.id)!;
+                      return (
+                        <section className="sprite-tile" key={art.id} aria-label={art.name}>
+                          <div className="sprite-inspector-image">
+                            <img src={art.rendered.url} alt={art.name} loading="lazy" />
+                            <small>{art.name}</small>
+                          </div>
+                          <div className="sprite-fields">
+                            <label className="sprite-inline sprite-select">
+                              <input
+                                autoComplete="off"
+                                type="checkbox"
                                 disabled={busy}
-                                onClick={() =>
-                                  void perform(async () => {
-                                    const saved = await save(data.useSprites);
-                                    setData(
-                                      await request<SpriteSetupState>(base + "/frame", {
-                                        method: "POST",
-                                        body: JSON.stringify({
-                                          revision: saved.revision,
-                                          artworkId: art.id,
-                                          frame: frameDraft,
-                                        }),
-                                      }),
-                                    );
-                                  })
+                                checked={selected.includes(art.id)}
+                                onChange={(event) =>
+                                  setSelected((prior) =>
+                                    event.target.checked ? [...prior, art.id] : prior.filter((id) => id !== art.id),
+                                  )
+                                }
+                              />
+                              Select
+                            </label>
+                            {!ready(item) ? (
+                              <>
+                                <button disabled={busy || !complete(item)} onClick={() => approve([art.id])}>
+                                  Approve sprite
+                                </button>
+                              </>
+                            ) : null}
+                            <label>
+                              Expression
+                              <input
+                                autoComplete="off"
+                                aria-label="Expression"
+                                disabled={busy}
+                                value={item.name}
+                                maxLength={100}
+                                onChange={(event) => edit(art.id, { name: event.target.value })}
+                              />
+                            </label>
+                            <label>
+                              Use when
+                              <textarea
+                                autoComplete="off"
+                                aria-label="Use when"
+                                disabled={busy}
+                                value={item.useWhen}
+                                maxLength={1000}
+                                rows={2}
+                                onChange={(event) => edit(art.id, { useWhen: event.target.value })}
+                              />
+                            </label>
+                            <label>
+                              Facing
+                              <select
+                                aria-label="Facing"
+                                disabled={busy}
+                                value={item.direction}
+                                onChange={(event) =>
+                                  edit(art.id, { direction: event.target.value as SpriteSetupAssignment["direction"] })
                                 }
                               >
-                                Save framing
-                              </button>
-                            </>
-                          ) : null}
-                          {art.warnings.map((warning) => (
-                            <small key={warning}>{warning}</small>
-                          ))}
-                        </div>
-                      </section>
-                    );
-                  })}
-                </div>
-              </>
-            ) : null}
-            {Object.entries(data.errors)
-              .filter(([key]) => !data.manager.artwork.some((art) => art.id === key))
-              .map(([file, problem]) => (
-                <small key={file} role="alert">
-                  {file}: {problem}
-                </small>
-              ))}
-          </>
-        )}
+                                <option value="">Unassigned</option>
+                                <option value="front">Front</option>
+                                <option value="left">Left</option>
+                                <option value="right">Right</option>
+                              </select>
+                              {!item.direction ? <small>Choose the original facing.</small> : null}
+                            </label>
+                            <label className="sprite-inline">
+                              <input
+                                autoComplete="off"
+                                type="checkbox"
+                                disabled={busy}
+                                checked={item.included}
+                                onChange={(event) => edit(art.id, { included: event.target.checked })}
+                              />
+                              Include
+                            </label>
+                            <label className="sprite-inline">
+                              <input
+                                autoComplete="off"
+                                type="radio"
+                                name="sprite-default"
+                                disabled={busy || !complete(item)}
+                                checked={data.defaultArtworkId === art.id}
+                                onChange={() => setData({ ...data, defaultArtworkId: art.id })}
+                              />
+                              Default
+                            </label>
+                            {data.errors[art.id] ? <small role="alert">{data.errors[art.id]}</small> : null}
+                            <button
+                              disabled={busy}
+                              onClick={() => {
+                                setFraming(framing === art.id ? "" : art.id);
+                                setFrameDraft(art.frame);
+                              }}
+                            >
+                              Adjust framing
+                            </button>
+                            {framing === art.id && frameDraft ? (
+                              <>
+                                {(["scale", "offsetX", "offsetY"] as const).map((key) => (
+                                  <label key={key}>
+                                    {{ scale: "Size", offsetX: "Horizontal position", offsetY: "Foot position" }[key]}
+                                    <input
+                                      autoComplete="off"
+                                      type="number"
+                                      disabled={busy}
+                                      value={frameDraft[key]}
+                                      step={key === "scale" ? 0.05 : 1}
+                                      onChange={(event) =>
+                                        setFrameDraft({ ...frameDraft, [key]: Number(event.target.value) })
+                                      }
+                                    />
+                                  </label>
+                                ))}
+                                <button
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void perform(async () => {
+                                      const saved = await save(data.useSprites);
+                                      setData(
+                                        await request<SpriteSetupState>(base + "/frame", {
+                                          method: "POST",
+                                          body: JSON.stringify({
+                                            revision: saved.revision,
+                                            artworkId: art.id,
+                                            frame: frameDraft,
+                                          }),
+                                        }),
+                                      );
+                                    })
+                                  }
+                                >
+                                  Save framing
+                                </button>
+                              </>
+                            ) : null}
+                            {art.warnings.map((warning) => (
+                              <small key={warning}>{warning}</small>
+                            ))}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : null}
+              {Object.entries(data.errors)
+                .filter(([key]) => !data.manager.artwork.some((art) => art.id === key))
+                .map(([file, problem]) => (
+                  <small key={file} role="alert">
+                    {file}: {problem}
+                  </small>
+                ))}
+            </>
+          )}
+        </fieldset>
       </main>
       <footer>
-        <button disabled={busy || !data} onClick={() => void perform(() => finish(false))}>
+        <button disabled={busy} onClick={() => void perform(() => finish(false))}>
           Add without using sprites
         </button>
         <button
           className="sprite-primary"
-          disabled={busy || !defaultItem}
+          disabled={busy || importing || !defaultItem}
           onClick={() => void perform(() => finish(true))}
         >
           {existing ? "Save sprites" : "Add villager"}

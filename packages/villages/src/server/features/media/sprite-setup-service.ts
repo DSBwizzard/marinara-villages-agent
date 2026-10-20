@@ -101,7 +101,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     });
     return draft(id);
   }
-  function prepare(id: string) {
+  function prepare(id: string, signal?: AbortSignal) {
     return ports.writes.serialize("setup:" + id, async () => {
       const current = await draft(id);
       const library = await files(id);
@@ -111,19 +111,27 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
         .filter((file) => !manager.artwork.some((art) => art.engineSource?.filename === file.filename))
         .slice(0, 40);
       if (!missing.length && current.revision) return read(id);
+      let attempted = false;
       for (const file of missing) {
+        if (signal?.aborted) break;
         try {
-          manager.artwork.push(
-            await ports.manager.prepareArtwork(file.filename, await ports.manager.readImage(file.url), {
+          // Bound setup image memory/CPU across characters, without locking portrait actions.
+          const art = await ports.writes.serialize("setup-import", async () => {
+            if (signal?.aborted) return null;
+            attempted = true;
+            return ports.manager.prepareArtwork(file.filename, await ports.manager.readImage(file.url), {
               characterId: id,
               filename: file.filename,
-            }),
-          );
+            });
+          });
+          if (!art) break;
+          manager.artwork.push(art);
           delete errors[file.filename];
         } catch {
           errors[file.filename] = "Could not import image.";
         }
       }
+      if (!attempted && signal?.aborted) return read(id);
       await write(id, current.revision, (next) => {
         next.manager = manager;
         next.errors = errors;
@@ -388,5 +396,6 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       return { applied: true };
     });
   }
-  return { read, prepare, save, analyze, frame, preparedManager, applyResident };
+  const settled = (id: string) => ports.writes.serialize("setup:" + id, () => read(id));
+  return { read, settled, prepare, save, analyze, frame, preparedManager, applyResident };
 }

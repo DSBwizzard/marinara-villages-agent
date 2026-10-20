@@ -77,6 +77,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupFocusIssue,
     setSetupFoundingDetails,
     setSetupSpriteRevisions,
+    setupSpriteRevisions,
     setSetupFoundingVillagerIds,
     setSetupKeyboardSpot,
     setSetupLoreTokenBudgetDraft,
@@ -351,8 +352,14 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </p>
                 ) : null}
                 <FoundingVillagerPicker
+                  spriteRevisions={setupSpriteRevisions}
                   onSpritePrepared={(id, revision) =>
-                    setSetupSpriteRevisions((prior) => ({ ...prior, [id]: revision }))
+                    setSetupSpriteRevisions((prior) => {
+                      const next = { ...prior };
+                      if (revision === undefined) delete next[id];
+                      else next[id] = revision;
+                      return next;
+                    })
                   }
                   catalog={catalog}
                   portraits={portraits}

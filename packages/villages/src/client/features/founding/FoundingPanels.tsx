@@ -233,6 +233,7 @@ export function FoundingPersonaSelector({
 
 export function FoundingVillagerPicker({
   onSpritePrepared,
+  spriteRevisions,
   catalog,
   portraits,
   selectedIds,
@@ -246,7 +247,8 @@ export function FoundingVillagerPicker({
   onChange(ids: string[]): void;
   disabled: boolean;
   renderBackstory?(id: string, name: string): ReactNode;
-  onSpritePrepared?(id: string, revision: number): void;
+  onSpritePrepared?(id: string, revision?: number): void;
+  spriteRevisions?: Record<string, number>;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -274,9 +276,11 @@ export function FoundingVillagerPicker({
         <SpriteSetupDialog
           characterId={spriteCharacter.id}
           name={spriteCharacter.name}
+          preserveSelection={spriteRevisions?.[spriteCharacter.id] !== undefined}
           portrait={portraits[spriteCharacter.id]}
           onClose={(revision) => {
-            if (revision !== undefined) onSpritePrepared?.(spriteCharacter.id, revision);
+            if (revision !== undefined && spriteRevisions?.[spriteCharacter.id] !== undefined)
+              onSpritePrepared?.(spriteCharacter.id, revision);
             setSpriteCharacter(null);
           }}
           onDone={(revision) => {

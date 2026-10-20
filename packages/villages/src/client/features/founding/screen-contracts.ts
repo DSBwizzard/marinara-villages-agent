@@ -85,6 +85,7 @@ export type FoundingScreenController = {
   readonly setSetupFocusIssue: FoundingState["setSetupFocusIssue"];
   readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
   readonly setSetupSpriteRevisions: FoundingState["setSetupSpriteRevisions"];
+  readonly setupSpriteRevisions: FoundingState["setupSpriteRevisions"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
   readonly setSetupKeyboardSpot: FoundingState["setSetupKeyboardSpot"];
   readonly setSetupLoreTokenBudgetDraft: FoundingState["setSetupLoreTokenBudgetDraft"];
