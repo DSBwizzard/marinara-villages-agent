@@ -239,18 +239,29 @@ try {
     const counts = page.locator(".sprite-counts");
     const add = page.getByRole("button", { name: "Add villager with sprites", exact: true });
     const first = page.locator(".sprite-tile");
+    const popup = page.getByRole("dialog", { name: "Bupkis sprite review", exact: true });
+    const dialog = page.getByRole("dialog", { name: "Bupkis sprite setup", exact: true });
     const connection = page.getByLabel("Sprite analysis connection", { exact: true });
-    const chooseSprite = async (index) => {
-      const thumb = page.locator(".sprite-thumb").nth(index);
-      if ((await thumb.getAttribute("aria-pressed")) !== "true") await thumb.click();
-      await expect(first).toHaveCount(1);
+    const closeSprite = async () => {
+      if (await popup.isVisible()) await popup.getByRole("button", { name: "Done", exact: true }).click();
     };
-    const openBatch = async () => {
-      if (!(await page.locator(".sprite-batch").evaluate((node) => node.open)))
-        await page.getByText("Batch edit", { exact: true }).click();
+    const chooseSprite = async (index) => {
+      if (await popup.isVisible()) {
+        if ((await page.locator(".sprite-thumb").nth(index).getAttribute("aria-pressed")) === "true") return;
+        await closeSprite();
+      }
+      await page.locator(".sprite-thumb").nth(index).click();
+      await expect(popup).toBeVisible();
+      assert.ok(await popup.evaluate((node) => node.matches(":modal")), "Sprite editor opens as a native modal.");
+    };
+    const openAnalysis = async () => {
+      if (!(await popup.locator(".sprite-analysis-options").evaluate((node) => node.open)))
+        await popup.getByText("Analysis", { exact: true }).click();
     };
     await expect(counts).toHaveText("28 sprites · 0 ready · 28 need analysis");
     await expect(page.locator(".sprite-thumb")).toHaveCount(28);
+    await expect(page.getByText("Batch edit", { exact: true })).toHaveCount(0);
+    await expect(page.locator(".sprite-prepared")).toHaveCount(0);
     await expect(first).toHaveCount(0);
     await expect(add).toBeDisabled();
     assert.equal(analyses, 0, "Opening the grid never makes a model call.");
@@ -258,109 +269,103 @@ try {
     await expect(connection.locator("option")).toHaveCount(2);
     await connection.selectOption("vision");
     assert.equal(analyses, 0, "Selecting a connection never makes a model call.");
-    await page.screenshot({ path: `.build-tmp/sprite-setup/grid-${viewport.width}.png`, fullPage: true });
     await chooseSprite(0);
     await first.getByLabel("Expression", { exact: true }).fill("Listening");
     await first.getByLabel("Use when", { exact: true }).fill("Listening closely.");
     await first.getByLabel("Facing", { exact: true }).selectOption("left");
     await first.getByLabel("Default", { exact: true }).check();
-    await expect(counts).toContainText("28 sprites · 1 ready · 27 need analysis");
-    await first.getByRole("button", { name: "Done", exact: true }).click();
-    await expect(first).toHaveCount(0);
+    await closeSprite();
     await expect(page.locator(".sprite-thumb").first()).toContainText("Listening");
     await expect(page.locator(".sprite-thumb").first()).toContainText("Default");
+    await expect(page.locator(".sprite-thumb").first()).toHaveAttribute("aria-label", "Sprite 1: Listening · Prepared");
+    await expect(page.locator(".sprite-prepared")).toHaveCount(1);
     await page.getByRole("button", { name: "Back", exact: true }).click();
     assert.equal(state.assignments[0].approved, false, "Back saves manual edits without approval.");
     assert.equal(state.useSprites, false);
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
     await expect(connection).toHaveValue("vision");
-    await openBatch();
-    await page.getByLabel("Select sprite 1", { exact: true }).check();
-    await page.getByRole("button", { name: "Analyze selected", exact: true }).click();
+    holdAnalysis = true;
+    await page.getByRole("button", { name: "Analyze sprites", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Cancel analysis", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel analysis", exact: true }).click();
+    releaseAnalysis();
+    await expect(page.getByRole("button", { name: "Cancel analysis", exact: true })).toHaveCount(0);
+    assert.equal(analyses, 1, "Cancellation prevents dispatching the next sprite.");
+    assert.equal(state.assignments[0].name, "Listening");
     await chooseSprite(0);
+    await openAnalysis();
+    await popup.getByRole("button", { name: "Analyze sprite", exact: true }).click();
     await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed art-0");
     await first.getByLabel("Use when", { exact: true }).fill("Calm and attentive.");
+    await closeSprite();
     await page.getByRole("button", { name: "Back", exact: true }).click();
     assert.equal(state.assignments[0].useWhen, "Calm and attentive.");
     assert.equal(state.assignments[0].approved, false);
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
     await chooseSprite(0);
     await expect(first.getByLabel("Use when", { exact: true })).toHaveValue("Calm and attentive.");
+    await page.keyboard.press("Escape");
+    await expect(popup).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(page.locator(".sprite-thumb").first()).toBeFocused();
     await expect(add).toBeDisabled();
-    await openBatch();
-    await page.getByRole("button", { name: "Select all", exact: true }).click();
     failAt = analyses + 8;
-    await page.getByRole("button", { name: "Analyze selected", exact: true }).click();
-    await expect(page.getByText("Analysis stopped · 7 of 28 completed this run", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Analyze sprites", exact: true }).click();
+    await expect(page.getByText("Analysis stopped · 7 of 27 completed this run", { exact: true })).toBeVisible();
     assert.equal(state.suggestions.length, 7, "Earlier results survive a later failure.");
     await expect(add).toBeDisabled();
     const beforeResume = analyzedIds.length;
     await page.getByRole("button", { name: "Analyze remaining", exact: true }).click();
     await expect(counts).toContainText("28 sprites · 28 ready");
     await expect(add).toBeEnabled();
-    assert.equal(state.suggestions.length, 28);
+    await expect(page.locator(".sprite-prepared")).toHaveCount(28);
+    assert.equal(state.suggestions.length, 27);
     assert.ok(
       state.assignments.every((item) => !item.approved),
-      "Analysis alone never approves assignments.",
+      "Analysis and preparation checkmarks never approve assignments.",
     );
     assert.ok(finalizations.slice(beforeResume, -1).every((value) => value === false));
     assert.equal(finalizations.at(-1), true);
     assert.equal(state.suggestedDefaultArtworkId, "art-27");
     assert.deepEqual(
       analyzedIds.slice(beforeResume),
-      Array.from({ length: 21 }, (_, index) => `art-${index + 7}`),
+      Array.from({ length: 20 }, (_, index) => `art-${index + 8}`),
       "Resume analyzes only unfinished sprites.",
     );
-    await expect(first.getByLabel("Default", { exact: true })).toBeChecked();
     await page.getByRole("button", { name: "Back", exact: true }).click();
     assert.equal(state.defaultArtworkId, "art-0", "Back preserves the manually chosen default.");
-    assert.equal(state.suggestions.length, 28, "Back retains unaccepted suggestions for reopening.");
+    assert.equal(state.suggestions.length, 27, "Back retains unaccepted suggestions.");
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
     await chooseSprite(1);
     await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed art-1");
-    await openBatch();
-    await page.getByLabel("Batch facing", { exact: true }).selectOption("right");
-    await page.getByRole("button", { name: "Select all", exact: true }).click();
-    await page.getByRole("button", { name: "Apply to selected", exact: true }).click();
-    await expect(first.getByLabel("Facing", { exact: true })).toHaveValue("right");
+    await first.getByLabel("Facing", { exact: true }).selectOption("right");
+    await closeSprite();
     await page.getByRole("button", { name: "Back", exact: true }).click();
-    assert.ok(
-      state.assignments.every((item) => item.direction === "right" && item.name && !item.approved),
-      "Batch edits preserve proposed metadata as unapproved drafts.",
-    );
-    assert.equal(state.suggestions.length, 0);
+    assert.equal(state.assignments[1].direction, "right");
+    assert.equal(state.assignments[1].name, "Relaxed art-1");
+    assert.equal(state.assignments[1].approved, false);
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
     await chooseSprite(1);
     await expect(first.getByLabel("Facing", { exact: true })).toHaveValue("right");
-    await openBatch();
-    await page.getByRole("button", { name: "Select all", exact: true }).click();
-    holdAnalysis = true;
-    await page.getByRole("button", { name: "Analyze selected", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Cancel analysis", exact: true })).toBeVisible();
-    await expect(add).toBeDisabled();
-    await page.getByRole("button", { name: "Cancel analysis", exact: true }).click();
-    releaseAnalysis();
-    await expect(page.getByRole("button", { name: "Cancel analysis", exact: true })).toHaveCount(0);
-    assert.equal(analyses, 31, "Cancellation prevents dispatching the next sprite.");
-    assert.ok(state.assignments.every((item) => item.direction === "right"));
+    await closeSprite();
     await page.getByRole("button", { name: "Add without sprites", exact: true }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(dialog).toHaveCount(0);
     assert.equal(state.useSprites, false);
     assert.ok(
       state.assignments.every((item) => !item.approved),
-      "Portrait fallback never approves draft sprites.",
+      "Portrait fallback never approves drafts.",
     );
     connectionRows = [];
     await page.getByRole("button", { name: "Choose Bupkis" }).click();
     await expect(connection).toHaveCount(0);
-    await openBatch();
-    await page.getByRole("button", { name: "Select all", exact: true }).click();
+    await chooseSprite(0);
+    await openAnalysis();
     await expect(connection).toHaveValue("vision");
     await expect(connection.locator("option:checked")).toHaveText("Unavailable connection");
-    await expect(page.getByRole("button", { name: "Analyze selected", exact: true })).toBeDisabled();
-    await chooseSprite(0);
+    await expect(popup.getByRole("button", { name: "Analyze sprite", exact: true })).toBeDisabled();
     await expect(first.getByLabel("Expression", { exact: true })).toBeEnabled();
-    assert.equal(analyses, 31, "A missing connection never triggers fallback calls.");
+    assert.equal(analyses, 30, "Missing connections never trigger fallback calls.");
+    await closeSprite();
     await page.getByRole("button", { name: "Back", exact: true }).click();
     state.defaultArtworkId = "";
     state.suggestedDefaultArtworkId = "art-27";
@@ -370,19 +375,17 @@ try {
     await chooseSprite(27);
     await expect(first.getByLabel("Default", { exact: true })).toBeChecked();
     await first.getByLabel("Facing", { exact: true }).selectOption("");
-    await expect(add).toBeDisabled();
-    await expect(counts).toContainText("1 incomplete");
+    await expect(page.locator(".sprite-prepared")).toHaveCount(27);
     await first.getByLabel("Facing", { exact: true }).selectOption("front");
     await first.getByLabel("Expression", { exact: true }).fill("Neutral");
-    await first.getByRole("button", { name: "Done", exact: true }).click();
+    await closeSprite();
     await expect(add).toBeEnabled();
-    const dialog = page.getByRole("dialog");
     const box = await dialog.boundingBox();
     assert.ok(Math.abs(box.x + box.width / 2 - viewport.width / 2) < 2);
     assert.ok(Math.abs(box.y + box.height / 2 - viewport.height / 2) < 2);
     assert.ok(
       await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
-      "Dialog fits desktop and phone.",
+      "Grid dialog fits desktop and phone.",
     );
     assert.ok(
       await page.locator(".sprite-gallery").evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
@@ -390,54 +393,76 @@ try {
     );
     const footer = await add.boundingBox();
     assert.ok(footer.y >= 0 && footer.y + footer.height <= viewport.height, "Final action stays visible.");
-    await page.locator("main").evaluate((node) => {
+    const main = page.locator(".villages-sprite-setup > main");
+    await main.evaluate((node) => {
       node.scrollTop = 0;
     });
     await page.screenshot({ path: `.build-tmp/sprite-setup/review-${viewport.width}.png`, fullPage: true });
+    await chooseSprite(0);
+    const gridScroll = await main.evaluate((node) => node.scrollTop);
+    const popupBox = await popup.boundingBox();
+    assert.ok(popupBox.x >= 0 && popupBox.x + popupBox.width <= viewport.width, "Popup fits viewport width.");
+    assert.ok(popupBox.y >= 0 && popupBox.y + popupBox.height <= viewport.height, "Popup fits viewport height.");
+    assert.ok(
+      await popup.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+      "Popup content fits desktop and phone.",
+    );
+    assert.ok(await popup.evaluate((node) => node.contains(document.activeElement)), "Popup traps keyboard focus.");
+    const radio = await first.getByLabel("Default", { exact: true }).boundingBox();
+    assert.ok(radio.width <= 22 && radio.height <= 22, "Default control remains compact.");
+    await page.screenshot({ path: `.build-tmp/sprite-setup/popup-${viewport.width}.png`, fullPage: true });
+    await page.keyboard.press("Escape");
+    await expect(popup).toHaveCount(0);
+    assert.equal(await main.evaluate((node) => node.scrollTop), gridScroll, "Closing popup preserves grid position.");
     failSave = true;
     await add.click();
     await expect(page.getByRole("alert")).toContainText("Sprite setup changed.");
     await expect(add).toBeEnabled();
     assert.ok(
       state.assignments.every((item) => !item.approved),
-      "A rejected final save does not approve saved drafts.",
+      "Rejected saves do not approve saved drafts.",
     );
     await add.click();
     await expect(dialog).toHaveCount(0);
     assert.equal(state.useSprites, true);
     assert.ok(state.assignments.every((item) => item.approved));
-    assert.equal(state.defaultArtworkId, "art-27", "Final action accepts the suggested default.");
+    assert.equal(state.defaultArtworkId, "art-27");
     assert.equal(state.suggestions.length, 0);
     assert.equal(saves.at(-1).validateForUse, true);
-    assert.equal(analyses, 31, "Accepting a review never makes another model call.");
+    assert.equal(analyses, 30, "Accepting a review never makes another model call.");
     state.resident = true;
     state.residentToken = "resident-token";
     await page.getByRole("button", { name: "Review resident sprites", exact: true }).click();
     const useSprites = page.getByRole("button", { name: "Use sprites", exact: true });
     await chooseSprite(27);
     await first.getByLabel("Include", { exact: true }).uncheck();
+    await closeSprite();
     await expect(useSprites).toBeDisabled();
     await expect(page.getByText("Choose a default sprite.", { exact: true })).toBeVisible();
     await chooseSprite(0);
     await first.getByLabel("Default", { exact: true }).check();
     await chooseSprite(1);
     await first.getByLabel("Expression", { exact: true }).fill("");
+    await closeSprite();
     await expect(useSprites).toBeDisabled();
+    await chooseSprite(1);
     await first.getByLabel("Include", { exact: true }).uncheck();
+    await closeSprite();
     await expect(useSprites).toBeEnabled();
+    await expect(page.locator(".sprite-prepared")).toHaveCount(26);
     await useSprites.click();
     await expect(dialog).toHaveCount(0);
     assert.equal(state.assignments[1].included, false);
-    assert.equal(state.assignments[1].approved, false, "Excluded incomplete sprites stay unapproved.");
-    assert.equal(state.assignments[27].approved, false, "Excluded default stays unapproved.");
+    assert.equal(state.assignments[1].approved, false);
+    assert.equal(state.assignments[27].approved, false);
     assert.equal(state.defaultArtworkId, "art-0");
-    assert.equal(state.manager.artwork.length, 28, "Excluding sprites preserves their artwork.");
+    assert.equal(state.manager.artwork.length, 28, "Excluding sprites preserves artwork.");
     assert.deepEqual(applications, [{ revision: state.revision, residentToken: "resident-token" }]);
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(
-    "Sprite setup browser: review grid, final approval, manual/vision drafts, retry/cancellation and portrait fallback passed on desktop/phone.",
+    "Sprite setup browser: modal sprite review, prepared markers, draft persistence, final approval, retry/cancellation and portrait fallback passed on desktop/phone.",
   );
 } finally {
   await browser.close();
