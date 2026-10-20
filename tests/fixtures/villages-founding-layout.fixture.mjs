@@ -776,7 +776,7 @@ export async function verifyFoundingLayout(group) {
           "backstories sit beside the cast on desktop and below it on phone",
         );
 
-        await root.getByRole("button", { name: "Propose backstories", exact: true }).click();
+        await root.getByRole("button", { name: "Propose Backstories", exact: true }).click();
         const past = root.getByLabel("Finn backstory", { exact: true });
         await expect(past).toHaveValue(/settled here/);
         await past.fill(" ");

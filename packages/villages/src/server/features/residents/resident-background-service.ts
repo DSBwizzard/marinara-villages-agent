@@ -183,8 +183,10 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
       if (["length", "max_tokens"].includes(reply.finishReason ?? "")) return false;
       try {
         const result = JSON.parse(reply.content ?? "");
-        const texts = [result.player, ...Object.values(result.residents ?? {})];
+        const texts = Object.values(result.residents ?? {});
         return (
+          result !== null &&
+          !Object.hasOwn(result, "player") &&
           typeof result.residents === "object" &&
           !Array.isArray(result.residents) &&
           Object.keys(result.residents).length === neighbors.length &&
@@ -262,7 +264,7 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
             ...(batch
               ? [
                   {
-                    text: "Propose the founding cast together, including the player. Return JSON only: {player:string,residents:{characterId:string}} with exactly the supplied resident IDs. Each value is one short backstory. Consider everyone equally, regardless of selection order. Suggest modest connections only where the premise and both histories support them; independent lives are welcome. Existing player-written backstories constrain the proposals. The player oversees major changes, improvements and developments as a gameplay responsibility; invent no title, appointment, obligations or past deeds to justify it.",
+                    text: "Propose backstories for the selected villagers together. Return JSON only: {residents:{characterId:string}} with exactly the supplied resident IDs. Each value is one short backstory. Consider everyone equally, regardless of selection order. Suggest modest connections only where the premise and both histories support them; independent lives are welcome. The player writes their own backstory; never propose, rewrite or return one for them. Read their written backstory only as context that constrains villager proposals. Existing player-written villager backstories also constrain the proposals. The player oversees major changes, improvements and developments as a gameplay responsibility; invent no title, appointment, obligations or past deeds to justify it.",
                   },
                 ]
               : [

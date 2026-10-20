@@ -317,7 +317,6 @@ const batchInput = {
 };
 completion = {
   content: JSON.stringify({
-    player: "I came here to study the observatory.",
     residents: {
       mara: "Mara helps visitors at her childhood observatory.",
       ellis: "Ellis arrived to study the stars.",
@@ -329,6 +328,10 @@ const beforeBatch = calls;
 const batch = await batchService.draftResidentBackground(batchInput);
 assert.equal(calls, beforeBatch + 1, "one request proposes the whole cast");
 assert.equal(requests.at(-1)!.tokens, 8192);
+assert.match(messages.at(-1)!, /never propose, rewrite or return one for them/);
+assert.match(messages.at(-1)!, /I came here to study/);
+assert.equal(Object.hasOwn(JSON.parse(batch.text), "player"), false);
+
 assert.match(messages.at(-1)!, /Draft player/);
 assert.match(messages.at(-1)!, /Ellis/);
 assert.match(messages.at(-1)!, /authoritative personal past/);
@@ -367,7 +370,15 @@ release!();
 await concurrentBatch;
 gate = undefined;
 completion = {
-  content: JSON.stringify({ player: "A visitor.", residents: { mara: "Only one entry." } }),
+  content: JSON.stringify({ ...JSON.parse(batch.text), player: "An unwanted player suggestion." }),
+  finishReason: "stop",
+};
+await assert.rejects(
+  batchService.draftResidentBackground({ ...batchInput, actionId: "cast-player-suggestion" }),
+  /incomplete/,
+);
+completion = {
+  content: JSON.stringify({ residents: { mara: "Only one entry." } }),
   finishReason: "stop",
 };
 await assert.rejects(

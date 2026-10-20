@@ -86,7 +86,7 @@ export function FoundingBackgrounds(props: Props) {
         }),
       });
       if (!mounted.current || turn !== generation.current || key(latest.current) !== sourceKey) return;
-      const proposal = JSON.parse(result.text) as { player: string; residents: Record<string, string> };
+      const proposal = JSON.parse(result.text) as { residents: Record<string, string> };
       const contexts = { ...latest.current.contexts };
       for (const person of props.people) {
         const previous = contexts[person.id] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
@@ -114,7 +114,6 @@ export function FoundingBackgrounds(props: Props) {
           },
         };
       }
-      props.onPlayer(proposal.player);
       props.onContexts(contexts);
     } catch (cause) {
       if (mounted.current && turn === generation.current)
@@ -129,7 +128,8 @@ export function FoundingBackgrounds(props: Props) {
         <h3>Life in {props.villageName?.trim() || "your Village"}</h3>
         <FoundingHelp label="Backstories">
           These backstories connect each person to {props.villageName?.trim() || "your Village"}. Use "Propose
-          backstories" after adding the Villagers you want, and their narratives can intersect if appropriate.
+          Backstories" after adding your own backstory and the Villagers you want, and their narratives can intersect if
+          appropriate.
         </FoundingHelp>
       </div>
       <PlayerBackgroundFields background={props.playerBackground} onChange={props.onPlayer} disabled={props.disabled} />
@@ -176,7 +176,7 @@ export function FoundingBackgrounds(props: Props) {
         disabled={props.disabled || busy || !props.people.length || !props.source.playerPersonaId}
         onClick={() => void propose()}
       >
-        {busy ? "Proposing…" : actionId ? "Try again" : "Propose backstories"}
+        {busy ? "Proposing…" : actionId ? "Try again" : "Propose Backstories"}
       </button>
       {actionId && !review?.proposalReceived ? (
         <button type="button" disabled={props.disabled || busy} onClick={() => void propose(true)}>

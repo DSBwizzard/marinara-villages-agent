@@ -38,6 +38,8 @@ try {
     await page.route("**/api/villages/villagers/background/draft", async (route) => {
       const input = route.request().postDataJSON();
       assert.equal(input.foundingCast, true);
+      if (paid === 0)
+        assert.equal(input.playerBackground, "My own starting story.", "player writing is proposal context");
       assert.deepEqual(input.foundingCharacterIds, ["mara", "ellis"]);
       let output = saved.get(input.actionId);
       if (!output) {
@@ -68,6 +70,7 @@ try {
     assert.equal(paid, 0);
     await page.getByRole("button", { name: "Select Ellis too" }).click();
     assert.equal(paid, 0, "selection does not dispatch");
+    await page.getByRole("textbox", { name: "Your backstory", exact: true }).fill("My own starting story.");
     const field = page.getByRole("textbox", { name: "Your backstory", exact: true });
     for (const label of ["Backstories", "Your backstory"]) {
       const help = page.getByRole("button", { name: "Help: " + label, exact: true });
@@ -79,7 +82,7 @@ try {
       await page.screenshot({ path: ".build-tmp/help-" + label.replaceAll(" ", "-") + "-" + width + ".png" });
       await expect(popup.getByRole("note")).toContainText(
         label === "Backstories"
-          ? 'These backstories connect each person to Crystalwood. Use "Propose backstories" after adding the Villagers you want, and their narratives can intersect if appropriate.'
+          ? 'These backstories connect each person to Crystalwood. Use "Propose Backstories" after adding your own backstory and the Villagers you want, and their narratives can intersect if appropriate.'
           : "In Villages, you (the player) coordinate with Villagers on major changes, improvements, and developments.",
       );
       assert.deepEqual(await field.boundingBox(), before, "opening help leaves fields unchanged");
@@ -114,13 +117,13 @@ try {
       await expect(popup).toHaveCount(0);
       await expect(help).toBeFocused();
     }
-    await page.getByRole("button", { name: "Propose backstories", exact: true }).click();
+    await page.getByRole("button", { name: "Propose Backstories", exact: true }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     assert.equal(paid, 1);
     await load();
     await page.getByRole("button", { name: "Select Ellis too" }).click();
     await page.getByRole("button", { name: "Retrieve result", exact: true }).click();
-    await expect(page.getByLabel("Your backstory", { exact: true })).toHaveValue(/came to study/);
+    await expect(page.getByLabel("Your backstory", { exact: true })).toHaveValue("My own starting story.");
     await expect(page.getByLabel("Mara backstory", { exact: true })).toHaveValue(/visiting students/);
     await expect(page.getByLabel("Ellis backstory", { exact: true })).toHaveValue(/stars/);
     assert.equal(paid, 1, "retrieval after reload costs no generation");
