@@ -69,6 +69,7 @@ try {
     for (const exit of ["Back", "Add without sprites"]) {
       await coldPage.getByRole("button", { name: "Choose Bupkis" }).click();
       await expect(coldPage.getByText("Preparing sprites…", { exact: true })).toBeVisible();
+      await expect(coldPage.getByText("No character sprites available.", { exact: true })).toHaveCount(0);
       if (exit === "Back") {
         const status = await coldPage.getByText("Preparing sprites…", { exact: true }).boundingBox();
         assert.ok(status.y >= 0 && status.y + status.height <= viewport.height, "Loading status stays in view.");

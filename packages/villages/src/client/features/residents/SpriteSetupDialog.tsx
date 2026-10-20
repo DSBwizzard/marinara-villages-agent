@@ -375,7 +375,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                     : `Analysis stopped · ${progress.done} of ${progress.total} completed this run`}
                 </p>
               ) : null}
-              {!candidates.length ? <p>No character sprites available.</p> : null}
+              {!importing && !candidates.length ? <p>No character sprites available.</p> : null}
               <>
                 <div className="sprite-gallery" aria-label="Sprites">
                   {data.manager.artwork.map((art, index) => {
