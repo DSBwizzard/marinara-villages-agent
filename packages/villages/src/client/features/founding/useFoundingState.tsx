@@ -47,6 +47,7 @@ export function useFoundingState() {
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
 
   const [setupFoundingVillagerIds, setSetupFoundingVillagerIds] = useState<string[]>([]);
+  const [setupSpriteRevisions, setSetupSpriteRevisions] = useState<Record<string, number>>({});
 
   const [setupResidentContexts, setSetupResidentContexts] = useState<Record<string, ResidentFoundingContext>>({});
 
@@ -183,6 +184,8 @@ export function useFoundingState() {
     setSetupWorldFacts,
     setupVenues,
     setSetupVenues,
+    setupSpriteRevisions,
+    setSetupSpriteRevisions,
     setupFoundingVillagerIds,
     setSetupFoundingVillagerIds,
     setupResidentContexts,

@@ -7,10 +7,11 @@ import type {
   SetupMapReceipt,
   VillageLorebookOption,
 } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
+import { SpriteSetupDialog } from "../residents/SpriteSetupDialog.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { startingZone } from "./founding-template.js";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
@@ -216,6 +217,7 @@ export function FoundingPersonaSelector({
 }
 
 export function FoundingVillagerPicker({
+  onSpritePrepared,
   catalog,
   portraits,
   selectedIds,
@@ -229,9 +231,11 @@ export function FoundingVillagerPicker({
   onChange(ids: string[]): void;
   disabled: boolean;
   renderBackstory?(id: string, name: string): ReactNode;
+  onSpritePrepared?(id: string, revision: number): void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [spriteCharacter, setSpriteCharacter] = useState<{ id: string; name: string } | null>(null);
   const selected = selectedIds.map(
     (id) =>
       catalog?.find((person) => person.id === id) ?? {
@@ -251,6 +255,22 @@ export function FoundingVillagerPicker({
   };
   return (
     <section className={ELEMENT_TAG + "-founding-roster"} aria-label="Founding villagers">
+      {spriteCharacter ? (
+        <SpriteSetupDialog
+          characterId={spriteCharacter.id}
+          name={spriteCharacter.name}
+          portrait={portraits[spriteCharacter.id]}
+          onClose={(revision) => {
+            if (revision !== undefined) onSpritePrepared?.(spriteCharacter.id, revision);
+            setSpriteCharacter(null);
+          }}
+          onDone={(revision) => {
+            onSpritePrepared?.(spriteCharacter.id, revision);
+            if (!selectedIds.includes(spriteCharacter.id)) onChange([...selectedIds, spriteCharacter.id]);
+            setSpriteCharacter(null);
+          }}
+        />
+      ) : null}
       <small role="status">{selectedIds.length} of 3 selected</small>
       <div className="villages-people-selected">
         {selected.map((person) => (
@@ -266,6 +286,14 @@ export function FoundingVillagerPicker({
               onClick={() => toggle(person.id)}
             />
             {renderBackstory?.(person.id, person.name)}
+            <button
+              type="button"
+              className="villages-selected-sprites"
+              disabled={disabled}
+              onClick={() => setSpriteCharacter({ id: person.id, name: person.name })}
+            >
+              Sprites
+            </button>
           </div>
         ))}
       </div>
@@ -305,7 +333,13 @@ export function FoundingVillagerPicker({
                 selected={selectedIds.includes(person.id)}
                 disabled={disabled || (!selectedIds.includes(person.id) && selectedIds.length >= 3)}
                 action={selectedIds.includes(person.id) ? "✓" : "Select"}
-                onClick={() => toggle(person.id)}
+                onClick={() => {
+                  if (selectedIds.includes(person.id)) toggle(person.id);
+                  else {
+                    setOpen(false);
+                    setSpriteCharacter({ id: person.id, name: person.name });
+                  }
+                }}
               />
             ))}
             {!choices.length ? <p>No character cards match your search.</p> : null}

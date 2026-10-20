@@ -1,6 +1,7 @@
 export type SpriteFacing = "front" | "left" | "right";
 
 type SpriteImage = {
+  direction?: "front" | "left" | "right";
   view: "front" | "side";
   label: string;
   url: string;
@@ -28,5 +29,10 @@ export function selectSpriteImage(
     images.find(matches) ??
     images.find((item) => item.view === view && defaults(item)) ??
     images.find(defaults);
-  return image ? { image, mirrored: image.view === "side" && facing === "left" } : null;
+  return image
+    ? {
+        image,
+        mirrored: image.view === "side" && (image.direction === "left" ? facing === "right" : facing === "left"),
+      }
+    : null;
 }

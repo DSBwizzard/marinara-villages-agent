@@ -43,6 +43,7 @@ export const serverFeatureInterfaces = Object.freeze({
   ],
   "media/town-map-image.ts": ["generateVillageTownMap"],
   "media/town-map-review.ts": ["replaceVillageTownMap", "readTownMapSubmission", "readVillageTownMapImage"],
+  "media/sprite-setup.ts": ["preparedSpriteManager"],
   "projects/project-checks.ts": ["interpretProjectDraft", "finalizeProjectDiagnostics", "applyProjectPickup"],
   "projects/project-evidence.ts": [
     "recordProjectSpokenEvidence",
@@ -196,6 +197,7 @@ export const clientFeatureInterfaces = Object.freeze({
   "founding/villages-founding-zones.tsx": ["FoundingZoneFields", "foundingZoneProblem"],
   "founding/villages-player-role.tsx": ["PlayerRoleSummary"],
   "residents/ResidentPanels.tsx": ["AvatarFace", "readAvatarCrop"],
+  "residents/SpriteSetupDialog.tsx": ["SpriteSetupDialog"],
   "residents/villages-dossier.tsx": ["DossierNavigation"],
   "settings/SettingsPanels.tsx": ["AgentConnections"],
   "settings/AgentConnections.tsx": ["AgentConnections"],

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { ResidentBackgroundReview } from "../../shared/ResidentBackgroundReview.js";
 import {
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
@@ -7,8 +6,9 @@ import {
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AvatarFace } from "./ResidentPanels.js";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { PeopleBook } from "./PeopleBook.js";
+import { SpriteSetupDialog } from "./SpriteSetupDialog.js";
 
 export function RosterScreen({
   controller,
@@ -19,6 +19,7 @@ export function RosterScreen({
   onClose?: () => void;
   readingPosition?: { current: number };
 }) {
+  const [spriteCharacter, setSpriteCharacter] = useState<{ id: string; name: string } | null>(null);
   const content = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (content.current) content.current.scrollTop = readingPosition?.current ?? 0;
@@ -52,6 +53,19 @@ export function RosterScreen({
     );
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
+        {spriteCharacter ? (
+          <SpriteSetupDialog
+            characterId={spriteCharacter.id}
+            name={spriteCharacter.name}
+            portrait={portraits[spriteCharacter.id]}
+            onClose={() => setSpriteCharacter(null)}
+            onDone={async (revision) => {
+              await addVillager(spriteCharacter.id, revision, joiningDrafts.current[spriteCharacter.id]);
+              delete joiningDrafts.current[spriteCharacter.id];
+              setSpriteCharacter(null);
+            }}
+          />
+        ) : null}
         <PeopleBook
           label="People notebook"
           toolbar={
@@ -82,11 +96,9 @@ export function RosterScreen({
               }}
               onCancel={() => setJoining(null)}
               onAccept={async (context) => {
-                const saved = await addVillager(joining.id, context);
-                if (saved) {
-                  delete joiningDrafts.current[joining.id];
-                  setJoining(null);
-                } else throw new Error("Could not move in. Your background is kept; try accepting again.");
+                joiningDrafts.current[joining.id] = context;
+                setSpriteCharacter({ id: joining.id, name: joining.name });
+                setJoining(null);
               }}
               disabled={busy}
             />

@@ -437,6 +437,7 @@ export function useFoundVillage(ports: {
   setupBlocker: () => string;
   setupFoundingDetails: string;
   setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
+  setupSpriteRevisions?: Record<string, number>;
   setupFoundingVillagerIds: string[];
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
@@ -474,6 +475,7 @@ export function useFoundVillage(ports: {
     setupBlocker,
     setupFoundingDetails,
     setupFoundingReason,
+    setupSpriteRevisions,
     setupFoundingVillagerIds,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -549,6 +551,7 @@ export function useFoundVillage(ports: {
           // Founding is authoritative: submit the complete graph, including
           // the named public center, rather than relying on stored destinations.
           venues: setupVenues,
+          foundingSpriteRevisions: setupSpriteRevisions,
           foundingCharacterIds: snapshot?.isFounded ? undefined : setupFoundingVillagerIds,
           foundingResidentContexts: snapshot?.isFounded ? undefined : selectedResidentContexts,
         }),
@@ -573,6 +576,7 @@ export function useFoundVillage(ports: {
     flushSetupDraft,
     element,
     setupVenues,
+    setupSpriteRevisions,
     setupFoundingVillagerIds,
     snapshot?.isFounded,
     snapshot?.settings.foundingReason,

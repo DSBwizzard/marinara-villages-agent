@@ -247,6 +247,11 @@ assert.equal(coerceVillageState({ ...village, worldOrigin: "garbage" }).worldOri
 assert.equal(coerceVillageState(village).worldOrigin, "different-worlds");
 let agendas = 0;
 const roster = createResidentRoster({
+  preparedSpriteManager: async (id, revision) => {
+    assert.equal(id, "mara");
+    assert.equal(revision, 7, "accepted background and prepared sprite revision travel together");
+    return null;
+  },
   readVillageState: async () => structuredClone(village),
   mutateVillageState: async (change) => {
     change(village);
@@ -260,16 +265,16 @@ const roster = createResidentRoster({
   retireBackgroundResident: () => {},
 });
 await assert.rejects(
-  roster.addVillager("mara", { ...context, integration: { ...context.integration, accepted: false } }),
+  roster.addVillager("mara", undefined, { ...context, integration: { ...context.integration, accepted: false } }),
   /valid background/,
 );
 assert.equal(village.villagers.length, 0);
 village.setting = "A changed premise";
-await assert.rejects(roster.addVillager("mara", context), /premise changed/);
+await assert.rejects(roster.addVillager("mara", undefined, context), /premise changed/);
 village.setting = "A harbor town";
-await roster.addVillager("mara", context);
+await roster.addVillager("mara", 7, context);
 assert.equal(agendas, 1);
-await roster.addVillager("mara", context);
+await roster.addVillager("mara", 7, context);
 assert.equal(agendas, 1);
 assert.equal(village.villagers.length, 1);
 assert.deepEqual(coerceVillageState(village).villagers[0]!.foundingContext, context);

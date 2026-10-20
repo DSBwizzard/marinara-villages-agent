@@ -20,7 +20,7 @@ function App(){const [roster,setRoster]=useState(false);const [context,setContex
 window.changeSource=()=>setSource(s=>({...s,premise:'A new premise'}));window.context=context;window.source=source;
 const change=value=>{localStorage.setItem('draft',JSON.stringify(value));setContext(value)};
 const entry={id:"mara",name:"Mara",summary:"Guard",tags:[],inVillage:false};
-if(roster)return <><style>{VILLAGES_FORGING_STYLES}</style><RosterScreen controller={{busy:false,catalog:[entry],visibleCatalog:[entry],error:"",menuPage:"villagers",openPerson:()=>{},pickerOpen:true,portraits:{},rosterSearch:"",screen:"menu",search:"",setMenuPage:()=>{},setPickerOpen:()=>{},setRosterSearch:()=>{},setSearch:()=>{},snapshot:{villagers:[],settings:{setting:source.setting,foundingDetails:source.premise,worldOrigin:source.worldOrigin}},addVillager:async(id,context)=>{window.rosterAccepted=context;return true}}}/></>;
+if(roster)return <><style>{VILLAGES_FORGING_STYLES}</style><RosterScreen controller={{busy:false,catalog:[entry],visibleCatalog:[entry],error:"",menuPage:"villagers",openPerson:()=>{},pickerOpen:true,portraits:{},rosterSearch:"",screen:"menu",search:"",setMenuPage:()=>{},setPickerOpen:()=>{},setRosterSearch:()=>{},setSearch:()=>{},snapshot:{villagers:[],settings:{setting:source.setting,foundingDetails:source.premise,worldOrigin:source.worldOrigin}},addVillager:async(id,revision,context)=>{(window.admissions??=[]).push({id,revision,context});if(window.failAdmission){window.failAdmission=false;throw Error('Synthetic admission failure')}window.rosterAccepted=context;return true}}}/></>;
 return <><style>{VILLAGES_FORGING_STYLES}</style><button onClick={()=>setRoster(true)}>Test move-in</button><WorldOriginSettings initial={source.worldOrigin} onSaved={saved=>setSource(s=>({...s,worldOrigin:saved.settings.worldOrigin}))}/>
 <button onClick={()=>{change({...defaults,integration:{text:'',direction:'',accepted:false}});setInitial(true);setOpen(true)}}>Select Mara</button>
 <button onClick={()=>{setInitial(false);setOpen(true)}}>Edit background</button>
@@ -60,6 +60,23 @@ try {
         }),
       );
       await page.route("**/api/villages/**", async (route) => {
+        if (/\/characters\/[^/]+\/sprites\/setup(?:\/save)?$/.test(new URL(route.request().url()).pathname))
+          return route.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({
+              revision: 1,
+              manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
+              files: [],
+              assignments: [],
+              suggestions: [],
+              defaultArtworkId: "",
+              useSprites: false,
+              errors: {},
+              analysisRequests: [],
+              resident: false,
+              residentToken: "",
+            }),
+          });
         const input = route.request().postDataJSON();
         if (route.request().url().endsWith("/settings"))
           return route.fulfill({
@@ -155,6 +172,28 @@ try {
       await expect(text).toHaveValue("A canceled move-in keeps this background.");
       assert.equal(calls, paidBeforeCancel, "reopening a canceled move-in does not spend again");
       await dialog.getByRole("button", { name: "Accept", exact: true }).click();
+      assert.equal(
+        await page.evaluate(() => window.rosterAccepted),
+        undefined,
+        "background acceptance precedes roster mutation",
+      );
+      await page.evaluate(() => {
+        window.failAdmission = true;
+      });
+      await page
+        .getByRole("dialog", { name: "Mara sprite setup" })
+        .getByRole("button", { name: "Add without using sprites", exact: true })
+        .click();
+      const sprites = page.getByRole("dialog", { name: "Mara sprite setup" });
+      await expect(sprites.getByRole("alert")).toContainText("Synthetic admission failure");
+      assert.equal(calls, paidBeforeCancel, "admission failure never regenerates the background");
+      await sprites.getByRole("button", { name: "Add without using sprites", exact: true }).click();
+      await expect
+        .poll(() => page.evaluate(() => window.rosterAccepted?.integration?.text))
+        .toBe("A canceled move-in keeps this background.");
+      const admissions = await page.evaluate(() => window.admissions);
+      assert.deepEqual(admissions[0], admissions[1], "admission retry retains accepted background and sprite revision");
+      assert.equal(calls, paidBeforeCancel, "admission retry never regenerates the background");
       assert.equal(
         await page.evaluate(() => window.rosterAccepted.integration.text),
         "A canceled move-in keeps this background.",

@@ -561,6 +561,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSetupWorldFacts,
     setupVenues,
     setSetupVenues,
+    setupSpriteRevisions,
+    setSetupSpriteRevisions,
     setupFoundingVillagerIds,
     setSetupFoundingVillagerIds,
     setupResidentContexts,
@@ -748,6 +750,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useFoundingAuthoredReference({ setupAuthoredFields, setupAuthoredFieldsRef });
 
   const setupDraftData = useFoundingSetupDraftData({
+    setupSpriteRevisions,
     mapVisualLore,
     movingSetupVenueId,
     personaDraft,
@@ -811,6 +814,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const flushSetupDraft = useFoundingFlushSetupDraft({ draftBlocked, draftReady, persistSetupDraft, setupDraftData });
 
   const restoreSetupDraft = createFoundingRestoreSetupDraft({
+    setSetupSpriteRevisions,
     get loadCatalog() {
       return loadCatalog;
     },
@@ -2037,6 +2041,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const foundVillage = useFoundVillage({
+    setupSpriteRevisions,
     draftSaveQueue,
     element,
     flushSetupDraft,
@@ -2278,6 +2283,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupZoneDrafts,
   });
   return {
+    setupSpriteRevisions,
+    setSetupSpriteRevisions,
     sceneRestoration,
     ...venueScreenCommands,
     element,

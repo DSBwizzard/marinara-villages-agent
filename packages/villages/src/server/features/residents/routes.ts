@@ -64,14 +64,21 @@ export function registerResidentRoutes(engine: FastifyInstance) {
       return fail(reply, error, "drafting resident background");
     }
   });
-  app.post<{ Body: { characterId?: unknown; background?: unknown } }>("/villagers", async (request, reply) => {
-    try {
-      await addVillager(readCharacterId(request.body?.characterId), request.body?.background);
-      return await buildVillageSnapshot();
-    } catch (error) {
-      return fail(reply, error, "adding a villager");
-    }
-  });
+  app.post<{ Body: { characterId?: unknown; background?: unknown; spriteSetupRevision?: number } }>(
+    "/villagers",
+    async (request, reply) => {
+      try {
+        await addVillager(
+          readCharacterId(request.body?.characterId),
+          request.body?.spriteSetupRevision,
+          request.body?.background,
+        );
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "adding a villager");
+      }
+    },
+  );
   app.get<{ Params: CharacterParams }>("/villagers/:characterId/refresh", async (request, reply) => {
     try {
       return await previewVillagerRefresh(readCharacterId(request.params.characterId));

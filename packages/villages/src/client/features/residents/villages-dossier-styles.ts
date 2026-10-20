@@ -60,8 +60,8 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-tags span { padding:2px 9px; background:#d5dfb8; border-radius:3px; font-size:13px; max-width:100%; overflow-wrap:anywhere; }
 .${P}-dossier-tags span:nth-child(3n+2) { background:#e0c9e7; }
 .${P}-signature { margin-top:16px; max-width:100%; color:#59434c; }
-.${P}-signature-art { max-width:100%; width:240px; margin:auto; }
-.${P}-signature-image { display:block; width:220px; max-width:100%; height:70px; object-fit:contain; }
+.${P}-signature-art { max-width:100%; width:280px; padding:8px 0; }
+.${P}-signature-image { display:block; width:auto; height:auto; max-width:100%; max-height:240px; object-fit:contain; object-position:left center; mix-blend-mode:multiply; }
 .${P}-signature-name { display:block; font:italic 38px/1.4 var(--notebook-hand); overflow-wrap:anywhere; padding:4px 0; }
 .${P}-signature-name[data-hand="bold"] { font-weight:700; }
 .${P}-dossier-root .${P}-signature-flourish { display:block; width:100%; height:20px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; }
@@ -106,7 +106,6 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-portrait { width:min(82%,360px,32cqh); }
 .${P}-dossier-journal h1 { font-size:clamp(26px,5cqh,48px); }
 .${P}-dossier-biography p { font-size:clamp(16px,3cqh,24px); }
-.${P}-signature-image { height:clamp(40px,9cqh,70px); }
 /* Section owners supply records. Semantic groups occupy either side of the binding. */
 .${P}-dossier-root .${P}-overlay { background:transparent; color:var(--dossier-ink); border:0; padding:0; box-shadow:none; min-width:0; }
 .${P}-dossier-content > :is(.villages-relationships,.${P}-overlay), .${P}-dossier-content > .${P}-dossier-sheet:has(.${P}-memory-library), .${P}-dossier-root .${P}-memory-library { display:contents; }
@@ -155,17 +154,9 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-toolbar:has(.${P}-notebook-close) { padding-right:110px; }
 .${P}-dossier-toolbar .${P}-notebook-close { position:absolute; right:120px; top:0; }
 .${P}-dossier-toolbar:has(.${P}-dossier-management) { padding-right:230px; }
-.${P}-notebook-cover { display:none; position:absolute; z-index:30; left:50%; right:calc(clamp(8px,2vw,26px) + 108px); top:calc(clamp(8px,2vw,26px) + 56px); bottom:clamp(8px,2vw,26px); border:8px solid #303331; border-radius:0 20px 20px 0; background:#303d47; transform-origin:left center; backface-visibility:hidden; box-shadow:0 6px 15px #30201460; pointer-events:none; }
-.${P}-notebook-cover span { position:absolute; inset:30% 12% auto; text-align:center; font:40px "Villages Notebook",cursive; color:#f3d8a6; border:1px solid #bf9a66; padding:24px 12px; }
 .${P}-notebook-session[data-phase="opening"] .${P}-notebook-motion { animation:${P}-book-slide-in 350ms ease-out both; }
-.${P}-notebook-session[data-phase="opening"] .${P}-dossier-book { animation:${P}-book-spread 650ms 350ms ease-in-out both; }
-.${P}-notebook-session[data-phase="opening"] .${P}-notebook-cover { display:block; animation:${P}-cover-open 650ms 350ms ease-in-out both; }
-.${P}-notebook-session[data-phase="closing"] .${P}-notebook-motion { animation:${P}-book-slide-in 350ms 650ms ease-in reverse both; }
-.${P}-notebook-session[data-phase="closing"] .${P}-dossier-book { animation:${P}-book-spread 650ms ease-in-out reverse both; }
-.${P}-notebook-session[data-phase="closing"] .${P}-notebook-cover { display:block; animation:${P}-cover-open 650ms ease-in-out reverse both; }
+.${P}-notebook-session[data-phase="closing"] .${P}-notebook-motion { animation:${P}-book-slide-in 350ms ease-in reverse both; }
 @keyframes ${P}-book-slide-in { from { transform:translateX(110vw); } to { transform:translateX(0); } }
-@keyframes ${P}-book-spread { from { clip-path:inset(-10px -120px -20px 50%); } to { clip-path:inset(-10px -120px -20px -10px); } }
-@keyframes ${P}-cover-open { from { transform:perspective(1600px) rotateY(0); } to { transform:perspective(1600px) rotateY(-180deg); } }
 .${P}-directory-paper { grid-column:1 / -1; min-width:0; min-height:0; padding:24px 36px; display:flex; flex-direction:column; }
 .${P}-directory-head h1 { font-size:38px; margin:0; }
 .${P}-directory-tools { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:72px; margin:12px 0 20px; flex:none; }
@@ -238,14 +229,12 @@ export const DOSSIER_STYLES = `
   .${P}-dossier-toolbar .${P}-notebook-close { top:48px; right:84px; font-size:14px; padding:6px 8px; }
   .${P}-dossier-toolbar:has(.${P}-dossier-management) { padding-right:0; min-height:92px; align-content:start; }
   .${P}-dossier-toolbar:has(.${P}-dossier-management) .${P}-notebook-close { top:48px; }
-  .${P}-notebook-cover { left:8px; right:84px; top:108px; border-radius:12px; }
-  .${P}-notebook-session[data-phase="opening"] .${P}-dossier-book, .${P}-notebook-session[data-phase="closing"] .${P}-dossier-book { clip-path:none; animation:none; }
   .${P}-directory-head h1 { font-size:32px; }
   .${P}-directory-grid { grid-template-columns:minmax(0,1fr); gap:16px; }
 }
 @media(prefers-reduced-motion:reduce) {
+  .${P}-dossier-turn { display:none !important; }
   .${P}-dossier-root *, .${P}-directory-root * { transition:none !important; animation:none !important; }
-  .${P}-dossier-turn, .${P}-notebook-cover { display:none !important; }
   .${P}-notebook-motion, .${P}-notebook-session .${P}-dossier-book { animation:none !important; }
 }
 `;

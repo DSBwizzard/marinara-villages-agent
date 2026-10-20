@@ -64,8 +64,9 @@ export function projectVillager(
     sprite: villager.sprite
       ? {
           ...villager.sprite,
-          images: villager.sprite.expressions.map(({ view, label, filename, assetId, expressionId }) => ({
+          images: villager.sprite.expressions.map(({ view, direction, label, filename, assetId, expressionId }) => ({
             view,
+            direction,
             label,
             expressionId,
             isDefault: Boolean(expressionId) && expressionId === villager.sprite!.defaultExpressionId,

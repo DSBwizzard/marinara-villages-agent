@@ -83,6 +83,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSelectedSetupVenueId,
     setSetupFocusIssue,
     setSetupFoundingDetails,
+    setSetupSpriteRevisions,
     setSetupFoundingVillagerIds,
     setSetupKeyboardSpot,
     setSetupLoreTokenBudgetDraft,
@@ -382,6 +383,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </p>
                 ) : null}
                 <FoundingVillagerPicker
+                  onSpritePrepared={(id, revision) =>
+                    setSetupSpriteRevisions((prior) => ({ ...prior, [id]: revision }))
+                  }
                   catalog={catalog}
                   portraits={portraits}
                   selectedIds={setupFoundingVillagerIds}
