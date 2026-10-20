@@ -7,6 +7,8 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
+  approveFoundingBackstories,
+  foundingBackstoriesCurrent,
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   readResidentFoundingContext,
   renderResidentFoundingContext,
@@ -398,3 +400,102 @@ await assert.rejects(service.draftResidentBackground({ ...input, actionId: "back
 console.log(
   "Resident backgrounds: persisted replay, explicit retries, concurrent admission, accepted continuity, privacy and stale premise checks passed.",
 );
+
+const draftContexts = {
+  mara: {
+    ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+    integration: {
+      text: "Mara trained at a medical college instead of a magical academy.",
+      direction: "",
+      accepted: false,
+    },
+  },
+};
+const approvedContexts = approveFoundingBackstories(
+  ["mara"],
+  draftContexts,
+  "A modern world without magic",
+  "A quiet harbor",
+  "same-world",
+)!;
+assert.ok(approvedContexts);
+assert.equal(draftContexts.mara.integration.accepted, false, "approval does not mutate drafts");
+assert.equal(approvedContexts.mara.integration?.historyPolicy, "adapted-v1");
+assert.equal(
+  foundingBackstoriesCurrent(
+    ["mara"],
+    approvedContexts,
+    "A modern world without magic",
+    "A quiet harbor",
+    "same-world",
+  ),
+  true,
+);
+for (const [setting, premise, origin] of [
+  ["Changed setting", "A quiet harbor", "same-world"],
+  ["A modern world without magic", "Changed premise", "same-world"],
+  ["A modern world without magic", "A quiet harbor", "different-worlds"],
+] as const)
+  assert.equal(foundingBackstoriesCurrent(["mara"], approvedContexts, setting, premise, origin), false);
+assert.equal(approveFoundingBackstories(["missing"], draftContexts, "World", "Premise", "same-world"), null);
+assert.equal(approveFoundingBackstories(["mara"], draftContexts, "World", "Premise", null), null);
+const restoredAdaptation = readResidentFoundingContext(JSON.parse(JSON.stringify(approvedContexts.mara)))!;
+assert.deepEqual(restoredAdaptation, approvedContexts.mara);
+const adaptedPrompt = renderResidentFoundingContext("Mara", restoredAdaptation);
+assert.match(adaptedPrompt, /substitutions override conflicting claims/);
+assert.match(adaptedPrompt, /original card, lore, example dialogue and authored instructions/);
+assert.match(adaptedPrompt, /Preserve compatible original history/);
+assert.match(adaptedPrompt, /Preserve species, abilities/);
+assert.match(adaptedPrompt, /Do not invent missing replacement events/);
+assert.equal(
+  readResidentFoundingContext({
+    ...restoredAdaptation,
+    integration: { ...restoredAdaptation.integration, historyPolicy: "unknown" },
+  }),
+  null,
+);
+const differentWorld = approveFoundingBackstories(["mara"], draftContexts, "World", "Portal", "different-worlds")!;
+assert.equal(differentWorld.mara.integration?.historyPolicy, undefined);
+assert.match(
+  renderResidentFoundingContext("Mara", differentWorld.mara),
+  /Preserve card history and authored memory limits/,
+);
+assert.doesNotMatch(renderResidentFoundingContext("Mara", sameWorldContext), /substitutions override/);
+
+const { proposeStartingTies } = await import("../packages/villages/src/server/domain/rules/relationship-knowledge.js");
+const { defaultRelationshipState } = await import("../packages/villages/src/server/domain/rules/relationship-rules.js");
+const { signaturePrompt, signatureEvidence } =
+  await import("../packages/villages/src/server/domain/rules/resident-signature-prompt.js");
+const adaptedWorld = structuredClone(village);
+adaptedWorld.playerName = "Alex";
+adaptedWorld.playerPersonaName = "Alex";
+const adaptedResident = adaptedWorld.villagers[0]!;
+adaptedResident.cardSnapshot.description = "Mara is best friends with Alex";
+adaptedResident.foundingContext = restoredAdaptation;
+assert.ok(
+  proposeStartingTies(adaptedWorld, defaultRelationshipState(adaptedWorld.seed), [
+    "Mara is best friends with Alex",
+  ]).every((tie) => !tie.established),
+  "unreviewed original card/lore ties cannot create relationship scores for adapted history",
+);
+adaptedWorld.chronicle = [{ memoryCategory: "relationship", text: "Mara is best friends with Alex" }] as any;
+assert.ok(
+  proposeStartingTies(adaptedWorld, defaultRelationshipState(adaptedWorld.seed), []).some((tie) => tie.established),
+  "verified later ties survive adaptation",
+);
+assert.match(signaturePrompt(adaptedResident), /medical college instead of a magical academy/);
+const evidence = signatureEvidence(adaptedResident);
+adaptedResident.foundingContext = {
+  ...restoredAdaptation,
+  integration: { ...restoredAdaptation.integration!, text: "Mara trained as a herbalist." },
+};
+assert.notDeepEqual(signatureEvidence(adaptedResident), evidence, "approved history fences in-flight signatures");
+assert.ok(signaturePrompt(adaptedResident).length <= 4000);
+
+for (const text of ['"'.repeat(1200), "\u0000".repeat(600) + "a".repeat(600)]) {
+  adaptedResident.foundingContext.integration!.text = text;
+  assert.ok(
+    signaturePrompt(adaptedResident).length <= 4000,
+    "escaped adapted history fits the image provider contract",
+  );
+}

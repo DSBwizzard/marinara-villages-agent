@@ -1,3 +1,7 @@
+import {
+  approveFoundingBackstories,
+  foundingBackstoriesCurrent,
+} from "../../../shared/helpers/resident-founding-context.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
@@ -228,6 +232,10 @@ export function createFoundingChooseSetupScenario(ports: {
 }
 
 export function createFoundingGotoSetupStep(ports: {
+  readonly setupResidentContexts?: FoundingState["setupResidentContexts"];
+  readonly setSetupResidentContexts?: FoundingState["setSetupResidentContexts"];
+  readonly setupWorldOrigin?: "same-world" | "different-worlds" | null;
+
   readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];
   readonly connectionSetupProblem: FoundingState["connectionSetupProblem"];
   readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
@@ -285,6 +293,35 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
+    let approved = ports.setupResidentContexts;
+    if (!snapshot?.isFounded && step > setupStep && step >= 2 && ports.setupResidentContexts) {
+      if (setupStep === 1) {
+        approved =
+          approveFoundingBackstories(
+            setupFoundingVillagerIds,
+            ports.setupResidentContexts,
+            setupSetting,
+            setupFoundingDetails,
+            ports.setupWorldOrigin,
+          ) ?? undefined;
+        if (!approved) {
+          setSetupProblem("Choose character origins and write a backstory for each villager.");
+          return;
+        }
+      } else if (
+        !foundingBackstoriesCurrent(
+          setupFoundingVillagerIds,
+          ports.setupResidentContexts,
+          setupSetting,
+          setupFoundingDetails,
+          ports.setupWorldOrigin,
+        )
+      ) {
+        setSetupStep(1);
+        setSetupProblem("Review backstories in People, then Continue to approve them.");
+        return;
+      }
+    }
     if (step === 4 && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
@@ -293,7 +330,7 @@ export function createFoundingGotoSetupStep(ports: {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
-          : residentContextProblem ||
+          : (approved && setupStep === 1 ? "" : residentContextProblem) ||
             connectionSetupProblem ||
             (!snapshot?.isFounded ? playerBackgroundProblem(setupPlayerBackground) : "") ||
             (!snapshot?.isFounded &&
@@ -326,6 +363,7 @@ export function createFoundingGotoSetupStep(ports: {
         return;
       }
     }
+    if (approved && approved !== ports.setupResidentContexts) ports.setSetupResidentContexts?.(approved);
     setSetupProblem("");
     if (step === 4) setSetupMapReviewed(true);
     setSetupStep(step);

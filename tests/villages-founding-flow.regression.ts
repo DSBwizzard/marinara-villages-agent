@@ -1,3 +1,4 @@
+import { DEFAULT_RESIDENT_FOUNDING_CONTEXT } from "../packages/villages/src/shared/helpers/resident-founding-context.js";
 import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
 import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
@@ -117,6 +118,42 @@ async function reviewNavigation() {
   goto(4);
   assert.equal(reviewed, false, "missing artwork cannot be acknowledged");
   assert.match(problem, /Generate or upload map artwork/);
+  const approvalPorts: any = {
+    ...ports,
+    setupStep: 1,
+    setupWorldOrigin: "same-world",
+    setupMapSrc: "map",
+    setupResidentContexts: {
+      resident: {
+        ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+        integration: {
+          text: "A lifelong coastal physician, trained at a local college instead of a magical academy.",
+          direction: "",
+          accepted: false,
+        },
+      },
+    },
+    setSetupResidentContexts(value: any) {
+      approvalPorts.setupResidentContexts = value;
+    },
+  };
+  const approveAndContinue = createFoundingGotoSetupStep(approvalPorts);
+  approveAndContinue(2);
+  assert.equal(step, 2);
+  assert.equal(approvalPorts.setupResidentContexts.resident.integration.accepted, true);
+  assert.equal(approvalPorts.setupResidentContexts.resident.integration.historyPolicy, "adapted-v1");
+  approvalPorts.setupStep = 2;
+  approvalPorts.setupSetting = "A changed setting";
+  approveAndContinue(3);
+  assert.equal(step, 1, "changed source returns to People without silently approving");
+  assert.match(problem, /Review backstories/);
+  assert.match(approvalPorts.setupResidentContexts.resident.integration.text, /lifelong coastal/);
+  approvalPorts.setupStep = 1;
+  approveAndContinue(2);
+  assert.equal(step, 2, "Continue reapproves displayed text without regeneration");
+  approvalPorts.setupResidentContexts.resident.integration.text = " ";
+  approveAndContinue(2);
+  assert.match(problem, /write a backstory for each/);
 }
 
 async function main() {

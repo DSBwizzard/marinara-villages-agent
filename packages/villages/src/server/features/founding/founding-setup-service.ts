@@ -1,4 +1,4 @@
-import { residentBackgroundSourceKey } from "../../../shared/helpers/resident-founding-context.js";
+import { foundingBackstoriesCurrent, readWorldOrigin } from "../../../shared/helpers/resident-founding-context.js";
 import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { randomUUID } from "node:crypto";
 import { initialOpening } from "../../domain/rules/opening-project.js";
@@ -193,6 +193,23 @@ export function createFoundingSetup({
     const foundingContexts = founding
       ? readFoundingResidentContexts(input.foundingResidentContexts, [...assignedResidents])
       : {};
+    if (founding) {
+      const origin = readWorldOrigin(input.worldOrigin);
+      if (
+        !origin ||
+        !foundingBackstoriesCurrent([...assignedResidents], foundingContexts, setting, foundingDetails, origin)
+      )
+        throw badRequest("Review a backstory for each villager in People, then Continue to approve them.");
+      if (
+        origin === "same-world" &&
+        Object.values(foundingContexts).some(
+          (context) =>
+            !["new", "village"].includes(context.historyMode) &&
+            (context.historyMode !== "adapt" || context.integration?.historyPolicy !== "adapted-v1"),
+        )
+      )
+        throw badRequest("Review Same world adaptations in People, then Continue to approve them.");
+    }
     if (!founding && input.foundingResidentContexts !== undefined)
       throw badRequest("Resident starting backstories are fixed after founding.");
     if (founding && input.foundingCharacterIds !== undefined)
@@ -292,19 +309,6 @@ export function createFoundingSetup({
         throw conflict("Move the resident before changing or removing their home.");
     }
 
-    if (founding)
-      for (const context of Object.values(foundingContexts)) {
-        if (
-          context.integration?.sourceKey &&
-          context.integration.sourceKey !==
-            residentBackgroundSourceKey(
-              setting,
-              foundingDetails,
-              input.worldOrigin as "same-world" | "different-worlds" | null,
-            )
-        )
-          throw badRequest("The Village premise changed. Review resident backstories again.");
-      }
     const addedResidents: VillagerCard[] = [];
     await mutateVillageState((state) => {
       if (isVillageFounded(state) === founding)

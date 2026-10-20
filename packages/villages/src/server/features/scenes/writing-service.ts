@@ -653,7 +653,7 @@ export function createSceneWriting({
           const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
           const card = resident ? readEffectiveVillagerCard(resident) : null;
           return card?.postHistoryInstructions
-            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}${card.foundingContext?.historyMode === "village" ? "\n" + renderResidentFoundingContext(card.name, card.foundingContext) : ""}`
+            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}${card.foundingContext?.historyMode === "village" || card.foundingContext?.integration?.historyPolicy === "adapted-v1" ? "\n" + renderResidentFoundingContext(card.name, card.foundingContext) : ""}`
             : "";
         }),
       ]),

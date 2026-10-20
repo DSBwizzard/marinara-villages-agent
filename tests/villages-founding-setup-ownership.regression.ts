@@ -1,3 +1,7 @@
+import {
+  approveFoundingBackstories,
+  DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+} from "../packages/villages/src/shared/helpers/resident-founding-context.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
@@ -28,6 +32,19 @@ function deferred() {
 function input(name: string) {
   return {
     name,
+    worldOrigin: "same-world",
+    foundingResidentContexts: approveFoundingBackstories(
+      ["same"],
+      {
+        same: {
+          ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+          integration: { text: "An observatory keeper who grew up in this world.", direction: "", accepted: false },
+        },
+      },
+      "An observatory village",
+      "We begin our first day as neighbours.",
+      "same-world",
+    ),
     setting: "An observatory village",
     townMapImage: "test-map",
     foundingReason: "none",
@@ -241,6 +258,20 @@ await assert.rejects(
   /first day|brings you/,
 );
 assert.deepEqual(direct.calls, ["read"], "First-day validation precedes external connections and generation.");
+await assert.rejects(
+  direct.service.runVillageSetup({ ...input("Direct"), foundingResidentContexts: undefined }),
+  /Review a backstory/,
+);
+await assert.rejects(
+  direct.service.runVillageSetup({ ...input("Direct"), worldOrigin: undefined }),
+  /Review a backstory/,
+);
+const unreviewed = structuredClone(input("Direct"));
+unreviewed.foundingResidentContexts!.same.integration!.accepted = false;
+await assert.rejects(direct.service.runVillageSetup(unreviewed), /valid resident history/);
+const outdatedPolicy = structuredClone(input("Direct"));
+delete outdatedPolicy.foundingResidentContexts!.same.integration!.historyPolicy;
+await assert.rejects(direct.service.runVillageSetup(outdatedPolicy), /Review Same world adaptations/);
 const result = await direct.service.runVillageSetup(input("Direct"));
 assert.equal(result.village.name, "Direct");
 assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");
@@ -265,7 +296,11 @@ await assert.rejects(
   /locked/,
 );
 assert.deepEqual(direct.state, saved);
-await direct.service.runVillageSetup({ ...input("Direct"), foundingSpriteRevisions: { same: -1 } });
+await direct.service.runVillageSetup({
+  ...input("Direct"),
+  foundingResidentContexts: undefined,
+  foundingSpriteRevisions: { same: -1 },
+});
 assert.equal(
   direct.calls.filter((call) => call === "sprites:same").length,
   1,

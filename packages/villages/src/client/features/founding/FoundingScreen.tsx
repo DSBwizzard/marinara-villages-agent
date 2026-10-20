@@ -35,6 +35,7 @@ const PLACE_ERRORS = {
 };
 
 export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
+  const [backstoriesBusy, setBackstoriesBusy] = useState(false);
   const {
     busy,
     catalog,
@@ -367,9 +368,43 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   onChange={chooseRoster}
                   disabled={busy || !!snapshot?.isFounded}
                 />
+                <FoundingField
+                  title="Character Origins"
+                  help={
+                    <>
+                      <p>
+                        Character Origins defines how characters’ existing backstories fit the setting of the Village.
+                      </p>
+                      <p>
+                        <strong>Same world:</strong> Your villagers are residents of the world the Village occupies.
+                        Their original history is reinterpreted to fit within the world of the Village.
+                      </p>
+                      <p>
+                        <strong>Different worlds:</strong> Residents may come from separate worlds, retaining their
+                        original histories as written. Their backstories and your premise establish how they got here.
+                      </p>
+                    </>
+                  }
+                >
+                  <select
+                    aria-label="Character origins"
+                    value={setupWorldOrigin ?? ""}
+                    disabled={busy}
+                    onChange={(event) => setSetupWorldOrigin(event.target.value as "same-world" | "different-worlds")}
+                  >
+                    {!setupWorldOrigin ? (
+                      <option value="" disabled>
+                        Choose origins
+                      </option>
+                    ) : null}
+                    <option value="same-world">Same world</option>
+                    <option value="different-worlds">Different worlds</option>
+                  </select>
+                </FoundingField>
               </section>
               {!snapshot?.isFounded ? (
                 <FoundingBackgrounds
+                  onBusy={setBackstoriesBusy}
                   villageName={setupName}
                   people={wizardVillagers}
                   playerBackground={setupPlayerBackground ?? ""}
@@ -475,23 +510,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </FoundingField>
                 </section>
                 <section className="villages-forging-card villages-starting-situation">
-                  <label>
-                    Character origins
-                    <select
-                      aria-label="Character origins"
-                      value={setupWorldOrigin ?? ""}
-                      disabled={busy}
-                      onChange={(event) => setSetupWorldOrigin(event.target.value as "same-world" | "different-worlds")}
-                    >
-                      {!setupWorldOrigin ? (
-                        <option value="" disabled>
-                          Choose origins
-                        </option>
-                      ) : null}
-                      <option value="same-world">Same world</option>
-                      <option value="different-worlds">Different worlds</option>
-                    </select>
-                  </label>
                   <FoundingField
                     title="Starting Scenario"
                     help={
@@ -1015,6 +1033,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             disabled={
               busy ||
               setupEditorOpen ||
+              backstoriesBusy ||
               setupSuggestionsBusy ||
               setupVenueBusy ||
               !!draftSaveError ||

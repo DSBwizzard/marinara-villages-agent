@@ -1,3 +1,4 @@
+import { foundingBackstoriesCurrent } from "../../../shared/helpers/resident-founding-context.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import {
   MAP_UPLOAD_FALLBACK,
@@ -484,9 +485,19 @@ export function useFoundVillage(ports: {
     visualLoreDefault,
   } = ports;
   return useCallback(async () => {
-    if (residentContextProblem) {
-      setSetupProblem(residentContextProblem);
-      setSetupStep(0);
+    if (
+      !snapshot?.isFounded &&
+      (residentContextProblem ||
+        !foundingBackstoriesCurrent(
+          setupFoundingVillagerIds,
+          selectedResidentContexts,
+          setupSetting,
+          setupFoundingDetails,
+          setupWorldOrigin,
+        ))
+    ) {
+      setSetupProblem(residentContextProblem || "Review backstories in People, then Continue to approve them.");
+      setSetupStep(1);
       return;
     }
     const blocker = setupBlocker();

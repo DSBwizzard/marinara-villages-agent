@@ -464,7 +464,7 @@ export function villageCurrentSetting(village: {
     village.setting.trim(),
     VILLAGE_SHARED_SETTING_RULE,
     village.worldOrigin
-      ? `Character origins: ${village.worldOrigin === "same-world" ? "Residents normally share this world." : "Residents may come from different worlds; their approved backstories and the premise establish how."} Explicit individual backstory exceptions take precedence. This rule does not grant characters knowledge of other worlds or other residents’ pasts.`
+      ? `Character origins: ${village.worldOrigin === "same-world" ? "Residents normally share this world." : "Residents may come from different worlds; their approved backstories and the premise establish how."} This is the default for new backstory proposals, not permission to rewrite established residents. Approved individual backstories take precedence and retain their approved origins even if the Village default changes. This rule does not grant characters knowledge of other worlds or other residents’ pasts.`
       : "",
     facts.length ? `Current world facts:\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "",
   ]

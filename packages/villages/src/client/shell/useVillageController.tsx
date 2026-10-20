@@ -1939,6 +1939,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const gotoSetupStep = createFoundingGotoSetupStep({
+    setupResidentContexts,
+    setSetupResidentContexts,
+    setupWorldOrigin,
     setSetupMapReviewed,
     catalog,
     connectionSetupProblem,

@@ -170,7 +170,11 @@ export function proposeStartingTies(
         established: false,
       };
       const historyAllowed = (context: typeof resident.foundingContext) =>
-        !context || context.historyMode === "continue" || (context.historyMode === "adapt" && !context.background);
+        !context ||
+        context.historyMode === "continue" ||
+        (context.historyMode === "adapt" &&
+          !context.background &&
+          !(context.integration?.accepted && context.integration.historyPolicy === "adapted-v1"));
       const importsHistory =
         historyAllowed(resident.foundingContext) &&
         historyAllowed(village.villagers.find((person) => person.characterId === target.id)?.foundingContext);

@@ -3,6 +3,7 @@ import { FoundingField, FoundingHelp } from "./FoundingField.js";
 import { PlayerBackgroundFields } from "./villages-player-background.js";
 import {
   residentHistoryForOrigin,
+  foundingBackstoriesCurrent,
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   residentBackgroundSourceKey,
   type ResidentFoundingContext,
@@ -11,6 +12,7 @@ import { request, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { BackgroundSource } from "../../shared/ResidentBackgroundReview.js";
 type Props = {
+  onBusy?(busy: boolean): void;
   villageName?: string;
   people: { id: string; name: string }[];
   playerBackground: string;
@@ -23,6 +25,11 @@ type Props = {
 export function FoundingBackgrounds(props: Props) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const onBusy = props.onBusy;
+  useEffect(() => {
+    onBusy?.(busy);
+    return () => onBusy?.(false);
+  }, [busy, onBusy]);
   const latest = useRef(props);
   latest.current = props;
   const first = props.people[0]?.id;
@@ -92,18 +99,13 @@ export function FoundingBackgrounds(props: Props) {
         const previous = contexts[person.id] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
         contexts[person.id] = {
           ...previous,
-          historyMode: residentHistoryForOrigin(
-            previous,
-            previous.integration?.worldOrigin ?? props.source.worldOrigin,
-          ),
+          historyMode: residentHistoryForOrigin(previous, props.source.worldOrigin),
           integration: {
             ...previous.integration,
             text: proposal.residents[person.id]!,
             direction: previous.integration?.direction ?? "",
-            accepted: true,
-            ...((previous.integration?.worldOrigin ?? props.source.worldOrigin)
-              ? { worldOrigin: previous.integration?.worldOrigin ?? props.source.worldOrigin! }
-              : {}),
+            accepted: false,
+            ...(props.source.worldOrigin ? { worldOrigin: props.source.worldOrigin! } : {}),
             sourceKey: residentBackgroundSourceKey(
               props.source.setting,
               props.source.premise,
@@ -132,6 +134,16 @@ export function FoundingBackgrounds(props: Props) {
           appropriate.
         </FoundingHelp>
       </div>
+      {props.people.some((person) => props.contexts[person.id]?.integration?.text) &&
+      !foundingBackstoriesCurrent(
+        props.people.map((person) => person.id),
+        props.contexts,
+        props.source.setting,
+        props.source.premise,
+        props.source.worldOrigin,
+      ) ? (
+        <p role="status">Review backstories. Continue approves the displayed versions.</p>
+      ) : null}
       <PlayerBackgroundFields background={props.playerBackground} onChange={props.onPlayer} disabled={props.disabled} />
       {props.people.map((person) => (
         <FoundingField key={person.id} title={person.name + "’s backstory"}>
@@ -148,17 +160,12 @@ export function FoundingBackgrounds(props: Props) {
                 ...props.contexts,
                 [person.id]: {
                   ...context,
-                  historyMode: residentHistoryForOrigin(
-                    context,
-                    context.integration?.worldOrigin ?? props.source.worldOrigin,
-                  ),
+                  historyMode: residentHistoryForOrigin(context, props.source.worldOrigin),
                   integration: {
                     text: event.target.value,
                     direction: context.integration?.direction ?? "",
-                    accepted: !!event.target.value.trim(),
-                    ...((context.integration?.worldOrigin ?? props.source.worldOrigin)
-                      ? { worldOrigin: context.integration?.worldOrigin ?? props.source.worldOrigin! }
-                      : {}),
+                    accepted: false,
+                    ...(props.source.worldOrigin ? { worldOrigin: props.source.worldOrigin! } : {}),
                     sourceKey: residentBackgroundSourceKey(
                       props.source.setting,
                       props.source.premise,

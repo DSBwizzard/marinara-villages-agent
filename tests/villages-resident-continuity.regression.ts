@@ -1,3 +1,4 @@
+import { residentBackgroundSourceKey } from "../packages/villages/src/shared/helpers/resident-founding-context.js";
 import { PNG } from "pngjs";
 import assert from "node:assert/strict";
 import {
@@ -339,14 +340,28 @@ async function setupPersistence() {
       );
       assert.equal(docs.get("villages-village")?.data.setupAt ?? "", "");
     }
-    const snapshot = await runVillageSetup({ ...input, foundingResidentContexts: { aqua: context } });
+    const approvedContext = {
+      ...context,
+      integration: {
+        text: context.background,
+        direction: "",
+        accepted: true,
+        worldOrigin: "different-worlds" as const,
+        sourceKey: residentBackgroundSourceKey(input.setting, input.foundingDetails, "different-worlds"),
+      },
+    };
+    const snapshot = await runVillageSetup({
+      ...input,
+      worldOrigin: "different-worlds",
+      foundingResidentContexts: { aqua: approvedContext },
+    });
     assert.equal(
       snapshot.villagers[0].foundingContext,
       undefined,
       "private backgrounds stay out of ordinary snapshots",
     );
     const saved = coerceVillageState(docs.get("villages-village").data);
-    assert.deepEqual(saved.villagers[0].foundingContext, context);
+    assert.deepEqual(saved.villagers[0].foundingContext, approvedContext);
     assert.equal(saved.villagers[0].cardSnapshot.backstory, "Mecca remains in the full card.");
     const home = saved.venues.find((venue) => venue.id === "aqua")!;
     home.imageContext = { ...home.imageContext, useAssignedVillagerContext: true };

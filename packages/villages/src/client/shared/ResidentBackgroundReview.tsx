@@ -180,7 +180,7 @@ export function ResidentBackgroundReview({
           disabled={busy || disabled || !review.text.trim()}
           onClick={async () => {
             const origin = review.worldOrigin ?? source.worldOrigin;
-            const accepted = {
+            const accepted: ResidentFoundingContext = {
               ...context,
               historyMode: residentHistoryForOrigin(context, origin),
               integration: {
@@ -189,6 +189,7 @@ export function ResidentBackgroundReview({
                 sourceKey: residentBackgroundSourceKey(source.setting, source.premise, source.worldOrigin),
                 text: review.text.trim(),
                 accepted: true,
+                historyPolicy: origin === "same-world" ? "adapted-v1" : undefined,
               },
             };
             setBusy(true);

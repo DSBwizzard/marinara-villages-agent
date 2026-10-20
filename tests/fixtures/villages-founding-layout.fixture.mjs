@@ -769,6 +769,20 @@ export async function verifyFoundingLayout(group) {
         const backstories = root.getByRole("region", { name: "Founding backstories", exact: true });
         await expect(backstories.getByRole("heading", { name: "Life in Willowbrook", exact: true })).toBeVisible();
         await expect(cast.locator(".villages-people-selected small, .villages-people-identity small")).toHaveCount(0);
+        const origin = cast.getByLabel("Character origins", { exact: true });
+        await expect(origin).toBeVisible();
+        const pickerBox = await cast.locator(".villages-people-selected").boundingBox();
+        const originBox = await origin.boundingBox();
+        if (pickerBox) assert.ok(originBox.y >= pickerBox.y + pickerBox.height, "Origins follows the Villagers picker");
+        await origin.selectOption("same-world");
+        await cast.getByRole("button", { name: "Help: Character Origins", exact: true }).click();
+        await expect(
+          root.getByText(
+            "Character Origins defines how characters’ existing backstories fit the setting of the Village.",
+            { exact: true },
+          ),
+        ).toBeVisible();
+        await root.getByRole("button", { name: "Close Character Origins help", exact: true }).click();
         const castBox = await cast.boundingBox(),
           storyBox = await backstories.boundingBox();
         assert.ok(
@@ -781,7 +795,9 @@ export async function verifyFoundingLayout(group) {
         await expect(past).toHaveValue(/settled here/);
         await past.fill(" ");
         await forward("Continue to Map").click();
-        await expect(root.getByText("Complete unfinished backstories in People.", { exact: true })).toBeVisible();
+        await expect(
+          root.getByText("Choose character origins and write a backstory for each villager.", { exact: true }),
+        ).toBeVisible();
         await expect(root).toHaveAttribute("data-step", "1");
         await past.fill("Finn has always been guardian of a relic in the observatory.");
         await root.getByLabel("Your backstory", { exact: true }).fill("I came to help restore the observatory.");
@@ -1897,6 +1913,7 @@ export async function verifyFoundingLayout(group) {
         assert.ok(foundingPayload.townMapImage.startsWith("data:image/png;base64,"));
         assert.equal(foundingPayload.playerBackground, "I came to help restore the observatory.");
         assert.equal(foundingPayload.foundingResidentContexts.finn.integration.accepted, true);
+        assert.equal(foundingPayload.foundingResidentContexts.finn.integration.historyPolicy, "adapted-v1");
         assert.match(foundingPayload.foundingResidentContexts.finn.integration.text, /always been guardian/);
         assert.deepEqual(
           Object.keys(foundingPayload.foundingResidentContexts).sort(),
