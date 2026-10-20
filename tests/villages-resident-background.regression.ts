@@ -282,7 +282,7 @@ const roster = createResidentRoster({
 });
 await assert.rejects(
   roster.addVillager("mara", undefined, { ...context, integration: { ...context.integration, accepted: false } }),
-  /valid background/,
+  /valid backstory/,
 );
 assert.equal(village.villagers.length, 0);
 village.setting = "A changed premise";

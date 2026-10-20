@@ -235,7 +235,7 @@ export function createFoundingGotoSetupStep(ports: {
   readonly loadPersonas: (signal?: AbortSignal) => Promise<void>;
   readonly personaDraft: string;
   readonly personas: import("../../../shared/contracts/village").PersonaEntry[];
-  readonly residentContextProblem: "" | "Complete unfinished backgrounds in People.";
+  readonly residentContextProblem: "" | "Complete unfinished backstories in People.";
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];

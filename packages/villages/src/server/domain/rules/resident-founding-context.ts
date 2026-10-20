@@ -14,10 +14,10 @@ export function readFoundingResidentContexts(
   roster: readonly string[],
 ): Record<string, ResidentFoundingContext> {
   if (value !== undefined && (!value || typeof value !== "object" || Array.isArray(value)))
-    throw badRequest("Resident backgrounds must be keyed by selected character.");
+    throw badRequest("Resident backstories must be keyed by selected character.");
   const input = (value ?? {}) as Record<string, unknown>;
   if (Object.keys(input).some((id) => !roster.includes(id)))
-    throw badRequest("Resident backgrounds must belong to selected founding villagers.");
+    throw badRequest("Resident backstories must belong to selected founding villagers.");
   const result: Record<string, ResidentFoundingContext> = Object.create(null);
   for (const id of roster) {
     const context = Object.hasOwn(input, id)
@@ -25,7 +25,7 @@ export function readFoundingResidentContexts(
       : { ...DEFAULT_RESIDENT_FOUNDING_CONTEXT };
     if (!context)
       throw badRequest(
-        "Choose a valid resident history and story position, describe Custom, and keep backgrounds within their text limits.",
+        "Choose a valid resident history and story position, describe Custom, and keep backstories within their text limits.",
       );
     result[id] = context;
   }

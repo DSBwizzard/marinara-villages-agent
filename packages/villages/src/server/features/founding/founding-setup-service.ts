@@ -194,7 +194,7 @@ export function createFoundingSetup({
       ? readFoundingResidentContexts(input.foundingResidentContexts, [...assignedResidents])
       : {};
     if (!founding && input.foundingResidentContexts !== undefined)
-      throw badRequest("Resident starting backgrounds are fixed after founding.");
+      throw badRequest("Resident starting backstories are fixed after founding.");
     if (founding && input.foundingCharacterIds !== undefined)
       validateFoundingRoster(input.foundingCharacterIds, assignedResidents, new Set(cardNames.keys()));
     if (founding && privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
@@ -303,7 +303,7 @@ export function createFoundingSetup({
               input.worldOrigin as "same-world" | "different-worlds" | null,
             )
         )
-          throw badRequest("The Village premise changed. Review resident backgrounds again.");
+          throw badRequest("The Village premise changed. Review resident backstories again.");
       }
     const addedResidents: VillagerCard[] = [];
     await mutateVillageState((state) => {

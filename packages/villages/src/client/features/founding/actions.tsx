@@ -413,7 +413,7 @@ export function useFoundVillage(ports: {
   mapVisualLore: boolean;
   personaDraft: string;
   personalizeHomes: boolean;
-  residentContextProblem: "" | "Complete unfinished backgrounds in People.";
+  residentContextProblem: "" | "Complete unfinished backstories in People.";
   savedTownMapView: TownMapView;
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;

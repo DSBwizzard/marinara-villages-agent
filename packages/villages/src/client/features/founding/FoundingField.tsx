@@ -1,83 +1,150 @@
-import { cloneElement, type ReactElement, type ReactNode, useId, useRef, useState, useEffect } from "react";
+import {
+  cloneElement,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+  useId,
+  useRef,
+  useState,
+  useEffect,
+} from "react";
 
-/** Field help stays beside its label; it never changes the input's accessible name. */
-export function FoundingHelp({ label, children }: { label: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const id = useId(),
-    button = useRef<HTMLButtonElement>(null),
-    help = useRef<HTMLSpanElement>(null);
+function HelpPopup({
+  label,
+  children,
+  opener,
+  onClose,
+  restoreFocus,
+}: {
+  label: string;
+  children: ReactNode;
+  opener: RefObject<HTMLButtonElement | null>;
+  onClose(restore?: boolean): void;
+  restoreFocus: RefObject<boolean>;
+}) {
+  const popup = useRef<HTMLDialogElement>(null),
+    close = useRef(onClose);
+  close.current = onClose;
+  const titleId = useId();
+  const [mobile] = useState(() => window.matchMedia("(max-width:700px)").matches);
   useEffect(() => {
-    const node = help.current;
-    if (!open || !node) return;
-    const document = node.ownerDocument;
-    const dismissOutside = (event: MouseEvent) => {
-      if (!event.composedPath().includes(node)) setOpen(false);
+    const node = popup.current,
+      button = opener.current;
+    if (!node || !button) return;
+    const win = node.ownerDocument.defaultView!;
+    const focus = restoreFocus;
+    const position = () => {
+      if (mobile) return;
+      const anchor = button.getBoundingClientRect();
+      const field = (button.closest(".villages-founding-field") ?? button.closest("section"))
+        ?.querySelector("input,textarea,select")
+        ?.getBoundingClientRect();
+      const rightEdge = field?.right ?? anchor.right;
+      const room = win.innerWidth - rightEdge - 24;
+      const width = room >= 240 ? Math.min(448, room) : Math.min(360, win.innerWidth - 32);
+      node.style.width = width + "px";
+      const height = node.getBoundingClientRect().height;
+      node.style.left =
+        Math.max(16, Math.min(room >= 240 ? rightEdge + 8 : anchor.right + 8, win.innerWidth - width - 16)) + "px";
+      node.style.top =
+        Math.max(
+          16,
+          Math.min(anchor.top, room >= 240 ? win.innerHeight - height - 16 : (field?.top ?? anchor.top) - height - 8),
+        ) + "px";
     };
-    // Some Chromium touch gestures complete without a compatibility click.
-    // Track a completed stationary touch, while cancelled/drifting scrolls keep help open.
-    let touch: { id: number; x: number; y: number } | null = null;
-    const down = (event: PointerEvent) => {
-      touch =
-        event.pointerType === "touch" && event.isPrimary
-          ? { id: event.pointerId, x: event.clientX, y: event.clientY }
-          : null;
+    const toggle = (event: Event) => {
+      if ((event as ToggleEvent).newState === "closed") close.current(false);
     };
-    const move = (event: PointerEvent) => {
-      if (touch?.id === event.pointerId && Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > 10)
-        touch = null;
-    };
-    const cancel = () => {
-      touch = null;
-    };
-    const up = (event: PointerEvent) => {
-      if (
-        touch?.id === event.pointerId &&
-        Math.hypot(event.clientX - touch.x, event.clientY - touch.y) <= 10 &&
-        !event.composedPath().includes(node)
-      )
-        setOpen(false);
-      touch = null;
-    };
-    document.addEventListener("click", dismissOutside, true);
-    document.addEventListener("pointerdown", down, true);
-    document.addEventListener("pointermove", move, true);
-    document.addEventListener("pointercancel", cancel, true);
-    document.addEventListener("pointerup", up, true);
+    const resize = () => close.current(false);
+    node.addEventListener("toggle", toggle);
+    if (mobile) node.showModal();
+    else node.showPopover();
+    position();
+    win.addEventListener("resize", resize);
+    win.addEventListener("scroll", position, true);
     return () => {
-      document.removeEventListener("click", dismissOutside, true);
-      document.removeEventListener("pointerdown", down, true);
-      document.removeEventListener("pointermove", move, true);
-      document.removeEventListener("pointercancel", cancel, true);
-      document.removeEventListener("pointerup", up, true);
+      node.removeEventListener("toggle", toggle);
+      win.removeEventListener("resize", resize);
+      win.removeEventListener("scroll", position, true);
+      if (mobile) node.close();
+      else if (node.matches(":popover-open")) node.hidePopover();
+      if (focus.current && button.isConnected) button.focus({ preventScroll: true });
     };
-  }, [open]);
+  }, [mobile, opener, restoreFocus]);
   return (
-    <span
-      ref={help}
-      className="villages-founding-help"
+    <dialog
+      ref={popup}
+      popover={mobile ? undefined : "auto"}
+      className="villages-founding-help-popup"
+      data-mobile={mobile || undefined}
+      aria-modal={mobile || undefined}
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose(true);
+      }}
       onKeyDown={(event) => {
-        if (open && event.key === "Escape") {
+        if (event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();
-          setOpen(false);
-          button.current?.focus();
+          onClose(true);
+        }
+      }}
+      onClick={(event) => {
+        if (mobile && event.target === event.currentTarget) {
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (
+            event.clientX < rect.left ||
+            event.clientX > rect.right ||
+            event.clientY < rect.top ||
+            event.clientY > rect.bottom
+          )
+            onClose(true);
         }
       }}
     >
+      <header>
+        <h3 id={titleId}>{label}</h3>
+        <button type="button" aria-label={"Close " + label + " help"} onClick={() => onClose(true)}>
+          ×
+        </button>
+      </header>
+      <div role="note">{children}</div>
+    </dialog>
+  );
+}
+
+/** Help overlays never resize the form; mobile uses native modality and a dimmed backdrop. */
+export function FoundingHelp({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false),
+    button = useRef<HTMLButtonElement>(null),
+    restoreFocus = useRef(false);
+  return (
+    <span className="villages-founding-help">
       <button
         ref={button}
         type="button"
         aria-label={"Help: " + label}
         aria-expanded={open}
-        aria-controls={id}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          restoreFocus.current = false;
+          setOpen(!open);
+        }}
       >
         <span aria-hidden="true">?</span>
       </button>
       {open ? (
-        <span id={id} role="note" className="villages-founding-help-text">
+        <HelpPopup
+          label={label}
+          opener={button}
+          restoreFocus={restoreFocus}
+          onClose={(restore) => {
+            restoreFocus.current = !!restore;
+            setOpen(false);
+          }}
+        >
           {children}
-        </span>
+        </HelpPopup>
       ) : null}
     </span>
   );

@@ -30,9 +30,9 @@ const liveSubjects = new WeakMap<CapabilityDocumentStore, Map<string, string>>()
 type Attempt = { fingerprint: string; status: "running" | "complete" | "failed"; text: string; error: string };
 const slot: DocumentSlot<{ attempt: Attempt | null }> = {
   kind: "resident-background",
-  name: "Resident background proposal",
-  description: "Deliberate background request and reusable result",
-  label: () => "Resident background proposal",
+  name: "Resident backstory proposal",
+  description: "Deliberate backstory request and reusable result",
+  label: () => "Resident backstory proposal",
   coerce: (value) => ({ attempt: (asRecord(value).attempt as Attempt) ?? null }),
 };
 export interface ResidentBackgroundPorts {
@@ -56,13 +56,13 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
   if (!subjects) liveSubjects.set(documents, (subjects = new Map()));
   let stopped = false;
   async function draftResidentBackground(value: unknown): Promise<{ text: string }> {
-    if (stopped) throw conflict("Background drafting is restarting. Your edits are unchanged.");
+    if (stopped) throw conflict("Backstory drafting is restarting. Your edits are unchanged.");
     const input = asRecord(value);
     const actionId = asTrimmedString(input.actionId);
     const batch = input.foundingCast === true;
     const characterId = batch ? "founding-cast" : asTrimmedString(input.characterId);
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(actionId) || !characterId || characterId.length > 128)
-      throw badRequest("A character and background request ID are required.");
+      throw badRequest("A character and backstory request ID are required.");
     const village = await ports.readVillageState();
     const founding = batch || input.founding === true;
     if (founding && village.setupAt) throw conflict("This Village has already been founded.");
@@ -120,7 +120,7 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
         : null;
     }
     if (batch && (typeof input.playerBackground !== "string" || input.playerBackground.length > 1200))
-      throw badRequest("Use at most 1,200 characters for your background.");
+      throw badRequest("Use at most 1,200 characters for your backstory.");
     if (batch)
       neighbors = neighbors.map((person) => {
         const context = person.background;
@@ -157,7 +157,7 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
             }
           : undefined,
       });
-      if (!context) throw badRequest("Keep draft backgrounds within their text limits.");
+      if (!context) throw badRequest("Keep draft backstories within their text limits.");
       return context;
     }
     const existingContext = readResidentFoundingContext(input.existingContext);
@@ -199,7 +199,7 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
     const documentId = "villages-resident-background-" + digest([village.seed, actionId]);
     const pending = active.get(documentId);
     if (pending) {
-      if (pending.fingerprint !== fingerprint) throw conflict("The background inputs changed. Start a new proposal.");
+      if (pending.fingerprint !== fingerprint) throw conflict("The backstory inputs changed. Start a new proposal.");
       return pending.task;
     }
     const subjectKeys = (batch ? ["founding-cast", ...neighbors.map((person) => person.id)] : [characterId]).map((id) =>
@@ -207,7 +207,7 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
     );
     if (subjectKeys.some((key) => subjects!.has(key)))
       throw conflict(
-        "A background for this character is already being proposed. Retrieve its result before trying again.",
+        "A backstory for this character is already being proposed. Retrieve its result before trying again.",
       );
     for (const key of subjectKeys) subjects!.set(key, documentId);
     const task = run();
@@ -233,7 +233,7 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
         const previous = saved as Attempt | null;
         if (!previous) throw conflict("No saved proposal was found. Use Try again to request one.");
         if (previous?.fingerprint !== fingerprint)
-          throw conflict("The background inputs changed. Start a new proposal.");
+          throw conflict("The backstory inputs changed. Start a new proposal.");
         if (previous.status === "complete") return { text: previous.text };
         throw conflict(
           previous.error ||
@@ -262,7 +262,7 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
             ...(batch
               ? [
                   {
-                    text: "Propose the founding cast together, including the player. Return JSON only: {player:string,residents:{characterId:string}} with exactly the supplied resident IDs. Each value is one short background. Consider everyone equally, regardless of selection order. Suggest modest connections only where the premise and both histories support them; independent lives are welcome. Existing player-written backgrounds constrain the proposals. The player oversees major changes, improvements and developments as a gameplay responsibility; invent no title, appointment, obligations or past deeds to justify it.",
+                    text: "Propose the founding cast together, including the player. Return JSON only: {player:string,residents:{characterId:string}} with exactly the supplied resident IDs. Each value is one short backstory. Consider everyone equally, regardless of selection order. Suggest modest connections only where the premise and both histories support them; independent lives are welcome. Existing player-written backstories constrain the proposals. The player oversees major changes, improvements and developments as a gameplay responsibility; invent no title, appointment, obligations or past deeds to justify it.",
                   },
                 ]
               : [
@@ -298,14 +298,14 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
             },
             ...lore.map((text) => ({ text, optional: "lore" as const })),
             {
-              text: "For this editable proposal only, you may propose the missing connection to the Village and modest local acquaintances within the supplied premise. The ordinary background rule against inventing arrival bridges applies during gameplay, not this explicit authoring request. Preserve all authored history changes and knowledge limits; the player must accept this proposal before anything becomes established.",
+              text: "For this editable proposal only, you may propose the missing connection to the Village and modest local acquaintances within the supplied premise. The ordinary backstory rule against inventing arrival bridges applies during gameplay, not this explicit authoring request. Preserve all authored history changes and knowledge limits; the player must accept this proposal before anything becomes established.",
             },
           ],
-          batch ? "Write the complete founding cast proposal." : "Write the proposed background paragraph.",
+          batch ? "Write the complete founding cast proposal." : "Write the proposed backstory paragraph.",
           requested,
           "System",
         );
-        if (stopped) throw conflict("Background drafting stopped before the request was sent.");
+        if (stopped) throw conflict("Backstory drafting stopped before the request was sent.");
         const reply = await ports.completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requested, {
           temperature: 0.7,
           retryEmpty: false,
@@ -317,10 +317,10 @@ export function createResidentBackgrounds(ports: ResidentBackgroundPorts) {
         const text = reply.content?.trim() ?? "";
         if (!validReply(reply))
           throw badRequest(
-            "The background proposal was incomplete or too long. Your edits are unchanged; try again or write it yourself.",
+            "The backstory proposal was incomplete or too long. Your edits are unchanged; try again or write it yourself.",
           );
         await ports.mutateDocument(documentId, slot, (state) => {
-          if (state.attempt?.fingerprint !== fingerprint) throw conflict("The background request changed.");
+          if (state.attempt?.fingerprint !== fingerprint) throw conflict("The backstory request changed.");
           state.attempt = { fingerprint, status: "complete", text, error: "" };
         });
         return { text };

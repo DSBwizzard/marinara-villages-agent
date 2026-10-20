@@ -102,7 +102,7 @@ export function ResidentBackgroundReview({
       });
     } catch (cause) {
       if (mounted.current && attempt === generation.current)
-        setError(messageFrom(cause, "Could not propose a background. Write one or try again."));
+        setError(messageFrom(cause, "Could not propose a backstory. Write one or try again."));
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -117,10 +117,10 @@ export function ResidentBackgroundReview({
   return (
     <ModalDialog title={name + "’s life here"} onClose={onCancel} compact>
       <label style={{ display: "grid", gap: ".5rem" }}>
-        Background
+        Backstory
         <textarea
           autoComplete="off"
-          aria-label={name + " background"}
+          aria-label={name + " backstory"}
           rows={6}
           maxLength={1200}
           value={review.text}
@@ -128,7 +128,7 @@ export function ResidentBackgroundReview({
           onChange={(event) => patch({ text: event.target.value })}
         />
       </label>
-      {busy ? <p role="status">Proposing background…</p> : null}
+      {busy ? <p role="status">Proposing backstory…</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       <details open={customize} onToggle={(event) => setCustomize(event.currentTarget.open)}>
         <summary>Customize</summary>
@@ -154,7 +154,7 @@ export function ResidentBackgroundReview({
           Direction
           <textarea
             autoComplete="off"
-            aria-label={name + " background direction"}
+            aria-label={name + " backstory direction"}
             rows={2}
             maxLength={500}
             value={review.direction}
@@ -196,7 +196,7 @@ export function ResidentBackgroundReview({
             try {
               await onAccept(accepted);
             } catch (cause) {
-              if (mounted.current) setError(messageFrom(cause, "Could not save this background."));
+              if (mounted.current) setError(messageFrom(cause, "Could not save this backstory."));
             } finally {
               if (mounted.current) setBusy(false);
             }

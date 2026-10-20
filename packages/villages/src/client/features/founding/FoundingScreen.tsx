@@ -3,9 +3,7 @@ import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { useEffect, useRef, useState } from "react";
 import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/helpers/resident-founding-context.js";
-import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { SetupVenueDraft } from "../../shared/types.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
@@ -16,7 +14,7 @@ import {
   VillageLorebookPicker,
   LoreTokenBudgetField,
 } from "./FoundingPanels.js";
-import { FoundingField, FoundingHelp, CircumstanceInput } from "./FoundingField.js";
+import { FoundingField, CircumstanceInput } from "./FoundingField.js";
 import { venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
 import { FoundingWorkspace } from "./villages-founding-workspace";
 import { QuickStartVenues } from "./QuickStartVenues.js";
@@ -326,7 +324,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
         </header>
         <main className="villages-forging-body" data-step={setupStep}>
           <div hidden={setupStep !== 1}>
-            <div className="villages-forging-columns">
+            <div className="villages-forging-columns villages-people-columns">
               <section className="villages-forging-card">
                 <h3 aria-label="You">You</h3>
                 {personaError ? (
@@ -343,9 +341,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   }}
                   disabled={busy}
                 />
-              </section>
-              <section className="villages-forging-card">
-                <h3 aria-label="Founding villagers">Founding villagers</h3>
+
+                <h3 className="villages-initial-residents" aria-label="Initial residents">
+                  Initial residents
+                </h3>
                 {villagersError && !snapshot?.isFounded ? (
                   <p role="alert" data-founding-problem tabIndex={-1}>
                     Choose one to three available founding villagers.
@@ -361,28 +360,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   onChange={chooseRoster}
                   disabled={busy || !!snapshot?.isFounded}
                 />
-                {!snapshot?.isFounded ? (
-                  <FoundingBackgrounds
-                    people={wizardVillagers}
-                    playerBackground={setupPlayerBackground ?? ""}
-                    contexts={setupResidentContexts}
-                    onPlayer={setSetupPlayerBackground}
-                    onContexts={setSetupResidentContexts}
-                    disabled={busy}
-                    source={{
-                      founding: true,
-                      playerPersonaId: personaDraft,
-                      foundingCharacterIds: setupFoundingVillagerIds,
-                      setting: setupSetting,
-                      premise: setupFoundingDetails,
-                      worldOrigin: setupWorldOrigin,
-                      selectedLorebookIds: setupLorebookDraft,
-                      loreTokenBudget: setupLoreTokenBudgetDraft,
-                    }}
-                  />
-                ) : (
-                  <PlayerBackgroundSummary background={setupPlayerBackground} />
-                )}
                 <div className="villages-people-connections">
                   <details open={!!connectionSetupProblem}>
                     <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
@@ -395,6 +372,29 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </details>
                 </div>
               </section>
+              {!snapshot?.isFounded ? (
+                <FoundingBackgrounds
+                  villageName={setupName}
+                  people={wizardVillagers}
+                  playerBackground={setupPlayerBackground ?? ""}
+                  contexts={setupResidentContexts}
+                  onPlayer={setSetupPlayerBackground}
+                  onContexts={setSetupResidentContexts}
+                  disabled={busy}
+                  source={{
+                    founding: true,
+                    playerPersonaId: personaDraft,
+                    foundingCharacterIds: setupFoundingVillagerIds,
+                    setting: setupSetting,
+                    premise: setupFoundingDetails,
+                    worldOrigin: setupWorldOrigin,
+                    selectedLorebookIds: setupLorebookDraft,
+                    loreTokenBudget: setupLoreTokenBudgetDraft,
+                  }}
+                />
+              ) : (
+                <PlayerBackgroundSummary background={setupPlayerBackground} />
+              )}
             </div>
           </div>
           {setupStep === 0 ? (
@@ -844,9 +844,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <div>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
-                      <h3>People & backgrounds</h3>
+                      <h3>People & backstories</h3>
                       <button type="button" onClick={() => gotoSetupStep(1)}>
-                        Change people & backgrounds
+                        Change people & backstories
                       </button>
                     </div>
                     <p>{personas?.find((person) => person.id === personaDraft)?.name ?? "Selected Persona"} · You</p>
@@ -877,7 +877,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       );
                     })}
                     <PlayerBackgroundSummary background={setupPlayerBackground} />
-                    <p>Backgrounds describe the starting situation; events can change it.</p>
+                    <p>Backstories describe the starting situation; events can change it.</p>
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">

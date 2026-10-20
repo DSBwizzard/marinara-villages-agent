@@ -152,7 +152,7 @@ export function FoundingPersonaSelector({
         <FoundingIdentityRow
           id={selected.id}
           name={selected.name}
-          summary={selected.summary}
+          summary={undefined}
           portrait={personaChoicePortrait(selected)}
           selected
           disabled={disabled}
@@ -275,16 +275,13 @@ export function FoundingVillagerPicker({
       <div className="villages-people-selected">
         {selected.map((person) => (
           <div className="villages-selected-villager" key={person.id}>
-            <FoundingIdentityRow
-              id={person.id}
-              name={person.name}
-              summary={person.summary}
+            <AvatarFace
               portrait={portraits[person.id]}
-              selected
-              disabled={disabled}
-              action="Remove"
-              onClick={() => toggle(person.id)}
+              name={person.name}
+              className={ELEMENT_TAG + "-identity-card-face"}
+              glyph="person"
             />
+            <strong className="villages-selected-name">{person.name}</strong>
             {renderBackstory?.(person.id, person.name)}
             <button
               type="button"
@@ -293,6 +290,15 @@ export function FoundingVillagerPicker({
               onClick={() => setSpriteCharacter({ id: person.id, name: person.name })}
             >
               Sprites
+            </button>
+            <button
+              type="button"
+              className="villages-remove-resident"
+              disabled={disabled}
+              aria-label={person.name + " · Remove"}
+              onClick={() => toggle(person.id)}
+            >
+              ×
             </button>
           </div>
         ))}

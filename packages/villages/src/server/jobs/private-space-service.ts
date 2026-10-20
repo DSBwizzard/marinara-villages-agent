@@ -215,7 +215,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           room.characters.some((person) => person.foundingBackground) &&
           JSON.stringify(fitted.messages) !== JSON.stringify(messages)
         )
-          throw new Error("The required resident background does not fit the System connection. No request was sent.");
+          throw new Error("The required resident backstory does not fit the System connection. No request was sent.");
         outputLimit = Math.min(fitted.maxTokens ?? requested, requested);
         signal?.throwIfAborted();
         await mutateVillageState((state) => {

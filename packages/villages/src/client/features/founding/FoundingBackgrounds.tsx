@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FoundingField } from "./FoundingField.js";
+import { FoundingField, FoundingHelp } from "./FoundingField.js";
 import { PlayerBackgroundFields } from "./villages-player-background.js";
 import {
   residentHistoryForOrigin,
@@ -11,6 +11,7 @@ import { request, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { BackgroundSource } from "../../shared/ResidentBackgroundReview.js";
 type Props = {
+  villageName?: string;
   people: { id: string; name: string }[];
   playerBackground: string;
   contexts: Record<string, ResidentFoundingContext>;
@@ -117,20 +118,26 @@ export function FoundingBackgrounds(props: Props) {
       props.onContexts(contexts);
     } catch (cause) {
       if (mounted.current && turn === generation.current)
-        setError(messageFrom(cause, "Could not propose backgrounds. Your edits are kept."));
+        setError(messageFrom(cause, "Could not propose backstories. Your edits are kept."));
     } finally {
       if (mounted.current && turn === generation.current) setBusy(false);
     }
   }
   return (
-    <section className="villages-forging-card villages-cast-backgrounds" aria-label="Founding backgrounds">
-      <h3>Life here</h3>
+    <section className="villages-forging-card villages-cast-backgrounds" aria-label="Founding backstories">
+      <div className="villages-life-heading">
+        <h3>Life in {props.villageName?.trim() || "your Village"}</h3>
+        <FoundingHelp label="Backstories">
+          These backstories connect each person to {props.villageName?.trim() || "your Village"}. Use "Propose
+          backstories" after adding the Villagers you want, and their narratives can intersect if appropriate.
+        </FoundingHelp>
+      </div>
       <PlayerBackgroundFields background={props.playerBackground} onChange={props.onPlayer} disabled={props.disabled} />
       {props.people.map((person) => (
-        <FoundingField key={person.id} title={person.name + "’s background"}>
+        <FoundingField key={person.id} title={person.name + "’s backstory"}>
           <textarea
             autoComplete="off"
-            aria-label={person.name + " background"}
+            aria-label={person.name + " backstory"}
             maxLength={1200}
             rows={3}
             value={props.contexts[person.id]?.integration?.text ?? ""}
@@ -169,7 +176,7 @@ export function FoundingBackgrounds(props: Props) {
         disabled={props.disabled || busy || !props.people.length || !props.source.playerPersonaId}
         onClick={() => void propose()}
       >
-        {busy ? "Proposing…" : actionId ? "Try again" : "Propose backgrounds"}
+        {busy ? "Proposing…" : actionId ? "Try again" : "Propose backstories"}
       </button>
       {actionId && !review?.proposalReceived ? (
         <button type="button" disabled={props.disabled || busy} onClick={() => void propose(true)}>

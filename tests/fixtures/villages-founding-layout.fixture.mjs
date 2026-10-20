@@ -572,7 +572,7 @@ export async function verifyFoundingLayout(group) {
           await expect(root.getByRole("note")).toHaveText(text);
           await bounds();
           await capture(label === "Setting" ? "setting-help" : "scenario-help");
-          await help.press("Escape");
+          await page.keyboard.press("Escape");
           await expect(help).toBeFocused();
           await expect(root.getByRole("note")).toHaveCount(0);
         }
@@ -590,7 +590,7 @@ export async function verifyFoundingLayout(group) {
         await expect(loreCard.getByRole("note")).toHaveText(
           "Selected lorebooks enrich your Village with information for places, stories, village life and image generation.",
         );
-        await loreHelp.press("Escape");
+        await page.keyboard.press("Escape");
         const loreBudget = root.getByLabel("Lorebook Token Budget", { exact: true });
         await expect(loreBudget).toHaveValue("1600");
         await expect(loreBudget).toHaveAttribute("autocomplete", "off");
@@ -607,7 +607,7 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("note")).toContainText(
           "Maximum tokens lorebooks can use in any lorebook-enabled prompt.",
         );
-        await budgetHelp.press("Escape");
+        await page.keyboard.press("Escape");
         const chooseLore = loreCard.getByRole("button", { name: "Choose Village Lorebooks", exact: true });
         await chooseLore.click();
         const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
@@ -714,11 +714,11 @@ export async function verifyFoundingLayout(group) {
         await personaDialog.getByRole("button").filter({ hasText: "Ada" }).click();
         await expect(root.getByText("View Persona details", { exact: true })).toHaveCount(0);
         await expect(root.getByRole("textbox", { name: "Role Title", exact: true })).toHaveCount(0);
-        await root.getByRole("button", { name: "Help: Your background", exact: true }).click();
+        await root.getByRole("button", { name: "Help: Your backstory", exact: true }).click();
         await expect(root.getByRole("note")).toContainText(
-          "In Villages, you oversee major changes, improvements, and developments.",
+          "In Villages, you (the player) coordinate with Villagers on major changes, improvements, and developments.",
         );
-        await root.getByRole("button", { name: "Help: Your background", exact: true }).click();
+        await root.getByRole("button", { name: "Close Your backstory help", exact: true }).click();
         const selectResidents = async (names) => {
           for (const name of names) {
             await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
@@ -734,15 +734,26 @@ export async function verifyFoundingLayout(group) {
           ["Finn", "Rosa", "Lee, Keeper of the Observatory’s Long Forgotten Archives"].slice(0, homeCount),
         );
         await expect(page.getByRole("dialog", { name: "Finn’s life here", exact: true })).toHaveCount(0);
-        await root.getByRole("button", { name: "Propose backgrounds", exact: true }).click();
-        const past = root.getByLabel("Finn background", { exact: true });
+        const cast = root.locator(".villages-people-columns>section").first();
+        const backstories = root.getByRole("region", { name: "Founding backstories", exact: true });
+        await expect(backstories.getByRole("heading", { name: "Life in Willowbrook", exact: true })).toBeVisible();
+        await expect(cast.locator(".villages-people-selected small, .villages-people-identity small")).toHaveCount(0);
+        const castBox = await cast.boundingBox(),
+          storyBox = await backstories.boundingBox();
+        assert.ok(
+          width > 1000 ? storyBox.x >= castBox.x + castBox.width : storyBox.y >= castBox.y + castBox.height,
+          "backstories sit beside the cast on desktop and below it on phone",
+        );
+
+        await root.getByRole("button", { name: "Propose backstories", exact: true }).click();
+        const past = root.getByLabel("Finn backstory", { exact: true });
         await expect(past).toHaveValue(/settled here/);
         await past.fill(" ");
         await forward("Continue to Map").click();
-        await expect(root.getByText("Complete unfinished backgrounds in People.", { exact: true })).toBeVisible();
+        await expect(root.getByText("Complete unfinished backstories in People.", { exact: true })).toBeVisible();
         await expect(root).toHaveAttribute("data-step", "1");
         await past.fill("Finn has always been guardian of a relic in the observatory.");
-        await root.getByLabel("Your background", { exact: true }).fill("I came to help restore the observatory.");
+        await root.getByLabel("Your backstory", { exact: true }).fill("I came to help restore the observatory.");
         await bounds();
         await capture("people-backgrounds");
         await forward("Save & exit").click();
@@ -790,11 +801,11 @@ export async function verifyFoundingLayout(group) {
           await capture("map-details-help");
           await note.click();
           await expect(mapHelp).toHaveAttribute("aria-expanded", "true");
-          await mapHelp.press("Escape");
+          await page.keyboard.press("Escape");
           await expect(mapHelp).toBeFocused();
           await expect(mapHelp).toHaveAttribute("aria-expanded", "false");
           await mapHelp.click();
-          await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
+          await mapDialog.getByRole("button", { name: "Close Map Details help", exact: true }).click();
           await expect(mapHelp).toHaveAttribute("aria-expanded", "false");
         }
         await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
@@ -856,7 +867,7 @@ export async function verifyFoundingLayout(group) {
         await expect(mapDialog.getByRole("note")).toHaveText(
           "Describe what you want shown, arranged, or left out of the artwork.",
         );
-        await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
+        await mapDialog.getByRole("button", { name: "Close Map Details help", exact: true }).click();
         await expect(mapDialog.getByRole("note")).toHaveCount(0);
         await capture("map-details");
         const customStyle = mapDialog.getByLabel("Scenery Style Description", { exact: true });
@@ -1227,7 +1238,7 @@ export async function verifyFoundingLayout(group) {
         await expect(inspector.getByRole("note")).toHaveText(
           "Describe the entrance, approach and visible exterior of this Venue.",
         );
-        await entranceHelp.press("Escape");
+        await page.keyboard.press("Escape");
         const formHelp = inspector.getByRole("button", { name: "Help: Form", exact: true });
         const formLabel = await formHelp.locator("..").locator("..").locator("label").boundingBox();
         const formButton = await formHelp.boundingBox();
@@ -1268,7 +1279,7 @@ export async function verifyFoundingLayout(group) {
           beforeHelp,
           "floating help does not shift fields",
         );
-        await formHelp.press("Escape");
+        await page.keyboard.press("Escape");
         await expect(formHelp).toBeFocused();
         await expect(inspector.getByRole("note")).toHaveCount(0);
         await formHelp.evaluate((element) => element.blur());
@@ -1425,6 +1436,7 @@ export async function verifyFoundingLayout(group) {
         await capture("resident-room-specification");
         await inspector.getByRole("button", { name: "Help: Private interior", exact: true }).click();
         await expect(inspector.getByText(/prepared privately/)).toBeVisible();
+        await inspector.getByRole("button", { name: "Close Private interior help", exact: true }).click();
         await open();
         await mapView();
         await forward("Suggest names & descriptions").click();
@@ -1792,7 +1804,7 @@ export async function verifyFoundingLayout(group) {
         }
         await forward("Review village").click();
         await expect(root).toHaveAttribute("data-step", "4");
-        await expect(root.getByRole("button", { name: "Change people & backgrounds", exact: true })).toBeVisible();
+        await expect(root.getByRole("button", { name: "Change people & backstories", exact: true })).toBeVisible();
         await expect(root.locator(".villages-resident-review").filter({ hasText: "Finn" })).toContainText(
           /[Gg]uardian of a relic/,
         );

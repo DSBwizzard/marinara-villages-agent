@@ -13,7 +13,7 @@ export function calculateResidentContextProblem(ports: {
     Object.values(selectedResidentContexts).some((context) =>
       Object.values(residentFoundingProblems(context)).some(Boolean),
     )
-    ? "Complete unfinished backgrounds in People."
+    ? "Complete unfinished backstories in People."
     : "";
 }
 export function calculateSetupHomeCount(ports: { setupFoundingVillagerIds: string[] }) {

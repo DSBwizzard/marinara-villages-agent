@@ -1,7 +1,7 @@
 import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
 import type { createResidentBackgrounds } from "./resident-background-service.js";
 const binding = createActivationBinding<ReturnType<typeof createResidentBackgrounds>>(
-  "Resident backgrounds are not configured.",
+  "Resident backstories are not configured.",
 );
 export function configureResidentBackgrounds(service: ReturnType<typeof createResidentBackgrounds>): () => void {
   const release = binding.configure(bindActivationService(service));

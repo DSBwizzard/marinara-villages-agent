@@ -111,7 +111,7 @@ try {
       await expect.poll(() => page.evaluate(() => window.source.worldOrigin)).toBe("same-world");
       await page.getByRole("button", { name: "Select Mara", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Mara’s life here", exact: true });
-      const text = dialog.getByLabel("Mara background", { exact: true });
+      const text = dialog.getByLabel("Mara backstory", { exact: true });
       await expect(text).toHaveValue(/following a lead/);
       await expect(dialog.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
       await expect(dialog.getByRole("button", { name: "Retrieve result", exact: true })).toHaveCount(0);

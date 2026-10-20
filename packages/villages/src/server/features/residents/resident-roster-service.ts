@@ -50,7 +50,7 @@ export function createResidentRoster({
    */
   async function addVillager(characterId: string, spriteSetupRevision?: number, background?: unknown): Promise<void> {
     const context = background === undefined ? undefined : readResidentFoundingContext(background);
-    if (background !== undefined && !context) throw badRequest("Accept a valid background before moving in.");
+    if (background !== undefined && !context) throw badRequest("Accept a valid backstory before moving in.");
     const card = await findVillagerCard(characterId);
     if (!card) throw notFound("That character is not in your library.");
 
@@ -60,7 +60,7 @@ export function createResidentRoster({
       context.integration.sourceKey !==
         residentBackgroundSourceKey(village.setting, village.foundingDetails, village.worldOrigin)
     )
-      throw badRequest("The Village premise changed. Review the background again.");
+      throw badRequest("The Village premise changed. Review the backstory again.");
     const alreadyResident = village.villagers.some((villager) => villager.characterId === characterId);
     if (!alreadyResident && village.villagers.length >= MAX_VILLAGERS) {
       throw badRequest(`A village holds at most ${MAX_VILLAGERS} villagers.`);
@@ -75,7 +75,7 @@ export function createResidentRoster({
           context.integration.sourceKey !==
             residentBackgroundSourceKey(state.setting, state.foundingDetails, state.worldOrigin)
         )
-          throw badRequest("The Village premise changed. Review the background again.");
+          throw badRequest("The Village premise changed. Review the backstory again.");
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
         if (state.villagers.length >= MAX_VILLAGERS) {
           throw badRequest(`A village holds at most ${MAX_VILLAGERS} villagers.`);
