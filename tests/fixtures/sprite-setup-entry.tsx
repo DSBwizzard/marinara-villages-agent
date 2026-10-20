@@ -5,17 +5,27 @@ function App() {
   const [open, setOpen] = useState(false),
     [added, setAdded] = useState(false);
   const [failNext, setFailNext] = useState(false);
+  const [existing, setExisting] = useState(false);
   const [preparedRevision, setPreparedRevision] = useState<number>();
   return (
     <>
       <button onClick={() => setOpen(true)}>Choose Bupkis</button>
       <button onClick={() => setFailNext(true)}>Fail next addition</button>
       <button onClick={() => setPreparedRevision(1)}>Use saved sprite choice</button>
+      <button
+        onClick={() => {
+          setExisting(true);
+          setOpen(true);
+        }}
+      >
+        Review resident sprites
+      </button>
       {added ? <p>Bupkis added</p> : null}
       {open ? (
         <SpriteSetupDialog
           characterId="bupkis"
           name="Bupkis"
+          existing={existing}
           preserveSelection={preparedRevision !== undefined}
           portrait={{
             url: "http://villages.test/portrait.png",

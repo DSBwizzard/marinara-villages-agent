@@ -183,12 +183,12 @@ try {
       });
       await page
         .getByRole("dialog", { name: "Mara sprite setup" })
-        .getByRole("button", { name: "Add without using sprites", exact: true })
+        .getByRole("button", { name: "Add without sprites", exact: true })
         .click();
       const sprites = page.getByRole("dialog", { name: "Mara sprite setup" });
       await expect(sprites.getByRole("alert")).toContainText("Synthetic admission failure");
       assert.equal(calls, paidBeforeCancel, "admission failure never regenerates the background");
-      await sprites.getByRole("button", { name: "Add without using sprites", exact: true }).click();
+      await sprites.getByRole("button", { name: "Add without sprites", exact: true }).click();
       await expect
         .poll(() => page.evaluate(() => window.rosterAccepted?.integration?.text))
         .toBe("A canceled move-in keeps this background.");
