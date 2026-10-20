@@ -133,6 +133,11 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
             founded ? "Willowbrook" : "",
             "Only founded names prefill; drafts restore independently",
           );
+          assert.equal(
+            values.setSetupWorldOrigin,
+            founded ? null : "different-worlds",
+            "New Villages default to different worlds while established saves preserve their framing",
+          );
           assert.equal(values.setSetupFoundingReason, reason);
           assert.equal(values.setSetupFoundingDetails, details);
           assert.equal(Object.hasOwn(values, "setSetupFoundingGuidance"), false);
