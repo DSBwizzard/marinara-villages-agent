@@ -294,6 +294,7 @@ export function createFoundingGotoSetupStep(ports: {
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
           : residentContextProblem ||
+            connectionSetupProblem ||
             (!snapshot?.isFounded ? playerBackgroundProblem(setupPlayerBackground) : "") ||
             (!snapshot?.isFounded &&
             (setupHomeCount < 1 ||
@@ -314,12 +315,11 @@ export function createFoundingGotoSetupStep(ports: {
           : "";
       const problem =
         placeProblem ||
-        connectionSetupProblem ||
         (step >= 2 ? peopleProblem : "") ||
         (step >= 3 ? mapProblem : "") ||
         (step >= 4 ? setupBlocker(step === 4) : "");
       if (problem) {
-        if (placeProblem || connectionSetupProblem) setSetupStep(0);
+        if (placeProblem || problem === connectionSetupProblem) setSetupStep(0);
         else if (step >= 2 && peopleProblem) setSetupStep(1);
         else if (step >= 3 && mapProblem) setSetupStep(2);
         setSetupProblem(problem);

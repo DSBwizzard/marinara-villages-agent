@@ -91,9 +91,13 @@ async function reviewNavigation() {
   ports.setupStep = 0;
   ports.connectionSetupProblem = "Choose a System connection.";
   goto(1);
-  assert.equal(step, 0, "connection setup belongs to the first page");
+  assert.equal(step, 1, "cast selection does not require configured model connections");
+  ports.setupStep = 1;
+  goto(2);
+  assert.equal(step, 0, "connection errors return to their first-page controls");
   assert.equal(problem, ports.connectionSetupProblem);
   ports.connectionSetupProblem = "";
+  ports.setupStep = 0;
   ports.personaDraft = "";
   goto(1);
   assert.equal(step, 1, "Place can advance to People before choosing a Persona");
