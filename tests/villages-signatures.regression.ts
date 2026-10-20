@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import { legacySignaturePrompt } from "../packages/villages/src/server/domain/rules/resident-signature-prompt.js";
+import {
+  previousSignaturePrompt,
+  legacySignaturePrompt,
+} from "../packages/villages/src/server/domain/rules/resident-signature-prompt.js";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import sharp from "sharp";
@@ -49,7 +52,7 @@ assert.equal(residentSignature({ id: "x", name: "小雨", personality: "quiet an
 assert.equal(residentSignature({ id: "x", name: "عائشة", personality: "playful and curious" }).name, "عائشة");
 assert.equal(residentSignature({ id: "x", name: "未知", personality: "" }).hand, "flowing");
 assert.match(signaturePrompt(village.villagers[0]!), /Confident, assertive and brave/);
-assert.match(signaturePrompt(village.villagers[0]!), /exact name/);
+
 const pixels = new PNG({ width: 600, height: 400 });
 pixels.data.fill(255);
 for (let y = 180; y < 220; y++) for (let x = 100; x < 500; x++) pixels.data.set([0, 0, 0, 255], (y * 600 + x) * 4);
@@ -59,51 +62,42 @@ const png = PNG.sync.read(trimmed.bytes);
 assert.equal(png.data[3], 0, "White margins become transparent");
 assert.equal(png.data[(10 * png.width + 10) * 4 + 3], 255, "Dark ink survives");
 assert.throws(() => trimSignaturePixels(new PNG({ width: 10, height: 10 })), /blank/);
-// Off-white and light fake-transparency squares must not become ghost ink.
-const matte = new PNG({ width: 300, height: 200 });
-for (let y = 0; y < 200; y++)
-  for (let x = 0; x < 300; x++) {
-    const shade = (Math.floor(x / 10) + Math.floor(y / 10)) % 2 ? 185 : 245;
-    matte.data.set([shade, shade, shade, 255], (y * 300 + x) * 4);
-  }
-for (let y = 80; y < 120; y++) for (let x = 140; x < 160; x++) matte.data.set([0, 0, 0, 255], (y * 300 + x) * 4);
-matte.data.set([0, 0, 0, 255], (10 * 300 + 10) * 4);
-const clean = trimSignaturePixels(matte);
-assert.ok(clean.width < 30 && clean.height < 50, "Background and isolated specks do not dictate bounds");
-assert.equal(PNG.sync.read(clean.bytes).data[3], 0);
-const insetMatte = new PNG({ width: 300, height: 200 });
-insetMatte.data.fill(255);
-for (let y = 20; y < 180; y++)
-  for (let x = 20; x < 280; x++) {
-    const shade = (Math.floor(x / 10) + Math.floor(y / 10)) % 2 ? 128 : 192;
-    insetMatte.data.set([shade, shade, shade, 255], (y * 300 + x) * 4);
-  }
-for (let y = 80; y < 120; y++) for (let x = 140; x < 160; x++) insetMatte.data.set([0, 0, 0, 255], (y * 300 + x) * 4);
-assert.ok(trimSignaturePixels(insetMatte).width < 30, "Inset dark checker shades cannot dictate the crop");
+// Color, native transparency and enclosed whites belong to the mark.
+const colored = new PNG({ width: 40, height: 60 });
+colored.data.fill(255);
+for (let y = 10; y < 50; y++) for (let x = 10; x < 30; x++) colored.data.set([245, 120, 20, 255], (y * 40 + x) * 4);
+colored.data.set([255, 255, 255, 255], (30 * 40 + 20) * 4);
+const colorCrop = PNG.sync.read(trimSignaturePixels(colored).bytes);
+assert.ok(
+  colorCrop.data.some((v, i) => i % 4 === 0 && v === 245 && colorCrop.data[i + 1] === 120),
+  "Original colors survive",
+);
+assert.ok(
+  colorCrop.data.some((v, i) => i % 4 === 0 && v === 255 && colorCrop.data[i + 3] === 255),
+  "Enclosed white detail survives",
+);
+assert.equal(colorCrop.data[3], 0, "Connected white background is removed");
 const nativeAlpha = new PNG({ width: 30, height: 30 });
-for (let y = 10; y < 20; y++) for (let x = 10; x < 20; x++) nativeAlpha.data.set([0, 0, 0, 128], (y * 30 + x) * 4);
-assert.equal(
-  Math.max(...PNG.sync.read(trimSignaturePixels(nativeAlpha).bytes).data.filter((_, i) => i % 4 === 3)),
-  128,
-  "Native semitransparent ink keeps its alpha",
+for (let y = 10; y < 20; y++)
+  for (let x = 10; x < 20; x++) nativeAlpha.data.set([255, 255, 255, 128], (y * 30 + x) * 4);
+const alphaCrop = PNG.sync.read(trimSignaturePixels(nativeAlpha).bytes);
+assert.ok(
+  alphaCrop.data.some((v, i) => i % 4 === 0 && v === 255 && alphaCrop.data[i + 3] === 128),
+  "Native white translucent artwork survives unchanged",
 );
-const darkBackground = new PNG({ width: 30, height: 30 });
-for (let i = 0; i < 900; i++) darkBackground.data.set([0, 0, 0, 255], i * 4);
-assert.throws(() => trimSignaturePixels(darkBackground), /dark background/);
-const solidInset = new PNG({ width: 30, height: 30 });
-solidInset.data.fill(255);
-for (let y = 3; y < 27; y++) for (let x = 3; x < 27; x++) solidInset.data.set([0, 0, 0, 255], (y * 30 + x) * 4);
-assert.throws(() => trimSignaturePixels(solidInset), /solid background/);
-const clipped = new PNG({ width: 30, height: 30 });
-for (let y = 10; y < 20; y++) for (let x = 0; x < 10; x++) clipped.data.set([0, 0, 0, 255], (y * 30 + x) * 4);
-assert.throws(() => trimSignaturePixels(clipped), /canvas edge/);
-const tinyBand = new PNG({ width: 300, height: 200 });
-for (let x = 20; x < 280; x++) tinyBand.data.set([0, 0, 0, 255], (100 * 300 + x) * 4);
-assert.throws(
-  () => trimSignaturePixels(tinyBand),
-  /too narrow/,
-  "A long hairline cannot shrink to a microscopic signature",
-);
+for (const [width, height] of [
+  [20, 200],
+  [200, 20],
+]) {
+  const extreme = new PNG({ width, height });
+  for (let y = 5; y < height - 5; y++)
+    for (let x = 5; x < width - 5; x++) extreme.data.set([20, 40, 220, 255], (y * width + x) * 4);
+  const cropped = trimSignaturePixels(extreme);
+  assert.ok(cropped.width <= width && cropped.height <= height, "Tall and wide marks remain valid");
+}
+const white = new PNG({ width: 10, height: 10 });
+white.data.fill(255);
+assert.throws(() => trimSignaturePixels(white), /blank/);
 const richResident = structuredClone(village.villagers[0]!);
 richResident.cardSnapshot.backstory = "Signs fishing logs with a tiny hook.";
 richResident.cardSnapshot.exampleDialogue = "Aye, leave it to me.";
@@ -111,7 +105,7 @@ richResident.cardSnapshot.description = "A fast, practical harbor worker.";
 const richPrompt = signaturePrompt(richResident);
 assert.match(richPrompt, /tiny hook/);
 assert.match(richPrompt, /Aye, leave it to me/);
-assert.match(richPrompt, /initials, monogram, or a personal doodle/);
+
 richResident.cardSnapshot.personality = '"\n'.repeat(3000) + "Secretly playful.";
 assert.ok(signaturePrompt(richResident).length <= 4000, "Serialized character evidence fits the Engine contract");
 assert.match(signaturePrompt(richResident), /Secretly playful/);
@@ -216,12 +210,12 @@ async function main() {
       dataUrl: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
     });
     const compact = await prepareSignatureImage({
-      bytes: PNG.sync.write(matte),
+      bytes: PNG.sync.write(colored),
       mime: "image/png",
-      dataUrl: `data:image/png;base64,${PNG.sync.write(matte).toString("base64")}`,
+      dataUrl: `data:image/png;base64,${PNG.sync.write(colored).toString("base64")}`,
     });
-    assert.equal(compact.height, 280, "Compact initials fill the display height instead of remaining tiny");
-    assert.ok(compact.width < 280, "Compact marks retain their natural proportions");
+    assert.ok(compact.height <= 960, "Compact artwork fits the display derivative");
+    assert.ok(compact.width < compact.height, "Compact marks retain their natural proportions");
     const ring = new PNG({ width: 40, height: 40 });
     for (let y = 8; y < 32; y++)
       for (let x = 8; x < 32; x++)
@@ -238,7 +232,7 @@ async function main() {
       0,
       "Enclosed letter holes remain transparent after resizing",
     );
-    assert.ok(jpegResult.width <= 880 && jpegResult.height <= 280, "JPEG providers yield a bounded PNG derivative");
+    assert.ok(jpegResult.width <= 1120 && jpegResult.height <= 960, "JPEG providers yield a bounded PNG derivative");
     await assert.rejects(generateResidentSignature("mara", {}), /action ID/);
     const first = await generateResidentSignature("mara", action(1, 0));
     assert.equal(first.status, "saved");
@@ -266,6 +260,13 @@ async function main() {
       (await readResidentSignature("mara")).recoverable,
       true,
       "Old paid responses remain recoverable after upgrade",
+    );
+    legacy.data.prompt = previousSignaturePrompt(village.villagers[0]!);
+    legacy.data.revision = createHash("sha256").update(JSON.stringify(legacy.data.prompt)).digest("hex");
+    assert.equal(
+      (await readResidentSignature("mara")).recoverable,
+      true,
+      "Previous character-mark responses remain recoverable",
     );
     records.get("villages-connections").data.imageConnectionId = "__villages_image_disabled__";
     const recovered = await generateResidentSignature("mara", action(3, 2));
@@ -403,6 +404,48 @@ async function main() {
     assert.equal(uploads, evidenceUploads, "Changed backstory fences the image before upload");
     imageGate = undefined;
     entered = undefined;
+
+    for (const field of ["appearance", "scenario", "systemPrompt", "postHistoryInstructions"] as const) {
+      let unblockField!: () => void;
+      imageGate = new Promise<void>((resolve) => {
+        unblockField = resolve;
+      });
+      const fieldEntered = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const attempt = (await readResidentSignature("mara")).attempt;
+      const pendingField = generateResidentSignature("mara", action(100 + attempt, attempt));
+      await fieldEntered;
+      await mutateVillageState((state) => {
+        state.villagers[0]!.cardSnapshot[field] = `Changed ${field}`;
+      });
+      const beforeFieldUploads = uploads;
+      unblockField();
+      const result = await pendingField;
+      assert.equal(result.status, "failed", `${field} fences late results`);
+      assert.equal(result.recoverable, false);
+      assert.equal(uploads, beforeFieldUploads);
+      imageGate = undefined;
+      entered = undefined;
+    }
+    // Full evidence, including text omitted from the provider prompt, fences recovery.
+    await mutateVillageState((state) => {
+      state.villagers[0]!.cardSnapshot.personality = "a".repeat(9000);
+    });
+    failUpload = true;
+    const evidenceAttempt = (await readResidentSignature("mara")).attempt;
+    assert.equal((await generateResidentSignature("mara", action(200, evidenceAttempt))).recoverable, true);
+    failUpload = false;
+    const unchangedPrompt = signaturePrompt((await readVillageAuthority()).villagers[0]!);
+    await mutateVillageState((state) => {
+      state.villagers[0]!.cardSnapshot.personality = "a".repeat(4500) + "b" + "a".repeat(4499);
+    });
+    assert.equal(signaturePrompt((await readVillageAuthority()).villagers[0]!), unchangedPrompt);
+    assert.equal(
+      (await readResidentSignature("mara")).recoverable,
+      false,
+      "Elided evidence changes fence paid recovery",
+    );
 
     const requestsBeforeLongName = requests;
     await mutateVillageState((state) => {

@@ -7,7 +7,12 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { VillageState, VillageVenueImage } from "../../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound, safeFailureMessage, statusCodeOf } from "../../domain/rules/errors.js";
-import { signaturePrompt, legacySignaturePrompt } from "../../domain/rules/resident-signature-prompt.js";
+import {
+  signaturePrompt,
+  signatureEvidence,
+  previousSignaturePrompt,
+  legacySignaturePrompt,
+} from "../../domain/rules/resident-signature-prompt.js";
 import type { ResidentSignatureTasks } from "./resident-signature-tasks.js";
 import { createHash } from "node:crypto";
 
@@ -74,7 +79,8 @@ export function createResidentSignatures({
       documentId: `villages-signature-${incarnation}`,
       incarnation,
       runtimeEpoch: villagesRuntimeEpoch(),
-      revision: digest(signaturePrompt(resident)),
+      revision: digest(signatureEvidence(resident)),
+      previousRevision: digest(previousSignaturePrompt(resident)),
       legacyRevision: digest([resident.cardSnapshot.name, resident.cardSnapshot.personality]),
       legacyPrompt: legacySignaturePrompt(resident),
     };
@@ -83,6 +89,8 @@ export function createResidentSignatures({
     return Boolean(
       attempt &&
       (attempt.revision === current.revision ||
+        (attempt.revision === current.previousRevision &&
+          attempt.prompt === previousSignaturePrompt(current.resident)) ||
         (attempt.revision === current.legacyRevision && attempt.prompt === current.legacyPrompt)),
     );
   }
@@ -217,8 +225,7 @@ export function createResidentSignatures({
           connectionId,
           name: `${data.name} signature`,
           prompt: data.prompt,
-          negativePrompt:
-            "portrait, person, scenery, paper texture, shadows, gray background, checkerboard, watermark, captions, extra text",
+          negativePrompt: "presentation scene, paper texture, mockup, watermark, explanatory caption",
           width: 1536,
           height: 1024,
           maxBase64Length: LIMIT,
@@ -267,7 +274,7 @@ export function createResidentSignatures({
         if (
           village.seed !== initial.village.seed ||
           !resident ||
-          digest(signaturePrompt(resident)) !== initial.revision
+          digest(signatureEvidence(resident)) !== initial.revision
         )
           throw conflict("The Villager changed while the signature was generated.");
         resident.signature = {

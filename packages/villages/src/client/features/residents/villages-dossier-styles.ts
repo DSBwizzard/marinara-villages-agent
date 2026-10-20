@@ -60,8 +60,8 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-tags span { padding:2px 9px; background:#d5dfb8; border-radius:3px; font-size:13px; max-width:100%; overflow-wrap:anywhere; }
 .${P}-dossier-tags span:nth-child(3n+2) { background:#e0c9e7; }
 .${P}-signature { margin-top:16px; max-width:100%; color:#59434c; }
-.${P}-signature-art { max-width:100%; width:240px; margin:auto; }
-.${P}-signature-image { display:block; width:220px; max-width:100%; height:70px; object-fit:contain; }
+.${P}-signature-art { max-width:100%; width:280px; padding:8px 0; }
+.${P}-signature-image { display:block; width:auto; height:auto; max-width:100%; max-height:240px; object-fit:contain; object-position:left center; }
 .${P}-signature-name { display:block; font:italic 38px/1.4 var(--notebook-hand); overflow-wrap:anywhere; padding:4px 0; }
 .${P}-signature-name[data-hand="bold"] { font-weight:700; }
 .${P}-dossier-root .${P}-signature-flourish { display:block; width:100%; height:20px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; }
@@ -106,7 +106,6 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-portrait { width:min(82%,360px,32cqh); }
 .${P}-dossier-journal h1 { font-size:clamp(26px,5cqh,48px); }
 .${P}-dossier-biography p { font-size:clamp(16px,3cqh,24px); }
-.${P}-signature-image { height:clamp(40px,9cqh,70px); }
 /* Section owners supply records. Semantic groups occupy either side of the binding. */
 .${P}-dossier-root .${P}-overlay { background:transparent; color:var(--dossier-ink); border:0; padding:0; box-shadow:none; min-width:0; }
 .${P}-dossier-content > :is(.villages-relationships,.${P}-overlay), .${P}-dossier-content > .${P}-dossier-sheet:has(.${P}-memory-library), .${P}-dossier-root .${P}-memory-library { display:contents; }

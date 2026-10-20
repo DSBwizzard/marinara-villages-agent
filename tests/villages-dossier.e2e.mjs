@@ -390,6 +390,36 @@ try {
     await expect(profile.getByRole("button", { name: "Regenerate signature", exact: true })).toBeVisible();
     await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
     assert.equal(writes.at(-1).path.endsWith("/villagers/mara/signature"), true);
+    for (const [markWidth, markHeight] of [
+      [200, 900],
+      [1200, 120],
+      [400, 400],
+    ]) {
+      const art = signature.locator("img");
+      await art.evaluate(
+        async (element, [w, h]) => {
+          element.src =
+            "data:image/svg+xml," +
+            encodeURIComponent(
+              `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#c34b82"/></svg>`,
+            );
+          await element.decode();
+        },
+        [markWidth, markHeight],
+      );
+      const bounds = await art.boundingBox();
+      assert.ok(bounds.width <= 280.5 && bounds.height <= 240.5, "Mark fits the responsive signature area");
+      assert.ok(
+        Math.abs(bounds.width / bounds.height - markWidth / markHeight) < 0.02,
+        "Artwork keeps its proportions",
+      );
+      await art.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: resolve(output, `signature-${markWidth}x${markHeight}-${width}-${height}.png`) });
+    }
+    await signature.locator("img").evaluate((element, url) => {
+      element.src = url;
+    }, signatureUrl);
+
     assert.equal(writes.at(-1).body.expectedAttempt, 0);
     failSignature = true;
     await profile.getByRole("button", { name: "Regenerate signature", exact: true }).click();
