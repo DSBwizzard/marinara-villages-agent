@@ -137,7 +137,7 @@ export function RosterScreen({ controller }: { controller: RosterScreenControlle
                   className={`${ELEMENT_TAG}-avatar`}
                 />
                 <strong>{person.name}</strong>
-                <small>{person.summary || "No character summary recorded."}</small>
+                {person.summary ? <small>{person.summary}</small> : null}
                 <span className={`${ELEMENT_TAG}-dossier-tags`}>
                   {person.tags.slice(0, 4).map((tag, index) => (
                     <span key={`${tag}-${index}`}>{tag}</span>

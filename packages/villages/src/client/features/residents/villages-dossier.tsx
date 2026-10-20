@@ -287,7 +287,7 @@ export function VillagerDossier({
                 <div className={`${P}-dossier-portrait`}>{portrait}</div>
                 <h1>{name}</h1>
                 <div className={`${P}-dossier-biography`}>
-                  <p>{villager?.summary || "No character summary recorded."}</p>
+                  {villager?.summary ? <p>{villager.summary}</p> : null}
                   {villager?.missing ? (
                     <p className={`${P}-dossier-warning`}>Card missing · saved character remains available.</p>
                   ) : null}

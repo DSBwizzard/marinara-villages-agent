@@ -1,3 +1,4 @@
+import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { readProjectSupplyTransfer } from "../rules/project-supply-transfer.js";
 import { readOpening, OPENING_WORK_MS } from "../rules/opening-project.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
@@ -257,6 +258,15 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     agendaGeneration: asString(raw.agendaGeneration),
     translationGeneration: asString(raw.translationGeneration),
     cardSnapshot,
+    ...(typeof asRecord(raw.identityDescription).revision === "string"
+      ? {
+          identityDescription: {
+            text: boundText(asRecord(raw.identityDescription).text, MAX_IDENTITY_DESCRIPTION_LENGTH),
+            revision: asRecord(raw.identityDescription).revision as string,
+            initialGenerationComplete: asRecord(raw.identityDescription).initialGenerationComplete !== false,
+          },
+        }
+      : {}),
     ...(coerceResidentSignature(raw.signature) ? { signature: coerceResidentSignature(raw.signature)! } : {}),
     ...(readResidentFoundingContext(raw.foundingContext)
       ? { foundingContext: readResidentFoundingContext(raw.foundingContext)! }
