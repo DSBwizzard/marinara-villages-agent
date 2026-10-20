@@ -108,6 +108,7 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
   readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
+  readonly setSetupSpriteRevisions?: FoundingState["setSetupSpriteRevisions"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
   readonly setSetupImprint: FoundingState["setSetupImprint"];
   readonly setSetupKeyboardSpot: FoundingState["setSetupKeyboardSpot"];
@@ -160,6 +161,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupEditorOpen,
       setSetupFoundingDetails,
       setSetupFoundingReason,
+      setSetupSpriteRevisions,
       setSetupFoundingVillagerIds,
       setSetupImprint,
       setSetupKeyboardSpot,
@@ -228,6 +230,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     });
     setSetupVenues(venues);
     setupZoneDrafts.current = data.zoneDrafts ?? {};
+    setSetupSpriteRevisions?.(data.spriteRevisions ?? {});
     setSetupFoundingVillagerIds(data.roster);
     setSetupResidentContexts(data.residentContexts ?? {});
     setPersonaDraft(data.persona);

@@ -12,6 +12,10 @@ import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 
 export interface ResidentRosterPorts {
+  preparedSpriteManager?(
+    id: string,
+    revision?: number,
+  ): Promise<import("../../../shared/contracts/sprites.js").SpriteManagerState | null>;
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   findVillagerCard(id: string): Promise<VillagerCard | null>;
@@ -22,6 +26,7 @@ export interface ResidentRosterPorts {
 
 /** Roster commands own their saved-world, library and background connections. Construction is inert. */
 export function createResidentRoster({
+  preparedSpriteManager,
   readVillageState,
   mutateVillageState,
   findVillagerCard,
@@ -39,7 +44,7 @@ export function createResidentRoster({
    * change from how this used to work: the card's own opening line is NOT the
    * villager's greeting any more. See `greetVillager` for why.
    */
-  async function addVillager(characterId: string): Promise<void> {
+  async function addVillager(characterId: string, spriteSetupRevision?: number): Promise<void> {
     const card = await findVillagerCard(characterId);
     if (!card) throw notFound("That character is not in your library.");
 
@@ -50,6 +55,7 @@ export function createResidentRoster({
     }
 
     if (!alreadyResident) {
+      const spriteManager = await preparedSpriteManager?.(characterId, spriteSetupRevision);
       const addedAt = villageNow().toISOString();
       await mutateVillageState((state) => {
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
@@ -68,6 +74,7 @@ export function createResidentRoster({
         // what lets the tab tell those two apart.
         state.villagers.push({
           characterId,
+          spriteManager,
           identityDescription: initialIdentityDescription(),
           agendaGeneration: "arrival-" + addedAt,
           cardSnapshot: {

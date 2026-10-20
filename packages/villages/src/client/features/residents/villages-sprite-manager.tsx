@@ -1,5 +1,4 @@
 import {
-  SPRITE_UPLOAD_GUIDANCE,
   type SpriteArtwork,
   type SpriteFrame,
   type SpriteLibraryItem,
@@ -8,6 +7,7 @@ import {
 } from "../../../shared/contracts/sprites.js";
 import { initialSpriteFrame, renderSpritePixels, type SpritePixels } from "../../../shared/helpers/sprite-framing.js";
 import { SPRITE_MANAGER_STYLES } from "./villages-sprite-manager-styles.js";
+import { SpriteSetupDialog } from "./SpriteSetupDialog.js";
 import { useEffect, useRef, useState } from "react";
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -25,7 +25,14 @@ type Saved = {
   addedArtworkIds?: string[];
   selectedArtworkIds?: string[];
 };
-type Draft = { frame: SpriteFrame; expressionId: string; name: string; useWhen: string; view: SpriteView };
+type Draft = {
+  frame: SpriteFrame;
+  expressionId: string;
+  name: string;
+  useWhen: string;
+  view: SpriteView;
+  direction: "front" | "left" | "right";
+};
 function savedDraft(
   art: SpriteArtwork,
   state: SpriteManagerState,
@@ -43,9 +50,10 @@ function savedDraft(
   return {
     frame: art.frame,
     expressionId: expression?.id ?? "",
-    name: expression?.name ?? art.name.replace(/\.[^.]+$/, "").replace(/^full_/, ""),
+    name: expression?.name ?? "",
     useWhen: expression?.useWhen ?? "",
     view: assignment?.view ?? "front",
+    direction: art.direction ?? (assignment?.view === "side" ? "right" : "front"),
   };
 }
 const differs = (a: Draft, b: Draft) => JSON.stringify(a) !== JSON.stringify(b);
@@ -101,6 +109,7 @@ export function SpriteManager({
     [notice, setNotice] = useState("");
   const [loadAttempt, setLoadAttempt] = useState(0),
     [pixelAttempt, setPixelAttempt] = useState(0);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [contexts, setContexts] = useState<Record<string, Pick<Draft, "expressionId" | "view">>>({});
@@ -284,7 +293,7 @@ export function SpriteManager({
     for (const file of files) images.push({ name: file.name, image: await readFile(file) });
     const saved = await call<Saved>("import", { images });
     accept(saved, saved.addedArtworkIds?.[0]);
-    setNotice("Artwork uploaded. Choose its expression and facing, then Save and use in Scenes.");
+    setNotice("Artwork imported.");
   }
   async function openLibrary() {
     setLibraryOpen(true);
@@ -340,6 +349,19 @@ export function SpriteManager({
   );
   return (
     <section className="vsm" aria-label={`${villager.name} Sprite Manager`}>
+      {setupOpen ? (
+        <SpriteSetupDialog
+          characterId={villager.characterId}
+          name={villager.name}
+          existing
+          onClose={() => setSetupOpen(false)}
+          onDone={async () => {
+            onSaved(await request(""));
+            setSetupOpen(false);
+            setLoadAttempt((prior) => prior + 1);
+          }}
+        />
+      ) : null}
       <style>{SPRITE_MANAGER_STYLES}</style>
       <header className="vsm-heading">
         <button
@@ -355,9 +377,16 @@ export function SpriteManager({
           <h2 ref={heading} tabIndex={-1}>
             {villager.name}’s Sprite Manager
           </h2>
-          <small>Artwork for every Scene</small>
         </div>
         <div className="vsm-toolbar">
+          <button
+            disabled={busy || !manager}
+            onClick={() => {
+              if (mayLeave()) setSetupOpen(true);
+            }}
+          >
+            Import character sprites
+          </button>
           <button className="vsm-primary" disabled={busy || !manager} onClick={() => fileInput.current?.click()}>
             Upload images
           </button>
@@ -381,10 +410,6 @@ export function SpriteManager({
         }}
       />
       {manager && !(selected && draft && frame) ? feedback : null}
-      <details className="vsm-help">
-        <summary>Artwork tips</summary>
-        <p>{SPRITE_UPLOAD_GUIDANCE} PNG, WebP, or JPEG; up to 12 MB per image.</p>
-      </details>
       {!manager ? (
         <div className="vsm-empty">
           {error ? (
@@ -610,7 +635,7 @@ export function SpriteManager({
                           expression = manager.expressions.find((item) => item.id === id);
                         edit({
                           expressionId: id,
-                          name: expression?.name ?? selected.name.replace(/\.[^.]+$/, "").replace(/^full_/, ""),
+                          name: expression?.name ?? "",
                           useWhen: expression?.useWhen ?? "",
                         });
                       }}
@@ -642,14 +667,27 @@ export function SpriteManager({
                           key={view}
                           disabled={busy}
                           aria-pressed={draft.view === view}
-                          onClick={() => edit({ view })}
+                          onClick={() => edit({ view, direction: view === "front" ? "front" : "right" })}
                         >
                           {view === "front" ? "Front" : "Side"}
                         </button>
                       ))}
                     </div>
                   </div>
-                  <p className="vsm-hint">Side faces right; Scenes mirror it when looking left.</p>
+                  {draft.view === "side" ? (
+                    <label>
+                      Original direction
+                      <select
+                        aria-label="Original direction"
+                        disabled={busy}
+                        value={draft.direction}
+                        onChange={(event) => edit({ direction: event.target.value as "left" | "right" })}
+                      >
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </label>
+                  ) : null}
                   {manager.assignments.some((item) => item.artworkId === selected.id) ? (
                     <div className="vsm-assignments" role="group" aria-label="Saved assignments">
                       <p className="vsm-hint">Assignments</p>
@@ -871,7 +909,6 @@ export function SpriteManager({
             Close library
           </button>
         </div>
-        <p className="vsm-hint">Independent copies of this character’s Engine sprites. Existing copies are reused.</p>
         {libraryLoading ? (
           <p role="status">Loading character sprites…</p>
         ) : libraryError ? (
@@ -927,7 +964,7 @@ export function SpriteManager({
                 setLibraryOpen(false);
                 setNotice(
                   saved.addedArtworkIds?.length
-                    ? "Independent artwork copies added. Choose their expressions and facing."
+                    ? "Artwork imported."
                     : "Selected artwork is already in Sprite Manager.",
                 );
               })
