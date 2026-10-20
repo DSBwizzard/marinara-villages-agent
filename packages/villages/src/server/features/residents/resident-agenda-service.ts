@@ -1,3 +1,4 @@
+import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { readOpeningProposal } from "../../domain/rules/opening-project.js";
 import { proposalSourceCompatible } from "../../domain/rules/opening-proposal-source.js";
 import {
@@ -104,6 +105,9 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       ? await readNativeScheduleSnapshot(villageNow(), [characterId])
       : null;
     const context = {
+      ...(villager.identityDescription && !villager.identityDescription.initialGenerationComplete
+        ? { identityDescriptionRevision: villager.identityDescription.revision }
+        : {}),
       semanticVersion: 2 as const,
       card: effectiveCard,
       characterId,
@@ -232,6 +236,13 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         ? ownsFoundingTask(state, input.characterId, "routine", input.revision)
         : agendaRevision(state, input.characterId) === input.revision),
     apply: (state, input, result) => {
+      const resident = state.villagers.find((row) => row.characterId === input.characterId);
+      if (resident)
+        applyInitialIdentityDescription(
+          resident,
+          input.context.identityDescriptionRevision,
+          result.identityDescription,
+        );
       if (
         input.context.openingProposal &&
         state.opening?.stage === "gathering" &&

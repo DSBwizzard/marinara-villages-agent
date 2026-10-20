@@ -152,7 +152,19 @@ async function main() {
   const snapshot = await plain.service.buildVillageSnapshot(now);
   assert.deepEqual(plain.calls, ["world", "roll", "catalog", "query-connection", "scene", "background"]);
   assert.equal(snapshot.villagers[0]!.name, "plain live");
-  assert.equal(snapshot.villagers[0]!.summary, "plain summary");
+  assert.equal(snapshot.villagers[0]!.summary, "", "Card summaries are not a fallback for People descriptions.");
+  plain.world.villagers[0]!.identityDescription = {
+    text: "A reserved explorer.",
+    revision: "player-description",
+    initialGenerationComplete: true,
+  };
+  const described = await plain.service.buildVillageSnapshot(now);
+  assert.equal(described.villagers[0]!.summary, "A reserved explorer.");
+  assert.deepEqual(described.villagers[0]!.identityDescription, {
+    text: "A reserved explorer.",
+    revision: "player-description",
+  });
+  assert.equal((described.villagers[0]!.identityDescription as any)?.initialGenerationComplete, undefined);
   assert.equal(snapshot.villagers[0]!.nameColor, "adopted-name");
   assert.equal(plain.world.villagers[0]!.cardSnapshot.name, "plain adopted");
   const rolled = fixture("rolled");

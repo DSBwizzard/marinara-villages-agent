@@ -49,7 +49,7 @@ import { villagerPlaceView } from "./village-projections.js";
 export function projectVillager(
   villager: VillageVillager,
   cardName: string | null,
-  cardSummary: string,
+  _cardSummary: string,
   cardTags: string[],
   nameColor: string,
   dialogueColor: string,
@@ -76,7 +76,11 @@ export function projectVillager(
       : null,
     ...(villager.foundingContext ? { foundingContext: villager.foundingContext } : {}),
     name: cardName ?? villager.cardSnapshot.name,
-    summary: cardSummary,
+    summary: villager.identityDescription?.text ?? "",
+    identityDescription: {
+      text: villager.identityDescription?.text ?? "",
+      revision: villager.identityDescription?.revision ?? "",
+    },
     tags: cardTags,
     missing: cardName === null,
     place,

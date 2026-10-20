@@ -1,8 +1,11 @@
+import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
+import { randomVillageSeed } from "../../domain/rules/village-clock.js";
+import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
-import { badRequest, notFound } from "../../domain/rules/errors.js";
+import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
 import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
@@ -72,6 +75,7 @@ export function createResidentRoster({
         state.villagers.push({
           characterId,
           spriteManager,
+          identityDescription: initialIdentityDescription(),
           agendaGeneration: "arrival-" + addedAt,
           cardSnapshot: {
             id: card.id,
@@ -188,6 +192,23 @@ export function createResidentRoster({
     });
     if (!removed) throw notFound("That villager does not live here.");
   }
-  return { addVillager, removeVillager };
+  async function editIdentityDescription(characterId: string, value: unknown): Promise<void> {
+    const body = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+    if (
+      typeof body.text !== "string" ||
+      body.text.length > MAX_IDENTITY_DESCRIPTION_LENGTH ||
+      typeof body.revision !== "string"
+    )
+      throw badRequest("Use a description of at most 240 characters.");
+    const text = body.text.trim();
+    await mutateVillageState((state) => {
+      const resident = state.villagers.find((row) => row.characterId === characterId);
+      if (!resident) throw notFound("That villager does not live here.");
+      if ((resident.identityDescription?.revision ?? "") !== body.revision)
+        throw conflict("Description changed. Reopen the editor to try again.");
+      resident.identityDescription = { text, revision: randomVillageSeed(), initialGenerationComplete: true };
+    });
+  }
+  return { addVillager, removeVillager, editIdentityDescription };
 }
 export type ResidentRoster = ReturnType<typeof createResidentRoster>;
