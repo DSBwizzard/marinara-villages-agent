@@ -650,6 +650,7 @@ export type VillageSettings = {
   setting: string;
   settingMaxLength: number;
   foundingReason: string;
+  worldOrigin?: "same-world" | "different-worlds" | null;
   foundingDetails: string;
   foundingGuidance: string;
   playerRole?: PlayerRole | null;

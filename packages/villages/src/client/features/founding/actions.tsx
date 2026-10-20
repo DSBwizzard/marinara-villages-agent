@@ -266,6 +266,7 @@ export function useOpenSetup(ports: {
   setSetupPlayerRole: React.Dispatch<SetStateAction<PlayerRole>>;
   setSetupProblem: React.Dispatch<SetStateAction<string>>;
   setSetupResidentContexts: React.Dispatch<SetStateAction<Record<string, ResidentFoundingContext>>>;
+  setSetupWorldOrigin?: React.Dispatch<SetStateAction<"same-world" | "different-worlds" | null>>;
   setSetupSetting: React.Dispatch<SetStateAction<string>>;
   setSetupShowIssues: React.Dispatch<SetStateAction<boolean>>;
   setSetupStep: React.Dispatch<SetStateAction<number>>;
@@ -313,6 +314,7 @@ export function useOpenSetup(ports: {
     setSetupPlayerRole,
     setSetupProblem,
     setSetupResidentContexts,
+    setSetupWorldOrigin,
     setSetupSetting,
     setSetupShowIssues,
     setSetupStep,
@@ -335,6 +337,7 @@ export function useOpenSetup(ports: {
       setSetupFocusIssue(null);
       // Unfounded snapshots have a server fallback name; authored drafts restore their own name separately.
       setSetupName(fresh || !village?.isFounded ? "" : village.village.name);
+      setSetupWorldOrigin?.(fresh ? "different-worlds" : (village?.settings.worldOrigin ?? null));
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       const storedReason = fresh ? "" : (village?.settings.foundingReason ?? "");
       const isCurrentScenario = FOUNDING_SCENARIOS.some((scenario) => scenario.value === storedReason);
@@ -438,6 +441,7 @@ export function useFoundVillage(ports: {
   setupName: string;
   setupTimeZone?: string;
   setupPlayerRole: PlayerRole;
+  setupWorldOrigin?: "same-world" | "different-worlds" | null;
   setupSetting: string;
   setupVenues: VillageVenue[];
   setupWorldFacts: string[];
@@ -473,6 +477,7 @@ export function useFoundVillage(ports: {
     setupMapSrc,
     setupName,
     setupPlayerRole,
+    setupWorldOrigin,
     setupSetting,
     setupVenues,
     setupWorldFacts,
@@ -519,6 +524,7 @@ export function useFoundVillage(ports: {
         body: JSON.stringify({
           name: setupName.trim(),
           timeZone: ports.setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
+          worldOrigin: setupWorldOrigin,
           setting: setupSetting.trim(),
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
           foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
@@ -590,6 +596,7 @@ export function useFoundVillage(ports: {
     setupWorldFacts,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
+    setupWorldOrigin,
     setupSetting,
   ]);
 }

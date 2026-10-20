@@ -1,7 +1,11 @@
 import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { useEffect, useRef, useState } from "react";
-import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/helpers/resident-founding-context.js";
+import {
+  DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+  RESIDENT_HISTORY_MODES,
+  RESIDENT_STORY_ROLES,
+} from "../../../shared/helpers/resident-founding-context.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
@@ -125,6 +129,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupPlayerRole,
     setupProblem,
     setupResidentContexts,
+    setupWorldOrigin,
+    setSetupWorldOrigin,
     setupSetting,
     setupStep,
     setupSuggestionsBusy,
@@ -140,6 +146,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     uploadSetupImage,
   } = controller;
 
+  const [backgroundSelection, setBackgroundSelection] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const [validationAttempt, setValidationAttempt] = useState(0);
   const focusedValidationAttempt = useRef(0);
@@ -295,6 +302,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       </div>
     );
     const chooseRoster = (ids: string[]) => {
+      const added = ids.find((id) => !setupFoundingVillagerIds.includes(id));
+      if (added && !setupResidentContexts[added])
+        setSetupResidentContexts((current) => ({
+          ...current,
+          [added]: { ...DEFAULT_RESIDENT_FOUNDING_CONTEXT, integration: { text: "", direction: "", accepted: false } },
+        }));
+      setBackgroundSelection(added ?? null);
       clearFieldValidation("villagers");
       setSetupFoundingVillagerIds(ids);
       setSetupMapReviewed(false);
@@ -376,6 +390,23 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       ? (id, name) => (
                           <ResidentFoundingEditors
                             embedded
+                            autoOpen={backgroundSelection === id}
+                            source={{
+                              founding: true,
+                              playerPersonaId: personaDraft,
+                              foundingCharacterIds: setupFoundingVillagerIds,
+                              foundingResidentContexts: Object.fromEntries(
+                                Object.entries(setupResidentContexts).filter(
+                                  ([key, context]) =>
+                                    key !== id && (!context.integration || context.integration.accepted),
+                                ),
+                              ),
+                              setting: setupSetting,
+                              premise: setupFoundingDetails,
+                              worldOrigin: setupWorldOrigin,
+                              selectedLorebookIds: setupLorebookDraft,
+                              loreTokenBudget: setupLoreTokenBudgetDraft,
+                            }}
                             people={[{ characterId: id, name }]}
                             contexts={setupResidentContexts}
                             showErrors={validatedFields.includes("backstory:" + id)}
@@ -496,6 +527,23 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </FoundingField>
                 </section>
                 <section className="villages-forging-card villages-starting-situation">
+                  <label>
+                    Character origins
+                    <select
+                      aria-label="Character origins"
+                      value={setupWorldOrigin ?? ""}
+                      disabled={busy}
+                      onChange={(event) => setSetupWorldOrigin(event.target.value as "same-world" | "different-worlds")}
+                    >
+                      {!setupWorldOrigin ? (
+                        <option value="" disabled>
+                          Choose origins
+                        </option>
+                      ) : null}
+                      <option value="same-world">Same world</option>
+                      <option value="different-worlds">Different worlds</option>
+                    </select>
+                  </label>
                   <FoundingField
                     title="Starting Scenario"
                     help={
@@ -857,6 +905,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                           <strong>{person.name}</strong>
                           {!snapshot?.isFounded && context ? (
                             <>
+                              {context.integration?.accepted ? <p>{context.integration.text}</p> : null}
                               <p>
                                 {context.historyMode === "continue"
                                   ? "Use original backstory"

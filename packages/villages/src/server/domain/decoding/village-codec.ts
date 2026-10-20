@@ -150,6 +150,7 @@ export function defaultVillageState(): VillageState {
     // nothing, and the village behaves exactly as it did before they existed.
     setting: "",
     foundingReason: "",
+    worldOrigin: null,
     foundingDetails: "",
     foundingGuidance: "",
     playerRole: null,
@@ -2142,6 +2143,7 @@ export function coerceVillageState(value: unknown): VillageState {
     spriteCardFlipEnabled: raw.spriteCardFlipEnabled !== false,
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
     foundingReason: boundText(raw.foundingReason, 40),
+    worldOrigin: raw.worldOrigin === "same-world" || raw.worldOrigin === "different-worlds" ? raw.worldOrigin : null,
     foundingDetails: boundText(raw.foundingDetails, 2_000),
     foundingGuidance: boundText(raw.foundingGuidance, 500),
     playerRole: coercePlayerRole(raw.playerRole),

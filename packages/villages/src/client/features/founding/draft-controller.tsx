@@ -128,6 +128,7 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupPlayerRole: FoundingState["setSetupPlayerRole"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupResidentContexts: FoundingState["setSetupResidentContexts"];
+  readonly setSetupWorldOrigin: FoundingState["setSetupWorldOrigin"];
   readonly setSetupSetting: FoundingState["setSetupSetting"];
   readonly setSetupStep: FoundingState["setSetupStep"];
   readonly setSetupSuggestionsKey: FoundingState["setSetupSuggestionsKey"];
@@ -179,6 +180,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupPlayerRole,
       setSetupProblem,
       setSetupResidentContexts,
+      setSetupWorldOrigin,
       setSetupSetting,
       setSetupStep,
       setSetupSuggestionsKey,
@@ -207,6 +209,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
     ports.setSetupTimeZone?.(data.timeZone ?? "");
+    setSetupWorldOrigin(data.worldOrigin ?? null);
     setSetupSetting(data.setting);
     setSetupFoundingReason(data.reason);
     setSetupFoundingDetails(data.circumstances);

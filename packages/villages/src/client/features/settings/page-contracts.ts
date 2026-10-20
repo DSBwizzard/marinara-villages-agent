@@ -36,6 +36,7 @@ export type MenuIndexPagePorts = {
 
 /** Inputs consumed by renderVillageSettingsPage; assembled by the shell. */
 export type VillageSettingsPagePorts = {
+  readonly setSnapshot: React.Dispatch<React.SetStateAction<VillageSnapshot>>;
   readonly addVenue: () => void;
   readonly backgroundPanel: React.JSX.Element;
   readonly busy: boolean;

@@ -168,19 +168,24 @@ export function useAddVillager(ports: {
 }) {
   const { loadCatalog, setBusy, setError, setSnapshot } = ports;
   return useCallback(
-    async (characterId: string) => {
+    async (
+      characterId: string,
+      background?: import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext,
+    ) => {
       setBusy(true);
       try {
         setSnapshot(
           await request<VillageSnapshot>("/villagers", {
             method: "POST",
-            body: JSON.stringify({ characterId }),
+            body: JSON.stringify({ characterId, background }),
           }),
         );
         setError("");
         await loadCatalog();
+        return true;
       } catch (cause) {
         setError(messageFrom(cause, "That character could not move in."));
+        return false;
       } finally {
         setBusy(false);
       }

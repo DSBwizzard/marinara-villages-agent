@@ -1,3 +1,4 @@
+import { WorldOriginSettings } from "./WorldOriginSettings.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { pinTone, placeSpot, playerDisplayName } from "../../shared/presentation.js";
@@ -419,6 +420,11 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             />
           </div>
 
+          <WorldOriginSettings
+            key={snapshot.settings.worldOrigin ?? "legacy"}
+            onSaved={ports.setSnapshot}
+            initial={snapshot.settings.worldOrigin ?? null}
+          />
           <VillageLorebookPicker
             books={lorebooks}
             error={lorebooksError}

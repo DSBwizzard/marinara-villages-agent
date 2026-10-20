@@ -124,6 +124,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "setVillageName",
     "setVillagePlayer",
     "setVillageSetting",
+    "setVillageWorldOrigin",
     "addNotice",
     "removeNoticeAt",
     "setScenerySettings",

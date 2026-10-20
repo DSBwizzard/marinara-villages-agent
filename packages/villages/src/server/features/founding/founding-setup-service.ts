@@ -1,3 +1,4 @@
+import { residentBackgroundSourceKey } from "../../../shared/helpers/resident-founding-context.js";
 import { randomUUID } from "node:crypto";
 import { initialOpening } from "../../domain/rules/opening-project.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -87,6 +88,7 @@ export function createFoundingSetup({
     timeZone?: unknown;
     setting?: unknown;
     foundingReason?: unknown;
+    worldOrigin?: unknown;
     foundingDetails?: unknown;
     foundingGuidance?: unknown;
     playerRole?: unknown;
@@ -117,6 +119,8 @@ export function createFoundingSetup({
       throw badRequest("Starting circumstances must be text of at most 2,000 characters.");
     }
     const foundingDetails = input.foundingDetails.trim();
+    if (input.worldOrigin != null && !["same-world", "different-worlds"].includes(String(input.worldOrigin)))
+      throw badRequest("Choose a valid world origin.");
     if (typeof (input.foundingGuidance ?? "") !== "string" || String(input.foundingGuidance ?? "").length > 500) {
       throw badRequest("Narrative direction must be text of at most 500 characters.");
     }
@@ -268,6 +272,19 @@ export function createFoundingSetup({
         throw conflict("Move the resident before changing or removing their home.");
     }
 
+    if (founding)
+      for (const context of Object.values(foundingContexts)) {
+        if (
+          context.integration?.sourceKey &&
+          context.integration.sourceKey !==
+            residentBackgroundSourceKey(
+              setting,
+              foundingDetails,
+              input.worldOrigin as "same-world" | "different-worlds" | null,
+            )
+        )
+          throw badRequest("The Village premise changed. Review resident backgrounds again.");
+      }
     const addedResidents: VillagerCard[] = [];
     await mutateVillageState((state) => {
       if (isVillageFounded(state) === founding)
@@ -295,6 +312,8 @@ export function createFoundingSetup({
       if (founding && typeof input.timeZone === "string") state.timeZone = input.timeZone;
       state.foundingReason = foundingReason;
       state.foundingDetails = foundingDetails;
+      if (input.worldOrigin !== undefined)
+        state.worldOrigin = input.worldOrigin as "same-world" | "different-worlds" | null;
       state.foundingGuidance = foundingGuidance;
       state.scenarioImprint = scenarioImprint;
       state.worldFacts = worldFacts;

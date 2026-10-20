@@ -1,5 +1,13 @@
 # Villages
 
+## Joining the Village
+
+Choose **Same world** or **Different worlds** with the Village premise. Different worlds is the default for new Villages; existing worlds keep their previous framing until an origin choice is explicitly saved in Village Settings. Individual exceptions are available in **Customize**.
+
+Selecting a founding villager or choosing **Move in** opens one short background proposal: why they are here, how long they have been here, and their present circumstances. Edit it and **Accept**, or write it yourself if generation is unavailable. Customize optionally supplies direction. **Try again** deliberately requests another proposal; **Retrieve result** recovers an unresolved saved request without another provider call. Opening or restoring an existing review never generates a new proposal automatically. Cancel keeps founding edits without accepting them; canceling a move-in leaves the roster unchanged.
+
+Accepted backgrounds preserve the complete character card and existing custom histories, remain private from ordinary snapshots, and inform Scenes, Agendas, Wishes, Events and scenery through the existing resident context. Suggested acquaintances are narrative history, not relationship scores, jobs, ownership or permissions. Author knowledge does not grant player or resident knowledge. No automatic arrival Scene or hidden biography is generated. Existing residents are not regenerated or rewritten.
+
 **People notebook:** People opens the Villagers directory inside the shared notebook. Select a villager to browse their profile tabs; Back to Villagers retains the directory search and reading position. Close returns to the originating map, menu, or Scene. Direct profile links open that villager immediately, and Scene drafts and reading position remain intact while browsing. Entry and exit animations respect reduced motion.
 
 ## Guided opening Project (0.7.3)

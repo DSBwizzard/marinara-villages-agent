@@ -141,6 +141,14 @@ export function createVillageSettings({
    * village has venues, editing the wording of its setting must never overwrite
    * places the player has since renamed, reworded or added by hand.
    */
+  async function setVillageWorldOrigin(value: unknown): Promise<VillageSnapshot> {
+    if (value !== "same-world" && value !== "different-worlds") throw badRequest("Choose a world origin.");
+    await mutateVillageState((state) => {
+      state.worldOrigin = value;
+    });
+    return buildVillageSnapshot();
+  }
+
   async function setVillageSetting(value: unknown): Promise<VillageSnapshot> {
     const setting = readVillageSetting(value);
     let shouldPropose = false;
@@ -229,6 +237,7 @@ export function createVillageSettings({
     setVillageName,
     setVillagePlayer,
     setVillageSetting,
+    setVillageWorldOrigin,
     addNotice,
     removeNoticeAt,
     setScenerySettings,

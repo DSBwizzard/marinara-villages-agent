@@ -454,11 +454,18 @@ export const LEGACY_TOWN_MAP_HEIGHT = 832;
 export const TOWN_MAP_EXPECTED_WIDTH = 1536;
 export const TOWN_MAP_EXPECTED_HEIGHT = 1024;
 
-export function villageCurrentSetting(village: { setting: string; worldFacts?: readonly string[] }): string {
+export function villageCurrentSetting(village: {
+  setting: string;
+  worldFacts?: readonly string[];
+  worldOrigin?: "same-world" | "different-worlds" | null;
+}): string {
   const facts = village.worldFacts?.filter(Boolean) ?? [];
   return [
     village.setting.trim(),
     VILLAGE_SHARED_SETTING_RULE,
+    village.worldOrigin
+      ? `Character origins: ${village.worldOrigin === "same-world" ? "Residents normally share this world." : "Residents may come from different worlds; their approved backgrounds and the premise establish how."} Explicit individual background exceptions take precedence. This rule does not grant characters knowledge of other worlds or other residents’ pasts.`
+      : "",
     facts.length ? `Current world facts:\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "",
   ]
     .filter(Boolean)

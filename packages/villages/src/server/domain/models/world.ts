@@ -1257,6 +1257,7 @@ export type VillageState = {
   setting: string;
   /** The player's reason for starting this village, kept apart from its visual setting. */
   foundingReason: string;
+  worldOrigin?: "same-world" | "different-worlds" | null;
   foundingDetails: string;
   foundingGuidance: string;
   /** Founding-only narrative role; null preserves legacy framing. */
@@ -1757,6 +1758,7 @@ export type VillageSettingsView = {
   setting: string;
   settingMaxLength: number;
   foundingReason: string;
+  worldOrigin?: "same-world" | "different-worlds" | null;
   foundingDetails: string;
   foundingGuidance: string;
   /** Founding-only narrative role; null preserves legacy framing. */

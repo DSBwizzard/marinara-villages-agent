@@ -245,8 +245,10 @@ export function FoundingVillagerPicker({
       (person.name + " " + person.summary).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
     )
     .sort((a, b) => a.name.localeCompare(b.name));
-  const toggle = (id: string) =>
+  const toggle = (id: string) => {
     onChange(selectedIds.includes(id) ? selectedIds.filter((value) => value !== id) : [...selectedIds, id]);
+    if (!selectedIds.includes(id)) setOpen(false);
+  };
   return (
     <section className={ELEMENT_TAG + "-founding-roster"} aria-label="Founding villagers">
       <small role="status">{selectedIds.length} of 3 selected</small>

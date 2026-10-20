@@ -29,6 +29,9 @@ export function useFoundingState() {
   const [setupName, setSetupName] = useState("");
   const [setupTimeZone, setSetupTimeZone] = useState("");
 
+  const [setupWorldOrigin, setSetupWorldOrigin] = useState<"same-world" | "different-worlds" | null>(
+    "different-worlds",
+  );
   const [setupSetting, setSetupSetting] = useState("");
 
   const [setupFoundingReason, setSetupFoundingReason] = useState<FoundingScenarioId>("custom");
@@ -164,6 +167,8 @@ export function useFoundingState() {
     setSetupName,
     setupTimeZone,
     setSetupTimeZone,
+    setupWorldOrigin,
+    setSetupWorldOrigin,
     setupSetting,
     setSetupSetting,
     setupFoundingReason,

@@ -179,6 +179,7 @@ export function useFoundingSetupDraftData(ports: {
     string,
     import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext
   >;
+  setupWorldOrigin?: "same-world" | "different-worlds" | null;
   setupSetting: string;
   setupStep: number;
   setupSuggestionsBusy: boolean;
@@ -280,6 +281,7 @@ export function useFoundingSetupDraftData(ports: {
     setupTimeZone,
     setupPlayerRole,
     setupResidentContexts,
+    setupWorldOrigin,
     setupSetting,
     setupStep,
     setupSuggestionsBusy,
@@ -297,6 +299,7 @@ export function useFoundingSetupDraftData(ports: {
       phase: SETUP_STEPS[setupStep],
       name: setupName,
       timeZone: setupTimeZone,
+      worldOrigin: setupWorldOrigin,
       setting: setupSetting,
       reason: setupFoundingReason,
       circumstances: setupFoundingDetails,
@@ -342,6 +345,7 @@ export function useFoundingSetupDraftData(ports: {
       setupWorkspace,
       setupName,
       setupTimeZone,
+      setupWorldOrigin,
       setupSetting,
       setupFoundingReason,
       setupFoundingDetails,
@@ -511,6 +515,7 @@ export function useFoundingSetupBlocker(ports: {
   setupMapSrc: string;
   setupName: string;
   setupPlayerRole: import("../../../shared/contracts/player-role.js").PlayerRole;
+  setupWorldOrigin?: "same-world" | "different-worlds" | null;
   setupSetting: string;
   setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
   setupWorldFacts: string[];
@@ -527,6 +532,7 @@ export function useFoundingSetupBlocker(ports: {
     setupMapSrc,
     setupName,
     setupPlayerRole,
+    setupWorldOrigin,
     setupSetting,
     setupVenues,
     setupWorldFacts,
@@ -612,6 +618,7 @@ export function useFoundingSetupBlocker(ports: {
       setupPlayerRole,
       snapshot?.isFounded,
       setupWorldFacts,
+      setupWorldOrigin,
       setupSetting,
     ],
   );

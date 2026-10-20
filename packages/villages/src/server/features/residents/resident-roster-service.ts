@@ -1,3 +1,7 @@
+import {
+  residentBackgroundSourceKey,
+  readResidentFoundingContext,
+} from "../../../shared/helpers/resident-founding-context.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageState } from "../../domain/models/world.js";
@@ -36,11 +40,19 @@ export function createResidentRoster({
    * change from how this used to work: the card's own opening line is NOT the
    * villager's greeting any more. See `greetVillager` for why.
    */
-  async function addVillager(characterId: string): Promise<void> {
+  async function addVillager(characterId: string, background?: unknown): Promise<void> {
+    const context = background === undefined ? undefined : readResidentFoundingContext(background);
+    if (background !== undefined && !context) throw badRequest("Accept a valid background before moving in.");
     const card = await findVillagerCard(characterId);
     if (!card) throw notFound("That character is not in your library.");
 
     const village = await readVillageState();
+    if (
+      context?.integration?.sourceKey &&
+      context.integration.sourceKey !==
+        residentBackgroundSourceKey(village.setting, village.foundingDetails, village.worldOrigin)
+    )
+      throw badRequest("The Village premise changed. Review the background again.");
     const alreadyResident = village.villagers.some((villager) => villager.characterId === characterId);
     if (!alreadyResident && village.villagers.length >= MAX_VILLAGERS) {
       throw badRequest(`A village holds at most ${MAX_VILLAGERS} villagers.`);
@@ -49,6 +61,12 @@ export function createResidentRoster({
     if (!alreadyResident) {
       const addedAt = villageNow().toISOString();
       await mutateVillageState((state) => {
+        if (
+          context?.integration?.sourceKey &&
+          context.integration.sourceKey !==
+            residentBackgroundSourceKey(state.setting, state.foundingDetails, state.worldOrigin)
+        )
+          throw badRequest("The Village premise changed. Review the background again.");
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
         if (state.villagers.length >= MAX_VILLAGERS) {
           throw badRequest(`A village holds at most ${MAX_VILLAGERS} villagers.`);
@@ -65,6 +83,7 @@ export function createResidentRoster({
         // what lets the tab tell those two apart.
         state.villagers.push({
           characterId,
+          ...(context ? { foundingContext: context } : {}),
           agendaGeneration: "arrival-" + addedAt,
           cardSnapshot: {
             id: card.id,

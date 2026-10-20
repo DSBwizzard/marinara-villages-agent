@@ -1,3 +1,4 @@
+import { draftResidentBackground } from "./resident-background.js";
 import {
   buildVillageAgendas,
   clearVillagerAgenda,
@@ -44,10 +45,17 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
   });
 }
 export function registerResidentRoutes(engine: FastifyInstance) {
-  const app = engine;
-  app.post<{ Body: { characterId?: unknown } }>("/villagers", async (request, reply) => {
+  engine.post<{ Body: unknown }>("/villagers/background/draft", async (request, reply) => {
     try {
-      await addVillager(readCharacterId(request.body?.characterId));
+      return await draftResidentBackground(request.body);
+    } catch (error) {
+      return fail(reply, error, "drafting resident background");
+    }
+  });
+  const app = engine;
+  app.post<{ Body: { characterId?: unknown; background?: unknown } }>("/villagers", async (request, reply) => {
+    try {
+      await addVillager(readCharacterId(request.body?.characterId), request.body?.background);
       return await buildVillageSnapshot();
     } catch (error) {
       return fail(reply, error, "adding a villager");
