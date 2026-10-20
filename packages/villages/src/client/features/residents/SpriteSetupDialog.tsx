@@ -242,12 +242,14 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
               <>
                 <div className="sprite-bulk" aria-label="Batch edit sprites">
                   <input
+                    autoComplete="off"
                     aria-label="Batch expression"
                     placeholder="Expression"
                     value={bulkName}
                     onChange={(event) => setBulkName(event.target.value)}
                   />
                   <input
+                    autoComplete="off"
                     aria-label="Batch use when"
                     placeholder="Use when"
                     value={bulkUse}
@@ -294,6 +296,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                         <small>{art.name}</small>
                         <label className="sprite-inline">
                           <input
+                            autoComplete="off"
                             type="checkbox"
                             disabled={busy}
                             checked={selected.includes(art.id)}
@@ -328,6 +331,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                         <label>
                           Expression
                           <input
+                            autoComplete="off"
                             aria-label="Expression"
                             disabled={busy}
                             value={item.name}
@@ -338,6 +342,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                         <label>
                           Use when
                           <textarea
+                            autoComplete="off"
                             aria-label="Use when"
                             disabled={busy}
                             value={item.useWhen}
@@ -364,6 +369,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                         </label>
                         <label className="sprite-inline">
                           <input
+                            autoComplete="off"
                             type="checkbox"
                             disabled={busy}
                             checked={item.included}
@@ -373,6 +379,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                         </label>
                         <label className="sprite-inline">
                           <input
+                            autoComplete="off"
                             type="radio"
                             name="sprite-default"
                             disabled={busy || !ready(item)}
@@ -397,6 +404,7 @@ export function SpriteSetupDialog({ characterId, name, portrait, onClose, onDone
                               <label key={key}>
                                 {{ scale: "Size", offsetX: "Horizontal position", offsetY: "Foot position" }[key]}
                                 <input
+                                  autoComplete="off"
                                   type="number"
                                   disabled={busy}
                                   value={frameDraft[key]}
