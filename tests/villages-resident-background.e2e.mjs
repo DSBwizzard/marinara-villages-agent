@@ -59,6 +59,7 @@ try {
           body: '<meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div>',
         }),
       );
+      await page.route("**/api/connections", (route) => route.fulfill({ contentType: "application/json", body: "[]" }));
       await page.route("**/api/villages/**", async (route) => {
         if (/\/characters\/[^/]+\/sprites\/setup(?:\/save)?$/.test(new URL(route.request().url()).pathname))
           return route.fulfill({
