@@ -163,7 +163,7 @@ try {
     // Exercise navigation independently of the mobile dialogue overlay's pointer layout.
     await page.getByRole("button", { name: /View .*Inspect Mara's wish/ }).evaluate((button) => button.click());
     await expect(page.getByRole("region", { name: "Mara profile", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+    await page.getByRole("button", { name: "Close ×", exact: true }).click();
     await expect(text).toHaveText("A quiet afternoon.");
     await expect(draft).toHaveCount(0);
     await tray.click();

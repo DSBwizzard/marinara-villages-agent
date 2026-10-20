@@ -161,7 +161,7 @@ try {
   await expect(page.getByRole("button", { name: "A project" })).toBeEnabled();
   await page.getByRole("button", { name: "Wishes", exact: true }).click();
   await expect(page.getByRole("button", { name: "Retire wish", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Back to Scene" }).click();
+  await page.getByRole("button", { name: "← Back to Villagers" }).click();
   await expect(page.locator("#screen")).toHaveText("room");
   await page.evaluate(() => {
     window.navigation.setRoom((current) => ({ ...current, status: "closed" }));

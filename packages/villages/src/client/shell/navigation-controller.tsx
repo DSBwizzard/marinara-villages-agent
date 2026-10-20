@@ -30,7 +30,7 @@ export function useNavigationOpenPerson(ports: {
         spriteLeaveGuard,
       } = ports;
 
-      if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
+      if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return false;
       const button = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const key = button?.getAttribute("data-exploration-row");
       const label = button?.getAttribute("aria-label");
@@ -53,6 +53,7 @@ export function useNavigationOpenPerson(ports: {
       setSpriteManagerId(null);
       setPersonProfile(navigation);
       setScreen("person");
+      return true;
     },
     [ports.element],
   );

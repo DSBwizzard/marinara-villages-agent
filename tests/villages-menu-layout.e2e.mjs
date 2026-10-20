@@ -257,7 +257,7 @@ try {
     await expect(page.getByRole("main", { name: "Villagers directory" })).toBeVisible();
     await expect(nav).toHaveCount(0);
     await expect(page.getByRole("searchbox", { name: "Search villagers" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
+    await page.getByRole("button", { name: "Close ×" }).click();
     await page.evaluate(() => document.getElementById("marinara-capability-villages-styles").remove());
     await expect.poll(() => page.locator("#marinara-capability-villages-styles").count()).toBe(1);
     await root.getByRole("button", { name: "Back to the village" }).click();

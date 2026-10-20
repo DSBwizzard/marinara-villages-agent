@@ -11,12 +11,170 @@ import { MenuScreen } from "./MenuScreen.js";
 import { VenueScreen } from "../features/venues/VenueScreen.js";
 import { useVillageController } from "./useVillageController.js";
 import { VillagesFrame } from "./VillagesFrame.js";
+import { useEffect, useRef, useState } from "react";
 
 export function VillagesView({ element }: { element: HTMLElement }) {
   const controller = useVillageController({ element });
+  type Origin = { screen: typeof controller.screen; menuPage: typeof controller.menuPage; focus: HTMLElement | null };
+  const [origin, setOrigin] = useState<Origin | null>(null);
+  const [phase, setPhase] = useState("opening");
+  const readingPosition = useRef(0);
+  const notebook = useRef<HTMLDivElement>(null);
+  const bookVisible =
+    controller.screen === "person" || (controller.screen === "menu" && controller.menuPage === "villagers");
+  const begin = () => {
+    if (origin) return;
+    readingPosition.current = 0;
+    const active = element.shadowRoot?.activeElement ?? document.activeElement;
+    setOrigin({
+      screen: controller.screen,
+      menuPage: controller.menuPage,
+      focus: active instanceof HTMLElement ? active : null,
+    });
+    setPhase("opening");
+  };
+  const navigation = {
+    ...controller,
+    openMenu: (tab: Parameters<typeof controller.openMenu>[0]) => {
+      if (tab === "villagers") begin();
+      controller.openMenu(tab);
+    },
+    openPerson: (person: Parameters<typeof controller.openPerson>[0]) => {
+      const opened = controller.openPerson(person);
+      if (opened) begin();
+      return opened;
+    },
+  };
+  const openingWishId = controller.personProfile?.wishId;
+  useEffect(() => {
+    if (!origin) return;
+    if (!bookVisible && (controller.screen === "home" || controller.screen === "room")) {
+      setOrigin(null);
+      return;
+    }
+    if (phase !== "opening") return;
+    const timer = window.setTimeout(
+      () => {
+        setPhase("open");
+        requestAnimationFrame(() => {
+          const target = openingWishId
+            ? notebook.current?.querySelector<HTMLElement>(`[data-wish-id="${CSS.escape(openingWishId)}"]`)
+            : null;
+          const active = element.shadowRoot?.activeElement ?? document.activeElement;
+          if (target) target.focus({ preventScroll: true });
+          else if (!openingWishId && !notebook.current?.contains(active))
+            notebook.current?.querySelector<HTMLElement>("input,button")?.focus({ preventScroll: true });
+        });
+      },
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1050,
+    );
+    return () => window.clearTimeout(timer);
+  }, [origin, bookVisible, phase, controller.screen, openingWishId, element]);
+  const { setPersonProfile, setProfileInspection, setSpriteManagerId, setMenuPage, setScreen } = controller;
+  useEffect(() => {
+    if (!origin || phase !== "closing") return;
+    const timer = window.setTimeout(
+      () => {
+        setPersonProfile(null);
+        setProfileInspection(null);
+        setSpriteManagerId(null);
+        setMenuPage(origin.menuPage);
+        setScreen(origin.screen);
+        setOrigin(null);
+        requestAnimationFrame(() => origin.focus?.isConnected && origin.focus.focus({ preventScroll: true }));
+      },
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [origin, phase, setMenuPage, setScreen, setPersonProfile, setProfileInspection, setSpriteManagerId]);
+  const close = () => {
+    if (controller.spriteLeaveGuard.current && !controller.spriteLeaveGuard.current()) return;
+    setPhase("closing");
+  };
+  const directory = () => {
+    if (controller.spriteLeaveGuard.current && !controller.spriteLeaveGuard.current()) return;
+    const actor = controller.personProfile?.actorId;
+    controller.setSpriteManagerId(null);
+    controller.setProfileInspection(null);
+    controller.setPersonProfile(null);
+    controller.openMenu("villagers");
+    requestAnimationFrame(() => {
+      const name = controller.snapshot?.villagers.find((person) => person.characterId === actor)?.name;
+      if (name)
+        notebook.current
+          ?.querySelector<HTMLElement>(`[aria-label="${CSS.escape(`Open ${name} profile`)}"]`)
+          ?.focus({ preventScroll: true });
+    });
+  };
+  const showing = !!origin && (bookVisible || (controller.screen !== "home" && controller.screen !== "room"));
   return (
-    <VillagesFrame controller={controller}>
-      <VillageScreen controller={controller} />
+    <VillagesFrame controller={navigation}>
+      <div hidden={showing} inert={showing} style={{ height: "100%" }}>
+        <VillageScreen
+          controller={showing ? { ...navigation, screen: origin.screen, menuPage: origin.menuPage } : navigation}
+        />
+      </div>
+      {showing ? (
+        <div
+          ref={notebook}
+          className={`${ELEMENT_TAG}-notebook-session`}
+          data-phase={phase}
+          role={bookVisible ? "dialog" : undefined}
+          aria-modal={bookVisible ? true : undefined}
+          aria-label={bookVisible ? "People" : undefined}
+          onKeyDown={(event) => {
+            if (!bookVisible) return;
+            if (event.key === "Tab") {
+              const controls = [
+                ...(notebook.current?.querySelectorAll<HTMLElement>(
+                  'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]',
+                ) ?? []),
+              ].filter((node) => node.checkVisibility());
+              const first = controls[0],
+                last = controls.at(-1);
+              const active = element.shadowRoot?.activeElement ?? document.activeElement;
+              if (event.shiftKey && active === first) {
+                event.preventDefault();
+                last?.focus();
+              } else if (!event.shiftKey && active === last) {
+                event.preventDefault();
+                first?.focus();
+              }
+            }
+            if (event.key !== "Escape" || event.defaultPrevented) return;
+            if (notebook.current?.querySelector('[role="dialog"],dialog[open]')) return;
+            const details = notebook.current?.querySelector<HTMLDetailsElement>("details[open]");
+            if (details) {
+              details.querySelector<HTMLElement>("summary")?.click();
+              event.stopPropagation();
+              return;
+            }
+            event.stopPropagation();
+            close();
+          }}
+        >
+          <div className={`${ELEMENT_TAG}-notebook-motion`} inert={phase === "closing"}>
+            {!bookVisible ? (
+              <>
+                {controller.screen === "venue" ? (
+                  <VenueScreen controller={navigation} />
+                ) : (
+                  <MenuScreen controller={navigation} />
+                )}
+              </>
+            ) : controller.screen === "person" ? (
+              <ResidentsScreen controller={navigation} onDirectory={directory} onClose={close} />
+            ) : (
+              <RosterScreen controller={navigation} onClose={close} readingPosition={readingPosition} />
+            )}
+            {bookVisible ? (
+              <div className={`${ELEMENT_TAG}-notebook-cover`} aria-hidden="true">
+                <span>Villagers</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </VillagesFrame>
   );
 }
