@@ -7,6 +7,7 @@ import {
 import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
+import { suggestDefaultSprite } from "../packages/villages/src/server/domain/rules/sprite-default.js";
 import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 
 const documents = new Map<string, unknown>();
@@ -15,6 +16,13 @@ let calls = 0,
   failImage = false,
   resolved = "",
   copied = 0;
+let analysisAnswer = {
+  name: "Thoughtful",
+  useWhen: "Considering something carefully.",
+  direction: "left",
+  expression: "neutral",
+  pose: "relaxed-standing",
+};
 const libraryFiles = ["full_suicejejshe.png", "full_defeult-1.png", "happy.png"];
 let prepareGate: (() => Promise<void>) | undefined;
 const service = createSpriteSetup({
@@ -43,12 +51,7 @@ const service = createSpriteSetup({
           options.signal?.throwIfAborted();
           if (failImage) throw Error("provider unavailable");
           return {
-            content: JSON.stringify({
-              name: "Thoughtful",
-              useWhen: "Considering something carefully.",
-              direction: "left",
-              defaultCandidate: true,
-            }),
+            content: JSON.stringify(analysisAnswer),
           };
         },
       };
@@ -116,7 +119,7 @@ draft = await service.analyze("bupkis", {
 assert.equal(resolved, "vision");
 assert.equal(draft.suggestions[0].direction, "left");
 assert.equal(draft.assignments[0].name, "", "suggestions do not activate assignments");
-assert.ok(draft.suggestedDefaultArtworkId);
+assert.equal(draft.suggestedDefaultArtworkId, "", "partial sets cannot suggest a default");
 await service.analyze("bupkis", { revision: 0, requestId, artworkIds: [] });
 assert.equal(calls, 1, "replayed request cannot repeat a purchased call");
 const stale = draft.revision;
@@ -315,3 +318,78 @@ assert.ok(manyCharacters.every((state) => state.manager.artwork.length === 40));
 console.log(
   "Sprite setup: import, review, captioning, cancellation, revision checks and directional rendering passed.",
 );
+
+// A full run compares all successful results without purchasing a comparison call.
+documents.clear();
+libraryFiles.splice(0, libraryFiles.length, "full_first.png", "full_side.png", "full_best.png");
+failImage = false;
+calls = 0;
+draft = await service.prepare("bupkis");
+const [firstId, sideId, bestId] = draft.assignments.map((item) => item.artworkId);
+async function analyzeOne(artworkId: string, finalize: boolean) {
+  return service.analyze("bupkis", {
+    revision: draft.revision,
+    requestId: randomUUID(),
+    connectionId: "vision",
+    artworkIds: [artworkId],
+    finalize,
+  });
+}
+analysisAnswer = { ...analysisAnswer, direction: "front", pose: "other" };
+draft = await analyzeOne(firstId, false);
+assert.equal(draft.suggestedDefaultArtworkId, "");
+analysisAnswer = { ...analysisAnswer, direction: "left", pose: "relaxed-standing" };
+draft = await analyzeOne(sideId, false);
+assert.equal(draft.suggestedDefaultArtworkId, "");
+failImage = true;
+draft = await analyzeOne(bestId, true);
+assert.equal(draft.suggestedDefaultArtworkId, "", "failure must not select an early candidate");
+failImage = false;
+analysisAnswer = { ...analysisAnswer, direction: "front" };
+draft = await analyzeOne(bestId, true);
+assert.equal(draft.suggestedDefaultArtworkId, bestId, "later neutral front-facing standing image wins");
+assert.equal(calls, 4, "three image calls and one explicit failed-image retry; no comparison call");
+assert.equal(draft.defaultArtworkId, "", "analysis does not bypass approval");
+assert.equal(
+  (await service.read("bupkis")).analysisTraits?.[bestId].pose,
+  "relaxed-standing",
+  "traits survive reopening",
+);
+draft = await service.save("bupkis", { ...draft, defaultArtworkId: firstId });
+draft = await analyzeOne(bestId, true);
+assert.equal(draft.defaultArtworkId, firstId, "analysis preserves an explicitly selected default");
+const cancellation = new AbortController();
+cancellation.abort();
+const beforeCancel = calls;
+await assert.rejects(
+  service.analyze(
+    "bupkis",
+    { revision: draft.revision, requestId: randomUUID(), connectionId: "vision", artworkIds: [bestId], finalize: true },
+    cancellation.signal,
+  ),
+);
+assert.equal(calls, beforeCancel);
+assert.equal((await service.read("bupkis")).defaultArtworkId, firstId);
+
+const ranked = structuredClone(draft);
+ranked.analysisTraits![firstId] = { expression: "neutral", pose: "relaxed-standing" };
+assert.equal(suggestDefaultSprite(ranked), firstId, "equal ranks use stable assignment order");
+ranked.assignments[0].included = false;
+assert.equal(suggestDefaultSprite(ranked), bestId, "excluded images cannot win");
+ranked.analysisTraits![bestId].expression = "strong";
+assert.equal(
+  suggestDefaultSprite(ranked),
+  "",
+  "expressive or side-facing images are not neutral front-facing fallbacks",
+);
+ranked.analysisTraits![bestId].expression = "neutral";
+ranked.errors[bestId] = "Analysis failed.";
+assert.equal(suggestDefaultSprite(ranked), "", "failed analysis blocks final selection");
+delete ranked.errors[bestId];
+delete ranked.analysisTraits;
+assert.equal(
+  suggestDefaultSprite(ranked),
+  "",
+  "legacy suggestions without traits remain reviewable without guessing or paid migration",
+);
+console.log("Default sprite ranking, completion, retries, saved compatibility and manual preservation passed.");

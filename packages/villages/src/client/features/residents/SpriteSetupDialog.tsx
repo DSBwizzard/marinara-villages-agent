@@ -244,6 +244,7 @@ export function SpriteSetupDialog({
             revision: latest.revision,
             requestId: createVillagesClientId(),
             artworkIds: [artworkId],
+            finalize: index === ids.length - 1,
             connectionId,
           }),
         });
