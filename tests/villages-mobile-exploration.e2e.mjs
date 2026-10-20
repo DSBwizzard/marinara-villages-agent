@@ -504,6 +504,7 @@ try {
     await expect(nav.getByRole("button", { name: "Places", exact: true })).toBeFocused();
     await nav.getByRole("button", { name: "People", exact: true }).click();
     sheet = page.getByRole("main", { name: "Villagers directory", exact: true });
+    await expect(page.locator("." + P + "-notebook-session")).toHaveAttribute("data-phase", "open");
     await expect(sheet.getByRole("button", { name: "Open Taro profile" })).toBeEnabled();
     await expect(sheet.locator("." + P + "-avatar img")).toHaveCount(4);
     for (const row of await sheet.locator("." + P + "-directory-card").all()) {
