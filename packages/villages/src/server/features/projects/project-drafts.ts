@@ -74,8 +74,22 @@ export function draftNewVenueProject(
   return project;
 }
 
-export function draftRenovationProject(state: VillageState, venueId: string, value: unknown): VillageProject {
-  requireOrdinaryProjects(state);
+export function draftRenovationProject(
+  state: VillageState,
+  venueId: string,
+  value: unknown,
+  openingRequestId = "",
+): VillageProject {
+  const opening = state.opening;
+  if (
+    !openingRequestId ||
+    !opening ||
+    opening.stage !== "conversations" ||
+    !opening.residentIds.some((id) => openingRequestId === `opening:${state.seed}:${id}`)
+  )
+    requireOrdinaryProjects(state);
+  const prior = openingRequestId && state.projects.find((project) => project.id === openingRequestId);
+  if (prior) return prior;
   const row = asRecord(value);
   const title = boundText(row.title, MAX_VENUE_NAME_LENGTH).trim() || "Renovation";
   const detail = boundText(row.detail, MAX_VENUE_DESCRIPTION_LENGTH).trim();
@@ -303,7 +317,7 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
   ].filter((id) => id !== "player");
   const at = villageNow().toISOString();
   const project: VillageProject = {
-    id: randomUUID(),
+    id: openingRequestId || randomUUID(),
     kind: "renovation",
     title,
     venueId,

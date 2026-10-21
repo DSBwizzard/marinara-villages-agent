@@ -49,7 +49,7 @@ export type SceneAttendance = {
 };
 export type VenueSubmission = {
   openingProcessedAt?: string;
-  openingContext?: { stage: string; projectId: string; proposalFingerprint?: string };
+  openingContext?: { stage: string; projectId: string; proposalFingerprint?: string; gatheringComplete?: true };
   openingSignal?: import("../rules/opening-project.js").OpeningSignal;
   residentActionReceipt?: import("../rules/resident-actions.js").ResidentActionReceipt;
   speechCapture?: { version: 3; status: "captured" | "silent" };
@@ -172,6 +172,8 @@ export type VenueRecordEvent = {
 };
 export type VenueScene = {
   openingGatheringId?: string;
+  openingReader?: boolean;
+  openingIntroductionResidentId?: string;
   semanticVersion?: 2;
   semanticIntent?: import("./semantic-model.js").SemanticIntent;
   spinoff?: import("./spinoff-model.js").VillageSpinoff;

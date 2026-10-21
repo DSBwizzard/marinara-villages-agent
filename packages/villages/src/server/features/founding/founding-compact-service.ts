@@ -1,3 +1,4 @@
+import { bindOpeningRenovation } from "../../domain/rules/opening-renovation.js";
 import { readOpeningProposal } from "../../domain/rules/opening-project.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { foundingRequestMessages } from "../../domain/rules/founding-requests.js";
@@ -103,7 +104,9 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
       if (["length", "max_tokens"].includes(completion.finishReason ?? ""))
         throw new Error("Opening idea was truncated.");
       const payload = extractModelJsonObject(completion);
-      return readOpeningProposal(payload?.openingProposal, context.characterId ?? context.card.id);
+      const proposal = readOpeningProposal(payload?.openingProposal, context.characterId ?? context.card.id);
+      if (context.openingVersion === 2 && !proposal.kind) throw new Error("Opening idea needs a Project kind.");
+      return bindOpeningRenovation(proposal, context.venues);
     };
     const completion = await completeWithRoom(model, messages, requested, {
       responseFormat: { type: "json_object" },

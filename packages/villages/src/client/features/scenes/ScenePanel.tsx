@@ -438,7 +438,11 @@ export function RoomPanel({
           {room.operation?.recoverable ? "Recover saved opening" : "Retry opening"}
         </button>
         {room.id ? (
-          <button type="button" onClick={onContinueWithoutGreeting} disabled={busy}>
+          <button
+            type="button"
+            onClick={onContinueWithoutGreeting}
+            disabled={busy || room.openingReader || !!room.openingIntroductionResidentId}
+          >
             Continue without opening
           </button>
         ) : null}
@@ -691,7 +695,7 @@ export function RoomPanel({
   }, [room.id, at, steps.length]);
   const canReadPrevious = at > 0 || readingPages.index > 0;
   const canReadNext = at < steps.length - 1 || readingPages.index < readingPages.count - 1;
-  const canDraft = !ended && room.status === "active";
+  const canDraft = !room.openingReader && !ended && room.status === "active";
   const canCompose = canDraft && !busy && !canReadNext && !historyOpen;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
@@ -1542,7 +1546,11 @@ export function RoomPanel({
               >
                 ‹ <span>Previous</span>
               </button>
-              {!ended || canReadNext ? (
+              {room.openingReader && !canReadNext && room.status === "active" ? (
+                <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
+                  Continue
+                </button>
+              ) : !ended || canReadNext ? (
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-chat-vn-button`}

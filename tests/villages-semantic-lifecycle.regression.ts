@@ -17,6 +17,7 @@ import { semanticContinuationKey } from "../packages/villages/src/server/domain/
 
 const state = defaultVillageState();
 state.seed = "semantic-lifecycle";
+state.playerBackground = "I have been a friend of a for years.";
 state.villagers = ["a", "b"].map((id) => ({
   characterId: id,
   cardSnapshot: { id, name: id, revision: 1, description: "Authored context", sourceStatus: "available" },
@@ -76,6 +77,15 @@ assert.equal(calls, 0, "Construction and view replay cannot start interpretation
 await service.queue();
 assert.equal(calls, 0, "Admission queues finite preparation without dispatching inline");
 assert(queued);
+assert.equal(queued.input.source.playerBackground, state.playerBackground);
+const originalBackground = state.playerBackground;
+state.playerBackground = "Changed starting relationship";
+assert.equal(
+  service.handler.valid(state, queued.input),
+  false,
+  "player backstory is part of the frozen relationship source",
+);
+state.playerBackground = originalBackground;
 failApply = true;
 await assert.rejects(service.prepare(), /storage unavailable/);
 assert.equal(calls, 1);

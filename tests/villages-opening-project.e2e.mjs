@@ -46,23 +46,32 @@ function data(stage) {
   };
   return snapshot;
 }
-async function open(width, stage) {
+async function open(width, stage, version = 1, holdSnapshotAfterClose = false) {
   const snapshot = data(stage);
+  snapshot.opening.version = version;
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 700 });
   const errors = [],
     calls = [];
   let scene = null;
+  let snapshotBlocked = false;
+  let releaseClosedSnapshot;
+  const closedSnapshot = new Promise((resolve) => (releaseClosedSnapshot = resolve));
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/api/villages**", async (route) => {
     const request = route.request(),
       path = new URL(request.url()).pathname.replace(/^.*\/api\/villages/, "");
     let value = snapshot;
+    if ((path === "/" || path === "") && holdSnapshotAfterClose && scene?.status === "closed") {
+      snapshotBlocked = true;
+      await closedSnapshot;
+    }
     if (request.method() === "POST") calls.push({ path, body: request.postDataJSON() });
     if (path === "/rooms/active") value = { session: scene };
     else if (path === "/rooms" && request.method() === "POST") {
       snapshot.opening.gatheringSceneId = "gathering-browser";
       scene = {
         version: 1,
+        openingReader: version === 2 ? true : undefined,
         id: "gathering-browser",
         sceneRevision: 0,
         placeId: "mill",
@@ -98,7 +107,26 @@ async function open(width, stage) {
           at: now,
         },
       ];
+      if (version === 2)
+        scene.lines.push(
+          ...snapshot.villagers.map((resident, index) => ({
+            id: `idea-${resident.characterId}`,
+            kind: "dialogue",
+            role: "assistant",
+            speakerId: resident.characterId,
+            name: resident.name,
+            content: `I have been thinking about ${proposal(resident.characterId, index).name}. We could make something useful here.`,
+            heardBy: scene.activeIds,
+            at: now,
+          })),
+        );
       value = { session: scene };
+    } else if (path === "/rooms/end") {
+      scene.status = "closed";
+      scene.endedAt = now;
+      snapshot.opening.stage = "conversations";
+      snapshot.opening.action = "Talk to Eli · 1/3";
+      value = { session: scene, recordEvents: [] };
     } else if (path === "/rooms/activity") value = { session: scene };
     else if (/\/rooms\/.*\/operation$/.test(path)) value = { operation: null };
     else if (path === "/projects/opening") {
@@ -146,6 +174,25 @@ async function open(width, stage) {
             },
           },
         ];
+        const selected = snapshot.opening.proposals.find((entry) => entry.residentId === body.residentId);
+        if (selected?.kind === "renovation") {
+          Object.assign(snapshot.projects[0], { kind: "renovation", title: selected.name, venueId: "mill" });
+          Object.assign(snapshot.projects[0].lifecycle, {
+            phase: "approval",
+            affectedIds: ["mara"],
+            change: {
+              detail: selected.description,
+              slot: 0,
+              improvement: {
+                title: selected.name,
+                description: selected.description,
+                extraBeds: 0,
+                spaceId: "community",
+              },
+            },
+          });
+          snapshot.opening.action = "Ask affected villagers";
+        }
       } else if (body.action === "skip") {
         snapshot.opening.stage = "ended";
         snapshot.opening.action = "";
@@ -176,10 +223,43 @@ async function open(width, stage) {
   );
   await page.goto("http://opening.test/");
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-  return { page, snapshot, calls, errors };
+  return { page, snapshot, calls, errors, releaseClosedSnapshot, snapshotBlocked: () => snapshotBlocked };
 }
 try {
   for (const width of [1366, 390]) {
+    const reader = await open(width, "gathering", 2, true);
+    await expect.poll(() => reader.calls.filter((entry) => entry.path === "/rooms/greet").length).toBe(1);
+    // A refreshed browser restores the gathering without going through its automatic opener.
+    await reader.page.reload();
+    await reader.page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(reader.page.locator(".marinara-capability-villages-composer")).toHaveCount(0);
+    for (
+      let step = 0;
+      step < 30 && !(await reader.page.getByRole("button", { name: "Continue", exact: true }).isVisible());
+      step++
+    ) {
+      await reader.page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+    }
+    await expect(reader.page.getByRole("button", { name: "Continue", exact: true })).toBeVisible();
+    if (output) await reader.page.screenshot({ path: resolve(output, `opening-reader-${width}.png`) });
+    await reader.page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect.poll(reader.snapshotBlocked).toBe(true);
+    await reader.page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    await expect(reader.page.locator(".marinara-capability-villages-room-screen")).toHaveCount(0);
+    assert.equal(
+      reader.calls.filter((entry) => entry.path === "/rooms").length,
+      1,
+      "Continue must not open another Scene while the map snapshot refreshes",
+    );
+    reader.releaseClosedSnapshot();
+    await expect(reader.page.getByRole("button", { name: "Talk to Eli · 1/3", exact: true })).toBeVisible();
+    assert.equal(reader.calls.filter((entry) => entry.path === "/rooms/end").length, 1);
+    assert.equal(reader.calls.filter((entry) => /turn|send/.test(entry.path)).length, 0);
+    assert.deepEqual(reader.errors, []);
+    await reader.page.close();
+
     const gathering = await open(width, "gathering");
     await expect.poll(() => gathering.calls.filter((entry) => entry.path === "/rooms/greet").length).toBe(1);
     assert.equal(gathering.calls.filter((entry) => entry.path === "/rooms").length, 1);
@@ -190,6 +270,47 @@ try {
     if (output) await gathering.page.screenshot({ path: resolve(output, `opening-gathering-${width}.png`) });
     assert.deepEqual(gathering.errors, []);
     await gathering.page.close();
+
+    const improvement = await open(width, "conversations", 2);
+    improvement.snapshot.opening.heardIds = [...improvement.snapshot.opening.residentIds];
+    improvement.snapshot.opening.proposals = improvement.snapshot.opening.residentIds.map(proposal);
+    Object.assign(improvement.snapshot.opening.proposals[0], {
+      kind: "renovation",
+      name: "Reading corner",
+      description: "A shared reading corner for quiet afternoons.",
+      work: "Prepare the corner, fit shelves and seating, and finish the surfaces.",
+      renovation: {
+        venueId: "mill",
+        spaceId: "community",
+        slot: 0,
+        title: "Reading corner",
+        description: "Add a shared reading corner",
+      },
+    });
+    await improvement.page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
+    await improvement.page.getByRole("button", { name: /^Projects \(/ }).click();
+    if (width < 700) await improvement.page.getByRole("button", { name: /Mara.*Reading corner/ }).click();
+    await expect(improvement.page.getByText("Improvement", { exact: true })).toBeVisible();
+    await improvement.page.getByRole("button", { name: "Accept proposal", exact: true }).click();
+    await expect(
+      improvement.page.getByRole("heading", { name: "People affected by this change", exact: true }),
+    ).toBeVisible();
+    await expect(improvement.page.getByRole("button", { name: "Place on Village map", exact: true })).toHaveCount(0);
+    if (output) await improvement.page.screenshot({ path: resolve(output, `opening-improvement-${width}.png`) });
+    improvement.snapshot.opening.ordinaryProjectsUnlocked = true;
+    improvement.snapshot.projects[0].status = "building";
+    improvement.snapshot.projects[0].lifecycle.phase = "construction";
+    improvement.snapshot.projects[0].lifecycle.workOrder = {
+      startsAt: now,
+      completesAt: new Date(Date.parse(now) + 43_200_000).toISOString(),
+      remainingMs: 43_200_000,
+      pausedAt: "",
+    };
+    await improvement.page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await improvement.page.getByRole("button", { name: "All Projects", exact: true }).click();
+    await expect(improvement.page.getByRole("button", { name: /NEW VENUE.*Imagine a new place/ })).toBeVisible();
+    assert.deepEqual(improvement.errors, []);
+    await improvement.page.close();
 
     const { page, snapshot, calls, errors } = await open(width, "conversations");
     await expect(page.getByRole("button", { name: "Talk to Eli · 1/3", exact: true })).toBeVisible();

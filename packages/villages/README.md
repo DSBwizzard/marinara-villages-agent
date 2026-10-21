@@ -87,7 +87,15 @@ Projects proceed through placement, affected-person approval when required, will
 
 Projects supports one New Venue slot and one Renovation slot. Normal construction takes 24 elapsed hours; the guided opening Project takes twelve. Construction respects builder availability, and affected areas can close while unaffected Zones remain usable.
 
-New villages begin with the founding residents together at the Community Venue. Later conversations reveal their prepared opening proposals. Hear the remaining founders before choosing a proposal. Skipping guidance ends it permanently while preserving any accepted Project and its consequences. Opening the finished Venue completes its Project; an exchange depicting its intended first use completes guidance. Existing villages do not adopt this opening.
+New villages begin with a short gathering where each founder expresses an interest and Project idea. No player dialogue is required; reading controls and **Continue** lead to exploration. Authored histories and relationships shape the opening without assuming arrival, first acquaintance, a shared mission or player agreement.
+
+Founders are then available individually at their own unrestricted Entrance, in any visit order. Each Scene's opening explains the proposal, purpose and work before player input. Validated saved speech records it once; ordinary scheduling resumes afterward while the active Scene retains its captured attendance. Recurring agendas remain unchanged, and staged presence grants no interior access.
+
+After hearing every remaining founder, the player explicitly accepts one proposal as offered. It may create a new playable Venue or add one modest improvement in an empty Upgrade slot at a known public space. Renovations preserve existing Zones, occupants, ownership, capacity and access, and retain ordinary affected-person approvals. A heard idea grants no consent or authority. The player's authored backstory informs social context; taking on development is a choice.
+
+Starting verified tutorial work permanently unlocks ordinary Projects under their normal concurrency limits. Guidance continues through finishing and actual first use of the new or improved space. Skipping or declining every proposal also unlocks Projects; skipping preserves accepted work and its twelve-hour duration. Departed founders' unchosen proposals cease to be eligible. Existing saved openings retain their previous flow, and existing worlds receive no retroactive opening.
+
+Refresh restores saved progress. Incomplete gathering or introduction writing stays retained for diagnosis; replacing it requires explicit retry. Private preparation and unseen attendance remain server-side. Provider-free checks establish mechanics and layout, not live-model writing quality.
 
 ## Map, artwork and sprites
 

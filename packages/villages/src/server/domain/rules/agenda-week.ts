@@ -291,7 +291,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
         endMinute: breakBlock.startMinute,
         venueId: work.venueId,
         zoneId: work.zoneId ?? "exterior",
-        activity: "Build the agreed venue",
+        activity: "Work on the agreed Project",
         commitmentId: work.projectId,
       });
     workBlocks.push(breakBlock);
@@ -303,7 +303,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
       endMinute: through,
       venueId: work.venueId,
       zoneId: work.zoneId ?? "exterior",
-      activity: "Build the agreed venue",
+      activity: "Work on the agreed Project",
       commitmentId: work.projectId,
     });
   return [...remaining, ...workBlocks].sort((left, right) => left.startMinute - right.startMinute);

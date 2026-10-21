@@ -87,7 +87,7 @@ export function createVillageSnapshot({
       const companion = residenceAccess?.accompanying?.find((entry) => entry.characterId === villager.characterId);
       const companionVenue = companion && village.venues.find((entry) => entry.id === residenceAccess?.placeId);
       const companionZone = companionVenue && resolveVenueZone(companionVenue, companion!.zoneId);
-      if (residenceAccess && village.venues.some((venue) => venue.id === residenceAccess.placeId && venue.access)) {
+      if (residenceAccess?.sceneAttendance) {
         const position = sceneAccessContext(residenceAccess, village).positions?.[villager.characterId];
         if (position && position !== residenceAccess.zoneId) destination = null;
         else if (position) {

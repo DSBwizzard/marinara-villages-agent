@@ -364,6 +364,7 @@ export function createFoundingSetup({
           [...assignedResidents],
           venues.find((venue) => venue.category === "public-center")!.id,
           randomUUID(),
+          2,
         );
       }
       if (founding)

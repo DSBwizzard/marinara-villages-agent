@@ -1,3 +1,4 @@
+import { openingPresence } from "./opening-presence.js";
 import { hashString } from "./village-clock.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
@@ -46,6 +47,7 @@ export function socialPlanValid(
     plan.dateKey !== agendaDateKey(now) ||
     !plan.actorIds.length ||
     plan.actorIds.includes("player") ||
+    plan.actorIds.some((id) => !!openingPresence(village, id)) ||
     plan.actorIds.length !== (plan.kind === "meeting" ? 2 : 1)
   )
     return false;
@@ -95,7 +97,9 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
   if (!state || village.storyPace === "off" || state.applied["social-plan-date:" + dateKey]) return [];
   const minute = now.getHours() * 60 + now.getMinutes(),
     result: SocialPlan[] = [];
-  const residents = village.villagers.filter((resident) => resident.agenda);
+  const residents = village.villagers.filter(
+    (resident) => resident.agenda && !openingPresence(village, resident.characterId),
+  );
   const groups = residents.flatMap((resident, index) => [
     { kind: "avoidance" as const, actors: [resident] },
     ...residents.slice(index + 1).map((other) => ({ kind: "meeting" as const, actors: [resident, other] })),
@@ -193,6 +197,7 @@ export function socialContinuationValid(
   if (
     !plan ||
     plan.id !== id ||
+    plan.actorIds.some((actorId) => !!openingPresence(village, actorId)) ||
     plan.status !== "planned" ||
     plan.dateKey !== agendaDateKey(now) ||
     plan.startMinute > minute ||

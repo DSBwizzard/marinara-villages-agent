@@ -11,6 +11,7 @@ import type {
   VillageSnapshot,
   VillageVenue,
 } from "../../domain/models/world.js";
+import { openingPresence } from "../../domain/rules/opening-presence.js";
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
@@ -297,6 +298,7 @@ export function createWorldCoordination({
     });
     const context: VillageTickContext = {
       descriptionVersion: 1,
+      playerAgencyVersion: 1,
       semanticVersion: 2,
       village: village.name,
       playerBackground: village.playerBackground,
@@ -315,7 +317,10 @@ export function createWorldCoordination({
           // the village's own default rather than with the Engine's sentence,
           // which is the leak this whole file exists to close: see
           // `VILLAGE_UNTRANSLATED_ACTIVITY`.
-          doing: agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false)?.activity ?? "",
+          doing:
+            openingPresence(village, villager.characterId)?.activity ??
+            agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false)?.activity ??
+            "",
           agenda: villager.agenda,
         };
       }),

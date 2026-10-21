@@ -1,6 +1,11 @@
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
-import { readOpeningSignal, openingProposalFingerprint } from "../../domain/rules/opening-project.js";
+import {
+  readOpeningSignal,
+  openingProposalFingerprint,
+  IncompleteOpeningPitch,
+  IncompleteOpeningGathering,
+} from "../../domain/rules/opening-project.js";
 import { RELATIONSHIP_PERMISSION_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
   RESIDENT_ACTION_SHAPE,
@@ -405,7 +410,7 @@ export function createSemanticService(ports: SemanticPorts) {
           ? ""
           : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
         'projectSpeech may cite only existing Project IDs and revisions supplied in context.projects. Opening proposals are not Projects: report their pitch only in openingSignal, never projectSpeech. projects authority is true exactly when projectSpeech is nonempty, including offers, builder promises and requirements. This flag routes Project metadata; it is not permission to construct or proof of stock/acquisition. An offer alone sets projects:true and physical:false; physical authority needs a separate completed action. projectSpeech rows use {projectId,revision,kind:"approval|builder|requirements|offer|handoff",requirementId?:exact supply ID,speakerId,citations:[{segment,quote}],checklist:[{category:"structure|equipment|finish",title:"1-100 characters",needed:boolean,citation:0}]}. For offer and handoff, requirementId is required: copy the exact ID from that supplied Project\'s supplies[].id, never its category, title or Project ID. Other kinds do not require requirementId. Non-requirements rows use checklist:[]. For requirements, include exactly three checklist entries, one each for structure, equipment and finish; citation is a zero-based index into this row\'s citations array, not an evidence segment. Each title must specify only what that cited builder speech supports, preserving any conditions; needed:false requires explicit speech that the category is unnecessary. If the saved speech cannot support all three categories, omit the requirements row rather than return an empty or partial checklist. Every projectSpeech citation must be dialogue spoken by that row\'s speakerId; never cite narration or player speech, even when it describes that resident\'s actions or names the supplies. Cite exact speech; promises are not completed work. Each offer row additionally requires availability:{materials:"complete|partial|none",certainty:"confirmed|uncertain",contribution:"materials|labor"}. Classify material availability for the exact requirement using the FULL speaker statement, including every denial and missing component. Uncertainty about unrelated labor or timing does not negate materials explicitly available now. Complete means ALL components of the exact supplied requirement exist and are currently available; a possible board and maybe bolts with missing brackets is partial and uncertain. An offer to help sand is labor, not sandpaper or oil. A future search is uncertain. Include uncertain/partial/labor classifications honestly; code omits those optional source rows without losing the conversation. Only complete+confirmed+materials can register a source. This never establishes a physical handoff. Offer means actual materials matching the complete supplied requirement, never labor, willingness to sand or drill, tools merely being used, or a different category such as a jug. Read the full speaker statement, including explicit denials: "I can sand; I do not have linseed oil" cannot offer the finishing bundle. Do not infer missing components or strip a denial by citing only the earlier willingness. Uncertain or partial availability produces no complete-bundle offer. Offer establishes only a finite resident supply source; handoff requires a witnessed actual transfer from an existing supplied source in this Zone, never merely promised availability. Code retains inventory, quantities and source claims. ' +
-        'When context.opening is present, also return openingSignal:null or {kind:"pitch|first-use",residentId,quote,playerQuote}. A pitch must be actual player-heard dialogue by the supplied proposal resident explaining that exact named proposal, purpose and work; never an invented commitment or private thought. A first-use requires context.opening.firstUse and actual current player participation plus player-heard response depicting that use. Entering, greetings, promises and hypothetical descriptions do not count. Cite exact current response and player input substrings. Omit venueRequest for the supplied opening pitch. ' +
+        'When context.opening.gathering is present, return gatheringContributions:[{residentId,quote}] with one row per founder whose spoken interest and idea are both explained in this reply, and openingSignal:null. Cite exact player-heard dialogue by that founder. Missing explanations must be omitted; no narration, private thought or merely hello counts. The gathering uses only gatheringContributions; it cannot record an individual introduction or first use. Otherwise, when context.opening is present, return openingSignal:null or {kind:"pitch|first-use",residentId,quote,playerQuote}. A pitch requires context.opening.proposal. When context.opening.requiredPitch is true, a complete pitch is required in this opening reply: its idea, purpose and practical work must all be spoken. A pitch must be actual player-heard dialogue by the supplied proposal resident explaining that exact named proposal, purpose and work; never an invented commitment or private thought. A first-use requires context.opening.firstUse and actual current player participation plus player-heard response depicting that use. Entering, greetings, promises and hypothetical descriptions do not count. Cite exact current response and player input substrings. Omit venueRequest for the supplied opening pitch. ' +
         (actionContractV2
           ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
           : LIVE_MEMORY_INSTRUCTION
@@ -470,8 +475,11 @@ export function createSemanticService(ports: SemanticPorts) {
           const signalRequired = Boolean(opening.proposal || opening.firstUse);
           if (raw.openingSignal === undefined && signalRequired)
             throw badGateway("System opening interpretation is incomplete. The draft is preserved.");
-          const signal = readOpeningSignal(raw.openingSignal);
+          // Gathering contributions are independent of individual introductions.
+          // Discard an inapplicable single signal without losing a complete gathering.
+          const signal = opening.gathering ? null : readOpeningSignal(raw.openingSignal);
           if (
+            !opening.gathering &&
             raw.openingSignal !== null &&
             raw.openingSignal !== undefined &&
             (!signal ||
@@ -486,10 +494,40 @@ export function createSemanticService(ports: SemanticPorts) {
                 (!opening.firstUse || !signal.playerQuote || !savedInput.message.includes(signal.playerQuote))))
           )
             throw badGateway("System opening evidence did not validate. The draft is preserved.");
+          if (opening.requiredPitch && signal?.kind !== "pitch") throw new IncompleteOpeningPitch();
+          let gatheringComplete = false;
+          if (opening.gathering) {
+            if (!Array.isArray(raw.gatheringContributions))
+              throw badGateway("Gathering interpretation is incomplete. The draft is preserved.");
+            const contributions = raw.gatheringContributions.map(asRecord);
+            const contributors = new Set<string>();
+            for (const contribution of contributions) {
+              const { residentId, quote } = contribution;
+              if (
+                typeof residentId !== "string" ||
+                !opening.gathering.some((idea) => idea.residentId === residentId) ||
+                contributors.has(residentId) ||
+                typeof quote !== "string" ||
+                !quote.trim() ||
+                !savedInput.evidence.some(
+                  (line) =>
+                    line.playerHeard &&
+                    line.kind === "dialogue" &&
+                    line.speakerId === residentId &&
+                    line.content.includes(quote),
+                )
+              )
+                throw badGateway("Gathering evidence did not validate. The draft is preserved.");
+              contributors.add(residentId);
+            }
+            if (contributors.size !== opening.gathering.length) throw new IncompleteOpeningGathering();
+            gatheringComplete = true;
+          }
           effects.openingSignal = signal;
           effects.openingContext = {
             stage: opening.stage,
             projectId: opening.projectId,
+            ...(gatheringComplete ? { gatheringComplete: true } : {}),
             ...(combined && signal?.kind === "pitch" && opening.proposal
               ? { proposalFingerprint: openingProposalFingerprint(opening.proposal) }
               : {}),
@@ -505,7 +543,13 @@ export function createSemanticService(ports: SemanticPorts) {
           (asRecord(raw.action).happened !== true || !Number.isInteger(asRecord(raw.action).segment))
         )
           throw badGateway("System physical outcome lacks a completed, cited action.");
-        Object.assign(effects, semanticImmediate(raw.events, lines));
+        const immediate = semanticImmediate(raw.events, lines);
+        if (
+          savedInput.context.opening?.requiredPitch &&
+          [...(immediate.contactMoves as unknown[]), ...(immediate.departures as unknown[])].length > 0
+        )
+          throw new IncompleteOpeningPitch();
+        Object.assign(effects, immediate);
         effects.sceneChange = raw.action ?? null;
         effects.memoryVersions = Object.fromEntries(savedInput.context.memories.map((row) => [row.id, row.version]));
         effects.earlierLineIds = savedInput.context.history.map((row) => row.id);

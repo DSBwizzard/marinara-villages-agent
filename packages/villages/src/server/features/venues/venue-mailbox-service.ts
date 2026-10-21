@@ -191,6 +191,7 @@ export function createVenueMailbox({
           due,
           now: now.toISOString(),
           villageName: village.name,
+          playerAgencyVersion: 1,
           playerBackground: village.playerBackground,
           playerPersonaName: village.playerPersonaName,
           venueName: village.venues.find((entry) => entry.id === due.venueId)?.name,
@@ -226,7 +227,7 @@ export function createVenueMailbox({
           role: "system",
           content: [
             'Answer as each affected villager to a grounded Venue proposal. Each can accept or decline. Keep each reply short and in character. Return JSON only: {"decisions":[{"characterId":"exact ID","accepted":true,"reply":"short message"}]}. Include every listed person exactly once.',
-            renderPlayerBackgroundContext(input),
+            renderPlayerBackgroundContext(input, input.playerAgencyVersion !== 1),
             "Consider your own feelings toward the player alongside personal benefit and availability. Neutral villagers may accept and volunteer. A score is not a veto, and changed feelings never cancel an already accepted commitment.",
           ]
             .filter(Boolean)

@@ -18,7 +18,10 @@ export function OpeningProjects({
   const proposals = opening.proposals;
   const selected = proposals.find((proposal) => proposal.residentId === selectedId) ?? proposals[0];
   const eligible =
-    selected && opening.residentIds.includes(selected.residentId) && !opening.declinedIds.includes(selected.residentId);
+    selected &&
+    selected.available !== false &&
+    opening.residentIds.includes(selected.residentId) &&
+    !opening.declinedIds.includes(selected.residentId);
   const ready = opening.stage === "conversations" && opening.residentIds.every((id) => opening.heardIds.includes(id));
   return (
     <section className={`${P}-opening-projects`} aria-label="Opening proposals">
@@ -50,7 +53,15 @@ export function OpeningProjects({
               >
                 <span>{name}</span>
                 <strong>{proposal?.name ?? "Talk together"}</strong>
-                <small>{opening.declinedIds.includes(id) ? "Declined" : proposal ? "Heard" : "Not heard"}</small>
+                <small>
+                  {opening.declinedIds.includes(id)
+                    ? "Declined"
+                    : proposal?.available === false
+                      ? "Unavailable"
+                      : proposal
+                        ? "Heard"
+                        : "Not heard"}
+                </small>
               </button>
             );
           })}
@@ -62,6 +73,7 @@ export function OpeningProjects({
           {selected ? (
             <>
               <h3>{selected.name}</h3>
+              <p>{selected.kind === "renovation" ? "Improvement" : "New Venue"}</p>
               <p>{selected.description}</p>
               <p>{selected.work}</p>
               <p>

@@ -38,6 +38,8 @@ export type CompactFoundingContext = {
   identityDescriptionRevision?: string;
   /** Legacy frozen requests may include a proposal; Routine validation ignores it. */
   openingProposal?: boolean;
+  openingVersion?: 1 | 2;
+  playerAgencyVersion?: 1;
   sourceRevision?: string;
   contractVersion?: 1 | 2;
   circumstances?: unknown;

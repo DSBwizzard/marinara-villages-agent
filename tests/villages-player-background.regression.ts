@@ -29,7 +29,13 @@ assert.match(context, /later established events/i);
 assert.match(context, /does not imply an official title/i);
 assert.match(context, /consent/);
 assert.doesNotMatch(context, /has a recognized community role|fixed at founding/);
-assert.match(renderPlayerBackgroundContext({}), /oversees major changes/);
+assert.doesNotMatch(renderPlayerBackgroundContext({}), /oversees major changes/);
+assert.match(renderPlayerBackgroundContext({}), /explicit choice/);
+assert.match(
+  renderPlayerBackgroundContext({}, true),
+  /oversees major changes/,
+  "frozen legacy requests retain their original prompt",
+);
 const prompt = await currentScenePrompt(
   state,
   readVillagerCard({ id: "mara", data: { name: "Mara", description: "A patient guard." } } as any),

@@ -25,6 +25,7 @@ const source = (state: VillageState) => ({
     admission: resident.admission,
   })),
   playerName: state.playerPersonaName || state.playerName,
+  playerBackground: state.playerBackground,
   selectedLorebookIds: state.selectedLorebookIds,
 });
 

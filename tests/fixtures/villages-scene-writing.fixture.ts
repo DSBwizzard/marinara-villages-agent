@@ -100,7 +100,7 @@ export async function currentScenePrompt(
     measurePipeline: forbidden,
     runtimeDebug() {},
     venueOperationId: () => "",
-    venueOperationInput: () => ({ interactionScopeVersion: 1 }),
+    venueOperationInput: () => ({ interactionScopeVersion: 1, playerAgencyVersion: 1 }),
     venueOperationSignal: () => undefined,
     rejectVenueCompletion: forbidden,
     completeWithRoom: forbidden,
