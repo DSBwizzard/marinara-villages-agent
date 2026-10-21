@@ -24,7 +24,7 @@ New layers and interfaces need a concrete purpose. Tests import the actual owner
 
 Each activation owns its services, caches, queues, operation maps and host connections. Asynchronous work retains its originating owner. A missing or disposed activation cannot borrow another world's services, even when identifiers match. Cleanup from an older owner cannot stop or clear its replacement.
 
-Client commands claim admission before mutation and preserve the originating world, selection and request identity. Results, errors and cleanup belong to that claim. Reset, disposal or replacement retires old work; functional acknowledgments preserve newer edits.
+Client commands claim admission before mutation and preserve the originating world, selection and request identity. Results, errors and cleanup belong to that claim. Reset, disposal or replacement retires old work; functional acknowledgments preserve newer edits. These lifetimes do not impose global ordering on independent full-snapshot responses.
 
 Cancellation revokes authority to apply late effects. It does not promise that an upstream provider physically stopped or that an uncertain request was unbilled. Existing operation deadlines, request reservations and recovery records remain authoritative.
 
