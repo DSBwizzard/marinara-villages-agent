@@ -134,8 +134,9 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
             "Only founded names prefill; drafts restore independently",
           );
           assert.equal(values.setSetupWorldName, "", "World identity is optional and has no generated default");
-          assert.equal(values.setSetupFoundingReason, reason);
-          assert.equal(values.setSetupFoundingDetails, details);
+          assert.equal(Object.hasOwn(values, "setSetupFoundingReason"), false);
+          assert.equal(Object.hasOwn(values, "setSetupFoundingDetails"), false);
+          assert.equal(village.settings.foundingDetails, details, "Opening setup preserves saved history");
           assert.equal(Object.hasOwn(values, "setSetupFoundingGuidance"), false);
           assert.equal(values.setScreen, "setup");
         }
@@ -144,7 +145,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
       return window.values;
     });
     assert.equal(fresh.setSetupName, "");
-    assert.equal(fresh.setSetupFoundingReason, "custom");
+    assert.equal(Object.hasOwn(fresh, "setSetupFoundingReason"), false);
     assert.equal(Object.hasOwn(fresh, "setSetupFoundingGuidance"), false);
     assert.notEqual(fresh.setSetupFoundingDetails, "x".repeat(2000));
     assert.deepEqual(errors, []);
@@ -511,44 +512,36 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByLabel("Narrative direction", { exact: true })).toHaveCount(0);
         await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
         await expect(root.getByText("Starting circumstance examples")).toHaveCount(0);
-        const circumstance = root.getByLabel("Starting Scenario", { exact: true });
-        await expect(circumstance).toHaveValue("");
-        assert.equal(await circumstance.evaluate((node) => getComputedStyle(node).resize), "none");
+        await expect(root.getByLabel("Starting Scenario", { exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("");
         await expect(root.getByLabel("Village Name", { exact: true })).toHaveAttribute(
           "placeholder",
           "Crystalwood Heights",
         );
-        await expect(root.getByLabel("Setting", { exact: true })).toHaveAttribute(
+        await expect(root.getByRole("textbox", { name: "Place", exact: true })).toHaveAttribute(
           "placeholder",
-          "A seaside resort on a sheltered coast in a present-day world without magic.",
+          "An abandoned farm beside a forest in a present-day world without magic.",
         );
         assert.ok(
           (await root.getByLabel("Village world", { exact: true }).boundingBox()).y <
-            (await root.getByLabel("Setting", { exact: true }).boundingBox()).y,
-          "Village world is above Setting",
-        );
-        await expect(circumstance).toHaveAttribute(
-          "placeholder",
-          "The resort is preparing for its annual festival, but visitors are scarce and several buildings need repairs.",
+            (await root.getByRole("textbox", { name: "Place", exact: true }).boundingBox()).y,
+          "Village world is above Place",
         );
         await forward("Continue to People").click();
         const nameField = root.getByLabel("Village Name", { exact: true });
         await expect(nameField).toBeFocused();
         await expect(nameField).toHaveAttribute("aria-invalid", "true");
         await expect(nameField.locator(".. ").getByRole("alert")).toHaveText("Give the village a name.");
-        await expect(root.getByLabel("Setting", { exact: true }).locator("..").getByRole("alert")).toHaveText(
-          "Describe the setting.",
-        );
-        await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe the starting scenario.");
+        await expect(
+          root.getByRole("textbox", { name: "Place", exact: true }).locator("..").getByRole("alert"),
+        ).toHaveText("Describe the place.");
         await nameField.fill("Willowbrook");
         await page.evaluate(
           () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
         );
         await expect(nameField).toBeFocused();
-        await expect(circumstance.locator("..").getByRole("alert")).toBeVisible();
         await forward("Continue to People").click();
-        await expect(root.getByLabel("Setting", { exact: true })).toBeFocused();
+        await expect(root.getByRole("textbox", { name: "Place", exact: true })).toBeFocused();
         await expect(root.getByRole("button", { name: "Help: Village Name", exact: true })).toHaveCount(0);
 
         await expect(root.getByRole("note").filter({ hasText: "surrounding world" })).toHaveCount(0);
@@ -559,14 +552,6 @@ export async function verifyFoundingLayout(group) {
           [
             "Village world",
             "Optionally name the world where the Village is located. Use the same name for a character’s Homeworld if they come from this world. Matching names identify a shared world, without assuming acquaintance or shared private knowledge. Leave blank if unspecified; source cards and lore still apply.",
-          ],
-          [
-            "Setting",
-            "A Village is wherever your community lives - a town, spaceship, dumpster, shopping mall, or undeveloped land. Describe its permanent details and critical facts about the wider world, time period, and important world-building rules.",
-          ],
-          [
-            "Starting Scenario",
-            "Describe life in the Village when play begins, including any ongoing events or problems. These conditions can change through play.",
           ],
         ]) {
           const help = root.getByRole("button", { name: "Help: " + label, exact: true });
@@ -682,33 +667,8 @@ export async function verifyFoundingLayout(group) {
         assert.equal(imageCalls, 0, "Lorebook selection does not generate images");
         await bounds();
         await root
-          .getByLabel("Setting", { exact: true })
-          .fill(
-            "A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.",
-          );
-        await forward("Continue to People").click();
-        await expect(circumstance).toBeFocused();
-        await circumstance.fill("We rented the observatory together because ordinary housing was too expensive.");
-        if (width === 390 && height === 844) {
-          const hint = await circumstance.getAttribute("placeholder");
-          await page.clock.fastForward(4100);
-          await expect(circumstance).toHaveValue(
-            "We rented the observatory together because ordinary housing was too expensive.",
-          );
-          assert.equal(
-            await circumstance.getAttribute("placeholder"),
-            hint,
-            "authored text stops placeholder rotation",
-          );
-          const place = root.getByLabel("Setting", { exact: true });
-          const placeHint = await place.getAttribute("placeholder");
-          await page.clock.fastForward(4000);
-          await expect(place).toHaveValue(
-            "A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.",
-          );
-          assert.equal(await place.getAttribute("placeholder"), placeHint, "authored place text stops hint rotation");
-        }
-
+          .getByRole("textbox", { name: "Place", exact: true })
+          .fill("An abandoned farm with a habitable farmhouse and one shared barn.");
         await expect(root.getByRole("group", { name: "Map source", exact: true })).toHaveCount(0);
         await capture("place");
         await forward("Continue to People").click();
@@ -990,6 +950,8 @@ export async function verifyFoundingLayout(group) {
                 if (!row) return;
                 const saved = row.value;
                 delete saved.data.phase;
+                delete saved.data.descriptionVersion;
+                saved.data.circumstances = "We chose to live among the ruins.";
                 saved.data.step = 2;
                 saved.data.mapSource = "none";
                 row.update({ ...saved, revision: saved.revision + 1 });
@@ -1866,6 +1828,8 @@ export async function verifyFoundingLayout(group) {
                   if (!row) return;
                   const saved = row.value;
                   delete saved.data.phase;
+                  delete saved.data.descriptionVersion;
+                  saved.data.circumstances = "We chose to live among the ruins.";
                   saved.data.step = legacyStep;
                   row.update({ ...saved, revision: saved.revision + 1 });
                   row.continue();

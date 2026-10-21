@@ -89,7 +89,6 @@ import {
 } from "../features/founding/image-controller.js";
 import { useFoundingState } from "../features/founding/useFoundingState.js";
 import {
-  createFoundingChooseSetupScenario,
   createFoundingGotoSetupStep,
   createFoundingSuggestSetupVenues,
   useFoundingStartOver,
@@ -549,14 +548,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupSetting,
     setSetupWorldName,
     setSetupSetting,
-    setupFoundingReason,
-    setSetupFoundingReason,
-    setupFoundingDetails,
-    setSetupFoundingDetails,
+
     setupPlayerBackground,
     setSetupPlayerBackground,
-    setupImprint,
-    setSetupImprint,
+
     setupWorldFacts,
     setSetupWorldFacts,
     setupVenues,
@@ -665,14 +660,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const setupBeginningSourceKey = calculateSetupBeginningSourceKey({
     setupName,
     setupWorldFacts,
-    setupImprint,
+
     personaDraft,
     personalizeHomes,
     sceneryStyle,
     sceneryStyleProfileId,
     selectedResidentAdmissions,
-    setupFoundingDetails,
-    setupFoundingReason,
+
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
     setupWorldName,
@@ -684,7 +678,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     personaDraft,
     personalizeHomes,
     setupBeginningSourceKey,
-    setupImprint,
+
     setupName,
     setupWorldFacts,
     visualLoreDefault,
@@ -763,10 +757,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupEditorOpen,
     setupEditorOriginal,
     setupEditorZoneOriginal,
-    setupFoundingDetails,
-    setupFoundingReason,
+
     setupFoundingVillagerIds,
-    setupImprint,
+
     setupKeyboardSpot,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -836,10 +829,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSelectedSetupVenueId,
     setSetupAuthoredFields,
     setSetupEditorOpen,
-    setSetupFoundingDetails,
-    setSetupFoundingReason,
+
     setSetupFoundingVillagerIds,
-    setSetupImprint,
+
     setSetupKeyboardSpot,
     setSetupLorebookDraft,
     setSetupLoreTokenBudgetDraft,
@@ -924,7 +916,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupDraftData,
     setupName,
     setupWorldFacts,
-    setupImprint,
+
     personaDraft,
     selectedResidentAdmissions,
     setSetupProblem,
@@ -934,7 +926,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupAuthoredFieldsRef,
     setupBeginningSourceKey,
     setupBeginningSourceKeyRef,
-    setupFoundingDetails,
+
     setupImageTargetRef,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -1870,17 +1862,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const patchSetupVenue = usePatchSetupVenue({ setSetupAuthoredFields, setSetupVenues });
 
   // ── Founding the village ───────────────────────────────────────────────────
-  // The wizard collects place, shared circumstances, map, and residents before
+  // The wizard collects place, the description, map, and residents before
   // writing the village. A half-answered setup never claims to be founded.
-
-  const chooseSetupScenario = createFoundingChooseSetupScenario({
-    setSetupFoundingDetails,
-    setSetupFoundingReason,
-    setSetupProblem,
-    setupFoundingDetails,
-    setupFoundingReason,
-    snapshot,
-  });
 
   /**
    * Open the wizard.
@@ -1907,10 +1890,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSettingsError,
     setSetupEditorOpen,
     setSetupFocusIssue,
-    setSetupFoundingDetails,
-    setSetupFoundingReason,
+
     setSetupFoundingVillagerIds,
-    setSetupImprint,
+
     setSetupLorebookDraft,
     setSetupLoreTokenBudgetDraft,
     setSetupMapBusy,
@@ -1958,7 +1940,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     get setupBlocker() {
       return setupBlocker;
     },
-    setupFoundingDetails,
+
     setupFoundingVillagerIds,
     setupHomeCount,
     setupMapBusy,
@@ -1987,12 +1969,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSetupVenueBusy,
     setSetupVenues,
     setupDraftRow,
-    setupFoundingDetails,
+
     setupImageClaim,
     setupImageContextKey,
     setupImageContextKeyRef,
     setupImageTargetRef,
-    setupImprint,
+
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
     setupName,
@@ -2028,7 +2010,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const setupBlocker = useFoundingSetupBlocker({
     catalog,
     personaDraft,
-    setupFoundingDetails,
+
     setupFoundingVillagerIds,
     setupHomeCount,
     setupMapBusy,
@@ -2064,8 +2046,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSetupStep,
     setSnapshot,
     setupBlocker,
-    setupFoundingDetails,
-    setupFoundingReason,
+
     setupFoundingVillagerIds,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -2305,7 +2286,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     busy,
     catalog,
     catchingUp,
-    chooseSetupScenario,
+
     closeExploration,
     closeRoom,
     composerEditVersionRef,
@@ -2527,7 +2508,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSettingsError,
     setSetupEditorOpen,
     setSetupFocusIssue,
-    setSetupFoundingDetails,
+
     setSetupFoundingVillagerIds,
     setSetupKeyboardSpot,
     setSetupLoreTokenBudgetDraft,
@@ -2571,8 +2552,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupBeginningSourceKey,
     setupEditorOpen,
     setupFocusIssue,
-    setupFoundingDetails,
-    setupFoundingReason,
+
     setupFoundingVillagerIds,
     setupImageClaim,
     setupImageTarget,

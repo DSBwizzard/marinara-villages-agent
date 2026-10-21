@@ -1,9 +1,7 @@
 import type { PlayerBackground } from "../../../shared/contracts/player-background.js";
-import type { ScenarioImprint, SetupMapRequest, VillageLorebookOption } from "../../../shared/contracts/village.js";
+import type { SetupMapRequest, VillageLorebookOption } from "../../../shared/contracts/village.js";
 import type { ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
-import { emptyScenarioImprint } from "./FoundingPanels.js";
-import type { FoundingScenarioId } from "./scenarios.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { SavedFoundingDraft } from "./villages-founding-draft.js";
 import { type AreaDraftCache } from "./villages-founding-editor";
@@ -32,15 +30,9 @@ export function useFoundingState() {
   const [setupWorldName, setSetupWorldName] = useState("");
   const [setupSetting, setSetupSetting] = useState("");
 
-  const [setupFoundingReason, setSetupFoundingReason] = useState<FoundingScenarioId>("custom");
-
-  const [setupFoundingDetails, setSetupFoundingDetails] = useState<string>("");
-
   const [setupPlayerBackground, setSetupPlayerBackground] = useState<PlayerBackground | null>(
     DEFAULT_PLAYER_BACKGROUND,
   );
-
-  const [setupImprint, setSetupImprint] = useState<ScenarioImprint>(emptyScenarioImprint);
 
   const [setupWorldFacts, setSetupWorldFacts] = useState<string[]>([]);
 
@@ -172,14 +164,10 @@ export function useFoundingState() {
     setSetupWorldName,
     setupSetting,
     setSetupSetting,
-    setupFoundingReason,
-    setSetupFoundingReason,
-    setupFoundingDetails,
-    setSetupFoundingDetails,
+
     setupPlayerBackground,
     setSetupPlayerBackground,
-    setupImprint,
-    setSetupImprint,
+
     setupWorldFacts,
     setSetupWorldFacts,
     setupVenues,

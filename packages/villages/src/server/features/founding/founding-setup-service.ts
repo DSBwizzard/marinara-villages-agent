@@ -13,7 +13,6 @@ import { badRequest, conflict } from "../../domain/rules/errors.js";
 import {
   assertFoundingScenarioLocked,
   parsePlaces,
-  validateFirstDayDescription,
   validateFoundingRoster,
 } from "../../domain/rules/founding-record.js";
 import {
@@ -118,14 +117,17 @@ export function createFoundingSetup({
       throw badRequest("Choose a valid village timezone.");
     const setting = readVillageSetting(input.setting);
     if (setting.length === 0) throw badRequest("Describe the place and world before founding.");
-    const foundingReason = asTrimmedString(input.foundingReason);
+    const foundingReason = input.foundingReason === undefined ? "none" : asTrimmedString(input.foundingReason);
     if (!["rebuild", "pioneer", "prosper", "custom", "none"].includes(foundingReason)) {
       throw badRequest("Choose a founding scenario.");
     }
-    if (typeof input.foundingDetails !== "string" || input.foundingDetails.length > 2_000) {
+    if (
+      input.foundingDetails !== undefined &&
+      (typeof input.foundingDetails !== "string" || input.foundingDetails.length > 2_000)
+    ) {
       throw badRequest("Starting circumstances must be text of at most 2,000 characters.");
     }
-    const foundingDetails = input.foundingDetails.trim();
+    const foundingDetails = asTrimmedString(input.foundingDetails);
     if (input.worldName !== undefined && readWorldName(input.worldName) === null)
       throw badRequest("Use a world name within 120 characters.");
     if (typeof (input.foundingGuidance ?? "") !== "string" || String(input.foundingGuidance ?? "").length > 500) {
@@ -143,7 +145,6 @@ export function createFoundingSetup({
     if (!founding && input.timeZone !== undefined && input.timeZone !== village.timeZone)
       throw badRequest("The village timezone is fixed after founding.");
     const playerBackground = playerBackgroundForSetup(village.playerBackground, input.playerBackground, founding);
-    validateFirstDayDescription(foundingDetails, founding);
     if (!founding)
       assertFoundingScenarioLocked(village, {
         foundingReason,

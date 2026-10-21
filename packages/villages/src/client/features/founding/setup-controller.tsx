@@ -3,8 +3,6 @@ import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
 
-import { foundingScenario } from "./FoundingPanels.js";
-import type { FoundingScenarioId } from "./scenarios.js";
 import type { FoundingState } from "./useFoundingState.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
 import { personalSpaceDraft } from "./villages-founding-editor";
@@ -31,7 +29,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupAuthoredFieldsRef: React.RefObject<Record<string, string[]>>;
   readonly setupBeginningSourceKey: string;
   readonly setupBeginningSourceKeyRef: React.RefObject<string>;
-  readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
+
   readonly setupImageTargetRef: FoundingState["setupImageTargetRef"];
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
   readonly setupLoreTokenBudgetDraft: FoundingState["setupLoreTokenBudgetDraft"];
@@ -39,7 +37,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupName?: FoundingState["setupName"];
   readonly setupWorldFacts?: FoundingState["setupWorldFacts"];
-  readonly setupImprint?: FoundingState["setupImprint"];
+
   readonly setupSuggestionsClaim: FoundingState["setupSuggestionsClaim"];
   readonly setupVenues: FoundingState["setupVenues"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
@@ -56,7 +54,7 @@ export function createFoundingSuggestSetupVenues(ports: {
       setupAuthoredFieldsRef,
       setupBeginningSourceKey,
       setupBeginningSourceKeyRef,
-      setupFoundingDetails,
+
       setupImageTargetRef,
       setupLorebookDraft,
       setupLoreTokenBudgetDraft,
@@ -66,7 +64,7 @@ export function createFoundingSuggestSetupVenues(ports: {
       setupVenuesRef,
     } = ports;
 
-    if (setupSuggestionsClaim.current || !setupSetting.trim() || !setupFoundingDetails.trim()) return;
+    if (setupSuggestionsClaim.current || !setupSetting.trim()) return;
     setupSuggestionsClaim.current = true;
     const source = setupBeginningSourceKey;
     const rows = setupVenues;
@@ -79,8 +77,8 @@ export function createFoundingSuggestSetupVenues(ports: {
         ...(options?.quickStart ? { mode: "quick-start", targetVenueId: options.venueId } : {}),
         villageName: ports.setupName,
         worldFacts: ports.setupWorldFacts,
-        scenarioImprint: ports.setupImprint,
-        foundingDetails: setupFoundingDetails,
+        scenarioImprint: null,
+        foundingDetails: "",
         playerPersonaId: personaDraft,
         selectedLorebookIds: setupLorebookDraft,
         loreTokenBudget: setupLoreTokenBudgetDraft,
@@ -199,36 +197,8 @@ export function createFoundingSuggestSetupVenues(ports: {
 }
 
 // ── Founding the village ───────────────────────────────────────────────────
-// The wizard collects place, shared circumstances, map, and residents before
+// The wizard collects place, the description, map, and residents before
 // writing the village. A half-answered setup never claims to be founded.
-export function createFoundingChooseSetupScenario(ports: {
-  readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
-  readonly setSetupProblem: FoundingState["setSetupProblem"];
-  readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
-  readonly setupFoundingReason: FoundingState["setupFoundingReason"];
-  readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-}) {
-  return (value: FoundingScenarioId) => {
-    const {
-      setSetupFoundingDetails,
-      setSetupFoundingReason,
-      setSetupProblem,
-      setupFoundingDetails,
-      setupFoundingReason,
-      snapshot,
-    } = ports;
-
-    if (snapshot?.isFounded) return;
-    if (value === setupFoundingReason) return;
-    const previousStarter = foundingScenario(setupFoundingReason).premise;
-    const keepPlayerText = !!setupFoundingDetails.trim() && setupFoundingDetails !== previousStarter;
-    setSetupFoundingReason(value);
-    if (!keepPlayerText) setSetupFoundingDetails(foundingScenario(value).premise);
-    setSetupProblem("");
-  };
-}
-
 export function createFoundingGotoSetupStep(ports: {
   readonly setupResidentAdmissions?: FoundingState["setupResidentAdmissions"];
   readonly setSetupResidentAdmissions?: FoundingState["setSetupResidentAdmissions"];
@@ -247,7 +217,7 @@ export function createFoundingGotoSetupStep(ports: {
   readonly setSetupStep: FoundingState["setSetupStep"];
   readonly setupBlocker: (reviewingMap?: boolean) => string;
   readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
-  readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
+
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
   readonly setupHomeCount: number;
   readonly setupMapBusy: FoundingState["setupMapBusy"];
@@ -277,7 +247,7 @@ export function createFoundingGotoSetupStep(ports: {
       setSetupStep,
       setupBlocker,
       setSetupMapReviewed,
-      setupFoundingDetails,
+
       setupFoundingVillagerIds,
       setupHomeCount,
       setupMapBusy,
@@ -311,10 +281,8 @@ export function createFoundingGotoSetupStep(ports: {
       const placeProblem = !setupName.trim()
         ? "Give the village a name."
         : !setupSetting.trim()
-          ? "Describe the setting."
-          : !snapshot?.isFounded && !setupFoundingDetails.trim()
-            ? "Describe the starting scenario."
-            : "";
+          ? "Describe the place."
+          : "";
       const mapProblem =
         !snapshot?.isFounded && !setupMapSrc && !setupMapBusy
           ? "Generate or upload map artwork on Map before continuing."

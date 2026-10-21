@@ -189,7 +189,7 @@ export function QuickStartVenues({
         <section className="villages-forging-card">
           <h3>Based on your founding choices</h3>
           <p>{setting}</p>
-          <p>Setting, starting circumstances, selected lore, your persona and resident backstories.</p>
+          <p>Place, selected lore, your persona and starting notes.</p>
           <strong>
             {venues.filter((venue) => venue.classes?.includes("residence")).length} Residences + 1 Community venue
           </strong>

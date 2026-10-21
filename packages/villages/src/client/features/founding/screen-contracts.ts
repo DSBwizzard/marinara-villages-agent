@@ -1,7 +1,5 @@
 import type { PortraitMap } from "../../shared/types.js";
 
-import type { createFoundingChooseSetupScenario } from "./setup-controller.js";
-
 import type { FoundingState } from "./useFoundingState.js";
 
 import type { createFoundingExitSetupDraft } from "./draft-controller.js";
@@ -42,7 +40,6 @@ export type FoundingScreenController = {
   readonly setSetupTimeZone?: (value: string) => void;
   readonly busy: boolean;
   readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];
-  readonly chooseSetupScenario: ReturnType<typeof createFoundingChooseSetupScenario>;
   readonly connectionSetupProblem: FoundingState["connectionSetupProblem"];
   readonly draftPins: import("../../shared/types").MapPin[];
   readonly draftSaveError: FoundingState["draftSaveError"];
@@ -83,7 +80,6 @@ export type FoundingScreenController = {
   readonly setSelectedSetupVenueId: FoundingState["setSelectedSetupVenueId"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupFocusIssue: FoundingState["setSetupFocusIssue"];
-  readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
   readonly setSetupSpriteRevisions: FoundingState["setSetupSpriteRevisions"];
   readonly setupSpriteRevisions: FoundingState["setupSpriteRevisions"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
@@ -111,8 +107,6 @@ export type FoundingScreenController = {
   readonly setupBeginningSourceKey: string;
   readonly setupEditorOpen: FoundingState["setupEditorOpen"];
   readonly setupFocusIssue: FoundingState["setupFocusIssue"];
-  readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
-  readonly setupFoundingReason: FoundingState["setupFoundingReason"];
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
   readonly setupImageClaim: FoundingState["setupImageClaim"];
   readonly setupImageTarget: FoundingState["setupImageTarget"];

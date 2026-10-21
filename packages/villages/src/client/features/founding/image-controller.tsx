@@ -162,12 +162,12 @@ export function createFoundingGenerateSetupImage(ports: {
   readonly setSetupVenueBusy: FoundingState["setSetupVenueBusy"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
   readonly setupDraftRow: ReturnType<typeof createFoundingSetupDraftRow>;
-  readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
+
   readonly setupImageClaim: FoundingState["setupImageClaim"];
   readonly setupImageContextKey: string;
   readonly setupImageContextKeyRef: React.RefObject<string>;
   readonly setupImageTargetRef: FoundingState["setupImageTargetRef"];
-  readonly setupImprint: FoundingState["setupImprint"];
+
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
   readonly setupLoreTokenBudgetDraft: FoundingState["setupLoreTokenBudgetDraft"];
   readonly setupName: FoundingState["setupName"];
@@ -197,12 +197,12 @@ export function createFoundingGenerateSetupImage(ports: {
       setSetupVenueBusy,
       setSetupVenues,
       setupDraftRow,
-      setupFoundingDetails,
+
       setupImageClaim,
       setupImageContextKey,
       setupImageContextKeyRef,
       setupImageTargetRef,
-      setupImprint,
+
       setupLorebookDraft,
       setupLoreTokenBudgetDraft,
       setupName,
@@ -273,8 +273,8 @@ export function createFoundingGenerateSetupImage(ports: {
           useVisualLore: true,
           villageName: setupName,
           setting: setupSetting,
-          foundingDetails: setupFoundingDetails,
-          scenarioImprint: snapshot?.isFounded ? setupImprint : null,
+          foundingDetails: "",
+          scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,

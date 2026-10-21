@@ -170,8 +170,6 @@ export function createLocationImages(ports: LocationImagePorts) {
           ? `Occupant context, reflect preferences without depicting people: ${character}`
           : "",
         village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : "",
-        village.setting ? `Village setting: ${village.setting.slice(0, 400)}` : "",
-        ...village.worldFacts.map((fact) => `World fact: ${fact}`),
         lore ? `Established visual lore: ${lore}` : "",
         ...(targetZone && isPrivateInterior(targetZone)
           ? []
@@ -187,9 +185,17 @@ export function createLocationImages(ports: LocationImagePorts) {
         ).map((fact) => `Established area fact: ${fact}`),
       ],
       village.sceneryArtStyle,
-      onlyIfEmpty && !(targetZone && isPrivateInterior(targetZone))
-        ? sceneryAdmissionContext(village, found.venue)
-        : [],
+      [
+        village.setting ? "Authored place description; later verified state takes precedence: " + village.setting : "",
+        ...village.worldFacts.map((fact) => "Current world fact: " + fact),
+        "Current area condition: " + (exterior ? (venue.exteriorState?.condition ?? "") : venue.state.condition),
+        ...(exterior ? (venue.exteriorState?.publicFacts ?? []) : venue.state.publicFacts).map(
+          (fact) => "Current area fact: " + fact,
+        ),
+        ...(onlyIfEmpty && !(targetZone && isPrivateInterior(targetZone))
+          ? sceneryAdmissionContext(village, found.venue)
+          : []),
+      ],
     );
     if (onlyIfEmpty) {
       const latest = await readVillageState();

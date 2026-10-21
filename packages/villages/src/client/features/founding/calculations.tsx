@@ -28,15 +28,14 @@ export function calculateSetupBeginningSourceKey(ports: {
   selectedResidentAdmissions: {
     [k: string]: import("../../../shared/helpers/resident-admission").ResidentAdmission;
   };
-  setupFoundingDetails: string;
-  setupFoundingReason: "custom" | "rebuild" | "pioneer" | "prosper" | "none";
+
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
   setupWorldName?: string;
   setupSetting: string;
   setupName?: string;
   setupWorldFacts?: string[];
-  setupImprint?: import("../../../shared/contracts/village").ScenarioImprint;
+
   visualLoreDefault: boolean;
 }) {
   const {
@@ -45,8 +44,7 @@ export function calculateSetupBeginningSourceKey(ports: {
     sceneryStyle,
     sceneryStyleProfileId,
     selectedResidentAdmissions,
-    setupFoundingDetails,
-    setupFoundingReason,
+
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
     setupSetting,
@@ -55,11 +53,8 @@ export function calculateSetupBeginningSourceKey(ports: {
   return JSON.stringify({
     name: ports.setupName,
     worldFacts: ports.setupWorldFacts,
-    imprint: ports.setupImprint,
     worldName: ports.setupWorldName,
     residentAdmissions: selectedResidentAdmissions,
-    scenario: setupFoundingReason,
-    premise: setupFoundingDetails.trim(),
     setting: setupSetting.trim(),
     lorebooks: setupLorebookDraft,
     loreBudget: setupLoreTokenBudgetDraft,
@@ -74,7 +69,7 @@ export function calculateSetupImageContextKey(ports: {
   personaDraft: string;
   personalizeHomes: boolean;
   setupBeginningSourceKey: string;
-  setupImprint: import("../../../shared/contracts/village").ScenarioImprint;
+
   setupName: string;
   setupWorldFacts: string[];
   visualLoreDefault: boolean;
@@ -83,7 +78,7 @@ export function calculateSetupImageContextKey(ports: {
     personaDraft,
     personalizeHomes,
     setupBeginningSourceKey,
-    setupImprint,
+
     setupName,
     setupWorldFacts,
     visualLoreDefault,
@@ -91,7 +86,6 @@ export function calculateSetupImageContextKey(ports: {
   return JSON.stringify({
     source: setupBeginningSourceKey,
     name: setupName,
-    imprint: setupImprint,
     worldFacts: setupWorldFacts,
     persona: personaDraft,
     personalizeHomes,
@@ -125,6 +119,7 @@ export function calculateSetupMapGenerationKey(ports: {
   } = ports;
   return JSON.stringify({
     setting: setupSetting.trim(),
+    worldName: ports.setupWorldName,
     worldFacts: snapshot?.isFounded ? setupWorldFacts : null,
     lorebooks: setupLorebookDraft,
     loreBudget: setupLoreTokenBudgetDraft,

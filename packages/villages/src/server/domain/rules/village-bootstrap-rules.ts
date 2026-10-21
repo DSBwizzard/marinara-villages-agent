@@ -121,6 +121,8 @@ export type VillageTickResident = {
 };
 
 export type VillageTickContext = {
+  /** Older frozen story jobs retain their exact prompt during replay. */
+  descriptionVersion?: 1;
   semanticVersion?: 2;
   social?: { candidates: import("../../domain/models/relationship-types.js").SocialPlan[]; relationships: string[] };
   playerBackground?: VillagePlayerBackground | null;
@@ -226,7 +228,9 @@ export function buildTickMessages(context: VillageTickContext): CapabilityLangua
     VILLAGE_SHARED_SETTING_RULE,
     `Write a brief visual Events update for ${context.village}, a shared place. This feed has no effect on the village or its residents.`,
     "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Do not give them a new turn in an Event. Mention a player action only when it is already established in the supplied village record; never invent what they do next.",
-    context.setting.trim() ? `Setting: ${boundText(context.setting, 500)}` : "",
+    context.setting.trim()
+      ? `Setting: ${context.descriptionVersion === 1 ? context.setting : boundText(context.setting, 500)}`
+      : "",
     renderPlayerBackgroundContext(context),
     context.worldFacts?.length ? `Current world facts: ${context.worldFacts.join("; ")}` : "",
     `Now: ${describeMoment(context.moment)}; weather: ${context.moment.weather}.`,

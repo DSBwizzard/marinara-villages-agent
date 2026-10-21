@@ -3,7 +3,6 @@ import { FoundingDialog } from "./FoundingDialog.js";
 import type {
   CatalogEntry,
   PersonaEntry,
-  ScenarioImprint,
   SetupMapReceipt,
   VillageLorebookOption,
 } from "../../../shared/contracts/village.js";
@@ -12,19 +11,8 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { SpriteSetupDialog } from "../residents/SpriteSetupDialog.js";
-import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { startingZone } from "./founding-template.js";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-
-export const emptyScenarioImprint = (): ScenarioImprint => ({
-  origin: "",
-  worldFacts: [],
-  openingConditions: [],
-  visualCues: [],
-});
-
-export const foundingScenario = (value: FoundingScenarioId) =>
-  FOUNDING_SCENARIOS.find((scenario) => scenario.value === value)!;
 
 /**
  * The founding wizard, in order. One list so the step strip and the screens it

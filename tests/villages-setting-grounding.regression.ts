@@ -1,3 +1,7 @@
+import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { buildLocationPrompt } from "../packages/villages/src/server/domain/rules/location-image-rules.js";
+import { venueInZone, venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import assert from "node:assert/strict";
 import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
@@ -11,14 +15,11 @@ import {
   villageFoundingSetting,
   villageRelevantOrigin,
 } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { draftScenarioImprint } from "../packages/villages/src/server/features/founding/scenario-imprint.js";
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
 import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-
-import { validateFirstDayDescription } from "../packages/villages/src/server/domain/rules/founding-record.js";
 
 const scenarios = [
   [
@@ -97,7 +98,6 @@ async function main() {
     assert.equal(coerceVillageState({}).name, "", "new worlds have no invented village name");
     assert.equal(coerceVillageState({ name: "Willowbrook" }).name, "Willowbrook", "authored names remain intact");
     for (const [name, setting, circumstances, home] of scenarios) {
-      validateFirstDayDescription(circumstances, true);
       const state = coerceVillageState({
         wishSystemVersion: 3,
         name,
@@ -125,6 +125,7 @@ async function main() {
       assert.ok(dialogue.includes(setting));
       assert.ok(dialogue.includes(VILLAGE_SHARED_SETTING_RULE));
       const events = buildTickMessages({
+        descriptionVersion: 1,
         village: name,
         setting: current,
         moment,
@@ -197,16 +198,6 @@ async function main() {
     );
     assert.ok(captured.includes(full.foundingDetails));
     assert.doesNotMatch(captured, /RETIRED_DIRECTION_SENTINEL|Player-authored creative preferences/);
-    answer = { origin: "", worldFacts: ["The outbreak is ongoing"], openingConditions: [], visualCues: [] };
-    await draftScenarioImprint({
-      setting: scenarios[6][1],
-      foundingReason: "none",
-      foundingDetails: scenarios[6][2],
-      foundingGuidance: "RETIRED_DIRECTION_SENTINEL",
-    });
-    assert.doesNotMatch(captured, /RETIRED_DIRECTION_SENTINEL|"direction":/);
-    assert.match(captured, /Distinguish earlier background, ongoing world conditions/);
-    assert.doesNotMatch(captured, /Never claim the village was already founded|The village begins on Day 1/);
     const map = buildTownMapPrompt("No water or decorative buildings.", scenarios[4][1]);
     assert.match(map, /Map details take priority over conflicting Village description/);
     assert.match(map, /Map details: No water or decorative buildings/);
@@ -215,8 +206,89 @@ async function main() {
       /characters over.*no image request was made/,
       "individually valid maximum inputs share a final allowance",
     );
-    assert.throws(() => validateFirstDayDescription("   ", true), /brings you and the others together/);
-    assert.doesNotThrow(() => validateFirstDayDescription("", false));
+    // Later physical receipts remain authoritative even when the starting description is unchanged.
+    const common = defaultVenueSpace("community", "A farmhouse kitchen");
+    common.state.condition = "The roof leaks";
+    const farm = coerceVillageState({
+      wishSystemVersion: 3,
+      seed: "farm-progress",
+      setupAt: "2026-10-01T12:00:00Z",
+      setting: "An abandoned farm. " + "Fields and trees. ".repeat(40) + "The farmhouse roof leaks.",
+      venues: [
+        {
+          id: "common-room",
+          name: "Farmhouse",
+          form: "Farmhouse",
+          classes: ["community"],
+          description: "A farmhouse with a leaking roof",
+          spaces: [common],
+          playerSeenPublic: true,
+        },
+      ],
+    });
+    const farmhouse = farm.venues[0]!;
+    const zone = venueZones(farmhouse).find((row) => row.kind === "public")!;
+    applyVenueSceneChange(
+      farm,
+      farmhouse.id,
+      {
+        narration: "The roof is repaired.",
+        conditionBefore: "The roof leaks",
+        conditionAfter: "The repaired roof is watertight",
+      },
+      "roof-repair",
+      "2026-10-02T12:00:00Z",
+      "community",
+      "public",
+    );
+    const savedFarm = coerceVillageState(JSON.parse(JSON.stringify(farm)));
+    const currentFarmhouse = savedFarm.venues[0]!;
+    const currentZone = venueZones(currentFarmhouse).find((row) => row.kind === "public")!;
+    assert.equal(currentZone.state.condition, "The repaired roof is watertight");
+    const farmPrompt = await currentScenePrompt(savedFarm, card, "chat", "How is the farmhouse?", {
+      zoneId: zone.id,
+      area: "public",
+      spaceClass: "community",
+    });
+    assert.ok(farmPrompt.includes("The repaired roof is watertight"));
+    assert.ok(farmPrompt.includes(savedFarm.setting), "the complete authored background remains intact");
+    const farmImage = buildLocationPrompt(
+      savedFarm,
+      venueInZone(currentFarmhouse, currentZone.id),
+      moment,
+      "",
+      "interior",
+    );
+    assert.ok(farmImage.includes("Current condition: The repaired roof is watertight"));
+    assert.ok(
+      farmImage.includes(savedFarm.setting),
+      "image context retains conditions beyond its former 400-character cut",
+    );
+    const storyContext = {
+      village: "Farm",
+      setting: savedFarm.setting,
+      moment,
+      residents: [],
+      recent: [],
+      venues: [],
+      opportunities: [],
+      lastSimulatedAt: farm.setupAt,
+      forced: false,
+    };
+    const legacyStory = buildTickMessages(storyContext)
+      .map((row) => row.content)
+      .join("\\n");
+    assert.equal(
+      legacyStory.includes(savedFarm.setting),
+      false,
+      "unversioned frozen story prompts retain their old bounded context",
+    );
+    const currentStory = buildTickMessages({ ...storyContext, descriptionVersion: 1 })
+      .map((row) => row.content)
+      .join("\\n");
+    assert.ok(currentStory.includes(savedFarm.setting), "new story jobs carry the complete description");
+    assert.equal(savedFarm.setting, farm.setting, "recording a repair never rewrites authored background");
+
     const legacy = coerceVillageState({
       wishSystemVersion: 3,
       setupAt: "2025-01-01T00:00:00Z",
