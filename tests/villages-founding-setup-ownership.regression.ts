@@ -272,6 +272,18 @@ await assert.rejects(direct.service.runVillageSetup(unreviewed), /valid resident
 const outdatedPolicy = structuredClone(input("Direct"));
 delete outdatedPolicy.foundingResidentContexts!.same.integration!.historyPolicy;
 await assert.rejects(direct.service.runVillageSetup(outdatedPolicy), /Review Same world adaptations/);
+const noChangesFixture = fixture("No changes");
+const noChangesInput = input("No changes");
+noChangesInput.foundingResidentContexts = approveFoundingBackstories(
+  ["same"],
+  {},
+  noChangesInput.setting,
+  noChangesInput.foundingDetails,
+  "same-world",
+);
+await noChangesFixture.service.runVillageSetup(noChangesInput);
+assert.equal(noChangesFixture.state.villagers[0]!.foundingContext!.integration!.text, "");
+assert.equal(noChangesFixture.state.villagers[0]!.foundingContext!.integration!.reviewVersion, "adaptations-v1");
 const result = await direct.service.runVillageSetup(input("Direct"));
 assert.equal(result.village.name, "Direct");
 assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");

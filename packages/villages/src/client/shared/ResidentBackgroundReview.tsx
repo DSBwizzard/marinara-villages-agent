@@ -4,6 +4,7 @@ import { messageFrom, request } from "./api.js";
 import { createVillagesClientId } from "./request-id.js";
 import {
   residentBackgroundSourceKey,
+  adaptationEmptyStatus,
   residentHistoryForOrigin,
   WORLD_ORIGINS,
   type ResidentFoundingContext,
@@ -65,14 +66,28 @@ export function ResidentBackgroundReview({
   }, []);
   const patch = (change: Partial<typeof review>) => {
     generation.current++;
-    onChange({ ...context, integration: { ...review, ...change, accepted: false, actionId: undefined } });
+    onChange({
+      ...context,
+      integration: {
+        ...review,
+        ...change,
+        accepted: false,
+        actionId: undefined,
+        proposalReceived: false,
+        sourceKey: undefined,
+      },
+    });
   };
   async function propose(reuse = false) {
     if (busy) return;
     const attempt = ++generation.current;
     const sourceKey = JSON.stringify(source);
     const actionId = reuse && review.actionId ? review.actionId : createVillagesClientId();
-    onChange({ ...context, integration: { ...review, actionId, proposalReceived: false, accepted: false } });
+    const proposalFormat = reuse ? review.proposalFormat : ("adaptations-v1" as const);
+    onChange({
+      ...context,
+      integration: { ...review, actionId, proposalReceived: false, proposalFormat, accepted: false },
+    });
     setBusy(true);
     setError("");
     try {
@@ -83,12 +98,18 @@ export function ResidentBackgroundReview({
           characterId,
           actionId,
           retrieveOnly: reuse,
+          proposalFormat,
           existingContext: {
             historyMode: context.historyMode,
             storyRole: context.storyRole,
             background: context.background,
             customDescription: context.customDescription,
             ...(context.villageBackstory !== undefined ? { villageBackstory: context.villageBackstory } : {}),
+            ...(proposalFormat === "adaptations-v1" && review.text.trim()
+              ? {
+                  integration: { text: review.text.trim(), direction: "", accepted: true },
+                }
+              : {}),
           },
           direction: review.direction,
           ...(review.worldOrigin ? { worldOrigin: review.worldOrigin } : {}),
@@ -98,18 +119,26 @@ export function ResidentBackgroundReview({
         return;
       onChange({
         ...current.current.context,
-        integration: { ...review, actionId, proposalReceived: true, text: result.text, accepted: false },
+        integration: {
+          ...review,
+          actionId,
+          proposalFormat,
+          proposalReceived: true,
+          sourceKey: residentBackgroundSourceKey(source.setting, source.premise, source.worldOrigin),
+          text: result.text,
+          accepted: false,
+        },
       });
     } catch (cause) {
       if (mounted.current && attempt === generation.current)
-        setError(messageFrom(cause, "Could not propose a backstory. Write one or try again."));
+        setError(messageFrom(cause, "Could not propose adaptations. Edit them or try again."));
     } finally {
       if (mounted.current) setBusy(false);
     }
   }
   const started = useRef(false);
   useEffect(() => {
-    if (initialRequest && !started.current && !review.text && !review.actionId) {
+    if (initialRequest && !started.current && !context.integration) {
       started.current = true;
       void propose();
     }
@@ -117,10 +146,11 @@ export function ResidentBackgroundReview({
   return (
     <ModalDialog title={name + "’s life here"} onClose={onCancel} compact>
       <label style={{ display: "grid", gap: ".5rem" }}>
-        Backstory
+        Village adaptations
         <textarea
           autoComplete="off"
-          aria-label={name + " backstory"}
+          aria-label={name + " Village adaptations"}
+          placeholder="Only changes or additions needed for this Village. Leave blank if none."
           rows={6}
           maxLength={1200}
           value={review.text}
@@ -128,7 +158,20 @@ export function ResidentBackgroundReview({
           onChange={(event) => patch({ text: event.target.value })}
         />
       </label>
-      {busy ? <p role="status">Proposing backstory…</p> : null}
+      {adaptationEmptyStatus(
+        review,
+        residentBackgroundSourceKey(source.setting, source.premise, source.worldOrigin),
+        "Accept without adaptations",
+      ) ? (
+        <p role="status">
+          {adaptationEmptyStatus(
+            review,
+            residentBackgroundSourceKey(source.setting, source.premise, source.worldOrigin),
+            "Accept without adaptations",
+          )}
+        </p>
+      ) : null}
+      {busy ? <p role="status">Proposing adaptations…</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       <details open={customize} onToggle={(event) => setCustomize(event.currentTarget.open)}>
         <summary>Customize</summary>
@@ -173,11 +216,11 @@ export function ResidentBackgroundReview({
           </button>
         ) : null}
         <button type="button" disabled={busy || disabled || !source.setting.trim()} onClick={() => void propose()}>
-          {review.actionId || review.text ? "Try again" : "Propose"}
+          {review.actionId || review.text ? "Try again" : "Propose adaptations"}
         </button>
         <button
           type="button"
-          disabled={busy || disabled || !review.text.trim()}
+          disabled={busy || disabled}
           onClick={async () => {
             const origin = review.worldOrigin ?? source.worldOrigin;
             const accepted: ResidentFoundingContext = {
@@ -189,7 +232,8 @@ export function ResidentBackgroundReview({
                 sourceKey: residentBackgroundSourceKey(source.setting, source.premise, source.worldOrigin),
                 text: review.text.trim(),
                 accepted: true,
-                historyPolicy: origin === "same-world" ? "adapted-v1" : undefined,
+                historyPolicy: origin === "same-world" && review.text.trim() ? "adapted-v1" : undefined,
+                reviewVersion: "adaptations-v1",
               },
             };
             setBusy(true);
@@ -197,7 +241,7 @@ export function ResidentBackgroundReview({
             try {
               await onAccept(accepted);
             } catch (cause) {
-              if (mounted.current) setError(messageFrom(cause, "Could not save this backstory."));
+              if (mounted.current) setError(messageFrom(cause, "Could not save these adaptations."));
             } finally {
               if (mounted.current) setBusy(false);
             }

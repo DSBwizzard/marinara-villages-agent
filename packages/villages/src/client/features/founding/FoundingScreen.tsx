@@ -869,9 +869,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <div>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
-                      <h3>People & backstories</h3>
+                      <h3>People & adaptations</h3>
                       <button type="button" onClick={() => gotoSetupStep(1)}>
-                        Change people & backstories
+                        Change people & adaptations
                       </button>
                     </div>
                     <p>{personas?.find((person) => person.id === personaDraft)?.name ?? "Selected Persona"} · You</p>
@@ -882,7 +882,14 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                           <strong>{person.name}</strong>
                           {!snapshot?.isFounded && context ? (
                             <>
-                              {context.integration?.accepted ? <p>{context.integration.text}</p> : null}
+                              {context.integration?.accepted ? (
+                                <p>
+                                  {context.integration.text ||
+                                    (context.integration.reviewVersion === "adaptations-v1"
+                                      ? "No adaptations needed"
+                                      : "")}
+                                </p>
+                              ) : null}
                               <p>
                                 {context.historyMode === "continue"
                                   ? "Use original backstory"
@@ -902,7 +909,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       );
                     })}
                     <PlayerBackgroundSummary background={setupPlayerBackground} />
-                    <p>Backstories describe the starting situation; events can change it.</p>
+                    <p>Adaptations describe the starting situation; events can change it.</p>
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">

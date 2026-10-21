@@ -146,14 +146,16 @@ async function reviewNavigation() {
   approvalPorts.setupSetting = "A changed setting";
   approveAndContinue(3);
   assert.equal(step, 1, "changed source returns to People without silently approving");
-  assert.match(problem, /Review backstories/);
+  assert.match(problem, /Review adaptations/);
   assert.match(approvalPorts.setupResidentContexts.resident.integration.text, /lifelong coastal/);
   approvalPorts.setupStep = 1;
   approveAndContinue(2);
   assert.equal(step, 2, "Continue reapproves displayed text without regeneration");
   approvalPorts.setupResidentContexts.resident.integration.text = " ";
   approveAndContinue(2);
-  assert.match(problem, /write a backstory for each/);
+  assert.equal(step, 2, "Continue can deliberately approve an empty adaptation");
+  assert.equal(approvalPorts.setupResidentContexts.resident.integration.text, "");
+  assert.equal(approvalPorts.setupResidentContexts.resident.integration.reviewVersion, "adaptations-v1");
 }
 
 async function main() {

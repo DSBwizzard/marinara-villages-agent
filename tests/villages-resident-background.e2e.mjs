@@ -22,7 +22,7 @@ const change=value=>{localStorage.setItem('draft',JSON.stringify(value));setCont
 const entry={id:"mara",name:"Mara",summary:"Guard",tags:[],inVillage:false};
 if(roster)return <><style>{VILLAGES_FORGING_STYLES}</style><RosterScreen controller={{busy:false,catalog:[entry],visibleCatalog:[entry],error:"",menuPage:"villagers",openPerson:()=>{},pickerOpen:true,portraits:{},rosterSearch:"",screen:"menu",search:"",setMenuPage:()=>{},setPickerOpen:()=>{},setRosterSearch:()=>{},setSearch:()=>{},snapshot:{villagers:[],settings:{setting:source.setting,foundingDetails:source.premise,worldOrigin:source.worldOrigin}},addVillager:async(id,revision,context)=>{(window.admissions??=[]).push({id,revision,context});if(window.failAdmission){window.failAdmission=false;throw Error('Synthetic admission failure')}window.rosterAccepted=context;return true}}}/></>;
 return <><style>{VILLAGES_FORGING_STYLES}</style><button onClick={()=>setRoster(true)}>Test move-in</button><WorldOriginSettings initial={source.worldOrigin} onSaved={saved=>setSource(s=>({...s,worldOrigin:saved.settings.worldOrigin}))}/>
-<button onClick={()=>{change({...defaults,integration:{text:'',direction:'',accepted:false}});setInitial(true);setOpen(true)}}>Select Mara</button>
+<button onClick={()=>{change({...defaults});setInitial(true);setOpen(true)}}>Select Mara</button>
 <button onClick={()=>{setInitial(false);setOpen(true)}}>Edit background</button>
 {open?<ResidentBackgroundReview name='Mara' characterId='mara' source={source} context={context} initialRequest={initial} onChange={change} onAccept={value=>{change(value);window.accepted=value;setOpen(false)}} onCancel={()=>setOpen(false)}/>:null}</>}
 createRoot(document.getElementById('root')).render(<StrictMode><App/></StrictMode>);`,
@@ -49,9 +49,11 @@ try {
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       const saved = new Map();
+      const requestInputs = [];
       let calls = 0,
         failResponse = false,
         hold = false,
+        nextText,
         release;
       await page.route("http://background.test/", (route) =>
         route.fulfill({
@@ -84,11 +86,15 @@ try {
             contentType: "application/json",
             body: JSON.stringify({ settings: { worldOrigin: input.worldOrigin } }),
           });
+        requestInputs.push(input);
         let text = saved.get(input.actionId);
-        if (!text) {
+        if (!saved.has(input.actionId)) {
           assert.equal(input.retrieveOnly, false);
           calls++;
-          text = "Mara came to the harbor following a lead about her missing brother. She has stayed three weeks.";
+          text =
+            nextText ??
+            "Mara came to the harbor following a lead about her missing brother. She has stayed three weeks.";
+          nextText = undefined;
           saved.set(input.actionId, text);
         }
         if (hold) {
@@ -112,7 +118,7 @@ try {
       await expect.poll(() => page.evaluate(() => window.source.worldOrigin)).toBe("same-world");
       await page.getByRole("button", { name: "Select Mara", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Mara’s life here", exact: true });
-      const text = dialog.getByLabel("Mara backstory", { exact: true });
+      const text = dialog.getByLabel("Mara Village adaptations", { exact: true });
       await expect(text).toHaveValue(/following a lead/);
       await expect(dialog.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
       await expect(dialog.getByRole("button", { name: "Retrieve result", exact: true })).toHaveCount(0);
@@ -159,7 +165,26 @@ try {
       await expect(text).toHaveValue(/following a lead/);
       assert.equal(calls, count, "restored request retrieves saved text without another provider call");
       await text.fill(" ");
-      await expect(dialog.getByRole("button", { name: "Accept", exact: true })).toBeDisabled();
+      await expect(dialog.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
+      await expect(dialog.getByText("Accept without adaptations", { exact: true })).toBeVisible();
+      await text.fill("A medical college replaces the magical academy.");
+      nextText = "";
+      await dialog.getByRole("button", { name: "Try again", exact: true }).click();
+      await expect(text).toHaveValue("");
+      await expect(dialog.getByText("No adaptations needed", { exact: true })).toBeVisible();
+      assert.equal(requestInputs.at(-1).proposalFormat, "adaptations-v1");
+      assert.equal(
+        requestInputs.at(-1).existingContext.integration.text,
+        "A medical college replaces the magical academy.",
+        "individual proposals receive the player's current substitutions",
+      );
+      await dialog.getByRole("button", { name: "Accept", exact: true }).click();
+      assert.equal(await page.evaluate(() => window.accepted.integration.reviewVersion), "adaptations-v1");
+      assert.equal(await page.evaluate(() => window.accepted.integration.text), "");
+      const paidBeforeReopen = calls;
+      await page.getByRole("button", { name: "Edit background", exact: true }).click();
+      await expect(dialog.getByText("No adaptations needed", { exact: true })).toBeVisible();
+      assert.equal(calls, paidBeforeReopen, "opening an approved empty adaptation never generates again");
       await text.fill("Mara stays here while searching.");
       await dialog.getByRole("button", { name: "Accept", exact: true }).click();
       assert.equal(await page.evaluate(() => window.accepted.integration.accepted), true);

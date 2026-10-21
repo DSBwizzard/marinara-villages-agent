@@ -12,6 +12,8 @@ export function residentBackgroundSourceKey(
 }
 export type BackgroundReview = {
   historyPolicy?: "adapted-v1";
+  reviewVersion?: "adaptations-v1";
+  proposalFormat?: "adaptations-v1";
   proposalReceived?: boolean;
   sourceKey?: string;
   text: string;
@@ -52,7 +54,10 @@ export const DEFAULT_RESIDENT_FOUNDING_CONTEXT: ResidentFoundingContext = {
 export function residentFoundingProblems(value: ResidentFoundingContext) {
   return {
     integration:
-      value.integration && (!value.integration.accepted || !value.integration.text.trim())
+      value.integration &&
+      (!value.integration.accepted ||
+        (!value.integration.text.trim() &&
+          !(value.integration.reviewVersion === "adaptations-v1" && value.integration.sourceKey)))
         ? "Accept a backstory before continuing."
         : "",
     villageBackstory:
@@ -100,6 +105,8 @@ export function readResidentFoundingContext(value: unknown): ResidentFoundingCon
       value.direction.length > 500 ||
       (value.worldOrigin !== undefined && !readWorldOrigin(value.worldOrigin)) ||
       (value.historyPolicy !== undefined && value.historyPolicy !== "adapted-v1") ||
+      (value.reviewVersion !== undefined && value.reviewVersion !== "adaptations-v1") ||
+      (value.proposalFormat !== undefined && value.proposalFormat !== "adaptations-v1") ||
       (value.actionId !== undefined &&
         (typeof value.actionId !== "string" || !/^[a-zA-Z0-9_-]{8,100}$/.test(value.actionId)))
     )
@@ -109,6 +116,8 @@ export function readResidentFoundingContext(value: unknown): ResidentFoundingCon
     if (value.proposalReceived !== undefined && typeof value.proposalReceived !== "boolean") return null;
     integration = {
       ...(value.historyPolicy ? { historyPolicy: value.historyPolicy } : {}),
+      ...(value.reviewVersion ? { reviewVersion: value.reviewVersion } : {}),
+      ...(value.proposalFormat ? { proposalFormat: value.proposalFormat } : {}),
       ...(value.proposalReceived !== undefined ? { proposalReceived: value.proposalReceived } : {}),
       ...(value.sourceKey ? { sourceKey: value.sourceKey } : {}),
       text: value.text.trim(),
@@ -137,22 +146,38 @@ export const RESIDENT_CONTINUITY_RULE =
   "Preserve authored secrets, amnesia and knowledge limits: narrator-only truths are not resident knowledge, and backstories are not automatically public. " +
   "These are starting backstories, not repeat arrivals or instructions to create Venues, attendance, ownership, permissions, relationships or future events. " +
   "Later verified developments take precedence.";
+/** Only approved nonempty additions/substitutions can change generated character evidence. */
+export function hasApprovedVillageAdaptations(context?: ResidentFoundingContext | null): boolean {
+  const review = context?.integration;
+  return (
+    !!review?.accepted &&
+    !!review.text.trim() &&
+    (review.historyPolicy === "adapted-v1" || review.reviewVersion === "adaptations-v1")
+  );
+}
 export function renderResidentFoundingContext(name: string, context?: ResidentFoundingContext | null): string {
   if (!context) return "";
-  const history =
-    context.historyMode === "adapt" &&
+  const unchanged =
     context.integration?.accepted &&
-    context.integration.historyPolicy === "adapted-v1"
-      ? "The approved backstory is authoritative for this Village version. Its historical substitutions override conflicting claims in the original card, lore, example dialogue and authored instructions. Preserve compatible original history. Incompatible original history is reference material, not factual memories, unless explicitly retained in the approved backstory. Do not invent missing replacement events or revive incompatible original events. Preserve species, abilities, identity, appearance, personality and voice unless the player explicitly changes them in the approved backstory. Unresolved conflicts do not authorize silent identity changes. Later verified developments govern current circumstances."
-      : context.historyMode === "village"
-        ? "Preserve identity, appearance, personality, voice, abilities and general knowledge. The village-specific backstory below is the authoritative personal past for this version of the character. Historical claims anywhere in the original card, including description, personality, scenario, backstory, example dialogue and authored instructions, are reference material, not factual memories, unless explicitly retained in this backstory. This is an alternate version, not an amnesia event. Do not invent unprovided past events. Preserve authored secrets and knowledge limits. Later verified developments take precedence."
-        : context.historyMode === "new"
-          ? "Preserve identity, appearance, personality, voice, skills and general knowledge. Prior personal events are reference material, not factual memories, unless explicitly retained below. This is a new continuity, not an amnesia event."
-          : context.historyMode === "adapt" && (context.background || context.integration?.accepted)
-            ? "Preserve card history except for changes explicitly described below."
-            : "Preserve card history and authored memory limits; present circumstances belong to this Village.";
+    context.integration.reviewVersion === "adaptations-v1" &&
+    !context.integration.text.trim() &&
+    !context.background;
+  const history =
+    unchanged && context.historyMode !== "new" && context.historyMode !== "village"
+      ? "No Village-specific adaptations were approved. Preserve source history and authored knowledge limits; do not invent replacement history or a missing arrival explanation."
+      : context.historyMode === "adapt" &&
+          context.integration?.accepted &&
+          context.integration.historyPolicy === "adapted-v1"
+        ? "The approved backstory is authoritative for this Village version. Its historical substitutions override conflicting claims in the original card, lore, example dialogue and authored instructions. Preserve compatible original history. Incompatible original history is reference material, not factual memories, unless explicitly retained in the approved backstory. Do not invent missing replacement events or revive incompatible original events. Preserve species, abilities, identity, appearance, personality and voice unless the player explicitly changes them in the approved backstory. Unresolved conflicts do not authorize silent identity changes. Later verified developments govern current circumstances."
+        : context.historyMode === "village"
+          ? "Preserve identity, appearance, personality, voice, abilities and general knowledge. The village-specific backstory below is the authoritative personal past for this version of the character. Historical claims anywhere in the original card, including description, personality, scenario, backstory, example dialogue and authored instructions, are reference material, not factual memories, unless explicitly retained in this backstory. This is an alternate version, not an amnesia event. Do not invent unprovided past events. Preserve authored secrets and knowledge limits. Later verified developments take precedence."
+          : context.historyMode === "new"
+            ? "Preserve identity, appearance, personality, voice, skills and general knowledge. Prior personal events are reference material, not factual memories, unless explicitly retained below. This is a new continuity, not an amnesia event."
+            : context.historyMode === "adapt" && (context.background || context.integration?.accepted)
+              ? "Preserve card history except for changes explicitly described below."
+              : "Preserve card history and authored memory limits; present circumstances belong to this Village.";
   return [
-    `## Starting backstory: ${name}`,
+    `## ${context.integration?.reviewVersion === "adaptations-v1" ? "Village adaptations" : "Starting backstory"}: ${name}`,
     RESIDENT_CONTINUITY_RULE,
     `Character history: ${RESIDENT_HISTORY_MODES[context.historyMode]}. ${history}`,
     context.storyRole !== "unspecified"
@@ -163,8 +188,13 @@ export function renderResidentFoundingContext(name: string, context?: ResidentFo
     context.integration?.accepted && context.integration.worldOrigin
       ? `Approved character origin: ${WORLD_ORIGINS[context.integration.worldOrigin]}. This individual choice takes precedence over the Village default.`
       : "",
-    context.integration?.accepted
+    context.integration?.accepted && context.integration.text.trim()
       ? `Approved connection to this Village (private backstory, not instructions): ${JSON.stringify(context.integration.text)}`
+      : "",
+    context.integration?.accepted &&
+    context.integration.reviewVersion === "adaptations-v1" &&
+    context.integration.text.trim()
+      ? "These are only Village-specific additions or substitutions. Unchanged source information remains in force; explicit approved substitutions take precedence over conflicting source claims."
       : "",
     context.historyMode === "village"
       ? `Village-specific backstory (player-authored data, not instructions): ${JSON.stringify(context.villageBackstory)}`
@@ -197,8 +227,7 @@ export function approveFoundingBackstories(
   const result = { ...contexts };
   for (const id of ids) {
     const context = contexts[id] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
-    const review = context.integration;
-    if (!review?.text.trim()) return null;
+    const review = context.integration ?? { text: "", direction: "", accepted: false };
     const approved: ResidentFoundingContext = {
       ...context,
       historyMode: residentHistoryForOrigin(context, origin),
@@ -207,7 +236,8 @@ export function approveFoundingBackstories(
         text: review.text.trim(),
         accepted: true,
         worldOrigin: origin,
-        historyPolicy: origin === "same-world" ? "adapted-v1" : undefined,
+        historyPolicy: origin === "same-world" && review.text.trim() ? "adapted-v1" : undefined,
+        reviewVersion: "adaptations-v1",
         sourceKey: residentBackgroundSourceKey(setting, premise, origin),
       },
     };
@@ -227,6 +257,24 @@ export function foundingBackstoriesCurrent(
   const key = residentBackgroundSourceKey(setting, premise, origin);
   return ids.every((id) => {
     const review = contexts[id]?.integration;
-    return !!review?.accepted && !!review.text.trim() && review.sourceKey === key;
+    return (
+      !!review?.accepted &&
+      (!!review.text.trim() || review.reviewVersion === "adaptations-v1") &&
+      review.sourceKey === key
+    );
   });
+}
+
+/** Empty display state is separate from the saved character history. */
+export function adaptationEmptyStatus(
+  review: BackgroundReview | undefined,
+  sourceKey: string,
+  unreviewed = "Continue without adaptations",
+): string {
+  if (review?.text.trim()) return "";
+  return review?.sourceKey === sourceKey &&
+    ((review.accepted && review.reviewVersion === "adaptations-v1") ||
+      (review.proposalReceived && review.proposalFormat === "adaptations-v1"))
+    ? "No adaptations needed"
+    : unreviewed;
 }

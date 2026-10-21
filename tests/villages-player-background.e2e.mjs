@@ -27,6 +27,7 @@ try {
     let paid = 0,
       drop = true,
       hold = false,
+      emptyNext = false,
       release;
     const saved = new Map();
     await page.route("http://cast.test/", (route) =>
@@ -38,6 +39,7 @@ try {
     await page.route("**/api/villages/villagers/background/draft", async (route) => {
       const input = route.request().postDataJSON();
       assert.equal(input.foundingCast, true);
+      assert.equal(input.proposalFormat, "adaptations-v1");
       if (paid === 0)
         assert.equal(input.playerBackground, "My own starting story.", "player writing is proposal context");
       assert.deepEqual(input.foundingCharacterIds, ["mara", "ellis"]);
@@ -47,8 +49,11 @@ try {
         paid++;
         output = {
           player: "I came to study the observatory.",
-          residents: { mara: "Mara helps visiting students.", ellis: "Ellis arrived to study the stars." },
+          residents: emptyNext
+            ? { mara: "", ellis: "" }
+            : { mara: "Mara helps visiting students.", ellis: "Ellis arrived to study the stars." },
         };
+        emptyNext = false;
         saved.set(input.actionId, output);
       }
       if (hold) {
@@ -72,7 +77,7 @@ try {
     assert.equal(paid, 0, "selection does not dispatch");
     await page.getByRole("textbox", { name: "Your backstory", exact: true }).fill("My own starting story.");
     const field = page.getByRole("textbox", { name: "Your backstory", exact: true });
-    for (const label of ["Backstories", "Your backstory"]) {
+    for (const label of ["Your backstory"]) {
       const help = page.getByRole("button", { name: "Help: " + label, exact: true });
       await help.scrollIntoViewIfNeeded();
       const before = await field.boundingBox();
@@ -81,9 +86,7 @@ try {
       await expect(popup).toBeVisible();
       await page.screenshot({ path: ".build-tmp/help-" + label.replaceAll(" ", "-") + "-" + width + ".png" });
       await expect(popup.getByRole("note")).toContainText(
-        label === "Backstories"
-          ? 'These backstories connect each person to Crystalwood. Use "Propose Backstories" after adding your own backstory and the Villagers you want, and their narratives can intersect if appropriate.'
-          : "In Villages, you (the player) coordinate with Villagers on major changes, improvements, and developments.",
+        "In Villages, you (the player) coordinate with Villagers on major changes, improvements, and developments.",
       );
       assert.deepEqual(await field.boundingBox(), before, "opening help leaves fields unchanged");
       const box = await popup.boundingBox();
@@ -117,25 +120,40 @@ try {
       await expect(popup).toHaveCount(0);
       await expect(help).toBeFocused();
     }
-    await page.getByRole("button", { name: "Propose Backstories", exact: true }).click();
+    await page.getByRole("button", { name: "Propose adaptations", exact: true }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     assert.equal(paid, 1);
     await load();
     await page.getByRole("button", { name: "Select Ellis too" }).click();
     await page.getByRole("button", { name: "Retrieve result", exact: true }).click();
     await expect(page.getByLabel("Your backstory", { exact: true })).toHaveValue("My own starting story.");
-    await expect(page.getByLabel("Mara backstory", { exact: true })).toHaveValue(/visiting students/);
-    await expect(page.getByLabel("Ellis backstory", { exact: true })).toHaveValue(/stars/);
+    await expect(page.getByLabel("Mara Village adaptations", { exact: true })).toHaveValue(/visiting students/);
+    await expect(page.getByLabel("Ellis Village adaptations", { exact: true })).toHaveValue(/stars/);
     assert.equal(paid, 1, "retrieval after reload costs no generation");
     await page.getByLabel("Your backstory", { exact: true }).fill("My authored starting background.");
     hold = true;
     await page.getByRole("button", { name: "Try again", exact: true }).click();
     await expect.poll(() => typeof release).toBe("function");
-    await page.getByLabel("Mara backstory", { exact: true }).fill("My revised Mara backstory.");
+    await page.getByLabel("Mara Village adaptations", { exact: true }).fill("My revised Mara Village adaptations.");
     release();
     await expect(page.getByRole("button", { name: "Proposing…", exact: true })).toHaveCount(0);
-    await expect(page.getByLabel("Mara backstory", { exact: true })).toHaveValue("My revised Mara backstory.");
+    await expect(page.getByLabel("Mara Village adaptations", { exact: true })).toHaveValue(
+      "My revised Mara Village adaptations.",
+    );
     await expect(page.getByLabel("Your backstory", { exact: true })).toHaveValue("My authored starting background.");
+    emptyNext = true;
+    await page.getByRole("button", { name: "Propose adaptations", exact: true }).click();
+    await expect(page.getByLabel("Mara Village adaptations", { exact: true })).toHaveValue("");
+    await expect(page.getByText("No adaptations needed", { exact: true })).toHaveCount(2);
+    const paidEmpty = paid;
+    await load();
+    await page.getByRole("button", { name: "Select Ellis too" }).click();
+    await expect(page.getByText("No adaptations needed", { exact: true })).toHaveCount(2);
+    assert.equal(paid, paidEmpty, "restoring a successful empty result makes no request");
+    await expect(page.getByLabel("Your backstory", { exact: true })).toHaveValue("My authored starting background.");
+    await page.getByLabel("Mara Village adaptations", { exact: true }).fill("A replacement research station.");
+    await page.getByLabel("Mara Village adaptations", { exact: true }).fill("");
+    await expect(page.getByText("Continue without adaptations", { exact: true })).toHaveCount(1);
     assert.ok(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
       "background fields fit viewport",

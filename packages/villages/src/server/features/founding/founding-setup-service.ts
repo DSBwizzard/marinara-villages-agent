@@ -205,7 +205,9 @@ export function createFoundingSetup({
         Object.values(foundingContexts).some(
           (context) =>
             !["new", "village"].includes(context.historyMode) &&
-            (context.historyMode !== "adapt" || context.integration?.historyPolicy !== "adapted-v1"),
+            (context.historyMode !== "adapt" ||
+              (context.integration?.historyPolicy !== "adapted-v1" &&
+                !(context.integration?.reviewVersion === "adaptations-v1" && !context.integration.text.trim()))),
         )
       )
         throw badRequest("Review Same world adaptations in People, then Continue to approve them.");

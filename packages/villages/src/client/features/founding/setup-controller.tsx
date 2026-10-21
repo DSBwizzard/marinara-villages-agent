@@ -305,7 +305,7 @@ export function createFoundingGotoSetupStep(ports: {
             ports.setupWorldOrigin,
           ) ?? undefined;
         if (!approved) {
-          setSetupProblem("Choose character origins and write a backstory for each villager.");
+          setSetupProblem("Choose character origins and review each villager’s adaptations.");
           return;
         }
       } else if (
@@ -318,7 +318,7 @@ export function createFoundingGotoSetupStep(ports: {
         )
       ) {
         setSetupStep(1);
-        setSetupProblem("Review backstories in People, then Continue to approve them.");
+        setSetupProblem("Review adaptations in People, then Continue to approve them.");
         return;
       }
     }

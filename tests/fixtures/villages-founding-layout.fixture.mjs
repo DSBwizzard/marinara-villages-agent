@@ -766,7 +766,7 @@ export async function verifyFoundingLayout(group) {
         );
         await expect(root.locator(".villages-founding-connections")).toBeHidden();
         const cast = root.locator(".villages-people-columns>section").first();
-        const backstories = root.getByRole("region", { name: "Founding backstories", exact: true });
+        const backstories = root.getByRole("region", { name: "Village adaptations", exact: true });
         await expect(backstories.getByRole("heading", { name: "Life in Willowbrook", exact: true })).toBeVisible();
         await expect(cast.locator(".villages-people-selected small, .villages-people-identity small")).toHaveCount(0);
         const origin = cast.getByLabel("Character origins", { exact: true });
@@ -790,15 +790,16 @@ export async function verifyFoundingLayout(group) {
           "backstories sit beside the cast on desktop and below it on phone",
         );
 
-        await root.getByRole("button", { name: "Propose Backstories", exact: true }).click();
-        const past = root.getByLabel("Finn backstory", { exact: true });
+        await root.getByRole("button", { name: "Propose adaptations", exact: true }).click();
+        const past = root.getByLabel("Finn Village adaptations", { exact: true });
         await expect(past).toHaveValue(/settled here/);
         await past.fill(" ");
+        await expect(root.getByText("Continue without adaptations", { exact: true })).toBeVisible();
         await forward("Continue to Map").click();
-        await expect(
-          root.getByText("Choose character origins and write a backstory for each villager.", { exact: true }),
-        ).toBeVisible();
+        await expect(root).toHaveAttribute("data-step", "2");
+        await forward("Back").click();
         await expect(root).toHaveAttribute("data-step", "1");
+        await expect(root.getByText("No adaptations needed", { exact: true })).toBeVisible();
         await past.fill("Finn has always been guardian of a relic in the observatory.");
         await root.getByLabel("Your backstory", { exact: true }).fill("I came to help restore the observatory.");
         await bounds();
@@ -1851,7 +1852,7 @@ export async function verifyFoundingLayout(group) {
         }
         await forward("Review village").click();
         await expect(root).toHaveAttribute("data-step", "4");
-        await expect(root.getByRole("button", { name: "Change people & backstories", exact: true })).toBeVisible();
+        await expect(root.getByRole("button", { name: "Change people & adaptations", exact: true })).toBeVisible();
         await expect(root.locator(".villages-resident-review").filter({ hasText: "Finn" })).toContainText(
           /[Gg]uardian of a relic/,
         );

@@ -186,7 +186,6 @@ export function RosterScreen({
                                   name: entry.name,
                                   context: joiningDrafts.current[entry.id] ?? {
                                     ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
-                                    integration: { text: "", direction: "", accepted: false },
                                   },
                                 })
                               }

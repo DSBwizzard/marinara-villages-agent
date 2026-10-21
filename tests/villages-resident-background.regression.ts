@@ -8,6 +8,7 @@ import {
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   approveFoundingBackstories,
+  adaptationEmptyStatus,
   foundingBackstoriesCurrent,
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   readResidentFoundingContext,
@@ -337,7 +338,7 @@ assert.equal(Object.hasOwn(JSON.parse(batch.text), "player"), false);
 assert.match(messages.at(-1)!, /Draft player/);
 assert.match(messages.at(-1)!, /Ellis/);
 assert.match(messages.at(-1)!, /authoritative personal past/);
-assert.match(messages.at(-1)!, /not a checklist to summarize/);
+
 const recoveredInput = {
   ...batchInput,
   retrieveOnly: true,
@@ -437,7 +438,10 @@ for (const [setting, premise, origin] of [
   ["A modern world without magic", "A quiet harbor", "different-worlds"],
 ] as const)
   assert.equal(foundingBackstoriesCurrent(["mara"], approvedContexts, setting, premise, origin), false);
-assert.equal(approveFoundingBackstories(["missing"], draftContexts, "World", "Premise", "same-world"), null);
+assert.equal(
+  approveFoundingBackstories(["missing"], draftContexts, "World", "Premise", "same-world")!.missing.integration!.text,
+  "",
+);
 assert.equal(approveFoundingBackstories(["mara"], draftContexts, "World", "Premise", null), null);
 const restoredAdaptation = readResidentFoundingContext(JSON.parse(JSON.stringify(approvedContexts.mara)))!;
 assert.deepEqual(restoredAdaptation, approvedContexts.mara);
@@ -499,3 +503,177 @@ for (const text of ['"'.repeat(1200), "\u0000".repeat(600) + "a".repeat(600)]) {
     "escaped adapted history fits the image provider contract",
   );
 }
+
+// Structured empty adaptations are successes; empty provider responses are not.
+const adaptationService = createResidentBackgrounds(ports);
+completion = { content: JSON.stringify({ adaptation: "" }), finishReason: "stop" };
+const emptyRequest = { ...input, actionId: "adapt-empty-single", proposalFormat: "adaptations-v1" };
+const callsBeforeEmpty = calls;
+assert.deepEqual(await adaptationService.draftResidentBackground(emptyRequest), { text: "" });
+assert.equal(calls, callsBeforeEmpty + 1);
+assert.deepEqual(await adaptationService.draftResidentBackground({ ...emptyRequest, retrieveOnly: true }), {
+  text: "",
+});
+assert.equal(calls, callsBeforeEmpty + 1, "retrieval of intentional no-change result makes no paid request");
+await assert.rejects(
+  adaptationService.draftResidentBackground({ ...emptyRequest, proposalFormat: undefined }),
+  /inputs changed/,
+);
+assert.equal(calls, callsBeforeEmpty + 1, "a format collision cannot replace a paid result");
+for (const [i, content] of [
+  "",
+  " ",
+  "{}",
+  '{"adaptation":null}',
+  '{"adaptation":12}',
+  '{"adaptation":"unfinished',
+].entries()) {
+  completion = { content, finishReason: "stop" };
+  const before = calls;
+  const request = { ...emptyRequest, actionId: "adapt-invalid-" + i };
+  await assert.rejects(adaptationService.draftResidentBackground(request), /incomplete or too long/);
+  await assert.rejects(
+    adaptationService.draftResidentBackground({ ...request, retrieveOnly: true }),
+    /incomplete or too long/,
+  );
+  assert.equal(calls, before + 1, "invalid output never triggers automatic replacement");
+}
+completion = {
+  content: JSON.stringify({ adaptation: "An academy of medicine replaces the magical academy." }),
+  finishReason: "stop",
+};
+assert.deepEqual(
+  await adaptationService.draftResidentBackground({
+    ...emptyRequest,
+    actionId: "adapt-substitution",
+    worldOrigin: "same-world",
+  }),
+  { text: "An academy of medicine replaces the magical academy." },
+);
+completion = {
+  content: JSON.stringify({
+    residents: { mara: "", ellis: "The observatory replaces the original research station." },
+  }),
+  finishReason: "stop",
+};
+const emptyBatchRequest = {
+  ...batchInput,
+  actionId: "cast-adapt-mixed",
+  proposalFormat: "adaptations-v1",
+  foundingResidentContexts: {},
+};
+const mixedAdaptations = await adaptationService.draftResidentBackground(emptyBatchRequest);
+assert.deepEqual(JSON.parse(mixedAdaptations.text).residents, {
+  mara: "",
+  ellis: "The observatory replaces the original research station.",
+});
+const paidMixed = calls;
+assert.deepEqual(
+  await adaptationService.draftResidentBackground({ ...emptyBatchRequest, retrieveOnly: true }),
+  mixedAdaptations,
+);
+assert.equal(calls, paidMixed);
+completion = { content: JSON.stringify({ residents: { mara: "", ellis: "" } }), finishReason: "stop" };
+assert.deepEqual(
+  JSON.parse(
+    (await adaptationService.draftResidentBackground({ ...emptyBatchRequest, actionId: "cast-adapt-none" })).text,
+  ).residents,
+  { mara: "", ellis: "" },
+);
+for (const origin of ["same-world", "different-worlds"] as const) {
+  const approved = approveFoundingBackstories(["mara"], {}, "A compatible world", "Neighbors", origin)!;
+  assert.equal(approved.mara.integration!.reviewVersion, "adaptations-v1");
+  assert.equal(approved.mara.integration!.text, "");
+  assert.equal(approved.mara.integration!.historyPolicy, undefined);
+  assert.deepEqual(
+    readResidentFoundingContext(JSON.parse(JSON.stringify(approved.mara))),
+    readResidentFoundingContext(approved.mara),
+  );
+  assert.equal(foundingBackstoriesCurrent(["mara"], approved, "A compatible world", "Neighbors", origin), true);
+  assert.equal(foundingBackstoriesCurrent(["mara"], approved, "Changed world", "Neighbors", origin), false);
+  assert.match(renderResidentFoundingContext("Mara", approved.mara), /Preserve source history/);
+  assert.doesNotMatch(
+    renderResidentFoundingContext("Mara", approved.mara),
+    /Incompatible original history is reference material/,
+  );
+  adaptedWorld.chronicle = [];
+  adaptedResident.foundingContext = approved.mara;
+  assert.deepEqual(
+    signatureEvidence(adaptedResident),
+    signatureEvidence({ ...adaptedResident, foundingContext: undefined }),
+    "no-change review does not alter signature evidence",
+  );
+  assert.ok(
+    proposeStartingTies(adaptedWorld, defaultRelationshipState(adaptedWorld.seed), []).some((tie) => tie.established),
+    "no-change review preserves original compatible relationships",
+  );
+  const review = approved.mara.integration!;
+  assert.equal(adaptationEmptyStatus(review, review.sourceKey!), "No adaptations needed");
+  assert.equal(adaptationEmptyStatus(review, "changed-source"), "Continue without adaptations");
+  assert.equal(readResidentFoundingContext({ ...approved.mara, integration: { ...review, accepted: false } }), null);
+  assert.equal(
+    readResidentFoundingContext({ ...approved.mara, integration: { ...review, reviewVersion: undefined } }),
+    null,
+  );
+}
+assert.equal(adaptationEmptyStatus(undefined, "source"), "Continue without adaptations");
+assert.equal(
+  adaptationEmptyStatus(
+    {
+      text: "",
+      accepted: false,
+      direction: "",
+      proposalReceived: true,
+      proposalFormat: "adaptations-v1",
+      sourceKey: "source",
+    },
+    "source",
+  ),
+  "No adaptations needed",
+);
+assert.equal(
+  adaptationEmptyStatus(
+    { text: "", accepted: false, direction: "", proposalReceived: true, sourceKey: "source" },
+    "source",
+  ),
+  "Continue without adaptations",
+  "legacy blank output is not a reviewed no-change result",
+);
+
+const laterNullOrigin = {
+  ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+  integration: {
+    text: "",
+    direction: "",
+    accepted: true,
+    reviewVersion: "adaptations-v1" as const,
+    sourceKey: residentBackgroundSourceKey("Legacy world", "Undecided connection", null),
+  },
+};
+assert.ok(
+  readResidentFoundingContext(laterNullOrigin),
+  "a deliberate empty review preserves a legacy undecided origin",
+);
+completion = { content: '{"adaptation":""}', finishReason: "length" };
+await assert.rejects(
+  adaptationService.draftResidentBackground({ ...emptyRequest, actionId: "adapt-empty-truncated" }),
+  /incomplete or too long/,
+);
+const differentWorldChanges = approveFoundingBackstories(
+  ["mara"],
+  {
+    mara: {
+      ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+      integration: { text: "She now works at the harbor observatory.", direction: "", accepted: false },
+    },
+  },
+  "World",
+  "Premise",
+  "different-worlds",
+)!;
+adaptedResident.foundingContext = differentWorldChanges.mara;
+assert.match(signaturePrompt(adaptedResident), /She now works at the harbor observatory/);
+assert.match(
+  renderResidentFoundingContext("Mara", adaptedResident.foundingContext),
+  /explicit approved substitutions take precedence/,
+);

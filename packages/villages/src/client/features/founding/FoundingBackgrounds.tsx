@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { FoundingField, FoundingHelp } from "./FoundingField.js";
+import { FoundingField } from "./FoundingField.js";
 import { PlayerBackgroundFields } from "./villages-player-background.js";
 import {
   residentHistoryForOrigin,
+  adaptationEmptyStatus,
   foundingBackstoriesCurrent,
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   residentBackgroundSourceKey,
@@ -63,6 +64,7 @@ export function FoundingBackgrounds(props: Props) {
       turn = ++generation.current;
     const id = retrieveOnly && actionId ? actionId : "cast_" + createVillagesClientId();
     const context = props.contexts[first] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
+    const proposalFormat = retrieveOnly ? review?.proposalFormat : ("adaptations-v1" as const);
     props.onContexts({
       ...props.contexts,
       [first]: {
@@ -70,10 +72,11 @@ export function FoundingBackgrounds(props: Props) {
         integration: {
           text: "",
           direction: "",
-          accepted: false,
           ...context.integration,
+          accepted: false,
           actionId: id,
           proposalReceived: false,
+          proposalFormat,
         },
       },
     });
@@ -88,6 +91,7 @@ export function FoundingBackgrounds(props: Props) {
           founding: true,
           actionId: id,
           retrieveOnly,
+          proposalFormat,
           playerBackground: props.playerBackground,
           foundingResidentContexts: props.contexts,
         }),
@@ -102,7 +106,7 @@ export function FoundingBackgrounds(props: Props) {
           historyMode: residentHistoryForOrigin(previous, props.source.worldOrigin),
           integration: {
             ...previous.integration,
-            text: proposal.residents[person.id]!,
+            text: proposal.residents[person.id]!.trim(),
             direction: previous.integration?.direction ?? "",
             accepted: false,
             ...(props.source.worldOrigin ? { worldOrigin: props.source.worldOrigin! } : {}),
@@ -113,26 +117,22 @@ export function FoundingBackgrounds(props: Props) {
             ),
             actionId: id,
             proposalReceived: true,
+            proposalFormat,
           },
         };
       }
       props.onContexts(contexts);
     } catch (cause) {
       if (mounted.current && turn === generation.current)
-        setError(messageFrom(cause, "Could not propose backstories. Your edits are kept."));
+        setError(messageFrom(cause, "Could not propose adaptations. Your edits are kept."));
     } finally {
       if (mounted.current && turn === generation.current) setBusy(false);
     }
   }
   return (
-    <section className="villages-forging-card villages-cast-backgrounds" aria-label="Founding backstories">
+    <section className="villages-forging-card villages-cast-backgrounds" aria-label="Village adaptations">
       <div className="villages-life-heading">
         <h3>Life in {props.villageName?.trim() || "your Village"}</h3>
-        <FoundingHelp label="Backstories">
-          These backstories connect each person to {props.villageName?.trim() || "your Village"}. Use "Propose
-          Backstories" after adding your own backstory and the Villagers you want, and their narratives can intersect if
-          appropriate.
-        </FoundingHelp>
       </div>
       {props.people.some((person) => props.contexts[person.id]?.integration?.text) &&
       !foundingBackstoriesCurrent(
@@ -142,48 +142,63 @@ export function FoundingBackgrounds(props: Props) {
         props.source.premise,
         props.source.worldOrigin,
       ) ? (
-        <p role="status">Review backstories. Continue approves the displayed versions.</p>
+        <p role="status">Review adaptations. Continue approves the displayed versions.</p>
       ) : null}
       <PlayerBackgroundFields background={props.playerBackground} onChange={props.onPlayer} disabled={props.disabled} />
-      {props.people.map((person) => (
-        <FoundingField key={person.id} title={person.name + "’s backstory"}>
-          <textarea
-            autoComplete="off"
-            aria-label={person.name + " backstory"}
-            maxLength={1200}
-            rows={3}
-            value={props.contexts[person.id]?.integration?.text ?? ""}
-            disabled={props.disabled}
-            onChange={(event) => {
-              const context = props.contexts[person.id] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
-              props.onContexts({
-                ...props.contexts,
-                [person.id]: {
-                  ...context,
-                  historyMode: residentHistoryForOrigin(context, props.source.worldOrigin),
-                  integration: {
-                    text: event.target.value,
-                    direction: context.integration?.direction ?? "",
-                    accepted: false,
-                    ...(props.source.worldOrigin ? { worldOrigin: props.source.worldOrigin! } : {}),
-                    sourceKey: residentBackgroundSourceKey(
-                      props.source.setting,
-                      props.source.premise,
-                      props.source.worldOrigin,
-                    ),
-                  },
-                },
-              });
-            }}
-          />
-        </FoundingField>
-      ))}
+      {props.people.map((person) => {
+        const emptyStatus = adaptationEmptyStatus(
+          props.contexts[person.id]?.integration,
+          residentBackgroundSourceKey(props.source.setting, props.source.premise, props.source.worldOrigin),
+        );
+        return (
+          <div key={person.id}>
+            <FoundingField title={person.name + "’s Village adaptations"}>
+              <textarea
+                autoComplete="off"
+                aria-label={person.name + " Village adaptations"}
+                placeholder="Only changes or additions needed for this Village. Leave blank if none."
+                aria-describedby={emptyStatus ? "adaptation-status-" + person.id : undefined}
+                maxLength={1200}
+                rows={3}
+                value={props.contexts[person.id]?.integration?.text ?? ""}
+                disabled={props.disabled}
+                onChange={(event) => {
+                  const context = props.contexts[person.id] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
+                  props.onContexts({
+                    ...props.contexts,
+                    [person.id]: {
+                      ...context,
+                      historyMode: residentHistoryForOrigin(context, props.source.worldOrigin),
+                      integration: {
+                        text: event.target.value,
+                        direction: context.integration?.direction ?? "",
+                        accepted: false,
+                        ...(props.source.worldOrigin ? { worldOrigin: props.source.worldOrigin! } : {}),
+                        sourceKey: residentBackgroundSourceKey(
+                          props.source.setting,
+                          props.source.premise,
+                          props.source.worldOrigin,
+                        ),
+                      },
+                    },
+                  });
+                }}
+              />
+            </FoundingField>
+            {emptyStatus ? (
+              <p id={"adaptation-status-" + person.id} role="status">
+                {emptyStatus}
+              </p>
+            ) : null}
+          </div>
+        );
+      })}
       <button
         type="button"
         disabled={props.disabled || busy || !props.people.length || !props.source.playerPersonaId}
         onClick={() => void propose()}
       >
-        {busy ? "Proposing…" : actionId ? "Try again" : "Propose Backstories"}
+        {busy ? "Proposing…" : actionId ? "Try again" : "Propose adaptations"}
       </button>
       {actionId && !review?.proposalReceived ? (
         <button type="button" disabled={props.disabled || busy} onClick={() => void propose(true)}>

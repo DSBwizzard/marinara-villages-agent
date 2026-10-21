@@ -496,7 +496,7 @@ export function useFoundVillage(ports: {
           setupWorldOrigin,
         ))
     ) {
-      setSetupProblem(residentContextProblem || "Review backstories in People, then Continue to approve them.");
+      setSetupProblem(residentContextProblem || "Review adaptations in People, then Continue to approve them.");
       setSetupStep(1);
       return;
     }

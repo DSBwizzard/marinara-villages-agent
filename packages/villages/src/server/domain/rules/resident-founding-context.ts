@@ -7,6 +7,7 @@ import { badRequest } from "./errors.js";
 
 export {
   renderResidentFoundingContext,
+  hasApprovedVillageAdaptations,
   RESIDENT_CONTINUITY_RULE,
 } from "../../../shared/helpers/resident-founding-context.js";
 export function readFoundingResidentContexts(

@@ -27,7 +27,10 @@ import {
 } from "../../domain/rules/zone-events.js";
 import { contactPosition } from "../../domain/rules/venue-contact.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import { renderResidentFoundingContext } from "../../domain/rules/resident-founding-context.js";
+import {
+  renderResidentFoundingContext,
+  hasApprovedVillageAdaptations,
+} from "../../domain/rules/resident-founding-context.js";
 import {
   initialStaging,
   replayStaging,
@@ -653,7 +656,7 @@ export function createSceneWriting({
           const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
           const card = resident ? readEffectiveVillagerCard(resident) : null;
           return card?.postHistoryInstructions
-            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}${card.foundingContext?.historyMode === "village" || card.foundingContext?.integration?.historyPolicy === "adapted-v1" ? "\n" + renderResidentFoundingContext(card.name, card.foundingContext) : ""}`
+            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}${card.foundingContext?.historyMode === "village" || hasApprovedVillageAdaptations(card.foundingContext) ? "\n" + renderResidentFoundingContext(card.name, card.foundingContext) : ""}`
             : "";
         }),
       ]),
