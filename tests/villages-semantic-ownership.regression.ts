@@ -772,7 +772,8 @@ async function main() {
   delete scene.openingIntroductionResidentId;
   state.opening.stage = "gathering";
   state.opening.gatheringSceneId = scene.id;
-  openingSignal = null;
+  // Real providers can return a redundant individual pitch alongside gathering evidence.
+  openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
   const contribution = { residentId: "host", quote: pitchLine.content };
   for (const [label, rows] of [
     ["Duplicate contributors", [contribution, contribution]],
@@ -791,6 +792,17 @@ async function main() {
   gatheringContributions = [{ residentId: "host", quote: pitchLine.content }];
   const completeGathering = await service.exchange(scene, "Complete gathering ideas", [pitchLine], null);
   assert.equal((completeGathering.effects.openingContext as any).gatheringComplete, true);
+  assert.equal(completeGathering.effects.openingSignal, null, "A gathering cannot record an individual pitch");
+  assert.equal((completeGathering.effects.openingContext as any).proposalFingerprint, undefined);
+  assert.deepEqual(state.opening.reveals, [], "Gathering completion does not mark individual introductions heard");
+  openingSignal = { kind: "first-use", residentId: "host", quote: pitchLine.content, playerQuote: "invented" };
+  const extraFirstUse = await service.exchange(
+    scene,
+    "Gathering with irrelevant first-use metadata",
+    [pitchLine],
+    null,
+  );
+  assert.equal(extraFirstUse.effects.openingSignal, null, "Gathering metadata cannot finish the tutorial");
   gatheringContributions = undefined;
   state.opening = undefined;
   scene.activeIds = [];
