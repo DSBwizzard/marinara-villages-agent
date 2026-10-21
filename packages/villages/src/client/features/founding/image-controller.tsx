@@ -26,6 +26,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly setupMapNegativePrompt: FoundingState["setupMapNegativePrompt"];
   readonly setupMapPrompt: FoundingState["setupMapPrompt"];
   readonly setupMapRequestRef: FoundingState["setupMapRequestRef"];
+  readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupWorldFacts: FoundingState["setupWorldFacts"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
@@ -82,6 +83,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
           negative:
             setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt ? undefined : setupMapNegativePrompt,
           setting: setupSetting,
+          worldName: ports.setupWorldName,
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           sceneryArtStyle: sceneryStyle,
@@ -151,8 +153,8 @@ export function createFoundingGenerateSetupImage(ports: {
   readonly personalizeHomes: FoundingState["personalizeHomes"];
   readonly sceneryStyle: FoundingState["sceneryStyle"];
   readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
-  readonly selectedResidentContexts: {
-    [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
+  readonly selectedResidentAdmissions: {
+    [k: string]: import("../../../shared/helpers/resident-admission").ResidentAdmission;
   };
   readonly setSelectedSetupVenueId: FoundingState["setSelectedSetupVenueId"];
   readonly setSetupImageTarget: FoundingState["setSetupImageTarget"];
@@ -169,6 +171,7 @@ export function createFoundingGenerateSetupImage(ports: {
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
   readonly setupLoreTokenBudgetDraft: FoundingState["setupLoreTokenBudgetDraft"];
   readonly setupName: FoundingState["setupName"];
+  readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
   readonly setupWorldFacts: FoundingState["setupWorldFacts"];
@@ -187,7 +190,7 @@ export function createFoundingGenerateSetupImage(ports: {
       personaDraft,
       sceneryStyle,
       sceneryStyleProfileId,
-      selectedResidentContexts,
+      selectedResidentAdmissions,
       setSelectedSetupVenueId,
       setSetupImageTarget,
       setSetupProblem,
@@ -260,8 +263,8 @@ export function createFoundingGenerateSetupImage(ports: {
           zoneAppearance: selectedArea?.description,
           privateOwnerId: area === "private" ? "player" : undefined,
           privateDescription: description,
-          residentFoundingContext: venue.occupancy.residentCharacterId
-            ? selectedResidentContexts[venue.occupancy.residentCharacterId]
+          residentAdmission: venue.occupancy.residentCharacterId
+            ? selectedResidentAdmissions[venue.occupancy.residentCharacterId]
             : undefined,
           playerPersonaId: personaDraft,
           sceneryArtStyle: sceneryStyle,

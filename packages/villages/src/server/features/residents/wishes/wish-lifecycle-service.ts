@@ -1,3 +1,4 @@
+import { admissionLoreContext } from "../../../../shared/helpers/resident-admission.js";
 import { foundingRequestMessages } from "../../../domain/rules/founding-requests.js";
 import type { CompactFoundingContext } from "../../../domain/rules/compact-founding-rules.js";
 import {
@@ -245,7 +246,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     characterId: string;
     now: string;
     foundingContract?: 1;
-    foundingContext?: CompactFoundingContext;
+    admission?: CompactFoundingContext;
     savedProposal?: Record<string, unknown>;
   }): Promise<WishAttempt> {
     const state = structuredClone(input.state),
@@ -275,7 +276,14 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         : await backgroundSetting("wishLore", () =>
             readVillageLore(
               state.selectedLorebookIds,
-              [state.setting, card.name, card.summary, card.personality].join("\n"),
+              [
+                state.setting,
+                admissionLoreContext(state.worldName, [resident.admission]),
+                card.name,
+                card.summary,
+                card.personality,
+                card.backstory,
+              ].join("\n"),
               undefined,
               Math.min(state.loreTokenBudget, 400),
             ),
@@ -287,7 +295,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       );
       const size = selectWishSize(job.id);
       const messages: CapabilityLanguageModelMessage[] = founding
-        ? foundingRequestMessages(input.foundingContext!, "wish", known)
+        ? foundingRequestMessages(input.admission!, "wish", known)
         : [
             {
               role: "system",
@@ -312,7 +320,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
                   name: card.name,
                   profile: venueCardProfile({
                     ...villagerCardFromSnapshot(card),
-                    foundingContext: resident.foundingContext,
+                    admission: resident.admission,
                   }),
                 },
                 lore: lore.join("\n").slice(0, 1800),
@@ -546,7 +554,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         capturedAt: resident.cardSnapshot.capturedAt,
         now: villageNow().toISOString(),
         foundingContract: 1,
-        foundingContext: context,
+        admission: context,
         savedProposal,
       },
     });

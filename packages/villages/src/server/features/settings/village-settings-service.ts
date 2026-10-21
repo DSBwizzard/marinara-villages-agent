@@ -1,3 +1,4 @@
+import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import type { VillageSnapshot, VillageState, VillageStoryPace } from "../../domain/models/world.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
@@ -141,10 +142,11 @@ export function createVillageSettings({
    * village has venues, editing the wording of its setting must never overwrite
    * places the player has since renamed, reworded or added by hand.
    */
-  async function setVillageWorldOrigin(value: unknown): Promise<VillageSnapshot> {
-    if (value !== "same-world" && value !== "different-worlds") throw badRequest("Choose a world origin.");
+  async function setVillageWorldName(value: unknown): Promise<VillageSnapshot> {
+    const worldName = readWorldName(value);
+    if (worldName === null) throw badRequest("Use a world name within 120 characters.");
     await mutateVillageState((state) => {
-      state.worldOrigin = value;
+      state.worldName = worldName;
     });
     return buildVillageSnapshot();
   }
@@ -237,7 +239,7 @@ export function createVillageSettings({
     setVillageName,
     setVillagePlayer,
     setVillageSetting,
-    setVillageWorldOrigin,
+    setVillageWorldName,
     addNotice,
     removeNoticeAt,
     setScenerySettings,

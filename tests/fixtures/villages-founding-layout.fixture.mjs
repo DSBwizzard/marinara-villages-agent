@@ -133,11 +133,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
             founded ? "Willowbrook" : "",
             "Only founded names prefill; drafts restore independently",
           );
-          assert.equal(
-            values.setSetupWorldOrigin,
-            founded ? null : "different-worlds",
-            "New Villages default to different worlds while established saves preserve their framing",
-          );
+          assert.equal(values.setSetupWorldName, "", "World identity is optional and has no generated default");
           assert.equal(values.setSetupFoundingReason, reason);
           assert.equal(values.setSetupFoundingDetails, details);
           assert.equal(Object.hasOwn(values, "setSetupFoundingGuidance"), false);
@@ -766,23 +762,8 @@ export async function verifyFoundingLayout(group) {
         );
         await expect(root.locator(".villages-founding-connections")).toBeHidden();
         const cast = root.locator(".villages-people-columns>section").first();
-        const backstories = root.getByRole("region", { name: "Village adaptations", exact: true });
-        await expect(backstories.getByRole("heading", { name: "Life in Willowbrook", exact: true })).toBeVisible();
-        await expect(cast.locator(".villages-people-selected small, .villages-people-identity small")).toHaveCount(0);
-        const origin = cast.getByLabel("Character origins", { exact: true });
-        await expect(origin).toBeVisible();
-        const pickerBox = await cast.locator(".villages-people-selected").boundingBox();
-        const originBox = await origin.boundingBox();
-        if (pickerBox) assert.ok(originBox.y >= pickerBox.y + pickerBox.height, "Origins follows the Villagers picker");
-        await origin.selectOption("same-world");
-        await cast.getByRole("button", { name: "Help: Character Origins", exact: true }).click();
-        await expect(
-          root.getByText(
-            "Character Origins defines how characters’ existing backstories fit the setting of the Village.",
-            { exact: true },
-          ),
-        ).toBeVisible();
-        await root.getByRole("button", { name: "Close Character Origins help", exact: true }).click();
+        const backstories = root.getByRole("region", { name: "Starting situations", exact: true });
+        await expect(cast.getByLabel("Character origins", { exact: true })).toHaveCount(0);
         const castBox = await cast.boundingBox(),
           storyBox = await backstories.boundingBox();
         assert.ok(
@@ -790,16 +771,13 @@ export async function verifyFoundingLayout(group) {
           "backstories sit beside the cast on desktop and below it on phone",
         );
 
-        await root.getByRole("button", { name: "Propose adaptations", exact: true }).click();
-        const past = root.getByLabel("Finn Village adaptations", { exact: true });
-        await expect(past).toHaveValue(/settled here/);
-        await past.fill(" ");
-        await expect(root.getByText("Continue without adaptations", { exact: true })).toBeVisible();
+        const past = root.getByLabel("Finn starting situation", { exact: true });
+        await expect(past).toHaveValue("");
+        await root.getByLabel("Finn homeworld", { exact: true }).fill("Othiras");
         await forward("Continue to Map").click();
         await expect(root).toHaveAttribute("data-step", "2");
         await forward("Back").click();
         await expect(root).toHaveAttribute("data-step", "1");
-        await expect(root.getByText("No adaptations needed", { exact: true })).toBeVisible();
         await past.fill("Finn has always been guardian of a relic in the observatory.");
         await root.getByLabel("Your backstory", { exact: true }).fill("I came to help restore the observatory.");
         await bounds();
@@ -990,7 +968,7 @@ export async function verifyFoundingLayout(group) {
         if (width === 1366) {
           await page.evaluate(async () => {
             const db = await new Promise((resolve) => {
-              const open = indexedDB.open("villages-founding-v2", 1);
+              const open = indexedDB.open("villages-founding-v3", 1);
               open.onsuccess = () => resolve(open.result);
             });
             await new Promise((resolve, reject) => {
@@ -1182,7 +1160,7 @@ export async function verifyFoundingLayout(group) {
           await forward("Save & exit").click();
           await page.evaluate(async () => {
             const db = await new Promise((resolve) => {
-              const request = indexedDB.open("villages-founding-v2", 1);
+              const request = indexedDB.open("villages-founding-v3", 1);
               request.onsuccess = () => resolve(request.result);
             });
             await new Promise((resolve) => {
@@ -1684,7 +1662,7 @@ export async function verifyFoundingLayout(group) {
           await competingTab.goto("http://villages.test/");
           await competingTab.evaluate(async () => {
             const db = await new Promise((resolve) => {
-              const open = indexedDB.open("villages-founding-v2", 1);
+              const open = indexedDB.open("villages-founding-v3", 1);
               open.onsuccess = () => resolve(open.result);
             });
             await new Promise((resolve) => {
@@ -1852,7 +1830,9 @@ export async function verifyFoundingLayout(group) {
         }
         await forward("Review village").click();
         await expect(root).toHaveAttribute("data-step", "4");
-        await expect(root.getByRole("button", { name: "Change people & adaptations", exact: true })).toBeVisible();
+        await expect(
+          root.getByRole("button", { name: "Change people & starting situations", exact: true }),
+        ).toBeVisible();
         await expect(root.locator(".villages-resident-review").filter({ hasText: "Finn" })).toContainText(
           /[Gg]uardian of a relic/,
         );
@@ -1866,7 +1846,7 @@ export async function verifyFoundingLayout(group) {
             await forward("Save & exit").click();
             await page.evaluate(async (legacyStep) => {
               const db = await new Promise((resolve) => {
-                const open = indexedDB.open("villages-founding-v2", 1);
+                const open = indexedDB.open("villages-founding-v3", 1);
                 open.onsuccess = () => resolve(open.result);
               });
               await new Promise((resolve, reject) => {
@@ -1913,11 +1893,10 @@ export async function verifyFoundingLayout(group) {
         assert.equal(foundingPayload.venues.length, homeCount + 2);
         assert.ok(foundingPayload.townMapImage.startsWith("data:image/png;base64,"));
         assert.equal(foundingPayload.playerBackground, "I came to help restore the observatory.");
-        assert.equal(foundingPayload.foundingResidentContexts.finn.integration.accepted, true);
-        assert.equal(foundingPayload.foundingResidentContexts.finn.integration.historyPolicy, "adapted-v1");
-        assert.match(foundingPayload.foundingResidentContexts.finn.integration.text, /always been guardian/);
+        assert.equal(foundingPayload.foundingResidentAdmissions.finn.homeworld, "Othiras");
+        assert.match(foundingPayload.foundingResidentAdmissions.finn.startingSituation, /always been guardian/);
         assert.deepEqual(
-          Object.keys(foundingPayload.foundingResidentContexts).sort(),
+          Object.keys(foundingPayload.foundingResidentAdmissions).sort(),
           foundingPayload.foundingCharacterIds.slice().sort(),
         );
         assert.deepEqual(

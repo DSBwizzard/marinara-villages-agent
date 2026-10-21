@@ -1,3 +1,4 @@
+import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { readOpeningProposal } from "../../domain/rules/opening-project.js";
 import { proposalSourceCompatible } from "../../domain/rules/opening-proposal-source.js";
@@ -125,7 +126,9 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       influenceSettings: villager.scheduleInfluence,
       influenceHints: villager.scheduleInfluence?.enabled ? villager.agenda?.scheduleInfluenceSnapshot?.unresolved : [],
       village: village.name,
-      setting: agendaSetting,
+      setting: [agendaSetting, village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : ""]
+        .filter(Boolean)
+        .join("\n"),
       home: (() => {
         const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
         return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
@@ -136,6 +139,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         village.selectedLorebookIds,
         [
           agendaSetting,
+          admissionLoreContext(village.worldName, [villager.admission]),
+          effectiveCard.backstory,
           effectiveCard.name,
           effectiveCard.summary,
           effectiveCard.personality,

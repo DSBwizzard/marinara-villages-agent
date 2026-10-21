@@ -1,5 +1,3 @@
-import { createResidentBackgrounds } from "../features/residents/resident-background-service.js";
-import { configureResidentBackgrounds } from "../features/residents/resident-background.js";
 import { backgroundJobSnapshot, backgroundLegacyFounding, retireLegacyFounding } from "../jobs/background-work.js";
 import { readFoundingResidentContext, adoptFoundingRoutine } from "../features/residents/resident-agendas.js";
 import { queueFoundingWish } from "../features/residents/wishes/wish-lifecycle.js";
@@ -935,19 +933,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       toCatalogEntry,
     }),
   );
-  const releaseResidentBackgrounds = configureResidentBackgrounds(
-    createResidentBackgrounds({
-      readLinkedPersona,
-      villagesDocuments,
-      mutateDocument: createDocumentMutator(villagesDocuments),
-      readVillageState,
-      findVillagerCard,
-      readVillageLore,
-      villagesLanguageModels,
-      villagesConnectionIdFor,
-      completeWithRoom,
-    }),
-  );
   const releaseResidentRoster = configureResidentRoster(
     createResidentRoster({
       preparedSpriteManager,
@@ -1182,7 +1167,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSpriteSetup();
     releaseTownMapReview();
     releaseVenueRequests();
-    releaseResidentBackgrounds();
     releaseResidentRoster();
     releaseResidentCards();
     releasePersonaCache();

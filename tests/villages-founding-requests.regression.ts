@@ -24,11 +24,9 @@ const card = {
   scenario: "AUTHOR-SCENARIO",
   exampleDialogue: "AUTHOR-DIALOGUE",
   postHistoryInstructions: "AUTHOR-POST",
-  foundingContext: {
-    historyMode: "continue",
-    storyRole: "new-arrival",
-    background: "AUTHOR-CIRCUMSTANCES",
-    customDescription: "",
+  admission: {
+    homeworld: "Othiras",
+    startingSituation: "AUTHOR-CIRCUMSTANCES",
   },
 } as const;
 const context = {
@@ -51,7 +49,7 @@ for (const task of ["routine", "wish"] as const) {
     data = JSON.parse(messages[1].content as string);
   assert.deepEqual(data.identity, foundingIdentity(card), "authored identity is preserved in full");
   assert((messages[0].content as string).toLowerCase().includes("json"));
-  assert(messages.reduce((n, row) => n + (row.content as string).length, 0) <= (task === "routine" ? 4000 : 4500));
+  assert(messages.reduce((n, row) => n + (row.content as string).length, 0) <= (task === "routine" ? 6000 : 6500));
   assert.equal((JSON.stringify(messages).match(/AUTHOR-BACKSTORY/g) ?? []).length, 1, "identity is supplied once");
 }
 const long = foundingRequestMessages({ ...context, card: { ...card, description: "d".repeat(40000) } }, "routine");

@@ -1,7 +1,3 @@
-import {
-  approveFoundingBackstories,
-  DEFAULT_RESIDENT_FOUNDING_CONTEXT,
-} from "../packages/villages/src/shared/helpers/resident-founding-context.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
 import { clientImplementation } from "./client-source.js";
 // Villages — proof for the pictures a place can have.
@@ -796,18 +792,9 @@ async function main() {
     narrationConnectionId: "connection-narration",
   });
   const founded = await post("/api/villages/setup", {
-    worldOrigin: "different-worlds",
-    foundingResidentContexts: approveFoundingBackstories(
-      ["character-millie"],
-      {
-        "character-millie": {
-          ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
-          integration: { text: "Millie joins the group to open the riverside path.", direction: "", accepted: false },
-        },
-      },
-      settingText,
-      "The group arrives at the riverside and opens the first shared path.",
-      "different-worlds",
+    worldName: "different-worlds",
+    foundingResidentAdmissions: Object.fromEntries(
+      ["character-millie"].map((id) => [id, { homeworld: "Othiras", startingSituation: "Already living here." }]),
     ),
     name: "Ashcroft",
     townMapImage: "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),

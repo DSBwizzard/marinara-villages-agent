@@ -1,6 +1,6 @@
 import type { VillagerCard } from "../models/catalog-model.js";
 import { badRequest } from "./errors.js";
-import { renderResidentFoundingContext } from "./resident-founding-context.js";
+import { renderResidentAdmission } from "./resident-admission.js";
 import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 
 /** The authored person is complete; circumstances are supplied separately. */
@@ -26,7 +26,7 @@ export function venueCardProfile(
       .filter(([, value]) => value?.trim())
       .map(([label, value]) => `${label}:\n${expand(value!)}`)
       .join("\n\n") +
-    (card.foundingContext ? "\n\n" + renderResidentFoundingContext(card.name, card.foundingContext) : "")
+    (card.admission ? "\n\n" + renderResidentAdmission(card.name, card.admission) : "")
   );
 }
 

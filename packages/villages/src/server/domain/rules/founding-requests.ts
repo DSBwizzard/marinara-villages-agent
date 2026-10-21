@@ -1,3 +1,4 @@
+import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
 export const OPENING_PROPOSAL_INSTRUCTIONS = `Also return openingProposal:{name,description,situation,venueClass:"workplace|community|other",established:boolean,provenance,work,firstUse}. Prepare this resident's own modest Project idea grounded in identity, founding history, setting, lore and existing places. Produce a distinct new playable Venue without duplicating a supplied Venue. A place may already exist in lore: preserve its history and working condition. situation is the broad concern/interest they can mention without pitching the solution. provenance gives supporting setting facts. work describes useful preparation or coordination fitting twelve real hours, not necessarily construction. Never invent defects, lost access, ownership, supplies, promises or consent to justify work. Prefer ordinary coordination and available finite resources. firstUse describes an observable intended use, never a prescribed event. Preserve nonhuman identities. All fields must suit a public pitch without secrets, private motives or undisclosed personal history. This unspoken idea is separate from a Wish or commitment.`;
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
@@ -32,8 +33,8 @@ export function foundingIdentity(card: Record<string, unknown>): Record<string, 
       "backstory",
       "appearance",
       "exampleDialogue",
-      "foundingContext",
-    ].map((key) => [key, card[key] ?? (key === "tags" ? [] : key === "foundingContext" ? null : "")]),
+      "admission",
+    ].map((key) => [key, card[key] ?? (key === "tags" ? [] : key === "admission" ? null : "")]),
   );
 }
 export function foundingRequestMessages(
@@ -91,6 +92,8 @@ export function foundingRequestMessages(
           : task === "opening"
             ? "Return JSON only: {openingProposal:{...}}. " + OPENING_PROPOSAL_INSTRUCTIONS
             : WISH_INSTRUCTIONS) +
+        "\n" +
+        RESIDENT_CONTINUITY_RULE +
         influence +
         description +
         "\n" +

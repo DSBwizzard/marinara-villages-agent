@@ -1,4 +1,4 @@
-import { foundingBackstoriesCurrent, readWorldOrigin } from "../../../shared/helpers/resident-founding-context.js";
+import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { randomUUID } from "node:crypto";
 import { initialOpening } from "../../domain/rules/opening-project.js";
@@ -30,7 +30,7 @@ import {
   villageCurrentSetting,
 } from "../../domain/rules/prompt-preset.js";
 import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
-import { readFoundingResidentContexts } from "../../domain/rules/resident-founding-context.js";
+import { readFoundingResidentAdmissions } from "../../domain/rules/resident-admission.js";
 import { readScenarioImprint, readWorldFacts } from "../../domain/rules/scenario-rules.js";
 import { DEFAULT_SCENERY_STYLE, readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
@@ -90,12 +90,12 @@ export function createFoundingSetup({
   async function runVillageSetup(input: {
     foundingCharacterIds?: unknown;
     foundingSpriteRevisions?: unknown;
-    foundingResidentContexts?: unknown;
+    foundingResidentAdmissions?: unknown;
     name?: unknown;
     timeZone?: unknown;
     setting?: unknown;
     foundingReason?: unknown;
-    worldOrigin?: unknown;
+    worldName?: unknown;
     foundingDetails?: unknown;
     foundingGuidance?: unknown;
     playerBackground?: unknown;
@@ -126,8 +126,8 @@ export function createFoundingSetup({
       throw badRequest("Starting circumstances must be text of at most 2,000 characters.");
     }
     const foundingDetails = input.foundingDetails.trim();
-    if (input.worldOrigin != null && !["same-world", "different-worlds"].includes(String(input.worldOrigin)))
-      throw badRequest("Choose a valid world origin.");
+    if (input.worldName !== undefined && readWorldName(input.worldName) === null)
+      throw badRequest("Use a world name within 120 characters.");
     if (typeof (input.foundingGuidance ?? "") !== "string" || String(input.foundingGuidance ?? "").length > 500) {
       throw badRequest("Narrative direction must be text of at most 500 characters.");
     }
@@ -190,30 +190,11 @@ export function createFoundingSetup({
     const assignedResidents = new Set(
       places.flatMap((place) => (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : [])),
     );
-    const foundingContexts = founding
-      ? readFoundingResidentContexts(input.foundingResidentContexts, [...assignedResidents])
+    const admissions = founding
+      ? readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents])
       : {};
-    if (founding) {
-      const origin = readWorldOrigin(input.worldOrigin);
-      if (
-        !origin ||
-        !foundingBackstoriesCurrent([...assignedResidents], foundingContexts, setting, foundingDetails, origin)
-      )
-        throw badRequest("Review a backstory for each villager in People, then Continue to approve them.");
-      if (
-        origin === "same-world" &&
-        Object.values(foundingContexts).some(
-          (context) =>
-            !["new", "village"].includes(context.historyMode) &&
-            (context.historyMode !== "adapt" ||
-              (context.integration?.historyPolicy !== "adapted-v1" &&
-                !(context.integration?.reviewVersion === "adaptations-v1" && !context.integration.text.trim()))),
-        )
-      )
-        throw badRequest("Review Same world adaptations in People, then Continue to approve them.");
-    }
-    if (!founding && input.foundingResidentContexts !== undefined)
-      throw badRequest("Resident starting backstories are fixed after founding.");
+    if (!founding && input.foundingResidentAdmissions !== undefined)
+      throw badRequest("Starting situations are fixed after founding.");
     if (founding && input.foundingCharacterIds !== undefined)
       validateFoundingRoster(input.foundingCharacterIds, assignedResidents, new Set(cardNames.keys()));
     if (founding && privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
@@ -337,8 +318,7 @@ export function createFoundingSetup({
       if (founding && typeof input.timeZone === "string") state.timeZone = input.timeZone;
       state.foundingReason = foundingReason;
       state.foundingDetails = foundingDetails;
-      if (input.worldOrigin !== undefined)
-        state.worldOrigin = input.worldOrigin as "same-world" | "different-worlds" | null;
+      if (input.worldName !== undefined) state.worldName = readWorldName(input.worldName)!;
       state.foundingGuidance = foundingGuidance;
       state.scenarioImprint = scenarioImprint;
       state.worldFacts = worldFacts;
@@ -405,7 +385,7 @@ export function createFoundingSetup({
           characterId: card.id,
           spriteManager: preparedSprites.get(card.id),
           identityDescription: initialIdentityDescription(),
-          ...(founding ? { foundingContext: foundingContexts[card.id] } : {}),
+          admission: admissions[card.id] ?? { homeworld: "", startingSituation: "" },
           cardSnapshot: {
             ...snapshotFromCard(card, 1),
           },

@@ -1,7 +1,7 @@
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { badRequest } from "./errors.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { renderResidentFoundingContext } from "./resident-founding-context.js";
+import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
 import { resolveVenueZone } from "./venue-zones.js";
 
 export const DEFAULT_SCENERY_STYLE =
@@ -11,12 +11,15 @@ export function readSceneryStyle(value: unknown): string {
     throw badRequest("Scenery art style must be at most 600 characters.");
   return value.trim();
 }
-export function sceneryPrompt(required: string[], optional: string[], style = ""): string {
+export function sceneryPrompt(required: string[], optional: string[], style = "", essential: string[] = []): string {
   const framing = [VILLAGE_SHARED_SETTING_RULE, style ? `Art style for this scenery: ${style}.` : ""]
     .filter(Boolean)
     .join("\n");
+  const preserved = essential.filter(Boolean).join("\n");
   const parts = required.filter(Boolean);
-  const budget = 4000 - framing.length - parts.length;
+  const budget = 4000 - framing.length - preserved.length - parts.length - 2;
+  if (budget < 0)
+    throw badRequest("The complete starting situations do not fit the image prompt. No image was requested.");
   // Keep short scene instructions intact and share the remaining room between long descriptions.
   let low = 0;
   let high = Math.max(0, budget);
@@ -30,6 +33,7 @@ export function sceneryPrompt(required: string[], optional: string[], style = ""
       part.length <= low ? part : part.slice(0, Math.max(0, low - 1)).replace(/[\uD800-\uDBFF]$/u, "") + "…",
     ),
     framing,
+    preserved,
   ].join("\n");
   for (const part of optional) if (part && prompt.length + part.length + 1 <= 4000) prompt += "\n" + part;
   return prompt;
@@ -37,7 +41,7 @@ export function sceneryPrompt(required: string[], optional: string[], style = ""
 export function sceneryCardsContext(
   cards: readonly {
     name: string;
-    foundingContext?: import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext;
+    admission?: import("../../../shared/helpers/resident-admission.js").ResidentAdmission;
     summary?: string;
     personality?: string;
     backstory?: string;
@@ -50,19 +54,16 @@ export function sceneryCardsContext(
     .map((card) => {
       const name = card.name.slice(0, Math.min(60, Math.floor(allowance / 4)));
       const remaining = Math.max(0, allowance - name.length - 12);
-      return (
-        [
-          name,
-          card.personality?.slice(0, Math.floor(remaining * 0.35)),
-          card.summary?.slice(0, Math.floor(remaining * 0.2)),
-          card.description?.slice(0, Math.floor(remaining * 0.2)),
-          card.backstory?.slice(0, Math.floor(remaining * 0.15)),
-          card.appearance?.slice(0, Math.floor(remaining * 0.1)),
-        ]
-          .filter(Boolean)
-          .join("; ") +
-        (card.foundingContext ? "\n" + renderResidentFoundingContext(card.name, card.foundingContext) : "")
-      );
+      return [
+        name,
+        card.personality?.slice(0, Math.floor(remaining * 0.35)),
+        card.summary?.slice(0, Math.floor(remaining * 0.2)),
+        card.description?.slice(0, Math.floor(remaining * 0.2)),
+        card.backstory?.slice(0, Math.floor(remaining * 0.15)),
+        card.appearance?.slice(0, Math.floor(remaining * 0.1)),
+      ]
+        .filter(Boolean)
+        .join("; ");
     })
     .join("\n");
 }
@@ -75,7 +76,7 @@ export function sceneryCharacterContext(village: VillageState, venue: VillageVen
   return sceneryCardsContext(
     village.villagers
       .filter((person) => ids.includes(person.characterId))
-      .map((person) => ({ ...person.cardSnapshot, foundingContext: person.foundingContext })),
+      .map((person) => ({ ...person.cardSnapshot, admission: person.admission })),
   );
 }
 
@@ -93,6 +94,7 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     village.sceneryArtStyle,
     village.sceneryStyleProfileId ?? null,
     village.setting,
+    village.worldName,
     village.worldFacts,
     (venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault) ? village.selectedLorebookIds : [],
     personality && ownerId === "player" ? [village.playerPersonaId, village.playerName, village.playerDescription] : [],
@@ -100,9 +102,7 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
       ? village.villagers
           .filter((person) => ids.includes(person.characterId))
           .map((person) =>
-            person.foundingContext
-              ? { ...person.cardSnapshot, foundingContext: person.foundingContext }
-              : person.cardSnapshot,
+            person.admission ? { ...person.cardSnapshot, admission: person.admission } : person.cardSnapshot,
           )
       : [],
     venue.name,
@@ -127,4 +127,15 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
       : null,
     venue.improvements?.filter((upgrade) => upgrade && (upgrade.spaceId === zoneId || upgrade.id === zone?.upgradeId)),
   ]);
+}
+
+export function sceneryAdmissionContext(village: VillageState, venue: VillageVenue): string[] {
+  if (!(venue.imageContext?.useAssignedVillagerContext ?? village.personalizeVenueImagesByDefault)) return [];
+  const ids = [...(venue.residentIds ?? []), ...(venue.workerIds ?? [])];
+  const people = village.villagers.filter((person) => ids.includes(person.characterId));
+  if (!people.length) return [];
+  return [
+    RESIDENT_CONTINUITY_RULE,
+    ...people.map((person) => person.cardSnapshot.name + ": " + JSON.stringify(person.admission)),
+  ];
 }

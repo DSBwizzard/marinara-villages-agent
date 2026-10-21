@@ -1,7 +1,4 @@
-import {
-  approveFoundingBackstories,
-  DEFAULT_RESIDENT_FOUNDING_CONTEXT,
-} from "../packages/villages/src/shared/helpers/resident-founding-context.js";
+import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
@@ -32,18 +29,9 @@ function deferred() {
 function input(name: string) {
   return {
     name,
-    worldOrigin: "same-world",
-    foundingResidentContexts: approveFoundingBackstories(
-      ["same"],
-      {
-        same: {
-          ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
-          integration: { text: "An observatory keeper who grew up in this world.", direction: "", accepted: false },
-        },
-      },
-      "An observatory village",
-      "We begin our first day as neighbours.",
-      "same-world",
+    worldName: "same-world",
+    foundingResidentAdmissions: Object.fromEntries(
+      ["same"].map((id) => [id, { homeworld: "Othiras", startingSituation: "Already living here." }]),
     ),
     setting: "An observatory village",
     townMapImage: "test-map",
@@ -258,32 +246,12 @@ await assert.rejects(
   /first day|brings you/,
 );
 assert.deepEqual(direct.calls, ["read"], "First-day validation precedes external connections and generation.");
-await assert.rejects(
-  direct.service.runVillageSetup({ ...input("Direct"), foundingResidentContexts: undefined }),
-  /Review a backstory/,
-);
-await assert.rejects(
-  direct.service.runVillageSetup({ ...input("Direct"), worldOrigin: undefined }),
-  /Review a backstory/,
-);
-const unreviewed = structuredClone(input("Direct"));
-unreviewed.foundingResidentContexts!.same.integration!.accepted = false;
-await assert.rejects(direct.service.runVillageSetup(unreviewed), /valid resident history/);
-const outdatedPolicy = structuredClone(input("Direct"));
-delete outdatedPolicy.foundingResidentContexts!.same.integration!.historyPolicy;
-await assert.rejects(direct.service.runVillageSetup(outdatedPolicy), /Review Same world adaptations/);
 const noChangesFixture = fixture("No changes");
-const noChangesInput = input("No changes");
-noChangesInput.foundingResidentContexts = approveFoundingBackstories(
-  ["same"],
-  {},
-  noChangesInput.setting,
-  noChangesInput.foundingDetails,
-  "same-world",
-);
+const noChangesInput = { ...input("No changes"), foundingResidentAdmissions: undefined, worldName: undefined };
 await noChangesFixture.service.runVillageSetup(noChangesInput);
-assert.equal(noChangesFixture.state.villagers[0]!.foundingContext!.integration!.text, "");
-assert.equal(noChangesFixture.state.villagers[0]!.foundingContext!.integration!.reviewVersion, "adaptations-v1");
+assert.deepEqual(noChangesFixture.state.villagers[0].admission, EMPTY_RESIDENT_ADMISSION);
+const invalid = { ...input("Invalid"), foundingResidentAdmissions: { stranger: EMPTY_RESIDENT_ADMISSION } };
+await assert.rejects(direct.service.runVillageSetup(invalid), /selected/);
 const result = await direct.service.runVillageSetup(input("Direct"));
 assert.equal(result.village.name, "Direct");
 assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");
@@ -310,7 +278,7 @@ await assert.rejects(
 assert.deepEqual(direct.state, saved);
 await direct.service.runVillageSetup({
   ...input("Direct"),
-  foundingResidentContexts: undefined,
+  foundingResidentAdmissions: undefined,
   foundingSpriteRevisions: { same: -1 },
 });
 assert.equal(

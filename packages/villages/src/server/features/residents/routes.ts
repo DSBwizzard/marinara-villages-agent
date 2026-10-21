@@ -1,4 +1,3 @@
-import { draftResidentBackground } from "./resident-background.js";
 import {
   buildVillageAgendas,
   clearVillagerAgenda,
@@ -57,21 +56,14 @@ export function registerResidentRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{ Body: unknown }>("/villagers/background/draft", async (request, reply) => {
-    try {
-      return await draftResidentBackground(request.body);
-    } catch (error) {
-      return fail(reply, error, "drafting resident background");
-    }
-  });
-  app.post<{ Body: { characterId?: unknown; background?: unknown; spriteSetupRevision?: number } }>(
+  app.post<{ Body: { characterId?: unknown; admission?: unknown; spriteSetupRevision?: number } }>(
     "/villagers",
     async (request, reply) => {
       try {
         await addVillager(
           readCharacterId(request.body?.characterId),
           request.body?.spriteSetupRevision,
-          request.body?.background,
+          request.body?.admission,
         );
         return await buildVillageSnapshot();
       } catch (error) {

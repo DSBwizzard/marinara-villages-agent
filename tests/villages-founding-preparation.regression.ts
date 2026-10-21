@@ -57,11 +57,9 @@ function fixture(seeded = true) {
     foundingPreparation: { status: "pending", completedIds: [], currentId: "", error: "", venueDetailsSeeded: seeded },
     villagers: names.map((name, index) => ({
       characterId: ["aqua", "feddy", "sneak"][index],
-      foundingContext: {
-        historyMode: "continue",
-        storyRole: "new-arrival",
-        customDescription: "",
-        background: "STARTING-CONTEXT-" + name + ": former home is elsewhere; current work undecided.",
+      admission: {
+        homeworld: "Othiras",
+        startingSituation: "STARTING-CONTEXT-" + name + ": former home is elsewhere; current work undecided.",
       },
       cardSnapshot: {
         id: ["aqua", "feddy", "sneak"][index],
@@ -162,7 +160,7 @@ const release = configureVillagesRuntime({
           const { rooms } = JSON.parse(messages[1].content);
           assert.equal(rooms.length, 1);
           const room = rooms[0];
-          for (const person of room.characters) assert.match(person.foundingBackground, /STARTING-CONTEXT-/);
+          for (const person of room.characters) assert.match(person.admissionContext, /STARTING-CONTEXT-/);
           calls.push(room.venueId);
           assert.equal(options.maxTokens, Math.min(limit, 3000));
           assert.equal(options.reasoningEffort, "none");
@@ -201,7 +199,7 @@ const release = configureVillagesRuntime({
           calls.push("venues");
           const input = JSON.parse(messages[1].content);
           for (const venue of input.venues)
-            if (venue.resident) assert.match(venue.resident.foundingBackground, /STARTING-CONTEXT-/);
+            if (venue.resident) assert.match(venue.resident.admissionContext, /STARTING-CONTEXT-/);
           return {
             content: JSON.stringify({
               venues: input.venues.map((venue: any) => ({

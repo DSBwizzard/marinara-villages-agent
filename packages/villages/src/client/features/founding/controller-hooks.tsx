@@ -1,6 +1,6 @@
 import { SETUP_STEPS } from "./founding-steps.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
-import { DEFAULT_RESIDENT_FOUNDING_CONTEXT } from "../../../shared/helpers/resident-founding-context.js";
+import { EMPTY_RESIDENT_ADMISSION } from "../../../shared/helpers/resident-admission.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { freshRowKey, measureImage } from "../../shared/presentation.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
@@ -30,21 +30,15 @@ export function useFoundingDraftReferences(ports: {
 
 export function useFoundingSelectedResidentContexts(ports: {
   setupFoundingVillagerIds: string[];
-  setupResidentContexts: Record<
-    string,
-    import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext
-  >;
+  setupResidentAdmissions: Record<string, import("../../../shared/helpers/resident-admission.js").ResidentAdmission>;
 }) {
-  const { setupFoundingVillagerIds, setupResidentContexts } = ports;
+  const { setupFoundingVillagerIds, setupResidentAdmissions } = ports;
   return useMemo(
     () =>
       Object.fromEntries(
-        setupFoundingVillagerIds.map((id) => [
-          id,
-          setupResidentContexts[id] ?? { ...DEFAULT_RESIDENT_FOUNDING_CONTEXT },
-        ]),
+        setupFoundingVillagerIds.map((id) => [id, setupResidentAdmissions[id] ?? { ...EMPTY_RESIDENT_ADMISSION }]),
       ),
-    [setupFoundingVillagerIds, setupResidentContexts],
+    [setupFoundingVillagerIds, setupResidentAdmissions],
   );
 }
 
@@ -176,11 +170,8 @@ export function useFoundingSetupDraftData(ports: {
   setupName: string;
   setupTimeZone?: string;
   setupPlayerBackground: import("../../../shared/contracts/player-background.js").PlayerBackground;
-  setupResidentContexts: Record<
-    string,
-    import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext
-  >;
-  setupWorldOrigin?: "same-world" | "different-worlds" | null;
+  setupResidentAdmissions: Record<string, import("../../../shared/helpers/resident-admission.js").ResidentAdmission>;
+  setupWorldName?: string;
   setupSetting: string;
   setupStep: number;
   setupSuggestionsBusy: boolean;
@@ -282,8 +273,8 @@ export function useFoundingSetupDraftData(ports: {
     setupName,
     setupTimeZone,
     setupPlayerBackground,
-    setupResidentContexts,
-    setupWorldOrigin,
+    setupResidentAdmissions,
+    setupWorldName,
     setupSetting,
     setupStep,
     setupSuggestionsBusy,
@@ -301,7 +292,7 @@ export function useFoundingSetupDraftData(ports: {
       phase: SETUP_STEPS[setupStep],
       name: setupName,
       timeZone: setupTimeZone,
-      worldOrigin: setupWorldOrigin,
+      worldName: setupWorldName,
       setting: setupSetting,
       reason: setupFoundingReason,
       circumstances: setupFoundingDetails,
@@ -312,7 +303,7 @@ export function useFoundingSetupDraftData(ports: {
       zoneDrafts: structuredClone(setupZoneDrafts.current),
       spriteRevisions: setupSpriteRevisions ?? {},
       roster: setupFoundingVillagerIds,
-      residentContexts: setupResidentContexts,
+      residentAdmissions: setupResidentAdmissions,
       persona: personaDraft,
       lorebooks: setupLorebookDraft,
       loreBudget: setupLoreTokenBudgetDraft,
@@ -348,7 +339,7 @@ export function useFoundingSetupDraftData(ports: {
       setupWorkspace,
       setupName,
       setupTimeZone,
-      setupWorldOrigin,
+      setupWorldName,
       setupSetting,
       setupFoundingReason,
       setupFoundingDetails,
@@ -358,7 +349,7 @@ export function useFoundingSetupDraftData(ports: {
       setupVenues,
       setupSpriteRevisions,
       setupFoundingVillagerIds,
-      setupResidentContexts,
+      setupResidentAdmissions,
       personaDraft,
       setupLorebookDraft,
       setupLoreTokenBudgetDraft,
@@ -519,7 +510,7 @@ export function useFoundingSetupBlocker(ports: {
   setupMapSrc: string;
   setupName: string;
   setupPlayerBackground: import("../../../shared/contracts/player-background.js").PlayerBackground;
-  setupWorldOrigin?: "same-world" | "different-worlds" | null;
+  setupWorldName?: string;
   setupSetting: string;
   setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
   setupWorldFacts: string[];
@@ -536,7 +527,7 @@ export function useFoundingSetupBlocker(ports: {
     setupMapSrc,
     setupName,
     setupPlayerBackground,
-    setupWorldOrigin,
+    setupWorldName,
     setupSetting,
     setupVenues,
     setupWorldFacts,
@@ -623,7 +614,7 @@ export function useFoundingSetupBlocker(ports: {
       setupPlayerBackground,
       snapshot?.isFounded,
       setupWorldFacts,
-      setupWorldOrigin,
+      setupWorldName,
       setupSetting,
     ],
   );

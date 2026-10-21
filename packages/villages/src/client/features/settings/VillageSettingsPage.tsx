@@ -1,5 +1,4 @@
-import { WorldOriginSettings } from "./WorldOriginSettings.js";
-import { request } from "../../shared/api.js";
+import { WorldNameSettings } from "./WorldNameSettings.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { pinTone, placeSpot, playerDisplayName } from "../../shared/presentation.js";
 import type { MapPin } from "../../shared/types.js";
@@ -420,10 +419,10 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             />
           </div>
 
-          <WorldOriginSettings
-            key={snapshot.settings.worldOrigin ?? "legacy"}
-            onSaved={ports.setSnapshot}
-            initial={snapshot.settings.worldOrigin ?? null}
+          <WorldNameSettings
+            key={snapshot.settings.worldName}
+            onSnapshot={ports.setSnapshot}
+            initial={snapshot.settings.worldName ?? ""}
           />
           <VillageLorebookPicker
             books={lorebooks}

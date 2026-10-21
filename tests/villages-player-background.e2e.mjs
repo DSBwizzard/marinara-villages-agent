@@ -7,10 +7,10 @@ const bundle = await build({
     resolveDir: process.cwd(),
     contents: `
 import {createRoot} from 'react-dom/client';import {useState} from 'react';
-import {FoundingBackgrounds} from './packages/villages/src/client/features/founding/FoundingBackgrounds.tsx';
+import {FoundingAdmissions} from './packages/villages/src/client/features/founding/FoundingAdmissions.tsx';
 import {VILLAGES_FORGING_STYLES} from './packages/villages/src/client/features/founding/villages-forging-styles.ts';
 function App(){const [people,setPeople]=useState([]),[player,setPlayer]=useState(localStorage.getItem('player')||''),[contexts,setContexts]=useState(JSON.parse(localStorage.getItem('contexts')||'{}'));
-return <><style>{VILLAGES_FORGING_STYLES+'textarea{box-sizing:border-box;width:100%;font:inherit}button{min-height:44px}'}</style><div className="villages-forging-v2" style={{maxWidth:700,margin:'auto'}}><button onClick={()=>setPeople([{id:'mara',name:'Mara'}])}>Select Mara</button><button onClick={()=>setPeople([{id:'mara',name:'Mara'},{id:'ellis',name:'Ellis'}])}>Select Ellis too</button><FoundingBackgrounds villageName="Crystalwood" people={people} playerBackground={player} contexts={contexts} onPlayer={v=>{setPlayer(v);localStorage.setItem('player',v)}} onContexts={v=>{setContexts(v);localStorage.setItem('contexts',JSON.stringify(v))}} disabled={false} source={{founding:true,playerPersonaId:'scholar',foundingCharacterIds:people.map(p=>p.id),setting:'A harbor observatory',premise:'People gather to study the stars.',worldOrigin:'different-worlds'}}/></div></>};createRoot(document.getElementById('root')).render(<App/>);
+return <><style>{VILLAGES_FORGING_STYLES+'textarea{box-sizing:border-box;width:100%;font:inherit}button{min-height:44px}'}</style><div className="villages-forging-v2" style={{maxWidth:700,margin:'auto'}}><button onClick={()=>setPeople([{id:'mara',name:'Mara'}])}>Select Mara</button><button onClick={()=>setPeople([{id:'mara',name:'Mara'},{id:'ellis',name:'Ellis'}])}>Select Ellis too</button><FoundingAdmissions people={people} playerBackground={player} admissions={contexts} onPlayer={v=>{setPlayer(v);localStorage.setItem('player',v)}} onAdmissions={v=>{setContexts(v);localStorage.setItem('contexts',JSON.stringify(v))}} disabled={false}/></div></>};createRoot(document.getElementById('root')).render(<App/>);
 `,
   },
   bundle: true,
@@ -120,51 +120,17 @@ try {
       await expect(popup).toHaveCount(0);
       await expect(help).toBeFocused();
     }
-    await page.getByRole("button", { name: "Propose adaptations", exact: true }).click();
-    await expect(page.getByRole("alert")).toBeVisible();
-    assert.equal(paid, 1);
+    await page.getByLabel("Mara homeworld", { exact: true }).fill("Othiras");
+    await page.getByLabel("Mara starting situation", { exact: true }).fill("Already living here.");
     await load();
-    await page.getByRole("button", { name: "Select Ellis too" }).click();
-    await page.getByRole("button", { name: "Retrieve result", exact: true }).click();
+    await page.getByRole("button", { name: "Select Mara", exact: true }).click();
+    await expect(page.getByLabel("Mara starting situation", { exact: true })).toHaveValue("Already living here.");
     await expect(page.getByLabel("Your backstory", { exact: true })).toHaveValue("My own starting story.");
-    await expect(page.getByLabel("Mara Village adaptations", { exact: true })).toHaveValue(/visiting students/);
-    await expect(page.getByLabel("Ellis Village adaptations", { exact: true })).toHaveValue(/stars/);
-    assert.equal(paid, 1, "retrieval after reload costs no generation");
-    await page.getByLabel("Your backstory", { exact: true }).fill("My authored starting background.");
-    hold = true;
-    await page.getByRole("button", { name: "Try again", exact: true }).click();
-    await expect.poll(() => typeof release).toBe("function");
-    await page.getByLabel("Mara Village adaptations", { exact: true }).fill("My revised Mara Village adaptations.");
-    release();
-    await expect(page.getByRole("button", { name: "Proposing…", exact: true })).toHaveCount(0);
-    await expect(page.getByLabel("Mara Village adaptations", { exact: true })).toHaveValue(
-      "My revised Mara Village adaptations.",
-    );
-    await expect(page.getByLabel("Your backstory", { exact: true })).toHaveValue("My authored starting background.");
-    emptyNext = true;
-    await page.getByRole("button", { name: "Propose adaptations", exact: true }).click();
-    await expect(page.getByLabel("Mara Village adaptations", { exact: true })).toHaveValue("");
-    await expect(page.getByText("No adaptations needed", { exact: true })).toHaveCount(2);
-    const paidEmpty = paid;
-    await load();
-    await page.getByRole("button", { name: "Select Ellis too" }).click();
-    await expect(page.getByText("No adaptations needed", { exact: true })).toHaveCount(2);
-    assert.equal(paid, paidEmpty, "restoring a successful empty result makes no request");
-    await expect(page.getByLabel("Your backstory", { exact: true })).toHaveValue("My authored starting background.");
-    await page.getByLabel("Mara Village adaptations", { exact: true }).fill("A replacement research station.");
-    await page.getByLabel("Mara Village adaptations", { exact: true }).fill("");
-    await expect(page.getByText("Continue without adaptations", { exact: true })).toHaveCount(1);
-    assert.ok(
-      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
-      "background fields fit viewport",
-    );
-    assert.equal(await page.getByRole("textbox", { name: "Role Title", exact: true }).count(), 0);
+    assert.equal(paid, 0);
     await page.screenshot({ path: ".build-tmp/player-background-" + width + ".png" });
     await context.close();
   }
 } finally {
   await browser.close();
 }
-console.log(
-  "Shared cast backgrounds: explicit single request, player help, no-paid retrieval, edit race and desktop/phone layout passed.",
-);
+console.log("Starting situations: player help, manual notes, reload and desktop/phone layout passed.");

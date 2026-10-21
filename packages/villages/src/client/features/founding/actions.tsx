@@ -1,4 +1,3 @@
-import { foundingBackstoriesCurrent } from "../../../shared/helpers/resident-founding-context.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import {
   MAP_UPLOAD_FALLBACK,
@@ -14,7 +13,7 @@ import type {
   VillageSnapshot,
   VillageVenue,
 } from "../../../shared/contracts/village.js";
-import type { ResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
+import type { ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
 import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
@@ -265,8 +264,8 @@ export function useOpenSetup(ports: {
   setSetupPlacementError: React.Dispatch<SetStateAction<string>>;
   setSetupPlayerBackground: React.Dispatch<SetStateAction<PlayerBackground>>;
   setSetupProblem: React.Dispatch<SetStateAction<string>>;
-  setSetupResidentContexts: React.Dispatch<SetStateAction<Record<string, ResidentFoundingContext>>>;
-  setSetupWorldOrigin?: React.Dispatch<SetStateAction<"same-world" | "different-worlds" | null>>;
+  setSetupResidentAdmissions: React.Dispatch<SetStateAction<Record<string, ResidentAdmission>>>;
+  setSetupWorldName?: React.Dispatch<SetStateAction<string>>;
   setSetupSetting: React.Dispatch<SetStateAction<string>>;
   setSetupShowIssues: React.Dispatch<SetStateAction<boolean>>;
   setSetupStep: React.Dispatch<SetStateAction<number>>;
@@ -313,8 +312,8 @@ export function useOpenSetup(ports: {
     setSetupPlacementError,
     setSetupPlayerBackground,
     setSetupProblem,
-    setSetupResidentContexts,
-    setSetupWorldOrigin,
+    setSetupResidentAdmissions,
+    setSetupWorldName,
     setSetupSetting,
     setSetupShowIssues,
     setSetupStep,
@@ -337,11 +336,7 @@ export function useOpenSetup(ports: {
       setSetupFocusIssue(null);
       // Unfounded snapshots have a server fallback name; authored drafts restore their own name separately.
       setSetupName(fresh || !village?.isFounded ? "" : village.village.name);
-      setSetupWorldOrigin?.(
-        fresh
-          ? "different-worlds"
-          : (village?.settings.worldOrigin ?? (village?.isFounded ? null : "different-worlds")),
-      );
+      setSetupWorldName?.(fresh ? "" : (village?.settings.worldName ?? ""));
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       const storedReason = fresh ? "" : (village?.settings.foundingReason ?? "");
       const isCurrentScenario = FOUNDING_SCENARIOS.some((scenario) => scenario.value === storedReason);
@@ -355,7 +350,7 @@ export function useOpenSetup(ports: {
       setSetupFoundingReason(reason);
       setSetupFoundingDetails(details);
       setSetupPlayerBackground(fresh ? "" : (village?.settings.playerBackground ?? ""));
-      if (fresh) setSetupResidentContexts({});
+      if (fresh) setSetupResidentAdmissions({});
       setSetupImprint(fresh ? emptyScenarioImprint() : (village?.settings.scenarioImprint ?? emptyScenarioImprint()));
       setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
       const foundingPlaces =
@@ -414,11 +409,11 @@ export function useFoundVillage(ports: {
   mapVisualLore: boolean;
   personaDraft: string;
   personalizeHomes: boolean;
-  residentContextProblem: "" | "Complete unfinished backstories in People.";
+  residentContextProblem: "" | "Check starting situations in People.";
   savedTownMapView: TownMapView;
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
-  selectedResidentContexts: { [k: string]: ResidentFoundingContext };
+  selectedResidentAdmissions: { [k: string]: ResidentAdmission };
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setDraftReady: React.Dispatch<SetStateAction<boolean>>;
   setScreen: React.Dispatch<
@@ -440,7 +435,7 @@ export function useFoundVillage(ports: {
   setupName: string;
   setupTimeZone?: string;
   setupPlayerBackground: PlayerBackground;
-  setupWorldOrigin?: "same-world" | "different-worlds" | null;
+  setupWorldName?: string;
   setupSetting: string;
   setupVenues: VillageVenue[];
   setupWorldFacts: string[];
@@ -458,7 +453,7 @@ export function useFoundVillage(ports: {
     savedTownMapView,
     sceneryStyle,
     sceneryStyleProfileId,
-    selectedResidentContexts,
+    selectedResidentAdmissions,
     setBusy,
     setDraftReady,
     setScreen,
@@ -477,7 +472,7 @@ export function useFoundVillage(ports: {
     setupMapSrc,
     setupName,
     setupPlayerBackground,
-    setupWorldOrigin,
+    setupWorldName,
     setupSetting,
     setupVenues,
     setupWorldFacts,
@@ -485,19 +480,8 @@ export function useFoundVillage(ports: {
     visualLoreDefault,
   } = ports;
   return useCallback(async () => {
-    if (
-      !snapshot?.isFounded &&
-      (residentContextProblem ||
-        !foundingBackstoriesCurrent(
-          setupFoundingVillagerIds,
-          selectedResidentContexts,
-          setupSetting,
-          setupFoundingDetails,
-          setupWorldOrigin,
-        ))
-    ) {
-      setSetupProblem(residentContextProblem || "Review adaptations in People, then Continue to approve them.");
-      setSetupStep(1);
+    if (!snapshot?.isFounded && residentContextProblem) {
+      setSetupProblem(residentContextProblem);
       return;
     }
     const blocker = setupBlocker();
@@ -534,7 +518,7 @@ export function useFoundVillage(ports: {
         body: JSON.stringify({
           name: setupName.trim(),
           timeZone: ports.setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
-          worldOrigin: setupWorldOrigin,
+          worldName: setupWorldName,
           setting: setupSetting.trim(),
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
           foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
@@ -557,7 +541,7 @@ export function useFoundVillage(ports: {
           venues: setupVenues,
           foundingSpriteRevisions: setupSpriteRevisions,
           foundingCharacterIds: snapshot?.isFounded ? undefined : setupFoundingVillagerIds,
-          foundingResidentContexts: snapshot?.isFounded ? undefined : selectedResidentContexts,
+          foundingResidentAdmissions: snapshot?.isFounded ? undefined : selectedResidentAdmissions,
         }),
       });
       setSnapshot(founded);
@@ -589,7 +573,7 @@ export function useFoundVillage(ports: {
     snapshot?.settings.playerBackground,
     snapshot?.settings.scenarioImprint,
     residentContextProblem,
-    selectedResidentContexts,
+    selectedResidentAdmissions,
     personaDraft,
     savedTownMapView,
     setupBlocker,
@@ -608,7 +592,7 @@ export function useFoundVillage(ports: {
     setupWorldFacts,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
-    setupWorldOrigin,
+    setupWorldName,
     setupSetting,
   ]);
 }

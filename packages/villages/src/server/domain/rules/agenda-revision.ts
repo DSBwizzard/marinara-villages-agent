@@ -18,7 +18,7 @@ export function agendaRevision(village: VillageState, characterId: string): stri
       venue.zones?.map((zone) => [zone.id, zone.name, zone.kind, zone.ownerId]),
     ]),
     resident?.agendaGeneration,
-    ...(resident?.foundingContext ? [resident.foundingContext] : []),
+    ...(resident?.admission ? [resident.admission] : []),
     resident?.addedAt,
     resident && [
       resident.cardSnapshot.capturedAt,

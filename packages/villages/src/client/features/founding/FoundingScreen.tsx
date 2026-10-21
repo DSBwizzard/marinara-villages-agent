@@ -1,8 +1,7 @@
-import { FoundingBackgrounds } from "./FoundingBackgrounds.js";
+import { FoundingAdmissions } from "./FoundingAdmissions.js";
 import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { useEffect, useRef, useState } from "react";
-import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/helpers/resident-founding-context.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
@@ -35,7 +34,6 @@ const PLACE_ERRORS = {
 };
 
 export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
-  const [backstoriesBusy, setBackstoriesBusy] = useState(false);
   const {
     busy,
     catalog,
@@ -65,7 +63,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     sceneryStyle,
     sceneryStyleProfileId,
     screen,
-    selectedResidentContexts,
+    selectedResidentAdmissions,
     selectedSetupVenueId,
     setConnectionSetupProblem,
     setMapVisualLore,
@@ -81,7 +79,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupSpriteRevisions,
     setSetupFoundingVillagerIds,
     setSetupKeyboardSpot,
-    setSetupLoreTokenBudgetDraft,
     setSetupLorebookDraft,
     setSetupMapBusy,
     setSetupMapNegativePrompt,
@@ -93,7 +90,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupPlacementError,
     setSetupPlayerBackground,
     setSetupProblem,
-    setSetupResidentContexts,
+    setSetupResidentAdmissions,
     setSetupSetting,
     setSetupShowIssues,
     setSetupVenues,
@@ -124,9 +121,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupPlacementError,
     setupPlayerBackground,
     setupProblem,
-    setupResidentContexts,
-    setupWorldOrigin,
-    setSetupWorldOrigin,
+    setupResidentAdmissions,
+    setupWorldName,
+    setSetupWorldName,
     setupSetting,
     setupStep,
     setupSuggestionsBusy,
@@ -368,60 +365,15 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   onChange={chooseRoster}
                   disabled={busy || !!snapshot?.isFounded}
                 />
-                <FoundingField
-                  title="Character Origins"
-                  help={
-                    <>
-                      <p>
-                        Character Origins defines how characters’ existing backstories fit the setting of the Village.
-                      </p>
-                      <p>
-                        <strong>Same world:</strong> Your villagers are residents of the world the Village occupies.
-                        Their original history is reinterpreted to fit within the world of the Village.
-                      </p>
-                      <p>
-                        <strong>Different worlds:</strong> Residents may come from separate worlds, retaining their
-                        original histories as written. Their backstories and your premise establish how they got here.
-                      </p>
-                    </>
-                  }
-                >
-                  <select
-                    aria-label="Character origins"
-                    value={setupWorldOrigin ?? ""}
-                    disabled={busy}
-                    onChange={(event) => setSetupWorldOrigin(event.target.value as "same-world" | "different-worlds")}
-                  >
-                    {!setupWorldOrigin ? (
-                      <option value="" disabled>
-                        Choose origins
-                      </option>
-                    ) : null}
-                    <option value="same-world">Same world</option>
-                    <option value="different-worlds">Different worlds</option>
-                  </select>
-                </FoundingField>
               </section>
               {!snapshot?.isFounded ? (
-                <FoundingBackgrounds
-                  onBusy={setBackstoriesBusy}
-                  villageName={setupName}
+                <FoundingAdmissions
                   people={wizardVillagers}
                   playerBackground={setupPlayerBackground ?? ""}
-                  contexts={setupResidentContexts}
+                  admissions={setupResidentAdmissions}
                   onPlayer={setSetupPlayerBackground}
-                  onContexts={setSetupResidentContexts}
+                  onAdmissions={setSetupResidentAdmissions}
                   disabled={busy}
-                  source={{
-                    founding: true,
-                    playerPersonaId: personaDraft,
-                    foundingCharacterIds: setupFoundingVillagerIds,
-                    setting: setupSetting,
-                    premise: setupFoundingDetails,
-                    worldOrigin: setupWorldOrigin,
-                    selectedLorebookIds: setupLorebookDraft,
-                    loreTokenBudget: setupLoreTokenBudgetDraft,
-                  }}
                 />
               ) : (
                 <PlayerBackgroundSummary background={setupPlayerBackground} />
@@ -508,6 +460,17 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       }}
                     />
                   </FoundingField>
+                  <FoundingField title="Village world">
+                    <input
+                      aria-label="Village world"
+                      autoComplete="off"
+                      maxLength={120}
+                      placeholder="Optional"
+                      value={setupWorldName}
+                      disabled={busy}
+                      onChange={(event) => setSetupWorldName(event.target.value)}
+                    />
+                  </FoundingField>{" "}
                 </section>
                 <section className="villages-forging-card villages-starting-situation">
                   <FoundingField
@@ -871,45 +834,25 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     <div className="villages-forging-card-heading">
                       <h3>People & adaptations</h3>
                       <button type="button" onClick={() => gotoSetupStep(1)}>
-                        Change people & adaptations
+                        Change people & starting situations
                       </button>
                     </div>
                     <p>{personas?.find((person) => person.id === personaDraft)?.name ?? "Selected Persona"} · You</p>
                     {wizardVillagers.map((person) => {
-                      const context = selectedResidentContexts[person.id];
+                      const context = selectedResidentAdmissions[person.id];
                       return (
                         <div key={person.id} className="villages-resident-review">
                           <strong>{person.name}</strong>
                           {!snapshot?.isFounded && context ? (
                             <>
-                              {context.integration?.accepted ? (
-                                <p>
-                                  {context.integration.text ||
-                                    (context.integration.reviewVersion === "adaptations-v1"
-                                      ? "No adaptations needed"
-                                      : "")}
-                                </p>
-                              ) : null}
-                              <p>
-                                {context.historyMode === "continue"
-                                  ? "Use original backstory"
-                                  : context.historyMode === "village"
-                                    ? "Write custom backstory"
-                                    : RESIDENT_HISTORY_MODES[context.historyMode]}
-                                {context.storyRole !== "unspecified"
-                                  ? " · " + RESIDENT_STORY_ROLES[context.storyRole]
-                                  : ""}
-                              </p>
-                              {context.storyRole === "custom" ? <p>{context.customDescription}</p> : null}
-                              {context.background ? <p>{context.background}</p> : null}
-                              {context.historyMode === "village" ? <p>{context.villageBackstory}</p> : null}
+                              {context.homeworld ? <p>Homeworld: {context.homeworld}</p> : null}
+                              {context.startingSituation ? <p>{context.startingSituation}</p> : null}
                             </>
                           ) : null}
                         </div>
                       );
                     })}
                     <PlayerBackgroundSummary background={setupPlayerBackground} />
-                    <p>Adaptations describe the starting situation; events can change it.</p>
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
@@ -919,6 +862,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       </button>
                     </div>
                     <p>{setupSetting}</p>
+                    {setupWorldName ? <p>Village world: {setupWorldName}</p> : null}
                     <p>{setupFoundingDetails}</p>
                     <p>{setupLorebookDraft.length} lorebooks selected</p>
                   </section>
@@ -1040,7 +984,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             disabled={
               busy ||
               setupEditorOpen ||
-              backstoriesBusy ||
               setupSuggestionsBusy ||
               setupVenueBusy ||
               !!draftSaveError ||

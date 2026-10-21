@@ -300,7 +300,7 @@ export function createWorldCoordination({
       village: village.name,
       playerBackground: village.playerBackground,
       playerPersonaName: village.playerPersonaName,
-      setting: village.setting,
+      setting: villageCurrentSetting(village),
       worldFacts: village.worldFacts,
       moment,
       residents: village.villagers.map((villager) => {
@@ -374,6 +374,7 @@ export function createWorldCoordination({
   const storyBackgroundHandler: Handler = {
     generate: (input) => proposeHappenings(input.context),
     valid: (state, input) =>
+      input.context.setting === villageCurrentSetting(state) &&
       input.opportunity.actorIds.every((id: string) =>
         state.villagers.some(
           (resident) => resident.characterId === id && resident.cardSnapshot.capturedAt === input.actorIncarnations[id],

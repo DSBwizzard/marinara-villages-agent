@@ -6,7 +6,11 @@ import { materializeConnections } from "../../../shared/helpers/zone-contact.js"
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { decodeVillageClock } from "../rules/clock-recovery.js";
 import { savedVenueClassRecord } from "./venue-class-compat.js";
-import { readResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
+import {
+  readResidentAdmission,
+  readWorldName,
+  EMPTY_RESIDENT_ADMISSION,
+} from "../../../shared/helpers/resident-admission.js";
 import { isPrivateInterior, observePrivateInterior, privateInteriorKey } from "../rules/private-interior.js";
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
 import type {
@@ -151,7 +155,7 @@ export function defaultVillageState(): VillageState {
     // nothing, and the village behaves exactly as it did before they existed.
     setting: "",
     foundingReason: "",
-    worldOrigin: null,
+    worldName: "",
     foundingDetails: "",
     foundingGuidance: "",
     playerBackground: "",
@@ -269,9 +273,7 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
         }
       : {}),
     ...(coerceResidentSignature(raw.signature) ? { signature: coerceResidentSignature(raw.signature)! } : {}),
-    ...(readResidentFoundingContext(raw.foundingContext)
-      ? { foundingContext: readResidentFoundingContext(raw.foundingContext)! }
-      : {}),
+    admission: readResidentAdmission(raw.admission) ?? { ...EMPTY_RESIDENT_ADMISSION },
     spriteManager: coerceSpriteManager(raw.spriteManager),
     sprite: managerResidentSprite(coerceSpriteManager(raw.spriteManager)),
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),
@@ -2153,7 +2155,7 @@ export function coerceVillageState(value: unknown): VillageState {
     spriteCardFlipEnabled: raw.spriteCardFlipEnabled !== false,
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
     foundingReason: boundText(raw.foundingReason, 40),
-    worldOrigin: raw.worldOrigin === "same-world" || raw.worldOrigin === "different-worlds" ? raw.worldOrigin : null,
+    worldName: readWorldName(raw.worldName) ?? "",
     foundingDetails: boundText(raw.foundingDetails, 2_000),
     foundingGuidance: boundText(raw.foundingGuidance, 500),
     playerBackground: coercePlayerBackground(raw.playerBackground),

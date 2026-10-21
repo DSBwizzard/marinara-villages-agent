@@ -13,6 +13,7 @@ import type {
   VillageWish,
 } from "../models/world.js";
 import { asInstant, asRecord, asTrimmedString } from "./coerce.js";
+import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { agendaPromptDay } from "./owned-routine.js";
 import { hasVenueClass } from "./venue-model.js";
@@ -457,15 +458,14 @@ export const TOWN_MAP_EXPECTED_HEIGHT = 1024;
 export function villageCurrentSetting(village: {
   setting: string;
   worldFacts?: readonly string[];
-  worldOrigin?: "same-world" | "different-worlds" | null;
+  worldName?: string;
 }): string {
   const facts = village.worldFacts?.filter(Boolean) ?? [];
   return [
     village.setting.trim(),
     VILLAGE_SHARED_SETTING_RULE,
-    village.worldOrigin
-      ? `Character origins: ${village.worldOrigin === "same-world" ? "Residents normally share this world." : "Residents may come from different worlds; their approved backstories and the premise establish how."} This is the default for new backstory proposals, not permission to rewrite established residents. Approved individual backstories take precedence and retain their approved origins even if the Village default changes. This rule does not grant characters knowledge of other worlds or other residents’ pasts.`
-      : "",
+    RESIDENT_CONTINUITY_RULE,
+    village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : "",
     facts.length ? `Current world facts:\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "",
   ]
     .filter(Boolean)

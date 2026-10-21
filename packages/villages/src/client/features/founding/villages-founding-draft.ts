@@ -1,6 +1,6 @@
 /** Device-local draft storage. Artwork needs IndexedDB, not localStorage's small quota. */
-export type SavedFoundingDraft<T> = { version: 2; revision: number; savedAt: string; data: T };
-const DATABASE = "villages-founding-v2";
+export type SavedFoundingDraft<T> = { version: 3; revision: number; savedAt: string; data: T };
+const DATABASE = "villages-founding-v3";
 const STORE = "drafts";
 let connection: Promise<IDBDatabase> | undefined;
 function database(): Promise<IDBDatabase> {
@@ -28,7 +28,7 @@ export async function readFoundingDraft<T>(key: string): Promise<SavedFoundingDr
   const db = await database();
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE).objectStore(STORE).get(key);
-    request.onsuccess = () => resolve(request.result?.version === 2 ? request.result : null);
+    request.onsuccess = () => resolve(request.result?.version === 3 ? request.result : null);
     request.onerror = () => reject(request.error);
   });
 }
@@ -51,7 +51,7 @@ export async function saveFoundingDraft<T>(
         transaction.abort();
         return;
       }
-      result = { version: 2, revision: expectedRevision + 1, savedAt: new Date().toISOString(), data };
+      result = { version: 3, revision: expectedRevision + 1, savedAt: new Date().toISOString(), data };
       try {
         store.put(result, key);
       } catch (error) {

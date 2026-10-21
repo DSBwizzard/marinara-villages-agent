@@ -326,7 +326,7 @@ const context: any = {
   setupSetting: request.setting,
   setupFoundingDetails: request.foundingDetails,
   setupLorebookDraft: [],
-  selectedResidentContexts: {},
+  selectedResidentAdmissions: {},
   setupWorldFacts: request.worldFacts,
   setupName: "Tidebreak",
   setupImprint: request.scenarioImprint,

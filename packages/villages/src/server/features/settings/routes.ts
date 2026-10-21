@@ -7,7 +7,7 @@ import {
   setVillagePromptKnowledge,
   setVillageSendOnEnter,
   setVillageSetting,
-  setVillageWorldOrigin,
+  setVillageWorldName,
   setVillageSpriteCardFlipEnabled,
   setVillageStoryPace,
 } from "./village-settings.js";
@@ -178,7 +178,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       loreTokenBudget?: unknown;
       playerPersonaId?: unknown;
       setting?: unknown;
-      worldOrigin?: unknown;
+      worldName?: unknown;
       venues?: unknown;
       venueScope?: unknown;
       townMapImage?: unknown;
@@ -216,7 +216,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       if (body.playerPersonaId !== undefined) {
         snapshot = await setVillagePlayer({ personaId: body.playerPersonaId });
       }
-      if (body.worldOrigin !== undefined) snapshot = await setVillageWorldOrigin(body.worldOrigin);
+      if (body.worldName !== undefined) snapshot = await setVillageWorldName(body.worldName);
       if (body.setting !== undefined) snapshot = await setVillageSetting(body.setting);
       if (body.storyPace !== undefined) snapshot = await setVillageStoryPace(body.storyPace);
       if (body.sendOnEnter !== undefined) snapshot = await setVillageSendOnEnter(body.sendOnEnter);

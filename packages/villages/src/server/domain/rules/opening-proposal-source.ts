@@ -28,7 +28,7 @@ export function proposalSourceCompatible(
     context.setting === villageFoundingSetting(state) &&
     context.home === homeText &&
     JSON.stringify(foundingIdentity(context.card)) ===
-      JSON.stringify(foundingIdentity({ ...resident.cardSnapshot, foundingContext: resident.foundingContext })) &&
+      JSON.stringify(foundingIdentity({ ...resident.cardSnapshot, admission: resident.admission })) &&
     JSON.stringify(facts(context.venues)) === JSON.stringify(facts(remapVenues(state.venues))) &&
     (!context.circumstances ||
       JSON.stringify(context.circumstances) ===

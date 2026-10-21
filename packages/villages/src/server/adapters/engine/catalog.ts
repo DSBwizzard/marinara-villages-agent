@@ -46,7 +46,7 @@ export function villagerCardFromSnapshot(snapshot: VillageVillagerCardSnapshot):
 
 /** Runtime reads use the adopted snapshot. Live cards are only read by refresh/capture flows. */
 export function readEffectiveVillagerCard(villager: VillageVillager): VillagerCard {
-  return { ...villagerCardFromSnapshot(villager.cardSnapshot), foundingContext: villager.foundingContext };
+  return { ...villagerCardFromSnapshot(villager.cardSnapshot), admission: villager.admission };
 }
 
 /**

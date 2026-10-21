@@ -59,6 +59,8 @@ export function wishRevision(resident: VillageVillager, state: VillageState): st
         })),
         state.selectedLorebookIds,
         state.setting,
+        state.worldName,
+        resident.admission,
         state.storyPace,
         state.wishSystemVersion,
       ]),

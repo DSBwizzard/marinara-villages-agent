@@ -213,10 +213,7 @@ try {
     "Player edits survive reactivation.",
   );
   const publicResponse = await app.inject({ method: "GET", url: "/api/villages/setup/preparation" });
-  assert(
-    !/foundingContext|savedProposal|needComparison/.test(publicResponse.body),
-    "private frozen inputs stay private",
-  );
+  assert(!/admission|savedProposal|needComparison/.test(publicResponse.body), "private frozen inputs stay private");
   marker = records.get("villages-village").data.foundingPreparation;
   const target = {
     characterId: "a",
