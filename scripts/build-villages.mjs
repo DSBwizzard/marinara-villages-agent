@@ -130,6 +130,7 @@ try {
       ...Object.keys(client.metafile.inputs),
       "package.json",
       "package-lock.json",
+      "tsconfig.json",
       "packages/villages/package-definition.mjs",
       "packages/villages/engine-boundary.json",
       "scripts/build-villages.mjs",

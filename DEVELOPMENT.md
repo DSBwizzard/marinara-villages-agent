@@ -4,12 +4,12 @@ Use Node 24 and `npm ci`. Maintained source is in `packages/villages/src`; packa
 
 ## Ordinary work
 
-1. Use an owned branch/checkout from current `staging`. Reuse it for feedback and preserve unrelated work.
+1. Start implementation chats in the app’s Worktree mode from current `staging`; use Handoff for an existing Local chat. Creating or attaching a worktree alone does not move the chat. Use the existing checkout’s approved access when permissions need repair; do not create a duplicate checkout as a workaround. If the app cannot move an existing chat, keep its commands and review explicitly scoped to the owned checkout and explain the display mismatch. Reuse that checkout for feedback and preserve unrelated work.
 2. Implement the smallest coherent change. Run `npm run check:changed` and explicit affected tests, for example `npm test -- --filter=venue-access` or `npm run test:browser -- --case=settings/package`. Empty and unknown selections fail.
 3. Build with `npm run build`; verify the archive with `npm run verify:package`. Present significant new behavior in an independent working preview. Obtain acceptance of that package before staging. Routine corrections follow the standing authorization in AGENTS.md.
 4. Open a PR to staging with a concise description of the final behavior and relevant validation. CI validates the combined merge candidate. Resolve failures and conflicts, then merge after required checks and any applicable acceptance. Use a final summary for the merge commit rather than a list of intermediate commit titles. Main promotion is a separate explicit decision.
 
-Use normal Git and GitHub PR/check status. On resume inspect the checkout and PR. Technical review is proportional to risk as described in AGENTS.md. Routine copy/layout corrections need no separate preview acceptance; significant new behavior does.
+Use normal Git and GitHub PR/check status. On resume inspect the actual checkout and PR, and read current tracked guidance before edits. Keep the shared Local checkout on staging; fast-forward it only when clean and safe for its current users. Task scratch files belong in `.build-tmp/`; generated conversation assets belong in ignored `output/`. Technical review is proportional to risk as described in AGENTS.md. Routine copy/layout corrections need no separate preview acceptance; significant new behavior does.
 
 ## Commands and coverage
 

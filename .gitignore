@@ -14,3 +14,7 @@ node_modules/
 # Local agent instructions and credentials never enter product archives.
 /.codex/
 /AGENTS.override.md
+
+# Generated conversation assets and local diagnostic output.
+/output/
+/debug.log
