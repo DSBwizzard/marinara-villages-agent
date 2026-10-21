@@ -81,7 +81,13 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-resident-custom { grid-column:1/-1; }
 .villages-resident-toggle,.villages-mobile-role-toggle { display:none; }
 .villages-admission-fields { display:grid; gap:.75rem; min-width:0; }
-.villages-admission-fields label { display:grid; gap:.3rem; min-width:0; }
+.villages-admission-fields>.villages-founding-field { margin:0; }
+.villages-admission-heading { display:flex; align-items:center; gap:.4rem; min-width:0; margin-bottom:.3rem; }
+.villages-admission-heading>label { flex:1; min-width:0; margin:0!important; }
+.villages-admission-heading>.villages-founding-help { margin-right:auto; }
+.villages-admission-heading>label:has(+.villages-founding-help) { flex:0 1 auto; }
+.villages-admission-heading>button { flex:none; }
+.villages-admission-add-note { justify-self:start; }
 .villages-admission-fields input,.villages-admission-fields textarea { width:100%; min-width:0; box-sizing:border-box; font-size:1rem; }
 .villages-resident-review { padding:.6rem 0; border-bottom:1px solid #43547d; overflow-wrap:anywhere; }
 .villages-resident-review p { margin:.2rem 0; }
@@ -128,6 +134,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-founding-help { flex:none; display:inline-flex; align-items:center; flex-wrap:wrap; vertical-align:middle; max-width:100%; font-weight:400; }
 .villages-founding-help>button { display:grid; place-items:center; width:44px; min-width:44px; height:44px; padding:0; border:0; background:transparent; color:inherit; }
 .villages-founding-help>button>span { display:grid; place-items:center; width:18px; height:18px; border:1px solid currentColor; border-radius:50%; font:12px Arial,sans-serif; }
+.villages-admission-fields .villages-founding-help>button { min-height:44px; padding:0; border:0; border-radius:0; background:transparent; }
 .villages-forging-v2 p[role=alert],.villages-forging-v2 [role=alert],.villages-forging-v2 [data-founding-problem] { color:#ff9ba5; }
 .villages-forging-v2 [aria-invalid=true] { border-color:#ff9ba5; }
 

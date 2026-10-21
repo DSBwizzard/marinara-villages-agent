@@ -523,6 +523,11 @@ export async function verifyFoundingLayout(group) {
           "placeholder",
           "A seaside resort on a sheltered coast in a present-day world without magic.",
         );
+        assert.ok(
+          (await root.getByLabel("Village world", { exact: true }).boundingBox()).y <
+            (await root.getByLabel("Setting", { exact: true }).boundingBox()).y,
+          "Village world is above Setting",
+        );
         await expect(circumstance).toHaveAttribute(
           "placeholder",
           "The resort is preparing for its annual festival, but visitors are scarce and several buildings need repairs.",
@@ -552,6 +557,10 @@ export async function verifyFoundingLayout(group) {
         for (const [label, text] of [
           ["Village Timezone", "Villages runs on real-time. Select the timezone you wish for Villages' clock to use."],
           [
+            "Village world",
+            "Optionally name the world where the Village is located. Use the same name for a character’s Homeworld if they come from this world. Matching names identify a shared world, without assuming acquaintance or shared private knowledge. Leave blank if unspecified; source cards and lore still apply.",
+          ],
+          [
             "Setting",
             "A Village is wherever your community lives - a town, spaceship, dumpster, shopping mall, or undeveloped land. Describe its permanent details and critical facts about the wider world, time period, and important world-building rules.",
           ],
@@ -568,7 +577,7 @@ export async function verifyFoundingLayout(group) {
           await expect(help).toHaveAttribute("aria-expanded", "true");
           await expect(root.getByRole("note")).toHaveText(text);
           await bounds();
-          await capture(label === "Setting" ? "setting-help" : "scenario-help");
+          await capture(label.toLowerCase().replaceAll(" ", "-") + "-help");
           await page.keyboard.press("Escape");
           await expect(help).toBeFocused();
           await expect(root.getByRole("note")).toHaveCount(0);
@@ -762,7 +771,7 @@ export async function verifyFoundingLayout(group) {
         );
         await expect(root.locator(".villages-founding-connections")).toBeHidden();
         const cast = root.locator(".villages-people-columns>section").first();
-        const backstories = root.getByRole("region", { name: "Starting situations", exact: true });
+        const backstories = root.getByRole("region", { name: "Starting notes", exact: true });
         await expect(cast.getByLabel("Character origins", { exact: true })).toHaveCount(0);
         const castBox = await cast.boundingBox(),
           storyBox = await backstories.boundingBox();
@@ -771,13 +780,15 @@ export async function verifyFoundingLayout(group) {
           "backstories sit beside the cast on desktop and below it on phone",
         );
 
-        const past = root.getByLabel("Finn starting situation", { exact: true });
-        await expect(past).toHaveValue("");
+        const past = root.getByLabel("Finn starting note", { exact: true });
+        await expect(past).toHaveCount(0);
         await root.getByLabel("Finn homeworld", { exact: true }).fill("Othiras");
         await forward("Continue to Map").click();
         await expect(root).toHaveAttribute("data-step", "2");
         await forward("Back").click();
         await expect(root).toHaveAttribute("data-step", "1");
+        await backstories.getByRole("button", { name: "+ Add starting note", exact: true }).first().click();
+        await expect(past).toHaveValue("");
         await past.fill("Finn has always been guardian of a relic in the observatory.");
         await root.getByLabel("Your backstory", { exact: true }).fill("I came to help restore the observatory.");
         await bounds();
@@ -1830,9 +1841,7 @@ export async function verifyFoundingLayout(group) {
         }
         await forward("Review village").click();
         await expect(root).toHaveAttribute("data-step", "4");
-        await expect(
-          root.getByRole("button", { name: "Change people & starting situations", exact: true }),
-        ).toBeVisible();
+        await expect(root.getByRole("button", { name: "Change people & starting notes", exact: true })).toBeVisible();
         await expect(root.locator(".villages-resident-review").filter({ hasText: "Finn" })).toContainText(
           /[Gg]uardian of a relic/,
         );

@@ -10,7 +10,7 @@ export function FoundingAdmissions(props: {
   onAdmissions(value: Record<string, ResidentAdmission>): void;
 }) {
   return (
-    <section className="villages-forging-card villages-cast-backgrounds" aria-label="Starting situations">
+    <section className="villages-forging-card villages-cast-backgrounds" aria-label="Starting notes">
       <PlayerBackgroundFields background={props.playerBackground} onChange={props.onPlayer} disabled={props.disabled} />
       {props.people.map((person) => (
         <div key={person.id}>

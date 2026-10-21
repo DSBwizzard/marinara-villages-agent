@@ -433,6 +433,20 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     />
                   </FoundingField>
                   <FoundingField
+                    title="Village world"
+                    help="Optionally name the world where the Village is located. Use the same name for a character’s Homeworld if they come from this world. Matching names identify a shared world, without assuming acquaintance or shared private knowledge. Leave blank if unspecified; source cards and lore still apply."
+                  >
+                    <input
+                      aria-label="Village world"
+                      autoComplete="off"
+                      maxLength={120}
+                      placeholder="Optional"
+                      value={setupWorldName}
+                      disabled={busy}
+                      onChange={(event) => setSetupWorldName(event.target.value)}
+                    />
+                  </FoundingField>
+                  <FoundingField
                     title="Setting"
                     help={
                       <>
@@ -460,17 +474,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       }}
                     />
                   </FoundingField>
-                  <FoundingField title="Village world">
-                    <input
-                      aria-label="Village world"
-                      autoComplete="off"
-                      maxLength={120}
-                      placeholder="Optional"
-                      value={setupWorldName}
-                      disabled={busy}
-                      onChange={(event) => setSetupWorldName(event.target.value)}
-                    />
-                  </FoundingField>{" "}
                 </section>
                 <section className="villages-forging-card villages-starting-situation">
                   <FoundingField
@@ -832,9 +835,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <div>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
-                      <h3>People & adaptations</h3>
+                      <h3>People & starting notes</h3>
                       <button type="button" onClick={() => gotoSetupStep(1)}>
-                        Change people & starting situations
+                        Change people & starting notes
                       </button>
                     </div>
                     <p>{personas?.find((person) => person.id === personaDraft)?.name ?? "Selected Persona"} · You</p>

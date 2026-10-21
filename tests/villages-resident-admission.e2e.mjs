@@ -75,15 +75,36 @@ try {
         let dialog = page.getByRole("dialog", { name: "Buster in your Village", exact: true });
         await expect(dialog).toBeVisible();
         await expect(dialog.getByLabel("Buster homeworld", { exact: true })).toHaveValue("");
+        await expect(dialog.getByLabel("Buster starting note", { exact: true })).toHaveCount(0);
+        const addNote = dialog.getByRole("button", { name: "+ Add starting note", exact: true });
+        const buttonStyle = (button) =>
+          button.evaluate((node) => {
+            const style = getComputedStyle(node);
+            return [style.backgroundColor, style.borderColor, style.borderRadius, style.fontFamily];
+          });
+        assert.deepEqual(
+          await buttonStyle(addNote),
+          await buttonStyle(dialog.getByRole("button", { name: "Cancel", exact: true })),
+        );
+        await dialog.getByRole("button", { name: "Help: Buster homeworld", exact: true }).click();
+        const homeworldHelp = page.getByRole("dialog", { name: "Buster homeworld", exact: true });
+        await expect(homeworldHelp).toContainText("without assuming the characters know each other");
+        await homeworldHelp.press("Escape");
+        await expect(homeworldHelp).toHaveCount(0);
+        await expect(dialog).toBeVisible();
         await dialog.getByLabel("Buster homeworld", { exact: true }).fill(" Koront ");
-        await dialog.getByLabel("Buster starting situation", { exact: true }).fill(" Already living here. ");
+        await addNote.click();
+        await dialog.getByLabel("Buster starting note", { exact: true }).fill("Temporary note");
+        await dialog.getByRole("button", { name: "Remove note", exact: true }).click();
+        await expect(dialog.getByLabel("Buster starting note", { exact: true })).toHaveCount(0);
+        await addNote.click();
+        await expect(dialog.getByLabel("Buster starting note", { exact: true })).toHaveValue("");
+        await dialog.getByLabel("Buster starting note", { exact: true }).fill(" Already living here. ");
         await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
         assert.equal(await page.evaluate(() => window.admissions?.length ?? 0), 0);
         await move.click();
         dialog = page.getByRole("dialog", { name: "Buster in your Village", exact: true });
-        await expect(dialog.getByLabel("Buster starting situation", { exact: true })).toHaveValue(
-          " Already living here. ",
-        );
+        await expect(dialog.getByLabel("Buster starting note", { exact: true })).toHaveValue(" Already living here. ");
         const box = await dialog.boundingBox();
         assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
         await page.screenshot({ path: ".build-tmp/resident-admission-" + width + ".png" });

@@ -240,7 +240,7 @@ export function createFoundingGotoSetupStep(ports: {
   readonly loadPersonas: (signal?: AbortSignal) => Promise<void>;
   readonly personaDraft: string;
   readonly personas: import("../../../shared/contracts/village").PersonaEntry[];
-  readonly residentContextProblem: "" | "Check starting situations in People.";
+  readonly residentContextProblem: "" | "Check starting notes in People.";
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];

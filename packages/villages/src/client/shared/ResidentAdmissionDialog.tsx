@@ -34,7 +34,7 @@ export function ResidentAdmissionDialog({
           onClick={async () => {
             const admission = readResidentAdmission(value);
             if (!admission) {
-              setError("Keep the homeworld within 120 characters and starting situation within 1,200 characters.");
+              setError("Keep the homeworld within 120 characters and starting note within 1,200 characters.");
               return;
             }
             setBusy(true);

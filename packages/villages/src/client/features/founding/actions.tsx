@@ -409,7 +409,7 @@ export function useFoundVillage(ports: {
   mapVisualLore: boolean;
   personaDraft: string;
   personalizeHomes: boolean;
-  residentContextProblem: "" | "Check starting situations in People.";
+  residentContextProblem: "" | "Check starting notes in People.";
   savedTownMapView: TownMapView;
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;

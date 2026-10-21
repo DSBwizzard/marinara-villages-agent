@@ -24,47 +24,16 @@ try {
   for (const width of [1366, 390, 320]) {
     const context = await browser.newContext({ viewport: { width, height: 844 } }),
       page = await context.newPage();
-    let paid = 0,
-      drop = true,
-      hold = false,
-      emptyNext = false,
-      release;
-    const saved = new Map();
+    let paid = 0;
     await page.route("http://cast.test/", (route) =>
       route.fulfill({
         contentType: "text/html",
         body: '<meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div>',
       }),
     );
-    await page.route("**/api/villages/villagers/background/draft", async (route) => {
-      const input = route.request().postDataJSON();
-      assert.equal(input.foundingCast, true);
-      assert.equal(input.proposalFormat, "adaptations-v1");
-      if (paid === 0)
-        assert.equal(input.playerBackground, "My own starting story.", "player writing is proposal context");
-      assert.deepEqual(input.foundingCharacterIds, ["mara", "ellis"]);
-      let output = saved.get(input.actionId);
-      if (!output) {
-        assert.equal(input.retrieveOnly, false);
-        paid++;
-        output = {
-          player: "I came to study the observatory.",
-          residents: emptyNext
-            ? { mara: "", ellis: "" }
-            : { mara: "Mara helps visiting students.", ellis: "Ellis arrived to study the stars." },
-        };
-        emptyNext = false;
-        saved.set(input.actionId, output);
-      }
-      if (hold) {
-        hold = false;
-        await new Promise((r) => (release = r));
-      }
-      if (drop) {
-        drop = false;
-        return route.abort();
-      }
-      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ text: JSON.stringify(output) }) });
+    await page.route("**/api/**", (route) => {
+      paid++;
+      return route.abort();
     });
     const load = async () => {
       await page.goto("http://cast.test/");
@@ -121,10 +90,12 @@ try {
       await expect(help).toBeFocused();
     }
     await page.getByLabel("Mara homeworld", { exact: true }).fill("Othiras");
-    await page.getByLabel("Mara starting situation", { exact: true }).fill("Already living here.");
+    await expect(page.getByLabel("Mara starting note", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "+ Add starting note", exact: true }).first().click();
+    await page.getByLabel("Mara starting note", { exact: true }).fill("Already living here.");
     await load();
     await page.getByRole("button", { name: "Select Mara", exact: true }).click();
-    await expect(page.getByLabel("Mara starting situation", { exact: true })).toHaveValue("Already living here.");
+    await expect(page.getByLabel("Mara starting note", { exact: true })).toHaveValue("Already living here.");
     await expect(page.getByLabel("Your backstory", { exact: true })).toHaveValue("My own starting story.");
     assert.equal(paid, 0);
     await page.screenshot({ path: ".build-tmp/player-background-" + width + ".png" });

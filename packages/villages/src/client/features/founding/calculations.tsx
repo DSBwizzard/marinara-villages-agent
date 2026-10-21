@@ -13,7 +13,7 @@ export function calculateResidentContextProblem(ports: {
     Object.values(selectedResidentAdmissions).some((context) =>
       Object.values(residentAdmissionProblems(context)).some(Boolean),
     )
-    ? "Check starting situations in People."
+    ? "Check starting notes in People."
     : "";
 }
 export function calculateSetupHomeCount(ports: { setupFoundingVillagerIds: string[] }) {
