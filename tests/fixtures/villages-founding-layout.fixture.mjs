@@ -740,7 +740,7 @@ export async function verifyFoundingLayout(group) {
             assert.equal(addBox.width, addBox.height, "Add control is square");
             await add.click();
             const sprites = page.getByRole("dialog", { name: name + " sprite setup", exact: true });
-            await expect(sprites.getByRole("button", { name: "Add without using sprites", exact: true })).toBeVisible();
+            await expect(sprites.getByRole("button", { name: "Add without sprites", exact: true })).toBeVisible();
             const spriteBox = await sprites.boundingBox();
             assert.ok(
               Math.abs(spriteBox.x + spriteBox.width / 2 - width / 2) < 2,
@@ -752,7 +752,7 @@ export async function verifyFoundingLayout(group) {
             );
             await page
               .getByRole("dialog", { name: name + " sprite setup" })
-              .getByRole("button", { name: "Add without using sprites", exact: true })
+              .getByRole("button", { name: "Add without sprites", exact: true })
               .click();
           }
         };
