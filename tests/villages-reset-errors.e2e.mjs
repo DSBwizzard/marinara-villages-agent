@@ -80,24 +80,26 @@ try {
     await page.goto("http://reset.test/");
     await page.evaluate(async (initial) => {
       window.initialSnapshot = initial;
-      const db = await new Promise((resolve) => {
-        const open = indexedDB.open("villages-founding-v2", 1);
-        open.onupgradeneeded = () => open.result.createObjectStore("drafts");
-        open.onsuccess = () => resolve(open.result);
-      });
-      await new Promise((resolve) => {
-        const tx = db.transaction("drafts", "readwrite");
-        tx.objectStore("drafts").put({ revision: 9, data: { name: "Retained draft" } }, "/api/villages");
-        tx.oncomplete = resolve;
-      });
-      db.close();
+      for (const name of ["villages-founding-v3", "villages-founding-v2"]) {
+        const db = await new Promise((resolve) => {
+          const open = indexedDB.open(name, 1);
+          open.onupgradeneeded = () => open.result.createObjectStore("drafts");
+          open.onsuccess = () => resolve(open.result);
+        });
+        await new Promise((resolve) => {
+          const tx = db.transaction("drafts", "readwrite");
+          tx.objectStore("drafts").put({ revision: 9, data: { name: "Retained draft" } }, "/api/villages");
+          tx.oncomplete = resolve;
+        });
+        db.close();
+      }
     }, structuredClone(fixture));
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const state = () => page.locator("#state").textContent().then(JSON.parse);
-    const stored = () =>
-      page.evaluate(async () => {
+    const stored = (name = "villages-founding-v3") =>
+      page.evaluate(async (databaseName) => {
         const db = await new Promise((resolve) => {
-          const open = indexedDB.open("villages-founding-v2", 1);
+          const open = indexedDB.open(databaseName, 1);
           open.onsuccess = () => resolve(open.result);
         });
         const record = await new Promise((resolve) => {
@@ -106,7 +108,7 @@ try {
         });
         db.close();
         return record;
-      });
+      }, name);
     const reset = page.getByRole("button", { name: "Reset the village and start over", exact: true });
     await reset.click();
     assert.equal(resets, 0, "Arming reset never deletes data");
@@ -131,6 +133,7 @@ try {
         assert.equal((await state()).founded, false);
         assert.equal((await state()).revision, 0);
         assert.equal(await stored(), undefined);
+        assert.equal((await stored("villages-founding-v2")).data.name, "Retained draft");
       }
     }
     assert.deepEqual(errors, []);

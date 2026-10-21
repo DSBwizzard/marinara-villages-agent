@@ -82,7 +82,7 @@ try {
         page.evaluate(
           () =>
             new Promise((resolve, reject) => {
-              const open = indexedDB.open("villages-founding-v2", 1);
+              const open = indexedDB.open("villages-founding-v3", 1);
               open.onsuccess = () => {
                 const req = open.result.transaction("drafts").objectStore("drafts").get("/api/villages");
                 req.onsuccess = () => resolve(req.result?.data?.timeZone);
