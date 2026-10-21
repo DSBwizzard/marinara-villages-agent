@@ -294,12 +294,13 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       }}
     >
       <style>{`
-      .villages-sprite-setup{position:fixed;inset:0;margin:auto;height:fit-content;background:#111d31;color:#f2f4fb;border:1px solid #66758f;border-radius:14px;padding:0;width:min(780px,calc(100vw - 24px));max-height:90dvh;overflow:hidden;box-sizing:border-box;font-family:system-ui,sans-serif}
+      .villages-sprite-setup{position:fixed;inset:0;margin:auto;height:90dvh;background:#111d31;color:#f2f4fb;border:1px solid #66758f;border-radius:14px;padding:0;width:min(780px,calc(100vw - 24px));max-height:90dvh;overflow:hidden;box-sizing:border-box;font-family:system-ui,sans-serif}
       .villages-sprite-setup[open]{display:flex;flex-direction:column}
       .villages-sprite-setup::backdrop{background:#080e19bd}
       .villages-sprite-setup header,.villages-sprite-setup footer{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:16px;flex-wrap:wrap;flex-shrink:0}
       .villages-sprite-setup h2{margin:0;font-size:1.25rem}.villages-sprite-setup h3{margin:0;font-size:1rem}
       .villages-sprite-setup main{overflow:auto;min-height:0;padding:0 16px 16px}
+      .villages-sprite-setup > main{flex:1}
       .villages-sprite-setup button,.villages-sprite-setup input,.villages-sprite-setup select,.villages-sprite-setup textarea{font:inherit;color:inherit;background:#1a2b44;border:1px solid #62718a;border-radius:6px;padding:8px;box-sizing:border-box;max-width:100%}
       .villages-sprite-setup button{min-height:44px}.villages-sprite-setup button:disabled{opacity:.5}.villages-sprite-setup .sprite-primary{background:#36567a}
       .villages-sprite-setup .sprite-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -354,6 +355,11 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                 {excludedCount ? <span> · {excludedCount} excluded</span> : null}
                 {defaultItem ? <span> · Default: {defaultItem.name}</span> : null}
               </p>
+              {included.length > 0 && completeCount === included.length && !defaultItem ? (
+                <p>
+                  <small>Choose a default sprite.</small>
+                </p>
+              ) : null}
               {showAnalysis && !activeArtwork ? <div className="sprite-analysis">{connectionChooser}</div> : null}
               <div className="sprite-actions">
                 {showAnalysis && !activeArtwork ? (
@@ -442,9 +448,6 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
         </fieldset>
       </main>
       <footer>
-        {data && included.length > 0 && completeCount === included.length && !defaultItem ? (
-          <small>Choose a default sprite.</small>
-        ) : null}
         <button disabled={busy} onClick={() => void perform(() => finish(false))}>
           Add without sprites
         </button>
