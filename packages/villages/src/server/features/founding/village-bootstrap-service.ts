@@ -8,7 +8,6 @@ import { VILLAGE_SHARED_SETTING_RULE } from "../../domain/rules/narrative-ground
 import {
   boundText,
   MAX_HAPPENINGS_PER_WRITE,
-  MAX_SETTING_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_NAME_LENGTH,
 } from "../../domain/rules/prompt-preset.js";
@@ -85,9 +84,11 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
           'Return JSON only: {"descriptions":[{"id":"...","text":"..."}]}. Each text is 2-4 sentences, under 1000 characters.',
         ].join("\n"),
       },
-      { role: "user", content: JSON.stringify({ setting: setting.slice(0, MAX_SETTING_LENGTH), lore, venues: rows }) },
+      { role: "user", content: JSON.stringify({ setting, lore, venues: rows }) },
     ];
     const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2_500, 2_500) });
+    if (JSON.stringify(fitted.messages) !== JSON.stringify(messages))
+      throw badRequest("The complete place description does not fit the System connection. No request was sent.");
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2_500, {
       responseFormat: { type: "json_object" },
       retryEmpty: false,

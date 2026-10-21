@@ -5,8 +5,6 @@ import { createVillageClock } from "../adapters/time/clock-service.js";
 import { configureVillageClock } from "../adapters/time/clock-gate.js";
 import { createFoundingProgress } from "../features/founding/founding-progress-service.js";
 import { configureFoundingProgress } from "../features/founding/founding-progress.js";
-import { createScenarioImprint } from "../features/founding/scenario-imprint-service.js";
-import { configureScenarioImprint } from "../features/founding/scenario-imprint.js";
 import { createCompactFounding } from "../features/founding/founding-compact-service.js";
 import { configureCompactFounding } from "../features/founding/founding-compact.js";
 import { createFoundingDrafts } from "../features/founding/founding-drafts-service.js";
@@ -502,9 +500,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseMapImages = configureTownMapImage(
     createTownMapImage({ readVillageVisualLoreEntries, generateVillageImage, inspectVillageImage }),
-  );
-  const releaseScenarioImprint = configureScenarioImprint(
-    createScenarioImprint({ readVillageLore, villagesLanguageModels, villagesConnectionIdFor, completeWithRoom }),
   );
   const releaseCompactFounding = configureCompactFounding(
     createCompactFounding({
@@ -1205,7 +1200,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseInterpretation();
     releaseSystemInterpretation();
     releaseInterpretationEvidence();
-    releaseScenarioImprint();
     releaseCompactFounding();
     releaseBootstrapRecipes();
     releaseFoundingDrafts();

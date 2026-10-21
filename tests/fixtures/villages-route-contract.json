@@ -349,10 +349,6 @@
     },
     {
       "method": "post",
-      "path": "/setup/scenario-imprint/draft"
-    },
-    {
-      "method": "post",
       "path": "/setup/town-map/generate"
     },
     {

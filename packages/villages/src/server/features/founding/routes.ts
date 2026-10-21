@@ -13,7 +13,6 @@ import {
 } from "./founding-setup.js";
 import { foundingPreparationSnapshot, retryFoundedVillagePreparation } from "./preparation.js";
 import { generateFoundingVenueImage, suggestStartingVenues, uploadFoundingVenueImage } from "./founding-drafts.js";
-import { draftScenarioImprint } from "./scenario-imprint.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerFoundingRoutes(engine: FastifyInstance) {
@@ -91,13 +90,6 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       return await readFoundingSuggestions(request.params.actionId);
     } catch (error) {
       return fail(reply, error, "retrieving Venue suggestions");
-    }
-  });
-  app.post<{ Body: unknown }>("/setup/scenario-imprint/draft", async (request, reply) => {
-    try {
-      return await draftScenarioImprint(request.body);
-    } catch (error) {
-      return fail(reply, error, "drafting the Scenario imprint");
     }
   });
   app.post<{

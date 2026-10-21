@@ -241,11 +241,17 @@ for (const invalid of ["exterior-residence", "missing-purpose", "community-priva
   }
 }
 const direct = fixture("Direct");
-await assert.rejects(
-  direct.service.runVillageSetup({ ...input("Direct"), foundingDetails: "" }),
-  /first day|brings you/,
-);
-assert.deepEqual(direct.calls, ["read"], "First-day validation precedes external connections and generation.");
+for (const setting of ["A farm", "An abandoned farm"]) {
+  const everyday = fixture("Everyday");
+  const payload = { ...input("Everyday"), setting };
+  delete payload.foundingDetails;
+  delete payload.foundingReason;
+  await everyday.service.runVillageSetup(payload);
+  assert.equal(everyday.state.setting, setting);
+  assert.equal(everyday.state.foundingDetails, "");
+  assert.equal(everyday.state.foundingReason, "none");
+  assert.equal(everyday.state.opening?.stage, "gathering", "the tutorial is unchanged");
+}
 const noChangesFixture = fixture("No changes");
 const noChangesInput = { ...input("No changes"), foundingResidentAdmissions: undefined, worldName: undefined };
 await noChangesFixture.service.runVillageSetup(noChangesInput);

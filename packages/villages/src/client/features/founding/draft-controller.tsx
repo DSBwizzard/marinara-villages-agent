@@ -1,3 +1,4 @@
+import { foundingDraftDescription } from "./draft-model.js";
 import { savedFoundingStep } from "./founding-steps.js";
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
@@ -106,11 +107,10 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSelectedSetupVenueId: FoundingState["setSelectedSetupVenueId"];
   readonly setSetupAuthoredFields: FoundingState["setSetupAuthoredFields"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
-  readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
+
   readonly setSetupSpriteRevisions?: FoundingState["setSetupSpriteRevisions"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
-  readonly setSetupImprint: FoundingState["setSetupImprint"];
+
   readonly setSetupKeyboardSpot: FoundingState["setSetupKeyboardSpot"];
   readonly setSetupLorebookDraft: FoundingState["setSetupLorebookDraft"];
   readonly setSetupLoreTokenBudgetDraft: FoundingState["setSetupLoreTokenBudgetDraft"];
@@ -160,11 +160,10 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSelectedSetupVenueId,
       setSetupAuthoredFields,
       setSetupEditorOpen,
-      setSetupFoundingDetails,
-      setSetupFoundingReason,
+
       setSetupSpriteRevisions,
       setSetupFoundingVillagerIds,
-      setSetupImprint,
+
       setSetupKeyboardSpot,
       setSetupLorebookDraft,
       setSetupLoreTokenBudgetDraft,
@@ -212,11 +211,8 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupName(data.name);
     ports.setSetupTimeZone?.(data.timeZone ?? "");
     setSetupWorldName(data.worldName ?? "");
-    setSetupSetting(data.setting);
-    setSetupFoundingReason(data.reason);
-    setSetupFoundingDetails(data.circumstances);
+    setSetupSetting(foundingDraftDescription(data));
     setSetupPlayerBackground(data.playerBackground ?? "");
-    setSetupImprint(data.imprint);
     setSetupWorldFacts(data.worldFacts);
     const inactive = { ...data.workspace?.inactive };
     for (const [id, saved] of Object.entries(data.zoneDrafts ?? {})) {

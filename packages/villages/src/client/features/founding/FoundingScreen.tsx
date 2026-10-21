@@ -29,8 +29,7 @@ const MAP_EXAMPLES = [
 ];
 const PLACE_ERRORS = {
   name: "Give the village a name.",
-  setting: "Describe the setting.",
-  circumstance: "Describe the starting scenario.",
+  setting: "Describe the place.",
 };
 
 export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
@@ -74,7 +73,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setScreen,
     setSelectedSetupVenueId,
     setSetupFocusIssue,
-    setSetupFoundingDetails,
+
     setSetupSpriteRevisions,
     setupSpriteRevisions,
     setSetupFoundingVillagerIds,
@@ -100,7 +99,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupBeginningSourceKey,
     setupEditorOpen,
     setupFocusIssue,
-    setupFoundingDetails,
+
     setupFoundingVillagerIds,
     setupImageClaim,
     setupImageTarget,
@@ -447,24 +446,16 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     />
                   </FoundingField>
                   <FoundingField
-                    title="Setting"
-                    help={
-                      <>
-                        A Village is wherever your community lives - a town, spaceship, dumpster, shopping mall, or
-                        undeveloped land. Describe its <strong>permanent details</strong> and{" "}
-                        <strong>critical facts</strong> about the wider world, time period, and important world-building
-                        rules.
-                      </>
-                    }
+                    title="Place"
                     error={
                       validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""
                     }
                   >
                     <textarea
                       autoComplete="off"
-                      placeholder="A seaside resort on a sheltered coast in a present-day world without magic."
-                      aria-label="Setting"
-                      maxLength={snapshot?.settings.settingMaxLength ?? 1200}
+                      placeholder="An abandoned farm beside a forest in a present-day world without magic."
+                      aria-label="Place"
+                      maxLength={snapshot?.settings.settingMaxLength ?? 4096}
                       rows={4}
                       value={setupSetting}
                       disabled={busy}
@@ -475,39 +466,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     />
                   </FoundingField>
                 </section>
-                <section className="villages-forging-card villages-starting-situation">
-                  <FoundingField
-                    title="Starting Scenario"
-                    help={
-                      <>
-                        Describe life in the Village when play begins, including any ongoing events or problems.{" "}
-                        <strong>These conditions can change through play.</strong>
-                      </>
-                    }
-                    error={
-                      validatedFields.includes("place-circumstance") &&
-                      !snapshot?.isFounded &&
-                      !setupFoundingDetails.trim()
-                        ? PLACE_ERRORS.circumstance
-                        : ""
-                    }
-                  >
-                    <textarea
-                      autoComplete="off"
-                      placeholder="The resort is preparing for its annual festival, but visitors are scarce and several buildings need repairs."
-                      aria-label="Starting Scenario"
-                      maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 2000}
-                      rows={4}
-                      value={setupFoundingDetails}
-                      disabled={busy || !!snapshot?.isFounded}
-                      onChange={(event) => {
-                        setSetupFoundingDetails(event.target.value);
-                        clearFieldValidation("place-circumstance");
-                      }}
-                    />
-                  </FoundingField>
-                </section>
                 <section className="villages-forging-card villages-place-options">
+                  {snapshot?.settings.foundingDetails ? (
+                    <details>
+                      <summary>Founding history</summary>
+                      <p>{snapshot.settings.foundingDetails}</p>
+                    </details>
+                  ) : null}
                   <VillageLorebookPicker
                     books={lorebooks}
                     error={lorebooksError}
@@ -866,7 +831,12 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     </div>
                     <p>{setupSetting}</p>
                     {setupWorldName ? <p>Village world: {setupWorldName}</p> : null}
-                    <p>{setupFoundingDetails}</p>
+                    {snapshot?.settings.foundingDetails ? (
+                      <details>
+                        <summary>Founding history</summary>
+                        <p>{snapshot.settings.foundingDetails}</p>
+                      </details>
+                    ) : null}
                     <p>{setupLorebookDraft.length} lorebooks selected</p>
                   </section>
                   <section className="villages-forging-card">
@@ -1000,7 +970,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   "connections",
                   "place-name",
                   "place-setting",
-                  "place-circumstance",
                   ...(setupStep >= 1
                     ? [
                         "persona",

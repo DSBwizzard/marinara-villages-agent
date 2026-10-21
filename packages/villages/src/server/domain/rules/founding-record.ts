@@ -359,10 +359,6 @@ export function assertFoundingScenarioLocked(
   )
     throw conflict("The founding Scenario is locked. Start a new village to choose another one.");
 }
-/** Existing villages keep their locked beginning, including older records without starting circumstances. */
-export function validateFirstDayDescription(description: string, founding: boolean): void {
-  if (founding && !description.trim()) throw badRequest("Describe what brings you and the others together here.");
-}
 /** Bind a new wizard's selected roster to its assigned homes before generation or writes. */
 export function validateFoundingRoster(
   value: unknown,

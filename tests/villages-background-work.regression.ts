@@ -1,3 +1,5 @@
+import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
 import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import assert from "node:assert/strict";
@@ -153,6 +155,23 @@ registerBackgroundHandler("translation", {
     state.setting = "translated-" + result.moves.length;
   },
 });
+registerBackgroundHandler("story", {
+  async generate(input) {
+    const opening = await completeWithRoom(model as any, buildTickMessages(input.context), 100, {
+      temperature: 0,
+      debugMode: false,
+    });
+    await completeWithRoom(model as any, [{ role: "user", content: "story-followup" }], 100, {
+      temperature: 0,
+      debugMode: false,
+    });
+    return opening.content;
+  },
+  valid: () => true,
+  apply() {
+    effects.push("legacy-story");
+  },
+});
 const work = (subject: string, steps: string[], finite = true): BackgroundInput => ({
   kind: "agenda",
   subjectId: subject,
@@ -243,6 +262,53 @@ async function main() {
   ])
     assert.equal(connectionFailureKind(new Error(message), true), "request", message);
   try {
+    await reset();
+    const frozenStory = {
+      village: "Willowbrook",
+      setting: "Fields and trees. ".repeat(50) + "A flood is ongoing.",
+      moment: deriveVillageMoment({
+        seed: "fixture",
+        foundedAt: "2026-09-01T00:00:00Z",
+        now: new Date("2026-09-02T00:00:00Z"),
+      }),
+      residents: [],
+      recent: [],
+      venues: [],
+      opportunities: [],
+      lastSimulatedAt: "2026-09-01T00:00:00Z",
+      forced: false,
+    };
+    failStep = "story-followup";
+    failure = "503 Service Unavailable";
+    await queueBackgroundJob({
+      kind: "story",
+      subjectId: "saved-story",
+      seed: "fixture",
+      revision: "legacy-story",
+      finite: true,
+      label: "Saved story",
+      input: { context: frozenStory },
+    });
+    await settleBackgroundWork();
+    const story = await summary("saved-story");
+    assert.equal(calls.length, 2);
+    assert.equal(
+      calls[0].includes(frozenStory.setting),
+      false,
+      "the pre-upgrade story context uses its original bounded description",
+    );
+    stop();
+    stop = startBackgroundWork({ now: () => now });
+    await settleBackgroundWork();
+    assert.equal(calls.length, 2, "restart does not retry a failed story");
+    failStep = "";
+    await retryBackgroundJob(story.id, (await summary("saved-story")).attempt, "resume-legacy-story");
+    await settleBackgroundWork();
+    assert.equal((await summary("saved-story")).status, "completed");
+    assert.equal(calls.length, 3, "the purchased first story response replays without another call");
+    assert.deepEqual(effects, ["legacy-story"]);
+    failure = "401 Invalid API key";
+
     await reset();
     blockStep = "first";
     await Promise.all([queueBackgroundJob(work("same", ["first"])), queueBackgroundJob(work("same", ["first"]))]);

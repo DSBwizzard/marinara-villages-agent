@@ -20,7 +20,7 @@ import {
   readLoreTokenBudget,
   readSelectedLorebookIds,
 } from "../../domain/rules/lore-policy.js";
-import { MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "../../domain/rules/prompt-preset.js";
+import { MAX_SETTING_LENGTH, MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "../../domain/rules/prompt-preset.js";
 import {
   readFoundingResidentAdmissions,
   renderResidentAdmission,
@@ -78,8 +78,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     if (input.mode !== undefined && !quickStart) throw badRequest("Choose a valid Venue suggestion mode.");
     const setting = asTrimmedString(input.setting);
     const circumstances = asTrimmedString(input.foundingDetails);
-    if (!setting || setting.length > 1200 || !circumstances || circumstances.length > 2000)
-      throw badRequest("Describe the place and shared starting circumstances first.");
+    if (!setting || setting.length > MAX_SETTING_LENGTH || circumstances.length > 2000)
+      throw badRequest("Describe the place first.");
     const rows = rowsOf(input.venues);
     if (
       rows.length < 3 ||
@@ -377,7 +377,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     if (!areaDescription) throw badRequest(`Add an ${area} description before generating its image.`);
     const imprint = coerceScenarioImprint(input.scenarioImprint);
     const setting = [
-      asTrimmedString(input.setting).slice(0, 1200),
+      asTrimmedString(input.setting),
       asTrimmedString(input.worldName).slice(0, 120),
       admission?.homeworld ?? "",
       ...(imprint?.worldFacts ?? coerceWorldFacts(input.worldFacts)),
@@ -385,7 +385,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     ]
       .filter(Boolean)
       .join("; ");
-    if (!setting) throw badRequest("Describe what the village is like first.");
+    if (!setting || asTrimmedString(input.setting).length > MAX_SETTING_LENGTH)
+      throw badRequest("Describe the place within the allowed length first.");
     const lore =
       input.useVisualLore === false
         ? ""
@@ -413,7 +414,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         venueImageCompositionPrompt(area === "exterior" ? "exterior" : "interior"),
       ],
       [
-        `Setting: ${setting}.`,
         character ? `Occupant context, reflect preferences in the space without depicting people: ${character}.` : "",
         lore ? `Established lore: ${lore}.` : "",
         asTrimmedString(input.foundingDetails)
@@ -421,7 +421,10 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           : "",
       ],
       input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
-      personality && row.resident && admission ? [renderResidentAdmission(row.resident.name, admission)] : [],
+      [
+        "Place: " + setting,
+        ...(personality && row.resident && admission ? [renderResidentAdmission(row.resident.name, admission)] : []),
+      ],
     );
     const decoded = await generateVillageImage({
       sceneryStyleProfileId: input.sceneryStyleProfileId,
