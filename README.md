@@ -2,4 +2,4 @@
 
 A text-first slice-of-life sim for Marinara Engine.
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for the locked build, shared validation commands and release policy. [The architecture migration](docs/architecture-migration.md) records the baseline and work toward 0.7.0. Gameplay and compatibility notes are in [packages/villages/README.md](packages/villages/README.md).
+See the [product guide](packages/villages/README.md) for gameplay and compatibility, [DEVELOPMENT.md](DEVELOPMENT.md) for build, validation and release commands, and [architecture and compatibility](docs/architecture-migration.md) for code ownership and saved-state contracts.

@@ -15,7 +15,150 @@ const bundle = await build({
 });
 await mkdir(".build-tmp/sprite-setup", { recursive: true });
 const browser = await chromium.launch({ headless: true });
+async function verifyStableLoading(viewport, spriteCount) {
+  const touch = viewport.width < 1000;
+  const page = await browser.newPage({ viewport, hasTouch: touch });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const cold = {
+    revision: 0,
+    manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
+    assignments: [],
+    suggestions: [],
+    defaultArtworkId: "",
+    useSprites: false,
+    errors: {},
+    analysisRequests: [],
+    files: spriteCount ? [{ filename: "full_one.png", url: mapImage }] : [],
+    resident: false,
+    residentToken: "",
+  };
+  const prepared = structuredClone(cold);
+  for (let index = 0; index < spriteCount; index++) {
+    const artworkId = `art-${index}`;
+    prepared.manager.artwork.push({
+      id: artworkId,
+      name: `Sprite ${index}`,
+      rendered: { url: mapImage },
+      warnings: [],
+    });
+    prepared.assignments.push({
+      artworkId,
+      name: `Sprite ${index}`,
+      useWhen: "",
+      direction: "front",
+      included: true,
+      approved: false,
+    });
+  }
+  let releaseRead, releaseImport;
+  const reading = new Promise((resolve) => {
+    releaseRead = resolve;
+  });
+  const importing = new Promise((resolve) => {
+    releaseImport = resolve;
+  });
+  const saves = [];
+  await page.route("http://villages.test/", (route) =>
+    route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
+  );
+  await page.route("**/api/connections", (route) => route.fulfill({ contentType: "application/json", body: "[]" }));
+  await page.route("**/api/villages/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    let value = cold;
+    if (path.endsWith("/prepare")) {
+      await importing;
+      value = prepared;
+    } else if (path.endsWith("/save")) {
+      const body = route.request().postDataJSON();
+      saves.push(body);
+      value = { ...prepared, revision: 1, useSprites: body.useSprites };
+    } else {
+      assert.equal(route.request().method(), "GET", "Loading and skipping never requests analysis or applies sprites.");
+      await reading;
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+  });
+  try {
+    await page.goto("http://villages.test/");
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.getByRole("button", { name: "Choose Bupkis", exact: true }).click();
+    await expect(page.getByText("Reading sprites…", { exact: true })).toBeVisible();
+    const skip = page.getByRole("button", { name: "Add without sprites", exact: true });
+    const use = page.getByRole("button", { name: "Add villager with sprites", exact: true });
+    const original = await Promise.all([skip.boundingBox(), use.boundingBox()]);
+    const assertStable = async () => {
+      for (const [index, button] of [skip, use].entries()) {
+        const box = await button.boundingBox();
+        for (const key of ["x", "y", "width", "height"]) {
+          assert.ok(
+            Math.abs(box[key] - original[index][key]) <= 1,
+            `${await button.textContent()} ${key} stays stable while sprites load.`,
+          );
+        }
+        assert.ok(
+          box.x >= 0 && box.x + box.width <= viewport.width && box.y >= 0 && box.y + box.height <= viewport.height,
+          "Actions stay inside the viewport.",
+        );
+        assert.ok(box.height >= 44, "Actions retain a touch-sized target.");
+      }
+      await expect(skip).toBeEnabled();
+      await expect(use).toBeDisabled();
+    };
+    await assertStable();
+    releaseRead();
+    if (spriteCount) {
+      await expect(page.getByText("Preparing sprites…", { exact: true })).toBeVisible();
+      await assertStable();
+      releaseImport();
+      await expect(page.getByText("Choose a default sprite.", { exact: true })).toBeVisible();
+      await expect(page.getByText("Preparing sprites…", { exact: true })).toHaveCount(0);
+    } else {
+      await expect(page.getByText("No character sprites available.", { exact: true })).toBeVisible();
+    }
+    await assertStable();
+    const main = page.locator(".villages-sprite-setup > main");
+    assert.ok(
+      await main.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+      "Content fits without horizontal scrolling.",
+    );
+    if (spriteCount) {
+      assert.ok(
+        await main.evaluate((node) => node.scrollHeight > node.clientHeight),
+        "A full gallery scrolls inside the dialog.",
+      );
+      await main.evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+      });
+      await assertStable();
+    }
+    await page.screenshot({
+      path: `.build-tmp/sprite-setup/stable-${viewport.width}x${viewport.height}-${spriteCount}.png`,
+    });
+    // A locator click would follow the moved button and miss the reported mis-tap.
+    const { x, y, width, height } = original[0];
+    if (touch) await page.touchscreen.tap(x + width / 2, y + height / 2);
+    else await page.mouse.click(x + width / 2, y + height / 2);
+    await expect(page.getByText("Bupkis added", { exact: true })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    assert.equal(saves.length, 1);
+    assert.equal(saves[0].useSprites, false);
+    assert.deepEqual(errors, []);
+  } finally {
+    releaseRead();
+    releaseImport();
+    await page.close();
+  }
+}
 try {
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 320, height: 568 },
+    { width: 844, height: 390 },
+    { width: 1440, height: 1000 },
+  ]) {
+    for (const spriteCount of [18, 0]) await verifyStableLoading(viewport, spriteCount);
+  }
   for (const viewport of [
     { width: 1440, height: 1000 },
     { width: 390, height: 844 },
