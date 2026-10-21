@@ -7,9 +7,9 @@ Use Node 24 and `npm ci`. Maintained source is in `packages/villages/src`; packa
 1. Use an owned branch/checkout from current `staging`. Reuse it for feedback and preserve unrelated work.
 2. Implement the smallest coherent change. Run `npm run check:changed` and explicit affected tests, for example `npm test -- --filter=venue-access` or `npm run test:browser -- --case=settings/package`. Empty and unknown selections fail.
 3. Build with `npm run build`; verify the archive with `npm run verify:package`. Present significant new behavior in an independent working preview. Obtain acceptance of that package before staging. Routine corrections follow the standing authorization in AGENTS.md.
-4. Open a PR to staging. CI validates the combined merge candidate. Resolve failures and conflicts, then merge after required checks and any applicable acceptance. Main promotion is a separate explicit decision.
+4. Open a PR to staging with a concise description of the final behavior and relevant validation. CI validates the combined merge candidate. Resolve failures and conflicts, then merge after required checks and any applicable acceptance. Use a final summary for the merge commit rather than a list of intermediate commit titles. Main promotion is a separate explicit decision.
 
-No task catalog, evidence receipt graph, automatic instruction refresh or custom release controller is required. Use normal Git and GitHub PR/check status. On resume inspect the checkout and PR; do not replay historical process instructions. Technical review is proportional to risk as described in AGENTS.md.
+Use normal Git and GitHub PR/check status. On resume inspect the checkout and PR. Technical review is proportional to risk as described in AGENTS.md. Routine copy/layout corrections need no separate preview acceptance; significant new behavior does.
 
 ## Commands and coverage
 
@@ -22,7 +22,7 @@ npm run test:inventory    # all suites and available cases
 npm run validate          # full static + two builds + package + regression/browser inventory
 ```
 
-Install the locked Chromium runtime with `npx playwright install chromium`. CI runs full static/build/regression validation on Linux and Windows, plus the complete browser inventory split into two fixed partitions per OS (`--shard=1/2`, `--shard=2/2`). Package parity waits for every partition. This ordinary fixed matrix replaces a measured slow single-job baseline; it has no planner, dependency graph or passing-result reuse. Node is pinned; npm and browser binary caches remain. Required job names remain `validate`, `validate-windows`, and `package-parity`. A new PR head cancels its superseded run. CI runs on PRs and manual dispatch; merging does not automatically repeat the same full workload. Protected current-base requirements still apply.
+Install the locked Chromium runtime with `npx playwright install chromium`. CI runs full static/build/regression validation on Linux and Windows, plus the complete browser inventory split into two fixed partitions per OS (`--shard=1/2`, `--shard=2/2`). Package parity waits for every partition. Node is pinned; npm and browser binary caches remain. Required job names are `validate`, `validate-windows`, and `package-parity`. A new PR head cancels its superseded run. CI runs on PRs and manual dispatch. Protected current-base requirements apply.
 
 There is no reuse of passing test results. Focused local tests are feedback; passing CI describes the tested merge candidate. The runner defaults to four workers and up to two local browser workers. `--jobs=1`, `--browser-jobs=1`, `--keep-going` and `--fail-fast` control execution. Resource locks prevent unsafe overlap; unknown suites run exclusively. Logs, progress, first failure and coverage are under `.build-tmp/test-results`. Inspect the owner before recovering an interrupted checkout lock.
 
@@ -51,6 +51,6 @@ Never substitute a local success, identical bytes alone, or stale PR approval fo
 
 Client features own screens/actions; the shell composes them. Server features coordinate requests, domain modules own rules and saved models, adapters own host I/O, and jobs own background work. Shared contracts/calculations remain explicit. `scripts/feature-interfaces.mjs` declares cross-feature contracts; architecture checks enforce client/server privacy and domain boundaries. A new layer or interface needs a concrete purpose.
 
-Saved-data changes must preserve existing worlds or explicitly explain the compatibility decision. The fresh-world 0.7.0 baseline is historical, not authorization for future loss. See `docs/architecture-migration.md`. Engine image styles use the public shared export and HTTP API; private Engine implementations are not bundled. Product details belong in `packages/villages/README.md` and relevant feature docs.
+Saved-data changes must preserve existing worlds or explicitly explain the compatibility decision. The fresh-world 0.7.0 baseline is historical, not authorization for future loss. See [architecture and compatibility](docs/architecture-migration.md). Engine image styles use the public shared export and HTTP API; private Engine implementations are not bundled. Product details belong in `packages/villages/README.md` and relevant feature docs.
 
 Keep process changes small: demonstrate the problem and net maintenance benefit, remove what they replace, and measure request-to-preview/staging time including queueing and interventions. Faster tests or more checks alone do not justify permanent machinery.

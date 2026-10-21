@@ -3,6 +3,7 @@
 - Optimize for simple, reliable development and low maintenance. Start with the smallest root-cause fix; reuse existing code and standard tools. Add permanent machinery only for a demonstrated problem with a clear net benefit. Remove replaced paths.
 - Evaluate proposals candidly and explain concrete tradeoffs. Routine reversible engineering, testing, corrections, previews, and completed staging delivery are autonomous. Ask only for missing product decisions or authorization that materially affects the work.
 - Use an owned checkout/branch from current staging and a PR to staging. Reuse it for feedback; preserve other tasks and unrelated dirty work. Inspect Git and the PR when resuming. Historical summaries and one-time implementation decisions do not establish permanent policy.
+- Commit messages and PR descriptions explain the final change, relevant validation and material limitations. Keep private preview URLs, checkpoint details and acceptance conversations in private runtime records or the originating chat. Update current documentation in place; remove superseded guidance instead of appending development diaries.
 - Source is in packages/villages/src. Keep client/server privacy boundaries, server authority over Scenes/access/snapshots, request identities, revision checks, cancellation, retry accounting, and saved-world compatibility. Domain rules do not perform host I/O; features use explicit contracts. New Engine integration uses public APIs and declared permissions.
 - Run static checks and explicit affected tests during iteration. CI runs the complete provider-free inventory on Linux and Windows and verifies reproducibility/package parity. Local feedback and mocked tests do not establish packaged or real-provider behavior. Never bypass required checks.
 - Use one independent read-only technical reviewer for material saved-data, privacy/access, spending, recovery/concurrency, or architecture changes. Review a changed material assumption again; cosmetic edits need no review ceremony. Tests protect observable behavior and actual failure modes, not wording or implementation shape.
@@ -18,6 +19,6 @@ Commands and release steps: DEVELOPMENT.md. Product behavior: packages/villages/
 
 ## Collaboration and engineering judgment
 
-- Assume the user is still learning coding best practices. Critically evaluate proposals rather than automatically agreeing or treating a suggested implementation as the best way to achieve the goal.
+- Critically evaluate proposals rather than automatically agreeing or treating a suggested implementation as the best way to achieve the goal.
 - Push back candidly when an idea is unsound, unnecessarily complex, difficult to maintain, or likely to cause future problems. Explain the tradeoffs plainly and propose a better approach. Distinguish established practice from personal preference.
 - Ask for clarification when uncertainty materially affects the outcome. Respect the user's goals and final decisions while clearly flagging consequential risks.
