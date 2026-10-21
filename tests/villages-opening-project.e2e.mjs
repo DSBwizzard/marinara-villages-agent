@@ -257,6 +257,8 @@ try {
     Object.assign(improvement.snapshot.opening.proposals[0], {
       kind: "renovation",
       name: "Reading corner",
+      description: "A shared reading corner for quiet afternoons.",
+      work: "Prepare the corner, fit shelves and seating, and finish the surfaces.",
       renovation: {
         venueId: "mill",
         spaceId: "community",

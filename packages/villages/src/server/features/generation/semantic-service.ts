@@ -476,7 +476,6 @@ export function createSemanticService(ports: SemanticPorts) {
           if (raw.openingSignal === undefined && signalRequired)
             throw badGateway("System opening interpretation is incomplete. The draft is preserved.");
           const signal = readOpeningSignal(raw.openingSignal);
-          if (opening.requiredPitch && signal?.kind !== "pitch") throw new IncompleteOpeningPitch();
           if (
             raw.openingSignal !== null &&
             raw.openingSignal !== undefined &&
@@ -492,31 +491,33 @@ export function createSemanticService(ports: SemanticPorts) {
                 (!opening.firstUse || !signal.playerQuote || !savedInput.message.includes(signal.playerQuote))))
           )
             throw badGateway("System opening evidence did not validate. The draft is preserved.");
+          if (opening.requiredPitch && signal?.kind !== "pitch") throw new IncompleteOpeningPitch();
           let gatheringComplete = false;
           if (opening.gathering) {
             if (!Array.isArray(raw.gatheringContributions))
               throw badGateway("Gathering interpretation is incomplete. The draft is preserved.");
             const contributions = raw.gatheringContributions.map(asRecord);
-            if (
-              contributions.length !== opening.gathering.length ||
-              !opening.gathering.every(
-                (idea) =>
-                  contributions.filter(
-                    (p) =>
-                      p.residentId === idea.residentId &&
-                      typeof p.quote === "string" &&
-                      p.quote.length > 0 &&
-                      savedInput.evidence.some(
-                        (line) =>
-                          line.playerHeard &&
-                          line.kind === "dialogue" &&
-                          line.speakerId === idea.residentId &&
-                          line.content.includes(p.quote as string),
-                      ),
-                  ).length === 1,
+            const contributors = new Set<string>();
+            for (const contribution of contributions) {
+              const { residentId, quote } = contribution;
+              if (
+                typeof residentId !== "string" ||
+                !opening.gathering.some((idea) => idea.residentId === residentId) ||
+                contributors.has(residentId) ||
+                typeof quote !== "string" ||
+                !quote.trim() ||
+                !savedInput.evidence.some(
+                  (line) =>
+                    line.playerHeard &&
+                    line.kind === "dialogue" &&
+                    line.speakerId === residentId &&
+                    line.content.includes(quote),
+                )
               )
-            )
-              throw new IncompleteOpeningGathering();
+                throw badGateway("Gathering evidence did not validate. The draft is preserved.");
+              contributors.add(residentId);
+            }
+            if (contributors.size !== opening.gathering.length) throw new IncompleteOpeningGathering();
             gatheringComplete = true;
           }
           effects.openingSignal = signal;

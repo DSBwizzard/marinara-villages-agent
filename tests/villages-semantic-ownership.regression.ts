@@ -773,6 +773,16 @@ async function main() {
   state.opening.stage = "gathering";
   state.opening.gatheringSceneId = scene.id;
   openingSignal = null;
+  const contribution = { residentId: "host", quote: pitchLine.content };
+  for (const [label, rows] of [
+    ["Duplicate contributors", [contribution, contribution]],
+    ["Unsupported quote", [{ ...contribution, quote: "An invented idea" }]],
+    ["Unknown founder", [{ ...contribution, residentId: "unknown" }]],
+  ] as const) {
+    gatheringContributions = rows;
+    await assert.rejects(service.exchange(scene, label, [pitchLine], null), /Gathering evidence did not validate/);
+    assert.equal(rejected.at(-1).options.preserveWriting, true, `${label} retains the purchased dialogue`);
+  }
   gatheringContributions = [];
   await assert.rejects(
     service.exchange(scene, "Gathering missing idea", [pitchLine], null),
