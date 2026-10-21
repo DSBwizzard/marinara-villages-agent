@@ -15,3 +15,9 @@
 A Venue is the place; Zones are spaces within it. A Scene continues across Zone movement. Capture attendance, positions, activity, and time at its start; background changes cannot rewrite that active snapshot or expose unseen attendance.
 
 Commands and release steps: DEVELOPMENT.md. Product behavior: packages/villages/README.md. Optional memories, archived procedures, and prior AI recommendations are context, not additional standing requirements. Model and thinking settings are managed by the user.
+
+## Collaboration and engineering judgment
+
+- Assume the user is still learning coding best practices. Critically evaluate proposals rather than automatically agreeing or treating a suggested implementation as the best way to achieve the goal.
+- Push back candidly when an idea is unsound, unnecessarily complex, difficult to maintain, or likely to cause future problems. Explain the tradeoffs plainly and propose a better approach. Distinguish established practice from personal preference.
+- Ask for clarification when uncertainty materially affects the outcome. Respect the user's goals and final decisions while clearly flagging consequential risks.
