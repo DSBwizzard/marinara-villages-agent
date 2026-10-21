@@ -46,18 +46,25 @@ function data(stage) {
   };
   return snapshot;
 }
-async function open(width, stage, version = 1) {
+async function open(width, stage, version = 1, holdSnapshotAfterClose = false) {
   const snapshot = data(stage);
   snapshot.opening.version = version;
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 700 });
   const errors = [],
     calls = [];
   let scene = null;
+  let snapshotBlocked = false;
+  let releaseClosedSnapshot;
+  const closedSnapshot = new Promise((resolve) => (releaseClosedSnapshot = resolve));
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/api/villages**", async (route) => {
     const request = route.request(),
       path = new URL(request.url()).pathname.replace(/^.*\/api\/villages/, "");
     let value = snapshot;
+    if ((path === "/" || path === "") && holdSnapshotAfterClose && scene?.status === "closed") {
+      snapshotBlocked = true;
+      await closedSnapshot;
+    }
     if (request.method() === "POST") calls.push({ path, body: request.postDataJSON() });
     if (path === "/rooms/active") value = { session: scene };
     else if (path === "/rooms" && request.method() === "POST") {
@@ -216,12 +223,15 @@ async function open(width, stage, version = 1) {
   );
   await page.goto("http://opening.test/");
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-  return { page, snapshot, calls, errors };
+  return { page, snapshot, calls, errors, releaseClosedSnapshot, snapshotBlocked: () => snapshotBlocked };
 }
 try {
   for (const width of [1366, 390]) {
-    const reader = await open(width, "gathering", 2);
+    const reader = await open(width, "gathering", 2, true);
     await expect.poll(() => reader.calls.filter((entry) => entry.path === "/rooms/greet").length).toBe(1);
+    // A refreshed browser restores the gathering without going through its automatic opener.
+    await reader.page.reload();
+    await reader.page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await expect(reader.page.locator(".marinara-capability-villages-composer")).toHaveCount(0);
     for (
       let step = 0;
@@ -233,8 +243,18 @@ try {
     await expect(reader.page.getByRole("button", { name: "Continue", exact: true })).toBeVisible();
     if (output) await reader.page.screenshot({ path: resolve(output, `opening-reader-${width}.png`) });
     await reader.page.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(reader.page.getByRole("button", { name: "Talk to Eli · 1/3", exact: true })).toBeVisible();
+    await expect.poll(reader.snapshotBlocked).toBe(true);
+    await reader.page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
     await expect(reader.page.locator(".marinara-capability-villages-room-screen")).toHaveCount(0);
+    assert.equal(
+      reader.calls.filter((entry) => entry.path === "/rooms").length,
+      1,
+      "Continue must not open another Scene while the map snapshot refreshes",
+    );
+    reader.releaseClosedSnapshot();
+    await expect(reader.page.getByRole("button", { name: "Talk to Eli · 1/3", exact: true })).toBeVisible();
     assert.equal(reader.calls.filter((entry) => entry.path === "/rooms/end").length, 1);
     assert.equal(reader.calls.filter((entry) => /turn|send/.test(entry.path)).length, 0);
     assert.deepEqual(reader.errors, []);

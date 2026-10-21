@@ -9,6 +9,9 @@ export function OpeningReminder({ controller }: { controller: ReturnType<typeof 
   const [dismissed, dismiss] = useState("");
   const key = `${opening?.id}:${opening?.action}`;
   useEffect(() => {
+    // Restoring a saved gathering also consumes its automatic entry. Closing it
+    // must not open another Scene while the refreshed snapshot is still pending.
+    if (opening && room?.id && room.id === opening.gatheringSceneId) attempted.current = opening.id;
     if (
       !opening ||
       opening.stage !== "gathering" ||
@@ -19,10 +22,10 @@ export function OpeningReminder({ controller }: { controller: ReturnType<typeof 
       (room && room.status !== "closed")
     )
       return;
-    if (attempted.current === opening.communityVenueId) return;
+    if (attempted.current === opening.id) return;
     const venue = snapshot.settings.venues.find((entry) => entry.id === opening.communityVenueId);
     if (!venue) return;
-    attempted.current = opening.communityVenueId;
+    attempted.current = opening.id;
     void controller.openRoom(venue, "community");
   }, [controller, opening, snapshot, sceneRestoration.status, screen, roomBusy, room]);
   if (
