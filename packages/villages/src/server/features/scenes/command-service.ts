@@ -1,5 +1,10 @@
 import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
-import { openingActive } from "../../domain/rules/opening-project.js";
+import { openingPresence } from "../../domain/rules/opening-presence.js";
+import {
+  openingActive,
+  ordinaryProjectsLocked,
+  gatheringDialogueComplete,
+} from "../../domain/rules/opening-project.js";
 import { completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
 import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
 import { acousticFragment, bindAcousticPlan } from "../../domain/rules/scene-acoustics.js";
@@ -685,6 +690,7 @@ export function createSceneCommands({
   ): Promise<VenueScene> {
     assertVenueOwnership();
     let session = await requireLiveVenueSession(sessionId);
+    if (session.openingReader) throw conflict("Finish the gathering or skip the opening first.");
     if (!session.sceneAttendance) session = await refreshZoneParticipants(session, true);
     const operationId = venueOperationId();
     const recorded =
@@ -1123,7 +1129,18 @@ export function createSceneCommands({
       .map(({ characterId, name, doing }) => ({ characterId, name, doing }));
     if (participants.length > 4)
       throw conflict("Five residents occupy this Zone. Edit their agendas before starting a Scene.");
+    const introduction =
+      village.opening?.version === 2 && village.opening.stage === "conversations"
+        ? village.opening.residentIds.find((residentId) => {
+            const meeting = openingPresence(village, residentId);
+            return meeting?.venueId === placeId && meeting.zoneId === zone.id;
+          })
+        : undefined;
+    if (introduction && (participants.length !== 1 || participants[0].characterId !== introduction))
+      throw conflict("This conversation is not available alone here. Try later or skip the opening.");
     const session: VenueScene = {
+      openingReader: gathering && village.opening!.version === 2 ? true : undefined,
+      openingIntroductionResidentId: introduction,
       openingGatheringId: gathering ? village.opening!.id : undefined,
       pendingAccessClaim: initialPermissionId,
       version: 1,
@@ -1228,6 +1245,7 @@ export function createSceneCommands({
             ? admission.operation.input
             : {
                 writingContractVersion: 3,
+                playerAgencyVersion: 1,
                 ...(admission.semanticVersion === 2
                   ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3, residentActionsVersion: 2 }
                   : {}),
@@ -1283,11 +1301,32 @@ export function createSceneCommands({
       return session;
     }
     signal.throwIfAborted();
-    const reply = await venueCheckpoint("greeting-reply", () =>
-      generate(session, "", "greet", "", null, signal, trace),
-    );
+    const reply = await venueCheckpoint("greeting-reply", async () => {
+      const reply = await generate(session, "", "greet", "", null, signal, trace);
+      if (session.openingReader && reply.openingContext?.gatheringComplete !== true)
+        throw conflict("Finish the gathering before continuing.");
+      if (
+        session.openingReader &&
+        !session.activeIds.every((residentId) =>
+          reply.lines.some((line) => line.speakerId === residentId && line.kind === "dialogue" && line.content.trim()),
+        )
+      )
+        throw conflict("The gathering is incomplete. Retry the opening.");
+      if (session.openingIntroductionResidentId && reply.openingSignal?.kind !== "pitch")
+        throw conflict("The introduction is incomplete. Retry or leave and return.");
+      return reply;
+    });
     signal.throwIfAborted();
     const greetingVillage = await readVillageState();
+    if (
+      session.openingReader &&
+      !session.activeIds.every((residentId) =>
+        reply.lines.some((line) => line.speakerId === residentId && line.kind === "dialogue" && line.content.trim()),
+      )
+    )
+      throw conflict("The gathering is incomplete. Retry the opening.");
+    if (session.openingIntroductionResidentId && reply.openingSignal?.kind !== "pitch")
+      throw conflict("The introduction is incomplete. Retry or leave and return.");
     validateCurrentRoomInvitation(reply, greetingVillage);
     const greeted = await changeSession(id, (state) => {
       signal.throwIfAborted();
@@ -1452,6 +1491,9 @@ export function createSceneCommands({
   }
 
   async function continueVenueWithoutGreetingInActivation(id: string): Promise<VenueScene> {
+    const pending = await readSession(id);
+    if ((pending.openingReader || pending.openingIntroductionResidentId) && openingActive(await readVillageState()))
+      throw conflict("Retry this introduction or skip the opening first.");
     const work = sceneWork();
     await cancelVenueOperation(id);
     await requireLiveVenueSession(id);
@@ -1837,6 +1879,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
                 : SEMANTIC_OPERATION_BUDGET,
           }
         : {}),
+      ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.playerAgencyVersion === 1
+          ? { playerAgencyVersion: 1 }
+          : {}
+        : prior
+          ? {}
+          : { playerAgencyVersion: 1 }),
       message: input.message,
       mode: input.mode,
       targetId: input.targetId,
@@ -1854,6 +1903,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   }
 
   async function sendVenueTurn(input: VenueTurnInput) {
+    if ((await readSession(input.sessionId)).openingReader)
+      throw conflict("Continue from the gathering or skip the opening first.");
     const scene = await readSession(input.sessionId);
     const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
     if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
@@ -3101,7 +3152,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   }
 
   async function applyVenueRequests(session: VenueScene, submission: VenueSubmission): Promise<void> {
-    if (submission.venueRequestSignal && !openingActive(await readVillageState())) {
+    if (submission.venueRequestSignal && !ordinaryProjectsLocked(await readVillageState())) {
       const signal = submission.venueRequestSignal;
       const spoken = session.lines.find(
         (line) =>
@@ -3568,6 +3619,23 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     abandonOperationId?: string,
   ): Promise<VenueScene> {
     const scene = await readSession(id);
+    if (
+      scene.openingReader &&
+      openingActive(await readVillageState()) &&
+      scene.status !== "closed" &&
+      (scene.status !== "active" ||
+        !scene.activeIds.every((residentId) =>
+          scene.lines.some((line) => line.kind === "dialogue" && line.speakerId === residentId),
+        ))
+    )
+      throw conflict("Finish the gathering or skip the opening first.");
+    if (
+      scene.openingReader &&
+      scene.status !== "closed" &&
+      openingActive(await readVillageState()) &&
+      !gatheringDialogueComplete(scene)
+    )
+      throw conflict("Finish the gathering or skip the opening first.");
     if (scene.status === "closed") return scene;
     const resumingAbandon = scene.operation?.id === "close" && !!scene.operation.checkpoints?.["abandoned-request"];
     const closeInput = resumingAbandon ? scene.operation!.input : abandonOperationId ? { abandonOperationId } : {};

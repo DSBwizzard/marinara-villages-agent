@@ -403,7 +403,12 @@ export function useProjectsController({
       return next;
     },
     startRenovation: (venue: VillageVenue) => {
-      if (snapshot?.opening && !["complete", "ended"].includes(snapshot.opening.stage)) return false;
+      if (
+        snapshot?.opening &&
+        !snapshot.opening.ordinaryProjectsUnlocked &&
+        !["complete", "ended"].includes(snapshot.opening.stage)
+      )
+        return false;
       const existing = active.find((entry) => entry.kind === "renovation");
       if (existing) {
         setSelectedId(existing.id);

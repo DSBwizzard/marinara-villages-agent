@@ -1,3 +1,4 @@
+import { openingPresence } from "./opening-presence.js";
 import type { VillageOpportunity, VillageRecap, VillageState, VillageStoryPace } from "../models/world.js";
 import { isHousePlace } from "./prompt-preset.js";
 import type { NativeRoutine } from "./schedule-rules.js";
@@ -22,6 +23,10 @@ export function creativeOpportunity(
   moment: ReturnType<typeof deriveVillageMoment>,
   startsAt: string,
 ): VillageOpportunity | null {
+  village = {
+    ...village,
+    villagers: village.villagers.filter((resident) => !openingPresence(village, resident.characterId)),
+  };
   const currentPlaces = new Map<string, string[]>();
   for (const villager of village.villagers) {
     const place = villagerPlaceView(village, villager, routines.get(villager.characterId) ?? null, moment.minuteOfDay);

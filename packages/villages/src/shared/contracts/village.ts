@@ -914,6 +914,8 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  openingReader?: boolean;
+  openingIntroductionResidentId?: string;
   semanticVersion?: 2;
   connectionMap?: { id: string; connectedTo?: string[] }[];
   attentionClarification?: { id: string; message: string; question: string; choices: { id: string; label: string }[] };

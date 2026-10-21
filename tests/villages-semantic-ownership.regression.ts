@@ -241,6 +241,8 @@ async function main() {
   let behavior: "valid" | "wrong-hash" | "length" | "missing-domain" | "needs-context" | "project-authority" = "valid";
   let lastPacket: any;
   let openingSignal: unknown = null;
+  let gatheringContributions: unknown = undefined;
+  let openingEvents: any = { moves: [], departures: [], contactEnd: [] };
   let spoofOpening = false;
   const model = {
     model: "fake-system",
@@ -332,6 +334,7 @@ async function main() {
           }
         : {
             openingSignal,
+            gatheringContributions,
             consistent: true,
             authority: {
               physical: false,
@@ -345,7 +348,7 @@ async function main() {
             wishChanges: [],
             projectSpeech: [],
             access: accessRows,
-            events: { moves: [], departures: [], contactEnd: [] },
+            events: openingEvents,
           };
       if (behavior === "project-authority" && !intent) Object.assign(result, { projectSpeech: [{}] });
       if (!intent && packet.input.pipelineVersion === 3)
@@ -729,6 +732,56 @@ async function main() {
     /intent belongs inside|Return \{sourceHash,intent:/,
     "Legacy exchange prompts do not require combined intent",
   );
+  state.opening.version = 2;
+  scene.openingIntroductionResidentId = "host";
+  openingSignal = null;
+  await assert.rejects(
+    service.exchange(scene, "Required introduction omitted", [pitchLine], null),
+    /introduction did not explain/,
+  );
+  openingSignal = { kind: "pitch", residentId: "host", quote: "Sky Terrace", playerQuote: "" };
+  const shortPitch = await service.exchange(
+    { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as any,
+    "Short exact citation",
+    [pitchLine],
+    null,
+  );
+  assert.equal(
+    (shortPitch.effects.openingContext as any).proposalFingerprint,
+    openingProposalFingerprint(state.opening.proposals[0]),
+  );
+  openingEvents = { moves: [{ segment: 1, characterId: "host", zoneId: "next-door" }], departures: [], contactEnd: [] };
+  await assert.rejects(
+    service.exchange(
+      scene,
+      "Moved speaker cannot complete guided introduction",
+      [
+        pitchLine,
+        {
+          speakerId: "__venue_scene__",
+          kind: "narration",
+          content: "The host steps into the next Zone.",
+          heardBy: ["host"],
+        } as any,
+      ],
+      null,
+    ),
+    /introduction did not explain/,
+  );
+  openingEvents = { moves: [], departures: [], contactEnd: [] };
+  delete scene.openingIntroductionResidentId;
+  state.opening.stage = "gathering";
+  state.opening.gatheringSceneId = scene.id;
+  openingSignal = null;
+  gatheringContributions = [];
+  await assert.rejects(
+    service.exchange(scene, "Gathering missing idea", [pitchLine], null),
+    /gathering did not include/,
+  );
+  gatheringContributions = [{ residentId: "host", quote: pitchLine.content }];
+  const completeGathering = await service.exchange(scene, "Complete gathering ideas", [pitchLine], null);
+  assert.equal((completeGathering.effects.openingContext as any).gatheringComplete, true);
+  gatheringContributions = undefined;
   state.opening = undefined;
   scene.activeIds = [];
   openingSignal = null;

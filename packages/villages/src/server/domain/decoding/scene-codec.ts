@@ -167,6 +167,8 @@ export function coerceSession(value: unknown): VenueScene {
       ? (raw.generationReceipts as VenueScene["generationReceipts"])
       : [],
     openingGatheringId: asTrimmedString(raw.openingGatheringId) || undefined,
+    openingReader: raw.openingReader === true ? true : undefined,
+    openingIntroductionResidentId: asTrimmedString(raw.openingIntroductionResidentId) || undefined,
     id: asTrimmedString(raw.id),
     placeId: asTrimmedString(raw.placeId),
     placeName: asTrimmedString(raw.placeName),
@@ -366,6 +368,9 @@ export function coerceSession(value: unknown): VenueScene {
                 ? {
                     stage: asTrimmedString(asRecord(row.openingContext).stage),
                     projectId: asTrimmedString(asRecord(row.openingContext).projectId),
+                    ...(asRecord(row.openingContext).gatheringComplete === true
+                      ? { gatheringComplete: true as const }
+                      : {}),
                     ...(Object.hasOwn(asRecord(row.openingContext), "proposalFingerprint")
                       ? { proposalFingerprint: asTrimmedString(asRecord(row.openingContext).proposalFingerprint) }
                       : {}),

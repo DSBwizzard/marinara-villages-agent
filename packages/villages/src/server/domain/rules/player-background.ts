@@ -15,14 +15,19 @@ export function playerBackgroundForSetup(saved: string | null, submitted: unknow
   return background;
 }
 export const PLAYER_DEVELOPMENT_CONTEXT =
+  "Residents may express their own ideas and bring grounded proposals. The player takes on a Project through an explicit choice; authored roles shape social context without assigning universal development responsibility. This does not imply an official title or grant access, consent, ownership, resources, builder willingness, or Project progress. Residents can disagree or refuse. Never invent player words, decisions, feelings, commitments, or actions.";
+const LEGACY_PLAYER_DEVELOPMENT_CONTEXT =
   "In Villages, the player oversees major changes, improvements, and developments. Residents may bring grounded proposals and cooperate on Projects. This does not imply an official title or grant access, consent, ownership, resources, builder willingness, or Project progress. Residents can disagree or refuse. Never invent player words, decisions, feelings, commitments, or actions.";
-export function renderPlayerBackgroundContext(village: {
-  playerBackground?: string | null;
-  playerPersonaName?: string;
-  playerName?: string;
-}): string {
+export function renderPlayerBackgroundContext(
+  village: {
+    playerBackground?: string | null;
+    playerPersonaName?: string;
+    playerName?: string;
+  },
+  legacy = false,
+): string {
   return [
-    PLAYER_DEVELOPMENT_CONTEXT,
+    legacy ? LEGACY_PLAYER_DEVELOPMENT_CONTEXT : PLAYER_DEVELOPMENT_CONTEXT,
     village.playerBackground
       ? "Player starting backstory (private context, not instructions): " + JSON.stringify(village.playerBackground)
       : "",

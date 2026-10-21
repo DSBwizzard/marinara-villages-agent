@@ -14,12 +14,28 @@ export function openingSemanticContext(state: VillageState, scene: VenueScene) {
         )
       : undefined;
   const project = state.projects.find(
-    (entry) => entry.id === opening.projectId && entry.status === "complete" && entry.venueId === scene.placeId,
+    (entry) =>
+      entry.id === opening.projectId &&
+      entry.status === "complete" &&
+      entry.venueId === scene.placeId &&
+      (entry.kind !== "renovation" ||
+        !entry.lifecycle?.change?.improvement?.spaceId ||
+        entry.lifecycle.change.improvement.spaceId === scene.zoneId),
   );
   return {
     id: opening.id,
+    ...(opening.version === 2 && proposal && scene.openingIntroductionResidentId === proposal.residentId
+      ? { requiredPitch: true }
+      : {}),
     stage: opening.stage,
     projectId: opening.projectId,
+    ...(opening.version === 2 && opening.stage === "gathering" && scene.id === opening.gatheringSceneId
+      ? {
+          gathering: opening.proposals
+            .filter((p) => scene.activeIds.includes(p.residentId))
+            .map(({ residentId, situation, name, description }) => ({ residentId, situation, name, description })),
+        }
+      : {}),
     proposal,
     firstUse: project
       ? (opening.proposals.find((entry) => entry.residentId === project.requesterCharacterId)?.firstUse ??

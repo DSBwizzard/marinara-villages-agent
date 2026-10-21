@@ -1,3 +1,4 @@
+import { openingRenovationDraft } from "../../domain/rules/opening-renovation.js";
 import { openingActive, openingView, reconcileOpening, OPENING_WORK_MS } from "../../domain/rules/opening-project.js";
 import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
 import { validateConnections } from "../../domain/rules/space-connections.js";
@@ -96,12 +97,20 @@ export function createProjectLifecycle({
       )
         throw conflict("Hear every resident's proposal before choosing.");
       const proposal = opening.proposals.find((entry) => entry.residentId === residentId)!;
-      const project = draftNewVenueProject(
-        state,
-        { name: proposal.name, classes: [proposal.venueClass], description: proposal.description },
-        residentId,
-        requestId,
-      );
+      const project =
+        proposal.kind === "renovation" && proposal.renovation
+          ? draftRenovationProject(
+              state,
+              proposal.renovation.venueId,
+              openingRenovationDraft(proposal, state.venues),
+              requestId,
+            )
+          : draftNewVenueProject(
+              state,
+              { name: proposal.name, classes: [proposal.venueClass], description: proposal.description },
+              residentId,
+              requestId,
+            );
       project.requesterCharacterId = residentId;
       project.opening = {
         version: 1,
@@ -436,6 +445,7 @@ export function createProjectLifecycle({
       });
       if (projectProgressPhase(state, project) !== "construction")
         throw conflict("Verified supplies are required before work starts.");
+      if (state.opening?.projectId === project.id) state.opening.ordinaryProjectsUnlocked = true;
     });
   }
 
@@ -710,6 +720,8 @@ export function createProjectLifecycle({
     await mutateVillageState((state) => {
       const project = projectFor(state, id),
         old = project.lifecycle;
+      if (project.opening && openingActive(state))
+        throw conflict("Skip the opening before changing the chosen proposal.");
       if (project.kind !== "renovation" || ["construction", "finishing", "complete"].includes(old.phase))
         throw conflict("Revise structural terms before construction begins.");
       const body = structuredClone(asRecord(value));

@@ -1,6 +1,11 @@
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
 import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
-import { openingSceneDirection, readOpeningSignal } from "../../domain/rules/opening-project.js";
+import {
+  IncompleteOpeningPitch,
+  IncompleteOpeningGathering,
+  openingSceneDirection,
+  readOpeningSignal,
+} from "../../domain/rules/opening-project.js";
 import {
   RESIDENT_ACTION_WRITING,
   RESIDENT_ACTION_PUBLIC_SOCIAL,
@@ -544,7 +549,10 @@ export function createSceneWriting({
       circumstances: blocksFor([
         `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
         `The player is ${player.name}. ${player.description}`,
-        renderPlayerBackgroundWritingContext(village),
+        renderPlayerBackgroundWritingContext(
+          village,
+          !!venueOperationInput() && venueOperationInput()?.playerAgencyVersion !== 1,
+        ),
         session.contactGeneration?.acoustics || session.contactGeneration?.zoneEvents
           ? ""
           : (session.contactGeneration?.instruction ?? ""),
@@ -1083,16 +1091,37 @@ export function createSceneWriting({
         throw error;
       }
     }
+    if (
+      session.openingReader &&
+      !session.activeIds.every((id) =>
+        parsed.lines.some((line) => line.kind === "dialogue" && line.speakerId === id && line.content.trim()),
+      )
+    ) {
+      await rejectVenueCompletion(
+        { model: model.model, connectionId: model.connectionId, reason: "incomplete-gathering" },
+        { stages: ["writing-completion:" + requestKey] },
+      );
+      throw new Error("The gathering is incomplete. Retry the opening to replace it.");
+    }
     const semanticResult =
       session.semanticVersion === 2 && semantic
-        ? await semantic.exchange(
-            session,
-            message,
-            parsed.lines,
-            session.semanticIntent ?? null,
-            residentActions,
-            residentActionsOmitted,
-          )
+        ? await semantic
+            .exchange(
+              session,
+              message,
+              parsed.lines,
+              session.semanticIntent ?? null,
+              residentActions,
+              residentActionsOmitted,
+            )
+            .catch(async (error: unknown) => {
+              if (error instanceof IncompleteOpeningPitch || error instanceof IncompleteOpeningGathering)
+                await rejectVenueCompletion(
+                  { model: model.model, connectionId: model.connectionId, reason: "incomplete-introduction" },
+                  { stages: ["writing-completion:" + requestKey] },
+                );
+              throw error;
+            })
         : null;
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
     const semanticAccess = semanticResult?.access;

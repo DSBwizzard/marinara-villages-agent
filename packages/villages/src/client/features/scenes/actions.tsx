@@ -219,6 +219,14 @@ export function useCloseRoom(ports: {
       setRoom(currentRoom(answer.session));
       setRoomEnded(true);
       receiveRoomRecordEvents(answer.recordEvents ?? []);
+      if (room.openingReader) {
+        roomCompletionRef.current = null;
+        setRoomOpen(false);
+        setRoom(null);
+        setRoomNotices([]);
+        seenRoomEventIdsRef.current.clear();
+        setScreen("home");
+      }
       setRoomDraft("");
       setRoomGreetingNotice("");
       void loadSnapshot();

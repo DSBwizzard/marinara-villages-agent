@@ -1,3 +1,4 @@
+import { openingPresence } from "../../domain/rules/opening-presence.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { readOpeningProposal } from "../../domain/rules/opening-project.js";
@@ -109,6 +110,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       ...(villager.identityDescription && !villager.identityDescription.initialGenerationComplete
         ? { identityDescriptionRevision: villager.identityDescription.revision }
         : {}),
+      openingVersion: village.opening?.version,
+      playerAgencyVersion: 1 as const,
       semanticVersion: 2 as const,
       card: effectiveCard,
       characterId,
@@ -421,7 +424,10 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       missing: false,
       weekUnreadable: !snapshot.cardsReadable,
       addedAt: resident.addedAt,
-      agenda: resident.agenda,
+      agenda:
+        openingPresence(village, resident.characterId) && resident.agenda
+          ? { ...resident.agenda, routineSummary: openingPresence(village, resident.characterId)!.activity }
+          : resident.agenda,
       completedWishes: [],
       ingestSchedule: resident.scheduleInfluence?.enabled === true,
       scheduleInfluence: influenceSettings(resident.scheduleInfluence),
@@ -431,7 +437,11 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
           return [
             VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!,
-            resident.agenda ? agendaBlocksFor(resident.agenda, false, date) : [],
+            openingPresence(village, resident.characterId)
+              ? [{ startMinute: 0, endMinute: 1440, ...openingPresence(village, resident.characterId)! }]
+              : resident.agenda
+                ? agendaBlocksFor(resident.agenda, false, date)
+                : [],
           ];
         }),
       ),

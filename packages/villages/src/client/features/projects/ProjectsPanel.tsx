@@ -670,7 +670,10 @@ export function ProjectsPanelV2({
               </button>
             ) : null}
           </header>
-          {!project && (!snapshot.opening || ["complete", "ended"].includes(snapshot.opening.stage)) ? (
+          {!project &&
+          (!snapshot.opening ||
+            snapshot.opening.ordinaryProjectsUnlocked ||
+            ["complete", "ended"].includes(snapshot.opening.stage)) ? (
             <div className={`${ELEMENT_TAG}-project-slots`}>
               {(["new-venue", "renovation"] as const).map((kind) => {
                 const current = active.find((entry) => entry.kind === kind);
@@ -1112,6 +1115,7 @@ export function ProjectsPanelV2({
                 ) : null}
                 {project.kind === "renovation" &&
                 revisionEditor &&
+                !(project.opening && snapshot.opening && !["complete", "ended"].includes(snapshot.opening.stage)) &&
                 !["construction", "finishing", "complete"].includes(phase ?? "") ? (
                   <RenovationRevisionEditor
                     key={project.id + project.updatedAt}

@@ -1,3 +1,4 @@
+import { openingPresence } from "./opening-presence.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
@@ -22,12 +23,15 @@ export function captureSceneAttendance(village: VillageState, placeId: string, n
     occupants: village.villagers.flatMap((villager) => {
       if (villagerPlaceView(village, villager, null, moment.minuteOfDay, now)?.id !== placeId) return [];
       const block = agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false);
-      const zone = chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village);
+      const staged = openingPresence(village, villager.characterId);
+      const zone =
+        resolveVenueZone(venue, staged?.zoneId ?? "") ??
+        chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village);
       return [
         {
           characterId: villager.characterId,
           name: villager.cardSnapshot.name,
-          doing: block?.activity ?? "",
+          doing: staged?.activity ?? block?.activity ?? "",
           zoneId: zone.id,
         },
       ];

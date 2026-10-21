@@ -123,6 +123,7 @@ export type VillageTickResident = {
 export type VillageTickContext = {
   /** Older frozen story jobs retain their exact prompt during replay. */
   descriptionVersion?: 1;
+  playerAgencyVersion?: 1;
   semanticVersion?: 2;
   social?: { candidates: import("../../domain/models/relationship-types.js").SocialPlan[]; relationships: string[] };
   playerBackground?: VillagePlayerBackground | null;
@@ -231,7 +232,7 @@ export function buildTickMessages(context: VillageTickContext): CapabilityLangua
     context.setting.trim()
       ? `Setting: ${context.descriptionVersion === 1 ? context.setting : boundText(context.setting, 500)}`
       : "",
-    renderPlayerBackgroundContext(context),
+    renderPlayerBackgroundContext(context, context.playerAgencyVersion !== 1),
     context.worldFacts?.length ? `Current world facts: ${context.worldFacts.join("; ")}` : "",
     `Now: ${describeMoment(context.moment)}; weather: ${context.moment.weather}.`,
     `Elapsed time: ${describeGap(gapSince(context.lastSimulatedAt, context.moment, context.forced))}`,

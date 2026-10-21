@@ -1,3 +1,4 @@
+import { gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
 import { captureSceneLayout } from "../../domain/rules/scene-layout.js";
 import { villageNow, observeVillageClock, villageClockShiftMs } from "../../adapters/time/clock-gate.js";
 import { randomUUID } from "node:crypto";
@@ -54,6 +55,15 @@ export function createLiveScenes({
   }
   async function completeGathering(session: VenueScene): Promise<void> {
     if (!session.openingGatheringId) return;
+    if (session.openingReader && !gatheringDialogueComplete(session)) return;
+    if (
+      session.openingReader &&
+      (session.status !== "closed" ||
+        !session.activeIds.every((id) =>
+          session.lines.some((line) => line.kind === "dialogue" && line.speakerId === id),
+        ))
+    )
+      return;
     await mutateVillageState((state) => {
       if (
         state.seed === session.villageSeed &&
