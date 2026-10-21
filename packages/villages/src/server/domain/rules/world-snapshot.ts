@@ -179,7 +179,7 @@ export function villageSettings(
     maxNoticeLength: MAX_NOTICE_LENGTH,
     setting: village.setting,
     foundingReason: village.foundingReason,
-    worldOrigin: village.worldOrigin ?? null,
+    worldName: village.worldName ?? null,
     foundingDetails: village.foundingDetails,
     foundingGuidance: village.foundingGuidance,
     playerBackground: village.playerBackground,

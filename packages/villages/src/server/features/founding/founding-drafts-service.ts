@@ -1,3 +1,4 @@
+import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import type { findVillagerCard } from "../../adapters/engine/catalog.js";
 import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
 import type { decodeVillageImageDataUrl } from "../../adapters/engine/image-files.js";
@@ -21,10 +22,10 @@ import {
 } from "../../domain/rules/lore-policy.js";
 import { MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "../../domain/rules/prompt-preset.js";
 import {
-  readFoundingResidentContexts,
-  renderResidentFoundingContext,
+  readFoundingResidentAdmissions,
+  renderResidentAdmission,
   RESIDENT_CONTINUITY_RULE,
-} from "../../domain/rules/resident-founding-context.js";
+} from "../../domain/rules/resident-admission.js";
 import { coerceScenarioImprint, coerceWorldFacts } from "../../domain/rules/scenario-rules.js";
 import { readSceneryStyle, sceneryCardsContext, sceneryPrompt } from "../../domain/rules/scenery-context.js";
 import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
@@ -99,9 +100,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const worldFacts = coerceWorldFacts(input.worldFacts);
     const scenario = coerceScenarioImprint(input.scenarioImprint);
     const villageName = asTrimmedString(input.villageName).slice(0, 80);
-    const contexts = readFoundingResidentContexts(input.foundingResidentContexts, residents);
+    const contexts = readFoundingResidentAdmissions(input.foundingResidentAdmissions, residents);
     const cards = (await Promise.all(residents.map(findVillagerCard))).map((card) =>
-      card ? { ...card, foundingContext: contexts[card.id] } : null,
+      card ? { ...card, admission: contexts[card.id] } : null,
     );
     if (cards.some((card) => !card)) throw badRequest("Choose villagers still available in the character library.");
     const persona = await readLinkedPersona(input.playerPersonaId);
@@ -111,6 +112,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       [
         villageName,
         setting,
+        asTrimmedString(input.worldName),
+        admissionLoreContext(
+          asTrimmedString(input.worldName),
+          cards.map((card) => card?.admission),
+        ),
         circumstances,
         ...worldFacts,
         ...(scenario?.worldFacts ?? []),
@@ -151,6 +157,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       ],
       JSON.stringify({
         setting,
+        worldName: asTrimmedString(input.worldName),
         circumstances,
         villageName,
         worldFacts,
@@ -234,18 +241,22 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       ).map(async (row) => {
         const prepared = await withResident(row);
         const resident = village.villagers.find((person) => person.characterId === row.residentCharacterId);
-        if (prepared.resident && resident?.foundingContext)
-          prepared.resident.foundingBackground = renderResidentFoundingContext(
-            resident.cardSnapshot.name,
-            resident.foundingContext,
-          );
+        if (prepared.resident && resident?.admission)
+          prepared.resident.admissionContext = renderResidentAdmission(resident.cardSnapshot.name, resident.admission);
         return prepared;
       }),
     );
     const setting = villageFoundingSetting(village);
     const lore = await readVillageLore(
       village.selectedLorebookIds,
-      [setting, ...rows.map((row) => `${row.name} ${row.form} ${row.description} ${row.spaceDescription}`)].join("\n"),
+      [
+        setting,
+        admissionLoreContext(
+          village.worldName,
+          village.villagers.map((person) => person.admission),
+        ),
+        ...rows.map((row) => `${row.name} ${row.form} ${row.description} ${row.spaceDescription}`),
+      ].join("\n"),
       undefined,
       village.loreTokenBudget,
     );
@@ -258,7 +269,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         role: "system",
         content: [
           "Seed a few observable initial physical details for each founding Venue.",
-          ...(village.villagers.some((person) => person.foundingContext) ? [RESIDENT_CONTINUITY_RULE] : []),
+          ...(village.villagers.some((person) => person.admission) ? [RESIDENT_CONTINUITY_RULE] : []),
           "Player-written names, form, exterior and interior descriptions are authoritative. Never replace or redefine them.",
           "Use shared starting circumstances selectively for plausible initial condition; do not invent completed player actions or repeat the premise in every Venue.",
           "Use selected lore and resident cards where relevant. Do not invent named people or contradict established facts.",
@@ -271,10 +282,10 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     ];
     const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2000, 2000) });
     if (
-      village.villagers.some((person) => person.foundingContext) &&
+      village.villagers.some((person) => person.admission) &&
       JSON.stringify(fitted.messages) !== JSON.stringify(messages)
     )
-      throw badRequest("The required resident backstories do not fit the System connection. No request was sent.");
+      throw badRequest("The required starting situations do not fit the System connection. No request was sent.");
     await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
       savedRequest: {
@@ -327,10 +338,10 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const row = (await withResident(rowsOf([input.venue])[0]!)) as Awaited<ReturnType<typeof withResident>> & {
       venueType?: string;
     };
-    const foundingContext =
-      input.residentFoundingContext === undefined
+    const admission =
+      input.residentAdmission === undefined
         ? undefined
-        : readFoundingResidentContexts({ [row.residentCharacterId]: input.residentFoundingContext }, [
+        : readFoundingResidentAdmissions({ [row.residentCharacterId]: input.residentAdmission }, [
             row.residentCharacterId,
           ])[row.residentCharacterId];
     const area = input.area === "private" ? "private" : input.area === "interior" ? "interior" : "exterior";
@@ -367,6 +378,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const imprint = coerceScenarioImprint(input.scenarioImprint);
     const setting = [
       asTrimmedString(input.setting).slice(0, 1200),
+      asTrimmedString(input.worldName).slice(0, 120),
+      admission?.homeworld ?? "",
       ...(imprint?.worldFacts ?? coerceWorldFacts(input.worldFacts)),
       ...(imprint?.visualCues ?? []),
     ]
@@ -384,9 +397,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           );
     const prompt = sceneryPrompt(
       [
-        personality && row.resident && foundingContext
-          ? renderResidentFoundingContext(row.resident.name, foundingContext)
-          : "",
         `Venue Type: ${row.venueType || row.venueClass}. Physical form: ${row.form}. Selected Zone: ${asTrimmedString(input.zoneName) || "Entrance"}. Used for: ${asTrimmedString(input.zonePurpose).slice(0, 240) || "Arrival and approach"}.`,
         "Shared architecture: Venue form defines the whole place. Preserve its scale and construction across every Zone. Zone appearance describes part of this same place and must not redefine its architecture. Use only explicitly described architectural facts; do not invent materials, windows or proportions from the building type alone.",
         area !== "exterior" && row.description
@@ -411,6 +421,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           : "",
       ],
       input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
+      personality && row.resident && admission ? [renderResidentAdmission(row.resident.name, admission)] : [],
     );
     const decoded = await generateVillageImage({
       sceneryStyleProfileId: input.sceneryStyleProfileId,
@@ -452,7 +463,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       ...row,
       resident: card
         ? {
-            foundingBackground: renderResidentFoundingContext(card.name, card.foundingContext),
+            admissionContext: renderResidentAdmission(card.name, card.admission),
             name: card.name,
             summary: card.summary.slice(0, 400),
             description: card.description.slice(0, 600),

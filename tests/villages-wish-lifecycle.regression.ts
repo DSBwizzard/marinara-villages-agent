@@ -794,17 +794,15 @@ const release = configureVillagesRuntime({
 async function run() {
   try {
     const continuity = seed();
-    continuity.villagers[0].foundingContext = {
-      historyMode: "new",
-      storyRole: "lifelong",
-      customDescription: "",
-      background: "LIFELONG RESIDENT OF AN UNRELATED WORLD; past journeys are reference material.",
+    continuity.villagers[0].admission = {
+      homeworld: "Othiras",
+      startingSituation: "LIFELONG RESIDENT OF THIS VILLAGE.",
     };
     put(continuity);
     await reconcileWishLifecycle(now, false, () => now);
     assert.equal(modelCalls.length, 1, "continuity reuses the existing Wish request");
-    assert.match(modelCalls[0], /LIFELONG RESIDENT OF AN UNRELATED WORLD/);
-    assert.match(modelCalls[0], /not an amnesia event/);
+    assert.match(modelCalls[0], /LIFELONG RESIDENT OF THIS VILLAGE/);
+    assert.match(modelCalls[0], /Preserve complete source identity/);
 
     // Version-two saves reset once and reserve finite replacements for every prepared resident.
     const previous = seed(6);

@@ -1,3 +1,4 @@
+import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
 import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
 import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
@@ -117,6 +118,20 @@ async function reviewNavigation() {
   goto(4);
   assert.equal(reviewed, false, "missing artwork cannot be acknowledged");
   assert.match(problem, /Generate or upload map artwork/);
+  const admissionPorts: any = {
+    ...ports,
+    setupStep: 1,
+    setupWorldName: "Othiras",
+    setupMapSrc: "map",
+    setupResidentAdmissions: { resident: { ...EMPTY_RESIDENT_ADMISSION } },
+  };
+  const continueWithNotes = createFoundingGotoSetupStep(admissionPorts);
+  continueWithNotes(2);
+  assert.equal(step, 2, "blank admission requires no approval");
+  admissionPorts.setupStep = 2;
+  admissionPorts.setupSetting = "Changed setting";
+  continueWithNotes(3);
+  assert.equal(step, 3, "no biography reapproval gate");
 }
 
 async function main() {

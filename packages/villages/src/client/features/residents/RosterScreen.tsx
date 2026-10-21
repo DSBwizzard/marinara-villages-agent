@@ -1,8 +1,5 @@
-import { ResidentBackgroundReview } from "../../shared/ResidentBackgroundReview.js";
-import {
-  DEFAULT_RESIDENT_FOUNDING_CONTEXT,
-  type ResidentFoundingContext,
-} from "../../../shared/helpers/resident-founding-context.js";
+import { ResidentAdmissionDialog } from "../../shared/ResidentAdmissionDialog.js";
+import { EMPTY_RESIDENT_ADMISSION, type ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AvatarFace } from "./ResidentPanels.js";
@@ -24,8 +21,8 @@ export function RosterScreen({
   useLayoutEffect(() => {
     if (content.current) content.current.scrollTop = readingPosition?.current ?? 0;
   }, [readingPosition]);
-  const joiningDrafts = useRef<Record<string, ResidentFoundingContext>>({});
-  const [joining, setJoining] = useState<{ id: string; name: string; context: ResidentFoundingContext } | null>(null);
+  const joiningDrafts = useRef<Record<string, ResidentAdmission>>({});
+  const [joining, setJoining] = useState<{ id: string; name: string; context: ResidentAdmission } | null>(null);
   const {
     addVillager,
     busy,
@@ -79,23 +76,16 @@ export function RosterScreen({
           }
         >
           {joining ? (
-            <ResidentBackgroundReview
+            <ResidentAdmissionDialog
               key={joining.id}
               name={joining.name}
-              characterId={joining.id}
-              context={joining.context}
-              source={{
-                setting: snapshot?.settings.setting ?? "",
-                premise: snapshot?.settings.foundingDetails ?? "",
-                worldOrigin: snapshot?.settings.worldOrigin,
-              }}
-              initialRequest
+              value={joining.context}
               onChange={(context) => {
                 joiningDrafts.current[joining.id] = context;
                 setJoining((current) => (current?.id === joining.id ? { ...current, context } : current));
               }}
               onCancel={() => setJoining(null)}
-              onAccept={async (context) => {
+              onContinue={async (context) => {
                 joiningDrafts.current[joining.id] = context;
                 setSpriteCharacter({ id: joining.id, name: joining.name });
                 setJoining(null);
@@ -185,8 +175,7 @@ export function RosterScreen({
                                   id: entry.id,
                                   name: entry.name,
                                   context: joiningDrafts.current[entry.id] ?? {
-                                    ...DEFAULT_RESIDENT_FOUNDING_CONTEXT,
-                                    integration: { text: "", direction: "", accepted: false },
+                                    ...EMPTY_RESIDENT_ADMISSION,
                                   },
                                 })
                               }

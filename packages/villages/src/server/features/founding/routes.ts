@@ -22,11 +22,11 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
     Body: {
       foundingCharacterIds?: unknown;
       foundingSpriteRevisions?: unknown;
-      foundingResidentContexts?: unknown;
+      foundingResidentAdmissions?: unknown;
       name?: unknown;
       setting?: unknown;
       foundingReason?: unknown;
-      worldOrigin?: unknown;
+      worldName?: unknown;
       foundingDetails?: unknown;
       foundingGuidance?: unknown;
       playerBackground?: unknown;
@@ -51,11 +51,11 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       return await runVillageSetup({
         foundingCharacterIds: body.foundingCharacterIds,
         foundingSpriteRevisions: body.foundingSpriteRevisions,
-        foundingResidentContexts: body.foundingResidentContexts,
+        foundingResidentAdmissions: body.foundingResidentAdmissions,
         name: body.name,
         setting: body.setting,
         foundingReason: body.foundingReason,
-        worldOrigin: body.worldOrigin,
+        worldName: body.worldName,
         foundingDetails: body.foundingDetails,
         foundingGuidance: body.foundingGuidance,
         playerBackground: body.playerBackground,

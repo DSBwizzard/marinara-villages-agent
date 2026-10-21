@@ -1,19 +1,19 @@
-import { residentFoundingProblems } from "../../../shared/helpers/resident-founding-context.js";
+import { residentAdmissionProblems } from "../../../shared/helpers/resident-admission.js";
 import { placeSpot } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin } from "../../shared/types.js";
 
 export function calculateResidentContextProblem(ports: {
-  selectedResidentContexts: {
-    [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
+  selectedResidentAdmissions: {
+    [k: string]: import("../../../shared/helpers/resident-admission").ResidentAdmission;
   };
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
-  const { selectedResidentContexts, snapshot } = ports;
+  const { selectedResidentAdmissions, snapshot } = ports;
   return !snapshot?.isFounded &&
-    Object.values(selectedResidentContexts).some((context) =>
-      Object.values(residentFoundingProblems(context)).some(Boolean),
+    Object.values(selectedResidentAdmissions).some((context) =>
+      Object.values(residentAdmissionProblems(context)).some(Boolean),
     )
-    ? "Complete unfinished backstories in People."
+    ? "Check starting notes in People."
     : "";
 }
 export function calculateSetupHomeCount(ports: { setupFoundingVillagerIds: string[] }) {
@@ -25,14 +25,14 @@ export function calculateSetupBeginningSourceKey(ports: {
   personalizeHomes: boolean;
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
-  selectedResidentContexts: {
-    [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
+  selectedResidentAdmissions: {
+    [k: string]: import("../../../shared/helpers/resident-admission").ResidentAdmission;
   };
   setupFoundingDetails: string;
   setupFoundingReason: "custom" | "rebuild" | "pioneer" | "prosper" | "none";
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
-  setupWorldOrigin?: "same-world" | "different-worlds" | null;
+  setupWorldName?: string;
   setupSetting: string;
   setupName?: string;
   setupWorldFacts?: string[];
@@ -44,7 +44,7 @@ export function calculateSetupBeginningSourceKey(ports: {
     personalizeHomes,
     sceneryStyle,
     sceneryStyleProfileId,
-    selectedResidentContexts,
+    selectedResidentAdmissions,
     setupFoundingDetails,
     setupFoundingReason,
     setupLorebookDraft,
@@ -56,8 +56,8 @@ export function calculateSetupBeginningSourceKey(ports: {
     name: ports.setupName,
     worldFacts: ports.setupWorldFacts,
     imprint: ports.setupImprint,
-    worldOrigin: ports.setupWorldOrigin,
-    residentContexts: selectedResidentContexts,
+    worldName: ports.setupWorldName,
+    residentAdmissions: selectedResidentAdmissions,
     scenario: setupFoundingReason,
     premise: setupFoundingDetails.trim(),
     setting: setupSetting.trim(),
@@ -106,7 +106,7 @@ export function calculateSetupMapGenerationKey(ports: {
   setupLoreTokenBudgetDraft: number;
   setupMapNegativePrompt: string;
   setupMapPrompt: string;
-  setupWorldOrigin?: "same-world" | "different-worlds" | null;
+  setupWorldName?: string;
   setupSetting: string;
   setupWorldFacts: string[];
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;

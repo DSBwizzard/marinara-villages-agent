@@ -49,6 +49,6 @@ export function setScenerySettings(...args: Parameters<VillageSettings["setScene
   return villageSettings().setScenerySettings(...args);
 }
 
-export function setVillageWorldOrigin(...args: Parameters<VillageSettings["setVillageWorldOrigin"]>) {
-  return villageSettings().setVillageWorldOrigin(...args);
+export function setVillageWorldName(...args: Parameters<VillageSettings["setVillageWorldName"]>) {
+  return villageSettings().setVillageWorldName(...args);
 }

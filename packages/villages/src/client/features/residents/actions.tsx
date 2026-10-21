@@ -171,14 +171,14 @@ export function useAddVillager(ports: {
     async (
       characterId: string,
       spriteSetupRevision?: number,
-      background?: import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext,
+      admission?: import("../../../shared/helpers/resident-admission.js").ResidentAdmission,
     ) => {
       setBusy(true);
       try {
         setSnapshot(
           await request<VillageSnapshot>("/villagers", {
             method: "POST",
-            body: JSON.stringify({ characterId, background, spriteSetupRevision }),
+            body: JSON.stringify({ characterId, admission, spriteSetupRevision }),
           }),
         );
         setError("");

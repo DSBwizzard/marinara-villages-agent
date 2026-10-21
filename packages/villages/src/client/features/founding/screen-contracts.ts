@@ -69,7 +69,7 @@ export type FoundingScreenController = {
   readonly sceneryStyle: FoundingState["sceneryStyle"];
   readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
-  readonly selectedResidentContexts: ReturnType<typeof useFoundingSelectedResidentContexts>;
+  readonly selectedResidentAdmissions: ReturnType<typeof useFoundingSelectedResidentContexts>;
   readonly selectedSetupVenueId: FoundingState["selectedSetupVenueId"];
   readonly setConnectionSetupProblem: FoundingState["setConnectionSetupProblem"];
   readonly setMapVisualLore: FoundingState["setMapVisualLore"];
@@ -100,8 +100,8 @@ export type FoundingScreenController = {
   readonly setSetupPlacementError: FoundingState["setSetupPlacementError"];
   readonly setSetupPlayerBackground: FoundingState["setSetupPlayerBackground"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
-  readonly setSetupResidentContexts: FoundingState["setSetupResidentContexts"];
-  readonly setSetupWorldOrigin: FoundingState["setSetupWorldOrigin"];
+  readonly setSetupResidentAdmissions: FoundingState["setSetupResidentAdmissions"];
+  readonly setSetupWorldName: FoundingState["setSetupWorldName"];
   readonly setSetupSetting: FoundingState["setSetupSetting"];
   readonly setSetupShowIssues: FoundingState["setSetupShowIssues"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
@@ -134,8 +134,8 @@ export type FoundingScreenController = {
   readonly setupPlacementError: FoundingState["setupPlacementError"];
   readonly setupPlayerBackground: FoundingState["setupPlayerBackground"];
   readonly setupProblem: FoundingState["setupProblem"];
-  readonly setupResidentContexts: FoundingState["setupResidentContexts"];
-  readonly setupWorldOrigin: FoundingState["setupWorldOrigin"];
+  readonly setupResidentAdmissions: FoundingState["setupResidentAdmissions"];
+  readonly setupWorldName: FoundingState["setupWorldName"];
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupShowIssues: FoundingState["setupShowIssues"];
   readonly setupStep: FoundingState["setupStep"];

@@ -1,3 +1,4 @@
+import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
@@ -28,6 +29,10 @@ function deferred() {
 function input(name: string) {
   return {
     name,
+    worldName: "same-world",
+    foundingResidentAdmissions: Object.fromEntries(
+      ["same"].map((id) => [id, { homeworld: "Othiras", startingSituation: "Already living here." }]),
+    ),
     setting: "An observatory village",
     townMapImage: "test-map",
     foundingReason: "none",
@@ -241,6 +246,12 @@ await assert.rejects(
   /first day|brings you/,
 );
 assert.deepEqual(direct.calls, ["read"], "First-day validation precedes external connections and generation.");
+const noChangesFixture = fixture("No changes");
+const noChangesInput = { ...input("No changes"), foundingResidentAdmissions: undefined, worldName: undefined };
+await noChangesFixture.service.runVillageSetup(noChangesInput);
+assert.deepEqual(noChangesFixture.state.villagers[0].admission, EMPTY_RESIDENT_ADMISSION);
+const invalid = { ...input("Invalid"), foundingResidentAdmissions: { stranger: EMPTY_RESIDENT_ADMISSION } };
+await assert.rejects(direct.service.runVillageSetup(invalid), /selected/);
 const result = await direct.service.runVillageSetup(input("Direct"));
 assert.equal(result.village.name, "Direct");
 assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");
@@ -265,7 +276,11 @@ await assert.rejects(
   /locked/,
 );
 assert.deepEqual(direct.state, saved);
-await direct.service.runVillageSetup({ ...input("Direct"), foundingSpriteRevisions: { same: -1 } });
+await direct.service.runVillageSetup({
+  ...input("Direct"),
+  foundingResidentAdmissions: undefined,
+  foundingSpriteRevisions: { same: -1 },
+});
 assert.equal(
   direct.calls.filter((call) => call === "sprites:same").length,
   1,

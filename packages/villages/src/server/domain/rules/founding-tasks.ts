@@ -20,7 +20,7 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
     state.scenarioImprint,
     state.playerBackground,
     state.playerPersonaName,
-    foundingIdentity({ ...resident?.cardSnapshot, foundingContext: resident?.foundingContext }),
+    foundingIdentity({ ...resident?.cardSnapshot, admission: resident?.admission }),
     resident?.scheduleInfluence,
     state.venues.map((venue) => [venue.id, venue.state.condition, venue.state.publicFacts.slice(0, 2)]),
     kind === "wish" ? [resident?.agenda?.wishes, resident?.wishLifecycle?.needs] : null,

@@ -396,7 +396,7 @@ export type VillageVillager = {
     initialGenerationComplete: boolean;
   };
   signature?: import("../../../shared/helpers/resident-signature.js").ResidentSignatureImage;
-  foundingContext?: import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext;
+  admission: import("../../../shared/helpers/resident-admission.js").ResidentAdmission;
   wishLifecycle?: import("./wish-types.js").WishLifecycle;
   agendaGeneration?: string;
   translationGeneration?: string;
@@ -1261,7 +1261,7 @@ export type VillageState = {
   setting: string;
   /** The player's reason for starting this village, kept apart from its visual setting. */
   foundingReason: string;
-  worldOrigin?: "same-world" | "different-worlds" | null;
+  worldName: string;
   foundingDetails: string;
   foundingGuidance: string;
   /** Founding-only narrative role; null preserves legacy framing. */
@@ -1673,7 +1673,6 @@ export type VillageVillagerView = {
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription;
   signature?: import("../../../shared/helpers/resident-signature.js").ResidentSignatureImage;
   signatureFallback?: import("../../../shared/helpers/resident-signature.js").ResidentSignature;
-  foundingContext?: import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext;
   characterId: string;
   nameColor: string;
   dialogueColor: string;
@@ -1759,7 +1758,7 @@ export type VillageSettingsView = {
   setting: string;
   settingMaxLength: number;
   foundingReason: string;
-  worldOrigin?: "same-world" | "different-worlds" | null;
+  worldName: string;
   foundingDetails: string;
   foundingGuidance: string;
   /** Founding-only narrative role; null preserves legacy framing. */

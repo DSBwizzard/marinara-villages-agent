@@ -17,7 +17,12 @@ import {
   LOCATION_IMAGE_HEIGHT,
   LOCATION_NEGATIVE_PROMPT,
 } from "../../domain/rules/location-image-rules.js";
-import { sceneryCharacterContext, sceneryImageKey, sceneryPrompt } from "../../domain/rules/scenery-context.js";
+import {
+  sceneryAdmissionContext,
+  sceneryCharacterContext,
+  sceneryImageKey,
+  sceneryPrompt,
+} from "../../domain/rules/scenery-context.js";
 import { venueClasses, venueInArea, venueInSpace } from "../../domain/rules/venue-model.js";
 import { legacyZoneId, resolveVenueZone, venueInZone, venueZones } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
@@ -120,7 +125,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       (found.venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault)
         ? await readVillageVisualLore(
             village.selectedLorebookIds,
-            `${village.name}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}\n${venue.state.condition}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
+            `${village.name}\n${village.worldName}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}\n${venue.state.condition}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
             900,
             village.loreTokenBudget,
           )
@@ -153,9 +158,6 @@ export function createLocationImages(ports: LocationImagePorts) {
         targetZone && isPrivateInterior(targetZone)
           ? `Illustrate this saved interior without adding possessions from personality context. Visible items: ${targetZone.state.items.join("; ")}. Physical facts: ${targetZone.state.publicFacts.join("; ")}.`
           : "",
-        character.includes("## Starting background:") && !(targetZone && isPrivateInterior(targetZone))
-          ? `Occupant context: ${character}`
-          : "",
       ],
       [
         targetZone && isPrivateInterior(targetZone) && targetZone.roomSpecification
@@ -164,9 +166,10 @@ export function createLocationImages(ports: LocationImagePorts) {
         targetZone && isPrivateInterior(targetZone)
           ? `Public exterior context for architectural continuity only: ${found.venue.description.slice(0, 400)}. Do not depict the exterior or infer hidden contents.`
           : "",
-        character && !character.includes("## Starting background:") && !(targetZone && isPrivateInterior(targetZone))
+        character && !(targetZone && isPrivateInterior(targetZone))
           ? `Occupant context, reflect preferences without depicting people: ${character}`
           : "",
+        village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : "",
         village.setting ? `Village setting: ${village.setting.slice(0, 400)}` : "",
         ...village.worldFacts.map((fact) => `World fact: ${fact}`),
         lore ? `Established visual lore: ${lore}` : "",
@@ -184,6 +187,9 @@ export function createLocationImages(ports: LocationImagePorts) {
         ).map((fact) => `Established area fact: ${fact}`),
       ],
       village.sceneryArtStyle,
+      onlyIfEmpty && !(targetZone && isPrivateInterior(targetZone))
+        ? sceneryAdmissionContext(village, found.venue)
+        : [],
     );
     if (onlyIfEmpty) {
       const latest = await readVillageState();

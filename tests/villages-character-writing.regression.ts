@@ -45,11 +45,9 @@ state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and t
 state.villagers = [
   {
     characterId: card.id,
-    foundingContext: {
-      historyMode: "continue",
-      storyRole: "new-arrival",
-      customDescription: "",
-      background: "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED. NARRATOR SECRET IS UNKNOWN TO RESIDENT.",
+    admission: {
+      homeworld: "Othiras",
+      startingSituation: "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED. NARRATOR SECRET IS UNKNOWN TO RESIDENT.",
     },
     cardSnapshot: snapshot,
     addedAt: stamp,
@@ -221,7 +219,7 @@ async function run() {
     assert.equal(preview.proposed?.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
     await applyVillagerRefresh(card.id);
     assert.equal(row.data.villagers[0].cardSnapshot.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
-    assert.match(row.data.villagers[0].foundingContext.background, /CURRENT LOCATION UNDECIDED/);
+    assert.match(row.data.villagers[0].admission.startingSituation, /CURRENT LOCATION UNDECIDED/);
     const removed: string[] = [];
     const budgetModel: any = {
       fitContext(messages: any, options: any) {

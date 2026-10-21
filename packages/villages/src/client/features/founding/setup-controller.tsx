@@ -21,8 +21,8 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly persistSetupDraft?: (data: import("./draft-model.js").SetupDraftData) => Promise<void>;
   readonly setupDraftData?: import("./draft-model.js").SetupDraftData;
   readonly personaDraft: string;
-  readonly selectedResidentContexts: {
-    [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
+  readonly selectedResidentAdmissions: {
+    [k: string]: import("../../../shared/helpers/resident-admission").ResidentAdmission;
   };
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupSuggestionsBusy: FoundingState["setSetupSuggestionsBusy"];
@@ -35,6 +35,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupImageTargetRef: FoundingState["setupImageTargetRef"];
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
   readonly setupLoreTokenBudgetDraft: FoundingState["setupLoreTokenBudgetDraft"];
+  readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupName?: FoundingState["setupName"];
   readonly setupWorldFacts?: FoundingState["setupWorldFacts"];
@@ -47,7 +48,7 @@ export function createFoundingSuggestSetupVenues(ports: {
     options ??= {};
     const {
       personaDraft,
-      selectedResidentContexts,
+      selectedResidentAdmissions,
       setSetupProblem,
       setSetupSuggestionsBusy,
       setSetupSuggestionsKey,
@@ -74,6 +75,7 @@ export function createFoundingSuggestSetupVenues(ports: {
     try {
       const result = await requestFoundingSuggestions(ports, options, {
         setting: setupSetting,
+        worldName: ports.setupWorldName,
         ...(options?.quickStart ? { mode: "quick-start", targetVenueId: options.venueId } : {}),
         villageName: ports.setupName,
         worldFacts: ports.setupWorldFacts,
@@ -82,7 +84,7 @@ export function createFoundingSuggestSetupVenues(ports: {
         playerPersonaId: personaDraft,
         selectedLorebookIds: setupLorebookDraft,
         loreTokenBudget: setupLoreTokenBudgetDraft,
-        foundingResidentContexts: selectedResidentContexts,
+        foundingResidentAdmissions: selectedResidentAdmissions,
         venues: rows.map((row) => ({
           id: row.id,
           name: row.name,
@@ -228,6 +230,9 @@ export function createFoundingChooseSetupScenario(ports: {
 }
 
 export function createFoundingGotoSetupStep(ports: {
+  readonly setupResidentAdmissions?: FoundingState["setupResidentAdmissions"];
+  readonly setSetupResidentAdmissions?: FoundingState["setSetupResidentAdmissions"];
+
   readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];
   readonly connectionSetupProblem: FoundingState["connectionSetupProblem"];
   readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
@@ -235,7 +240,7 @@ export function createFoundingGotoSetupStep(ports: {
   readonly loadPersonas: (signal?: AbortSignal) => Promise<void>;
   readonly personaDraft: string;
   readonly personas: import("../../../shared/contracts/village").PersonaEntry[];
-  readonly residentContextProblem: "" | "Complete unfinished backstories in People.";
+  readonly residentContextProblem: "" | "Check starting notes in People.";
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
@@ -249,6 +254,7 @@ export function createFoundingGotoSetupStep(ports: {
   readonly setupMapSrc: string | null;
   readonly setupName: FoundingState["setupName"];
   readonly setupPlayerBackground: FoundingState["setupPlayerBackground"];
+  readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupStep: FoundingState["setupStep"];
   readonly setupSuggestionsBusy: FoundingState["setupSuggestionsBusy"];

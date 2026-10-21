@@ -1,3 +1,4 @@
+import { backgroundRevision } from "../domain/rules/background-revision.js";
 import type { mutateDocument } from "../adapters/storage/document-store.js";
 import {
   boundedRejectedText,
@@ -13,7 +14,7 @@ import type { VillageState, VillageVenue, VillageVenueZone } from "../domain/mod
 import { asRecord, asTrimmedString } from "../domain/rules/coerce.js";
 import { safeFailureMessage } from "../domain/rules/errors.js";
 import { extractModelJsonObject } from "../domain/rules/json-reply.js";
-import { renderResidentFoundingContext, RESIDENT_CONTINUITY_RULE } from "../domain/rules/resident-founding-context.js";
+import { renderResidentAdmission, RESIDENT_CONTINUITY_RULE } from "../domain/rules/resident-admission.js";
 import { venueZones, zoneControllerIds } from "../domain/rules/venue-zones.js";
 import type { reportFoundingProgress } from "../features/founding/founding-progress.js";
 import type { completeWithRoom } from "../features/generation/model-requests.js";
@@ -21,8 +22,22 @@ import type { villagesConnectionIdFor } from "../features/settings/connections.j
 import type { mutateVillageState, readVillageState } from "../features/world/village-store.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { randomUUID } from "node:crypto";
-export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZone): string {
-  return JSON.stringify([
+export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZone, village?: VillageState): string {
+  return backgroundRevision([
+    village && [
+      village.worldName,
+      village.setting,
+      village.worldFacts,
+      village.selectedLorebookIds,
+      village.loreTokenBudget,
+      village.villagers
+        .filter((person) =>
+          (zone.kind === "private-residence" ? [zone.ownerId] : zoneControllerIds(venue, zone)).includes(
+            person.characterId,
+          ),
+        )
+        .map((person) => [person.cardSnapshot, person.admission]),
+    ],
     venue.venueType,
     venue.form,
     venue.layoutVersion,
@@ -128,7 +143,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
       const next = privatePreparationRooms(village).find(({ zone }) => zone.preparation?.status === "pending");
       if (!next) return;
       const { venue, zone } = next;
-      const key = privatePreparationKey(venue, zone);
+      const key = privatePreparationKey(venue, zone, village);
       const claimId = randomUUID();
       const attempt = (zone.preparation?.attempt ?? 0) + 1;
       let claimed = false;
@@ -172,8 +187,8 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             : {}),
           characters: village.villagers
             .filter((person) => owners.includes(person.characterId))
-            .map(({ cardSnapshot: card, foundingContext }) => ({
-              foundingBackground: renderResidentFoundingContext(card.name, foundingContext),
+            .map(({ cardSnapshot: card, admission }) => ({
+              admissionContext: renderResidentAdmission(card.name, admission),
               name: card.name,
               personality: card.personality.slice(0, 400),
               summary: card.summary.slice(0, 200),
@@ -182,7 +197,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         };
         const lore = await readVillageLore(
           village.selectedLorebookIds,
-          [village.setting, ...village.worldFacts, JSON.stringify(room)].join("\n"),
+          [village.setting, village.worldName, ...village.worldFacts, JSON.stringify(room)].join("\n"),
           signal,
           Math.min(village.loreTokenBudget, 256),
           true,
@@ -198,13 +213,14 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           {
             role: "system",
             content:
-              (room.characters.some((person) => person.foundingBackground) ? RESIDENT_CONTINUITY_RULE + "\n" : "") +
+              (room.characters.some((person) => person.admissionContext) ? RESIDENT_CONTINUITY_RULE + "\n" : "") +
               'Define exactly the one saved private space in the input. Respect venue form, world facts, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled items and facts, removing only details contradicted by the approved work; do not reset the room or add unexplained possessions. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"at most 240 characters","items":["ordinary item"],"facts":["grounded physical detail"]}]}. Return at most four items and four facts for initial preparation, or up to twenty-four of each when preserving an existingInterior, each at most 240 characters. Keep the complete reply concise.',
           },
           {
             role: "user",
             content: JSON.stringify({
               setting: village.setting,
+              worldName: village.worldName,
               worldFacts: village.worldFacts,
               rooms: [{ ...room, lore }],
             }),
@@ -212,7 +228,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         ];
         const fitted = model.fitContext(messages, { maxTokens: requested });
         if (
-          room.characters.some((person) => person.foundingBackground) &&
+          room.characters.some((person) => person.admissionContext) &&
           JSON.stringify(fitted.messages) !== JSON.stringify(messages)
         )
           throw new Error("The required resident backstory does not fit the System connection. No request was sent.");
@@ -228,7 +244,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             !current ||
             current.zone.preparation?.status !== "pending" ||
             current.zone.preparation.claimId ||
-            privatePreparationKey(current.venue, current.zone) !== key
+            privatePreparationKey(current.venue, current.zone, state) !== key
           )
             return;
           current.zone.preparation = {
@@ -331,7 +347,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             current.zone.preparation.status !== "pending"
           )
             return;
-          if (privatePreparationKey(current.venue, current.zone) !== key) {
+          if (privatePreparationKey(current.venue, current.zone, state) !== key) {
             current.zone.preparation = {
               ...current.zone.preparation,
               status: "failed",
@@ -382,7 +398,9 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           if (
             currentVenue &&
             target?.preparation?.status === "pending" &&
-            (claimed ? target.preparation.claimId === claimId : privatePreparationKey(currentVenue, target) === key)
+            (claimed
+              ? target.preparation.claimId === claimId
+              : privatePreparationKey(currentVenue, target, state) === key)
           )
             target.preparation = { ...target.preparation, status: "failed", attempt, error };
         });

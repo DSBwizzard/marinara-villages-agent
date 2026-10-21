@@ -792,6 +792,10 @@ async function main() {
     narrationConnectionId: "connection-narration",
   });
   const founded = await post("/api/villages/setup", {
+    worldName: "different-worlds",
+    foundingResidentAdmissions: Object.fromEntries(
+      ["character-millie"].map((id) => [id, { homeworld: "Othiras", startingSituation: "Already living here." }]),
+    ),
     name: "Ashcroft",
     townMapImage: "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),
     setting: settingText,

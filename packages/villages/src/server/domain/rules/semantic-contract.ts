@@ -67,6 +67,7 @@ export function semanticContext(
     opening: openingSemanticContext(state, scene),
     worldSeed: state.seed,
     setting: state.setting,
+    worldName: state.worldName,
     loreSelection: {
       bookIds: state.selectedLorebookIds,
       tokenBudget: compact ? Math.min(state.loreTokenBudget ?? 1200, 1200) : state.loreTokenBudget,
@@ -87,7 +88,7 @@ export function semanticContext(
               backstory: row.cardSnapshot.backstory,
             }
           : row.cardSnapshot,
-        founding: row.foundingContext,
+        admission: row.admission,
         wishes: (row.agenda?.wishes ?? []).map((wish) => ({
           ...wish,
           knowledge: wishCheckKnowledge(state, row.characterId, wish.id),

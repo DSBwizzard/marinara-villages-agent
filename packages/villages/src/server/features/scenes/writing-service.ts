@@ -1,3 +1,4 @@
+import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
 import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
 import { openingSceneDirection, readOpeningSignal } from "../../domain/rules/opening-project.js";
 import {
@@ -27,7 +28,7 @@ import {
 } from "../../domain/rules/zone-events.js";
 import { contactPosition } from "../../domain/rules/venue-contact.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import { renderResidentFoundingContext } from "../../domain/rules/resident-founding-context.js";
+import { renderResidentAdmission } from "../../domain/rules/resident-admission.js";
 import {
   initialStaging,
   replayStaging,
@@ -374,9 +375,18 @@ export function createSceneWriting({
     const loreStarted = performance.now();
     const lorePromise = readVillageLore(
       village.selectedLorebookIds,
-      [villageCurrentSetting(village), session.placeName, active.map((person) => person.name).join(", "), message].join(
-        "\n",
-      ),
+      [
+        villageCurrentSetting(village),
+        session.placeName,
+        admissionLoreContext(
+          village.worldName,
+          active.map(
+            (person) => village.villagers.find((entry) => entry.characterId === person.characterId)?.admission,
+          ),
+        ),
+        active.map((person) => person.name).join(", "),
+        message,
+      ].join("\n"),
       signal,
       village.loreTokenBudget,
     ).then((value) => {
@@ -591,6 +601,13 @@ export function createSceneWriting({
             : active.length
               ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
               : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
+        sharedWorldContext(
+          village.worldName,
+          active.map((person) => {
+            const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
+            return { name: person.name, admission: resident?.admission };
+          }),
+        ),
         ...residentContexts,
         projectSpeechPrompt(village, projectContexts),
         session.pendingProjectQuestions?.length
@@ -653,7 +670,7 @@ export function createSceneWriting({
           const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
           const card = resident ? readEffectiveVillagerCard(resident) : null;
           return card?.postHistoryInstructions
-            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}${card.foundingContext?.historyMode === "village" ? "\n" + renderResidentFoundingContext(card.name, card.foundingContext) : ""}`
+            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}${"\n" + renderResidentAdmission(card.name, card.admission)}`
             : "";
         }),
       ]),

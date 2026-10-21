@@ -1,6 +1,6 @@
 import type { PlayerBackground } from "../../../shared/contracts/player-background.js";
 import type { ScenarioImprint, SetupMapRequest, VillageLorebookOption } from "../../../shared/contracts/village.js";
-import type { ResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
+import type { ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { emptyScenarioImprint } from "./FoundingPanels.js";
 import type { FoundingScenarioId } from "./scenarios.js";
@@ -29,9 +29,7 @@ export function useFoundingState() {
   const [setupName, setSetupName] = useState("");
   const [setupTimeZone, setSetupTimeZone] = useState("");
 
-  const [setupWorldOrigin, setSetupWorldOrigin] = useState<"same-world" | "different-worlds" | null>(
-    "different-worlds",
-  );
+  const [setupWorldName, setSetupWorldName] = useState("");
   const [setupSetting, setSetupSetting] = useState("");
 
   const [setupFoundingReason, setSetupFoundingReason] = useState<FoundingScenarioId>("custom");
@@ -51,7 +49,7 @@ export function useFoundingState() {
   const [setupFoundingVillagerIds, setSetupFoundingVillagerIds] = useState<string[]>([]);
   const [setupSpriteRevisions, setSetupSpriteRevisions] = useState<Record<string, number>>({});
 
-  const [setupResidentContexts, setSetupResidentContexts] = useState<Record<string, ResidentFoundingContext>>({});
+  const [setupResidentAdmissions, setSetupResidentAdmissions] = useState<Record<string, ResidentAdmission>>({});
 
   const [setupKeyboardSpot, setSetupKeyboardSpot] = useState({ x: 0.5, y: 0.5 });
 
@@ -170,8 +168,8 @@ export function useFoundingState() {
     setSetupName,
     setupTimeZone,
     setSetupTimeZone,
-    setupWorldOrigin,
-    setSetupWorldOrigin,
+    setupWorldName,
+    setSetupWorldName,
     setupSetting,
     setSetupSetting,
     setupFoundingReason,
@@ -190,8 +188,8 @@ export function useFoundingState() {
     setSetupSpriteRevisions,
     setupFoundingVillagerIds,
     setSetupFoundingVillagerIds,
-    setupResidentContexts,
-    setSetupResidentContexts,
+    setupResidentAdmissions,
+    setSetupResidentAdmissions,
     setupKeyboardSpot,
     setSetupKeyboardSpot,
     setupEditorOpen,

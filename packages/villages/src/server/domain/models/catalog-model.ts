@@ -1,5 +1,5 @@
 export type VillagerCard = {
-  foundingContext?: import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext;
+  admission?: import("../../../shared/helpers/resident-admission.js").ResidentAdmission;
   id: string;
   /** Player-facing name; falls back to the user note so a tile is never blank. */
   name: string;
