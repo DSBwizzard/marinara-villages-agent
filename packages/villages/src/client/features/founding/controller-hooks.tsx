@@ -148,11 +148,10 @@ export function useFoundingSetupDraftData(ports: {
       initialImageAttemptedAt?: string;
     };
   }>;
-  setupFoundingDetails: string;
-  setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
+
   setupSpriteRevisions?: Record<string, number>;
   setupFoundingVillagerIds: string[];
-  setupImprint: import("../../../shared/contracts/village.js").ScenarioImprint;
+
   setupKeyboardSpot: { x: number; y: number };
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
@@ -251,11 +250,10 @@ export function useFoundingSetupDraftData(ports: {
     setupEditorOpen,
     setupEditorOriginal,
     setupEditorZoneOriginal,
-    setupFoundingDetails,
-    setupFoundingReason,
+
     setupSpriteRevisions,
     setupFoundingVillagerIds,
-    setupImprint,
+
     setupKeyboardSpot,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -294,10 +292,8 @@ export function useFoundingSetupDraftData(ports: {
       timeZone: setupTimeZone,
       worldName: setupWorldName,
       setting: setupSetting,
-      reason: setupFoundingReason,
-      circumstances: setupFoundingDetails,
+      descriptionVersion: 1 as const,
       playerBackground: setupPlayerBackground,
-      imprint: setupImprint,
       worldFacts: setupWorldFacts,
       venues: setupVenues,
       zoneDrafts: structuredClone(setupZoneDrafts.current),
@@ -341,10 +337,9 @@ export function useFoundingSetupDraftData(ports: {
       setupTimeZone,
       setupWorldName,
       setupSetting,
-      setupFoundingReason,
-      setupFoundingDetails,
+
       setupPlayerBackground,
-      setupImprint,
+
       setupWorldFacts,
       setupVenues,
       setupSpriteRevisions,
@@ -502,7 +497,7 @@ export function useFoundingMapReceipt(ports: {
 export function useFoundingSetupBlocker(ports: {
   catalog: import("../../../shared/contracts/village.js").CatalogEntry[];
   personaDraft: string;
-  setupFoundingDetails: string;
+
   setupFoundingVillagerIds: string[];
   setupHomeCount: number;
   setupMapBusy: boolean;
@@ -519,7 +514,7 @@ export function useFoundingSetupBlocker(ports: {
   const {
     catalog,
     personaDraft,
-    setupFoundingDetails,
+
     setupFoundingVillagerIds,
     setupHomeCount,
     setupMapBusy,
@@ -537,8 +532,6 @@ export function useFoundingSetupBlocker(ports: {
     (reviewingMap = false): string => {
       if (setupName.trim().length === 0) return "Give the village a name.";
       if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
-      if (!snapshot?.isFounded && !setupFoundingDetails.trim())
-        return "Describe what brings you and the others together here.";
       if (!snapshot?.isFounded && playerBackgroundProblem(setupPlayerBackground))
         return playerBackgroundProblem(setupPlayerBackground);
       const presentFacts = setupWorldFacts.map((line) => line.trim()).filter(Boolean);
@@ -610,7 +603,7 @@ export function useFoundingSetupBlocker(ports: {
       personaDraft,
       setupMapSrc,
       setupName,
-      setupFoundingDetails,
+
       setupPlayerBackground,
       snapshot?.isFounded,
       setupWorldFacts,

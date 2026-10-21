@@ -172,7 +172,6 @@ const request = {
   mode: "quick-start",
   villageName: "Tidebreak",
   setting: "A coastal settlement made of salvaged shelters",
-  foundingDetails: "We have rented space beside the docks",
   worldFacts: ["The tide floods the lower street"],
   scenarioImprint: {
     origin: "Dockside shelter",
@@ -324,18 +323,17 @@ for (const count of [3, 4, 5]) {
 const context: any = {
   personaDraft: "driver",
   setupSetting: request.setting,
-  setupFoundingDetails: request.foundingDetails,
   setupLorebookDraft: [],
   selectedResidentAdmissions: {},
   setupWorldFacts: request.worldFacts,
   setupName: "Tidebreak",
-  setupImprint: request.scenarioImprint,
 };
 const key = calculateSetupBeginningSourceKey(context);
 for (const patch of [
   { setupWorldFacts: ["Changed fact"] },
   { setupName: "Changed name" },
-  { setupImprint: { origin: "Changed origin" } },
+  { setupSetting: "A thriving farm" },
+  { setupWorldName: "Othiras" },
 ])
   assert.notEqual(
     calculateSetupBeginningSourceKey({ ...context, ...patch }),

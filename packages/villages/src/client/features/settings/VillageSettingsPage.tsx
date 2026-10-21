@@ -405,7 +405,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
                 */}
           <div className={`${ELEMENT_TAG}-field`}>
             <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setting`}>
-              Where are we?
+              Place
             </label>
             <textarea
               autoComplete="off"

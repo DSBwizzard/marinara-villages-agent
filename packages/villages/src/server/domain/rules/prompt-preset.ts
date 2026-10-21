@@ -206,7 +206,7 @@ export const MAX_PLAYER_PERSONA_IDENTITY_LENGTH = 8_000;
  */
 export const MAX_ENGINE_ID_LENGTH = 128;
 /** How much of the world the player may write. One paragraph, not a wiki. */
-export const MAX_SETTING_LENGTH = 2_000;
+export const MAX_SETTING_LENGTH = 4_096;
 /** How long the village's own name may be. */
 export const MAX_VILLAGE_NAME_LENGTH = 60;
 

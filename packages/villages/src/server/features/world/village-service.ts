@@ -296,6 +296,7 @@ export function createWorldCoordination({
       state.opportunities = [...withoutDuplicate, opportunity].slice(-256);
     });
     const context: VillageTickContext = {
+      descriptionVersion: 1,
       semanticVersion: 2,
       village: village.name,
       playerBackground: village.playerBackground,

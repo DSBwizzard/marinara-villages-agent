@@ -1,3 +1,4 @@
+import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
 import { clientImplementation } from "./client-source.js";
 // Villages — proof for the pictures a place can have.
@@ -322,9 +323,12 @@ async function main() {
     coerceVillageState({ wishSystemVersion: 3, venues: [{ id: "mill", name: "the mill pond", form: "" }] }).venues[0]!,
     moment,
   );
-  assert.ok(chatty.includes(`Village setting and theme: ${"y".repeat(400)}.`));
-  assert.ok(!chatty.includes("y".repeat(401)), "a long setting is truncated before adding composition guidance");
-  assert.ok(chatty.length <= 4_000, "the composed prompt stays within the shared image allowance");
+  assert.ok(chatty.includes("y".repeat(MAX_SETTING_LENGTH)), "the full authored description survives assembly");
+  assert.throws(
+    () => sceneryPrompt([], [], "", [chatty]),
+    /do not fit the image prompt/,
+    "the request fitter refuses an oversized required description rather than silently dropping its ending",
+  );
 
   // ── What a stored picture is allowed to be ────────────────────────────────
   // A reference is only worth keeping if all of it is well formed. Half of one

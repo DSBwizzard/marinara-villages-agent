@@ -6,21 +6,13 @@ import {
   townMapUploadError,
 } from "../../../shared/helpers/town-map-upload.js";
 import type { PlayerBackground } from "../../../shared/contracts/player-background.js";
-import type {
-  ScenarioImprint,
-  SetupMapRequest,
-  TownMapView,
-  VillageSnapshot,
-  VillageVenue,
-} from "../../../shared/contracts/village.js";
+import type { SetupMapRequest, TownMapView, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import type { ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
 import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
-import { emptyScenarioImprint, foundingScenario } from "./FoundingPanels.js";
-import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
 import { venueHasCommon } from "./villages-founding-editor";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
@@ -245,10 +237,9 @@ export function useOpenSetup(ports: {
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSetupEditorOpen: React.Dispatch<SetStateAction<boolean>>;
   setSetupFocusIssue: React.Dispatch<SetStateAction<FoundingIssue>>;
-  setSetupFoundingDetails: React.Dispatch<SetStateAction<string>>;
-  setSetupFoundingReason: React.Dispatch<SetStateAction<"rebuild" | "pioneer" | "prosper" | "custom" | "none">>;
+
   setSetupFoundingVillagerIds: React.Dispatch<SetStateAction<string[]>>;
-  setSetupImprint: React.Dispatch<SetStateAction<ScenarioImprint>>;
+
   setSetupLorebookDraft: React.Dispatch<SetStateAction<string[]>>;
   setSetupLoreTokenBudgetDraft: React.Dispatch<SetStateAction<number>>;
   setSetupMapBusy: React.Dispatch<SetStateAction<boolean>>;
@@ -293,10 +284,9 @@ export function useOpenSetup(ports: {
     setSettingsError,
     setSetupEditorOpen,
     setSetupFocusIssue,
-    setSetupFoundingDetails,
-    setSetupFoundingReason,
+
     setSetupFoundingVillagerIds,
-    setSetupImprint,
+
     setSetupLorebookDraft,
     setSetupLoreTokenBudgetDraft,
     setSetupMapBusy,
@@ -338,20 +328,8 @@ export function useOpenSetup(ports: {
       setSetupName(fresh || !village?.isFounded ? "" : village.village.name);
       setSetupWorldName?.(fresh ? "" : (village?.settings.worldName ?? ""));
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
-      const storedReason = fresh ? "" : (village?.settings.foundingReason ?? "");
-      const isCurrentScenario = FOUNDING_SCENARIOS.some((scenario) => scenario.value === storedReason);
-      const reason: FoundingScenarioId = isCurrentScenario ? (storedReason as FoundingScenarioId) : "custom";
-      const savedDetails = village?.settings.foundingDetails ?? "";
-      const details = village?.isFounded
-        ? savedDetails
-        : fresh || !storedReason
-          ? foundingScenario(reason).premise
-          : savedDetails;
-      setSetupFoundingReason(reason);
-      setSetupFoundingDetails(details);
       setSetupPlayerBackground(fresh ? "" : (village?.settings.playerBackground ?? ""));
       if (fresh) setSetupResidentAdmissions({});
-      setSetupImprint(fresh ? emptyScenarioImprint() : (village?.settings.scenarioImprint ?? emptyScenarioImprint()));
       setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
       const foundingPlaces =
         fresh || !village
@@ -424,8 +402,7 @@ export function useFoundVillage(ports: {
   setSetupStep: React.Dispatch<SetStateAction<number>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
   setupBlocker: () => string;
-  setupFoundingDetails: string;
-  setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
+
   setupSpriteRevisions?: Record<string, number>;
   setupFoundingVillagerIds: string[];
   setupLorebookDraft: string[];
@@ -462,8 +439,7 @@ export function useFoundVillage(ports: {
     setSetupStep,
     setSnapshot,
     setupBlocker,
-    setupFoundingDetails,
-    setupFoundingReason,
+
     setupSpriteRevisions,
     setupFoundingVillagerIds,
     setupLorebookDraft,
@@ -520,8 +496,8 @@ export function useFoundVillage(ports: {
           timeZone: ports.setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
           worldName: setupWorldName,
           setting: setupSetting.trim(),
-          foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
-          foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
+          foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : "none",
+          foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : "",
           ...(snapshot?.isFounded ? { foundingGuidance: snapshot.settings.foundingGuidance } : {}),
           playerBackground: snapshot?.isFounded ? (snapshot.settings.playerBackground ?? "") : setupPlayerBackground,
           scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
@@ -586,8 +562,7 @@ export function useFoundVillage(ports: {
     setupMapSrc,
     setupName,
     ports.setupTimeZone,
-    setupFoundingReason,
-    setupFoundingDetails,
+
     setupPlayerBackground,
     setupWorldFacts,
     setupLorebookDraft,
