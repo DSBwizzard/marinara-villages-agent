@@ -159,8 +159,12 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: "Places", exact: true }).click();
     await page
-      .getByRole("dialog", { name: "Places", exact: true })
+      .getByRole("complementary", { name: "Places navigator", exact: true })
       .getByRole("button", { name: /Warehouse home/ })
+      .click();
+    await page
+      .getByRole("complementary", { name: "Places navigator" })
+      .getByRole("button", { name: "View venue", exact: true })
       .click();
     const profile = page.locator(`.${prefix}-venue-profile`);
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
@@ -269,8 +273,12 @@ try {
     await page.getByRole("button", { name: "Back to the village", exact: true }).click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
     await page
-      .getByRole("dialog", { name: "Places", exact: true })
+      .getByRole("complementary", { name: "Places navigator", exact: true })
       .getByRole("button", { name: /Renamed warehouse/ })
+      .click();
+    await page
+      .getByRole("complementary", { name: "Places navigator" })
+      .getByRole("button", { name: "View venue", exact: true })
       .click();
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
     await profile.getByRole("button", { name: "View housing requests", exact: true }).click();

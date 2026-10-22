@@ -209,17 +209,17 @@ try {
     const visiblePhotos = page.locator(
       ".marinara-capability-villages-home-full .marinara-capability-villages-pin-photo-card",
     );
-    if (!mobile) await expect(visiblePhotos).toHaveCount(16);
-    else
-      await expect
-        .poll(
-          async () => {
-            const count = await visiblePhotos.count();
-            return count > 0 && count <= 16;
-          },
-          { message: "offscreen Polaroids clip naturally while panning" },
-        )
-        .toBe(true);
+    await expect(visiblePhotos).toHaveCount(0);
+    const visiblePlaces = page.locator(".marinara-capability-villages-home-full [data-pin-id]");
+    await expect
+      .poll(
+        async () => {
+          const count = await visiblePlaces.count();
+          return count > 0 && count <= 16;
+        },
+        { message: "map destinations clip naturally while panning" },
+      )
+      .toBe(true);
 
     await expect(page.locator('[class*="pin-tack"], [class*="photo-tack"]')).toHaveCount(0);
     await expect(page.locator(".marinara-capability-villages-pin-photo svg")).toHaveCount(0);
@@ -296,7 +296,7 @@ try {
     await page.getByRole("button", { name: "Replace map" }).click();
     const upload = page.getByLabel("Upload replacement village map");
     await expect(
-      page.getByText("Use a 3:2 landscape orientation image. Recommended image size is 1536 x 1024px.", {
+      page.getByText("Use a landscape image. Recommended size is 2560 x 1440px (16:9).", {
         exact: true,
       }),
     ).toHaveCount(0);

@@ -2225,43 +2225,8 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-reason-option { display: inline-flex; align-items: center; gap: .35rem; font-size: .75rem; cursor: pointer; }
 .${ELEMENT_TAG}-debug-label { color: #ff465f; font-weight: 800; letter-spacing: .06em; }
 .${ELEMENT_TAG}-side { display: flex; flex-direction: column; gap: .75rem; flex: 1 1 18rem; min-width: 0; }
-/*
-  The homepage is the map, and the map is the whole tab. The map's shape is its
-  own — a fixed ratio that comes from the settings, not from whatever shape this
-  tab happens to be — so this row gives it the room it has left over and lets
-  the space it does not fill show, rather than stretching the picture into a
-  shape no map has.
-
-  A row of two columns: the village's news down the left, the map in what is
-  left. Both are children of this row, so the news is never drawn over the
-  picture. The old shape was neither — the news was a window laid on top of a
-  tab-wide map, which only looked right while the tab was wide enough for the
-  map to be shorter than it and leave a gutter on each side. The Engine's own
-  side panels narrow the tab until the map fills it edge to edge, and then the
-  window landed on the picture. A row cannot do that: whatever width the tab
-  has, the news takes its share and the map is fitted to the rest.
-
-  The news is the only thing in this row besides the map. The readout and the
-  notices are not in the row at all — they are drawn inside the map's own frame,
-  because the frame is the only box whose corner is the picture's corner.
-
-  There is no min-height floor. A floor taller than the visible tab is a floor
-  the map is fitted against and then cropped by the overflow below — the map
-  would be measured against a box bigger than the one it is seen in, and the
-  bottom of the picture, and the pins on it, would be behind the tab's edge.
-  A short tab is meant to give a small map, not a cut-off one.
-
-  The two numbers next to this comment are the map's whole frame: the wood is
-  the thickness of the wooden frame and the mat the margin inside it. They are
-  written down once here and read everywhere they are needed, so the frame and
-  the room that keeps it clear of the tab's edge cannot disagree.
-
-  The shared bar takes its own row above the map on both phone and desktop, so
-  its controls cannot cover a place pinned near the map's top edge.
-*/
+/* The exploration header and map share the available Engine tab height. */
 .${ELEMENT_TAG}-home-full {
-  --${ELEMENT_TAG}-map-wood: .75rem;
-  --${ELEMENT_TAG}-map-mat: .5rem;
   position: relative;
   box-sizing: border-box;
   display: flex; flex-direction: column; align-items: stretch;
@@ -2269,44 +2234,14 @@ const VILLAGES_STYLES = `
   height: 100%; min-height: 0;
   padding: .5rem; overflow: hidden;
 }
-/*
-  The space below the controls is the box the desktop map is fitted against.
-  The frame stays centered in it; notices belong to the frame itself.
-
-  The padding is the buffer the wooden frame is drawn into. It is the wood and
-  the mat plus a pixel, which is exactly enough for the frame to exist without
-  ever reaching the edge of a box that clips its overflow, and it is written as
-  that sum rather than as a length so it stays true if either is retuned. The
-  frame is drawn outwards from the picture, so this padding is the frame's own
-  width and a pixel of clearance, and the picture itself is unchanged by it.
-*/
+/* The map and navigator share the remaining play area. */
 .${ELEMENT_TAG}-room {
   position: relative;
   flex: 1 1 auto; min-width: 0; min-height: 0;
   display: flex; align-items: center; justify-content: center;
-  padding: calc(var(--${ELEMENT_TAG}-map-wood) + var(--${ELEMENT_TAG}-map-mat) + 1px);
+  padding: 0;
 }
-/*
-  The frame's border and rounding belong to the wizard, where the map shares the
-  tab with the questions. On the homepage the wood replaces both, so this rule
-  takes them away.
-
-  No width is stated here on purpose. The measurement gives the frame BOTH of
-  its sides inline, and a width would fight it: a frame left to the room's width
-  alone is a frame taller than the room, and a frame taller than the room is a
-  frame the map is cropped to fill — which is how four houses on the four
-  corners of the map went missing.
-
-  The clipping this frame used to do has not gone anywhere, it moved down to the
-  picture's own layer, which is the same box. Splitting it that way is what lets
-  the wood be drawn outside the frame while a pin on a corner house is still cut
-  off at the edge of the map rather than floating over the wood.
-
-  isolation makes this frame a stacking context, which is what keeps the two
-  wood layers behind the picture. Without it a layer at a negative depth is not
-  contained by anything here and paints behind whatever it finds further up —
-  the wood would still be in the file and nowhere on the screen.
-*/
+/* Exploration owns its viewport; founding keeps the shared stage border. */
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-stage {
   flex: 0 0 auto;
   border: 0; border-radius: 0;
@@ -2323,53 +2258,6 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-canvas {
   overflow: hidden;
   z-index: 1;
-}
-/*
-  The wooden frame, drawn outside the map's box rather than inside it.
-
-  Outside, because a frame drawn inside would have to come out of the picture,
-  and the picture is the map: a frame inside it would crop the map or mat it,
-  and would move every pin as it did. Grown outwards, the map's box stays
-  exactly the map, and nothing about where a house sits changes.
-
-  Two layers because a picture frame has two faces — the wood itself, and the
-  mat inside it that keeps the picture off the wood. The mat is painted second
-  and so covers the wood's inner edge, which is what leaves the wood showing as
-  a ring. A single layer would be a solid slab behind the map.
-
-  The grain is a set of repeating gradients — plank bands down the frame crossed
-  by finer, uneven ones — which is as much wood as a band this thin can hold.
-  The insets are written as sums of the same two numbers the frame's thickness
-  and the room's buffer are made of, so the wood always fits the space it is
-  given: this is the one place the two must not drift apart.
-
-  Scoped to the homepage's frame. The wizard and the town map editor keep the
-  plain border they have always had.
-*/
-.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-stage::before,
-.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-stage::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-}
-.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-stage::before {
-  inset: calc(-1 * (var(--${ELEMENT_TAG}-map-wood) + var(--${ELEMENT_TAG}-map-mat)));
-  border-radius: .625rem;
-  background:
-    repeating-linear-gradient(90deg, rgba(0, 0, 0, .18) 0 1px, rgba(0, 0, 0, 0) 1px 11px),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, .06) 0 1px, rgba(255, 255, 255, 0) 1px 29px),
-    linear-gradient(168deg, #a97641 0%, #8a5c2c 30%, #96683a 52%, #744a20 78%, #8d5f31 100%);
-  box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, .35),
-    inset 0 0 0 3px rgba(255, 255, 255, .055),
-    0 .5rem 1.5rem rgba(0, 0, 0, .34);
-}
-.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-stage::after {
-  inset: calc(-1 * var(--${ELEMENT_TAG}-map-mat));
-  border-radius: .375rem;
-  background: color-mix(in srgb, var(--popover) 86%, #c08b4e);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .22);
 }
 /* A button whose whole content is a drawn glyph: square, with the glyph centred
    in it rather than sitting on a text baseline it has none of. */
@@ -3453,9 +3341,9 @@ a chat is the moment this tab stops being a picture of a village and starts
   .${ELEMENT_TAG}-spin { animation: none; }
 }
 
-/* 0.6.10 mobile village: the wooden frame is the viewport, not the moving map. */
+/* Phone exploration keeps the viewport fixed while the map moves. */
 .${ELEMENT_TAG}-home-full[data-mobile="true"] { box-sizing: border-box; flex-direction: column; overflow: hidden; padding: .5rem; gap: .5rem; }
-.${ELEMENT_TAG}-home-full[data-mobile="true"] .${ELEMENT_TAG}-room { min-height: 0; padding: calc(var(--${ELEMENT_TAG}-map-wood) + var(--${ELEMENT_TAG}-map-mat) + 1px); }
+.${ELEMENT_TAG}-home-full[data-mobile="true"] .${ELEMENT_TAG}-room { min-height: 0; padding: 0; }
 .${ELEMENT_TAG}-home-full[data-mobile="true"] .${ELEMENT_TAG}-home-map-viewport { display: block; width: 100%; height: 100%; overflow: visible; }
 .${ELEMENT_TAG}-home-full[data-mobile="true"] .${ELEMENT_TAG}-stage { display: block; width: 100% !important; height: 100% !important; aspect-ratio: auto !important; touch-action: none; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] { touch-action: none; user-select: none; }
