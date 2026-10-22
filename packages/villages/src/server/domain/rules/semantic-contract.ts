@@ -40,12 +40,16 @@ export function semanticContext(
   query: string,
   compact = false,
   accessTopology = false,
+  presentation = state,
 ) {
+  const authority = state;
+  state = presentation;
   const actors = [...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])])];
   const venue = state.venues.find((row) => row.id === scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
   // Audit remains in saved state; fresh compact packets need current authority, not past command fingerprints.
-  const { receipts: _receipts, changes: _changes, ...accessRules } = venue?.access ?? {};
+  const liveVenue = authority.venues.find((row) => row.id === scene.placeId);
+  const { receipts: _receipts, changes: _changes, ...accessRules } = liveVenue?.access ?? {};
   const memories = selectPromptMemories(state.chronicle, actors, query, 1800);
   const audience = (row: VillageState["chronicle"][number]) =>
     row.scope === "village" ? actors : (row.knownByCharacterIds ?? row.actors.map((actor) => actor.id));
@@ -64,6 +68,14 @@ export function semanticContext(
     history.unshift(row);
   }
   return {
+    ...(scene.continuity
+      ? {
+          time: {
+            capturedAt: scene.continuity.capturedAt,
+            rule: "Real time between replies does not elapse in this Scene. Interpret the captured moment and its witnessed developments. Live access, stock, Project revisions and conditions still govern writes.",
+          },
+        }
+      : {}),
     opening: openingSemanticContext(state, scene),
     worldSeed: state.seed,
     setting: state.setting,
@@ -114,8 +126,8 @@ export function semanticContext(
               : {}),
           }))
       : [],
-    access: compact && venue?.access ? accessRules : venue?.access,
-    accessManagement: accessManagementPrompt(state, actors),
+    access: compact && liveVenue?.access ? accessRules : liveVenue?.access,
+    accessManagement: accessManagementPrompt(authority, actors),
     referenceActors: state.villagers.map(({ characterId, cardSnapshot }) => ({
       id: characterId,
       name: cardSnapshot.name,
@@ -140,28 +152,28 @@ export function semanticContext(
     history,
     ...(compact ? { historyBounded: history.length < recentHistory.length } : {}),
     reach: layout ? zoneEventHearingContext(scene, layout) : "",
-    accessScopes: venue
-      ? venueZones(venue).map((zone) => ({
+    accessScopes: liveVenue
+      ? venueZones(liveVenue).map((zone) => ({
           id: zone.id,
           ownerId: zone.ownerId,
-          controllerIds: zoneControllerIds(venue, zone),
+          controllerIds: zoneControllerIds(liveVenue, zone),
           ...(accessTopology && layout
             ? { kind: zone.kind, adjacentZoneIds: contactNeighborIds(venueZones(layout), zone.id) }
             : {}),
         }))
       : [],
-    projectSupplyTransfers: availableProjectSupplyTransfers(state, scene.placeId, scene.zoneId, scene.activeIds),
-    projects: projectSpeechPrompt(state, projectSpeechContexts(state, actors, "", query, scene.placeId)),
+    projectSupplyTransfers: availableProjectSupplyTransfers(authority, scene.placeId, scene.zoneId, scene.activeIds),
+    projects: projectSpeechPrompt(authority, projectSpeechContexts(authority, actors, "", query, scene.placeId)),
     requests: {
-      venues: state.venues.map((row) => ({
+      venues: authority.venues.map((row) => ({
         id: row.id,
         name: row.name,
         classes: row.classes,
         occupancy: row.occupancy,
         constructionStatus: row.constructionStatus,
       })),
-      residences: state.residences.filter((row) => row.status === "pending"),
-      edits: venue?.editProposals?.filter((row) => !row.declined),
+      residences: authority.residences.filter((row) => row.status === "pending"),
+      edits: liveVenue?.editProposals?.filter((row) => !row.declined),
     },
   };
 }

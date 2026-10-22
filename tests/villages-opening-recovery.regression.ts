@@ -88,15 +88,11 @@ const live = createLiveScenes({
   hasVenueOperation: () => false,
   readVillageState: async () => state,
   mutateVillageState,
-  villagesDocuments: () => ({
-    getById: async () => {
-      throw Error("A gathering with completed conversation must not be deleted");
-    },
-    remove: async () => {
-      throw Error("Unexpected deletion");
-    },
-  }),
 } as LiveScenePorts);
+assert.equal((await live.activeVenueSession())?.id, saved.id, "an unattended gathering remains active");
+assert.equal(state.opening.stage, "gathering");
+saved.status = "closed";
+saved.endReason = "player";
 assert.equal(await live.activeVenueSession(), null);
 assert.equal(saved.status, "closed");
 assert.equal(state.opening.stage, "conversations");
@@ -174,7 +170,7 @@ assert.ok((await queries.progressBacklog()).some((entry) => entry.submissionId =
 saved.submissions[0].openingProcessedAt = new Date().toISOString();
 assert.ok(!(await queries.progressBacklog()).some((entry) => entry.submissionId === "use"));
 console.log(
-  "Opening recovery passed: inactivity, missing-pointer recovery, transcript preservation and interrupted opening receipts.",
+  "Opening recovery passed: persistent gathering, missing-pointer recovery, transcript preservation and interrupted opening receipts.",
 );
 
 // A committed labor-only offer must be reinterpreted BEFORE replay can grant a material source.

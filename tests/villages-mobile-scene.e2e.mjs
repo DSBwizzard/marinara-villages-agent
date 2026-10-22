@@ -63,6 +63,7 @@ try {
             },
     }));
     const castIds = residents.slice(0, count).map((person) => person.characterId);
+    let activityWrites = 0;
     const session = {
       version: 1,
       stagingVersion: 1,
@@ -73,7 +74,7 @@ try {
       zoneId: "exterior",
       area: "public",
       startedAt: now,
-      lastActivityAt: now,
+      lastActivityAt: new Date(Date.now() - 3 * 86400000).toISOString(),
       endedAt: "",
       status: "active",
       activeIds: castIds,
@@ -128,7 +129,10 @@ try {
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = fixture;
-      if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+      if (path.endsWith("/rooms/activity")) {
+        activityWrites++;
+        value = { session };
+      } else if (path.endsWith("/rooms/active")) value = { session };
       else if (path.endsWith("/changes"))
         value = {
           changes: [],
@@ -350,6 +354,11 @@ try {
       )
       .toBeLessThanOrEqual(mobile ? 1 : 13);
     await screenshot("ended");
+    assert.equal(
+      activityWrites,
+      0,
+      "three-day-old Scenes accept reading, typing and first clicks without activity heartbeats",
+    );
     assert.deepEqual(errors, []);
     await page.close();
   }

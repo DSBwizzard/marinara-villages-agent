@@ -1,6 +1,7 @@
 import { applyOpeningExchange } from "../../domain/rules/opening-project.js";
 import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failure.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
 import { ingestSavedProgressEvent } from "../../domain/rules/progress-runtime.js";
 import { physicalVenueEvents } from "../../domain/rules/venue-scene-state.js";
 import { semanticContinued, projectInterpretationNeedsRecovery } from "../../domain/rules/semantic-continuity.js";
@@ -137,9 +138,11 @@ export function createSceneProgress({
 
   /** Replay only saved interpretations. Effects and duplicate receipts remain in their owning documents. */
   async function processSavedExchange(sessionId: string, submissionId: string): Promise<void> {
-    return measurePipeline("saved exchange", { sceneId: sessionId, submissionId }, () =>
+    await measurePipeline("saved exchange", { sceneId: sessionId, submissionId }, () =>
       applySavedExchange(sessionId, submissionId),
     );
+    const settled = await readSession(sessionId);
+    if (settled.status === "closed") await mutateVillageState((state) => releaseSceneWishes(state, settled));
   }
 
   async function processOpeningSignal(scene: VenueScene, turn: VenueSubmission, projectStatus?: string): Promise<void> {
@@ -297,14 +300,15 @@ export function createSceneProgress({
             try {
               await processSavedExchange(turn.sessionId, turn.submissionId);
             } catch (error) {
-              villagesLogger().warn("[villages] progress replay failed for %s: %s", turn.submissionId, String(error));
+              if (!stopped)
+                villagesLogger().warn("[villages] progress replay failed for %s: %s", turn.submissionId, String(error));
             }
           }
           if (!stopped && queue.length) timer = setTimeout(() => void batch(), 25);
         };
         if (!stopped && queue.length) timer = setTimeout(() => void batch(), 0);
       } catch (error) {
-        villagesLogger().warn("[villages] progress recovery could not read visits: %s", String(error));
+        if (!stopped) villagesLogger().warn("[villages] progress recovery could not read visits: %s", String(error));
       }
     };
     void start();

@@ -62,10 +62,6 @@ export function useScenesState(isFounded?: boolean) {
 
   const [debugDiscardEnabled, setDebugDiscardEnabled] = useState(false);
 
-  const lastRoomActivitySentRef = useRef(0);
-
-  const lastRoomDeliberateAtRef = useRef(0);
-
   const observedRoomIdRef = useRef("");
 
   const [lastSceneEnding, setLastSceneEnding] = useState("");
@@ -166,8 +162,6 @@ export function useScenesState(isFounded?: boolean) {
     setRoomUnresolvedChanges,
     debugDiscardEnabled,
     setDebugDiscardEnabled,
-    lastRoomActivitySentRef,
-    lastRoomDeliberateAtRef,
     observedRoomIdRef,
     lastSceneEnding,
     setLastSceneEnding,

@@ -2,14 +2,12 @@ import { gatheringDialogueComplete } from "../../domain/rules/opening-project.js
 import { captureSceneLayout } from "../../domain/rules/scene-layout.js";
 import { villageNow, observeVillageClock, villageClockShiftMs } from "../../adapters/time/clock-gate.js";
 import { randomUUID } from "node:crypto";
-import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { spinoffLocksScene } from "../../domain/models/spinoff-model.js";
-import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
-import { SESSION_PREFIX } from "../../adapters/storage/scene-slots.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
-import { conflict, VillagesRequestError } from "../../domain/rules/errors.js";
+import { conflict } from "../../domain/rules/errors.js";
 import { accessExits, captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
-import { isInactive } from "../../domain/rules/scene-inactivity.js";
+import { captureSceneContinuity } from "../../domain/rules/scene-continuity.js";
+import { protectSceneWishes, releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
@@ -26,7 +24,6 @@ export interface LiveScenePorts {
   changeSession: typeof import("../../adapters/storage/scene-store.js").changeSession;
   clearActivePointer: typeof import("../../adapters/storage/scene-store.js").clearActivePointer;
   hasVenueOperation: typeof import("../../jobs/venue-coordinator.js").hasVenueOperation;
-  villagesDocuments(): Pick<CapabilityDocumentStore, "getById" | "remove">;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
 }
@@ -38,7 +35,6 @@ export function createLiveScenes({
   changeSession,
   clearActivePointer,
   hasVenueOperation,
-  villagesDocuments,
   readVillageState,
   mutateVillageState,
 }: LiveScenePorts) {
@@ -83,56 +79,18 @@ export function createLiveScenes({
     session = await alignSceneClock(session);
     if (session.status === "closed") {
       await completeGathering(session);
+      await mutateVillageState((state) => releaseSceneWishes(state, session));
       await clearActivePointer(session.id);
       return null;
     }
     if (hasVenueOperation(session.id)) return session;
-    if (isInactive(session, villageNow().getTime())) {
-      await interruptInactiveVisit(session.id);
-      const latest = await readSession(session.id).catch(() => null);
-      return latest?.status === "closed" ? null : latest;
-    }
     return refreshZoneParticipants(session);
   }
 
-  async function interruptInactiveVisit(id: string): Promise<void> {
-    if (hasVenueOperation(id)) return;
-    const closed = await changeSession(id, (state) => {
-      if (state.status === "closed" || !isInactive(state, villageNow().getTime()) || hasVenueOperation(id)) return;
-      state.status = "closed";
-      state.endedAt = villageNow().toISOString();
-      state.endReason = "inactivity";
-    });
-    if (closed.status !== "closed") return;
-    await completeGathering(closed);
-    await clearActivePointer(id);
-    // Inactivity ends play, never discards purchased or uncertain generation evidence.
-    const savedGeneration =
-      Object.keys(closed.operation?.attempts ?? {}).length > 0 ||
-      Object.keys(closed.operation?.checkpoints ?? {}).length > 0 ||
-      (closed.generationReceipts?.length ?? 0) > 0;
-    if (!savedGeneration && closed.lines.length === 0 && closed.submissions.length === 0) {
-      const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
-      if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
-    }
-  }
-
   async function requireLiveVenueSession(id: string): Promise<VenueScene> {
-    let session = await alignSceneClock(await readSession(id));
+    const session = await alignSceneClock(await readSession(id));
     if (spinoffLocksScene(session.spinoff))
       throw conflict("Finish or discard your spinoff before continuing in Villages.");
-    if (session.status !== "closed" && isInactive(session) && !hasVenueOperation(id)) {
-      await interruptInactiveVisit(id);
-      session = await readSession(id).catch(() => session);
-    }
-    if (
-      session.endReason === "inactivity" ||
-      (session.status !== "closed" && isInactive(session) && !hasVenueOperation(id))
-    )
-      throw new VillagesRequestError(
-        410,
-        "Interrupted: Inactivity. This Scene ended while you were away; its completed exchanges were saved.",
-      );
     if (session.status === "closed") throw conflict("That Scene has already ended.");
     if ((await readActive()).sessionId !== id) throw conflict("That Scene is not active.");
     return refreshZoneParticipants(session);
@@ -144,8 +102,6 @@ export function createLiveScenes({
     if (Date.now() - Date.parse(session.lastActivityAt) < ACTIVITY_WRITE_MS) return session;
     return changeSession(id, (state) => {
       if (state.status === "closed") throw conflict("That Scene has already ended.");
-      if (isInactive(state) && !hasVenueOperation(state.id))
-        throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
       if (Date.now() - Date.parse(state.lastActivityAt) >= ACTIVITY_WRITE_MS)
         state.lastActivityAt = villageNow().toISOString();
     });
@@ -320,6 +276,26 @@ export function createLiveScenes({
       }
       session = await changeSession(session.id, (state) => {
         if (!state.sceneAttendance) state.sceneAttendance = captured;
+      });
+    }
+    if (!session.continuity) {
+      // The document exists before its expiry hold. Interrupted setup can safely
+      // retry; an old Scene captures available facts once, without inventing history.
+      const now = villageNow().getTime();
+      if (!session.villageSeed)
+        session = await changeSession(session.id, (state) => {
+          state.villageSeed ||= village.seed;
+        });
+      let continuity!: NonNullable<VenueScene["continuity"]>;
+      await mutateVillageState((state) => {
+        protectSceneWishes(state, session, now);
+        // Capture while relationship authority is hydrated. The public world
+        // mutation result intentionally strips that transient context.
+        continuity = captureSceneContinuity(state, session, now);
+      });
+      session = await changeSession(session.id, (state) => {
+        if (state.status === "closed" || (!completing && hasVenueOperation(session.id))) return;
+        state.continuity ??= continuity;
       });
     }
     const people = sceneZoneOccupants(session, village, venue, zoneId);

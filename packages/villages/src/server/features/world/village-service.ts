@@ -30,6 +30,8 @@ import { venueZones } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment, villageDateLabel } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity, villagerPlaceView } from "../../domain/rules/village-projections.js";
 import { wishExpired } from "../../domain/rules/wish-definition.js";
+import { asRecord } from "../../domain/rules/coerce.js";
+import { sceneWishProtected, sceneWishProtectionFinished } from "../../domain/rules/scene-wish-protection.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import { buildReturnRecap, creativeOpportunity, localDateKey, storyAllowance } from "../../domain/rules/world-story.js";
 import type { VillageTickContext } from "../../domain/rules/village-bootstrap-rules.js";
@@ -52,6 +54,7 @@ import type { buildVillageSnapshot } from "./snapshot.js";
 import type { readVillageState, mutateVillageState } from "./village-store.js";
 
 export interface WorldCoordinationPorts {
+  readScene?: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
   buildVillageSnapshot: typeof buildVillageSnapshot;
@@ -77,6 +80,7 @@ export interface WorldCoordinationPorts {
 
 /** Owns world advancement and history connections. Construction never reads, writes or dispatches work. */
 export function createWorldCoordination({
+  readScene,
   readVillageState,
   mutateVillageState,
   buildVillageSnapshot,
@@ -130,6 +134,28 @@ export function createWorldCoordination({
     if (!isVillageFounded(recorded)) return buildVillageSnapshot(now);
     if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready")
       return buildVillageSnapshot(now);
+    // Recover a crash between Scene closure/removal and release of its hold.
+    // Unknown read failures preserve the hold for a later pass.
+    if (readScene) {
+      const releasable: string[] = [];
+      for (const [id, protection] of Object.entries(recorded.sceneWishProtections ?? {})) {
+        if (protection.seed !== recorded.seed) {
+          releasable.push(id);
+          continue;
+        }
+        try {
+          const scene = await readScene(id);
+          if (scene.villageSeed !== recorded.seed || sceneWishProtectionFinished(scene, recorded.foundedAt))
+            releasable.push(id);
+        } catch (error) {
+          if (asRecord(error).statusCode === 404) releasable.push(id);
+        }
+      }
+      if (releasable.length)
+        await mutateVillageState((state) => {
+          if (state.seed === recorded.seed) for (const id of releasable) delete state.sceneWishProtections?.[id];
+        });
+    }
     let completedMove = false;
     for (const residence of recorded.residences) {
       if (residence.status !== "moving" || Date.parse(residence.completesAt ?? "") > now.getTime()) continue;
@@ -161,13 +187,16 @@ export function createWorldCoordination({
     // timer and restart catch-up, irrespective of story pace.
     await mutateVillageState((state) => {
       for (const resident of state.villagers) {
-        const expired = resident.agenda?.wishes.filter((wish) => wishExpired(wish, now.getTime())) ?? [];
+        const expired =
+          resident.agenda?.wishes.filter(
+            (wish) => wishExpired(wish, now.getTime()) && !sceneWishProtected(state, resident.characterId, wish),
+          ) ?? [];
         if (expired.length)
           state.wishRefillIntents[resident.characterId] = {
             id: backgroundRevision(expired.map((wish) => wish.id)),
             settled: expired.map((wish) => wish.wish).join("; "),
           };
-        expireResidentWishes(resident, now);
+        expireResidentWishes(resident, now, state);
       }
     });
     await rollActiveAgendas(now);

@@ -306,8 +306,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomUnresolvedChanges,
     debugDiscardEnabled,
     setDebugDiscardEnabled,
-    lastRoomActivitySentRef,
-    lastRoomDeliberateAtRef,
     observedRoomIdRef,
     lastSceneEnding,
     setLastSceneEnding,
@@ -1176,8 +1174,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useVillagePolling({ loadSnapshot, reconcilingRef });
 
   useSceneSelectionReset({
-    lastRoomActivitySentRef,
-    lastRoomDeliberateAtRef,
     loadSnapshot,
     observedRoomIdRef,
     room,

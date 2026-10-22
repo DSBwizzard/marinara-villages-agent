@@ -29,6 +29,8 @@ async function main() {
       },
     ],
     sceneAttendance: { occupants: [{ characterId: "hidden", doing: "private attendance sentinel" }] },
+    continuity: { version: 1, facts: { chronicle: [{ text: "private captured context sentinel" }] } },
+    sceneFacts: { memories: [{ text: "private effect context sentinel" }] },
     checkpoints: { saved: { secret: "private checkpoint sentinel" } },
     relationshipReview: { applied: true, receipts: [], raw: "private review sentinel" },
   };

@@ -7,12 +7,14 @@ import { agendaBlocksFor, agendaDateKey, flexibleAgendaInterval } from "./agenda
 import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { wishExpired } from "./wish-definition.js";
+import { sceneWishProtected } from "./scene-wish-protection.js";
 import { recordWishOutcome, removeWishActivities, shortWishText, routineRevision } from "./wish-policy.js";
 
-export function expireResidentWishes(resident: VillageVillager, now: Date): void {
+export function expireResidentWishes(resident: VillageVillager, now: Date, state?: VillageState): void {
   if (!resident.agenda) return;
   resident.agenda.wishes = resident.agenda.wishes.filter((wish) => {
-    if (!wishExpired(wish, now.getTime())) return true;
+    if (!wishExpired(wish, now.getTime()) || (state && sceneWishProtected(state, resident.characterId, wish)))
+      return true;
     recordWishOutcome(resident, wish, now.toISOString(), `expired:${wish.id}`, "expired");
     removeWishActivities(resident, wish.id, now);
     return false;

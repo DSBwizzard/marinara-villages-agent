@@ -343,10 +343,21 @@ async function main() {
   };
   await movement.service.processSavedExchange("same", "turn");
   assert.deepEqual(
-    movement.calls,
-    ["measure:saved exchange", "read:same", "access", "invitation"],
-    "saved access/invitation precede movement return",
+    movement.calls.filter((call) =>
+      ["access", "invitation", "physical", "wishes", "memories", "relationships"].includes(call),
+    ),
+    ["access", "invitation"],
+    "saved movement applies access/invitation without entering exchange domains",
   );
+  const finalExchange = fixture("final-exchange");
+  finalExchange.saved.status = "closed";
+  finalExchange.world.sceneWishProtections = { same: { seed: finalExchange.world.seed, wishes: [] } };
+  finalExchange.result("wishes", { status: "pending", reason: "Saved verdict awaits recovery" });
+  await finalExchange.service.processSavedExchange("same", "turn");
+  assert(finalExchange.world.sceneWishProtections.same, "closed pending final effects retain Scene eligibility");
+  finalExchange.result("wishes", { status: "applied", reason: "Saved verdict recovered" });
+  await finalExchange.service.processSavedExchange("same", "turn");
+  assert.equal(finalExchange.world.sceneWishProtections.same, undefined, "terminal replay releases the Scene hold");
   for (const field of ["seed", "scene", "submission"] as const) {
     const changed = fixture("changed");
     if (field === "seed") changed.world.seed = "replacement";

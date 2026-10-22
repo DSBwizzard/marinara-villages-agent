@@ -481,11 +481,16 @@ set("Ives", "player", -20, -30, decay);
 reconcileRelationships(decay, village, now.getTime() + 7 * day);
 assert.equal(relationshipFor(decay, "Rosa", "player").warmth, 20);
 reconcileRelationships(decay, village, now.getTime() + 10 * day);
-assert.equal(relationshipFor(decay, "Rosa", "player").warmth, 17);
-assert.equal(relationshipFor(decay, "Ives", "player").warmth, -17);
+assert.equal(relationshipFor(decay, "Rosa", "player").warmth, 20);
+assert.equal(relationshipFor(decay, "Ives", "player").warmth, -20);
 assert.equal(relationshipFor(decay, "Rosa", "player").trust, 30);
 reconcileRelationships(decay, village, now.getTime() + 10 * day);
-assert.equal(relationshipFor(decay, "Ives", "player").warmth, -17, "decay reconciliation is idempotent");
+assert.equal(relationshipFor(decay, "Ives", "player").warmth, -20, "absence never changes player feelings");
+set("Rosa", "Ives", 20, 30, decay);
+set("Ives", "Rosa", -20, -30, decay);
+reconcileRelationships(decay, village, now.getTime() + 10 * day);
+assert.equal(relationshipFor(decay, "Rosa", "Ives").warmth, 17, "resident ties retain passive decay");
+assert.equal(relationshipFor(decay, "Ives", "Rosa").warmth, -17);
 const witnessed = defaultRelationshipState(village.seed);
 apply(
   [{ ...change("witnessed", 15), contact: false }],
@@ -495,8 +500,8 @@ apply(
 );
 assert.equal(
   relationshipFor(witnessed, "Rosa", "player").warmth,
-  12,
-  "earned feelings decay even before direct substantive contact",
+  15,
+  "earned player feelings survive without direct substantive contact",
 );
 assert.equal(
   relationshipFor(witnessed, "Rosa", "player").lastContactAt,
@@ -510,9 +515,24 @@ reconcileRelationships(delayed, village);
 apply([change("delayed", 0)], "delayed", new Date(now.getTime() - 10 * day).toISOString(), delayed);
 assert.equal(
   relationshipFor(delayed, "Rosa", "player").warmth,
-  14,
-  "late settlement restores only decay after actual contact",
+  20,
+  "late contact does not reconstruct decay in a player tie",
 );
+const legacy = defaultRelationshipState(village.seed);
+set("Rosa", "player", 11, 30, legacy);
+const oldEdge = legacy.edges[relationshipKey("Rosa", "player")]!;
+oldEdge.decayAmount = 9;
+oldEdge.decayThrough = 10;
+oldEdge.lastContactAt = new Date(now.getTime() - 20 * day).toISOString();
+reconcileRelationships(legacy, village, now.getTime() + 30 * day);
+apply([change("legacy-contact", 0)], "legacy", stamp, legacy);
+assert.equal(
+  relationshipFor(legacy, "Rosa", "player").warmth,
+  11,
+  "historical losses are neither refunded nor repeated",
+);
+apply([change("legacy-contact", 0)], "legacy", stamp, legacy);
+assert.equal(relationshipFor(legacy, "Rosa", "player").warmth, 11, "contact replay is idempotent");
 
 const shared = resolveVenueZone(village.venues[0]!, "residence")!,
   personal = resolveVenueZone(village.venues[0]!, "private:Rosa")!;

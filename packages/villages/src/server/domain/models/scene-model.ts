@@ -171,6 +171,8 @@ export type VenueRecordEvent = {
   detail?: string;
 };
 export type VenueScene = {
+  /** Private captured writing context; never part of a client projection. */
+  continuity?: import("../rules/scene-continuity.js").SceneContinuity;
   openingGatheringId?: string;
   openingReader?: boolean;
   openingIntroductionResidentId?: string;

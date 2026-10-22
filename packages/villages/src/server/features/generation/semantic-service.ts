@@ -17,6 +17,7 @@ import {
 } from "../../domain/rules/resident-actions.js";
 import type { SemanticIntent, SemanticExchange } from "../../domain/models/semantic-model.js";
 import type { VenueScene, VenueReplyLine } from "../../domain/models/scene-model.js";
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import { readAccessCommand, managesAccess } from "../../domain/rules/venue-access.js";
 import {
@@ -74,6 +75,7 @@ export function createSemanticService(ports: SemanticPorts) {
     instruction: string,
     validate: (raw: Record<string, unknown>, hash: string, savedInput: Input) => Result,
     currentEvidenceOnly = false,
+    scene?: VenueScene,
   ): Promise<Result> {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = stage === "intent" ? 4096 : asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
@@ -189,7 +191,8 @@ export function createSemanticService(ports: SemanticPorts) {
             throw badGateway("System context remains insufficient. No outcome was applied.");
           const rawCatalog = asRecord(asRecord(asRecord(snapshot.input).context).retrieval).catalog;
           const catalog = Array.isArray(rawCatalog) ? rawCatalog : [];
-          const state = await ports.readVillageState();
+          const live = await ports.readVillageState();
+          const state = scene ? sceneContinuityView(live, scene) : live;
           const requested = raw.needsContext.map((id) => {
             const reference = catalog.find((row: any) => row.id === id);
             const memory = state.chronicle.find((row) => row.id === id && !row.supersededBy);
@@ -344,13 +347,19 @@ export function createSemanticService(ports: SemanticPorts) {
     const state = await ports.readVillageState();
     return ask(
       "intent",
-      { message, turnPolicyVersion: 1, context: semanticContext(scene, state, message) },
+      {
+        message,
+        turnPolicyVersion: 1,
+        context: semanticContext(scene, state, message, false, false, sceneContinuityView(state, scene)),
+      },
       'Interpret current player intent and plausible supported action outcomes. Return {sourceHash,status:"resolved|unresolved",reason,instructions,action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:exact input span,targetId?,delivery?:"ordinary|whisper|shout"}]}. Timeline spans follow source order and cover meaningful input; code binds offsets. Never turn quoted/hypothetical words or private thoughts into actual speech. ' +
         "action, when justified, is a sceneChange object {happened:true,narration,conditionBefore?,conditionAfter?,featureId?,featureText?,publicFactBefore?,publicFactAfter?,resolveTraceId?,addItem?,removeItem?,transferTo?,traceKind?,traceText?,recipientId?,sceneNote?}. " +
         "Only existing supported effects and current reachable targets. Do not create resources without established source/capability. Required resident consent absent from evidence means requires-response in instructions and no completed action. " +
         "Only the explicit Move action changes the player Zone. Movement within context.zoneId, including walking toward furniture or people, is kind:action without a Zone change. For an actual player attempt to cross Zones in this input, identify it as kind:movement with its exact destination zoneId so code can block the turn; never complete it in the draft. Quoted, hypothetical and requested travel is not a completed crossing. Multiple persistent physical steps needing intermediate receipts or unsupported effects remain unresolved. " +
         "Instructions identify actual speech/delivery, addressees, thoughts, plans, action order and prepared outcomes for Narration; they are not character speech. No action means action:null. Conversational input is resolved. Unknown necessary meaning is unresolved.",
       (raw, hash, savedInput) => readIntent(raw, hash, savedInput, state, scene),
+      false,
+      scene,
     );
   }
 
@@ -366,7 +375,14 @@ export function createSemanticService(ports: SemanticPorts) {
     const evidence = semanticEvidence(lines);
     const combined = scene.operation?.input.semanticPipelineVersion === 3;
     const actionContractV2 = residentActionsOmitted || scene.operation?.input.residentActionsVersion === 2;
-    const context = semanticContext(scene, state, message, combined, actionContractV2);
+    const context = semanticContext(
+      scene,
+      state,
+      message,
+      combined,
+      actionContractV2,
+      sceneContinuityView(state, scene),
+    );
     return ask(
       "exchange",
       {
@@ -733,6 +749,7 @@ export function createSemanticService(ports: SemanticPorts) {
         };
       },
       actionContractV2,
+      scene,
     );
   }
   async function rejectExchange(result: SemanticExchange) {

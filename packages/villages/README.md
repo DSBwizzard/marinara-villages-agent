@@ -38,7 +38,7 @@ Private descriptions, contents, pictures and unseen attendance stay server-side 
 
 ## Scenes
 
-A Scene continues within one Venue across Zone movement. At its start, Villages captures attendance, positions, activities, connections and time. Background schedules cannot rewrite that snapshot or expose unseen occupants. Evidenced actions can change positions within the Scene; a new Scene uses current village state.
+A Scene continues within one Venue across Zone movement. At its start, Villages captures attendance, positions, activities, connections, time and writing context. Background schedules, memories and relationships cannot rewrite that moment or expose unseen occupants. Witnessed developments within the Scene build on its captured context; a new Scene uses current village state.
 
 The composer offers:
 
@@ -51,7 +51,7 @@ Invitations do not automatically move the player. Speech and physical sounds use
 
 A resident continuing a doorway conversation may approach, stay inside or decline. Audible remote dialogue does not put its speaker into the physical cast. Physical handoffs still require the participants to share the relevant Zone.
 
-Navigation retains an unfinished Scene, composer draft and reading position. Refresh restores a live Scene. After 30 minutes without deliberate input, it ends as **Interrupted: Inactivity** and returns to exploration.
+Navigation retains an unfinished Scene, composer draft and reading position. Refresh restores it even after days away. Real time between replies does not pass within the roleplay: a morning conversation remains that morning conversation. The wider Village continues on real time. Conclude rejoins its current date, schedules and availability without inventing player activities during the gap; Scenes cannot advance the Village into the future.
 
 ## Writing and saved changes
 
@@ -69,7 +69,7 @@ People opens the Villagers directory inside a shared notebook. Selecting a villa
 
 Profiles show earned relationship information, shared Wishes, known routines and discovered history. Inspect starts off on each profile entry and exposes spoiler information only through its explicit controls. Creator actions do not establish player knowledge.
 
-Warmth and trust are directional values from −100 to +100. Familiarity distinguishes strangers from neutral acquaintances. Friendship does not imply attraction, permission or disclosure. Ordinary positive contact has a daily bound; trust needs supported evidence. Warmth can decay toward neutral after prolonged absence, while trust does not decay.
+Warmth and trust are directional values from −100 to +100. Familiarity distinguishes strangers from neutral acquaintances. Friendship does not imply attraction, permission or disclosure. Ordinary positive contact has a daily bound; trust needs supported evidence. Player absence does not change warmth or trust. Resident-to-resident warmth can still decay toward neutral; trust does not decay. Historical scores remain as saved.
 
 Starting-ties review offers conservative proposals from explicit source history. Accepting them does not reset relationships already developed in play. Exact-value editing requires the per-village spoiler acknowledgment.
 
@@ -81,7 +81,7 @@ Villages constructs dated plans locally from each resident's routine. Optional E
 
 Wishes are private desired outcomes. Profiles reveal them through witnessed disclosures and discoveries, not friendship alone. Journals retain what the player has learned without invented percentages or hidden step boxes. Progress and fulfillment require the original outcome, applicable expressed conditions and authoritative evidence for physical changes. A Project, claim or suggestion alone does not prove fulfillment.
 
-Ongoing Wishes have a daily generation allowance, at least 24 hours between attempts and at most two active Wishes per resident. Missed days do not create a generation backlog. Expiry and retirement preserve what the player already learned.
+Ongoing Wishes have a daily generation allowance, at least 24 hours between attempts and at most two active Wishes per resident. Missed days do not create a generation backlog. A Wish eligible in an unfinished Scene remains eligible there until its final saved effects finish. This protects against expiry only: corrections, retirement, consent, resources and current conditions remain authoritative. The original deadline is retained, and ordinary expiry resumes after release. Expiry and retirement preserve what the player already learned.
 
 Projects proceed through placement, affected-person approval when required, willing builder selection, requirements, materials, construction and a finishing visit. Supplies require actual finite sources and delivery evidence; offers and dialogue alone do not create stock. Material revisions can require fresh approvals without losing acquired supplies.
 

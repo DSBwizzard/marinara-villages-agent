@@ -10,6 +10,8 @@ import { createProgressTask, type ProgressTask, revealProgress, submitProgressEv
 import { deriveVillageMoment } from "./village-clock.js";
 import { localWishRequirements } from "./wish-admission.js";
 import { wishExpired } from "./wish-definition.js";
+import { sceneWishProtected } from "./scene-wish-protection.js";
+import { captureSceneWishEffect } from "./scene-continuity.js";
 import {
   addWishFacts,
   bindWishFacts,
@@ -198,13 +200,13 @@ export const effectId = (sceneId: string, submissionId: string, proposal: WishPr
 
 export const taskId = (proposal: WishProposal) => `wish:${proposal.actorId}:${proposal.wishId}:${proposal.fingerprint}`;
 
-export function currentWish(state: VillageState, proposal: WishProposal, now = Date.now()) {
+export function currentWish(state: VillageState, proposal: WishProposal, now = Date.now(), sceneId?: string) {
   const wish = state.villagers
     .find((resident) => resident.characterId === proposal.actorId)
     ?.agenda?.wishes.find((wish) => wish.id === proposal.wishId);
   return wish &&
     wishFingerprint(wish) === proposal.fingerprint &&
-    !wishExpired(wish, now) &&
+    (!wishExpired(wish, now) || (!!sceneId && sceneWishProtected(state, proposal.actorId, wish, sceneId))) &&
     (proposal.conditionRevision === undefined ||
       wishConditionRevision(state, proposal.actorId, wish, proposal.conditionAt) === proposal.conditionRevision)
     ? wish
@@ -263,7 +265,7 @@ export function applyPreparedWishVerdict(
   const id = effectId(input.sceneId, input.submissionId, input.proposal);
   if (semanticContinued(state, input.sceneId, input.submissionId, "wishes")) return;
   if (state.exchangeReceipts[id] || state.seed !== input.seed) return;
-  const wish = currentWish(state, input.proposal);
+  const wish = currentWish(state, input.proposal, Date.now(), input.sceneId);
   if (verdict.decision) {
     const { check, result } = verdict.decision;
     const facts = asRecord(check.facts);
@@ -420,6 +422,10 @@ export function applyPreparedWishVerdict(
     at: input.at,
     evidenceIds: verdict.evidenceIds,
     reason,
+    sceneFacts: {
+      ...captureSceneWishEffect(state, input.proposal.actorId, wish.id),
+      memories: structuredClone(state.chronicle.filter((row) => row.id === `${input.sceneId}:wish:${wish.id}`)),
+    },
     ...(notice ? { notice } : {}),
   };
 }

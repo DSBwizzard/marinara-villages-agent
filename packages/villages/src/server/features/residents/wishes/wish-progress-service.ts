@@ -1,4 +1,5 @@
 import type { Handler } from "../../../domain/models/background-model.js";
+import { captureSceneWishEffect } from "../../../domain/rules/scene-continuity.js";
 import type { readEffectiveVillagerCard } from "../../../adapters/engine/catalog.js";
 import type { backgroundCalls, backgroundSetting } from "../../../adapters/operations/background-context.js";
 import type { outsideVenueOperation } from "../../../adapters/operations/operation-context.js";
@@ -86,7 +87,7 @@ export function createWishProgress(ports: WishProgressPorts) {
     valid: (state, input: WishCheckInput | WishBatchInput) =>
       state.seed === input.seed &&
       !semanticContinued(state, input.sceneId, input.submissionId, "wishes") &&
-      batchItems(input).some((item) => !!currentWish(state, item.proposal)),
+      batchItems(input).some((item) => !!currentWish(state, item.proposal, Date.now(), item.sceneId)),
     async generate(input: WishCheckInput | WishBatchInput): Promise<PreparedWishVerdict | PreparedWishBatch> {
       const compact = input.contractVersion === 2 || input.contractVersion === 3;
       const all = batchItems(input);
@@ -97,7 +98,7 @@ export function createWishProgress(ports: WishProgressPorts) {
               .filter(
                 (item) =>
                   !state.exchangeReceipts[effectId(item.sceneId, item.submissionId, item.proposal)] &&
-                  currentWish(state, item.proposal),
+                  currentWish(state, item.proposal, Date.now(), item.sceneId),
               )
               .map((item) => effectId(item.sceneId, item.submissionId, item.proposal)),
           )
@@ -169,7 +170,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             batchItems(input).some(
               (item) =>
                 effectId(item.sceneId, item.submissionId, item.proposal) === id &&
-                currentWish(state, item.proposal) &&
+                currentWish(state, item.proposal, Date.now(), item.sceneId) &&
                 !state.exchangeReceipts[id],
             ),
           ),
@@ -375,7 +376,7 @@ export function createWishProgress(ports: WishProgressPorts) {
         receiptIds.push(id);
         continue;
       }
-      const wish = currentWish(state, proposal);
+      const wish = currentWish(state, proposal, Date.now(), scene.id);
       if (!wish) continue;
       const cited = proposal.lineIds.flatMap((id) => (lineIndex.has(id) ? [lineIndex.get(id)!] : []));
       if (
@@ -387,7 +388,7 @@ export function createWishProgress(ports: WishProgressPorts) {
       const resident = state.villagers.find((resident) => resident.characterId === proposal.actorId)!;
       if (turn.semanticProvenance?.version === 2 && proposal.semanticCriteria && !wish.semanticCriteria) {
         await mutateVillageState((live) => {
-          const current = currentWish(live, proposal);
+          const current = currentWish(live, proposal, Date.now(), scene.id);
           if (current && !semanticContinued(live, scene.id, turn.id, "wishes"))
             current.semanticCriteria = proposal.semanticCriteria;
         });
@@ -395,7 +396,7 @@ export function createWishProgress(ports: WishProgressPorts) {
       if (proposal.intent === "reveal") {
         await mutateVillageState((live) => {
           if (semanticContinued(live, scene.id, turn.id, "wishes")) return;
-          const current = currentWish(live, proposal);
+          const current = currentWish(live, proposal, Date.now(), scene.id);
           if (live.seed !== scene.villageSeed || !current || live.exchangeReceipts[id]) return;
           const fresh = !current.learnedAt;
           discloseWish(live, proposal.actorId, current, turn.at!, proposal.lineIds);
@@ -417,6 +418,7 @@ export function createWishProgress(ports: WishProgressPorts) {
           if (task) revealProgress(task, current.learnedAt!);
           live.exchangeReceipts[id] = {
             status: "applied",
+            sceneFacts: captureSceneWishEffect(live, proposal.actorId, current.id),
             actorId: proposal.actorId,
             wishId: current.id,
             id,
@@ -443,7 +445,7 @@ export function createWishProgress(ports: WishProgressPorts) {
       if (proposal.intent === "journal") {
         await mutateVillageState((live) => {
           if (semanticContinued(live, scene.id, turn.id, "wishes")) return;
-          const current = currentWish(live, proposal);
+          const current = currentWish(live, proposal, Date.now(), scene.id);
           if (!current || live.exchangeReceipts[id] || !current.learnedAt) return;
           const added = addWishFacts(
             live,
@@ -480,6 +482,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             evidenceIds: proposal.lineIds,
             status: "applied",
             reason: "Wish discoveries recorded locally",
+            sceneFacts: captureSceneWishEffect(live, proposal.actorId, current.id),
             ...(added
               ? {
                   notice: {
@@ -496,7 +499,7 @@ export function createWishProgress(ports: WishProgressPorts) {
         state = await readVillageState();
         continue;
       }
-      const current = currentWish(state, proposal);
+      const current = currentWish(state, proposal, Date.now(), scene.id);
       if (!current) continue;
       // Recovery uses the already admitted evidence. Only a new admission may read historical archives.
       const legacyStatus = await backgroundStatus("wish-check", id);

@@ -1,4 +1,5 @@
 import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
+import { releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
 import { openingPresence } from "../../domain/rules/opening-presence.js";
 import {
   openingActive,
@@ -67,7 +68,6 @@ import { prependHappenings } from "../../domain/rules/prompt-preset.js";
 import { relationshipZoneController } from "../../domain/rules/relationship-rules.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
-import { isInactive } from "../../domain/rules/scene-inactivity.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { parseVenueReply, quietContactReply, savedAccessEvents } from "../../domain/rules/scene-reply.js";
 import { applyInterpretedRoomEvents } from "../../domain/rules/scene-room-application.js";
@@ -1331,8 +1331,6 @@ export function createSceneCommands({
     const greeted = await changeSession(id, (state) => {
       signal.throwIfAborted();
       if (state.status !== "opening") return;
-      if (isInactive(state) && !hasVenueOperation(state.id))
-        throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
       const at = villageNow().toISOString();
       const savedLineIds = appendVenueReply(state, reply.lines, at);
       {
@@ -1498,8 +1496,6 @@ export function createSceneCommands({
     await cancelVenueOperation(id);
     await requireLiveVenueSession(id);
     const session = await changeSession(id, (state) => {
-      if (isInactive(state) && !hasVenueOperation(state.id))
-        throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
       if (state.status === "opening") state.status = "active";
       else if (state.status !== "active") throw conflict("That Scene has already ended.");
       if (state.operation?.kind === "greet" && state.operation.status === "complete") {
@@ -2442,8 +2438,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
             .slice(0, 8)
         : [];
       if (state.status !== "active") throw conflict("That Scene has already ended.");
-      if (isInactive(state) && !hasVenueOperation(state.id))
-        throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
       if (state.sceneRevision !== session.sceneRevision)
         throw conflict("The conversation moved on. Try sending that line again.");
       const at = villageNow().toISOString();
@@ -3695,6 +3689,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       state.endedAt ||= villageNow().toISOString();
       state.endReason ||= "player";
     });
+    await mutateVillageState((state) => releaseSceneWishes(state, closed));
     await clearActivePointer(session.id);
     await pruneVenueVisits();
     return closed;
@@ -3734,6 +3729,9 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     await clearActivePointer(id);
     const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${session.id}`);
     if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
+    await mutateVillageState((state) => {
+      if (state.seed === session.villageSeed) delete state.sceneWishProtections?.[session.id];
+    });
   }
 
   async function recoverVenueSceneWork() {

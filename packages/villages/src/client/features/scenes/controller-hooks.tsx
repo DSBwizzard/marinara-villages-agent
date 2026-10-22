@@ -79,8 +79,6 @@ export function useSceneChangesPolling(ports: {
 }
 
 export function useSceneSelectionReset(ports: {
-  lastRoomActivitySentRef: React.RefObject<number>;
-  lastRoomDeliberateAtRef: React.RefObject<number>;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   observedRoomIdRef: React.RefObject<string>;
   room: import("../../../shared/contracts/village.js").SceneView;
@@ -102,8 +100,6 @@ export function useSceneSelectionReset(ports: {
   >;
 }) {
   const {
-    lastRoomActivitySentRef,
-    lastRoomDeliberateAtRef,
     loadSnapshot,
     observedRoomIdRef,
     room,
@@ -128,12 +124,6 @@ export function useSceneSelectionReset(ports: {
       setRoomMoveZoneId("");
       setRoomTargetId("");
       roomMoveOperationIdRef.current = null;
-      lastRoomDeliberateAtRef.current = Date.parse(room.lastActivityAt || room.startedAt) || Date.now();
-    } else {
-      lastRoomDeliberateAtRef.current = Math.max(
-        lastRoomDeliberateAtRef.current,
-        Date.parse(room.lastActivityAt || room.startedAt) || 0,
-      );
     }
     let disposed = false;
     const interrupted = (reason: "inactivity" | "elsewhere") => {
@@ -150,17 +140,13 @@ export function useSceneSelectionReset(ports: {
       setScreen("home");
       void loadSnapshot();
     };
-    const validate = (touchAfter = false) => {
+    const validate = () => {
       if (isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
       void request<{ session: SceneView | null }>("/rooms/active")
         .then(async ({ session }) => {
           if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
           if (session?.id === room.id) {
             setRoom(currentRoom(session));
-            if (touchAfter) {
-              await request("/rooms/activity", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
-              lastRoomDeliberateAtRef.current = Date.now();
-            }
             return;
           }
           const archived = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(room.id)}`).catch(
@@ -174,37 +160,15 @@ export function useSceneSelectionReset(ports: {
           if (reason) interrupted(reason);
         });
     };
-    const deliberate = (event: Event) => {
-      if (isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
-      if (Date.now() - lastRoomDeliberateAtRef.current >= 30 * 60_000) {
-        if (event.cancelable) event.preventDefault();
-        event.stopImmediatePropagation();
-        validate(true);
-        return;
-      }
-      lastRoomDeliberateAtRef.current = Date.now();
-      if (Date.now() - lastRoomActivitySentRef.current < 15_000) return;
-      lastRoomActivitySentRef.current = Date.now();
-      void request("/rooms/activity", { method: "POST", body: JSON.stringify({ sessionId: room.id }) }).catch(
-        (cause) => {
-          const reason = staleVenueReason(cause);
-          if (reason) interrupted(reason);
-          else validate();
-        },
-      );
-    };
     const onFocus = () => validate();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
-    for (const type of ["pointerdown", "keydown", "input", "scroll"]) window.addEventListener(type, deliberate, true);
     return () => {
       disposed = true;
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
-      for (const type of ["pointerdown", "keydown", "input", "scroll"])
-        window.removeEventListener(type, deliberate, true);
     };
-  }, [room?.id, room?.status, room?.lastActivityAt, room?.startedAt, screen, loadSnapshot]);
+  }, [room?.id, room?.status, screen, loadSnapshot]);
 }
 
 export function useSceneOpeningWarning(ports: {

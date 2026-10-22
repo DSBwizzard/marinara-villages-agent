@@ -736,8 +736,6 @@ export function useSendRoom(ports: {
       const before = room;
       recordTurnTiming(room.id, submissionId, "send");
       try {
-        await request("/rooms/activity", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
-        if (!owns()) return;
         const { operation } = await request<{ operation: RoomOperation | null }>(
           `/rooms/${encodeURIComponent(room.id)}/operation`,
         );
