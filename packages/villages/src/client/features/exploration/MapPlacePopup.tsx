@@ -7,11 +7,12 @@ export type MapPlacePopupProps = {
   row: ExplorationRow;
   point: { x: number; y: number };
   frame: MobileMapSize;
+  mobile: boolean;
   disabled: boolean;
   onClose: () => void;
 };
 
-export function MapPlacePopup({ row, point, frame, disabled, onClose }: MapPlacePopupProps) {
+export function MapPlacePopup({ row, point, frame, mobile, disabled, onClose }: MapPlacePopupProps) {
   const titleId = useId();
   const ref = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(150);
@@ -28,10 +29,10 @@ export function MapPlacePopup({ row, point, frame, disabled, onClose }: MapPlace
     ref.current?.focus({ preventScroll: true });
   }, [row.id]);
   const inset = 8;
-  const width = Math.min(300, Math.max(0, frame.width - inset * 2));
+  const width = Math.min(mobile ? 240 : 300, Math.max(0, frame.width - inset * 2));
   const left = Math.max(inset, Math.min(point.x - 28, frame.width - width - inset));
-  const below = point.y + 28 + height <= frame.height - inset;
-  const top = Math.max(inset, Math.min(below ? point.y + 28 : point.y - 28 - height, frame.height - height - inset));
+  const below = point.y + 44 + height <= frame.height - inset;
+  const top = Math.max(inset, Math.min(below ? point.y + 44 : point.y - 20 - height, frame.height - height - inset));
   const arrow = Math.max(16, Math.min(point.x - left, width - 16));
   const visible = point.x >= 0 && point.y >= 0 && point.x <= frame.width && point.y <= frame.height;
   return (

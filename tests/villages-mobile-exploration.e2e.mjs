@@ -238,8 +238,14 @@ try {
         const r = node.getBoundingClientRect();
         return { left: r.left, top: r.top, width: r.width, height: r.height };
       });
+    const cameraGeometry = async () => {
+      const image = await geometry(),
+        frame = await canvas.boundingBox();
+      return { left: image.left - frame.x, top: image.top - frame.y, width: image.width, height: image.height };
+    };
     const showPlaces = async () => {
-      if (!(await navigator.isVisible())) await nav.getByRole("button", { name: "Places", exact: true }).click();
+      if (!(await navigator.isVisible()) || (await home.getByRole("dialog").isVisible()))
+        await nav.getByRole("button", { name: "Places", exact: true }).click();
       await expect(navigator).toBeVisible();
     };
     const select = async (name) => {
@@ -322,7 +328,11 @@ try {
     await marker.locator("." + P + "-map-point").click();
     const popup = home.getByRole("dialog");
     await expect(popup).toHaveAccessibleName("Village Market");
-    await expect(navigator).toHaveCount(0);
+    if (mobile) await expect(navigator).toHaveCount(0);
+    else {
+      await expect(navigator).toBeVisible();
+      await expect(navigator.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
+    }
     await expect(popup).toBeFocused();
     const popupFits = async () => {
       await settleLayout();
@@ -341,6 +351,18 @@ try {
       }
     };
     await popupFits();
+    const firstPopup = await popup.boundingBox();
+    if (mobile)
+      assert.ok(
+        firstPopup.width <= 240 && firstPopup.height <= 108,
+        "normal mobile popup leaves most of the map visible",
+      );
+    const dot = await marker.locator("." + P + "-map-point").boundingBox();
+    const label = await marker.locator("." + P + "-map-label").boundingBox();
+    assert.ok(
+      label.y > dot.y + dot.height && Math.abs(label.x + label.width / 2 - dot.x - dot.width / 2) < 1,
+      "venue name is centered below its dot",
+    );
     await screenshot("popup");
     await popup.getByRole("button", { name: "Close location" }).click();
     await expect(popup).toHaveCount(0);
@@ -361,7 +383,14 @@ try {
       ["bottom-edge", "Bottom Edge Venue"],
     ]) {
       await select(name);
-      await home.locator('[data-pin-id="' + id + '"]').click({ position: { x: 14, y: 22 } });
+      if (mobile) await navigator.getByRole("button", { name: "Close places" }).click();
+      await settleLayout();
+      const beforeTap = await cameraGeometry();
+      await home
+        .locator('[data-pin-id="' + id + '"]')
+        .locator("." + P + "-map-point")
+        .click();
+      await expect.poll(cameraGeometry).toEqual(beforeTap);
       await expect(popup).toHaveAccessibleName(name);
       await popupFits();
       if (id === "bottom-edge") await expect(popup).toHaveAttribute("data-side", "above");

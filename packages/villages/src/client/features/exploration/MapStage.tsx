@@ -244,7 +244,7 @@ export function MapStage({
   fitToRoom?: boolean;
   mobile?: boolean;
   exploration?: boolean;
-  placePopup?: Omit<MapPlacePopupProps, "point" | "frame">;
+  placePopup?: Omit<MapPlacePopupProps, "point" | "frame" | "mobile">;
   navigationView?: MobileMapView | null;
   onNavigationView?(next: MobileMapView | null): void;
   /** Show the village's photo cards while keeping desktop's fitted map. */
@@ -1021,6 +1021,7 @@ export function MapStage({
       {exploration && placePopup && popupPin && picture && frame ? (
         <MapPlacePopup
           {...placePopup}
+          mobile={!!mobile}
           point={{ x: picture.left + popupPin.x * picture.width, y: picture.top + popupPin.y * picture.height }}
           frame={frame}
         />

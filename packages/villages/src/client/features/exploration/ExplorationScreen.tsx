@@ -51,12 +51,11 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     explorationReturnTab.current = "map";
     setOpenPlaceId(place.id);
-    const point = placeSpot(place);
-    if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
     if (fromMap) {
       setExploreSheet(null);
-      setCollapsed(true);
     } else {
+      const point = placeSpot(place);
+      if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
       if (mobile) setExploreSheet({ tab: "places" });
       else setCollapsed(false);
     }
@@ -72,7 +71,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     ]
       .filter(Boolean)
       .join(" · "),
-    selected: openPlaceId === place.id,
+    selected: !popupOpen && openPlaceId === place.id,
     onSelect: () => selectPlace(place),
     actions: venueExplorationActions(place),
   }));
