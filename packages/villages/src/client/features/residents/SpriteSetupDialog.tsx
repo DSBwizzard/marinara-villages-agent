@@ -208,28 +208,34 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
     setProgress({ done: 0, total: ids.length });
     try {
       let latest = saved;
-      for (const [index, artworkId] of ids.entries()) {
+      let done = 0;
+      for (let index = 0; index < ids.length; index += 2) {
         controller.signal.throwIfAborted();
+        const artworkIds = ids.slice(index, index + 2);
         latest = await request<SpriteSetupState>(base + "/analyze", {
           method: "POST",
           signal: controller.signal,
           body: JSON.stringify({
             revision: latest.revision,
             requestId: createVillagesClientId(),
-            artworkIds: [artworkId],
-            finalize: index === ids.length - 1,
+            artworkIds,
+            finalize: index + artworkIds.length === ids.length,
             connectionId,
           }),
         });
         setData(latest);
-        if (latest.errors[artworkId]) {
-          setError(latest.errors[artworkId]);
+        done += artworkIds.filter(
+          (id) => !latest.errors[id] && latest.suggestions.some((item) => item.artworkId === id),
+        ).length;
+        setProgress({ done, total: ids.length });
+        const failed = artworkIds.find((id) => latest.errors[id]);
+        if (failed) {
+          setError(latest.errors[failed]);
           break;
         }
-        setProgress({ done: index + 1, total: ids.length });
       }
     } catch (cause) {
-      setData(await request<SpriteSetupState>(base));
+      setData(await request<SpriteSetupState>(base + "/settled"));
       if (!controller.signal.aborted) throw cause;
     } finally {
       abort.current = null;
