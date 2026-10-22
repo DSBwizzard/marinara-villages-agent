@@ -293,7 +293,7 @@ export async function verifyFoundingLayout(group) {
               }),
             });
           }
-          if (/\/characters\/[^/]+\/sprites\/setup(?:\/save)?$/.test(path)) {
+          if (/\/characters\/[^/]+\/sprites\/setup(?:\/(?:save|settled))?$/.test(path)) {
             const id = decodeURIComponent(path.match(/\/characters\/([^/]+)/)[1]);
             if (path.endsWith("/save")) {
               assert.equal(route.request().postDataJSON().revision, spriteRevisions[id] ?? 0);

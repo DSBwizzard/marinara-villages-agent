@@ -48,7 +48,9 @@ try {
           route.fulfill({ contentType: "application/json", body: "[]" }),
         );
         await page.route("**/api/villages/**", (route) => {
-          if (/\/characters\/buster\/sprites\/setup(?:\/save)?$/.test(new URL(route.request().url()).pathname))
+          if (
+            /\/characters\/buster\/sprites\/setup(?:\/(?:save|settled))?$/.test(new URL(route.request().url()).pathname)
+          )
             return route.fulfill({
               contentType: "application/json",
               body: JSON.stringify({
