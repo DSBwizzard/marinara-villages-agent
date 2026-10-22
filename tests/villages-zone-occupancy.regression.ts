@@ -19,7 +19,10 @@ import {
   sceneContinuityView,
 } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { zoneEventScene, routeZoneEvents } from "../packages/villages/src/server/domain/rules/zone-events.js";
-import { assertSceneMovementCapacity } from "../packages/villages/src/server/domain/rules/resident-movement.js";
+import {
+  assertSceneMovementCapacity,
+  residentMovementOptions,
+} from "../packages/villages/src/server/domain/rules/resident-movement.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import { contactCanEnter } from "../packages/villages/src/server/domain/rules/venue-contact.js";
 import {
@@ -178,6 +181,77 @@ assert.equal(
   4,
   "failure preserves positions",
 );
+
+// Writing choices ground destinations and fit the complete selected crossing group.
+{
+  const { state, ids } = fixture(6),
+    venue = state.venues[0];
+  Object.assign(resolveVenueZone(venue, "b")!, { name: "Painting Room", seen: true });
+  venue.zones!.push({
+    ...defaultVenueSpace("community"),
+    id: "hidden",
+    name: "Unseen archive",
+    kind: "restricted",
+    connectedTo: ["a"],
+    ownerId: ids[0],
+  });
+  resolveVenueZone(venue, "a")!.connectedTo!.push("hidden");
+  const saved = coerceSession({
+    ...scene,
+    activeIds: ids.slice(0, 4),
+    sceneAttendance: captureSceneAttendance(state, venue.id, at),
+  });
+  saved.continuity = captureSceneContinuity(state, saved, at.getTime());
+  const before = structuredClone(saved);
+  const options = residentMovementOptions(state, venue, saved, ids.slice(0, 4));
+  const allows = (members: string[], destination: string) =>
+    options.groups.some(
+      (group) =>
+        group.characterIds.length === members.length &&
+        members.every((id) => group.characterIds.includes(id)) &&
+        group.zoneIds.includes(destination),
+    );
+  assert.equal(options.zones.find((zone) => zone.id === "b")!.name, "Painting Room");
+  assert(!JSON.stringify(options).includes("Unseen archive"));
+  assert(
+    ids.slice(4).every((id) => !JSON.stringify(options).includes(id)),
+    "no passive occupant identities",
+  );
+  assert(
+    options.destinations.every((row) => row.zoneIds.includes("b")),
+    "each individual can enter",
+  );
+  assert.equal(allows(ids.slice(0, 2), "b"), true, "two requested arrivals fit beside two passive witnesses");
+  assert.equal(allows(ids.slice(0, 3), "b"), false);
+  assert.equal(allows(ids.slice(0, 4), "b"), false, "four may not be inferred from independent choices");
+  assert.deepEqual(saved, before, "planning never moves a resident");
+
+  // Moving the player changes the viewpoint, not the available arrival slots.
+  saved.zoneId = "b";
+  saved.activeIds = ids.slice(4);
+  assert.deepEqual(residentMovementOptions(state, venue, saved, ids.slice(0, 4)).groups, options.groups);
+  resolveVenueZone(venue, "b")!.name = "Newer Village label";
+  assert.equal(
+    residentMovementOptions(state, venue, saved, ids.slice(0, 4)).zones.find((zone) => zone.id === "b")!.name,
+    "Painting Room",
+  );
+
+  saved.accompanying = [{ characterId: ids[4], zoneId: "exterior" }];
+  assert(
+    residentMovementOptions(state, venue, saved, ids.slice(0, 3)).groups.some(
+      (group) => group.characterIds.length === 3 && group.zoneIds.includes("b"),
+    ),
+    "use witnessed changed positions, not just initial attendance",
+  );
+  saved.accompanying = [];
+  saved.departedIds = ids.slice(4);
+  assert(
+    residentMovementOptions(state, venue, saved, ids.slice(0, 4)).groups.some(
+      (group) => group.characterIds.length === 4 && group.zoneIds.includes("b"),
+    ),
+    "departed residents no longer consume slots",
+  );
+}
 
 // A background closure/ban cannot alter Scene navigation or attendance.
 initializeVenueAccess(venue);
