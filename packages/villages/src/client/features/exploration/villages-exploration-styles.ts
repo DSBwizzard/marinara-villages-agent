@@ -81,23 +81,8 @@ export const EXPLORATION_STYLES = `
 .${P}-home-full :is(button,input,[tabindex]):focus-visible { outline:3px solid var(--explore-selected); outline-offset:-3px; }
 .${P}-home-full button:hover:not(:disabled) { filter:brightness(1.12); }
 
-.${P}-map-place-popup { position:absolute; z-index:10; box-sizing:border-box; border:1px solid var(--explore-border); border-radius:10px; background:var(--explore-panel); color:var(--explore-text); box-shadow:0 8px 24px #0007; outline:none; }
-.${P}-popup-pointer { position:absolute; left:var(--popup-arrow); width:12px; height:12px; background:var(--explore-panel); transform:translateX(-50%) rotate(45deg); border:1px solid var(--explore-border); pointer-events:none; }
-.${P}-map-place-popup[data-side="below"] .${P}-popup-pointer { top:-7px; border-right:0; border-bottom:0; }
-.${P}-map-place-popup[data-side="above"] .${P}-popup-pointer { bottom:-7px; border-left:0; border-top:0; }
-.${P}-popup-body { position:relative; max-height:inherit; box-sizing:border-box; overflow:auto; overscroll-behavior:contain; touch-action:pan-y; padding:10px 12px 12px; border-radius:inherit; background:inherit; }
-.${P}-popup-body header { display:flex; align-items:flex-start; gap:8px; }
-.${P}-popup-body header>div { flex:1; min-width:0; }
-.${P}-popup-body h2 { margin:5px 0 3px; font:inherit; font-size:15px; font-weight:650; line-height:1.3; overflow-wrap:anywhere; }
-.${P}-popup-body p { margin:0; color:var(--explore-muted); font-size:13px; line-height:1.4; overflow-wrap:anywhere; }
-.${P}-popup-close { display:grid; place-items:center; flex:none; min-width:44px; height:44px; margin:-4px -6px 0 0; border:0; border-radius:5px; background:transparent; color:var(--explore-muted); cursor:pointer; }
-.${P}-popup-close svg { width:22px; height:22px; color:inherit; }
-.${P}-popup-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
-.${P}-popup-actions button { flex:1 0 auto; min-height:44px; padding:9px 12px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; }
-.${P}-popup-actions button:first-child { background:var(--explore-selected); border-color:var(--explore-selected); color:var(--explore-ink); }
-
 /* Engine accent animations must not recolor map-control icons. */
-.${P}-home-full :is(.${P}-home-bar,.${P}-explore-nav,.${P}-location-navigator,.${P}-navigator-toggle,.${P}-map-place-popup) svg { color:inherit; }
+.${P}-home-full :is(.${P}-home-bar,.${P}-explore-nav,.${P}-location-navigator,.${P}-navigator-toggle) svg { color:inherit; }
 .${P}-home-full[data-mobile="true"] { padding:0; gap:0; }
 .${P}-home-full[data-mobile="true"] .${P}-home-bar { min-height:52px; padding:4px 8px; }
 .${P}-home-full[data-mobile="true"] .${P}-map-identity { flex-direction:column; align-items:flex-start; gap:2px; max-width:65%; }
@@ -108,14 +93,6 @@ export const EXPLORATION_STYLES = `
 .${P}-home-full[data-mobile="true"] .${P}-map-label { max-width:140px; }
 .${P}-location-navigator[data-layout="navigator-sheet"] { position:relative; order:2; z-index:8; flex:0 1 auto; width:100%; max-height:min(calc(55% + var(--villages-exploration-inset,0px)),25rem); border:1px solid var(--explore-border); border-radius:12px 12px 0 0; box-shadow:0 -5px 20px #0005; }
 .${P}-home-full[data-mobile="true"] .${P}-explore-nav { position:relative; z-index:9; transform:translateY(calc(-1 * var(--villages-exploration-inset,0px))); }
-
-.${P}-home-full[data-mobile="true"] .${P}-popup-body { padding:4px 8px 8px; }
-.${P}-home-full[data-mobile="true"] .${P}-popup-body header { min-height:36px; align-items:center; padding-right:40px; }
-.${P}-home-full[data-mobile="true"] .${P}-popup-body h2 { margin:0; font-size:14px; line-height:1.25; }
-.${P}-home-full[data-mobile="true"] .${P}-popup-body p { display:none; }
-.${P}-home-full[data-mobile="true"] .${P}-popup-close { position:absolute; top:0; right:2px; margin:0; }
-.${P}-home-full[data-mobile="true"] .${P}-popup-actions { gap:6px; margin-top:4px; }
-.${P}-home-full[data-mobile="true"] .${P}-popup-actions button { padding:6px 10px; font-size:12px; }
 
 @container (min-width:705px) and (max-width:1000px) {
   .${P}-home-full .${P}-map-identity { flex-direction:column; align-items:flex-start; gap:2px; }

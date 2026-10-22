@@ -21,6 +21,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     mobile,
     navigationView,
     openMenu,
+    openPlace,
     openPlaceId,
     placingProjectId,
     savedPins,
@@ -42,23 +43,17 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
   } = controller;
   const [collapsed, setCollapsed] = useState(false);
   const [focusSearch, setFocusSearch] = useState(false);
-  const [popupOpen, setPopupOpen] = useState(false);
   const places = snapshot?.settings.venues ?? [];
   const navigatorOpen = !placingProjectId && (mobile ? exploreSheet?.tab === "places" : !collapsed);
-  const selectPlace = (place: VillageVenue, fromMap = false) => {
+  const selectPlace = (place: VillageVenue) => {
     setFocusSearch(false);
-    setPopupOpen(fromMap);
     explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     explorationReturnTab.current = "map";
     setOpenPlaceId(place.id);
-    if (fromMap) {
-      setExploreSheet(null);
-    } else {
-      const point = placeSpot(place);
-      if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
-      if (mobile) setExploreSheet({ tab: "places" });
-      else setCollapsed(false);
-    }
+    const point = placeSpot(place);
+    if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
+    if (mobile) setExploreSheet({ tab: "places" });
+    else setCollapsed(false);
   };
   const rows = places.map((place) => ({
     id: place.id,
@@ -71,11 +66,10 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     ]
       .filter(Boolean)
       .join(" · "),
-    selected: !popupOpen && openPlaceId === place.id,
+    selected: openPlaceId === place.id,
     onSelect: () => selectPlace(place),
     actions: venueExplorationActions(place),
   }));
-  const popupRow = popupOpen ? rows.find((row) => row.id === openPlaceId) : undefined;
   const pins = savedPins
     .filter((pin) => pin.kind !== "person")
     .map((pin) => {
@@ -84,7 +78,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         ...pin,
         text: place?.name ?? pin.text,
         selected: pin.id === openPlaceId,
-        onSelect: place && !busy ? () => selectPlace(place, true) : undefined,
+        onSelect: place && !busy ? () => openPlace(place) : undefined,
       };
     });
   const navigation = (
@@ -92,7 +86,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       active={mobile ? (exploreSheet?.tab ?? "map") : "map"}
       disabled={!snapshot || busy}
       onChoose={(tab, button) => {
-        setPopupOpen(false);
         explorationOrigin.current = button;
         explorationReturnTab.current = tab;
         if (tab === "map") closeExploration();
@@ -156,7 +149,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
             className={`${ELEMENT_TAG}-navigator-toggle`}
             aria-label="Show places"
             onClick={() => {
-              setPopupOpen(false);
               setFocusSearch(true);
               setCollapsed(false);
               setExploreSheet({ tab: "places" });
@@ -193,15 +185,11 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 .finally(() => setBusy(false));
             }}
             onDismiss={() => {
-              setPopupOpen(false);
               setExploreSheet(null);
               setOpenPlaceId(null);
             }}
             mobile={mobile}
             exploration
-            placePopup={
-              popupRow && !placingProjectId ? { row: popupRow, disabled: busy, onClose: closeExploration } : undefined
-            }
             navigationView={navigationView}
             onNavigationView={setNavigationView}
           >

@@ -553,10 +553,7 @@ try {
     if (width === 1440) {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();
-      await home
-        .getByRole("dialog", { name: "Mara's home", exact: true })
-        .getByRole("button", { name: "View venue", exact: true })
-        .click();
+      await expect(page.getByRole("heading", { name: "Mara's home", exact: true })).toBeVisible();
       await page
         .getByRole("navigation", { name: "Venue sections" })
         .getByRole("button", { name: "Manage", exact: true })
