@@ -914,6 +914,8 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  /** An existing handoff needs return/recovery controls; private context stays server-side. */
+  spinoffPending?: boolean;
   openingReader?: boolean;
   openingIntroductionResidentId?: string;
   semanticVersion?: 2;

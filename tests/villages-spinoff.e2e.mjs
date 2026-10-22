@@ -15,7 +15,7 @@ const bundle = await build({
     const element=document.getElementById('root');
     element.capabilityProps={startScene:async options=>{window.startOptions=options; await fetch('/api/villages/test/claim'); return {chatId:'engine'}},openChat:id=>{window.openedChat=id}};
     function SceneContents(){const start=useContext(SpinoffActionContext);const error=useContext(SpinoffErrorContext);return <><output id="spinoff-error-state">{error}</output><button role="menuitem" disabled={!start} onClick={start}>Start a spinoff</button><button>Walk to another venue</button></>}
-    function App(){const [locked,setLocked]=useState(false);const [activeScene,setActiveScene]=useState({...scene,placeName:"The Mill"});window.changeScene=()=>setActiveScene({...scene,id:"second",placeName:"The Harbour"});return <div style={{position:'relative',height:'100vh'}}><SpinoffPanel element={element} scene={activeScene} onLocked={setLocked} onResolved={async()=>{window.returned=true}}><div inert={locked}><SceneContents/></div></SpinoffPanel></div>}
+    function App(){const [locked,setLocked]=useState(false);const [activeScene,setActiveScene]=useState({...scene,placeName:"The Mill",spinoffPending:window.spinoffPending});window.changeScene=()=>setActiveScene({...scene,id:"second",placeName:"The Harbour"});window.restoreSpinoff=()=>setActiveScene({...scene,placeName:"The Mill",spinoffPending:true});return <div style={{position:'relative',height:'100vh'}}><SpinoffPanel element={element} scene={activeScene} onLocked={setLocked} onResolved={async()=>{window.returned=true;setActiveScene({...scene,placeName:"The Mill"})}}><div inert={locked}><SceneContents/></div></SpinoffPanel></div>}
     let root=createRoot(element);window.remount=()=>{root.unmount();root=createRoot(element);root.render(<App/>)};root.render(<App/>);
   `,
   },
@@ -35,7 +35,8 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let spinoff = null;
-    let failRead = false;
+    let failRead = true;
+    const requests = [];
     const selections = [];
     await page.route("https://spinoff.test/", (route) =>
       route.fulfill({
@@ -45,6 +46,7 @@ try {
     );
     await page.route("**/api/villages/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      requests.push(path);
       if (path.endsWith("/active") && failRead)
         return route.fulfill({ status: 503, json: { error: "Spinoff source Scene read failed." } });
       if (path.endsWith("/begin"))
@@ -91,9 +93,26 @@ try {
     });
     await page.goto("https://spinoff.test/");
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await expect(page.getByRole("menuitem", { name: "Start a spinoff", exact: true })).toBeEnabled();
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("focus"));
+      document.getElementById("root").dispatchEvent(new Event("marinara-capability-props"));
+      window.changeScene();
+    });
+    await page.clock.install();
+    await page.clock.runFor(15000);
+    await expect(page.locator("#spinoff-error-state")).toBeEmpty();
+    assert.deepEqual(requests, [], "ordinary Scene mounting, focus, host updates and navigation do no spinoff work");
+    assert.equal(await page.evaluate(() => window.startOptions), undefined, "ordinary Scenes never launch Engine");
+    await page.evaluate(() => window.remount());
     await page.getByRole("menuitem", { name: "Start a spinoff", exact: true }).click();
     await expect(page.getByText("Spinoffs are freeform side stories", { exact: false })).toBeVisible();
     await page.getByLabel("Spinoff idea").fill("A short outing to the old shrine");
+    assert.deepEqual(requests, [], "opening spinoff setup does not begin or prepare a spinoff");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Start a spinoff", exact: true }).click();
+    await expect(page.getByLabel("Spinoff idea")).toHaveValue("A short outing to the old shrine");
+    failRead = false;
     await page.getByRole("button", { name: "Continue in Engine", exact: true }).click();
     await expect(page.getByRole("button", { name: "Go to spinoff", exact: true })).toBeVisible();
     assert.equal(await page.evaluate(() => window.startOptions.data.spinoffId), "spinoff");
@@ -124,15 +143,30 @@ try {
     // A saved subset survives remount after a partial application failure.
     spinoff.status = "returned";
     spinoff.selectionIds = ["m1"];
-    await page.evaluate(() => window.remount());
+    await page.evaluate(() => {
+      window.spinoffPending = true;
+      window.remount();
+    });
     await expect(page.getByRole("checkbox").first()).toBeChecked();
     await expect(page.getByRole("checkbox").nth(1)).not.toBeChecked();
     await expect(page.getByRole("checkbox").first()).toBeDisabled();
     await expect(page.getByRole("button", { name: "Keep this spinoff separate and return" })).toBeDisabled();
+    assert.equal(requests.filter((path) => path.endsWith("/begin")).length, 1, "recovery never starts a new spinoff");
+    assert.equal(requests.filter((path) => path.endsWith("/prepare")).length, 1, "recovery never prepares memories");
     await page.getByRole("button", { name: "Save selected memories and return" }).click();
     assert.deepEqual(selections, [["m1"], ["m1"]]);
+    await expect(page.getByRole("menuitem", { name: "Start a spinoff", exact: true })).toBeEnabled();
+    const completedRequests = requests.length;
     failRead = true;
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("focus"));
+      document.getElementById("root").dispatchEvent(new Event("marinara-capability-props"));
+    });
+    await page.clock.runFor(15000);
+    assert.equal(requests.length, completedRequests, "resolved spinoffs stop automatic status checks");
+    await expect(page.locator("#spinoff-error-state")).toBeEmpty();
+    spinoff.status = "returned";
+    await page.evaluate(() => window.restoreSpinoff());
     await expect(page.locator("#spinoff-error-state")).toContainText("Spinoff source Scene read failed.");
     failRead = false;
     await page.evaluate(() => window.changeScene());
@@ -144,5 +178,5 @@ try {
   await browser.close();
 }
 console.log(
-  "Spinoff launch, Engine navigation, player occupation, evidence review, partial-selection recovery and return passed on desktop and phone (mocked host/APIs).",
+  "Ordinary Scenes perform no spinoff work; explicit launch, Engine navigation, player occupation, evidence review, partial-selection recovery and return passed on desktop and phone (mocked host/APIs).",
 );
