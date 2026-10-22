@@ -977,7 +977,7 @@ export async function verifyFoundingLayout(group) {
           .setInputFiles({ name: "starting-map.png", mimeType: "image/png", buffer: PNG.sync.write(art) });
         await expect(mapDialog.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
         await expect(
-          mapDialog.getByText("Use a 3:2 landscape orientation image. Recommended image size is 1536 x 1024px.", {
+          mapDialog.getByText("Use a landscape image. Recommended size is 2560 x 1440px (16:9).", {
             exact: true,
           }),
         ).toBeVisible();

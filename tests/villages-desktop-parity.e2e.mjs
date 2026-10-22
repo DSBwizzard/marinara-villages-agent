@@ -282,19 +282,20 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const home = page.locator(".marinara-capability-villages-home-full");
     await expect(home).toHaveAttribute("data-mobile", String(mobile));
-    if (!mobile)
-      await expect(home.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(width === 1440 ? 4 : 3);
+    await expect(home.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(0);
     await expect(home.locator(".marinara-capability-villages-canvas-img")).toHaveAttribute("src", mapImage);
-    await expect(home.locator(`[data-pin-id="${mobile ? "market" : "mill"}"]`)).toBeInViewport();
+    await expect(home.locator('[data-pin-id="market"]')).toBeInViewport();
     await expect(page.getByRole("img", { name: "Weather: clear" })).toBeVisible();
     if (!mobile) {
-      await expect(page.getByRole("button", { name: "Places" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Places", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: /whole screen/u })).toBeVisible();
       const stage = await home.locator(".marinara-capability-villages-stage").boundingBox();
       assert.ok(stage && stage.width <= width && stage.height <= height, "desktop fits the whole map");
       const bar = await home.locator(".marinara-capability-villages-home-bar").boundingBox();
       assert.ok(bar && stage.y >= bar.y + bar.height, "desktop controls sit above the map");
-      await expect(home.locator('[data-pin-id="harbour"]')).toBeInViewport();
+      await expect(
+        home.getByRole("complementary", { name: "Places navigator" }).getByRole("button", { name: /The Harbour/ }),
+      ).toBeVisible();
     }
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({
@@ -331,10 +332,13 @@ try {
     await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to the village" }).click();
 
-    const visitedId = mobile ? "market" : "mill";
-    const pin = home.locator(`[data-pin-id="${visitedId}"]`);
-    await pin.focus();
-    await page.keyboard.press("Enter");
+    await page
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
+      .click();
+    const navigator = page.getByRole("complementary", { name: "Places navigator" });
+    await navigator.getByRole("button", { name: mobile ? /^The Market/ : /^The Mill/ }).click();
+    await navigator.getByRole("button", { name: "View venue", exact: true }).click();
     const doors = page.locator(".marinara-capability-villages-venue-profile");
     await expect(doors.getByRole("button", { name: "Visit venue" })).toBeVisible();
     const bounds = await doors.boundingBox();
@@ -549,6 +553,10 @@ try {
     if (width === 1440) {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();
+      await home
+        .getByRole("complementary", { name: "Places navigator" })
+        .getByRole("button", { name: "View venue", exact: true })
+        .click();
       await page
         .getByRole("navigation", { name: "Venue sections" })
         .getByRole("button", { name: "Manage", exact: true })

@@ -2,7 +2,7 @@ import type { TownMapFit, TownMapView } from "../../../shared/contracts/village.
 import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
 import { clamp, round4 } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin, MapZoomRange, PictureBox } from "../../shared/types.js";
-import { MobileMarkers } from "./villages-exploration";
+import { ExplorationMarkers } from "./villages-exploration";
 import {
   focusedPhotoScale,
   mobileCoverZoom,
@@ -323,6 +323,9 @@ export function MapStage({
     centerY: 0.5,
   };
   const mobileCurrent = (exploration ? navigationView : mobileView) ?? mobileInitial;
+  useLayoutEffect(() => {
+    if (exploration) mobileViewRef.current = navigationView ?? null;
+  }, [exploration, navigationView]);
   const updateMobileView = (next: MobileMapView | null) => {
     mobileViewRef.current = next;
     setMobileView(next);
@@ -330,7 +333,7 @@ export function MapStage({
   };
   const picture = useMemo(
     () =>
-      mobile
+      mobile || exploration
         ? mobileImage && frame
           ? mobileMapBox(mobileImage, frame, mobileCurrent)
           : null
@@ -341,7 +344,7 @@ export function MapStage({
           : frame
             ? { left: 0, top: 0, width: frame.width, height: frame.height }
             : null,
-    [decoded, frame, live, mobile, mobileImage, mobileCurrent, src],
+    [decoded, frame, live, mobile, exploration, mobileImage, mobileCurrent, src],
   );
   useEffect(() => {
     setMobileView(null);
@@ -356,11 +359,13 @@ export function MapStage({
   // A fitted frame is given both of its sides rather than a ratio, because a
   // ratio would still leave one of them to the room — and a frame whose height
   // is the room's height is a frame the map has to be cropped to fill.
-  const style: CSSProperties | undefined = shape
-    ? fitToRoom && fitted
-      ? { width: `${fitted.width}px`, height: `${fitted.height}px`, aspectRatio: `${shape.width} / ${shape.height}` }
-      : { aspectRatio: `${shape.width} / ${shape.height}` }
-    : undefined;
+  const style: CSSProperties | undefined = exploration
+    ? { width: "100%", height: "100%", aspectRatio: "auto" }
+    : shape
+      ? fitToRoom && fitted
+        ? { width: `${fitted.width}px`, height: `${fitted.height}px`, aspectRatio: `${shape.width} / ${shape.height}` }
+        : { aspectRatio: `${shape.width} / ${shape.height}` }
+      : undefined;
 
   const measure = useCallback(() => {
     const element = frameRef.current;
@@ -526,7 +531,7 @@ export function MapStage({
   };
 
   const mobilePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!mobile || event.pointerType !== "touch") return;
+    if ((!mobile && !exploration) || (!exploration && event.pointerType !== "touch") || event.button > 0) return;
     if (event.isPrimary) {
       pointersRef.current.clear();
       suppressTouchClickRef.current = false;
@@ -541,7 +546,14 @@ export function MapStage({
   };
 
   const mobilePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!mobile || !pointersRef.current.has(event.pointerId) || !mobileImage || !frame || !frameRef.current) return;
+    if (
+      (!mobile && !exploration) ||
+      !pointersRef.current.has(event.pointerId) ||
+      !mobileImage ||
+      !frame ||
+      !frameRef.current
+    )
+      return;
     const rect = frameRef.current.getBoundingClientRect();
     pointersRef.current.set(event.pointerId, { x: event.clientX - rect.left, y: event.clientY - rect.top });
     const points = [...pointersRef.current.values()];
@@ -554,8 +566,11 @@ export function MapStage({
     if (!start) return;
     const moved = mobileGestureMoved(start, { x, y, distance });
     if (!moved && !suppressTouchClickRef.current) return;
-    if (!suppressTouchClickRef.current) onDismiss?.();
+    if (!suppressTouchClickRef.current && !exploration) onDismiss?.();
     suppressTouchClickRef.current = true;
+    if (exploration && event.pointerType === "mouse" && !event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
     const next = mobileMapGesture(
       mobileImage,
       frame,
@@ -579,9 +594,11 @@ export function MapStage({
     window.setTimeout(() => document.removeEventListener("click", consume, true), 500);
   };
   const mobilePointerEnd = (event: ReactPointerEvent<HTMLDivElement>, cancelled = false) => {
-    if (!mobile || !pointersRef.current.has(event.pointerId)) return;
+    if ((!mobile && !exploration) || !pointersRef.current.has(event.pointerId)) return;
     const tapped = !cancelled && pointersRef.current.size === 1 && !suppressTouchClickRef.current;
     pointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
     if (pointersRef.current.size === 0) stageRef.current?.removeAttribute("data-mobile-gesturing");
     gestureAnchor();
     if (!tapped || !(event.target instanceof Element)) return;
@@ -618,6 +635,18 @@ export function MapStage({
     }
   };
 
+  const changeNavigationZoom = (factor: number) => {
+    if (!mobileImage || !frame) return;
+    const center = { x: frame.width / 2, y: frame.height / 2 };
+    const current = { ...mobileCurrent, zoom: Math.max(mobileCurrent.zoom, mobileCoverZoom(mobileImage, frame)) };
+    updateMobileView(mobileMapGesture(mobileImage, frame, current, center, center, factor));
+  };
+  const resetNavigation = () => {
+    mobileViewRef.current = null;
+    setMobileView(null);
+    onNavigationView?.(null);
+  };
+
   return (
     <div
       ref={stageRef}
@@ -626,6 +655,7 @@ export function MapStage({
       data-shaped={shape ? "true" : "false"}
       data-framing={framing && live.fit === "cover" ? "true" : "false"}
       data-mobile={mobile ? "true" : "false"}
+      data-exploration={exploration ? "true" : "false"}
       data-navigation-zoom={exploration ? mobileCurrent.zoom : undefined}
       data-photo-pins="true"
       data-picture-width={picture?.width}
@@ -633,7 +663,7 @@ export function MapStage({
       data-compact-photos={compactPhotos ? "true" : "false"}
       data-empty={src ? "false" : "true"}
       onPointerDownCapture={(event) => {
-        if (mobile) {
+        if (mobile || exploration) {
           mobilePointerDown(event);
           return;
         }
@@ -641,7 +671,7 @@ export function MapStage({
         touchStartRef.current = event.pointerType === "touch" ? { x: event.clientX, y: event.clientY } : null;
       }}
       onPointerMoveCapture={(event) => {
-        if (mobile) {
+        if (mobile || exploration) {
           mobilePointerMove(event);
           return;
         }
@@ -650,9 +680,9 @@ export function MapStage({
           suppressTouchClickRef.current = true;
         }
       }}
-      onPointerUpCapture={mobile ? mobilePointerEnd : undefined}
+      onPointerUpCapture={mobile || exploration ? mobilePointerEnd : undefined}
       onPointerCancelCapture={(event) => {
-        if (mobile) mobilePointerEnd(event, true);
+        if (mobile || exploration) mobilePointerEnd(event, true);
         if (touchStartRef.current) suppressTouchClickRef.current = true;
       }}
       onClickCapture={(event) => {
@@ -670,6 +700,34 @@ export function MapStage({
       <div
         ref={frameRef}
         className={`${ELEMENT_TAG}-canvas`}
+        tabIndex={exploration ? 0 : undefined}
+        role={exploration ? "group" : undefined}
+        aria-label={exploration ? "Map navigation" : undefined}
+        onKeyDown={
+          exploration
+            ? (event) => {
+                if (event.target !== event.currentTarget) return;
+                const deltas: Record<string, [number, number]> = {
+                  ArrowLeft: [-0.05, 0],
+                  ArrowRight: [0.05, 0],
+                  ArrowUp: [0, -0.05],
+                  ArrowDown: [0, 0.05],
+                };
+                const delta = deltas[event.key];
+                if (delta) {
+                  event.preventDefault();
+                  updateMobileView({
+                    ...mobileCurrent,
+                    centerX: clamp(mobileCurrent.centerX + delta[0], 0, 1),
+                    centerY: clamp(mobileCurrent.centerY + delta[1], 0, 1),
+                  });
+                } else if (event.key === "Home") {
+                  event.preventDefault();
+                  resetNavigation();
+                }
+              }
+            : undefined
+        }
         data-placing={picking && placing ? "true" : "false"}
         data-dragging={dragging ? "true" : "false"}
         onClick={picking && placing ? handleClick : onDismiss ? () => onDismiss() : undefined}
@@ -682,7 +740,7 @@ export function MapStage({
           <img
             className={`${ELEMENT_TAG}-canvas-img`}
             style={
-              mobile && picture
+              (mobile || exploration) && picture
                 ? {
                     position: "absolute",
                     left: picture.left,
@@ -740,7 +798,7 @@ export function MapStage({
             }}
           />
         ) : null}
-        {exploration && picture && frame ? <MobileMarkers pins={pins} picture={picture} frame={frame} /> : null}
+        {exploration && picture && frame ? <ExplorationMarkers pins={pins} picture={picture} frame={frame} /> : null}
         {picture && !exploration
           ? pins.map((pin) => (
               <span
@@ -952,7 +1010,19 @@ export function MapStage({
             ))
         : null}
 
-      {framing && zoom && live.fit === "cover" ? (
+      {exploration && !placing ? (
+        <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
+          <button type="button" aria-label="Zoom out" onClick={() => changeNavigationZoom(1 / 1.25)}>
+            −
+          </button>
+          <button type="button" aria-label="Reset map view" onClick={resetNavigation}>
+            Reset
+          </button>
+          <button type="button" aria-label="Zoom in" onClick={() => changeNavigationZoom(1.25)}>
+            +
+          </button>
+        </div>
+      ) : framing && zoom && live.fit === "cover" ? (
         <div className={`${ELEMENT_TAG}-zoom`}>
           <button
             type="button"

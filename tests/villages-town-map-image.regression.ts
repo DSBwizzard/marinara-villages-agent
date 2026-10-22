@@ -34,6 +34,7 @@ async function main() {
   const { inspectVillageImage } = await import(pathToFileURL(join(services, "adapters/engine/image-files.ts")).href);
 
   for (const [width, height] of [
+    [2560, 1440],
     [1536, 1024],
     [1024, 1024],
     [768, 1152],
@@ -53,8 +54,8 @@ async function main() {
     assert.ok(townMapImageProblem({ width, height }), `${width} x ${height} rejected`);
   assert.match(townMapImageProblem({ width: 1080, height: 2412 })!, /at most 1620px tall/);
   assert.match(townMapImageProblem({ width: 2412, height: 1080 })!, /at most 2160px wide/);
-  assert.equal(TOWN_MAP_EXPECTED_WIDTH, 1536);
-  assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1024);
+  assert.equal(TOWN_MAP_EXPECTED_WIDTH, 2560);
+  assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1440);
   assert.equal(MAX_TOWN_MAP_IMAGE_LENGTH, 8_000_000);
   const founded = {
     setting: "Misty cliffs",
@@ -119,13 +120,13 @@ async function main() {
   assert.deepEqual(legacy.worldFacts, []);
   assert.match(villageCurrentSetting(legacy), /^Misty cliffs\n/);
   assert.match(villageRelevantOrigin(legacy, "Tell me the village history"), /After the flood/);
-  assert.deepEqual([defaultVillageState().townMapCanvasWidth, defaultVillageState().townMapCanvasHeight], [1536, 1024]);
+  assert.deepEqual([defaultVillageState().townMapCanvasWidth, defaultVillageState().townMapCanvasHeight], [2560, 1440]);
   assert.deepEqual(
     [
       coerceVillageState({ wishSystemVersion: 3 }).townMapCanvasWidth,
       coerceVillageState({ wishSystemVersion: 3 }).townMapCanvasHeight,
     ],
-    [1536, 1024],
+    [2560, 1440],
   );
   assert.deepEqual(
     [
@@ -149,7 +150,7 @@ async function main() {
       coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 })
         .townMapCanvasHeight,
     ],
-    [1536, 1024],
+    [2560, 1440],
   );
   const mapPrefix = "data:image/png;base64,";
   const acceptedMap = mapPrefix + "A".repeat(7_999_976);
@@ -165,8 +166,7 @@ async function main() {
     DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
     /Make rooms, outdoor spaces, entrances and connecting routes easy to distinguish/,
   );
-  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /3:2 landscape canvas, wider than it is tall/);
-  assert.equal(DEFAULT_TOWN_MAP_LAYOUT_PROMPT.includes("1536×1024"), false);
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /16:9 landscape canvas/);
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /Do not draw outlined lots or a zoning grid/);
   const fixtures = [
     "A forest settlement of timber cabins and clearings.",
@@ -297,7 +297,7 @@ async function main() {
     };
     const input = {
       structure: "A corridor and shared hall. ".repeat(4),
-      setting: "An indoor observatory. ".repeat(60),
+      setting: "An indoor observatory. ".repeat(58),
       sceneryArtStyle: "Painted scenery. ".repeat(6),
       useVisualLore: true,
       selectedLorebookIds: ["zero-budget-book"],
@@ -314,6 +314,7 @@ async function main() {
     const generated = await generateVillageTownMap(input);
     assert.deepEqual(generated, { image: generatedImage, width: 1536, height: 1024 });
     assert.equal(imageRequests.length, 1);
+    assert.deepEqual([imageRequests[0].width, imageRequests[0].height], [2560, 1440]);
     assert.equal(imageRequests[0].appearance, expectedPrompt);
     assert.equal(expectedPrompt.split(VILLAGE_SHARED_SETTING_RULE).length - 1, 1);
     assert.equal(imageRequests[0].promptOverrides[0].prompt, expectedPrompt);
