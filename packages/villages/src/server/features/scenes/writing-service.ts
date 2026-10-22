@@ -473,10 +473,10 @@ export function createSceneWriting({
               ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
                 ? "playerSpeechCapture, segments and residentActions (required even when [])."
                 : "playerSpeechCapture then segments.") +
-              ' No outside prose. segments are {kind:"dialogue",speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?,staging?:[]} for speech and {kind:"narration",text,sound?:{sourceId,text,loud?:true},staging?:[]} for visible narration. Sound belongs only on narration, never on a speech segment. If speech accompanies a separate meaningful nonverbal noise, use a separate narration segment with sound; otherwise omit sound. Max24 segments,2000 characters each. Omit unused optional fields. System independently validates consequences; residentActions are access proposals, never applied permission.',
+              ' No outside prose. JSON-encode all text, escaping embedded quotation marks; actions belong in narration, never outside a text string. segments are {kind:"dialogue",speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?,staging?:[]} for speech and {kind:"narration",text,sound?:{sourceId,text,loud?:true},staging?:[]} for visible narration. Sound belongs only on narration, never on a speech segment. If speech accompanies a separate meaningful nonverbal noise, use a separate narration segment with sound; otherwise omit sound. Every segment needs nonempty text; include a perceptible noise in narration text as well as its routing cue. Max24 segments,2000 characters each. Omit unused optional fields. System independently validates consequences; residentActions are access proposals, never applied permission.',
             ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
               ? [
-                  'JSON structure for a silent input with no access action: {"playerSpeechCapture":{"status":"silent","utterances":[]},"segments":[{"text":"A visible response."}],"residentActions":[]}. Example is structure only; write the actual Scene and attach every expressed access action.',
+                  'JSON structure for a silent input with no access action: {"playerSpeechCapture":{"status":"silent","utterances":[]},"segments":[{"kind":"narration","text":"A visible response."}],"residentActions":[]}. Example is structure only; write the actual Scene and attach every expressed access action.',
                 ]
               : []),
             PLAYER_CAPTURE_CONTRACT,

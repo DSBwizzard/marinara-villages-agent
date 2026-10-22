@@ -437,6 +437,11 @@ assert.equal(separateSound.lines.length, 2, "actual narration owns its own sound
 assert.deepEqual(separateSound.lines[0].heardBy, ["local", "near"]);
 assert.deepEqual(separateSound.lines[1].heardBy, ["local"]);
 assert.deepEqual(separateSound.lines[1].soundOnly?.characterIds, ["near"]);
+assert.throws(
+  () => routed(response([{ kind: "narration", text: "", sound: { sourceId: "local", text: "A motor rattles." } }])),
+  /unreadable speaker or line/,
+  "a routing cue cannot silently replace missing narration text",
+);
 const movingSound = routed(
   response([
     {
