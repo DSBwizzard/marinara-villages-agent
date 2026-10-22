@@ -1261,6 +1261,16 @@ async function main() {
     assert.equal(reconciled.permissions.length, 0, "A natural invitation grants only a visit");
   }
   assert.throws(() => readResidentActions(undefined), /metadata is incomplete/);
+  const residentOnlyQuote = "Neighbor, you can use my office.";
+  const residentOnlyEvidence = evidenceFor(residentOnlyQuote);
+  const residentOnlyReview = reconcileResidentActions([], reviewFor(residentOnlyEvidence, []), residentOnlyEvidence);
+  assert.deepEqual(residentOnlyReview.access, [], "resident permission is not player access");
+  assert.deepEqual(residentOnlyReview.permissions, []);
+  assert.throws(
+    () => readResidentActions([makeAction(residentOnlyQuote, { visitorId: "neighbor" })]),
+    /metadata is invalid/,
+    "a resident visitor cannot be silently coerced into player permission",
+  );
   const actions = readResidentActions([makeAction("Sit beside me.")]),
     evidence = evidenceFor("Sit beside me."),
     review = reviewFor(evidence, actions);

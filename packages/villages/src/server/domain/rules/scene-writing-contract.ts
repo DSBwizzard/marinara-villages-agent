@@ -36,7 +36,8 @@ export function normalizeSceneEffectReferences(raw: Record<string, unknown>, ear
 }
 
 /** A finished reply sometimes closes its core before appending effect members.
- * Remove exactly that extra brace, never values, missing closers or competing objects.
+ * Remove that extra brace and at most one stray array closer at the same boundary,
+ * never values, missing closers or competing objects.
  */
 function parsePrematureEffectBoundary(text: string): Record<string, unknown> | null {
   if (!text.startsWith("{")) return null;
@@ -55,17 +56,18 @@ function parsePrematureEffectBoundary(text: string): Record<string, unknown> | n
     else if (char === "{") depth++;
     else if (char === "}" && --depth === 0) {
       const core = parseSceneObject(text.slice(0, index + 1));
+      const suffix = text.slice(index + 1).replace(/^\s*\](?=\s*,\s*")/u, "");
       if (
         !core ||
         Object.keys(core).length !== 2 ||
         !Object.hasOwn(core, "playerSpeechCapture") ||
         !Object.hasOwn(core, "segments") ||
         !Array.isArray(core.segments) ||
-        !/^\s*,\s*"/u.test(text.slice(index + 1))
+        !/^\s*,\s*"/u.test(suffix)
       )
         return null;
       // Strict whole-object parsing also rejects duplicate keys at every depth.
-      const combined = parseSceneObject(text.slice(0, index) + text.slice(index + 1));
+      const combined = parseSceneObject(text.slice(0, index) + suffix);
       if (!combined) return null;
       const tail = Object.keys(combined).filter((key) => !Object.hasOwn(core, key));
       return tail.length && tail.every((key) => EFFECT_FIELDS.includes(key) || key === "residentActions")

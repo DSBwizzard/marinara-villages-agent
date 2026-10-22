@@ -398,7 +398,7 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(residentActions ? { residentActions } : {}),
       },
       (residentActionsOmitted
-        ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no access actions. Independently discover every expressed access action in additionalActions and cover every player-heard non-player segment. "
+        ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
         : "") +
         (residentActions
           ? (actionContractV2
