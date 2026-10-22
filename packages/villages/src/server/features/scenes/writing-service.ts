@@ -344,7 +344,7 @@ export function createSceneWriting({
       );
       if (spriteLabels)
         expressionContexts.push(
-          `Filled expressions for ${card.name}: ${spriteLabels}. Select a listed expression id using its meaning. Pose-specific pictures must match actions already occurring in the scene. Omit expression to use the default image.`,
+          `Filled expressions for ${card.name}: ${spriteLabels}. Select a listed expression id that fits the current dialogue and visible emotion. useWhen guides image selection; it must not create story events or establish an occupation, personality or intent. Ordinary postures such as hands on hips or folded arms need no matching narration. Clearly depicted actions, physical states and props must fit what is already happening in the Scene. Never add an action merely to use a picture. Omit expression to use the default image.`,
         );
       return venueCardProfile(card, player.name, false);
     });

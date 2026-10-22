@@ -107,6 +107,8 @@ Character sprites are independent artwork copies. Sprite setup shows a wrapping 
 
 Choose a vision-capable chat connection for explicit sprite analysis. The browser remembers the choice. Image Captioning and System selections do not control it. Analysis saves each completed proposal and stops on failure or cancellation. A successful run can suggest a neutral front-facing default; older results are not automatically reanalyzed.
 
+**Use when** is a short Scene selection rule grounded in the visible expression. Ordinary standing postures need no matching narration; depicted actions, physical states and props must fit the existing Scene. Analysis does not infer occupations or invent situations from appearance. Existing descriptions remain available for review and editing.
+
 Preparation marks indicate complete included metadata, not saved approval. **Add villager with sprites** or **Use sprites** accepts the reviewed set and included default. Back, framing saves and analysis preserve unapproved drafts. Excluded artwork remains available.
 
 Signatures may be names, initials, symbols or doodles chosen from the saved character. **Generate signature** makes an explicit image request; browsing never does. Original art is retained, and a transparent derivative removes light paper, including white fills. White paint is intentionally treated as paper. Regeneration preserves the previous signature until success; saved paid responses can be reused after an upload or save failure.
