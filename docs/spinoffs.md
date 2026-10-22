@@ -2,6 +2,8 @@
 
 From an active Scene's top-right **…** menu, choose **Start a spinoff**, select one resident in your current Zone, and describe an idea. The setup opens over the Scene; cancelling preserves your text draft and reading position. Engine opens its ordinary scene planner and roleplay chat, with the Village encounter's setting, original time, shared conversation, linked lorebooks, persona, and resolved text connection.
 
+Spinoffs start only when you choose **Continue in Engine**. Ordinary Scene navigation and window focus do not check for or launch spinoffs. Status checks resume only for an existing pending handoff so its return and recovery controls remain available after reloading.
+
 Play freely in Engine. The spinoff is only partly Village continuity. This proof of concept can return up to three specific shared memories; it does not change relationship scores, Village time, tasks, property, possessions, permissions, or the resident roster.
 
 The original Scene and the player's other Village interactions remain occupied until the spinoff is finished or discarded. Village time and residents' subsequent agendas continue. The episode stays anchored to the original Scene instant, even if you finish writing days later; an unfinished transcript does not mean the resident spent those days doing the activity. Engine's narrative clock is not the Village clock.
