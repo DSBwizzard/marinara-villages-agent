@@ -17,7 +17,13 @@ export type PersonalMailThread = {
 };
 export type MailboxView = {
   threads: PersonalMailThread[];
-  recovery?: { threadId: string; messageId: string; label: string; reinterpretRequired: boolean }[];
+  recovery?: {
+    threadId: string;
+    messageId: string;
+    label: string;
+    reinterpretRequired: boolean;
+    cancellable: boolean;
+  }[];
   invitations: {
     id: string;
     threadId: string;

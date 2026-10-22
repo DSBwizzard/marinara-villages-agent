@@ -32,12 +32,22 @@ import { workFailureSummary } from "../packages/villages/src/server/domain/rules
   const change = {
     fromId: "rosa",
     toId: "player",
-    dimension: "warmth",
-    strength: "minor",
-    direction: "increase",
-    ordinary: "PRIVATE REASON",
+    expectedRevision: "PRIVATE REASON",
+    sceneAfter: {
+      connection: "Acquaintances",
+      stance: "Enjoys conversation",
+      expectations: [],
+      concerns: [],
+      records: [],
+    },
+    liveAfter: {
+      connection: "Acquaintances",
+      stance: "Enjoys conversation",
+      expectations: [],
+      concerns: [],
+      records: [],
+    },
     lineIds: [0],
-    disclosed: false,
   };
   const malformed = normalizeRecoverableSceneReply({ ...core, relationshipChanges: { changes: [change] } });
   const message = malformed.failures.relationships!.message;
@@ -51,10 +61,10 @@ import { workFailureSummary } from "../packages/villages/src/server/domain/rules
     ...core,
     relationshipChanges: { changes: [{ ...change, reason: "Friendly visit" }] },
   });
-  assert.match(invalidFlag.failures.relationships!.message, /ordinary must be a boolean/);
+  assert.match(invalidFlag.failures.relationships!.message, /expectedRevision must be a nonnegative integer/);
   const valid = normalizeRecoverableSceneReply({
     ...core,
-    relationshipChanges: { changes: [{ ...change, ordinary: true, reason: "Friendly visit" }] },
+    relationshipChanges: { changes: [{ ...change, expectedRevision: 0, reason: "Friendly visit" }] },
   });
   assert.deepEqual(valid.failures, {});
 }

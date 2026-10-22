@@ -125,6 +125,23 @@ export function Mailbox({
             >
               {row.reinterpretRequired ? "Reinterpret saved message" : "Replay delivery"}
             </button>
+            {row.cancellable ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void action(
+                    "/mailbox/threads/" +
+                      encodeURIComponent(row.threadId) +
+                      "/messages/" +
+                      encodeURIComponent(row.messageId) +
+                      "/cancel",
+                  )
+                }
+              >
+                Discard message
+              </button>
+            ) : null}
           </article>
         ))}
         <label>

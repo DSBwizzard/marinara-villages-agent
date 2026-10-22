@@ -287,11 +287,20 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
           if (key) malformedDetail = `${path}[${index}].${key} must be a nonempty string`;
           else if (array) malformedDetail = `${path}[${index}].${array} must be an array`;
           else if (path === "changes") {
-            const flag = ["ordinary", "disclosed"].find(
-              (key) => Object.hasOwn(row, key) && typeof row[key] !== "boolean",
-            );
-            if (flag) malformedDetail = `${path}[${index}].${flag} must be a boolean`;
-            else return false;
+            if (!Number.isInteger(row.expectedRevision) || Number(row.expectedRevision) < 0)
+              malformedDetail = `${path}[${index}].expectedRevision must be a nonnegative integer`;
+            else {
+              const projection = ["sceneAfter", "liveAfter"].find((key) => {
+                const value = asRecord(row[key]);
+                return (
+                  typeof value.connection !== "string" ||
+                  typeof value.stance !== "string" ||
+                  !["expectations", "concerns", "records"].every((field) => Array.isArray(value[field]))
+                );
+              });
+              if (projection) malformedDetail = `${path}[${index}].${projection} must be a social projection`;
+              else return false;
+            }
           } else return false;
           return true;
         });
@@ -310,12 +319,7 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
       if (domain === "relationships") {
         const relationship = asRecord(normalized.relationshipChanges);
         if (
-          malformed(
-            relationship.changes,
-            ["fromId", "toId", "dimension", "strength", "direction", "reason"],
-            ["lineIds"],
-            "changes",
-          ) ||
+          malformed(relationship.changes, ["fromId", "toId", "reason"], ["lineIds"], "changes") ||
           malformed(
             relationship.permissions,
             ["controllerId", "visitorId", "venueId", "zoneId", "action"],

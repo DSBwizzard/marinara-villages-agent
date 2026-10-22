@@ -261,6 +261,8 @@ await service.processOutbox(await snapshot());
 const heldView = await service.readMailbox();
 assert.equal(heldView.recovery?.[0]?.messageId, "held:mail");
 assert.equal(heldView.recovery?.[0]?.reinterpretRequired, true);
+assert.equal(heldView.recovery?.[0]?.cancellable, false);
+await assert.rejects(() => service.cancel(held.input.threadId, held.id), /local recovery/);
 assert(
   !JSON.stringify(heldView).includes("A private proposal."),
   "Recovery never exposes an undelivered resident message",
@@ -270,6 +272,33 @@ const sourceFingerprint = heldSource.sourceHash;
 await service.retry(held.input.threadId, held.id, "fresh-meaning");
 assert.equal(queued.at(-1).input.sourceHash, sourceFingerprint);
 assert.equal(queued.at(-1).input.retainedReply, "", "Resident-source retry never starts a reply chain");
+
+// A card change before delivery remains private and can be discarded without applying effects.
+const obsolete = service.automaticOutbox(
+  await snapshot(),
+  social,
+  { senderId: "ada", text: "Obsolete private message.", relationshipReview: emptyRelationshipReview() },
+  "obsolete",
+  new Date().toISOString(),
+);
+village.socialMailOutbox = [obsolete];
+village.villagers[0]!.cardSnapshot.capturedAt = "card-2";
+await service.processOutbox(await snapshot());
+const obsoleteView = await service.readMailbox();
+assert.equal(obsoleteView.recovery?.[0]?.cancellable, true);
+assert(!JSON.stringify(obsoleteView).includes("Obsolete private message."));
+const beforeDiscardCalls = calls;
+failCleanup = true;
+await assert.rejects(() => service.cancel(obsolete.input.threadId, obsolete.id), /Final cleanup/);
+assert.equal(social.mailThreads[obsolete.input.threadId]!.messages.at(-1)!.status, "cancelled");
+await service.cancel(obsolete.input.threadId, obsolete.id);
+assert.equal(village.socialMailOutbox?.length, 0);
+// Even an already running job's late saved result cannot revive the cancelled source.
+village.socialMailOutbox = [{ ...obsolete, error: undefined }];
+await service.processOutbox(await snapshot());
+assert.equal(village.socialMailOutbox?.length, 0);
+assert.equal(social.mailDeliveries[obsolete.id], undefined);
+assert.equal(calls, beforeDiscardCalls);
 console.log(
   "Personal mail: exact outbox, failed delivery, failed reply, local replay, read privacy and automatic delivery passed.",
 );

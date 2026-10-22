@@ -292,6 +292,13 @@ export function createSocialMail(ports: SocialMailPorts) {
       });
     }
     const original = requireMailSource(current, input.threadId, input.messageId).message;
+    if (original.status === "cancelled" && !current.mailDeliveries[input.messageId]) {
+      await ports.mutateVillageState((state) => {
+        if (state.seed === input.seed)
+          state.socialMailOutbox = state.socialMailOutbox?.filter((row) => row.id !== entry.id);
+      });
+      return;
+    }
     if (
       original.text !== input.sourceText ||
       original.sourceHash !== input.sourceHash ||
@@ -490,6 +497,9 @@ export function createSocialMail(ports: SocialMailPorts) {
           messageId: row.id,
           label: "Automatic message delivery needs recovery.",
           reinterpretRequired: !!row.reinterpretRequired,
+          cancellable: ["pending", "cancelled"].includes(
+            state.mailThreads[row.input.threadId]?.messages.find((message) => message.id === row.id)?.status ?? "",
+          ),
         })),
       threads: Object.values(state.mailThreads)
         .filter(
@@ -590,6 +600,10 @@ export function createSocialMail(ports: SocialMailPorts) {
   async function cancel(threadId: string, messageId: string) {
     const village = await ports.readVillageSnapshot();
     await ports.mutateRelationships(village.seed, (state) => cancelPersonalMessage(state, threadId, messageId));
+    await ports.mutateVillageState((state) => {
+      if (state.seed === village.seed)
+        state.socialMailOutbox = state.socialMailOutbox?.filter((row) => row.id !== messageId);
+    });
     return readMailbox();
   }
   async function retry(threadId: string, messageId: string, requestId: string) {

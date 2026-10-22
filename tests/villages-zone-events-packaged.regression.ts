@@ -666,12 +666,8 @@ try {
   const malformedRelationship = {
     fromId: "aqua",
     toId: "player",
-    dimension: "warmth",
-    strength: "minor",
-    direction: "increase",
-    ordinary: "PRIVATE EXPLANATION",
+    expectedRevision: "PRIVATE EXPLANATION",
     lineIds: ["0"],
-    disclosed: false,
   };
   await turn(
     "missing-relationship-reason",
@@ -1191,7 +1187,7 @@ try {
   };
   semanticExchangeAnswer = {
     consistent: true,
-    authority: { physical: false, access: false, projects: false, standing: false },
+    authority: { physical: false, access: false, projects: false, standing: false, social: false },
     action: null,
     access: [],
     events: { moves: [], departures: [], contactEnd: [] },
@@ -1534,7 +1530,7 @@ try {
   };
   semanticExchangeAnswer = {
     consistent: true,
-    authority: { physical: false, access: true, projects: false, standing: false },
+    authority: { physical: false, access: true, projects: false, standing: false, social: false },
     action: null,
     access: [invitation],
     events: { moves: [], departures: [], contactEnd: [] },

@@ -1,5 +1,4 @@
 import { ZONE_SOUND_CONTRACT } from "./zone-events.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "./relationship-review.js";
 import { conflict } from "./errors.js";
 import type { VillageState } from "../models/world.js";
 import type { VenueScene } from "../models/scene-model.js";
@@ -7,6 +6,9 @@ import { accessManagementPrompt } from "./access-speech.js";
 import { venueZones } from "./venue-zones.js";
 import type { VenueResponseContext } from "./venue-response-contract.js";
 
+// System owns the complete social interpretation; writing metadata is only a nomination.
+const SOCIAL_WRITING_CONTRACT =
+  'relationshipChanges:{changes:[{fromId,toId,expectedRevision,sceneAfter:{connection,stance,expectations:[],concerns:[],records:[]},liveAfter:{connection,stance,expectations:[],concerns:[],records:[]},reason,lineIds:[]}],disclosures:[{fromId,toId,text,kind:"explanation|preference|boundary|routine|history|connection",lineIds:[]}],permissions:[{controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}],intentions:[]}. Qualitative resident-owned perspectives; no scores or player feelings. Preserve captured Scene history in sceneAfter and later live developments in liveAfter. Disclosures need the resident’s player-heard speech; standing permissions need explicit authority for the exact visitor/Zone. System independently reviews all effects.';
 export type SceneWritingCapabilities = {
   management: boolean;
   movement: boolean;
@@ -25,7 +27,7 @@ ACTION-BASED SOUND. ${ZONE_SOUND_CONTRACT}`
         `Use heardPlayerBy and each segment's heardBy for actual resident witnesses. ${c.opening ? "Opening heardPlayerBy is empty." : ""}`,
     `Effects cite numeric zero-based indexes of ALL segments (player speech included), or supplied earlier evidence IDs. Never cite recaps, imagined speech or unfiltered player input in Zone-event Scenes. Every knower must witness every citation. Speech signals cite that resident's own speech. Conditional willingness, a promise and a completed deed are distinct. Proposals cannot grant authority or prove physical outcomes.`,
     `Optional memoryChanges:[{kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:[],memoryIds?:[]}]. IDs are residents, never player. Record useful contextual events; durable only for stable facts/preferences/boundaries, commitments or significant experiences. Passing lasts 24 hours. Omit filler, transient mood, weak inference and existing facts. Reinforce/supersede cite supplied durable memoryIds plus new evidence; reinforce preserves the text, supersede corrects it. No promotion quota.`,
-    RELATIONSHIP_REVIEW_INSTRUCTION.replace("Return relationshipReview:", "Optional relationshipChanges:"),
+    "Optional " + SOCIAL_WRITING_CONTRACT,
     capabilities.movement
       ? `contactMoves records only crossing into a DIFFERENT listed destination Zone, never walking within the current Zone. A step toward someone, crossing a courtyard or changing seats within one Zone needs no contactMoves. For a real Zone crossing use the exact full narration quote or omit quote to reference its segment.`
       : "",
@@ -111,7 +113,7 @@ export function reliableSceneContract(c: VenueResponseContext, capabilities: Sce
         `Use heardPlayerBy and segment heardBy for actual resident witnesses.${c.opening ? " Opening heardPlayerBy: []." : ""}`,
     'Effects cite returned-segment numbers (0,1,...), "utterance:N" for captured player words; older evidence uses supplied IDs. Never invent "segments:1"/"aqua:1" aliases. Every knower witnesses EVERY citation. No recaps, imagined speech or raw input evidence. Speech signals cite their speaker. Conditions/promises/deeds differ; proposals grant no authority or physical results.',
     'memoryChanges:[{kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:[],memoryIds?:[]}]. Resident IDs only, never player. Passing:24h contextual events; durable:stable facts/preferences/boundaries, commitments or significant experiences. Omit filler, transient mood, weak inference, existing facts; no quota. Reinforce preserves supplied durable text; supersede corrects it; both need supplied memoryIds/new evidence.',
-    RELATIONSHIP_REVIEW_INSTRUCTION.replace("Return relationshipReview:", "relationshipChanges:"),
+    SOCIAL_WRITING_CONTRACT,
     capabilities.movement
       ? "contactMoves:[{characterId,zoneId,segment}]. Only completed crossings to a DIFFERENT listed Zone. Current-Zone walking/seating/gates need no row. segment cites narration naming the actor and completed crossing,not intention/conditions. One voluntary move/actor; code supplies quote. Door opening is no crossing. Later speech uses new positions,no retroactive witnesses/unseen journeys/interiors."
       : "",
