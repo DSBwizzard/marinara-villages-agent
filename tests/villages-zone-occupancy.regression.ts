@@ -224,6 +224,13 @@ assert.equal(
   assert.equal(allows(ids.slice(0, 2), "b"), true, "two requested arrivals fit beside two passive witnesses");
   assert.equal(allows(ids.slice(0, 3), "b"), false);
   assert.equal(allows(ids.slice(0, 4), "b"), false, "four may not be inferred from independent choices");
+  assert.equal(options.cohorts.find((row) => row.zoneId === "b")!.canCrossTogether, false);
+  assert.equal(
+    residentMovementOptions(state, venue, saved, ids.slice(0, 2)).cohorts.find((row) => row.zoneId === "b")!
+      .canCrossTogether,
+    true,
+    "a specifically selected pair remains possible",
+  );
   assert.deepEqual(saved, before, "planning never moves a resident");
 
   // Moving the player changes the viewpoint, not the available arrival slots.

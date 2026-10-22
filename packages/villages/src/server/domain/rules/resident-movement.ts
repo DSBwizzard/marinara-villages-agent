@@ -36,6 +36,19 @@ export function residentMovementOptions(state: VillageState, venue: VillageVenue
       .map((zone) => zone.id),
   }));
   const fits = (zoneId: string, arrivals: number) => (occupancy.get(zoneId) ?? 0) + arrivals <= MAX_ZONE_VILLAGERS;
+  const knownZones = zones.filter((zone) => zone.id === scene.zoneId || zone.seen);
+  const cohorts = knownZones.flatMap((zone) => {
+    const members = routes.filter((row) => contactPosition(scene, row.characterId) !== zone.id);
+    return members.length < 2
+      ? []
+      : [
+          {
+            zoneId: zone.id,
+            characterIds: members.map((row) => row.characterId),
+            canCrossTogether: members.every((row) => row.zoneIds.includes(zone.id)) && fits(zone.id, members.length),
+          },
+        ];
+  });
   // The selected writing cast is at most four: only eleven possible multi-person cohorts.
   const groups: { characterIds: string[]; zoneIds: string[] }[] = [];
   if (ids.length <= MAX_ZONE_VILLAGERS)
@@ -48,9 +61,8 @@ export function residentMovementOptions(state: VillageState, venue: VillageVenue
       if (zoneIds.length) groups.push({ characterIds: members.map((row) => row.characterId), zoneIds });
     }
   return {
-    zones: zones
-      .filter((zone) => zone.id === scene.zoneId || zone.seen)
-      .map((zone) => ({ id: zone.id, name: zone.name, connectedTo: zone.connectedTo })),
+    zones: knownZones.map((zone) => ({ id: zone.id, name: zone.name, connectedTo: zone.connectedTo })),
+    cohorts,
     destinations: routes.map((row) => ({ ...row, zoneIds: row.zoneIds.filter((zoneId) => fits(zoneId, 1)) })),
     groups,
   };
@@ -109,7 +121,7 @@ export function residentMovementPrompt(
     );
     const bounded = !scene.operation || scene.operation.input.castLimitVersion === 1;
     const options = bounded ? residentMovementOptions(state, venue, scene, ids) : undefined;
-    return `${options ? `Known recorded Zones: ${JSON.stringify(options.zones)}. These names ground recorded destinations; omission is not proof that a door or fictional space does not exist. Do not replace a known connected Zone with a wall or a different room.\n` : ""}Resident movement destinations: ${JSON.stringify(options?.destinations ?? destinations)}. ${options ? `Allowed same-destination crossing groups: ${JSON.stringify(options.groups)}. Private movement planning only: a maximum of four villagers per Zone; the player uses no villager slot. Individual choices do not authorize a combined move: every multi-resident crossing into one destination must fit a listed group. Count only residents changing Zones, not those already there. Determine the requested movers first, then check that exact group. A listed smaller group is usable only when that smaller group was requested; never choose it as a fallback for a larger request. If the requested whole group has no listed choice, nobody in that group crosses in this reply, including in separate segments. Keep them in place and respond naturally; do not invent an access refusal or promise an impossible crossing. Missing choices reveal no reason, occupant, headcount or interior. Never turn these private constraints into character knowledge, dialogue explanations or memory evidence. A resident can decline or wait for an established reason.\n` : ""}ALREADY in player Zone ${origin}: ${JSON.stringify(local)}. Continue captured positions; never stage these residents arriving from a kitchen, doorway or other Zone. Same-Zone steps/seating need no metadata. ${doorway.length ? `Actual remote doorway speakers ${JSON.stringify(doorway)} may willingly enter or remain remote.` : "No doorway arrival is required."} Others stay offstage unless a completed permitted crossing brings them here. contactMoves only for a DIFFERENT listed destination; no player movement/access is granted.`;
+    return `${options ? `Known recorded Zones: ${JSON.stringify(options.zones)}. These names ground recorded destinations; omission is not proof that a door or fictional space does not exist. Do not replace a known connected Zone with a wall or a different room.\n` : ""}Resident movement destinations: ${JSON.stringify(options?.destinations ?? destinations)}. ${options ? `Complete selected crossing cohorts: ${JSON.stringify(options.cohorts)}. Each result applies only when that exact cohort is requested; canCrossTogether:false means none of that requested cohort crosses this reply. Smaller crossing choices, only for explicitly requested smaller groups: ${JSON.stringify(options.groups)}. Private movement planning only: a maximum of four villagers per Zone; the player uses no villager slot. Individual choices do not authorize a combined move: every multi-resident crossing into one destination must fit a listed group. Count only residents changing Zones, not those already there. Determine the requested movers first, then check that exact group. A listed smaller group is usable only when that smaller group was requested; never choose it as a fallback for a larger request. If the requested whole group has no listed choice, nobody in that group crosses in this reply, including in separate segments. Keep them in place and respond naturally; do not invent an access refusal or promise an impossible crossing. Missing choices reveal no reason, occupant, headcount or interior. Never turn these private constraints into character knowledge, dialogue explanations or memory evidence. A resident can decline or wait for an established reason.\n` : ""}ALREADY in player Zone ${origin}: ${JSON.stringify(local)}. Continue captured positions; never stage these residents arriving from a kitchen, doorway or other Zone. Same-Zone steps/seating need no metadata. ${doorway.length ? `Actual remote doorway speakers ${JSON.stringify(doorway)} may willingly enter or remain remote.` : "No doorway arrival is required."} Others stay offstage unless a completed permitted crossing brings them here. contactMoves only for a DIFFERENT listed destination; no player movement/access is granted.`;
   }
   return `Resident movement: ${JSON.stringify(destinations)}. A willing resident continuing an in-person doorway conversation normally steps into the player's Zone (${scene.zoneId}). They may instead explicitly stay inside, decline, or speak remotely. Opening a door alone is not movement. Residents already here may stay or willingly return to another permitted Zone during this reply. Return contactMoves:[{characterId,zoneId,segment,quote}] only for a completed voluntary move. segment is the zero-based visible narration segment describing that resident crossing into the exact destination; quote is the exact completed-movement narration, naming the resident. No ceremonial spoken agreement is required. One move per resident per reply. Dialogue after that segment uses the new position; earlier words are never retroactively heard. Narrate only movement visible from the player's Zone, not unseen journeys or destination interiors. Do not narrate a crossing without matching movement metadata. Movement never grants player access or moves the player.`;
 }
