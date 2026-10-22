@@ -1188,6 +1188,7 @@ export type VillageScenarioImprint = {
 export type VillageState = {
   development?: import("./development-model.js").DevelopmentState;
   socialContractVersion: 2;
+  socialMailOutbox?: import("./social-mail.js").SocialMailOutbox[];
   socialPublications?: Record<string, true>;
   eventAttempts?: import("../rules/event-attempts.js").EventAttemptLedger;
   socialClarifications?: { id: string; actorIds: string[]; text: string; at: string }[];

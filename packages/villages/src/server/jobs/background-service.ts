@@ -419,6 +419,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw conflict("Background work changed. Refresh before requesting another event.");
         if (work.kind === "story" && running.has(id) && previous) return previous;
         if (
+          ["personal-mail", "social-recovery"].includes(work.kind) &&
+          previous?.seed === work.seed &&
+          ["queued", "running"].includes(previous.status)
+        )
+          return previous;
+        if (
           work.kind === "story" &&
           work.automaticDate &&
           previous?.seed === work.seed &&

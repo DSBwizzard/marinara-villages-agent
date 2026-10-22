@@ -10,6 +10,7 @@ import type { VenueScene } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
 import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 
+export class SocialRevisionConflict extends Error {}
 export const relationshipKey = (fromId: string, toId: string): string => JSON.stringify([fromId, toId]);
 
 /** Captured relationships plus only this Scene's accepted relationship receipts. */
@@ -41,6 +42,8 @@ export function defaultRelationshipState(seed: string): RelationshipState {
     seed,
     edges: {},
     intentions: {},
+    intentionRevisions: {},
+    intentionReceipts: {},
     grants: {},
     receipts: {},
     applied: {},
@@ -150,6 +153,27 @@ export function applyRelationshipReview(
 ): RelationshipReceipt[] {
   const residents = new Set(village.villagers.map((person) => person.characterId));
   // Preflight every live revision before changing anything, including disclosures and permissions.
+  for (const entry of review.intentions ?? []) {
+    const id = sourceId + ":intentions:" + entry.actorId;
+    if (state.applied[id]) continue;
+    if (!residents.has(entry.actorId) || entry.items.length > 3 || entry.sceneItems.length > 3)
+      throw new Error("Invalid social intentions.");
+    if ((state.intentionRevisions[entry.actorId] ?? 0) !== entry.expectedRevision)
+      throw new SocialRevisionConflict("Social intentions changed during interpretation.");
+  }
+  for (const permission of review.permissions) {
+    if (state.applied[permission.id]) continue;
+    const venue = village.venues.find((place) => place.id === permission.venueId),
+      zone = venue && resolveVenueZone(venue, permission.zoneId);
+    if (
+      !venue ||
+      !zone ||
+      !(permission.action === "revoke"
+        ? canRevokeZonePermission(venue, zone, permission.controllerId)
+        : canInviteToZone(venue, zone, permission.controllerId))
+    )
+      throw new Error("Standing permission authority changed.");
+  }
   const pairs = new Set<string>();
   const sharedUpdates = new Map<string, string>();
   for (const change of review.changes) {
@@ -164,7 +188,7 @@ export function applyRelationshipReview(
       throw new Error("Invalid or repeated social perspective.");
     pairs.add(key);
     if (relationshipFor(state, change.fromId, change.toId).revision !== change.expectedRevision)
-      throw new Error(
+      throw new SocialRevisionConflict(
         "The live relationship changed during interpretation. Reinterpret against current relationships before exposing this exchange.",
       );
     for (const record of change.liveAfter.records) {
@@ -179,7 +203,7 @@ export function applyRelationshipReview(
       sharedUpdates.set(record.id, fingerprint);
       const current = state.sharedRecords[record.id];
       if ((current?.revision ?? 0) !== record.revision - 1)
-        throw new Error("Shared social terms changed during interpretation.");
+        throw new SocialRevisionConflict("Shared social terms changed during interpretation.");
     }
   }
   for (const change of review.changes) {
@@ -212,6 +236,17 @@ export function applyRelationshipReview(
     const receipt = sourceId + ":intentions:" + entry.actorId;
     if (state.applied[receipt]) continue;
     state.intentions[entry.actorId] = structuredClone(entry.items);
+    state.intentionRevisions[entry.actorId] = entry.expectedRevision + 1;
+    state.intentionReceipts[receipt] = {
+      sourceId,
+      actorId: entry.actorId,
+      at,
+      sceneAfter: structuredClone(entry.sceneItems),
+      liveAfter: structuredClone(entry.items),
+      sceneRevision: (sceneState?.intentionRevisions[entry.actorId] ?? 0) + 1,
+      liveRevision: entry.expectedRevision + 1,
+      evidence: entry.evidence,
+    };
     state.applied[receipt] = true;
   }
   for (const disclosure of review.disclosures) {

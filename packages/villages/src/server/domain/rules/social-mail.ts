@@ -11,7 +11,7 @@ export function queuePersonalMessage(
   text: string,
   at: string,
 ): SocialMailMessage {
-  if (!requestId || requestId.length > 200 || !text.trim() || text.length > 4000)
+  if (!/^[a-zA-Z0-9_-]{1,200}$/.test(requestId) || !text.trim() || text.length > 4000)
     throw badRequest("Write a message of up to 4,000 characters.");
   const threadId = personalThreadId(residentId);
   const thread = (state.mailThreads[threadId] ??= {
@@ -121,6 +121,16 @@ export function respondSocialInvitation(
   if (invitation.terms.dueAt && Date.parse(invitation.terms.dueAt) <= Date.parse(now))
     throw conflict("This invitation has expired. Ask to reschedule.");
   if (!state.mailDeliveries[invitation.messageId]) throw conflict("This invitation has not been delivered.");
+  invitation.response = {
+    id: id + ":accept",
+    actorId: "player",
+    expectedRevision: revision,
+    accepted,
+    at: now,
+    messageId: invitation.messageId,
+    sourceHash: state.mailDeliveries[invitation.messageId]!.sourceHash,
+    terms: structuredClone(invitation.terms),
+  };
   invitation.status = accepted ? "accepted" : "declined";
   invitation.respondedAt = now;
   invitation.revision++;

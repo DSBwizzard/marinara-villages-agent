@@ -124,7 +124,11 @@ export type VillageTickContext = {
   descriptionVersion?: 1;
   playerAgencyVersion?: 1;
   semanticVersion?: 2;
-  social?: { candidates: import("../../domain/models/relationship-types.js").SocialPlan[]; relationships: string[] };
+  social?: {
+    candidates: import("../../domain/models/relationship-types.js").SocialPlan[];
+    relationships: string[];
+    state?: import("../models/relationship-types.js").RelationshipState;
+  };
   playerBackground?: VillagePlayerBackground | null;
   playerPersonaName?: string;
   village: string;
@@ -157,7 +161,7 @@ export type VillageTickContext = {
 
 export type VillageTickProposal = {
   routineIdea?: { characterId?: unknown; activity?: unknown; venueId?: unknown; zoneId?: unknown; flexible?: unknown };
-  social?: { planId?: unknown; encounter?: unknown };
+  social?: { planId?: unknown; encounter?: unknown; mail?: unknown };
   happenings: VillageHappening[];
   housingRequests: { characterId: string; kind: "move" | "upgrade"; venueId: string }[];
   model: string;
@@ -268,7 +272,7 @@ export function buildTickMessages(context: VillageTickContext): CapabilityLangua
       .join(" | ")}.`,
     context.social
       ? `Structured social simulation is separate from visual prose. You may choose one offered future plan with social:{planId:"exact offered ID"}. Offered plans: ${JSON.stringify(context.social.candidates)}. Participants' own feelings: ${context.social.relationships.join("\n")}.
-For a CURRENT encounter opportunity with at least two actors in the same zone, social may also include encounter:{opportunityId:"exact ID",lines:[{speakerId:"present actor ID",text:"brief spoken line"}],relationshipReview:{changes:[],permissions:[],disclosures:[]}}. Write two to eight short spoken lines grounded in the current moment. Never invent past betrayals, fulfilled promises, new secrets, player actions, possessions, injuries, or physical effects. Only these structured lines establish this small interaction; visual prose has no authority. Do not interpret relationships in this writing response: System will independently interpret the exact spoken sources. relationshipReview must contain empty arrays. Keep private intentions, undisclosed history and offscreen private speech out of public visual entries. Omit social when no interaction or offered plan fits. Social is an additional allowed response key only when this section is present.`
+For a CURRENT encounter opportunity with at least two actors in the same zone, social may also include encounter:{opportunityId:"exact ID",lines:[{speakerId:"present actor ID",text:"brief spoken line"}],relationshipReview:{changes:[],permissions:[],disclosures:[]}}. Write two to eight short spoken lines grounded in the current moment. Never invent past betrayals, fulfilled promises, new secrets, player actions, possessions, injuries, or physical effects. Only these structured lines establish this small interaction; visual prose has no authority. Do not interpret relationships in this writing response: System will independently interpret the exact spoken sources. relationshipReview must contain empty arrays. Keep private intentions, undisclosed history and offscreen private speech out of public visual entries. Omit social when no interaction or offered plan fits. Alternatively send ONE setting-appropriate personal message to the player with social:{mail:{senderId:"one current opportunity actor",text:"max2000"}}. Use that resident\'s initiative and intentions; the player may engage or decline. Do not invent player acceptance or physical actions. Choose either an encounter or personal mail, never both. Neither requires a public happening. Private intentions/history/mail contents must stay out of public Events prose. System will independently interpret the exact communication. Social is an additional allowed response key only when this section is present.`
       : "",
     housingOptions.length
       ? `Housing options for people in the offered opportunity: ${housingOptions.join(" | ")}.`

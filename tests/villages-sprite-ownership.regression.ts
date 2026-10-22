@@ -34,7 +34,7 @@ for (let y = 4; y < 20; y++) for (let x = 4; x < 12; x++) source.data.set([120, 
 const image = "data:image/png;base64," + PNG.sync.write(source).toString("base64");
 const village = (name: string) =>
   coerceVillageState({
-    version: 3,
+    version: 3, socialContractVersion: 2,
     name,
     foundedAt: new Date().toISOString(),
     wishSystemVersion: 3,

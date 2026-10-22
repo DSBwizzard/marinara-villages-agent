@@ -1,4 +1,5 @@
 import { developmentSceneContext } from "./development-knowledge.js";
+import { socialContextState } from "./social-context.js";
 import { openingSemanticContext } from "./opening-context.js";
 import { createHash } from "node:crypto";
 import { asRecord } from "./coerce.js";
@@ -91,12 +92,8 @@ export function semanticContext(
     sceneId: scene.id,
     revision: scene.sceneRevision,
     social: {
-      capturedAndScene: Object.values(state.relationshipContext?.edges ?? {}).filter(
-        (edge) => actors.includes(edge.fromId) && (edge.toId === "player" || actors.includes(edge.toId)),
-      ),
-      live: Object.values(authority.relationshipContext?.edges ?? {}).filter(
-        (edge) => actors.includes(edge.fromId) && (edge.toId === "player" || actors.includes(edge.toId)),
-      ),
+      capturedAndScene: socialContextState(state.relationshipContext, actors, query),
+      live: socialContextState(authority.relationshipContext, actors, query),
       liveAt: new Date().toISOString(),
       intentions: Object.fromEntries(actors.map((id) => [id, state.relationshipContext?.intentions[id] ?? []])),
       rule: "Each changed pair must cite its exact current live revision. sceneAfter and liveAfter are separate interpretations of this same event; never import later live facts into Scene continuity.",

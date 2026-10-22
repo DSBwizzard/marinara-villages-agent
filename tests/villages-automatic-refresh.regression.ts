@@ -102,7 +102,7 @@ async function main() {
   assert.equal(villageSchedulerDelayMs(new Date("bad")), REFRESH_MAX_DELAY_MS);
 
   const migrated = coerceVillageState({
-    version: 3,
+    version: 3, socialContractVersion: 2,
     wishSystemVersion: 3,
     foundedAt: "2026-09-01T07:00:00.000Z",
     lastHappeningKey: "2:morning",
@@ -126,9 +126,9 @@ async function main() {
   assert.ok(Date.parse(migrated.simulatedThrough) > 0);
   assert.equal(migrated.happenings[0]?.timePrecision, "phase");
   assert.equal(migrated.villagers[0]?.agenda?.day[0]?.startMinute, 300);
-  assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: [] }).storyPace, "off");
+  assert.equal(coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, refreshClocks: [] }).storyPace, "off");
   assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: ["morning", "evening"] }).storyPace,
+    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, refreshClocks: ["morning", "evening"] }).storyPace,
     "balanced",
   );
 
@@ -267,6 +267,9 @@ async function main() {
     },
   } as any);
 
+  const realNow = Date.now;
+  let wallOffset = 0;
+  Date.now = () => realNow() + wallOffset;
   const stopWork = startBackgroundWork();
   await villageBackgroundPresence("visible-story-fixture", true);
   try {
@@ -404,6 +407,7 @@ async function main() {
     );
 
     failModel = true;
+    wallOffset += 16 * 60_000;
     const tomorrow = new Date("2026-09-23T13:00:00.000Z");
     await reconcileVillage({ now: tomorrow });
     await settleBackgroundWork();
@@ -423,6 +427,7 @@ async function main() {
     assert.equal((await readVillageState()).lastCreativeDate, "2026-09-23");
 
     invalidProposal = true;
+    wallOffset += 16 * 60_000;
     const invalidDay = new Date("2026-09-24T13:00:00.000Z");
     const happeningsBeforeInvalid = (await readVillageState()).happenings.length;
     await reconcileVillage({ now: invalidDay });
@@ -434,6 +439,7 @@ async function main() {
     );
     invalidProposal = false;
 
+    wallOffset += 16 * 60_000;
     const concurrentDay = new Date("2026-09-25T13:00:00.000Z");
     const happeningsBeforeConcurrent = (await readVillageState()).happenings.length;
     const beforeCalls = modelCalls;
@@ -456,6 +462,7 @@ async function main() {
     assert.equal(new Set(afterConcurrent.happenings.map((entry) => entry.id)).size, afterConcurrent.happenings.length);
 
     await villageBackgroundPresence("visible-story-fixture", false);
+    wallOffset += 16 * 60_000;
     const beforeReturn = modelCalls;
     await reconcileVillage({ now: new Date("2026-09-26T13:00:00.000Z") });
     await settleBackgroundWork();
@@ -466,6 +473,7 @@ async function main() {
     assert.equal(modelCalls, beforeReturn + 1, "returning replaces missed-day work with only the current story");
 
     await villageBackgroundPresence("visible-story-fixture", false);
+    wallOffset += 16 * 60_000;
     const beforeOff = modelCalls;
     await reconcileVillage({ now: new Date("2026-09-30T13:00:00.000Z") });
     await settleBackgroundWork();
@@ -687,6 +695,7 @@ async function main() {
       "normal reconciliation completes a villager-requested move after 24 hours",
     );
   } finally {
+    Date.now = realNow;
     stopWork();
     await settleBackgroundWork();
     release();

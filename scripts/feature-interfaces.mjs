@@ -14,6 +14,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "assertFoundedVillageReady",
   ],
   "founding/village-bootstrap.ts": [
+    "interpretSocialSource",
     "draftVillageVenueDescriptions",
     "proposeVillage",
     "proposePublicVenueNames",
@@ -67,7 +68,8 @@ export const serverFeatureInterfaces = Object.freeze({
     "renewRenovationApprovals",
   ],
   "residents/live-memory.ts": ["processLiveMemories", "processLiveRelationships"],
-  "residents/relationship-social.ts": ["processSocialOutbox"],
+  "residents/social-mail.ts": ["processPersonalMailOutbox"],
+  "residents/relationship-social.ts": ["processSocialOutbox", "recoverSocialOutbox"],
   "residents/relationship-store.ts": ["readRelationshipState", "mutateRelationships", "persistRelationshipAuthority"],
   "residents/resident-agendas.ts": [
     "readFoundingResidentContext",

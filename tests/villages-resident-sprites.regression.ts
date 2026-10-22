@@ -138,13 +138,13 @@ assert.equal(
   true,
   "legacy Villages without a choice default to flips on",
 );
-assert.equal(coerceVillageState({ version: 3, spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled, true);
+assert.equal(coerceVillageState({ version: 3, socialContractVersion: 2, spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled, true);
 assert.equal(
-  coerceVillageState({ version: 3, spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
+  coerceVillageState({ version: 3, socialContractVersion: 2, spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
   false,
   "saved Off stays Off",
 );
-const flipVillage = coerceVillageState({ version: 3, spriteCardFlipEnabled: true });
+const flipVillage = coerceVillageState({ version: 3, socialContractVersion: 2, spriteCardFlipEnabled: true });
 assert.equal(
   coerceVillageState(JSON.parse(JSON.stringify(flipVillage))).spriteCardFlipEnabled,
   true,
@@ -157,7 +157,7 @@ const resident = {
   sprite: semanticSprite,
 };
 assert.equal(
-  coerceVillageState({ version: 3, wishSystemVersion: 3, villagers: [resident] }).villagers[0]?.sprite,
+  coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, villagers: [resident] }).villagers[0]?.sprite,
   null,
   "retired unversioned assignments are ignored",
 );

@@ -101,7 +101,7 @@ assert(!JSON.stringify(coerceFoundingTasks({ resident: { routine: task } })).inc
 console.log("Founding request budgets, full identity, explicit Routine contract and safe receipts passed.");
 
 const state = coerceVillageState({
-  version: 3,
+  version: 3, socialContractVersion: 2,
   seed: "revision-fixture",
   setting: "Shared place",
   villagers: [

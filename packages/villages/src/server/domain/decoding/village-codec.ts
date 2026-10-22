@@ -1938,6 +1938,9 @@ export function coerceVillageState(value: unknown): VillageState {
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
     socialContractVersion: 2,
+    socialMailOutbox: Array.isArray(raw.socialMailOutbox)
+      ? (structuredClone(raw.socialMailOutbox) as VillageState["socialMailOutbox"])
+      : [],
     socialClarifications: Array.isArray(raw.socialClarifications)
       ? (raw.socialClarifications as VillageState["socialClarifications"])
       : [],

@@ -1,4 +1,5 @@
 import type { RelationshipReceipt, RelationshipState } from "../models/relationship-types.js";
+import { selectSocialRecords } from "./social-context.js";
 import type { VillageState } from "../models/world.js";
 
 /** Only the resident's own perspective and source-linked history goes to Narration. */
@@ -19,10 +20,17 @@ export function relationshipWritingPrompt(village: VillageState, fromId: string)
         stance: edge.stance,
         expectations: edge.expectations,
         concerns: edge.concerns,
-        records: Object.values(edge.records).filter((record) => !record.knownBy || record.knownBy.includes(fromId)),
-        definingExperiences: edge.experiences.flatMap((id) =>
-          state?.receipts[id] ? [{ at: state.receipts[id]!.at, reason: state.receipts[id]!.reason }] : [],
+        records: selectSocialRecords(
+          Object.values(edge.records).filter((record) => !record.knownBy || record.knownBy.includes(fromId)),
+          [fromId],
+          [edge.connection, ...edge.concerns, ...edge.expectations].join(" "),
+          600,
         ),
+        definingExperiences: edge.experiences
+          .slice(-4)
+          .flatMap((id) =>
+            state?.receipts[id] ? [{ at: state.receipts[id]!.at, reason: state.receipts[id]!.reason }] : [],
+          ),
       }),
     ),
     "Your current social intentions: " + JSON.stringify(state?.intentions[fromId] ?? []),

@@ -219,7 +219,7 @@ assert.equal((await service.read("bupkis")).manager.artwork.length, 2, "unassign
 assert.equal(calls, before);
 await assert.rejects(service.preparedManager("bupkis", draft.revision - 1), /changed/);
 village = coerceVillageState({
-  version: 3,
+  version: 3, socialContractVersion: 2,
   villagers: [
     {
       characterId: "bupkis",

@@ -57,6 +57,7 @@ export const sceneContinuityFields = [
   "worldName",
   "worldFacts",
   "foundedAt",
+  "socialContractVersion",
   "seed",
   "timeZone",
   "playerName",
@@ -204,6 +205,18 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene): V
   }
 
   if (view.relationshipContext && current.relationshipContext) {
+    for (const turn of scene.submissions)
+      for (const [id, receipt] of Object.entries(current.relationshipContext.intentionReceipts)) {
+        if (
+          receipt.sceneId !== scene.id ||
+          receipt.submissionId !== turn.id ||
+          view.relationshipContext.intentionReceipts[id]
+        )
+          continue;
+        view.relationshipContext.intentions[receipt.actorId] = structuredClone(receipt.sceneAfter);
+        view.relationshipContext.intentionRevisions[receipt.actorId] = receipt.sceneRevision;
+        view.relationshipContext.intentionReceipts[id] = structuredClone(receipt);
+      }
     const baseReceipts = new Set(Object.keys(view.relationshipContext.receipts));
     const ordered = scene.submissions.flatMap((turn) =>
       Object.values(current.relationshipContext!.receipts).filter((receipt) => receipt.submissionId === turn.id),

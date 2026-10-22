@@ -26,7 +26,7 @@ Changes use {fromId,toId,expectedRevision,sceneAfter,liveAfter,reason,lineIds:[]
 Keep authored history distinct from beliefs, unilateral declarations/boundaries, mutual agreements and concrete commitments. History has status stated and never a deadline. Acceptance requires explicit assent by all participants; an existing authored partnership is history, not invented consent. Either resident may refuse, withdraw or end a bond. Reconciliation is possible, never automatic. Claims/promises are not fulfilled physical deeds. Silence, elapsed time or an unaccepted invitation creates no obligation.
 sceneAfter continues the captured Scene plus its settled events ONLY. liveAfter interprets this SAME event against the supplied current live revision; preserve later history, endings, boundaries and active terms. Do not replay intervening time, resurrect an ended partnership or introduce a retroactive appointment. Leave incompatible terms unresolved and request clarification in dialogue. No arithmetic rebasing.
 Disclosures use {fromId,toId,text,kind:"explanation|preference|boundary|routine|history|connection",lineIds:[]}. Only explicitly communicated information heard by the player belongs in their notebook; attribute claims. No private stance or intention leaks. A connection disclosure is the speaker's expressed relationship, not the player's feelings.
-Intentions use {actorId,lineIds:[],items:[{id:"existing ID or empty",targetIds:[],text:"max400",reason:"max400",status:"active|retired|attempted"}]}. Replace only that resident's intentions, at most three active; preserve meaningful unattempted intentions, retire or revise as appropriate. They may seek contact, offer opportunities, repair or refuse. Do not create a quest system. ${RELATIONSHIP_PERMISSION_INSTRUCTION}`;
+Intentions use {actorId,expectedRevision,lineIds:[],sceneItems:[],items:[{id:"existing ID or empty",targetIds:[],text:"max400",reason:"max400",status:"active|retired|attempted"}]}. sceneItems continues the captured Scene; items settles the same event against current live intentions. Replace only that resident's intentions, at most three active; preserve meaningful unattempted intentions, retire or revise as appropriate. They may seek contact, offer opportunities, repair or refuse. Do not create a quest system. ${RELATIONSHIP_PERMISSION_INSTRUCTION}`;
 
 export function socialReceiptId(sourceId: string, parts: unknown[]): string {
   return sourceId + ":relationship:" + createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24);
@@ -211,6 +211,8 @@ export function parseRelationshipReview(
     const row = asRecord(value),
       actorId = actor(row.actorId),
       evidence = evidenceFor(row, actorId);
+    if (!Number.isInteger(row.expectedRevision) || Number(row.expectedRevision) < 0)
+      throw new Error("Missing intention revision.");
     const items = z
       .array(
         z.object({
@@ -226,6 +228,16 @@ export function parseRelationshipReview(
     if (items.some((item) => item.targetIds.some((id) => !ids.has(id)))) throw new Error("Invalid intention target.");
     result.intentions!.push({
       actorId,
+      expectedRevision: Number(row.expectedRevision),
+      evidence: evidence.map((line) => ({
+        id: line.id,
+        sourceId,
+        speakerId: line.speakerId,
+        content: line.content,
+        heardBy: line.heardBy,
+        hash: createHash("sha256").update(line.content).digest("hex"),
+      })),
+      sceneItems: [],
       items: items.map(
         (item) =>
           ({
@@ -236,6 +248,21 @@ export function parseRelationshipReview(
           }) as SocialIntention,
       ),
     });
+    if (!Array.isArray(row.sceneItems)) throw new Error("Missing captured Scene intention projection.");
+    const sceneRaw = row.sceneItems;
+    const liveItems = result.intentions!.at(-1)!.items;
+    if (JSON.stringify(sceneRaw) === JSON.stringify(row.items))
+      result.intentions!.at(-1)!.sceneItems = structuredClone(liveItems);
+    else {
+      const parsedScene = parseRelationshipReview(
+        { ...emptyRelationshipReview(), intentions: [{ ...row, items: sceneRaw, sceneItems: sceneRaw }] },
+        sourceId,
+        lines,
+        village,
+        _semantic,
+      );
+      result.intentions!.at(-1)!.sceneItems = parsedScene.intentions![0]!.items;
+    }
   }
   return result;
 }

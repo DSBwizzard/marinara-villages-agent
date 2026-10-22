@@ -1126,6 +1126,12 @@ export function createSceneCommands({
           doing: "at the Community gathering",
           zoneId: zone.id,
         }));
+    if (
+      sceneAttendance.occupants.some(
+        (person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId),
+      )
+    )
+      throw conflict("Starting relationship history needs preparation or clarification before a Scene can begin.");
     const entryAccessContext = {
       sceneId: id,
       at: new Date(sceneAttendance.capturedAt),
@@ -3467,7 +3473,14 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   }
 
   async function settleSemanticAuthority(scene: VenueScene, turn: VenueSubmission, allowProjectRecovery = true) {
-    if (turn.semanticProvenance?.version !== 2 || turn.semanticReady) return;
+    if (turn.semanticProvenance?.version !== 2) return;
+    if (turn.semanticReady) {
+      await mutateVillageState((state) => {
+        if (state.seed !== scene.villageSeed) throw conflict("Village identity changed during source publication.");
+        (state.socialPublications ??= {})[scene.id + ":" + turn.id] = true;
+      });
+      return;
+    }
     if (allowProjectRecovery) await recoverProjectMetadata(scene, turn);
     const currentScene = await readSession(scene.id);
     const currentTurn = currentScene.submissions.find((row) => row.id === turn.id);
@@ -3513,12 +3526,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       )
         throw conflict("The saved physical outcome could not commit. Recover the saved request.");
     }
-    await mutateVillageState((state) => {
-      (state.socialPublications ??= {})[scene.id + ":" + turn.id] = true;
-    });
     await changeSession(scene.id, (saved) => {
       const entry = saved.submissions.find((row) => row.id === turn.id);
       if (entry?.semanticProvenance?.sourceHash === turn.semanticProvenance?.sourceHash) entry.semanticReady = true;
+    });
+    await mutateVillageState((state) => {
+      if (state.seed !== scene.villageSeed) throw conflict("Village identity changed during source publication.");
+      (state.socialPublications ??= {})[scene.id + ":" + turn.id] = true;
     });
   }
   async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmission): Promise<void> {
@@ -3905,7 +3919,12 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   /** Only saved local results can finish a deferred natural conclusion. */
   async function finishSemanticScene(id: string): Promise<void> {
     let scene = await readSession(id);
-    for (const turn of scene.submissions.filter((row) => row.semanticProvenance?.version === 2 && !row.semanticReady)) {
+    const authority = await readVillageState();
+    for (const turn of scene.submissions.filter(
+      (row) =>
+        row.semanticProvenance?.version === 2 &&
+        (!row.semanticReady || !authority.socialPublications?.[scene.id + ":" + row.id]),
+    )) {
       try {
         await settleSemanticAuthority(scene, turn, false);
       } catch (error) {

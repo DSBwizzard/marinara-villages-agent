@@ -24,6 +24,7 @@ state.villagers = ["a", "b"].map((id) => ({
   completedWishes: [],
 })) as any;
 const relationships = defaultRelationshipState(state.seed);
+state.relationshipContext = relationships;
 let calls = 0,
   queued: any,
   failApply = false;
@@ -68,7 +69,20 @@ const service = createStartingTies({
     assert.equal(options.retryEmpty, false);
     return {
       finishReason: "stop",
-      content: JSON.stringify({ ties: [{ fromId: "a", toId: "b", warmth: 25, trust: -20, established: true }] }),
+      content: JSON.stringify({
+        ties: [
+          {
+            fromId: "a",
+            toId: "b",
+            connection: "Old friends",
+            stance: "Fond but cautious",
+            expectations: [],
+            concerns: [],
+            history: [{ text: "Authored context", sourceIds: ["card:a:description"], knownBy: ["a"] }],
+          },
+        ],
+        conflicts: [],
+      }),
     };
   },
 } as any);
@@ -92,13 +106,17 @@ assert.equal(calls, 1);
 assert(state.semanticStartingTies, "The interpreted result survives failed relationship application");
 failApply = false;
 await service.applySaved();
-assert.equal(relationships.startingTies[0]?.warmth, 25);
-relationships.startingTies[0]!.warmth = 12;
+assert.equal(Object.values(relationships.edges)[0]?.connection, "Old friends");
+Object.values(relationships.edges)[0]!.stance = "Later changed perspective";
 await service.applySaved();
-assert.equal(relationships.startingTies[0]?.warmth, 12, "Reading again preserves the user's proposal edits");
+assert.equal(
+  Object.values(relationships.edges)[0]?.stance,
+  "Later changed perspective",
+  "Reading never overwrites played developments",
+);
 await service.prepare();
 assert.equal(calls, 1, "The finite saved preparation replays without dispatch");
-assert.equal(relationships.startingTies[0]?.warmth, 12);
+assert.equal(Object.values(relationships.edges)[0]?.stance, "Later changed perspective");
 state.villagers[0]!.cardSnapshot.description = "Changed source";
 assert.equal(service.handler.valid(state, queued.input), false, "A changed source cannot receive the old preparation");
 await service.applySaved();
@@ -233,9 +251,12 @@ const social = createRelationshipSocial({
     return memory.processLiveMemories(scene, id);
   },
 } as any);
-await assert.rejects(social.processSocialOutbox(state), /Injected memory metadata failure/);
+await social.processSocialOutbox(state);
+assert.match(state.socialOutbox[0]!.error!, /Injected memory metadata failure/);
+assert.equal(await social.processSocialOutbox(state), false, "Ordinary reads skip retained failures");
 assert.equal(state.socialOutbox.length, 1, "A failed memory domain retains the accepted outbox for recovery");
 failedMemory = false;
+state.socialOutbox[0]!.error = undefined;
 await social.processSocialOutbox(state);
 assert(state.recollections.some((row) => row.text === encounter.memoryChanges[0]!.text));
 assert(

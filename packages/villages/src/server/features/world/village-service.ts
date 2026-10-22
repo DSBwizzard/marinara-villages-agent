@@ -11,6 +11,8 @@ import type {
   VillageSnapshot,
   VillageVenue,
 } from "../../domain/models/world.js";
+import { socialContextState } from "../../domain/rules/social-context.js";
+import type { VillageState } from "../../domain/models/world.js";
 import { eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import { openingPresence } from "../../domain/rules/opening-presence.js";
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
@@ -57,6 +59,13 @@ import type { readVillageState, mutateVillageState } from "./village-store.js";
 export interface WorldCoordinationPorts {
   reconcileDevelopment?: (now: Date) => Promise<void>;
   processProjectWishOutbox?: typeof import("../residents/wishes/wish-progress.js").processProjectWishOutbox;
+  automaticMail?: (
+    state: VillageState,
+    social: VillageState["relationshipContext"],
+    value: unknown,
+    opportunityId: string,
+    at: string,
+  ) => import("../../domain/models/social-mail.js").SocialMailOutbox;
   readScene?: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
@@ -85,6 +94,7 @@ export interface WorldCoordinationPorts {
 export function createWorldCoordination({
   reconcileDevelopment,
   processProjectWishOutbox,
+  automaticMail,
   readScene,
   readVillageState,
   mutateVillageState,
@@ -281,6 +291,23 @@ export function createWorldCoordination({
     await reconcileWishLifecycle(now);
     const village = await readVillageState();
     const dateKey = localDateKey(now);
+    if (
+      !forced &&
+      village.villagers.some((row) => !village.relationshipContext?.reviewedActorIds.includes(row.characterId))
+    )
+      return {
+        ...(await buildVillageSnapshot(now)),
+        recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs),
+      };
+    if (
+      !forced &&
+      ((village.socialOutbox ?? []).some((row) => !!row.error) ||
+        (village.socialMailOutbox ?? []).some((row) => !!row.error))
+    )
+      return {
+        ...(await buildVillageSnapshot(now)),
+        recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs),
+      };
     const remainingSocialEvents = eventAttemptAvailable(village, dateKey, Date.now()) ? 1 : 0;
     const activeSocialPlan =
       !forced && village.storyPace !== "off" && remainingSocialEvents > 0
@@ -362,6 +389,7 @@ export function createWorldCoordination({
                   ? socialPlanCandidates(village, now)
                   : [],
               relationships: opportunity.actorIds.map((actorId) => relationshipWritingPrompt(village, actorId)),
+              state: socialContextState(village.relationshipContext, opportunity.actorIds, opportunity.facts.join(" ")),
             }
           : undefined,
       opportunities: [opportunity],
@@ -381,6 +409,12 @@ export function createWorldCoordination({
       expectedAttempt: forced ? options.expectedAttempt : undefined,
       input: {
         context,
+        admitted: structuredClone({
+          villagers: village.villagers,
+          venues: village.venues,
+          residences: village.residences,
+          timeZone: village.timeZone,
+        }),
         forced,
         socialPlanId: activeSocialPlan?.id,
         socialPlan: activeSocialPlan,
@@ -426,8 +460,17 @@ export function createWorldCoordination({
       const opportunityId = opportunity.id;
       if (state.processedOpportunityIds.includes(opportunityId)) return;
       const happenings = proposal.happenings.slice(0, allowance);
-      state.happenings = [...happenings, ...state.happenings].slice(0, MAX_HAPPENINGS);
-      if (!forced && proposal.social && input.context.social) {
+      if (forced || (!proposal.social?.encounter && !proposal.social?.mail))
+        state.happenings = [...happenings, ...state.happenings].slice(0, MAX_HAPPENINGS);
+      if (!forced && proposal.social?.mail && input.context.social && automaticMail) {
+        const mail = asRecord(proposal.social.mail);
+        if (!opportunity.actorIds.includes(mail.senderId))
+          throw new Error("An absent resident cannot initiate this mail.");
+        const outbox = automaticMail(state, input.context.social.state, mail, opportunity.id, input.now);
+        state.socialMailOutbox ??= [];
+        if (!state.socialMailOutbox.some((row) => row.id === outbox.id)) state.socialMailOutbox.push(outbox);
+      }
+      if (!forced && proposal.social && !proposal.social.mail && input.context.social) {
         const id = opportunity.id + ":social";
         state.socialOutbox ??= [];
         if (!state.socialOutbox.some((entry) => entry.id === id))
@@ -437,8 +480,11 @@ export function createWorldCoordination({
             at: input.now,
             opportunity,
             candidates: input.context.social.candidates,
+            relationshipSnapshot: input.context.social.state,
+            admitted: input.admitted,
             proposal: proposal.social,
             requiredPlanId: input.socialPlanId,
+            requiredPlan: input.socialPlan,
           });
       }
       if (proposal.routineIdea) {

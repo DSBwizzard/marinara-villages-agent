@@ -422,11 +422,14 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
       if (fresh.rejections.length) throw new Error("Social authority changed before settlement.");
       for (const permission of fresh.review.permissions) {
         const venue = authority.venues.find((row) => row.id === permission.venueId);
-        if (venue?.access)
+        if (venue?.access) {
           settleStandingAccess(venue, permission, turn.at, [
             "player",
             ...authority.villagers.map((person) => person.characterId),
           ]);
+          if (!venue.access.receipts[permission.id] || venue.access.receipts[permission.id]?.outcome === "rejected")
+            throw new Error("Standing permission needs recovery before this source can be published.");
+        }
       }
     });
     await mutateRelationships(village.seed, async (state) => {
@@ -470,6 +473,13 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         receipt.submissionId = turn.id;
         receipt.committedAt = villageNow().toISOString();
         receipt.noticeSequence = ++state.noticeSequence;
+      }
+      for (const item of fresh.review.intentions ?? []) {
+        const receipt = state.intentionReceipts[scene.id + ":" + turn.id + ":intentions:" + item.actorId];
+        if (receipt) {
+          receipt.sceneId = scene.id;
+          receipt.submissionId = turn.id;
+        }
       }
       for (const disclosure of fresh.review.disclosures)
         if (state.disclosures[disclosure.id])

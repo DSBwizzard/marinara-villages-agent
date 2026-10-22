@@ -32,6 +32,7 @@ export type RelationshipView = {
 };
 /** Explicit Inspect response. Never combine this with the ordinary notebook endpoint. */
 export type RelationshipInspectView = {
+  recovery?: { id: string; message: string; reinterpretRequired: boolean }[];
   processing: { label: string; status: string; message: string; requests: number; tokens: number | null }[];
   residents: {
     characterId: string;

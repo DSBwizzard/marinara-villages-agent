@@ -16,6 +16,42 @@
     },
     {
       "method": "get",
+      "path": "/mailbox"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/threads"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/threads/:threadId/messages"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/threads/:threadId/read"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/threads/:threadId/messages/:messageId/cancel"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/threads/:threadId/messages/:messageId/retry"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/invitations/:id/response"
+    },
+    {
+      "method": "post",
+      "path": "/relationships/outbox/:id/recovery"
+    },
+    {
+      "method": "post",
+      "path": "/relationships/clarifications"
+    },
+    {
+      "method": "get",
       "path": "/relationships"
     },
     {
@@ -23,8 +59,8 @@
       "path": "/villagers/:characterId/wishes/:wishId/retire"
     },
     {
-      "method": "post",
-      "path": "/relationships/creator"
+      "method": "get",
+      "path": "/relationships/inspect"
     },
     {
       "method": "get",

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { createVillagesClientId } from "../../shared/request-id.js";
+import { useEffect, useRef, useState } from "react";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
 export type { RelationshipProfile, RelationshipView } from "../../../shared/contracts/relationships.js";
 type Request = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -23,6 +24,7 @@ export function VillagesRelationships({
   const [debug, setDebug] = useState<RelationshipInspectView | null>(null);
   const [error, setError] = useState("");
   const [clarifications, setClarifications] = useState<Record<number, string>>({});
+  const recoveryIdentity = useRef<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
@@ -112,6 +114,46 @@ export function VillagesRelationships({
                   ))}
                 </section>
               ) : null}
+              {debug.recovery?.map((row) => (
+                <article key={row.id}>
+                  <h4>Encounter needs recovery</h4>
+                  <p>{row.message}</p>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={async () => {
+                      const key = row.id + ":" + row.reinterpretRequired;
+                      recoveryIdentity.current[key] ??= createVillagesClientId();
+                      setSaving(true);
+                      try {
+                        setDebug(
+                          await request<RelationshipInspectView>(
+                            "/relationships/outbox/" + encodeURIComponent(row.id) + "/recovery",
+                            {
+                              method: "POST",
+                              body: JSON.stringify({
+                                requestId: recoveryIdentity.current[key],
+                                reinterpret: row.reinterpretRequired,
+                              }),
+                            },
+                          ),
+                        );
+                        delete recoveryIdentity.current[key];
+                      } catch (cause) {
+                        setError(cause instanceof Error ? cause.message : "Recovery failed.");
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                  >
+                    {row.reinterpretRequired ? "Reinterpret saved encounter" : "Replay delivery"}
+                  </button>
+                  <details>
+                    <summary>Source</summary>
+                    <code>{row.id}</code>
+                  </details>
+                </article>
+              ))}
               {debug.conflicts.map((conflict, index) => (
                 <article key={index}>
                   <h4>History needs clarification</h4>
@@ -143,6 +185,7 @@ export function VillagesRelationships({
                     <label>
                       Clarification
                       <textarea
+                        autoComplete="off"
                         maxLength={4000}
                         value={clarifications[index] ?? ""}
                         onChange={(event) =>

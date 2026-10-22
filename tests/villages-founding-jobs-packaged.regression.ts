@@ -18,7 +18,7 @@ assert.deepEqual(
 const { activate } = await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
 const now = new Date().toISOString();
 const world = coerceVillageState({
-  version: 3,
+  version: 3, socialContractVersion: 2,
   seed: "founding-http",
   name: "Synthetic place",
   setting: "Shared converted rooms",

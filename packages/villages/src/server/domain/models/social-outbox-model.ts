@@ -7,7 +7,13 @@ export type SocialOutboxEntry = {
   at: string;
   opportunity: VillageOpportunity;
   candidates: SocialPlan[];
+  relationshipSnapshot?: import("./relationship-types.js").RelationshipState;
   proposal: { planId?: unknown; encounter?: unknown };
   requiredPlanId?: string;
+  requiredPlan?: SocialPlan;
   processed?: boolean;
+  error?: string;
+  reinterpretRequired?: boolean;
+  reinterpreted?: boolean;
+  admitted?: Pick<import("./world.js").VillageState, "villagers" | "venues" | "residences" | "timeZone">;
 };

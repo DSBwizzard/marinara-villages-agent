@@ -36,3 +36,8 @@ export async function proposeReaction(
 ): ReturnType<VillageBootstrapService["proposeReaction"]> {
   return binding.get().proposeReaction(...args);
 }
+export async function interpretSocialSource(
+  ...args: Parameters<VillageBootstrapService["interpretSocialSource"]>
+): ReturnType<VillageBootstrapService["interpretSocialSource"]> {
+  return binding.get().interpretSocialSource(...args);
+}

@@ -27,7 +27,7 @@ import {
 
 const now = "2026-10-04T12:00:00.000Z";
 const village = coerceVillageState({
-  version: 3,
+  version: 3, socialContractVersion: 2,
   wishSystemVersion: 3,
   seed: "signature-fixture",
   name: "Signature Village",

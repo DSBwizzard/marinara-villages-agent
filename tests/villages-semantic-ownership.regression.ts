@@ -167,7 +167,7 @@ async function main() {
         messages.some((message) => message.role === "system" && /\bjson\b/i.test(message.content)),
         "Strict provider rejects JSON mode without application-authored JSON instruction",
       );
-      const review = messages[0].content.startsWith("Independently interpret");
+      const review = messages[0].content.includes("Independently interpret");
       jsonCalls.push(review ? "review" : "events");
       if (review)
         assert.deepEqual(JSON.parse(messages[1].content).lines, spokenLines, "Review preserves supplied speech");
@@ -343,6 +343,7 @@ async function main() {
               access: accessRows.some((row) => row.outcome !== "unresolved"),
               projects: false,
               standing: false,
+              social: false,
             },
             action: null,
             memoryChanges: [],
@@ -385,6 +386,7 @@ async function main() {
             projects: false,
             access: actions.some((a) => a.duration === "visit"),
             standing: actions.some((a) => a.duration === "standing"),
+            social: false,
           },
         });
       }
@@ -1370,7 +1372,7 @@ async function main() {
         content: JSON.stringify({
           sourceHash: packet.sourceHash,
           consistent: true,
-          authority: { physical: false, access: false, projects: false, standing: false },
+          authority: { physical: false, access: false, projects: false, standing: false, social: false },
           action: null,
           access: [],
           memoryChanges: [],
@@ -2112,7 +2114,7 @@ async function main() {
             sourceHash: packet.sourceHash,
             intent: intentOverride,
             consistent: true,
-            authority: { physical: false, access: false, projects: false, standing: false },
+            authority: { physical: false, access: false, projects: false, standing: false, social: false },
             action: null,
             memoryChanges: [],
             relationshipChanges: { changes: [], permissions: [], disclosures: [] },

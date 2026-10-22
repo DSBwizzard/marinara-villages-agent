@@ -32,8 +32,11 @@ export function createRelationships(ports: RelationshipPorts) {
         ? village.playerPersonaName || village.playerName || "Player"
         : (village.villagers.find((person) => person.characterId === id)?.cardSnapshot.name ?? "Former resident");
     return {
+      recovery: (village.socialOutbox ?? [])
+        .filter((row) => !!row.error)
+        .map((row) => ({ id: row.id, message: row.error!, reinterpretRequired: !!row.reinterpretRequired })),
       processing: ((await ports.backgroundWorkSummaries?.()) ?? [])
-        .filter((row) => ["starting-ties", "story", "personal-mail"].includes(row.kind))
+        .filter((row) => ["starting-ties", "story", "personal-mail", "social-recovery"].includes(row.kind))
         .map((row) => ({
           label: row.label,
           status: row.status,

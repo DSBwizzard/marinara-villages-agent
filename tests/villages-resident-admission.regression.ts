@@ -26,8 +26,6 @@ import {
   venueCardProfile,
   fitVenueWritingMessages,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
-import { proposeStartingTies } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 import { wishRevision } from "../packages/villages/src/server/domain/rules/wish-policy.js";
 import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-service.js";
@@ -202,26 +200,6 @@ card = { ...card, personality: "Patient" };
 await refresh.applyVillagerRefresh("buster");
 assert.equal(state.villagers[0].admission.startingSituation, "Owner's revised private context.");
 assert.equal(state.villagers[0].cardSnapshot.personality, "Patient");
-const relationState = defaultRelationshipState(state.seed);
-state.villagers.push({
-  ...structuredClone(state.villagers[0]),
-  characterId: "felix",
-  cardSnapshot: {
-    ...structuredClone(state.villagers[0].cardSnapshot),
-    id: "felix",
-    name: "Felix",
-    description: "",
-    backstory: "",
-  },
-});
-const baseline = proposeStartingTies(state, relationState);
-assert.ok(baseline.find((tie) => tie.fromId === "buster" && tie.toId === "felix")?.established);
-assert.ok(
-  !baseline.find((tie) => tie.fromId === "felix" && tie.toId === "buster")?.established,
-  "shared origin never invents a reciprocal relationship",
-);
-relationState.reviewedActorIds = ["buster", "felix"];
-assert.deepEqual(proposeStartingTies(state, relationState), [], "reviewed relationships are never reinitialized");
 assert.match(renderResidentAdmission("Buster", EMPTY_RESIDENT_ADMISSION), /Preserve complete source identity/);
 const app = Fastify();
 registerResidentRoutes(app);

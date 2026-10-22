@@ -78,7 +78,13 @@ export type RelationshipReview = {
   changes: RelationshipChange[];
   permissions: RelationshipPermission[];
   disclosures: RelationshipDisclosure[];
-  intentions?: { actorId: string; items: SocialIntention[] }[];
+  intentions?: {
+    actorId: string;
+    expectedRevision: number;
+    items: SocialIntention[];
+    sceneItems: SocialIntention[];
+    evidence: SocialEvidence[];
+  }[];
 };
 export type RelationshipEvidenceLine = {
   id: string;
@@ -165,6 +171,22 @@ export type RelationshipState = {
   seed: string;
   edges: Record<string, RelationshipEdge>;
   intentions: Record<string, SocialIntention[]>;
+  intentionRevisions: Record<string, number>;
+  intentionReceipts: Record<
+    string,
+    {
+      sourceId: string;
+      actorId: string;
+      sceneId?: string;
+      submissionId?: string;
+      at: string;
+      sceneAfter: SocialIntention[];
+      liveAfter: SocialIntention[];
+      sceneRevision: number;
+      liveRevision: number;
+      evidence: SocialEvidence[];
+    }
+  >;
   grants: Record<string, RelationshipGrant>;
   receipts: Record<string, RelationshipReceipt>;
   applied: Record<string, true>;

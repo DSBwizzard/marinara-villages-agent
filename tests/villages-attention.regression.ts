@@ -1,3 +1,4 @@
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { mock } from "node:test";
 // Keep the scheduled cast on the seeded day; async timers remain real.
@@ -45,6 +46,7 @@ const stamp = new Date().toISOString();
 const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
 const dateKey = agendaDateKey(new Date());
 const state = defaultVillageState();
+state.seed = "social-fixture";
 state.seed = "attention-fixture";
 state.foundedAt = state.setupAt = stamp;
 state.visitMemoryBackfilled = true;
@@ -151,6 +153,16 @@ const release = configureVillagesRuntime({
   persistence: {
     documents: {
       async getById(_package: string, id: string) {
+        if (id.startsWith("villages-relationships-") && !records.has(id)) {
+          const world = records.get("villages-village").data,
+            social = defaultRelationshipState(world.seed);
+          social.reviewedActorIds = world.villagers.map((person: any) => person.characterId);
+          records.set(id, { id, kind: "relationships", data: social, revision: 1 });
+        }
+        if (id.startsWith("villages-relationships-") && records.has(id))
+          records.get(id).data.reviewedActorIds = records
+            .get("villages-village")
+            .data.villagers.map((row: any) => row.characterId);
         return records.get(id) ?? null;
       },
       async list(_package: string, kind: string) {

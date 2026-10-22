@@ -1,3 +1,4 @@
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MailboxView } from "../../../shared/contracts/mailbox.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
@@ -27,6 +28,7 @@ export function Mailbox({
     [drafts, setDrafts] = useState<Record<string, string>>({}),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const retryIdentity = useRef<Record<string, string>>({});
   const sendIdentity = useRef<{ residentId: string; text: string; requestId: string } | null>(null);
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const next = await request<MailboxView>("/mailbox", { signal });
@@ -73,12 +75,17 @@ export function Mailbox({
     setBusy(true);
     setError("");
     try {
+      if (path.endsWith("/retry")) {
+        retryIdentity.current[path] ??= createVillagesClientId();
+        body = { requestId: retryIdentity.current[path] };
+      }
       setView(
         await request<MailboxView>(path, {
           method: "POST",
           body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );
+      delete retryIdentity.current[path];
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Mailbox action failed.");
     } finally {
@@ -100,9 +107,34 @@ export function Mailbox({
     `}</style>
       {error ? <p role="alert">{error}</p> : null}
       <section className="villages-personal-mail" aria-label="Personal mail">
+        {view?.recovery?.map((row) => (
+          <article key={row.messageId}>
+            <p>{row.label}</p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void action(
+                  "/mailbox/threads/" +
+                    encodeURIComponent(row.threadId) +
+                    "/messages/" +
+                    encodeURIComponent(row.messageId) +
+                    "/retry",
+                )
+              }
+            >
+              {row.reinterpretRequired ? "Reinterpret saved message" : "Replay delivery"}
+            </button>
+          </article>
+        ))}
         <label>
           To{" "}
-          <select aria-label="Mail recipient" value={selected} onChange={(event) => setSelected(event.target.value)}>
+          <select
+            autoComplete="off"
+            aria-label="Mail recipient"
+            value={selected}
+            onChange={(event) => setSelected(event.target.value)}
+          >
             <option value="">Choose a resident</option>
             {snapshot.villagers.map((person) => (
               <option key={person.characterId} value={person.characterId}>
@@ -218,6 +250,7 @@ export function Mailbox({
             <label>
               Message
               <textarea
+                autoComplete="off"
                 aria-label="Personal message"
                 maxLength={4000}
                 value={draft}
@@ -232,7 +265,7 @@ export function Mailbox({
                 const identity =
                   prior?.residentId === selected && prior.text === draft
                     ? prior
-                    : { residentId: selected, text: draft, requestId: crypto.randomUUID() };
+                    : { residentId: selected, text: draft, requestId: createVillagesClientId() };
                 sendIdentity.current = identity;
                 setBusy(true);
                 setError("");
