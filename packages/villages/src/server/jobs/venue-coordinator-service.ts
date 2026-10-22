@@ -602,13 +602,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             "OPERATION_INTERRUPTED",
             "Recover or explicitly retry the interrupted scene before starting another operation.",
           );
-        if (
-          !options.replay &&
-          !options.recovery &&
-          data.status !== "closed" &&
-          Date.now() - Date.parse(String(data.lastActivityAt || data.startedAt)) >= 30 * 60_000
-        )
-          throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
         if (!options.replay && expected !== undefined && expected !== sceneRevision(data))
           throw venueRefusal(
             "SCENE_STALE",

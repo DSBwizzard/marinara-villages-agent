@@ -112,6 +112,8 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
         ([key]) =>
           !(privateHearing && ["heardBy", "heardPlayerBy", "heardHistory"].includes(key)) &&
           ![
+            "continuity",
+            "sceneFacts",
             "semanticReady",
             "semanticConclude",
             "semanticPlayerMoves",

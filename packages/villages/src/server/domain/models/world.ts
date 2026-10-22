@@ -1244,6 +1244,8 @@ export type VillageState = {
   socialOutbox?: import("./social-outbox-model.js").SocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
   wishRefillIntents: Record<string, { id: string; settled: string }>;
+  /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
+  sceneWishProtections?: Record<string, import("../rules/scene-wish-protection.js").SceneWishProtection>;
   version: 2;
   /** 0 keeps the established Project path; 1 enables the evidence-backed path at founding. */
   progressEngineVersion: 1;

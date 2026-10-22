@@ -5,6 +5,7 @@ import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { decodeVillageClock } from "../rules/clock-recovery.js";
+import { readSceneWishProtections } from "../rules/scene-wish-protection.js";
 import { savedVenueClassRecord } from "./venue-class-compat.js";
 import {
   readResidentAdmission,
@@ -203,6 +204,7 @@ export function defaultVillageState(): VillageState {
     // occupied would be inventing a past it never had.
     chronicle: [],
     recollections: [],
+    sceneWishProtections: {},
     correctedWishMemoryIds: [],
     simulatedThrough: "",
     lastKnownTimeZone: "",
@@ -2139,6 +2141,7 @@ export function coerceVillageState(value: unknown): VillageState {
     projectWishOutbox: Array.isArray(raw.projectWishOutbox)
       ? (raw.projectWishOutbox as VillageState["projectWishOutbox"])
       : [],
+    sceneWishProtections: readSceneWishProtections(raw.sceneWishProtections),
     wishRefillIntents: Object.fromEntries(
       Object.entries(asRecord(raw.wishRefillIntents)).flatMap(([id, value]) => {
         const row = asRecord(value);

@@ -14,7 +14,6 @@ import {
 } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import { openingPresence } from "../packages/villages/src/server/domain/rules/opening-presence.js";
 import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
-import { isInactive } from "../packages/villages/src/server/domain/rules/scene-inactivity.js";
 import { openingSemanticContext } from "../packages/villages/src/server/domain/rules/opening-context.js";
 import {
   bindOpeningRenovation,
@@ -189,10 +188,7 @@ for (const count of [1, 2, 3]) {
   state.relationshipContext = defaultRelationshipState(state.seed);
   assert.deepEqual(socialPlanCandidates(state), [], "held founders cannot be scheduled elsewhere");
   const reader = coerceSession({ id: "gathering", openingReader: true, startedAt: "2020-01-01T00:00:00Z" });
-  assert.equal(isInactive(reader), false);
   assert.equal(coerceSession(reader).openingReader, true);
-  reader.openingReader = undefined;
-  assert.equal(isInactive(reader), true);
 }
 
 {

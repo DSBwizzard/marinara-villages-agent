@@ -125,12 +125,15 @@ export function reconcileRelationships(
   const difference = clockShift - (state.clockShiftMs ?? 0);
   state.clockShiftMs = clockShift;
   for (const edge of Object.values(state.edges)) {
-    if (difference) {
+    // Player absence is not a social event. Keep historical scores as saved;
+    // only witnessed interactions may change either directional player tie.
+    const playerTie = edge.fromId === "player" || edge.toId === "player";
+    if (difference && !playerTie) {
       const at = Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt);
       if (Number.isFinite(at)) edge.decayTimerAt = new Date(at + difference).toISOString();
     }
     const last = Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt);
-    if (Number.isFinite(last)) {
+    if (Number.isFinite(last) && !playerTie) {
       const days = Math.max(
         0,
         Math.floor((now - last) / RELATIONSHIP_POLICY.dayMs) - RELATIONSHIP_POLICY.decayGraceDays,
@@ -251,11 +254,12 @@ export function applyRelationshipReview(
             RELATIONSHIP_POLICY.dayMs,
         ) - RELATIONSHIP_POLICY.decayGraceDays,
       );
+      const playerTie = edge.fromId === "player" || edge.toId === "player";
       const origin = edge.warmth + edge.decayAmount;
       const beforeContact = Number.isFinite(elapsedBeforeContact)
         ? Math.sign(origin) * Math.min(Math.abs(origin), elapsedBeforeContact)
         : 0;
-      edge.warmth = relationshipScore(origin - beforeContact);
+      if (!playerTie) edge.warmth = relationshipScore(origin - beforeContact);
       edge.lastContactAt = at;
       edge.decayTimerAt = at;
       edge.decayThrough = 0;

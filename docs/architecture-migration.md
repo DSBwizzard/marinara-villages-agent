@@ -32,7 +32,7 @@ See [activation dispatch ownership](activation-dispatch-ownership.md), [activati
 
 ## Scenes and privacy
 
-A Venue contains Zones; a Scene continues across movement between those Zones. At admission, the server captures attendance, positions, activities, connections and time. Background changes cannot rewrite an active snapshot. Unseen attendance and private contents stay server-side.
+A Venue contains Zones; a Scene continues across movement between those Zones. At admission, the server captures attendance, positions, activities, connections, time and source facts for writing. Background changes cannot rewrite an active snapshot. Exact accepted Scene effects extend its presentation context through existing receipts; those projections never become authority for a world write. Unseen attendance, captured facts and private contents stay server-side. Legacy open Scenes capture available source facts once; closed Scenes stay closed.
 
 Source spans, witnesses, authority, revisions and physical receipts bind proposed effects to the saved interaction. Hearing, understanding, disclosure, entry and permission to change a space remain separate. Domain validation determines actual effects after model interpretation.
 

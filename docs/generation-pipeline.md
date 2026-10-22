@@ -14,7 +14,9 @@ The Venue coordinator owns cancellation and the operation watchdog. Provider req
 
 For new admissions, pending memories and non-standing social updates do not block the next turn. Standing permission, physical, Project and Wish work retains its authority and required recovery behavior. Pending optional updates stay visible and retain their original evidence; background recovery must not invent a paid retry.
 
-A Scene still ends after 30 minutes of inactivity. Expiry retains raw responses, checkpoints and uncertain billing receipts even if no player line was committed. Closed Scenes are archived evidence; expiry does not authorize replaying their effects into a new Scene.
+An unfinished Scene has no inactivity deadline. Its private captured writing context preserves the original moment while the Village continues in real time. Same-Scene accepted effects contribute exact retained context, independent of later mutable memories or live retention. Provider requests, daily limits and durable effect timestamps keep their operational clocks. Older closed Scenes remain archived; this change never reopens them or buys replacement interpretation.
+
+Scene-owned Wish protection retains exact eligible actor/Wish fingerprints against expiry. It is persisted before the first captured-context request and remains through closed Scenes with unfinished final effects. Live resources, access, identity, conditions, correction and retirement still govern application. Terminal replay or reconciliation releases completed/deleted Scene holds, preserving uncertain reads for recovery. Pre-existing paid operations retain their admitted snapshots and checkpoints.
 
 ## Resident access actions
 

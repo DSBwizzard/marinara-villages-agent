@@ -957,10 +957,8 @@ async function main() {
     );
     await coordinateVenue("validation", "good", "turn", {}, 0, undefined, () => paid());
     row("validation").data.lastActivityAt = new Date(Date.now() - 31 * 60_000).toISOString();
-    await assert.rejects(
-      () => coordinateVenue("validation", "expired", "turn", {}, 0, undefined, () => paid()),
-      (error: any) => error.statusCode === 410,
-    );
+    await coordinateVenue("validation", "after-absence", "turn", {}, 0, undefined, () => paid());
+    assert.equal(row("validation").data.operation.id, "after-absence", "age does not refuse a valid new turn");
     seed("spinoff-owned");
     row("spinoff-owned").data.spinoff = { status: "running" };
     await assert.rejects(

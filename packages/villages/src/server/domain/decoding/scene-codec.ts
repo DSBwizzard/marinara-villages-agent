@@ -1,5 +1,9 @@
 import { readOpeningSignal } from "../rules/opening-project.js";
 import { readSceneLayout } from "../rules/scene-layout.js";
+import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
+import { coerceVillageState } from "./village-codec.js";
+import { coerceRelationshipState } from "../rules/relationship-rules.js";
+import { WISH_SYSTEM_VERSION } from "../rules/wish-definition.js";
 import { savedVenueClassRecord } from "./venue-class-compat.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import type { LiveExchangeProposals } from "../models/memory-model.js";
@@ -30,6 +34,35 @@ import { coerceWishApplicationProof } from "./wish-criteria.js";
 export function coerceActive(value: unknown): ActiveVenue {
   const raw = asRecord(value);
   return { sessionId: asTrimmedString(raw.sessionId), placeId: asTrimmedString(raw.placeId) };
+}
+function readSceneContinuity(value: unknown): SceneContinuity | undefined {
+  if (value === undefined) return undefined;
+  const raw = asRecord(value),
+    facts = asRecord(raw.facts);
+  if (
+    raw.version !== 1 ||
+    typeof raw.seed !== "string" ||
+    facts.seed !== raw.seed ||
+    typeof raw.capturedAt !== "string" ||
+    !Number.isFinite(Date.parse(raw.capturedAt)) ||
+    !Array.isArray(raw.receiptIds) ||
+    raw.receiptIds.some((id) => typeof id !== "string") ||
+    ["villagers", "venues", "residences", "chronicle", "recollections", "venueEvents", "projects"].some(
+      (key) => !Array.isArray(facts[key]),
+    )
+  )
+    throw conflict("This saved Scene has an unsupported or invalid captured context. Its history is preserved.");
+  // This is an already-captured projection, not an old world to migrate.
+  const decoded = coerceVillageState({ ...facts, wishSystemVersion: WISH_SYSTEM_VERSION });
+  if (facts.relationshipContext)
+    decoded.relationshipContext = coerceRelationshipState(raw.seed, facts.relationshipContext);
+  return {
+    version: 1,
+    seed: raw.seed,
+    capturedAt: raw.capturedAt,
+    receiptIds: [...raw.receiptIds] as string[],
+    facts: Object.fromEntries(sceneContinuityFields.map((key) => [key, decoded[key]])) as SceneContinuity["facts"],
+  };
 }
 export function coerceVenueRecollection(value: unknown): VenueRecollection | null {
   const raw = asRecord(value);
@@ -143,7 +176,8 @@ export function coerceSession(value: unknown): VenueScene {
     ...(raw.spinoff ? { spinoff: structuredClone(raw.spinoff) as VenueScene["spinoff"] } : {}),
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
     ...(raw.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
-    ...(raw.processingVersion === 1 ? { processingVersion: 1 as const, villageSeed: asString(raw.villageSeed) } : {}),
+    ...(raw.processingVersion === 1 ? { processingVersion: 1 as const } : {}),
+    ...(raw.villageSeed ? { villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,
     navigationReceipts: Array.isArray(raw.navigationReceipts)
@@ -237,6 +271,7 @@ export function coerceSession(value: unknown): VenueScene {
     privateOwnerId: asTrimmedString(raw.privateOwnerId),
     privateAccessOwnerId: asTrimmedString(raw.privateAccessOwnerId),
     startedAt: asString(raw.startedAt),
+    ...(raw.continuity !== undefined ? { continuity: readSceneContinuity(raw.continuity) } : {}),
     endedAt: asString(raw.endedAt),
     lastActivityAt: asString(raw.lastActivityAt) || asString(raw.startedAt),
     clockShiftMs: typeof raw.clockShiftMs === "number" && Number.isFinite(raw.clockShiftMs) ? raw.clockShiftMs : 0,

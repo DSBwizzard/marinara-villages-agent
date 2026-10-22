@@ -47,7 +47,7 @@ import { accessManagementPrompt } from "../../domain/rules/access-speech.js";
 import { asRecord, asString, asTrimmedString } from "../../domain/rules/coerce.js";
 import { validDecisionEvidence } from "../../domain/rules/decision-candidates.js";
 import { applyAttentionWitnesses } from "../../domain/rules/attention-witnesses.js";
-import { visibleSceneContinuity } from "../../domain/rules/scene-continuity.js";
+import { sceneContinuityView, visibleSceneContinuity } from "../../domain/rules/scene-continuity.js";
 import {
   applyResidentMovementTimeline,
   residentMovementPrompt,
@@ -229,14 +229,16 @@ export function createSceneWriting({
       throw conflict("This saved request uses an unsupported writing contract. Its history is preserved.");
     const sparse = writingVersion === 2 || writingVersion === 3;
     const preparationStarted = performance.now();
-    const [village, connectionId] = await Promise.all([readVillageState(), villagesConnectionIdFor("narration")]);
+    const [authority, connectionId] = await Promise.all([readVillageState(), villagesConnectionIdFor("narration")]);
+    const village = sceneContinuityView(authority, session);
     signal?.throwIfAborted();
     trace?.("preparation", performance.now() - preparationStarted);
     const player = readPlayerIdentity(village);
-    const now = villageNow();
+    const now = session.continuity ? new Date(session.continuity.capturedAt) : villageNow();
     const moment = deriveVillageMoment({
       foundedAt: village.foundedAt,
       seed: village.seed,
+      timeZone: village.timeZone || undefined,
       now: session.sceneAttendance ? new Date(session.sceneAttendance.capturedAt) : new Date(session.startedAt),
     });
     const audibleIds = session.contactGeneration
@@ -365,7 +367,7 @@ export function createSceneWriting({
         ? venueInZone(storedPlace, session.zoneId)
         : venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
       : undefined;
-    const pendingMoves = village.residences.filter(
+    const pendingMoves = authority.residences.filter(
       (residence) => residence.status === "pending" && audience.includes(residence.characterId),
     );
     // Prose Events are visual only. Verified player deeds have separate receipts.
@@ -410,7 +412,7 @@ export function createSceneWriting({
     const projectContexts =
       mode === "chat" || mode === "ask"
         ? projectSpeechContexts(
-            village,
+            authority,
             audience,
             `${session.lines
               .filter(
@@ -424,7 +426,7 @@ export function createSceneWriting({
             session.placeId,
           )
         : [];
-    const pendingEdits = (storedPlace?.editProposals ?? []).filter(
+    const pendingEdits = (authority.venues.find((row) => row.id === session.placeId)?.editProposals ?? []).filter(
       (proposal) =>
         !proposal.declined &&
         (!proposal.zoneId || proposal.zoneId === session.zoneId) &&
@@ -595,9 +597,12 @@ export function createSceneWriting({
           ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
           : "",
         `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
-        accessManagementPrompt(village, audience, session.placeId),
+        accessManagementPrompt(authority, audience, session.placeId),
         venueFoundingBackground(village),
         `A Venue is the place; Zones are its separate spaces. A Scene continues across Zone movement. Local residents: ${session.activeIds.join(", ")}. ${session.contactGeneration?.zoneEvents ? "Other candidate residents remain in their captured Zones; they are not onstage." : "Only server-listed residents occupy this Zone."} Attendance, activities and time were captured at Scene start. Witnessed developments establish what is happening now. Background agendas cannot move anyone in this Scene. Only evidenced movement changes positions. A resident may leave after a clear spoken departure; do not force departure because real time passed.`,
+        session.continuity
+          ? "Continue the captured Scene moment. Real time between replies does not pass in this roleplay: do not explain an absence, age a conversation, wait for the player, or import later Village events. Only events established within this Scene advance its action. Ending returns the player to the current Village without inventing what they did during the gap. Never advance the Village into the future."
+          : "",
         session.contactGeneration?.zoneEvents
           ? "Write only player-observable narration and reachable speech/sounds. Offstage residents remain offstage. Use their captured positions and individual witnessed histories; do not reveal silent occupants or causes of silence."
           : session.area === "outside"
@@ -617,7 +622,7 @@ export function createSceneWriting({
           }),
         ),
         ...residentContexts,
-        projectSpeechPrompt(village, projectContexts),
+        projectSpeechPrompt(authority, projectContexts),
         session.pendingProjectQuestions?.length
           ? `These Project matters remain unresolved: ${session.pendingProjectQuestions.join("; ")}. Clarify naturally; do not assume approval, commitment, or complete requirements. Do not demand formal wording.`
           : "",
@@ -805,12 +810,21 @@ export function createSceneWriting({
       writingCapabilities: capabilities,
       maxTokens,
       model,
-      village,
+      village: authority,
       audience,
       active,
-      pendingMoves,
-      storedPlace,
-      place,
+      pendingMoves: authority.residences.filter(
+        (row) => row.status === "pending" && audience.includes(row.characterId),
+      ),
+      storedPlace: authority.venues.find((row) => row.id === session.placeId),
+      place: (() => {
+        const current = authority.venues.find((row) => row.id === session.placeId);
+        return current
+          ? session.zoneId
+            ? venueInZone(current, session.zoneId)
+            : venueInArea(current, session.area, session.spaceClass, session.privateOwnerId)
+          : undefined;
+      })(),
       projectContexts,
       earlierEvidence:
         !sparse || fitted.messages.some((message) => message.content.includes(earlierContext)) ? earlierEvidence : [],

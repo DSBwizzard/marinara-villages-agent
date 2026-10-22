@@ -6,7 +6,6 @@ import { createDocumentMutator } from "../packages/villages/src/server/adapters/
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { isInactive } from "../packages/villages/src/server/domain/rules/scene-inactivity.js";
 import { selectPromptMemories } from "../packages/villages/src/server/domain/rules/memory-selection.js";
 import { readSpinoffReview } from "../packages/villages/src/server/domain/rules/spinoff-memory.js";
 import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
@@ -263,11 +262,6 @@ assert.ok(!JSON.stringify(saved.spinoff!.context).includes("NEVER EXPORT"));
 assert.ok(!JSON.stringify(saved.spinoff).includes("HIDDEN ZONE SECRET"));
 assert.ok(!JSON.stringify(saved.spinoff!.context).includes("PRIVATE AGENDA"));
 assert.equal(
-  isInactive(saved, Date.parse(stamp) + 3 * 86400000),
-  false,
-  "three real days do not expire a handed-off Scene",
-);
-assert.equal(
   (publicSceneResponse(saved) as typeof saved).spinoff,
   undefined,
   "private handoff context never leaks through normal Scene APIs",
@@ -281,7 +275,6 @@ await assert.rejects(
 const live = createLiveScenes({
   ...roundtrip.ports,
   ...roundtrip.repository,
-  villagesDocuments: () => roundtrip.ports.persistence().documents,
   hasVenueOperation: () => false,
 });
 await assert.rejects(live.requireLiveVenueSession("source"), /spinoff/);

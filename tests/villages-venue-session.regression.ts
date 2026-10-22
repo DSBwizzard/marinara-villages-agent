@@ -78,7 +78,11 @@ import {
   discardVenueVisitDebug,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
 import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
-import { activeVenueSession, touchVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
+import {
+  activeVenueSession,
+  requireLiveVenueSession,
+  touchVenueSession,
+} from "../packages/villages/src/server/features/scenes/live-session.js";
 import { readProjectTurnEvidence } from "../packages/villages/src/server/features/scenes/services.js";
 import {
   resetVenueSessions,
@@ -3049,34 +3053,31 @@ async function main() {
     const refreshedTimedRecord = records.get(key("villages", `villages-venue-visit-${timed.id}`));
     assert.ok(
       Date.now() - Date.parse(refreshedTimedRecord.data.lastActivityAt) < 10_000,
-      "deliberate activity extends the scene",
+      "the compatibility activity endpoint still records an operational timestamp",
     );
     refreshedTimedRecord.data.lastActivityAt = new Date(Date.now() - 45 * 60_000).toISOString();
-    assert.equal(await activeVenueSession(), null, "a 45-minute return opens at the map on any device");
-    const interruptedVisit = await readVenueVisit(timed.id);
-    assert.equal(interruptedVisit.endReason, "inactivity");
+    assert.equal((await activeVenueSession())?.id, timed.id, "a 45-minute return resumes the same Scene");
+    const interruptedVisit = await requireLiveVenueSession(timed.id);
+    assert.equal(interruptedVisit.status, "active");
     assert.equal(
       (await listVenueVisitSummaries({ placeId: "park" })).visits.find((visit) => visit.id === timed.id)?.endReason,
-      "inactivity",
-      "the archive summary exposes the exact ending reason",
+      undefined,
+      "an unfinished Scene acquires no fabricated ending",
     );
     assert.equal(
       interruptedVisit.lines.filter((line) => line.role === "user").length,
       1,
-      "played lines survive interruption",
+      "played lines survive absence",
     );
-    await assert.rejects(
-      () =>
-        sendVenueTurn({
-          sessionId: timed.id,
-          message: "Stale Send",
-          mode: "chat",
-          targetId: "",
-          submissionId: "stale-send",
-        }),
-      /Interrupted: Inactivity/u,
-    );
-    assert.equal((await readVenueVisit(timed.id)).lines.filter((line) => line.role === "user").length, 1);
+    await sendVenueTurn({
+      sessionId: timed.id,
+      message: "Stale Send",
+      mode: "chat",
+      targetId: "",
+      submissionId: "stale-send",
+    });
+    assert.equal((await requireLiveVenueSession(timed.id)).lines.filter((line) => line.role === "user").length, 2);
+    await endVenueSession(timed.id);
     const staleDesktop = await greetVenue((await enterVenue("park")).id);
     await sendVenueTurn({
       sessionId: staleDesktop.id,
@@ -3086,20 +3087,17 @@ async function main() {
       submissionId: "desktop-line",
     });
     records.get(key("villages", `villages-venue-visit-${staleDesktop.id}`)).data.lastActivityAt = new Date(
-      Date.now() - 50 * 60_000,
+      Date.now() - 3 * 86400000,
     ).toISOString();
-    await assert.rejects(
-      () => touchVenueSession(staleDesktop.id),
-      /Interrupted: Inactivity/u,
-      "the first desktop interaction after 50 minutes cannot revive the scene",
-    );
-    assert.equal((await readVenueVisit(staleDesktop.id)).endReason, "inactivity");
+    assert.equal((await touchVenueSession(staleDesktop.id)).status, "active", "three days preserve a desktop Scene");
+    await endVenueSession(staleDesktop.id);
     const unplayed = await enterVenue("empty");
     records.get(key("villages", `villages-venue-visit-${unplayed.id}`)).data.lastActivityAt = new Date(
       Date.now() - 50 * 60_000,
     ).toISOString();
-    assert.equal(await activeVenueSession(), null, "a 50-minute return clears an unplayed scene");
-    await assert.rejects(() => readVenueVisit(unplayed.id), /no longer available/u, "greeting-only visits are dropped");
+    assert.equal((await activeVenueSession())?.id, unplayed.id, "an unplayed Scene survives absence");
+    assert.equal((await requireLiveVenueSession(unplayed.id)).status, "active");
+    await endVenueSession(unplayed.id);
     const debugVisit = await greetVenue((await enterVenue("park")).id);
     await sendVenueTurn({
       sessionId: debugVisit.id,

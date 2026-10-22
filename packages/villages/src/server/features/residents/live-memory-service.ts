@@ -268,6 +268,29 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
               }
             }
             const visible = lineIds.every((id) => byId.get(id)?.playerHeard !== false);
+            const recollections = state.recollections.filter((memory) =>
+              memory.evidence.some(
+                (proof) =>
+                  proof.visitId === scene.id && proof.submissionId === turn.id && sameIds(proof.lineIds, lineIds),
+              ),
+            );
+            // Delayed recovery may commit after live retention elapsed. The
+            // Scene still owns the witnessed moment; do not revive it globally.
+            if (kind === "passing" && !recollections.length)
+              recollections.push({
+                id,
+                visitId: scene.id,
+                occurredAt: at,
+                expiresAt: new Date(Date.parse(at) + 86400000).toISOString(),
+                text,
+                subjectCharacterIds: subjects,
+                knownByCharacterIds: knowers,
+                sourceLineIds: lineIds,
+                sourceSubmissionIds: [turn.id],
+                evidence: [evidenceItem],
+                reinforcementCount: 0,
+                lastReinforcedAt: at,
+              });
             state.exchangeReceipts[id] = {
               id,
               domain: "memories",
@@ -277,6 +300,15 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
               evidenceIds: lineIds,
               reason: "Cited memory applied",
               status: "applied",
+              sceneFacts: structuredClone({
+                memories: state.chronicle.filter((memory) =>
+                  memory.evidenceHistory?.some(
+                    (proof) =>
+                      proof.visitId === scene.id && proof.submissionId === turn.id && sameIds(proof.lineIds, lineIds),
+                  ),
+                ),
+                recollections,
+              }),
               ...(savedMemory && visible
                 ? { notice: { id, kind: "memory", text: "A memory was forged.", detail: savedMemory.text } }
                 : {}),

@@ -689,7 +689,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       changeSession,
       clearActivePointer,
       hasVenueOperation,
-      villagesDocuments,
       readVillageState,
       mutateVillageState,
     }),
@@ -1064,6 +1063,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createVenueCoordinator({ operations, villagesDocuments, villagesLogger, runtimeDebug, readInterpretationSettings }),
   );
   const worldCoordination = createWorldCoordination({
+    readScene: readSession,
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot,

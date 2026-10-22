@@ -80,6 +80,7 @@ export const isolatedTests = new Set([
   "tests/villages-live-exchange.regression.ts",
   "tests/villages-live-memory.regression.ts",
   "tests/villages-live-scene-ownership.regression.ts",
+  "tests/villages-scene-time.regression.ts",
   "tests/villages-live-wishes.regression.ts",
   "tests/villages-lorebooks.regression.ts",
   "tests/villages-map-replacement.regression.ts",
