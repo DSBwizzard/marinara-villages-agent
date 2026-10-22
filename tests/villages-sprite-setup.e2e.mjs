@@ -339,11 +339,11 @@ try {
         assert.equal(body.residentToken, state.residentToken);
       } else if (path.endsWith("/analyze")) {
         assert.equal(body.connectionId, "vision", "Only the explicitly chosen connection is used.");
-        analyses++;
-        assert.equal(body.artworkIds.length, 1, "Each request analyzes one sprite and returns saved progress.");
+        const before = analyses;
+        analyses += body.artworkIds.length;
+        assert.ok(body.artworkIds.length > 0 && body.artworkIds.length <= 2, "Requests contain at most two sprites.");
         assert.equal(body.revision, state.revision);
-        const artworkId = body.artworkIds[0];
-        analyzedIds.push(artworkId);
+        analyzedIds.push(...body.artworkIds);
         finalizations.push(body.finalize);
         state.suggestedDefaultArtworkId = "";
         state.revision++;
@@ -355,24 +355,27 @@ try {
           await route.abort();
           return;
         }
-        if (analyses === failAt) state.errors[artworkId] = "Analysis failed. Select this image to retry.";
-        else {
-          delete state.errors[artworkId];
-          state.assignments = state.assignments.map((item) =>
-            item.artworkId === artworkId ? { ...item, approved: false } : item,
-          );
-          state.suggestions = [
-            ...state.suggestions.filter((item) => item.artworkId !== artworkId),
-            {
-              artworkId,
-              name: "Relaxed " + artworkId,
-              useWhen: "Relaxed or listening.",
-              direction: "left",
-              included: true,
-            },
-          ];
+        for (const [index, artworkId] of body.artworkIds.entries()) {
+          if (before + index + 1 === failAt) state.errors[artworkId] = "Analysis failed. Select this image to retry.";
+          else {
+            delete state.errors[artworkId];
+            state.assignments = state.assignments.map((item) =>
+              item.artworkId === artworkId ? { ...item, approved: false } : item,
+            );
+            state.suggestions = [
+              ...state.suggestions.filter((item) => item.artworkId !== artworkId),
+              {
+                artworkId,
+                name: "Relaxed " + artworkId,
+                useWhen: "Relaxed or listening.",
+                direction: "left",
+                included: true,
+              },
+            ];
+          }
         }
-        if (body.finalize && !state.errors[artworkId]) state.suggestedDefaultArtworkId = artworkId;
+        if (body.finalize && body.artworkIds.every((id) => !state.errors[id]))
+          state.suggestedDefaultArtworkId = body.artworkIds.at(-1);
       }
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(state) });
     });
@@ -433,7 +436,7 @@ try {
     await page.getByRole("button", { name: "Cancel analysis", exact: true }).click();
     releaseAnalysis();
     await expect(page.getByRole("button", { name: "Cancel analysis", exact: true })).toHaveCount(0);
-    assert.equal(analyses, 1, "Cancellation prevents dispatching the next sprite.");
+    assert.equal(analyses, 2, "Cancellation prevents dispatching the next pair.");
     assert.equal(state.assignments[0].name, "Listening");
     await chooseSprite(0);
     await openAnalysis();
@@ -458,6 +461,7 @@ try {
     assert.equal(state.suggestions.length, 7, "Earlier results survive a later failure.");
     await expect(add).toBeDisabled();
     const beforeResume = analyzedIds.length;
+    const finalizationsBeforeResume = finalizations.length;
     await page.getByRole("button", { name: "Analyze remaining", exact: true }).click();
     await expect(counts).toContainText("28 sprites · 28 ready");
     await expect(add).toBeEnabled();
@@ -467,7 +471,7 @@ try {
       state.assignments.every((item) => !item.approved),
       "Analysis and preparation checkmarks never approve assignments.",
     );
-    assert.ok(finalizations.slice(beforeResume, -1).every((value) => value === false));
+    assert.ok(finalizations.slice(finalizationsBeforeResume, -1).every((value) => value === false));
     assert.equal(finalizations.at(-1), true);
     assert.equal(state.suggestedDefaultArtworkId, "art-27");
     assert.deepEqual(
@@ -507,7 +511,7 @@ try {
     await expect(connection.locator("option:checked")).toHaveText("Unavailable connection");
     await expect(popup.getByRole("button", { name: "Analyze sprite", exact: true })).toBeDisabled();
     await expect(first.getByLabel("Expression", { exact: true })).toBeEnabled();
-    assert.equal(analyses, 30, "Missing connections never trigger fallback calls.");
+    assert.equal(analyses, 31, "Missing connections never trigger fallback calls.");
     await closeSprite();
     await page.getByRole("button", { name: "Back", exact: true }).click();
     state.defaultArtworkId = "";
@@ -572,7 +576,7 @@ try {
     assert.equal(state.defaultArtworkId, "art-27");
     assert.equal(state.suggestions.length, 0);
     assert.equal(saves.at(-1).validateForUse, true);
-    assert.equal(analyses, 30, "Accepting a review never makes another model call.");
+    assert.equal(analyses, 31, "Accepting a review never makes another model call.");
     state.resident = true;
     state.residentToken = "resident-token";
     await page.getByRole("button", { name: "Review resident sprites", exact: true }).click();
