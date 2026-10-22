@@ -1011,17 +1011,19 @@ export function MapStage({
         : null}
 
       {exploration && !placing ? (
-        <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
-          <button type="button" aria-label="Zoom out" onClick={() => changeNavigationZoom(1 / 1.25)}>
-            −
-          </button>
-          <button type="button" aria-label="Reset map view" onClick={resetNavigation}>
-            Reset
-          </button>
-          <button type="button" aria-label="Zoom in" onClick={() => changeNavigationZoom(1.25)}>
-            +
-          </button>
-        </div>
+        !mobile && (
+          <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
+            <button type="button" aria-label="Zoom out" onClick={() => changeNavigationZoom(1 / 1.25)}>
+              −
+            </button>
+            <button type="button" aria-label="Reset map view" onClick={resetNavigation}>
+              Reset
+            </button>
+            <button type="button" aria-label="Zoom in" onClick={() => changeNavigationZoom(1.25)}>
+              +
+            </button>
+          </div>
+        )
       ) : framing && zoom && live.fit === "cover" ? (
         <div className={`${ELEMENT_TAG}-zoom`}>
           <button

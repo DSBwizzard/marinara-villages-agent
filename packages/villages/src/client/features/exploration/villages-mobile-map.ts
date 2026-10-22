@@ -46,8 +46,9 @@ export function mobileMapGesture(
   const before = mobileMapBox(image, frame, start);
   if (!before.width || !before.height) return start;
   const cover = mobileCoverZoom(image, frame);
-  const zoom = clamp(start.zoom * factor, cover, Math.max(4, cover * 2));
-  const scale = zoom / Math.max(start.zoom, cover);
+  const startZoom = Math.max(start.zoom, cover);
+  const zoom = clamp(startZoom * factor, cover, Math.max(4, cover * 2));
+  const scale = zoom / startZoom;
   const width = before.width * scale;
   const height = before.height * scale;
   const anchorX = (startPoint.x - before.left) / before.width;

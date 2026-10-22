@@ -255,7 +255,11 @@ try {
       page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(home).toHaveAttribute("data-mobile", String(mobile));
     await expect(art).toHaveAttribute("src", mapImage);
-    await expect(home.getByRole("button", { name: "Zoom in", exact: true })).toBeVisible();
+    for (const name of ["Zoom out", "Reset map view", "Zoom in"]) {
+      const control = home.getByRole("button", { name, exact: true });
+      if (mobile) await expect(control).toHaveCount(0);
+      else await expect(control).toBeVisible();
+    }
     await expect(home.locator("." + P + "-pin-photo-card")).toHaveCount(0);
     await expect(home.locator('[data-kind="person"]')).toHaveCount(0);
     const cover = async () => {
@@ -321,24 +325,41 @@ try {
     await expect(navigator.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
     await navigator.getByRole("searchbox").fill("");
     if (mobile) await navigator.getByRole("button", { name: "Close places" }).click();
-    await home.getByRole("button", { name: "Reset map view" }).click();
+    const client = mobile ? await page.context().newCDPSession(page) : null;
+    const touch = (type, points) =>
+      client.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: points.map(([x, y], id) => ({ x, y, id })),
+      });
+    if (!mobile) await home.getByRole("button", { name: "Reset map view" }).click();
+    await settleLayout();
     const initial = await geometry();
-    await home.getByRole("button", { name: "Zoom in", exact: true }).click();
-    await expect.poll(async () => (await geometry()).width).toBeGreaterThan(initial.width);
+    if (mobile) {
+      const frame = await canvas.boundingBox();
+      const px = frame.x + frame.width * 0.5,
+        py = frame.y + frame.height * 0.4;
+      await touch("touchStart", [
+        [px - 20, py],
+        [px + 20, py],
+      ]);
+      await touch("touchMove", [
+        [px - 30, py],
+        [px + 30, py],
+      ]);
+      await touch("touchEnd", []);
+    } else {
+      await home.getByRole("button", { name: "Zoom in", exact: true }).click();
+    }
+    await expect
+      .poll(async () => (await geometry()).width, { message: `pinch or zoom at ${width}x${height}` })
+      .toBeGreaterThan(initial.width);
     await select("Village Market");
     // A new selection after zooming must become the next drag's starting view.
     const before = await geometry(),
       box = await canvas.boundingBox();
     const x = box.x + box.width * 0.25,
       y = box.y + box.height * 0.72;
-    let client;
     if (mobile) {
-      client = await page.context().newCDPSession(page);
-      const touch = (type, points) =>
-        client.send("Input.dispatchTouchEvent", {
-          type,
-          touchPoints: points.map(([x, y], id) => ({ x, y, id })),
-        });
       await touch("touchStart", [[x, y]]);
       await touch("touchMove", [[x + 22, y + 12]]);
       await touch("touchEnd", []);
@@ -364,26 +385,6 @@ try {
     await page.getByRole("button", { name: "Back to the village", exact: true }).click();
     await expect.poll(geometry).toEqual(retained);
     if (mobile) {
-      await home.getByRole("button", { name: "Reset map view" }).click();
-      const pinchBefore = await geometry(),
-        frame = await canvas.boundingBox();
-      const px = frame.x + frame.width * 0.5,
-        py = frame.y + frame.height * 0.4;
-      const touch = (type, points) =>
-        client.send("Input.dispatchTouchEvent", {
-          type,
-          touchPoints: points.map(([x, y], id) => ({ x, y, id })),
-        });
-      await touch("touchStart", [
-        [px - 20, py],
-        [px + 20, py],
-      ]);
-      await touch("touchMove", [
-        [px - 30, py],
-        [px + 30, py],
-      ]);
-      await touch("touchEnd", []);
-      await expect.poll(async () => (await geometry()).width).toBeGreaterThan(pinchBefore.width);
       await showPlaces();
       await navigator.getByRole("searchbox").fill("Village Market");
       if (height >= 640) {
