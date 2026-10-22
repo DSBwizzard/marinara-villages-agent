@@ -479,7 +479,8 @@ try {
       await element.decode();
     });
     await oldArt.scrollIntoViewIfNeeded();
-    await expect(oldArt).toBeInViewport({ ratio: 1 });
+    // Chromium can round a clipped edge by a fraction of one pixel after scrolling.
+    await expect(oldArt).toBeInViewport({ ratio: 0.99 });
     // Element screenshots use the same scroll-aware clip for both captures.
     // boundingBox is viewport-relative; a page screenshot clip is not.
     const oldVisible = PNG.sync.read(await oldArt.screenshot({ animations: "disabled" }));
