@@ -101,7 +101,8 @@ export function createSocialMail(ports: SocialMailPorts) {
       (fit.estimatedTokensBefore ?? Buffer.byteLength(JSON.stringify(messages))) > 12000
     )
       throw new Error("Personal mail context does not fit the configured " + role + " connection.");
-    const result = await ports.completeWithRoom(model, messages, Math.min(output, fit.maxTokens ?? output), {
+    const requestTokens = Math.min(output, fit.maxTokens ?? output);
+    const result = await ports.completeWithRoom(model, messages, requestTokens, {
       responseFormat: { type: "json_object" },
       retryEmpty: false,
       debugMode: false,
@@ -110,7 +111,10 @@ export function createSocialMail(ports: SocialMailPorts) {
       ...(role === "system" ? { reasoningEffort: "low" as const } : {}),
       usagePurpose: role === "system" ? "checks" : "background",
     });
-    if (result.finishReason === "length") throw new Error("Personal mail response is incomplete. Explicitly retry.");
+    if (result.finishReason === "length")
+      throw new Error(
+        `${role === "system" ? "System mail" : "Personal reply"} reached its ${requestTokens.toLocaleString("en-US")} output-token limit${typeof result.usage?.completionReasoningTokens === "number" ? ` (${result.usage.completionReasoningTokens.toLocaleString("en-US")} reasoning tokens)` : ""}. Explicitly retry.`,
+      );
     const parsed = extractModelJsonObject(result);
     if (!parsed) throw new Error("Personal mail returned invalid JSON.");
     return parsed;
@@ -207,7 +211,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         },
       ],
       "personal-mail:meaning:" + input.sourceHash + ":" + semanticHash(state.relationshipContext),
-      12288,
+      16384,
     );
     const source = input.sourceDelivered
       ? emptyRelationshipReview()

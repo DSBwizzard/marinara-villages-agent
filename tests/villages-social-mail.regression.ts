@@ -25,6 +25,7 @@ let calls = 0,
   failMeaning = false,
   failReplyWrite = false,
   failCleanup = false,
+  truncateMeaning = false,
   sourceOnlyReply = false;
 const snapshot = async () => ({ ...structuredClone(village), relationshipContext: structuredClone(social) });
 const projection = (connection: string) => ({
@@ -99,6 +100,7 @@ const service = createSocialMail({
     if (model.connectionId === "narration")
       return { content: JSON.stringify({ text: "I'd like to stay friends." }), finishReason: "stop" };
     if (failMeaning) throw Error("Meaning provider unavailable");
+    if (truncateMeaning) return { content: "", finishReason: "length", usage: { completionReasoningTokens: 4096 } };
     const replyChange = change(active, 0, true);
     if (sourceOnlyReply) replyChange.lineIds = [active.messageId];
     return {
@@ -305,6 +307,16 @@ await service.processOutbox(await snapshot());
 assert.equal(village.socialMailOutbox?.length, 0);
 assert.equal(social.mailDeliveries[obsolete.id], undefined);
 assert.equal(calls, beforeDiscardCalls);
+// Keep truncation independent of the deliberately retained applying source above.
+social = defaultRelationshipState(village.seed);
+social.reviewedActorIds = ["ada"];
+await service.send({ residentId: "ada", requestId: "output-limit", text: "Please read this." });
+active = queued.at(-1).input;
+truncateMeaning = true;
+await assert.rejects(() => service.handler.generate(active), /4,096 output-token limit \(4,096 reasoning tokens\)/);
+assert.equal(social.mailDeliveries[active.messageId], undefined);
+truncateMeaning = false;
+await service.cancel(active.threadId, active.messageId);
 console.log(
   "Personal mail: exact outbox, failed delivery, failed reply, local replay, read privacy and automatic delivery passed.",
 );

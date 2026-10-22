@@ -205,7 +205,9 @@ export function createStartingTies(ports: StartingTiesPorts) {
         checkpointId: "starting-ties:" + input.sourceHash,
       });
       if (answer.finishReason === "length")
-        throw new Error("Starting relationship interpretation is incomplete; explicitly retry.");
+        throw new Error(
+          `Starting history reached its ${Math.min(maxTokens, fitted.maxTokens ?? maxTokens).toLocaleString("en-US")} output-token limit${typeof answer.usage?.completionReasoningTokens === "number" ? ` (${answer.usage.completionReasoningTokens.toLocaleString("en-US")} reasoning tokens)` : ""}. Explicitly retry.`,
+        );
       const parsed = resultSchema.parse(extractModelJsonObject(answer));
       const ids = new Set(["player", ...input.source.actors.map((actor: { id: string }) => actor.id)]);
       const sources = new Set(input.sources.map((row: SocialEvidence) => row.id)),
