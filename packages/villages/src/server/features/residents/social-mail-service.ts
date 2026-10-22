@@ -107,6 +107,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       debugMode: false,
       checkpointId: key,
       temperature: role === "narration" ? 0.7 : 0.1,
+      ...(role === "system" ? { reasoningEffort: "low" as const } : {}),
       usagePurpose: role === "system" ? "checks" : "background",
     });
     if (result.finishReason === "length") throw new Error("Personal mail response is incomplete. Explicitly retry.");
@@ -181,7 +182,7 @@ export function createSocialMail(ports: SocialMailPorts) {
           role: "system",
           content:
             RELATIONSHIP_REVIEW_INSTRUCTION +
-            " Interpret this correspondence as two separate source bundles. Return {sourceReview:relationshipReview,replyReview:relationshipReview,invitation?:{title,detail,venueId,zoneId,dueAt?}}. sourceReview may cite ONLY incoming.id; it establishes the effects of delivering the player's exact text before any reply. replyReview may cite incoming.id and reply.id. Its revisions include sourceReview\'s effects. If mode is resident, incoming is the resident\'s already written message: interpret only sourceReview, return empty replyReview and allow an invitation grounded in incoming instead of a reply. When sourceDelivered is true, sourceReview must be empty and replyReview uses the supplied current live state. sceneAfter and liveAfter coincide for mail. Private stances remain private. Disclosures are saved for local notebook application only when the player opens the delivered reply. Spoken/written physical claims are attributed claims, never verified deeds. A resident invitation must be explicitly communicated in this reply, use an existing Venue and Zone, and remain proposed until a separate explicit player choice. A deadline must be an explicitly proposed future real-time ISO instant; no retroactive appointments. In player mode an empty reply means empty replyReview and no invitation. Only exact supplied source IDs are evidence.",
+            " Interpret this correspondence as two separate source bundles. Return JSON {sourceReview:relationshipReview,replyReview:relationshipReview,invitation?:{title,detail,venueId,zoneId,dueAt?}}. sourceReview may cite ONLY incoming.id; it establishes the effects of delivering the player's exact text before any reply. replyReview may cite incoming.id and reply.id. Its revisions include sourceReview\'s effects. If mode is resident, incoming is the resident\'s already written message: interpret only sourceReview, return empty replyReview and allow an invitation grounded in incoming instead of a reply. When sourceDelivered is true, sourceReview must be empty and replyReview uses the supplied current live state. sceneAfter and liveAfter coincide for mail. Private stances remain private. Disclosures are saved for local notebook application only when the player opens the delivered reply. Spoken/written physical claims are attributed claims, never verified deeds. A resident invitation must be explicitly communicated in this reply, use an existing Venue and Zone, and remain proposed until a separate explicit player choice. A deadline must be an explicitly proposed future real-time ISO instant; no retroactive appointments. In player mode an empty reply means empty replyReview and no invitation. Only exact supplied source IDs are evidence.",
         },
         {
           role: "user",
@@ -206,7 +207,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         },
       ],
       "personal-mail:meaning:" + input.sourceHash + ":" + semanticHash(state.relationshipContext),
-      4096,
+      12288,
     );
     const source = input.sourceDelivered
       ? emptyRelationshipReview()

@@ -88,8 +88,14 @@ const service = createSocialMail({
       chatComplete: () => assert.fail("Real providers forbidden"),
     }),
   }),
-  completeWithRoom: async (model: any) => {
+  completeWithRoom: async (model: any, messages: any[], _maxTokens: number, options: any) => {
+    if (options.responseFormat?.type === "json_object")
+      assert(
+        messages.some((message) => message.role === "system" && /\bjson\b/iu.test(message.content)),
+        "JSON mode requires JSON in the application instructions",
+      );
     calls++;
+    if (model.connectionId === "system") assert.equal(options.reasoningEffort, "low");
     if (model.connectionId === "narration")
       return { content: JSON.stringify({ text: "I'd like to stay friends." }), finishReason: "stop" };
     if (failMeaning) throw Error("Meaning provider unavailable");

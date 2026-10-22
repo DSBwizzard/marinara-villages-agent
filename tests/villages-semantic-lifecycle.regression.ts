@@ -66,6 +66,7 @@ const service = createStartingTies({
   }),
   completeWithRoom: async (_model: any, _messages: any, _limit: any, options: any) => {
     calls++;
+    assert.equal(_limit, 2400, "Starting history respects the configured model's output ceiling");
     assert.equal(options.retryEmpty, false);
     return {
       finishReason: "stop",
@@ -92,6 +93,7 @@ await service.queue();
 assert.equal(calls, 0, "Admission queues finite preparation without dispatching inline");
 assert(queued);
 assert.equal(queued.input.source.playerBackground, state.playerBackground);
+assert.equal(queued.input.source.playerId, "player", "The captured source separates the player ID from display text");
 const originalBackground = state.playerBackground;
 state.playerBackground = "Changed starting relationship";
 assert.equal(
