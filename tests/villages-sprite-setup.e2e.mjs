@@ -15,7 +15,7 @@ const bundle = await build({
 });
 await mkdir(".build-tmp/sprite-setup", { recursive: true });
 const browser = await chromium.launch({ headless: true });
-async function verifyStableLoading(viewport, spriteCount) {
+async function verifyStableLoading(viewport, spriteCount, loseImportResponse = false) {
   const touch = viewport.width < 1000;
   const page = await browser.newPage({ viewport, hasTouch: touch });
   const errors = [];
@@ -34,6 +34,7 @@ async function verifyStableLoading(viewport, spriteCount) {
     residentToken: "",
   };
   const prepared = structuredClone(cold);
+  prepared.revision = spriteCount ? 1 : 0;
   for (let index = 0; index < spriteCount; index++) {
     const artworkId = `art-${index}`;
     prepared.manager.artwork.push({
@@ -59,6 +60,7 @@ async function verifyStableLoading(viewport, spriteCount) {
     releaseImport = resolve;
   });
   const saves = [];
+  let imported = false;
   await page.route("http://villages.test/", (route) =>
     route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
   );
@@ -68,14 +70,29 @@ async function verifyStableLoading(viewport, spriteCount) {
     let value = cold;
     if (path.endsWith("/prepare")) {
       await importing;
+      imported = true;
+      if (loseImportResponse) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "The import response was interrupted." }),
+        });
+        return;
+      }
       value = prepared;
     } else if (path.endsWith("/save")) {
       const body = route.request().postDataJSON();
       saves.push(body);
-      value = { ...prepared, revision: 1, useSprites: body.useSprites };
+      assert.equal(
+        body.revision,
+        imported ? prepared.revision : cold.revision,
+        "Save uses the settled import revision.",
+      );
+      value = { ...prepared, revision: prepared.revision + 1, useSprites: body.useSprites };
     } else {
       assert.equal(route.request().method(), "GET", "Loading and skipping never requests analysis or applies sprites.");
       await reading;
+      if (imported) value = prepared;
     }
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
   });
@@ -158,6 +175,7 @@ try {
     { width: 1440, height: 1000 },
   ]) {
     for (const spriteCount of [18, 0]) await verifyStableLoading(viewport, spriteCount);
+    await verifyStableLoading(viewport, 18, true);
   }
   for (const viewport of [
     { width: 1440, height: 1000 },
@@ -285,6 +303,7 @@ try {
       route.fulfill({ contentType: "application/json", body: JSON.stringify(connectionRows) }),
     );
     let failSave = false;
+    let loseSaveResponse = false;
     const saves = [];
     const applications = [];
     let analyses = 0;
@@ -309,6 +328,9 @@ try {
         saves.push(body);
         if (failSave) {
           failSave = false;
+          state.revision++;
+        }
+        if (body.revision !== state.revision) {
           await route.fulfill({
             status: 409,
             contentType: "application/json",
@@ -333,6 +355,11 @@ try {
           useSprites: body.useSprites,
         });
         state.suggestions = state.suggestions.filter((item) => body.pendingSuggestionIds.includes(item.artworkId));
+        if (loseSaveResponse) {
+          loseSaveResponse = false;
+          await route.fulfill({ status: 200, contentType: "application/json", body: "{" });
+          return;
+        }
       } else if (path.endsWith("/apply")) {
         applications.push(body);
         assert.equal(body.revision, state.revision);
@@ -565,10 +592,28 @@ try {
     await add.click();
     await expect(page.getByRole("alert")).toContainText("Sprite setup changed.");
     await expect(add).toBeEnabled();
+    await page.screenshot({ path: `.build-tmp/sprite-setup/recovery-${viewport.width}.png`, fullPage: true });
+    await chooseSprite(27);
+    await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Neutral");
+    await closeSprite();
     assert.ok(
       state.assignments.every((item) => !item.approved),
       "Rejected saves do not approve saved drafts.",
     );
+    const savesBeforeReload = saves.length;
+    await add.click();
+    await expect(page.getByRole("alert")).toContainText("Sprite setup changed.");
+    await page.getByRole("button", { name: "Discard edits & reload", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Discard edits & reload", exact: true })).toHaveCount(0);
+    assert.equal(saves.length, savesBeforeReload + 1, "Reload only reads; it never repeats a rejected save.");
+    assert.equal(analyses, 31, "Recovery never repeats paid analysis.");
+    await chooseSprite(27);
+    await expect(first.getByLabel("Expression", { exact: true })).toHaveValue("Relaxed art-27");
+    await closeSprite();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await page.getByRole("button", { name: "Choose Bupkis", exact: true }).click();
+    await expect(add).toBeEnabled();
     await add.click();
     await expect(dialog).toHaveCount(0);
     assert.equal(state.useSprites, true);
@@ -577,6 +622,20 @@ try {
     assert.equal(state.suggestions.length, 0);
     assert.equal(saves.at(-1).validateForUse, true);
     assert.equal(analyses, 31, "Accepting a review never makes another model call.");
+    await page.getByRole("button", { name: "Choose Bupkis", exact: true }).click();
+    await expect(add).toBeEnabled();
+    loseSaveResponse = true;
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("invalid or empty JSON response");
+    const savesAfterLostResponse = saves.length;
+    await chooseSprite(0);
+    await page.getByRole("button", { name: "Discard edits & reload", exact: true }).click();
+    await expect(popup).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Discard edits & reload", exact: true })).toHaveCount(0);
+    assert.equal(saves.length, savesAfterLostResponse, "A lost save response is recovered without replaying it.");
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    assert.equal(analyses, 31);
     state.resident = true;
     state.residentToken = "resident-token";
     await page.getByRole("button", { name: "Review resident sprites", exact: true }).click();

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpriteFrame, SpriteSetupAssignment, SpriteSetupState } from "../../../shared/contracts/sprites.js";
-import { request, requestHost, messageFrom } from "../../shared/api.js";
+import { request, requestHost, messageFrom, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { EngineConnectionRow, VillageConnectionOption, Portrait } from "../../shared/types.js";
 import { connectionOptionsFrom } from "../../shared/presentation.js";
@@ -31,6 +31,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
   const [data, setData] = useState<SpriteSetupState | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [reloadRequired, setReloadRequired] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [connections, setConnections] = useState<VillageConnectionOption[]>([]);
@@ -63,7 +64,16 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
         });
         if (!controller.signal.aborted) setData(value);
       } catch (cause) {
-        if (!controller.signal.aborted) setError(messageFrom(cause, "Could not import sprites."));
+        if (!controller.signal.aborted) {
+          // Import may have saved before its response was lost. Read after its writer settles.
+          try {
+            const value = await request<SpriteSetupState>(base + "/settled", { signal: controller.signal });
+            if (!controller.signal.aborted) setData(value);
+          } catch {
+            if (!controller.signal.aborted) setReloadRequired(true);
+          }
+          if (!controller.signal.aborted) setError(messageFrom(cause, "Could not import sprites."));
+        }
       } finally {
         setImporting(false);
       }
@@ -83,7 +93,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       .catch((cause) => {
         if (!controller.signal.aborted) setConnectionError(messageFrom(cause, "Could not load analysis connections."));
       });
-    void request<SpriteSetupState>(base, { signal: controller.signal })
+    void request<SpriteSetupState>(base + "/settled", { signal: controller.signal })
       .then(async (value) => {
         if (controller.signal.aborted) return;
         setData(value);
@@ -94,7 +104,10 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
         }
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setError(messageFrom(cause, "Could not load sprites."));
+        if (!controller.signal.aborted) {
+          setReloadRequired(true);
+          setError(messageFrom(cause, "Could not load sprites."));
+        }
       });
     return () => {
       controller.abort();
@@ -111,11 +124,32 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       await action();
     } catch (cause) {
       setError(messageFrom(cause, "Could not save sprite setup."));
+      if (
+        cause instanceof VillageApiError &&
+        (cause.status === 409 ||
+          cause.status === 0 ||
+          cause.status >= 500 ||
+          cause.code === "INVALID_RESPONSE" ||
+          cause.code === "RESPONSE_READ_FAILED")
+      )
+        setReloadRequired(true);
     } finally {
       working.current = false;
       setBusy(false);
     }
   }
+  async function reloadSavedSprites() {
+    const saved = await request<SpriteSetupState>(base + "/settled");
+    setData(saved);
+    setReloadRequired(false);
+    setProgress(null);
+    closeEditor();
+  }
+  const recovery = reloadRequired ? (
+    <button disabled={busy || importing} onClick={() => void perform(reloadSavedSprites)}>
+      Discard edits & reload
+    </button>
+  ) : null;
   function edit(artworkId: string, patch: Partial<SpriteSetupAssignment>) {
     setData(
       (prior) =>
@@ -348,7 +382,12 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
         </button>
       </header>
       <main>
-        {error && !activeArtwork ? <p role="alert">{error}</p> : null}
+        {!activeArtwork ? (
+          <>
+            {error ? <p role="alert">{error}</p> : null}
+            {recovery}
+          </>
+        ) : null}
         <fieldset disabled={importing} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           {!data ? null : (
             <>
@@ -484,6 +523,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
           </header>
           <main>
             {error && activeArtwork ? <p role="alert">{error}</p> : null}
+            {activeArtwork ? recovery : null}
 
             {data.manager.artwork
               .filter((art) => art.id === activeArtwork)
