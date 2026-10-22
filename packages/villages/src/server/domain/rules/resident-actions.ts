@@ -53,7 +53,7 @@ export const RESIDENT_ACTION_WRITING =
 
 export const RESIDENT_ACTION_REVIEW =
   RESIDENT_ACTION_REVIEW_BASE +
-  ' This ledger covers player access only: visitorId must be "player". Invitations, refusals and permission between residents are not missing player-access actions. For those segments use coverage status:"none" with actionIds:[], unless the segment separately changes the player\'s access. Resident-only permission never grants the player access or replaces the captured access rules for resident movement.';
+  ' This ledger covers player access only: visitorId must be "player". Invitations, refusals and permission between residents are not missing player-access actions. For those segments use coverage status:"none" with actionIds:[], unless the segment separately changes the player\'s access. Keep conditions attached to their actual visitor; conditions imposed only on another resident are not player conditions. Every additionalActions source.quote must copy the entire exact current segment text, never an excerpt. Resident-only permission never grants the player access or replaces the captured access rules for resident movement.';
 
 // Exact pre-upgrade instruction preserves fingerprints of saved v1 raw completions.
 export const RESIDENT_ACTION_REVIEW_V1 = RESIDENT_ACTION_REVIEW_BASE.replace(

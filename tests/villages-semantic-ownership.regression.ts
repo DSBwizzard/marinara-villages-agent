@@ -1271,6 +1271,20 @@ async function main() {
     /metadata is invalid/,
     "a resident visitor cannot be silently coerced into player permission",
   );
+  const mixedInvitation = "Neighbor can enter with me watching. You can visit too.";
+  const mixedEvidence = evidenceFor(mixedInvitation);
+  const playerInvitation = readResidentActions([makeAction(mixedInvitation)]);
+  assert.equal(
+    reconcileResidentActions([], reviewFor(mixedEvidence, [], playerInvitation), mixedEvidence).access.length,
+    1,
+    "a separate player invitation can use the full mixed dialogue as its source",
+  );
+  const excerptedInvitation = readResidentActions([makeAction("You can visit too.")]);
+  assert.throws(
+    () => reconcileResidentActions([], reviewFor(mixedEvidence, [], excerptedInvitation), mixedEvidence),
+    /source is missing or ambiguous/,
+    "an additional action cannot replace the full source segment with an excerpt",
+  );
   const actions = readResidentActions([makeAction("Sit beside me.")]),
     evidence = evidenceFor("Sit beside me."),
     review = reviewFor(evidence, actions);
