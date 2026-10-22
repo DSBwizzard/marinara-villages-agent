@@ -120,13 +120,7 @@ try {
       profiles: ["mara", "eli"].map((characterId) => ({
         characterId,
         name: person(characterId).name,
-        warmth: 12,
-        trust: 8,
-        warmthLabel: "Friendly",
-        trustLabel: "Open",
-        familiarity: 1,
-        friend: true,
-        close: false,
+        summary: "Mara has expressed an interest in talking again.",
         knownAt: now,
         closeKnownAt: "",
         routine: ["Often reads at the Mill"],
@@ -140,8 +134,9 @@ try {
         learned: [],
         access: [{ venueId: "harbour", zoneId: "public", active: true, name: "Harbour" }],
       })),
-      starting: { pending: false, spoilers: false, summaries: [], values: [] },
+      starting: { pending: false },
     };
+    const mailbox = { threads: [], invitations: [], recovery: [], venueMail: [] };
     const agendas = {
       villagers: ["mara", "eli"].map((characterId) => ({
         characterId,
@@ -196,7 +191,32 @@ try {
       else if (!path.endsWith("/background/presence") && !path.endsWith("/reconcile"))
         writes.push({ path, method: request.method(), body: request.postDataJSON() });
       let value = village;
-      if (path.endsWith("/villagers/mara/description")) {
+      if (path.includes("/mailbox")) {
+        if (path.endsWith("/mailbox/threads") && request.method() === "POST") {
+          const body = request.postDataJSON();
+          mailbox.threads = [
+            {
+              id: "personal:mara",
+              residentId: "mara",
+              residentName: "Mara",
+              revision: 1,
+              messages: [
+                {
+                  id: body.requestId,
+                  fromId: "player",
+                  text: body.text,
+                  at: now,
+                  status: "pending",
+                  read: false,
+                  replyPending: false,
+                },
+              ],
+            },
+          ];
+        }
+        if (path.endsWith("/cancel")) mailbox.threads[0].messages[0].status = "cancelled";
+        value = mailbox;
+      } else if (path.endsWith("/villagers/mara/description")) {
         if (failDescription)
           return fulfill(route, {
             status: 409,
@@ -232,13 +252,48 @@ try {
         };
       } else if (path.endsWith("/rooms/active")) value = { session: null };
       else if (path.endsWith("/catalog")) value = { characters: [] };
-      else if (path.endsWith("/relationships/creator")) {
-        relationships.starting.spoilers = true;
-        relationships.starting.values = [
-          { fromId: "mara", toId: "eli", fromName: "Mara", toName: "Eli", warmth: 33, trust: 44, proposed: false },
-        ];
-        value = relationships;
-      } else if (path.endsWith("/relationships")) value = relationships;
+      else if (path.endsWith("/relationships/inspect"))
+        value = {
+          processing: [],
+          conflicts: [],
+          residents: [
+            {
+              characterId: "mara",
+              name: "Mara",
+              initialized: true,
+              intentions: [
+                {
+                  text: "Seek another conversation",
+                  reason: "Enjoyed the last one",
+                  targets: ["Player"],
+                  status: "active",
+                },
+              ],
+              perspectives: [
+                {
+                  aboutName: "Player",
+                  connection: "Acquaintances",
+                  stance: "PRIVATE MARA STANCE",
+                  expectations: [],
+                  concerns: [],
+                  updatedAt: now,
+                  revision: 1,
+                  records: [],
+                  experiences: [
+                    {
+                      reason: "A welcome conversation",
+                      at: now,
+                      sourceId: "source",
+                      evidence: [{ speaker: "Mara", text: "I enjoyed talking." }],
+                    },
+                  ],
+                  technical: { fromId: "mara", toId: "player", receiptIds: ["saved"] },
+                },
+              ],
+            },
+          ],
+        };
+      else if (path.endsWith("/relationships")) value = relationships;
       else if (path.endsWith("/memories")) {
         if (failMemories)
           return fulfill(route, {
@@ -570,10 +625,44 @@ try {
     await tabs.getByRole("button", { name: "Venues", exact: true }).click();
     await expect(profile.getByText("Agenda destination", { exact: true })).toBeVisible();
     await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
-    await profile.getByText("Relationship creator", { exact: true }).click();
-    await profile.getByRole("checkbox", { name: "I understand this reveals gameplay spoilers." }).check();
-    await profile.getByRole("button", { name: "Reveal and edit relationship values" }).click();
-    await expect(profile.getByRole("combobox", { name: "Directional relationship to edit" })).toBeVisible();
+    await expect(profile.getByText("PRIVATE MARA STANCE", { exact: true })).toBeVisible();
+    await profile.getByText(/^A welcome conversation/).click();
+    await expect(profile.locator("blockquote")).toContainText("I enjoyed talking.");
+    await expect(profile.getByRole("spinbutton")).toHaveCount(0);
+    await page.screenshot({ path: resolve(output, `relationships-${width}-${height}.png`) });
+    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await profile.getByText("Message", { exact: true }).click();
+    const mail = page.getByRole("dialog", { name: "Mailbox", exact: true });
+    await expect(mail.getByRole("combobox", { name: "Mail recipient" })).toHaveValue("mara");
+    const draft = mail.getByRole("textbox", { name: "Personal message" });
+    const exactMessage = "Let's talk later.\n  Exact text";
+    await draft.fill(exactMessage);
+    await mail.getByRole("button", { name: "Close Mailbox" }).click();
+    await expect(profile.getByRole("button", { name: "Message", exact: true })).toBeFocused();
+    await profile.getByText("Message", { exact: true }).click();
+    await expect(draft).toHaveValue(exactMessage);
+    await mail.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(draft).toHaveValue("");
+    assert.equal(writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.text, exactMessage);
+    await expect(mail.getByText(exactMessage, { exact: true })).toBeVisible();
+    assert.equal(
+      await mail.evaluate((node) => node.scrollWidth > node.clientWidth + 1),
+      false,
+      "Mailbox fits desktop and phone",
+    );
+    await page.screenshot({ path: resolve(output, `mailbox-${width}-${height}.png`) });
+    await mail.getByRole("button", { name: "Cancel message" }).click();
+    await expect(mail.getByText("cancelled", { exact: false })).toBeVisible();
+    const firstMailId = writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId;
+    await draft.fill(exactMessage);
+    await mail.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(draft).toHaveValue("");
+    assert.notEqual(
+      writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId,
+      firstMailId,
+      "A distinct acknowledged send can repeat the same words",
+    );
+    await mail.getByRole("button", { name: "Close Mailbox" }).click();
     await tabs.getByRole("button", { name: "Memories", exact: true }).click();
     await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toHaveCount(0);

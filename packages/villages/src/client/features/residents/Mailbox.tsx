@@ -273,6 +273,7 @@ export function Mailbox({
                   setView(
                     await request<MailboxView>("/mailbox/threads", { method: "POST", body: JSON.stringify(identity) }),
                   );
+                  if (sendIdentity.current === identity) sendIdentity.current = null;
                   setDrafts((current) =>
                     current[selected] === identity.text ? { ...current, [selected]: "" } : current,
                   );

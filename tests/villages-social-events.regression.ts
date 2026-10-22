@@ -1,3 +1,5 @@
+import { createVillageBootstrap } from "../packages/villages/src/server/features/founding/village-bootstrap-service.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -217,4 +219,48 @@ const review = parseRelationshipReview(
 assert.equal(review.changes[0]!.liveAfter.records[0]!.status, "cancelled");
 console.log(
   "Automatic social Events: historical timezone, retained errors, exact-source memory correction, stale revisions and full invitation terms passed.",
+);
+let automaticCalls = 0;
+const writer = createVillageBootstrap({
+  villagesLanguageModels: () => ({
+    resolveForRequest: async () => ({
+      model: "fixture",
+      fitContext: (messages: any, options: any) => ({ messages, ...options }),
+    }),
+  }),
+  villagesConnectionIdFor: async () => "system",
+  backgroundCalls: { getStore: () => undefined },
+  villagesDebugAgentsEnabled: () => false,
+  villagesLogger: () => ({ debugOverride: () => {} }),
+  completeWithRoom: async () => ({
+    finishReason: "stop",
+    content: JSON.stringify(
+      ++automaticCalls === 1
+        ? {
+            happenings: [],
+            housingRequests: [],
+            social: { mail: { senderId: "a", text: "Hello.", invitation: { title: "Forged invitation" } } },
+          }
+        : { relationshipReview: emptyRelationshipReview(), memoryChanges: [] },
+    ),
+  }),
+} as any);
+const proposed = await writer.proposeHappenings({
+  semanticVersion: 2,
+  village: "Preview",
+  setting: "A quiet cafe",
+  moment: deriveVillageMoment({ foundedAt: at, seed: "events", now: new ZonedDate(at, village.timeZone) }),
+  residents: [],
+  recent: [],
+  venues: [],
+  opportunities: [{ ...entry.opportunity, facts: [] }],
+  forced: false,
+  lastSimulatedAt: at,
+  social: { state: social, candidates: [], relationships: [] },
+} as any);
+assert.equal(automaticCalls, 2);
+assert.equal(
+  (proposed.social!.mail as any).invitation,
+  undefined,
+  "Writer metadata cannot bypass independent invitation adjudication",
 );
