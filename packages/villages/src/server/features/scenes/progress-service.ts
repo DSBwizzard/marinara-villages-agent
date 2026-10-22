@@ -300,14 +300,15 @@ export function createSceneProgress({
             try {
               await processSavedExchange(turn.sessionId, turn.submissionId);
             } catch (error) {
-              villagesLogger().warn("[villages] progress replay failed for %s: %s", turn.submissionId, String(error));
+              if (!stopped)
+                villagesLogger().warn("[villages] progress replay failed for %s: %s", turn.submissionId, String(error));
             }
           }
           if (!stopped && queue.length) timer = setTimeout(() => void batch(), 25);
         };
         if (!stopped && queue.length) timer = setTimeout(() => void batch(), 0);
       } catch (error) {
-        villagesLogger().warn("[villages] progress recovery could not read visits: %s", String(error));
+        if (!stopped) villagesLogger().warn("[villages] progress recovery could not read visits: %s", String(error));
       }
     };
     void start();

@@ -94,19 +94,17 @@ async function mount({
       "A";
     if (path.endsWith("/turn")) submissions.set(id, body.submissionId);
     requests.push({ path, id, body });
-    const kind = path.endsWith("/activity")
-      ? "activity"
-      : path.endsWith("/turn")
-        ? "turn"
-        : path.endsWith("/operation")
-          ? "operation"
-          : path.includes("/operations/")
-            ? "recovery-operation"
-            : path.endsWith("/active")
-              ? "active"
-              : path.includes("/archive/")
-                ? "archive"
-                : "unknown";
+    const kind = path.endsWith("/turn")
+      ? "turn"
+      : path.endsWith("/operation")
+        ? "operation"
+        : path.includes("/operations/")
+          ? "recovery-operation"
+          : path.endsWith("/active")
+            ? "active"
+            : path.includes("/archive/")
+              ? "archive"
+              : "unknown";
     if ((id === "A" && kind === hold) || (id === "B" && kind === "turn" && holdB)) {
       held.push({ route, id, kind });
       return;
@@ -220,7 +218,7 @@ try {
   // Hook state is viewport-independent; packaged layout suites retain desktop/phone coverage.
   for (const width of [1366])
     for (const strict of [false, true]) {
-      for (const stage of ["activity", "operation", "turn", "recovery-operation", "active", "archive"]) {
+      for (const stage of ["operation", "turn", "recovery-operation", "active", "archive"]) {
         const f = await mount({
           width,
           strict,
@@ -252,7 +250,7 @@ try {
           await f.page.close();
         }
       }
-      for (const stage of ["activity", "turn"]) {
+      for (const stage of ["operation", "turn"]) {
         const f = await mount({ width, strict, hold: stage });
         try {
           const old = await f.send();
@@ -294,11 +292,12 @@ try {
         await callback.settle(pending);
         assert.equal((await callback.state()).busy, false);
         assert.equal(callback.requests.filter((row) => row.path.endsWith("/turn")).length, 1);
+        assert.equal(callback.requests.filter((row) => row.path.endsWith("/activity")).length, 0);
       } finally {
         await callback.page.close();
       }
       for (const retirement of ["reset", "unmount"]) {
-        const f = await mount({ width, strict, hold: "activity" });
+        const f = await mount({ width, strict, hold: "operation" });
         try {
           const pending = await f.send();
           await expect.poll(() => f.held.length).toBe(1);
@@ -400,7 +399,7 @@ try {
           await learned.page.close();
         }
       }
-      const duplicate = await mount({ width, strict, hold: "activity" });
+      const duplicate = await mount({ width, strict, hold: "operation" });
       try {
         await duplicate.page.evaluate(() => {
           window.h.send();
