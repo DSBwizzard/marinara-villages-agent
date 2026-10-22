@@ -272,6 +272,22 @@ for (const established of [false, true]) {
   assert.equal(state.projects[0].title, proposal("a", established).name);
   assert.equal(state.projects[0].opening!.durationMs, OPENING_WORK_MS);
   await service.placeNewVenueProject(id, { x: 0.4, y: 0.4 });
+  await service.saveProjectPlan(id, {
+    layoutVersion: 1,
+    layout: "common",
+    form: "A gathering place",
+    exteriorDescription: "An entrance",
+    spaces: [
+      {
+        id: state.venues.find((venue) => venue.id === state.projects[0].venueId)!.spaces?.[0]?.id ?? "common:base",
+        venueClass: "community",
+        name: "Common Space",
+        purpose: "Shared evenings",
+        description: "An open shared space",
+      },
+    ],
+    privateSpaces: [],
+  });
   assert.equal(state.projects[0].lifecycle!.phase, "builder");
   await assert.rejects(service.lockProjectBuilder(id, { residentId: "a" }), /has not agreed/);
   state.projects[0].lifecycle!.candidates.push({
@@ -315,7 +331,7 @@ for (const established of [false, true]) {
   reconcileProjectLifecycles(state, new Date(now.getTime() + OPENING_WORK_MS - 1));
   assert.equal(state.projects[0].status, "building");
   reconcileProjectLifecycles(state, new Date(now.getTime() + OPENING_WORK_MS));
-  assert.equal(state.projects[0].lifecycle!.phase, "finishing");
+  assert.equal(state.projects[0].lifecycle!.phase, "complete");
   const site = state.venues.find((venue) => venue.id === state.projects[0].venueId)!;
   const commonId = site.spaces![0].id;
   site.spaces![0].state.items.push("A borrowed chair");

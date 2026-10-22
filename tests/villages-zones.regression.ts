@@ -27,6 +27,7 @@ import {
   createRenovationProject,
   createNewVenueProject,
   placeNewVenueProject,
+  saveProjectPlan,
   lockProjectBuilder,
   acceptProjectRequirements,
   openFinishedProject,
@@ -739,6 +740,14 @@ async function currentProjectZoneChecks() {
     });
     const timberProjectId = (await readVillageState()).projects.find((entry) => entry.kind === "new-venue")!.id;
     await placeNewVenueProject(timberProjectId, { x: 0.8, y: 0.8 });
+    await saveProjectPlan(timberProjectId, {
+      layoutVersion: 1,
+      layout: "exterior",
+      form: "Workshop",
+      exteriorDescription: "An open-air workshop",
+      spaces: [],
+      privateSpaces: [],
+    });
     response = "project-builder";
     const builder = await sendVenueTurn({
       sessionId: visit.id,

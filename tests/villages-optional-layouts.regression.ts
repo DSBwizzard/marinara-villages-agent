@@ -27,6 +27,7 @@ import {
   createNewVenueProject,
   placeNewVenueProject,
   openFinishedProject,
+  saveProjectPlan,
 } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import {
   assertResidencePrivateDestination,
@@ -215,6 +216,8 @@ const release = configureVillagesRuntime({
   },
 } as Parameters<typeof configureVillagesRuntime>[0]);
 async function finish(id: string, body: unknown = {}) {
+  if ((await readVillageState()).projects.find((project) => project.id === id)!.kind === "new-venue")
+    await saveProjectPlan(id, body);
   await mutateVillageState((state) => {
     const project = state.projects.find((project) => project.id === id)!;
     project.lifecycle!.phase = "finishing";
@@ -485,7 +488,7 @@ async function main() {
           exteriorDescription: opening.description,
           interiorDescription: "An invented interior",
         }),
-        /Choose the venue layout/,
+        /Define the physical form, layout/,
       );
       await finish(project.id, {
         ...opening,

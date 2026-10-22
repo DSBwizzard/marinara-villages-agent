@@ -1,3 +1,4 @@
+import { renovationAffectedIds } from "../../domain/rules/project-terms.js";
 import { openingActive, requireOrdinaryProjects } from "../../domain/rules/opening-project.js";
 import { readConnectionIds } from "../../domain/rules/space-connections.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -306,15 +307,6 @@ export function draftRenovationProject(
     !nextClasses.includes(improvement.spaceId as VillageVenueClass)
   )
     throw badRequest("The Upgrade must belong to one of this Venue's Classes.");
-  const affectedIds = [
-    ...new Set([
-      ...venueResidentIds(venue),
-      ...(venue.workerIds ?? []),
-      ...venueZones(venue).flatMap((zone) => zone.controllerIds ?? []),
-      ...(baseZones ?? []).flatMap((zone) => zone.controllerIds ?? []),
-      ...(improvement?.zones ?? []).flatMap((zone) => zone.controllerIds ?? []),
-    ]),
-  ].filter((id) => id !== "player");
   const at = villageNow().toISOString();
   const project: VillageProject = {
     id: openingRequestId || randomUUID(),
@@ -325,21 +317,18 @@ export function draftRenovationProject(
     progress: 0,
     status: "active",
     updatedAt: at,
-    lifecycle: lifecycle(
-      affectedIds.length ? "approval" : "builder",
-      venueId,
-      {
-        ...(classes ? { classes: classes as VillageVenueClass[] } : {}),
-        ...(capacity !== undefined ? { capacity } : {}),
-        ...(baseZones !== undefined ? { baseZones } : {}),
-        ...(homeKind !== undefined ? { homeKind: homeKind as NonNullable<VillageVenue["occupancy"]["homeKind"]> } : {}),
-        ...(slot !== undefined ? { slot } : {}),
-        ...(improvement !== undefined ? { improvement } : {}),
-        detail,
-      },
-      affectedIds,
-    ),
+    lifecycle: lifecycle("builder", venueId, {
+      ...(classes ? { classes: classes as VillageVenueClass[] } : {}),
+      ...(capacity !== undefined ? { capacity } : {}),
+      ...(baseZones !== undefined ? { baseZones } : {}),
+      ...(homeKind !== undefined ? { homeKind: homeKind as NonNullable<VillageVenue["occupancy"]["homeKind"]> } : {}),
+      ...(slot !== undefined ? { slot } : {}),
+      ...(improvement !== undefined ? { improvement } : {}),
+      detail,
+    }),
   };
+  project.lifecycle!.affectedIds = renovationAffectedIds(venue, project.lifecycle!.change);
+  project.lifecycle!.phase = project.lifecycle!.affectedIds.length ? "approval" : "builder";
   state.projects.push(project);
   createProjectProgress(state, project, at);
   return project;

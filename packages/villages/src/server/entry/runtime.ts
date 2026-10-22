@@ -1063,6 +1063,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createVenueCoordinator({ operations, villagesDocuments, villagesLogger, runtimeDebug, readInterpretationSettings }),
   );
   const worldCoordination = createWorldCoordination({
+    processProjectWishOutbox,
     readScene: readSession,
     readVillageState,
     mutateVillageState,

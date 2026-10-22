@@ -423,6 +423,18 @@
     },
     {
       "method": "post",
+      "path": "/projects/:projectId/delegate"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/cancel-delivery"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/plan"
+    },
+    {
+      "method": "post",
       "path": "/projects/:projectId/place"
     },
     {

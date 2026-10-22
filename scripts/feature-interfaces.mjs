@@ -53,6 +53,9 @@ export const serverFeatureInterfaces = Object.freeze({
     "listProjectEvidenceCandidates",
   ],
   "projects/project-lifecycle.ts": [
+    "delegateProjectSupply",
+    "cancelProjectSupply",
+    "saveProjectPlan",
     "draftNewVenueProject",
     "draftRenovationProject",
     "createNewVenueProject",

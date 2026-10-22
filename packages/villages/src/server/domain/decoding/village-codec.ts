@@ -1,3 +1,4 @@
+import { readProjectPlan } from "../rules/project-completion.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { readProjectSupplyTransfer } from "../rules/project-supply-transfer.js";
 import { readOpening, OPENING_WORK_MS } from "../rules/opening-project.js";
@@ -449,6 +450,22 @@ function coerceAgenda(
     // time on it that the debug tab would then show as fact.
     generatedAt: asIsoString(raw.generatedAt) ?? "",
   };
+  const delivery = asRecord(raw.projectDelivery);
+  if (
+    asTrimmedString(delivery.projectId) &&
+    asTrimmedString(delivery.requirementId) &&
+    asIsoString(delivery.startsAt) &&
+    asIsoString(delivery.endsAt)
+  )
+    agenda.projectDelivery = {
+      projectId: asTrimmedString(delivery.projectId),
+      requirementId: asTrimmedString(delivery.requirementId),
+      venueId: asTrimmedString(delivery.venueId),
+      zoneId: asTrimmedString(delivery.zoneId) || "exterior",
+      startsAt: asIsoString(delivery.startsAt)!,
+      endsAt: asIsoString(delivery.endsAt)!,
+      activity: boundText(delivery.activity, MAX_VENUE_NOTE_LENGTH),
+    };
   const projectWork = asRecord(raw.projectWork);
   if (
     asTrimmedString(projectWork.projectId) &&
@@ -1732,6 +1749,13 @@ function coerceProjects(value: unknown): VillageProject[] {
           id,
           title,
           kind: raw.kind,
+          ...(raw.plan
+            ? {
+                plan: readProjectPlan(raw.plan, {
+                  classes: validVenueClasses(draft.classes) ? draft.classes : ["other"],
+                } as VillageVenue),
+              }
+            : {}),
           ...(asRecord(raw.opening).version === 1
             ? {
                 opening: {
@@ -1834,6 +1858,34 @@ function coerceProjects(value: unknown): VillageProject[] {
                   return residentId
                     ? [{ residentId, evidenceId: asTrimmedString(row.evidenceId), at: asIsoString(row.at) ?? "" }]
                     : [];
+                })
+              : [],
+            deliveries: Array.isArray(flow.deliveries)
+              ? flow.deliveries.flatMap((value) => {
+                  const row = asRecord(value);
+                  if (
+                    !asTrimmedString(row.requirementId) ||
+                    !asTrimmedString(row.residentId) ||
+                    !asTrimmedString(row.sourceId) ||
+                    !asTrimmedString(row.evidenceId) ||
+                    !Number.isInteger(row.revision) ||
+                    !asIsoString(row.agreedAt)
+                  )
+                    return [];
+                  return [
+                    {
+                      requirementId: asTrimmedString(row.requirementId),
+                      residentId: asTrimmedString(row.residentId),
+                      sourceId: asTrimmedString(row.sourceId),
+                      revision: Number(row.revision),
+                      evidenceId: asTrimmedString(row.evidenceId),
+                      agreedAt: asIsoString(row.agreedAt)!,
+                      startsAt: asIsoString(row.startsAt) ?? "",
+                      completesAt: asIsoString(row.completesAt) ?? "",
+                      completedAt: asIsoString(row.completedAt) ?? "",
+                      blockedReason: boundText(row.blockedReason, MAX_VENUE_NOTE_LENGTH),
+                    },
+                  ];
                 })
               : [],
             builderId: asTrimmedString(flow.builderId),

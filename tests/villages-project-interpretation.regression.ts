@@ -13,6 +13,7 @@ import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/r
 import {
   acceptProjectRequirements,
   createNewVenueProject,
+  saveProjectPlan,
   createRenovationProject,
   lockProjectBuilder,
   placeNewVenueProject,
@@ -286,6 +287,22 @@ async function main() {
     await createNewVenueProject({ name: "Repair Kiosk", venueClass: "workplace", description: "Small repairs." });
     const projectId = (await readVillageState()).projects[0]!.id;
     await placeNewVenueProject(projectId, { x: 0.7, y: 0.7 });
+    await saveProjectPlan(projectId, {
+      layoutVersion: 1,
+      layout: "common",
+      form: "A repair kiosk",
+      exteriorDescription: "A kiosk entrance.",
+      spaces: [
+        {
+          id: "common:base",
+          venueClass: "workplace",
+          name: "Workshop",
+          purpose: "Repairs",
+          description: "A workbench.",
+        },
+      ],
+      privateSpaces: [],
+    });
     const scopedState = await readVillageState();
     assert.equal(
       projectSpeechContexts(

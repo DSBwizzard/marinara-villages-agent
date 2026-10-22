@@ -36,13 +36,13 @@ try {
           kind: "new-venue",
           title: "Canvas Tent",
           venueId: "tent",
-          status: "finishing",
+          status: "active",
           progress: 100,
           participantIds: [],
           updatedAt: new Date().toISOString(),
           venueDraft: { name: "Canvas Tent", classes: site.classes, description: "A canvas shelter" },
           lifecycle: {
-            phase: "finishing",
+            phase: "builder",
             targetVenueId: "tent",
             change: null,
             affectedIds: [],
@@ -58,7 +58,7 @@ try {
       let submitted;
       await page.route("**/api/villages**", async (route) => {
         const path = new URL(route.request().url()).pathname;
-        if (path.endsWith("/projects/tent-build/open")) submitted = route.request().postDataJSON();
+        if (path.endsWith("/projects/tent-build/plan")) submitted = route.request().postDataJSON();
         const value = path.endsWith("/connections")
           ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
           : path.endsWith("/lorebooks")
@@ -85,11 +85,11 @@ try {
       await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
       await page.getByRole("button", { name: "Projects (1)", exact: true }).click();
       await page.getByRole("button", { name: /NEW VENUE.*Canvas Tent/ }).click();
-      await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
+      await page.getByRole("button", { name: "Define design", exact: true }).click();
       const editor = page.locator(".marinara-capability-villages-project-finish-visit");
       await editor.getByLabel("Physical form", { exact: true }).fill("A tent, or a mat beneath a tree");
       await editor.getByLabel("Exterior appearance", { exact: true }).fill("A sheltered patch beneath a tree.");
-      await expect(editor.getByRole("button", { name: "Open Venue", exact: true })).toBeDisabled();
+      await expect(editor.getByRole("button", { name: "Save plan", exact: true })).toBeDisabled();
       if (layout === "exterior") await editor.getByRole("button", { name: "Use Exterior only", exact: true }).click();
       if (layout === "common" || layout === "both") {
         await editor.getByRole("button", { name: "Add Zone", exact: true }).click();
@@ -108,7 +108,7 @@ try {
         await editor.getByLabel("Room Specification", { exact: true }).fill("A quiet canvas sleeping alcove.");
         await expect(editor.getByText(/The interior is prepared privately from this specification/)).toBeVisible();
       }
-      await editor.getByRole("button", { name: "Open Venue", exact: true }).click();
+      await editor.getByRole("button", { name: "Save plan", exact: true }).click();
       await expect.poll(() => submitted).toBeTruthy();
       assert.equal(submitted.layout, layout);
       assert.equal(submitted.layoutVersion, 1);

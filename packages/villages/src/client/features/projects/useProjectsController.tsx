@@ -378,7 +378,7 @@ export function useProjectsController({
     }
   };
   const openVenue = async () => {
-    const next = await action("open", {
+    const next = await action(project.kind === "new-venue" && phase !== "finishing" ? "plan" : "open", {
       form,
       venueType: openingVenueType,
       exteriorDescription: exterior,
