@@ -8,7 +8,7 @@ Villages requires Engine 2.5.0 or later, before 4.0.0. Install the package and r
 
 Founding proceeds through Place, People, Map, Venues and Review. Write one Place description covering the location, world and current conditions, choose your Persona and up to three starting residents, then prepare the map and Venues. There is no required Starting Scenario or start-mode selector. An existing place need not be newly established or in disrepair.
 
-Map artwork is required, through explicit generation or upload. Uploads need at least 768 pixels on the shorter side and 1024 on the longer side, with proportions between 2:3 and 2:1. A 3:2 landscape image is recommended. Existing saved maps retain their compatibility; images are not automatically cropped, stretched or upscaled.
+Map artwork is required, through explicit generation or upload. New generation requests a continuous overhead environment at 2560 × 1440 (16:9), with scenery extending to the edges and no baked-in interface or labels. Providers may return different dimensions. Uploads need at least 768 pixels on the shorter side and 1024 on the longer side, with proportions between 2:3 and 2:1. Existing saved maps retain their dimensions and placements; images are not automatically cropped, stretched or upscaled.
 
 Quick Start can suggest required Venues from the founding context. It preserves manual edits and existing placements. **Check suggestions** retrieves a saved result after a lost connection without another generation request. Invalid or incomplete suggestions preserve the draft and require deliberate retry.
 
@@ -99,7 +99,7 @@ Refresh restores saved progress. Incomplete gathering or introduction writing st
 
 ## Map, artwork and sprites
 
-Map exploration supports pan, zoom and saved Venue photographs. On phones, Map, Places, People and More provide navigation; selection previews a destination, and **Visit** starts entry. Portrait is the supported phone design. Resizing retains drafts and reading position, and reduced motion skips notebook movement.
+Map exploration fills the play area with pan, zoom, and labeled Venue markers. The searchable Places navigator is a collapsible desktop rail and a phone drawer. Venue names sit centered below their dots. Tapping or keyboard-selecting a map marker opens its Venue screen directly. Returning to the map retains the camera position. Places remains a separate searchable list. Selecting a destination from Places centers it without entering; **Visit** starts entry. Map, Places, People and More provide navigation on both layouts. People retains its shared notebook. Portrait is the supported phone design. Resizing retains search, drafts and reading position, and reduced motion skips notebook movement.
 
 Scenery styles apply to future pictures. Zone artwork depicts that Zone from within its saved physical context and cannot establish gameplay facts. First authorized discovery of a private space permits one background picture attempt; failure does not automatically retry. Later regeneration is deliberate. See [Zone pictures](../../docs/zone-pictures.md).
 

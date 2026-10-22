@@ -446,14 +446,13 @@ export function isTownMapImage(value: string): boolean {
  * the village can answer: a frame that borrowed whatever shape the tab happened
  * to have could only ever show a picture that matched it, and every other
  * picture would either be squeezed or leave a margin nobody chose. The numbers
- * are also the generation target and the recommended upload size. The 3:2
- * landscape matches the reference maps; older 19:13 frames retain their shape
- * on each village record.
+ * are also the generation target and the recommended upload size. New maps use
+ * a 16:9 landscape; saved maps retain their own canvas and placement coordinates.
  */
 export const LEGACY_TOWN_MAP_WIDTH = 1216;
 export const LEGACY_TOWN_MAP_HEIGHT = 832;
-export const TOWN_MAP_EXPECTED_WIDTH = 1536;
-export const TOWN_MAP_EXPECTED_HEIGHT = 1024;
+export const TOWN_MAP_EXPECTED_WIDTH = 2560;
+export const TOWN_MAP_EXPECTED_HEIGHT = 1440;
 
 export function villageCurrentSetting(village: {
   setting: string;

@@ -157,6 +157,9 @@ try {
       { ...place("unplaced", null, null), name: "Unplaced Venue", presentation: { image: null, x: null, y: null } },
       { ...place("worksite", 0.8, 0.2), name: "New Mill" },
       { ...place("edge", 0.5, 0.01), name: "Edge Venue" },
+      { ...place("left-edge", 0.01, 0.5), name: "Left Edge Venue" },
+      { ...place("right-edge", 0.99, 0.5), name: "Right Edge Venue" },
+      { ...place("bottom-edge", 0.5, 0.99), name: "Bottom Edge Venue" },
     ];
     fixture.projects = [
       {
@@ -225,453 +228,252 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const home = page.locator("." + P + "-home-full");
-    await expect(home).toHaveAttribute("data-mobile", String(mobile));
     const nav = page.getByRole("navigation", { name: "Village exploration" });
-    const canvas = home.locator("." + P + "-canvas");
+    const navigator = page.getByRole("complementary", { name: "Places navigator" });
+    const canvas = home.getByRole("group", { name: "Map navigation" });
     const stage = home.locator("." + P + "-stage");
+    const art = canvas.locator("img").first();
     const geometry = () =>
-      canvas.locator("." + P + "-canvas-img").evaluate((el) => {
-        const rect = el.getBoundingClientRect();
-        return {
-          left: el.style.left || rect.left + "px",
-          top: el.style.top || rect.top + "px",
-          width: el.style.width || rect.width + "px",
-          height: el.style.height || rect.height + "px",
-        };
+      art.evaluate((node) => {
+        const r = node.getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
       });
-    await expect(nav.getByRole("button", { name: "Map", exact: true })).toBeVisible();
-    await expect(home.getByRole("button", { name: "Events (NYI)" })).toHaveCount(0);
-    for (const button of await nav.getByRole("button").all()) {
-      const box = await button.boundingBox();
-      assert.ok(box.height >= (mobile ? 48 : 40) && box.y + box.height <= height + 1);
-    }
-    await expect.poll(async () => (await geometry()).width).not.toBe("");
-    const initial = await geometry();
-    const initialZoom = Number(await stage.getAttribute("data-navigation-zoom"));
+    const cameraGeometry = async () => {
+      const image = await geometry(),
+        frame = await canvas.boundingBox();
+      return { left: image.left - frame.x, top: image.top - frame.y, width: image.width, height: image.height };
+    };
+    const showPlaces = async () => {
+      if (!(await navigator.isVisible())) await nav.getByRole("button", { name: "Places", exact: true }).click();
+      await expect(navigator).toBeVisible();
+    };
+    const select = async (name) => {
+      await showPlaces();
+      await navigator.getByRole("searchbox").fill(name);
+      await navigator.getByRole("button", { name: new RegExp("^" + name) }).click();
+      await settleLayout();
+    };
     const screenshot = async (name) => {
       if (process.env.VILLAGES_VISUAL_OUTPUT)
         await page.screenshot({
-          path: resolve(
-            process.env.VILLAGES_VISUAL_OUTPUT,
-            "polaroid-map-" + name + "-" + width + "x" + height + ".png",
-          ),
+          path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "navigator-" + name + "-" + width + "x" + height + ".png"),
         });
     };
-    await expect(home.getByRole("button", { name: /^(Zoom in|Zoom out|Reset map view)$/ })).toHaveCount(0);
-    await expect(home.getByRole("button", { name: /^Events/ })).toHaveCount(0);
-    await expect(home).toHaveCSS("background-color", "rgb(41, 37, 31)");
-    const venueCard = (name) =>
-      page.locator("." + P + "-venue-profile").filter({ has: page.getByRole("heading", { name, exact: true }) });
-    const returnFromVenue = async () => {
-      await page.getByRole("button", { name: "Back", exact: true }).click();
-      if (await page.getByRole("button", { name: "Close ×", exact: true }).isVisible())
-        await page.getByRole("button", { name: "Close ×", exact: true }).click();
-      if (await page.getByRole("dialog").count()) await page.keyboard.press("Escape");
-      await expect(page.locator("." + P + "-notebook-session")).toHaveCount(0);
-    };
-    const sharedMapBox = await stage.boundingBox();
-    await nav.getByRole("button", { name: "Places", exact: true }).click();
-    const sharedPanel = page.getByRole("dialog", { name: "Places", exact: true });
-    await expect(sharedPanel).toHaveAttribute("data-layout", mobile ? "sheet" : "side");
-    await expect(sharedPanel.getByRole("button", { name: /Unplaced Venue/ })).toBeVisible();
-    await expect(sharedPanel.getByRole("button", { name: /very long readable name/ })).toBeVisible();
-    assert.deepEqual(await stage.boundingBox(), sharedMapBox, "opening browsing never resizes the map");
-    await sharedPanel.getByRole("searchbox").fill("unPLACED");
-    await page.setViewportSize({ width: mobile ? 1100 : 390, height: 844 });
-    await expect(sharedPanel).toHaveAttribute("data-layout", mobile ? "side" : "sheet");
-    await expect(sharedPanel.getByRole("searchbox")).toHaveValue("unPLACED");
-    await expect(sharedPanel.locator("." + P + "-explore-row")).toHaveCount(1);
-    await sharedPanel.getByRole("button", { name: /Unplaced Venue/ }).click();
-    await expect(venueCard("Unplaced Venue")).toBeVisible();
-    await page.setViewportSize({ width, height });
-
-    await returnFromVenue();
-    await expect(nav.getByRole("button", { name: "Places", exact: true })).toBeFocused();
-    await nav.getByRole("button", { name: "Places", exact: true }).click();
-    await expect(sharedPanel.getByRole("searchbox")).toHaveValue("unPLACED");
-    await sharedPanel.getByRole("searchbox").fill("");
-    await page.keyboard.press("Escape");
-    await nav.getByRole("button", { name: "People", exact: true }).click();
-    const sharedPeople = page.getByRole("main", { name: "Villagers directory", exact: true });
-    await expect(sharedPeople.getByRole("button", { name: "Open Taro profile" })).toBeEnabled();
-    await sharedPeople.getByRole("searchbox").fill("Mara");
-    await expect(sharedPeople.locator("." + P + "-directory-card")).toHaveCount(1);
-    await sharedPeople.getByRole("button", { name: "Open Mara profile" }).click();
-    await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
-    await page
-      .getByRole("navigation", { name: "Villager profile sections" })
-      .getByRole("button", { name: "Wishes", exact: true })
-      .click();
-    await expect(page.getByText("No wishes shared yet.", { exact: true })).toBeVisible();
-    await page
-      .getByRole("navigation", { name: "Villager profile sections" })
-      .getByRole("button", { name: "Venues", exact: true })
-      .click();
-    await page.getByRole("button", { name: "View Venue", exact: true }).click();
-    const sharedPreview = venueCard("Village Market");
-    await expect(sharedPreview.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
-    await returnFromVenue();
-    await expect(nav.getByRole("button", { name: "People", exact: true })).toBeFocused();
-    await nav.getByRole("button", { name: "People", exact: true }).click();
-    await sharedPeople.getByRole("searchbox").fill("");
-    await page.keyboard.press("Escape");
-    // Empty and no-match states stay usable on either layout.
-    const savedPeople = fixture.villagers;
-    fixture.villagers = [];
-    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await nav.getByRole("button", { name: "People", exact: true }).click();
-    await expect(sharedPeople.getByText("No villagers yet.")).toBeVisible();
-    await sharedPeople.getByRole("searchbox").fill("missing name");
-    await expect(sharedPeople.getByText("No villagers yet.")).toBeVisible();
-    await sharedPeople.getByRole("searchbox").fill("");
-    fixture.villagers = savedPeople;
-    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(sharedPeople.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await home.getByRole("button", { name: "Notices (1)", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Noticeboard", level: 1 })).toBeVisible();
-    await expect(page.locator("." + P + '-sectioned-menu[data-page="noticeboard"]')).toHaveCSS(
-      "background-color",
-      "rgb(41, 37, 31)",
-    );
-    await page.getByRole("button", { name: "Back to menu", exact: true }).click();
-    await page.getByRole("button", { name: "Events", exact: true }).click();
-    await expect(page.getByText("The market opened this morning.", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu", exact: true }).click();
-    await page.getByRole("button", { name: "Back to the village", exact: true }).click();
-    // Main navigation remains compact, readable, and inside the host at every size.
-    for (const control of await home.locator("." + P + "-home-bar button, ." + P + "-explore-nav button").all()) {
-      const bounds = await control.boundingBox();
-      assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, "toolbar control stays within the viewport");
-      assert.ok(bounds.y >= shell && bounds.y + bounds.height <= height + 1, "control stays inside Villages");
+    const settleLayout = () =>
+      page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(home).toHaveAttribute("data-mobile", String(mobile));
+    await expect(art).toHaveAttribute("src", mapImage);
+    for (const name of ["Zoom out", "Reset map view", "Zoom in"]) {
+      const control = home.getByRole("button", { name, exact: true });
+      if (mobile) await expect(control).toHaveCount(0);
+      else await expect(control).toBeVisible();
     }
-    await screenshot("warm-map");
-    if (!mobile) {
-      await expect(home.locator("." + P + "-pin-photo-card")).toHaveCount(4);
-      const edgePin = home.locator('[data-pin-id="edge"]');
-      await edgePin.focus();
-      await page.keyboard.press("Enter");
-      await expect(venueCard("Edge Venue")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
-      await screenshot("warm-preview");
-      await returnFromVenue();
-      await expect(edgePin).toBeFocused();
-      await nav.getByRole("button", { name: "Places", exact: true }).click();
-      await sharedPanel.getByRole("button", { name: /New Mill/ }).click();
-      const worksite = venueCard("New Mill");
-      await expect(worksite.getByRole("button", { name: "View Project", exact: true })).toBeVisible();
-      await expect(worksite.getByRole("button", { name: "Visit venue", exact: true })).toHaveCount(0);
-      assert.equal(sceneRequests.length, 0);
-      await returnFromVenue();
-      await nav.getByRole("button", { name: "Places", exact: true }).click();
-      await sharedPanel.getByRole("searchbox").fill("Village Market");
-      await sharedPanel.getByRole("button", { name: /Village Market/ }).click();
-      await sharedPreview.getByRole("button", { name: "Visit venue", exact: true }).click();
-      await expect.poll(() => sceneRequests.length).toBe(1);
-      await expect(page.getByRole("textbox", { name: "Message at Village Market" })).toBeVisible();
-      await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-      await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
-      await page.getByRole("button", { name: "Return to map", exact: true }).click();
-      await expect(home).toBeVisible();
-      assert.deepEqual(errors, []);
-      await page.close();
-      continue;
-    }
-    // Distinct nearby venues never collapse into a synthetic marker.
-    await expect(home.locator('[data-pin-id="market"]')).toHaveCount(1);
-    await expect(home.locator('[data-pin-id="crowded"]')).toHaveCount(1);
-    await expect(home.locator("[data-group-ids], ." + P + "-explore-count")).toHaveCount(0);
-    // Add actual saved anchors at all four visible frame edges, including on compact portrait phones.
-    const pictureBox = Object.fromEntries(Object.entries(initial).map(([key, value]) => [key, parseFloat(value)]));
-    const frameBox = await canvas.boundingBox();
-    for (const [id, px, py] of [
-      ["left-edge", 2, frameBox.height / 2],
-      ["right-edge", frameBox.width - 2, frameBox.height / 2],
-      ["top-edge", frameBox.width / 2, 2],
-      ["bottom-edge", frameBox.width / 2, frameBox.height - 2],
-    ]) {
-      const venue = place(id, (px - pictureBox.left) / pictureBox.width, (py - pictureBox.top) / pictureBox.height);
-      venue.name = id + " Venue";
-      venue.presentation.image.url = photo(id === "left-edge" ? 2400 : 800, id === "left-edge" ? 800 : 2400, "#7596a4");
-      fixture.settings.venues.push(venue);
-    }
-    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(home.locator('[data-pin-id="left-edge"]')).toHaveCount(1);
-    const assertMapMarkers = async () => {
-      const map = await geometry();
-      const picture = Object.fromEntries(Object.entries(map).map(([key, value]) => [key, parseFloat(value)]));
-      const frame = await canvas.boundingBox();
-      const expected = fixture.settings.venues.filter(
-        (v) =>
-          typeof v.presentation.x === "number" &&
-          typeof v.presentation.y === "number" &&
-          picture.left + v.presentation.x * picture.width >= 0 &&
-          picture.left + v.presentation.x * picture.width <= frame.width &&
-          picture.top + v.presentation.y * picture.height >= 0 &&
-          picture.top + v.presentation.y * picture.height <= frame.height,
+    await expect(home.locator("." + P + "-pin-photo-card")).toHaveCount(0);
+    await expect(home.locator('[data-kind="person"]')).toHaveCount(0);
+    const cover = async () => {
+      const image = await geometry(),
+        frame = await canvas.boundingBox();
+      assert.ok(
+        image.width + 1 >= frame.width && image.height + 1 >= frame.height,
+        "map fills its available play area",
       );
-      await expect(home.locator("." + P + '-explore-marker[data-kind="place"]')).toHaveCount(expected.length);
-      for (const venue of expected) {
-        const marker = home.locator('[data-pin-id="' + venue.id + '"]');
-        const anchor = await marker.evaluate((el) => ({
-          left: parseFloat(el.parentElement.style.left),
-          top: parseFloat(el.parentElement.style.top),
-        }));
-        assert.ok(
-          Math.abs(anchor.left - (picture.left + venue.presentation.x * picture.width)) < 0.01,
-          "venue anchor retains its exact x coordinate",
-        );
-        assert.ok(
-          Math.abs(anchor.top - (picture.top + venue.presentation.y * picture.height)) < 0.01,
-          "venue anchor retains its exact y coordinate",
-        );
-        const button = await marker.boundingBox();
-        assert.equal(button.width, 64, "legacy styles cannot shrink venue buttons");
-        assert.equal(button.height, 76);
-        assert.ok(
-          Math.abs(button.x + button.width / 2 - frame.x - anchor.left) < 0.1,
-          "marker stays centered on its map anchor even at an edge",
-        );
-        assert.ok(
-          Math.abs(button.y + button.height / 2 - frame.y - anchor.top) < 0.1,
-          "marker never follows the viewport vertically",
-        );
-        const card = marker.locator("." + P + "-pin-photo-card");
-        assert.equal((await card.boundingBox()).width, 56);
-        await expect(card).toHaveCSS("background-color", "rgb(250, 244, 231)");
-        await expect(card.locator("." + P + "-pin-photo-tack")).toHaveCount(0);
-        await expect(card.locator("." + P + "-pin-name")).toHaveText(venue.name);
-        const thumbnail = card.locator("." + P + "-pin-photo");
-        const bounds = await thumbnail.boundingBox();
-        assert.ok(Math.abs(bounds.width - 48) < 0.01, "avatar width stays 48 CSS pixels within transform rounding");
-        assert.equal(bounds.height, 48);
-        await expect(thumbnail.locator("img")).toHaveCSS("object-fit", "cover");
-        const names = fixture.villagers
-          .filter((resident) => resident.place?.id === venue.id)
-          .slice(0, 3)
-          .map((resident) => resident.name);
-        const initials = marker.locator("." + P + "-explore-initial");
-        await expect(initials).toHaveCount(names.length);
-        for (let i = 0; i < names.length; i++) {
-          await expect(initials.nth(i)).toHaveAttribute("title", names[i]);
-          await expect(initials.nth(i)).toHaveText(Array.from(names[i])[0].toLocaleUpperCase());
-          const badge = await initials.nth(i).boundingBox();
-          assert.equal(badge.width, 14);
-          assert.equal(badge.height, 14);
-        }
-        await expect(marker).toHaveAttribute("aria-label", venue.name);
-      }
-      await expect(home.locator("." + P + "-explore-marker[data-kind=person]")).toHaveCount(0);
-      await expect(home.locator("." + P + "-explore-marker ." + P + "-explore-face")).toHaveCount(0);
-      await expect(canvas).toHaveCSS("overflow", "hidden");
+      assert.ok(Math.abs(image.width / image.height - 1.5) < 0.001, "saved artwork retains its actual aspect ratio");
     };
-    await assertMapMarkers();
-    await screenshot("map");
-    const edgeMarker = home.locator('[data-pin-id="left-edge"]');
-    const edgeBounds = await edgeMarker.boundingBox();
-    assert.ok(edgeBounds.x < frameBox.x, "edge cards clip naturally instead of sliding inward");
-    await edgeMarker.tap({ position: { x: 56, y: 38 } });
-    await expect(venueCard("left-edge Venue")).toBeVisible();
-    assert.equal(sceneRequests.length, 0);
-    await returnFromVenue();
-    await nav.getByRole("button", { name: "Places", exact: true }).click();
-    let sheet = page.getByRole("dialog", { name: "Places", exact: true });
-    await expect(sheet.getByRole("heading", { name: "Places", exact: true })).toBeFocused();
-    await expect(sheet.getByRole("button", { name: /Unplaced Venue/ })).toBeVisible();
-    assert.deepEqual(await geometry(), initial, "opening a sheet never resizes the map");
-    await screenshot("places");
-    await sheet.getByRole("searchbox", { name: "Search places" }).fill("unPLACED");
-    await expect(sheet.locator("." + P + "-explore-row")).toHaveCount(1);
-    if (height >= 800) {
-      const beforeKeyboard = await geometry();
-      await page.evaluate((height) => {
-        window.explorationViewport.height = height - 260;
-        window.explorationViewport.dispatchEvent(new Event("resize"));
-      }, height);
-      const navBox = await nav.boundingBox();
-      const searchBox = await sheet.getByRole("searchbox").boundingBox();
-      assert.ok(navBox.y + navBox.height <= height - 260 + 1, "navigation stays above the search keyboard");
-      assert.ok(searchBox.y + searchBox.height <= height - 260 + 1, "search stays above the keyboard");
-      assert.deepEqual(await geometry(), beforeKeyboard, "visual keyboard does not move the map");
-      await page.evaluate((height) => {
-        window.explorationViewport.height = height;
-        window.explorationViewport.dispatchEvent(new Event("resize"));
-      }, height);
+    await cover();
+    for (const control of await nav.getByRole("button").all()) {
+      const b = await control.boundingBox();
+      assert.ok(
+        b.height >= (mobile ? 48 : 40) && b.x >= 0 && b.x + b.width <= width + 1 && b.y + b.height <= height + 1,
+      );
     }
-    await sheet.getByRole("searchbox").fill("no such place");
-    await expect(sheet.getByRole("status")).toHaveText("No matches. Try another name.");
-    await page.keyboard.press("Escape");
-    await expect(nav.getByRole("button", { name: "Places", exact: true })).toBeFocused();
-    await nav.getByRole("button", { name: "People", exact: true }).click();
-    sheet = page.getByRole("main", { name: "Villagers directory", exact: true });
-    await expect(page.locator("." + P + "-notebook-session")).toHaveAttribute("data-phase", "open");
-    await expect(sheet.getByRole("button", { name: "Open Taro profile" })).toBeEnabled();
-    await expect(sheet.locator("." + P + "-avatar img")).toHaveCount(4);
-    for (const row of await sheet.locator("." + P + "-directory-card").all()) {
-      const face = row.locator("." + P + "-avatar");
-      const bounds = await face.boundingBox();
-      assert.ok(Math.abs(bounds.width - 48) < 0.01, "People portrait is 48px wide within browser rounding");
-      assert.ok(Math.abs(bounds.height - 60) < 0.01, "People portrait is 60px tall within browser rounding");
-      const rowBounds = await row.boundingBox();
-      assert.ok(rowBounds.height >= 60 && rowBounds.height <= 150, "People stays a compact row list");
-      await expect(face).toHaveCSS("position", "relative");
-      await expect(face).toHaveCSS("overflow", "hidden");
-      const cropped = face.locator('img[style*="position: absolute"]');
-      if (await cropped.count())
-        assert.ok(
-          await cropped.evaluate((img) => img.offsetParent === img.parentElement),
-          "saved rectangle crop belongs to its portrait frame",
-        );
-    }
-    const eli = sheet.getByRole("button", { name: "Open Eli profile" }).locator("." + P + "-avatar img");
-    await expect(eli).toHaveCSS("position", "absolute");
-    assert.equal(await eli.evaluate((img) => img.style.width), "200%");
-    assert.equal(await eli.evaluate((img) => img.style.height), "400%");
-    await expect(sheet.getByRole("button", { name: "Open Lina profile" }).locator("img")).toHaveCSS(
-      "transform",
-      /matrix\(2,/,
+    if (!mobile) await expect(navigator).toBeVisible();
+    else await expect(navigator).toHaveCount(0);
+    await showPlaces();
+    await expect(navigator).toHaveAttribute("data-layout", mobile ? "navigator-sheet" : "navigator-rail");
+    await navigator.getByRole("searchbox").fill("unPLACED");
+    await expect(navigator.locator("." + P + "-explore-row")).toHaveCount(1);
+    await navigator.getByRole("button", { name: /Unplaced Venue/ }).click();
+    await expect(navigator.getByRole("button", { name: "Visit", exact: true })).toBeVisible();
+    await navigator.getByRole("button", { name: "View venue", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Unplaced Venue", exact: true })).toBeVisible();
+    assert.equal(sceneRequests.length, 0, "selecting and reading a Venue never starts a Scene");
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await showPlaces();
+    await expect(navigator.getByRole("searchbox")).toHaveValue("unPLACED");
+    await page.setViewportSize({ width: mobile ? 1100 : 390, height: 844 });
+    await expect(home).toHaveAttribute("data-mobile", String(!mobile));
+    await showPlaces();
+    await expect(navigator).toHaveAttribute("data-layout", mobile ? "navigator-rail" : "navigator-sheet");
+    await expect(navigator.getByRole("searchbox")).toHaveValue("unPLACED");
+    await page.setViewportSize({ width, height });
+    await navigator.getByRole("searchbox").fill("missing location");
+    await expect(navigator.getByRole("status")).toHaveText("No matching places.");
+    await navigator.getByRole("searchbox").fill("");
+    await select("Village Market");
+    await expect(navigator.locator('[data-selected="true"] .' + P + "-explore-row")).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
-    await expect(sheet.getByRole("button", { name: "Open Taro profile" }).locator("img")).toHaveCSS(
+    const marker = home.locator('[data-pin-id="market"]');
+    await expect(marker).toBeInViewport({ ratio: 1 });
+    const markerBox = await marker.boundingBox();
+    assert.ok(markerBox.width >= 44 && markerBox.height >= 44, "location targets remain touch sized");
+    if (mobile) {
+      const drawer = await navigator.boundingBox();
+      assert.ok(markerBox.y + markerBox.height <= drawer.y + 1, "drawer does not cover selected map target");
+    }
+    await cover();
+    assert.equal(sceneRequests.length, 0);
+    const dot = await marker.locator("." + P + "-map-point").boundingBox();
+    const label = await marker.locator("." + P + "-map-label").boundingBox();
+    assert.ok(
+      label.y > dot.y + dot.height && Math.abs(label.x + label.width / 2 - dot.x - dot.width / 2) < 1,
+      "venue name is centered below its dot",
+    );
+    if (mobile) await marker.locator("." + P + "-map-point").tap();
+    else await marker.locator("." + P + "-map-point").click();
+    await expect(page.getByRole("heading", { name: "Village Market", exact: true })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await screenshot("venue");
+    assert.equal(sceneRequests.length, 0, "opening a Venue directly never starts a Scene");
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await settleLayout();
+    const beforeMarker = await cameraGeometry();
+    await marker.press("Enter");
+    await expect(page.getByRole("heading", { name: "Village Market", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect.poll(cameraGeometry).toEqual(beforeMarker);
+    for (const [id, name] of [
+      ["edge", "Edge Venue"],
+      ["left-edge", "Left Edge Venue"],
+      ["right-edge", "Right Edge Venue"],
+      ["bottom-edge", "Bottom Edge Venue"],
+      ["crowded", "A nearby venue with a very long readable name"],
+    ]) {
+      await select(name);
+      if (mobile) await navigator.getByRole("button", { name: "Close places" }).click();
+      await settleLayout();
+      const beforeTap = await cameraGeometry();
+      await home
+        .locator('[data-pin-id="' + id + '"]')
+        .locator("." + P + "-map-point")
+        .click();
+      await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await expect.poll(cameraGeometry).toEqual(beforeTap);
+    }
+    assert.equal(sceneRequests.length, 0, "map and keyboard selections remain free of Scene requests");
+    await select("New Mill");
+    await expect(navigator.getByRole("button", { name: "View Project", exact: true })).toBeVisible();
+    await expect(navigator.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
+    await navigator.getByRole("searchbox").fill("");
+    if (mobile) await navigator.getByRole("button", { name: "Close places" }).click();
+    const client = mobile ? await page.context().newCDPSession(page) : null;
+    const touch = (type, points) =>
+      client.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: points.map(([x, y], id) => ({ x, y, id })),
+      });
+    if (!mobile) await home.getByRole("button", { name: "Reset map view" }).click();
+    await settleLayout();
+    const initial = await geometry();
+    if (mobile) {
+      const frame = await canvas.boundingBox();
+      const px = frame.x + frame.width * 0.5,
+        py = frame.y + frame.height * 0.4;
+      await touch("touchStart", [
+        [px - 20, py],
+        [px + 20, py],
+      ]);
+      await touch("touchMove", [
+        [px - 30, py],
+        [px + 30, py],
+      ]);
+      await touch("touchEnd", []);
+    } else {
+      await home.getByRole("button", { name: "Zoom in", exact: true }).click();
+    }
+    await expect
+      .poll(async () => (await geometry()).width, { message: `pinch or zoom at ${width}x${height}` })
+      .toBeGreaterThan(initial.width);
+    await select("Village Market");
+    // A new selection after zooming must become the next drag's starting view.
+    const before = await geometry(),
+      box = await canvas.boundingBox();
+    const x = box.x + box.width * 0.25,
+      y = box.y + box.height * 0.72;
+    if (mobile) {
+      await touch("touchStart", [[x, y]]);
+      await touch("touchMove", [[x + 22, y + 12]]);
+      await touch("touchEnd", []);
+    } else {
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + 22, y + 12, { steps: 4 });
+      await page.mouse.up();
+    }
+    const moved = await geometry();
+    const expectedLeft = Math.min(box.x, Math.max(box.x + box.width - before.width, before.left + 22));
+    const expectedTop = Math.min(box.y, Math.max(box.y + box.height - before.height, before.top + 12));
+    assert.ok(
+      Math.abs(moved.left - expectedLeft) < 2 &&
+        Math.abs(moved.top - expectedTop) < 2 &&
+        Math.abs(moved.width - before.width) < 1,
+      `drag starts at the selected camera rather than an old gesture: ${JSON.stringify({ width, before, moved, box })}`,
+    );
+    if (mobile) await navigator.getByRole("button", { name: "Close places" }).click();
+    await settleLayout();
+    const retained = await geometry();
+    await nav.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("button", { name: "Back to the village", exact: true }).click();
+    await expect.poll(geometry).toEqual(retained);
+    if (mobile) {
+      await showPlaces();
+      await navigator.getByRole("searchbox").fill("Village Market");
+      if (height >= 640) {
+        await page.evaluate((height) => {
+          window.explorationViewport.height = height - 260;
+          window.explorationViewport.dispatchEvent(new Event("resize"));
+        }, height);
+        await settleLayout();
+        const n = await nav.boundingBox(),
+          s = await navigator.getByRole("searchbox").boundingBox();
+        const drawer = await navigator.boundingBox(),
+          close = await navigator.getByRole("button", { name: "Close places" }).boundingBox();
+        assert.ok(
+          s.y >= drawer.y && close.y >= drawer.y,
+          "short-phone search and Close remain inside the visible drawer",
+        );
+        assert.ok(
+          n.y + n.height <= height - 260 + 1 && s.y + s.height <= height - 260 + 1,
+          "search and navigation clear the keyboard",
+        );
+        await page.evaluate((height) => {
+          window.explorationViewport.height = height;
+          window.explorationViewport.dispatchEvent(new Event("resize"));
+        }, height);
+      }
+      await navigator.getByRole("button", { name: "Close places" }).click();
+    }
+    await nav.getByRole("button", { name: "People", exact: true }).click();
+    const people = page.getByRole("main", { name: "Villagers directory", exact: true });
+    await expect(people.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
+    const eli = people.getByRole("button", { name: "Open Eli profile" }).locator("." + P + "-avatar img");
+    await expect(eli).toHaveCSS("position", "absolute");
+    assert.equal(await eli.evaluate((img) => img.style.height), "400%");
+    await expect(people.getByRole("button", { name: "Open Taro profile" }).locator("img")).toHaveCSS(
       "object-fit",
       "contain",
     );
-    await expect(sheet.getByRole("button", { name: "Open Noor profile" }).locator("img")).toHaveCount(0);
-    await screenshot("people");
-    await sheet.getByRole("button", { name: "Open Mara profile" }).click();
-    await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
-    await page
-      .getByRole("navigation", { name: "Villager profile sections" })
-      .getByRole("button", { name: "Venues", exact: true })
-      .click();
-    await page.getByRole("button", { name: "View Venue", exact: true }).click();
-    sheet = venueCard("Village Market");
-    await expect(sheet.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
-    assert.equal(sceneRequests.length, 0);
-    await returnFromVenue();
-    await expect(nav.getByRole("button", { name: "People", exact: true })).toBeFocused();
-    // Gesture handling uses real Chromium touch events, including anchored two-finger pinch.
-    const box = await canvas.boundingBox();
-    const client = await page.context().newCDPSession(page);
-    const touch = (type, points) =>
-      client.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([x, y], id) => ({ x, y, id })) });
-    const x = box.x + box.width * 0.35,
-      y = box.y + box.height * 0.25;
-    await touch("touchStart", [
-      [x - 15, y],
-      [x + 15, y],
-    ]);
-    await touch("touchMove", [
-      [x - 30, y],
-      [x + 30, y],
-    ]);
-    await touch("touchEnd", []);
-    await expect(stage).toHaveAttribute("data-navigation-zoom", /./);
-    const afterPinch = await geometry();
-    assert.notEqual(afterPinch.width, initial.width);
-    const anchorX = box.width * 0.35,
-      anchorY = box.height * 0.25;
-    assert.ok(
-      Math.abs(
-        (anchorX - parseFloat(initial.left)) / parseFloat(initial.width) -
-          (anchorX - parseFloat(afterPinch.left)) / parseFloat(afterPinch.width),
-      ) < 0.005,
-      "pinch keeps its horizontal anchor",
-    );
-    assert.ok(
-      Math.abs(
-        (anchorY - parseFloat(initial.top)) / parseFloat(initial.height) -
-          (anchorY - parseFloat(afterPinch.top)) / parseFloat(afterPinch.height),
-      ) < 0.005,
-      "pinch keeps its vertical anchor",
-    );
-    await touch("touchStart", [[x, y]]);
-    await touch("touchMove", [[x + 25, y + 20]]);
-    await touch("touchEnd", []);
-    assert.notDeepEqual(await geometry(), afterPinch, "one-finger pan moves the zoomed map");
-    await assertMapMarkers();
-    await screenshot("panned");
-
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    // Pinching inward is the only zoom-out interaction and remains bounded.
-    await touch("touchStart", [
-      [x - 30, y],
-      [x + 30, y],
-    ]);
-    await touch("touchMove", [
-      [x - 20, y],
-      [x + 20, y],
-    ]);
-    await touch("touchEnd", []);
-    const retained = await geometry();
-    await nav.getByRole("button", { name: "More", exact: true }).click();
-    await page.getByRole("button", { name: "Events", exact: true }).click();
-    await expect(page.getByText("The market opened this morning.", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu", exact: true }).click();
-    await page.getByRole("button", { name: "Back to the village", exact: true }).click();
-    await expect.poll(geometry, { message: "menu roundtrip retains map view" }).toEqual(retained);
-    await nav.getByRole("button", { name: "Places", exact: true }).click();
-    sheet = page.getByRole("dialog", { name: "Places", exact: true });
-    await sheet.getByRole("searchbox").fill("Village Market");
-    await sheet.getByRole("button", { name: /Village Market/ }).click();
-
-    await returnFromVenue();
-    await expect.poll(geometry, { message: "Venue roundtrip retains map view" }).toEqual(retained);
-    await touch("touchStart", [
-      [x - 60, y],
-      [x + 60, y],
-    ]);
-    await touch("touchMove", [
-      [x - 5, y],
-      [x + 5, y],
-    ]);
-    await touch("touchEnd", []);
-    assert.equal(Number(await stage.getAttribute("data-navigation-zoom")), initialZoom);
-    await assertMapMarkers();
-    // A worksite preview offers its existing Project action, never an invalid Visit.
-    await nav.getByRole("button", { name: "Places", exact: true }).click();
-    sheet = page.getByRole("dialog", { name: "Places", exact: true });
-    await sheet.getByRole("searchbox").fill("New Mill");
-    await sheet.getByRole("button", { name: /New Mill/ }).click();
-    sheet = venueCard("New Mill");
-    await expect(sheet.getByRole("button", { name: "View Project", exact: true })).toBeVisible();
-    await expect(sheet.getByRole("button", { name: "Visit venue", exact: true })).toHaveCount(0);
-    await returnFromVenue();
-    // Polling shows a deleted Venue explicitly and still preserves map replacement.
-    await nav.getByRole("button", { name: "Places", exact: true }).click();
-    await page.getByRole("dialog", { name: "Places", exact: true }).getByRole("searchbox").fill("Village Market");
-    await page
-      .getByRole("dialog", { name: "Places", exact: true })
-      .getByRole("button", { name: /Village Market/ })
-      .click();
-    fixture.settings.venues = fixture.settings.venues.filter((v) => v.id !== "market");
-    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(page.getByRole("heading", { name: "Venue unavailable", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back", exact: true }).click();
-    await touch("touchStart", [
-      [x - 15, y],
-      [x + 15, y],
-    ]);
-    await touch("touchMove", [
-      [x - 30, y],
-      [x + 30, y],
-    ]);
-    await touch("touchEnd", []);
-    servedImage = image("#638966");
-    fixture.settings.townMapImageSetAt = new Date(Date.now() + 1000).toISOString();
-    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(canvas.locator("." + P + "-canvas-img")).toHaveAttribute("src", servedImage);
-    await expect.poll(geometry, { message: "replacing the map resets its browsing view" }).toEqual(initial);
-    fixture.settings.venues.unshift({ ...place("market", 0.5, 0.5), name: "Village Market" });
-    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await nav.getByRole("button", { name: "Places", exact: true }).click();
-    await page.getByRole("dialog", { name: "Places", exact: true }).getByRole("searchbox").fill("Village Market");
-    await page
-      .getByRole("dialog", { name: "Places", exact: true })
-      .getByRole("button", { name: /Village Market/ })
-      .click();
-    assert.equal(sceneRequests.length, 0, "all exploration remains free of scene operations");
-    await screenshot("preview");
-    await venueCard("Village Market").getByRole("button", { name: "Visit venue", exact: true }).click();
+    await expect(people.getByRole("button", { name: "Open Noor profile" }).locator("img")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close ×", exact: true }).click();
+    await showPlaces();
+    await select("Village Market");
+    await marker.locator("." + P + "-map-point").click();
+    await screenshot("visit");
+    assert.equal(sceneRequests.length, 0, "search, selection, pan, zoom and People remain free of Scene requests");
+    await page.getByRole("button", { name: "Visit venue", exact: true }).click();
     await expect.poll(() => sceneRequests.length).toBe(1);
     assert.equal(sceneRequests[0].venueId, "market");
     await expect(page.getByRole("textbox", { name: "Message at Village Market" })).toBeVisible();
@@ -679,13 +481,12 @@ try {
     await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
     await page.getByRole("button", { name: "Return to map", exact: true }).click();
     await expect(home).toBeVisible();
-    await expect.poll(geometry, { message: "Scene roundtrip retains map view" }).toEqual(initial);
     assert.deepEqual(errors, []);
-    await client.detach();
+    if (client) await client.detach();
     await page.close();
   }
   console.log(
-    "Shared warm exploration: seven viewports, responsive panels, search/selection retention, focus, anchored Polaroids, gesture-only mobile map, worksites, snapshot changes and explicit Visit passed",
+    "Location Navigator: seven viewports, saved geometry, search, responsive rail/drawer, camera gestures, worksite actions and explicit Scene entry passed",
   );
 } finally {
   await browser.close();

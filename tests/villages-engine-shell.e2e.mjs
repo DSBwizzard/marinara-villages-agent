@@ -72,7 +72,9 @@ try {
     const home = page.locator(".marinara-capability-villages-home-full");
     await expect(home).toBeVisible({ timeout: 20000 });
     await expect(home).toHaveAttribute("data-mobile", String(viewport.width < 705));
-    await expect(home.getByRole("button", { name: /^(Zoom in|Zoom out|Reset map view)$/ })).toHaveCount(0);
+    await expect(home.getByRole("button", { name: /^(Zoom in|Zoom out|Reset map view)$/ })).toHaveCount(
+      viewport.width < 705 ? 0 : 3,
+    );
     for (const button of await home
       .locator(
         ".marinara-capability-villages-explore-nav button, .marinara-capability-villages-explore-notices, .marinara-capability-villages-home-bar .marinara-capability-villages-icon-button",
@@ -83,7 +85,7 @@ try {
     }
     await page.screenshot({ path: resolve(output, `warm-engine-map-${viewport.width}.png`) });
     await home.getByRole("button", { name: "Places", exact: true }).click();
-    const panel = page.getByRole("dialog", { name: "Places", exact: true });
+    const panel = page.getByRole("complementary", { name: "Places navigator", exact: true });
     await expect(panel).toBeVisible();
     const bounds = await panel.boundingBox();
     const host = await home.boundingBox();

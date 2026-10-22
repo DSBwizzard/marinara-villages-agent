@@ -40,6 +40,10 @@ const pinched = mobileMapGesture(image, frame, initial, anchor, anchor, 1.5);
 const after = mobileMapBox(image, frame, pinched);
 assert.ok(Math.abs((anchor.x - centered.left) / centered.width - (anchor.x - after.left) / after.width) < 1e-10);
 assert.ok(Math.abs((anchor.y - centered.top) / centered.height - (anchor.y - after.top) / after.height) < 1e-10);
+// Closing the Places drawer can enlarge the frame beyond the stored zoom.
+const drawerView = { ...initial, zoom: 1 };
+const afterDrawerClose = mobileMapBox(image, frame, mobileMapGesture(image, frame, drawerView, anchor, anchor, 1.5));
+assert.deepEqual(afterDrawerClose, after, "pinch starts at the rendered scale after the map frame grows");
 const all = mobileMapBox(image, frame, mobileMapGesture(image, frame, initial, anchor, anchor, 0.01));
 assert.deepEqual(all, centered);
 assert.equal(mobilePhotoScale(cover, cover), 0.32);
@@ -98,7 +102,6 @@ assert.ok(source.includes('data-mobile-gesturing", "true"'));
 assert.ok(
   source.includes("left: `${picture.left + pin.x * picture.width + (pinOffset?.id === pin.id ? pinOffset.x : 0)}px`"),
 );
-assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)"));
 assert.equal(source.includes('mobileStart="contain"'), false);
 assert.ok(
   source.includes("const tapped = !cancelled && pointersRef.current.size === 1 && !suppressTouchClickRef.current"),

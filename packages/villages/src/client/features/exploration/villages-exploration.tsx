@@ -1,6 +1,5 @@
 import type { MobileMapBox, MobileMapSize } from "./villages-mobile-map";
-import { VenuePolaroid } from "./villages-venue-polaroid.js";
-import { type ReactNode, useLayoutEffect, useRef } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 
 const P = "marinara-capability-villages";
 
@@ -12,9 +11,9 @@ export type ExplorationRow = {
   id: string;
   name: string;
   detail: string;
-  image?: string | null;
-  face?: ReactNode;
   onSelect?: () => void;
+  selected?: boolean;
+  actions?: { label: string; onSelect: () => void }[];
 };
 
 export type ExplorationPin = {
@@ -149,7 +148,7 @@ export function ExplorationNavigation({
   );
 }
 
-export function MobileMarkers({
+export function ExplorationMarkers({
   pins,
   picture,
   frame,
@@ -166,7 +165,6 @@ export function MobileMarkers({
           const left = picture.left + pin.x * picture.width;
           const top = picture.top + pin.y * picture.height;
           if (left < 0 || top < 0 || left > frame.width || top > frame.height) return null;
-          const people = pins.filter((person) => person.kind === "person" && person.venueId === pin.id);
           return (
             <span key={pin.id} className={P + "-explore-anchor"} style={{ left, top }}>
               <button
@@ -183,16 +181,8 @@ export function MobileMarkers({
                   pin.onSelect?.();
                 }}
               >
-                <VenuePolaroid image={pin.image} name={pin.text} className={P + "-explore-polaroid"} />
-                {people.length ? (
-                  <span className={P + "-explore-initials"} aria-hidden="true">
-                    {people.slice(0, 3).map((person) => (
-                      <span key={person.id} className={P + "-explore-initial"} title={person.text}>
-                        {Array.from(person.text.trim())[0]?.toLocaleUpperCase() || "•"}
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
+                <span className={P + "-map-point"} aria-hidden="true" />
+                <span className={P + "-map-label"}>{pin.text}</span>
               </button>
             </span>
           );
@@ -201,28 +191,38 @@ export function MobileMarkers({
   );
 }
 
-function ExplorationPanel({
-  title,
+export function LocationNavigator({
+  rows,
+  search,
+  onSearch,
+  disabled,
   onClose,
-  children,
-  layout,
+  mobile,
+  focusSearch,
 }: {
-  title: string;
+  rows: ExplorationRow[];
+  search: string;
+  onSearch: (value: string) => void;
+  disabled: boolean;
   onClose: () => void;
-  children: ReactNode;
-  layout: "sheet" | "side";
+  mobile: boolean;
+  focusSearch: boolean;
 }) {
-  const titleRef = useRef<HTMLHeadingElement>(null);
-  useLayoutEffect(() => {
-    titleRef.current?.focus({ preventScroll: true });
-  }, [title]);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const selectedId = rows.find((row) => row.selected)?.id;
+  useEffect(() => {
+    if (focusSearch) searchRef.current?.focus({ preventScroll: true });
+  }, [focusSearch]);
+  useEffect(() => {
+    listRef.current?.querySelector('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
+  const filtered = rows.filter((row) => row.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return (
-    <section
-      className={P + "-explore-sheet"}
-      data-layout={layout}
-      role="dialog"
-      aria-label={title}
-      aria-modal="false"
+    <aside
+      className={P + "-location-navigator " + P + "-explore-sheet"}
+      data-layout={mobile ? "navigator-sheet" : "navigator-rail"}
+      aria-label="Places navigator"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -231,24 +231,58 @@ function ExplorationPanel({
       }}
     >
       <header>
-        <h2 ref={titleRef} tabIndex={-1}>
-          {title}
-        </h2>
-        <button type="button" aria-label="Close exploration card" onClick={onClose}>
+        <h2>Places</h2>
+        <button type="button" aria-label={mobile ? "Close places" : "Collapse places"} onClick={onClose}>
           <MapIcon name="close" />
         </button>
       </header>
-      {children}
-    </section>
+      <label className={P + "-explore-search"}>
+        <span className={P + "-sr-only"}>Search places</span>
+        <input
+          ref={searchRef}
+          autoComplete="off"
+          type="search"
+          value={search}
+          onChange={(event) => onSearch(event.target.value)}
+          placeholder="Find a place"
+        />
+      </label>
+      <div ref={listRef} className={P + "-explore-list"}>
+        {filtered.map((row) => (
+          <div key={row.id} className={P + "-navigator-place"} data-selected={row.selected ? "true" : "false"}>
+            <button
+              type="button"
+              className={P + "-explore-row"}
+              data-exploration-row={row.id}
+              aria-pressed={row.selected === true}
+              disabled={disabled || !row.onSelect}
+              onClick={row.onSelect}
+            >
+              <MapIcon name="places" />
+              <span>
+                <strong>{row.name}</strong>
+                <small>{row.detail}</small>
+              </span>
+            </button>
+            {row.selected ? (
+              <div className={P + "-navigator-actions"}>
+                {row.actions?.map((action) => (
+                  <button key={action.label} type="button" disabled={disabled} onClick={action.onSelect}>
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+        {filtered.length === 0 ? (
+          <p className={P + "-explore-empty"} role="status">
+            {search.trim() ? "No matching places." : "No places yet."}
+          </p>
+        ) : null}
+      </div>
+    </aside>
   );
-}
-
-export function MobileSheet(props: { title: string; onClose: () => void; children: ReactNode }) {
-  return <ExplorationPanel {...props} layout="sheet" />;
-}
-
-export function DesktopPanel(props: { title: string; onClose: () => void; children: ReactNode }) {
-  return <ExplorationPanel {...props} layout="side" />;
 }
 
 export function NoticesButton({
@@ -274,62 +308,5 @@ export function NoticesButton({
         {count}
       </span>
     </button>
-  );
-}
-
-export function BrowseList({
-  rows,
-  label,
-  search,
-  onSearch,
-  disabled,
-}: {
-  rows: ExplorationRow[];
-  label: string;
-  search: string;
-  onSearch: (value: string) => void;
-  disabled: boolean;
-}) {
-  const filtered = rows.filter((row) => row.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
-  return (
-    <>
-      <label className={P + "-explore-search"}>
-        <span className={P + "-sr-only"}>Search {label.toLowerCase()}</span>
-        <input
-          autoComplete="off"
-          type="search"
-          value={search}
-          onChange={(event) => onSearch(event.target.value)}
-          placeholder={"Search " + label.toLowerCase() + "…"}
-        />
-      </label>
-      <div className={P + "-explore-list"}>
-        {filtered.map((row) => (
-          <button
-            type="button"
-            className={P + "-explore-row"}
-            key={row.id}
-            data-exploration-row={row.id}
-            disabled={disabled || !row.onSelect}
-            onClick={row.onSelect}
-          >
-            {row.face ?? (
-              <span className={P + "-explore-photo"}>
-                {row.image ? <img src={row.image} alt="" /> : <MapIcon name="places" />}
-              </span>
-            )}
-            <span>
-              <strong>{row.name}</strong>
-              <small>{row.detail}</small>
-            </span>
-          </button>
-        ))}
-        {filtered.length === 0 ? (
-          <p className={P + "-explore-empty"} role="status">
-            {search.trim() ? "No matches. Try another name." : "Nothing to show here yet."}
-          </p>
-        ) : null}
-      </div>
-    </>
   );
 }

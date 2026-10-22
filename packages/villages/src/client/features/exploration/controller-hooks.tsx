@@ -11,7 +11,7 @@ export function useMapNavigationReset(ports: {
   useEffect(() => {
     setNavigationView(null);
     setExploreSheet(null);
-  }, [explorationMapKey]);
+  }, [explorationMapKey, setExploreSheet, setNavigationView]);
 }
 
 export function useExplorationOutsideClick(ports: {
@@ -31,7 +31,19 @@ export function useExplorationOutsideClick(ports: {
         !(event.target instanceof Element) ||
         !element.contains(event.target) ||
         event.target.closest(
-          "." + ELEMENT_TAG + "-explore-sheet, ." + ELEMENT_TAG + "-home-bar, ." + ELEMENT_TAG + "-explore-nav",
+          "." +
+            ELEMENT_TAG +
+            "-explore-sheet, ." +
+            ELEMENT_TAG +
+            "-home-bar, ." +
+            ELEMENT_TAG +
+            "-explore-nav, ." +
+            ELEMENT_TAG +
+            "-map-camera-controls, ." +
+            ELEMENT_TAG +
+            "-navigator-toggle, ." +
+            ELEMENT_TAG +
+            '-stage[data-exploration="true"]',
         )
       )
         return;
@@ -49,7 +61,7 @@ export function useExplorationOutsideClick(ports: {
       document.removeEventListener("pointerdown", outside);
       document.removeEventListener("keydown", escape);
     };
-  }, [closeExploration, element, exploreSheet, openPlaceId, screen]);
+  }, [closeExploration, element, exploreSheet, openPlaceId, screen, setExploreSheet, setOpenPlaceId]);
 }
 
 export function useRemovedVenueNavigation(ports: {
@@ -83,5 +95,5 @@ export function useTownMapImage(ports: {
       }
     })();
     return () => controller.abort();
-  }, [townMapSetAt]);
+  }, [townMapSetAt, setTownMapImage]);
 }
