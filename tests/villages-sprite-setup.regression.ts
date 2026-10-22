@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
+import { PNG } from "pngjs";
 import {
   createSpriteSetup,
   type SpriteSetupPorts,
@@ -11,6 +12,8 @@ import { suggestDefaultSprite } from "../packages/villages/src/server/domain/rul
 import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 
 const documents = new Map<string, unknown>();
+const imageBytes = PNG.sync.write(new PNG({ width: 64, height: 96 }));
+const imageData = "data:image/png;base64," + imageBytes.toString("base64");
 let village = coerceVillageState({});
 let calls = 0,
   failImage = false,
@@ -47,6 +50,7 @@ const service = createSpriteSetup({
         chatComplete: async (messages, options) => {
           calls++;
           assert.match(messages[1].images[0], /^data:image/);
+          assert.equal(options.maxTokens, 800);
           assert.ok(!JSON.stringify(messages).includes("suicejejshe"), "arbitrary filenames do not influence analysis");
           options.signal?.throwIfAborted();
           if (failImage) throw Error("provider unavailable");
@@ -58,7 +62,7 @@ const service = createSpriteSetup({
     },
   }),
   manager: {
-    readImage: async () => "data:image/png;base64,AAAA",
+    readImage: async () => imageData,
     prepareArtwork: async (name, _image, engineSource) => {
       copied++;
       await prepareGate?.();
@@ -74,7 +78,7 @@ const service = createSpriteSetup({
           url: "/original.png",
           width: 64,
           height: 96,
-          sha256: createHash("sha256").update(Buffer.from("AAAA", "base64")).digest("hex"),
+          sha256: createHash("sha256").update(imageBytes).digest("hex"),
         },
         rendered: { filename: "rendered.png", url: "/rendered.png" },
         warnings: [],
