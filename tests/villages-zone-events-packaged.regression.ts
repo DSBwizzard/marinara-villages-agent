@@ -1594,7 +1594,7 @@ try {
   };
   semanticExchangeAnswer.action = physical;
   semanticExchangeAnswer.access = [];
-  semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false };
+  semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false, social: false };
   await turn("semantic-physical", "*straightens the cloth*", [{ text: "You straighten the cloth." }]);
   assert.equal(state().submissions.at(-1).semanticReady, true);
   assert.equal(
@@ -1621,7 +1621,13 @@ try {
     ],
   };
   semanticExchangeAnswer.action = null;
-  semanticExchangeAnswer.authority = { physical: false, access: false, projects: false, standing: false };
+  semanticExchangeAnswer.authority = {
+    physical: false,
+    access: false,
+    projects: false,
+    standing: false,
+    social: false,
+  };
   semanticExchangeAnswer.events = {
     moves: [],
     playerMoves: [
@@ -1899,7 +1905,7 @@ try {
     timeline: [{ kind: "action", text: "*folds the cloth*" }],
   };
   semanticExchangeAnswer.action = afterMovePhysical;
-  semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false };
+  semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false, social: false };
   semanticExchangeAnswer.events = {
     moves: [{ characterId: "aqua", zoneId: "kitchen", segment: 0 }],
     departures: [],
@@ -1924,7 +1930,13 @@ try {
     timeline: [{ kind: "action", text: "*waits*" }],
   };
   semanticExchangeAnswer.action = null;
-  semanticExchangeAnswer.authority = { physical: false, access: false, projects: false, standing: false };
+  semanticExchangeAnswer.authority = {
+    physical: false,
+    access: false,
+    projects: false,
+    standing: false,
+    social: false,
+  };
   semanticExchangeAnswer.events = { moves: [], departures: [], contactEnd: [], sceneEnded: { source: 0 } };
   delete semanticExchangeAnswer.memoryChanges;
   await turn("semantic-conclusion-recovery", "*waits*", [{ speakerId: "feddy", text: "I'll see you next time." }]);
