@@ -65,11 +65,22 @@ export function SpinoffPanel({
   }, []);
   useEffect(() => {
     alive.current = true;
+    const update = () => setHost((element as CapabilityElement).capabilityProps ?? {});
+    update();
+    element.addEventListener("marinara-capability-props", update);
+    return () => {
+      alive.current = false;
+      element.removeEventListener("marinara-capability-props", update);
+    };
+  }, [element]);
+  const needsRecovery = locked || !!scene?.spinoffPending;
+  useEffect(() => {
+    if (!needsRecovery) return;
+    let current = true;
     const update = () => {
       const originSceneId = latestScene.current?.id ?? null;
-      setHost((element as CapabilityElement).capabilityProps ?? {});
       void refresh().catch((cause) => {
-        if (alive.current)
+        if (current && alive.current)
           setFailure({ sceneId: originSceneId, message: messageFrom(cause, "Could not read your spinoff.") });
       });
     };
@@ -77,11 +88,11 @@ export function SpinoffPanel({
     element.addEventListener("marinara-capability-props", update);
     window.addEventListener("focus", update);
     return () => {
-      alive.current = false;
+      current = false;
       element.removeEventListener("marinara-capability-props", update);
       window.removeEventListener("focus", update);
     };
-  }, [element, refresh]);
+  }, [element, refresh, needsRecovery, scene?.id]);
   useEffect(() => {
     onLocked(locked ? !browsing : showStart);
     return () => onLocked(false);

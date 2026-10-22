@@ -216,6 +216,15 @@ try {
     revision: 3,
     requestId: randomUUID(),
   });
+  const readScene = async () => {
+    const response = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json().session;
+  };
+  const pendingScene = await readScene();
+  assert.equal(pendingScene.spinoffPending, true, "the built Scene API supplies the recovery flag");
+  assert.equal(pendingScene.spinoff, undefined, "the flag exposes no private spinoff context");
+  assert.equal(modelCalls, 0, "reading an existing handoff makes no provider calls");
   const context = await provider.getContext("source");
   assert.deepEqual(context!.characterIds, ["buster"]);
   assert.equal(context!.connectionId, "synthetic");
@@ -261,6 +270,7 @@ try {
   assert.equal(modelCalls, 1);
   assert.equal(prepared.spinoff.memories.length, 1);
   await post("/spinoffs/resolve", { sessionId: "source", acceptedIds: [prepared.spinoff.memories[0].id] });
+  assert.equal((await readScene()).spinoffPending, false, "the built Scene API stops recovery after resolution");
   const saved = records.get("villages-village")!.data as typeof village;
   assert.equal(saved.chronicle.filter((row) => row.id === prepared.spinoff.memories[0].id).length, 1);
   console.log(

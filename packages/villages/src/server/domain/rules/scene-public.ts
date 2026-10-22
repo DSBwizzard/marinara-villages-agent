@@ -96,6 +96,11 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
               };
             }),
             processingSummary: sceneProcessingSummary(row as VenueScene),
+            ...(row.spinoff
+              ? {
+                  spinoffPending: asRecord(row.spinoff).status !== "resolved" || !asRecord(row.spinoff).resolvedAt,
+                }
+              : {}),
             ...(Array.isArray(asRecord(row.sceneAttendance).layout)
               ? {
                   connectionMap: (asRecord(row.sceneAttendance).layout as Record<string, unknown>[]).map((zone) => ({

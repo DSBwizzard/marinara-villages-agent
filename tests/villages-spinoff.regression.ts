@@ -10,6 +10,7 @@ import { selectPromptMemories } from "../packages/villages/src/server/domain/rul
 import { readSpinoffReview } from "../packages/villages/src/server/domain/rules/spinoff-memory.js";
 import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
 import { createSceneArchive } from "../packages/villages/src/server/features/scenes/archive-service.js";
+import type { SceneView } from "../packages/villages/src/shared/contracts/village.js";
 import type {
   CapabilityDocumentStore,
   CapabilityPersistenceHost,
@@ -256,6 +257,11 @@ function fixture() {
 }
 
 const roundtrip = fixture();
+assert.equal(
+  (publicSceneResponse(await roundtrip.repository.readSession("source")) as unknown as SceneView).spinoffPending,
+  undefined,
+  "ordinary Scenes do not request spinoff recovery",
+);
 const initial = await roundtrip.start();
 const saved = await roundtrip.repository.readSession("source");
 assert.ok(!JSON.stringify(saved.spinoff!.context).includes("NEVER EXPORT"));
@@ -266,6 +272,19 @@ assert.equal(
   undefined,
   "private handoff context never leaks through normal Scene APIs",
 );
+assert.equal(
+  (publicSceneResponse(saved) as unknown as SceneView).spinoffPending,
+  true,
+  "normal Scene APIs expose only the pending handoff flag for reload recovery",
+);
+for (const status of ["prepared", "running", "returned", "resolved"] as const) {
+  const pending = { ...saved, spinoff: { ...saved.spinoff!, status, resolvedAt: undefined } };
+  assert.equal(
+    (publicSceneResponse(pending) as unknown as SceneView).spinoffPending,
+    true,
+    `${status} handoffs retain recovery, including an interrupted final resume`,
+  );
+}
 await assert.rejects(
   roundtrip.repository.changeSession("source", (scene) => {
     scene.zoneId = "other";
@@ -292,6 +311,11 @@ await roundtrip.service().resolve(
   proposed.memories.map((memory) => memory.id),
 );
 assert.equal(roundtrip.village().chronicle.length, 1, "double apply creates one memory");
+assert.equal(
+  (publicSceneResponse(await roundtrip.repository.readSession("source")) as unknown as SceneView).spinoffPending,
+  false,
+  "a completed handoff no longer requests recovery",
+);
 const recalled = selectPromptMemories(roundtrip.village().chronicle, ["buster"], "shrine father", 1000);
 assert.equal(recalled.length, 1, "accepted shared experience is available to existing resident recall");
 assert.deepEqual(selectPromptMemories(roundtrip.village().chronicle, ["other"], "shrine father", 1000), []);
