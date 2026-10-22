@@ -26,6 +26,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     { sceneId: string; id: string; title: string; message: string }[]
   >([]);
   const sceneId = controller.room?.id;
+  const sceneVenues =
+    controller.snapshot?.sceneVenue && controller.snapshot.sceneVenue.sceneId === sceneId
+      ? [controller.snapshot.sceneVenue.venue]
+      : (controller.snapshot?.settings.venues ?? []);
   const reportSettingsError = useCallback(
     (id: string, title: string, message: string) => {
       if (!sceneId) return;
@@ -170,12 +174,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               ? Object.fromEntries(snapshot.villagers.map((villager) => [villager.characterId, villager.dialogueColor]))
               : {}
           }
-          picture={venuePictureOf(snapshot?.settings.venues ?? [], room)}
+          picture={venuePictureOf(sceneVenues, room)}
           draft={roomDraft}
           mode={roomMode}
           targetId={roomTargetId}
           contactDoors={(() => {
-            const zones = snapshot?.settings.venues.find((venue) => venue.id === room.placeId)?.zones ?? [];
+            const zones = sceneVenues.find((venue) => venue.id === room.placeId)?.zones ?? [];
             return contactNeighborIds(room.connectionMap ?? zones, room.zoneId ?? "exterior").map((id) => {
               const zone = zones.find((entry) => entry.id === id);
               return {
@@ -191,7 +195,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             setRoomContactBoundary(id);
           }}
           movementZones={(() => {
-            const venue = snapshot?.settings.venues.find((entry) => entry.id === room.placeId);
+            const venue = sceneVenues.find((entry) => entry.id === room.placeId);
             return (venue?.zones ?? [])
               .filter((zone) => {
                 if (zone.id === room.zoneId) return true;
@@ -214,9 +218,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           })()}
           onMovementTarget={(zoneId) => void moveRoom(zoneId)}
           currentZoneLabel={sceneZoneLabel(
-            snapshot?.settings.venues
-              .find((venue) => venue.id === room.placeId)
-              ?.zones?.find((zone) => zone.id === room.zoneId),
+            sceneVenues.find((venue) => venue.id === room.placeId)?.zones?.find((zone) => zone.id === room.zoneId),
           )}
           busy={roomBusy || controller.replyPending || room.operation?.status === "running"}
           error={

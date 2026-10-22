@@ -1,11 +1,12 @@
 import { openingPresence } from "./opening-presence.js";
 import type { VillagePlaceView, VillagePlayerIdentity, VillageState, VillageVillager } from "../models/world.js";
 import { agendaAt } from "./agenda-plan.js";
-import { badRequest } from "./errors.js";
-import { homeBuildingOptions, isHousePlace, type VillageHomeLine } from "./prompt-preset.js";
+import { badRequest, conflict } from "./errors.js";
+import { homeBuildingOptions, type VillageHomeLine } from "./prompt-preset.js";
 import type { NativeRoutine } from "./schedule-rules.js";
-import { venueResidentIds } from "./venue-model.js";
-import { chooseAgendaZone } from "./venue-zones.js";
+import { MAX_ZONE_VILLAGERS, venueResidentIds } from "./venue-model.js";
+import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { evaluateZoneAccess } from "./venue-access.js";
 import { deriveVillageMoment } from "./village-clock.js";
 
 export function readPlayerIdentity(village: VillageState): VillagePlayerIdentity {
@@ -54,7 +55,7 @@ export function projectHomeLines(
   }
   return lines;
 }
-export function villagerPlaceView(
+function preferredVillagerPlace(
   village: VillageState,
   villager: VillageVillager,
   _routine: NativeRoutine | null,
@@ -79,16 +80,7 @@ export function villagerPlaceView(
   // so the lookup is by id against the current list rather than by position into
   // the one the translation was written from. A place that is gone reads as
   // unplaced, which is where the fallback below picks the villager up.
-  const venue =
-    venueId.length > 0
-      ? village.venues.find(
-          (entry) =>
-            entry.id === venueId &&
-            (entry.constructionStatus === "worksite" ||
-              !isHousePlace(entry) ||
-              (entry.classes?.some((item) => item !== "residence") ?? false)),
-        )
-      : undefined;
+  const venue = venueId.length > 0 ? village.venues.find((entry) => entry.id === venueId) : undefined;
   if (venue) {
     const zone = chooseAgendaZone(venue, villager.characterId, agenda?.activity, agenda?.zoneId, village);
     return {
@@ -116,6 +108,75 @@ export function villagerPlaceView(
     zoneId: zone.id,
     zoneName: zone.name,
   };
+}
+
+/** Resolve the entire roster together, after every agenda overlay. Never hide overflow. */
+export function villagePresence(village: VillageState, minuteOfDay: number, at: Date) {
+  const result = new Map<string, VillagePlaceView>();
+  const counts = new Map<string, number>();
+  const key = (venueId: string, zoneId: string) => JSON.stringify([venueId, zoneId]);
+  const residents = [...village.villagers].sort((a, b) => a.characterId.localeCompare(b.characterId));
+  const pending: typeof residents = [];
+  const place = (resident: VillageVillager, view: VillagePlaceView) => {
+    const id = key(view.id, view.zoneId ?? "exterior");
+    if ((counts.get(id) ?? 0) >= MAX_ZONE_VILLAGERS) return false;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+    result.set(resident.characterId, view);
+    return true;
+  };
+  for (const resident of residents) {
+    const preferred = preferredVillagerPlace(village, resident, null, minuteOfDay, at);
+    if (preferred && !place(resident, preferred)) pending.push(resident);
+  }
+  for (const resident of pending) {
+    const preferred = preferredVillagerPlace(village, resident, null, minuteOfDay, at)!;
+    const origin = village.venues.find((venue) => venue.id === preferred.id)!;
+    const home = village.venues.find((venue) => venueResidentIds(venue).includes(resident.characterId));
+    const destinations = [...new Set([origin, home, ...village.venues].filter((venue) => !!venue))];
+    let placed = false;
+    for (const venue of destinations) {
+      for (const zone of venueZones(venue)) {
+        // Other households' interiors are never a generic overflow destination.
+        if (venue !== origin && venue !== home && zone.kind !== "exterior") continue;
+        if (
+          zoneClosed(village, venue, zone) ||
+          !(venue.access
+            ? evaluateZoneAccess(venue, zone, resident.characterId, {
+                at,
+                relationships: village.relationshipContext,
+              }).allowed
+            : canOccupyZone(venue, zone, resident.characterId))
+        )
+          continue;
+        if (
+          place(resident, {
+            id: venue.id,
+            name: venue.name,
+            image: venue.presentation.image,
+            kind: venueResidentIds(venue).includes(resident.characterId) ? "home" : "venue",
+            zoneId: zone.id,
+            zoneName: zone.name,
+          })
+        ) {
+          placed = true;
+          break;
+        }
+      }
+      if (placed) break;
+    }
+    if (!placed) throw conflict("No permitted Zone has room for this villager. Saved positions are preserved.");
+  }
+  return result;
+}
+
+export function villagerPlaceView(
+  village: VillageState,
+  villager: VillageVillager,
+  _routine: NativeRoutine | null,
+  minuteOfDay = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: new Date() }).minuteOfDay,
+  at = new Date(),
+): VillagePlaceView | null {
+  return villagePresence(village, minuteOfDay, at).get(villager.characterId) ?? null;
 }
 
 export function readBool(value: unknown): boolean {

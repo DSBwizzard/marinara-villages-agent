@@ -243,7 +243,7 @@ export function createSemanticService(ports: SemanticPorts) {
       .slice(0, actionIndex < 0 ? 0 : actionIndex)
       .reverse()
       .find((step) => step.kind === "movement" && typeof step.zoneId === "string")?.zoneId;
-    const venue = state.venues.find((row) => row.id === scene.placeId);
+    const venue = sceneContinuityView(state, scene).venues.find((row) => row.id === scene.placeId);
     const action =
       raw.action === null
         ? null
@@ -372,6 +372,7 @@ export function createSemanticService(ports: SemanticPorts) {
     residentActionsOmitted = false,
   ): Promise<SemanticExchange> {
     const state = await ports.readVillageState();
+    const sceneState = sceneContinuityView(state, scene);
     const evidence = semanticEvidence(lines);
     const combined = scene.operation?.input.semanticPipelineVersion === 3;
     const actionContractV2 = residentActionsOmitted || scene.operation?.input.residentActionsVersion === 2;
@@ -468,14 +469,14 @@ export function createSemanticService(ports: SemanticPorts) {
           )
             throw badGateway("Access effects must use the reviewed resident action ledger. Saved draft retained.");
           for (const value of reconciliation.permissions) {
-            const venue = state.venues.find((v) => v.id === value.venueId),
+            const venue = sceneState.venues.find((v) => v.id === value.venueId),
               zone = venue && resolveVenueZone(venue, String(value.zoneId));
             if (
               !venue ||
               !zone ||
               (value.action === "revoke"
                 ? !canRevokeZonePermission(venue, zone, String(value.controllerId))
-                : zoneClosed(state, venue, zone) || !canInviteToZone(venue, zone, String(value.controllerId)))
+                : zoneClosed(sceneState, venue, zone) || !canInviteToZone(venue, zone, String(value.controllerId)))
             )
               throw badGateway("Standing permission issuer or scope lacks current authority. Saved draft retained.");
           }
@@ -586,7 +587,7 @@ export function createSemanticService(ports: SemanticPorts) {
           )
             throw badGateway("System access interpretation has invalid citations.");
           const cited = row.evidence.map((id) => evidence[Number(id)]!);
-          const venue = state.venues.find((entry) => entry.id === row.venueId);
+          const venue = sceneState.venues.find((entry) => entry.id === row.venueId);
           if (
             !venue ||
             typeof row.actorId !== "string" ||

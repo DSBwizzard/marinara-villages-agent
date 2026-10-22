@@ -10,6 +10,7 @@ import { captureSceneContinuity } from "../../domain/rules/scene-continuity.js";
 import { protectSceneWishes, releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
 import {
   canInviteToZone,
@@ -110,7 +111,7 @@ export function createLiveScenes({
   async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
     if ((await observeVillageClock())?.paused) return session;
     if (!completing && hasVenueOperation(session.id)) return session;
-    const village = await readVillageState(),
+    const village = sceneContinuityView(await readVillageState(), session),
       venue = village.venues.find((entry) => entry.id === session.placeId);
     if (!venue || session.status === "closed") return session;
     if (session.sceneAttendance && !session.sceneAttendance.layout) {
@@ -122,8 +123,9 @@ export function createLiveScenes({
     }
     if (venue.access && session.pendingAccessClaim) {
       await mutateVillageState((state) => {
-        const current = state.venues.find((row) => row.id === venue.id)!;
-        const target = resolveVenueZone(current, session.zoneId ?? "exterior");
+        const current = state.venues.find((row) => row.id === venue.id);
+        const target = current && resolveVenueZone(current, session.zoneId ?? "exterior");
+        if (!current) return;
         if (!target) return;
         const decision = evaluateZoneAccess(current, target, "player", {
           ...sceneAccessContext(session, state),
@@ -133,6 +135,15 @@ export function createLiveScenes({
         if (decision.allowed) claimVisitPermission(current, decision.permissionId, session.id);
       });
       const settled = await changeSession(session.id, (state) => {
+        const captured = state.continuity?.facts.venues.find((row) => row.id === venue.id);
+        const target = captured && resolveVenueZone(captured, state.zoneId ?? "exterior");
+        if (captured && target) {
+          const decision = evaluateZoneAccess(captured, target, "player", {
+            ...sceneAccessContext(state, village),
+            accepting: true,
+          });
+          if (decision.allowed) claimVisitPermission(captured, decision.permissionId, state.id);
+        }
         state.pendingAccessClaim = undefined;
       });
       return refreshZoneParticipants(settled, completing);
@@ -159,7 +170,7 @@ export function createLiveScenes({
               speakerId: "__venue_scene__",
               name: "Narration",
               kind: "narration",
-              content: `${exit.actor === "player" ? "You" : (state.sceneAttendance?.occupants.find((person) => person.characterId === exit.actor)?.name ?? "A visitor")} leave ${resolveVenueZone(venue, exit.from)?.name ?? "the Zone"} and return to ${resolveVenueZone(venue, exit.to)?.name ?? "Entrance"} because access has ended.`,
+              content: `${exit.actor === "player" ? "You" : (state.sceneAttendance?.occupants.find((person) => person.characterId === exit.actor)?.name ?? "A visitor")} leave ${resolveVenueZone(venue, exit.from)?.name ?? "the Zone"}${exit.to ? ` and return to ${resolveVenueZone(venue, exit.to)?.name ?? "Entrance"}` : " and depart the Venue"} because access has ended.`,
               at: villageNow().toISOString(),
               heardBy: witnesses,
               zoneId: exit.from,
@@ -177,6 +188,13 @@ export function createLiveScenes({
               state.privateSpaceId = destination.kind === "private-residence" ? destination.id : undefined;
               state.recap = "";
               state.doorwayContacts = [];
+            } else if (!exit.to) {
+              if (exit.destinationVenueId) {
+                state.departureDestinations ??= {};
+                state.departureDestinations[exit.actor] = { venueId: exit.destinationVenueId, zoneId: "exterior" };
+              }
+              state.departedIds = [...new Set([...(state.departedIds ?? []), exit.actor])];
+              state.activeIds = state.activeIds.filter((id) => id !== exit.actor);
             } else
               state.accompanying = [
                 ...(state.accompanying ?? []).filter((row) => row.characterId !== exit.actor),

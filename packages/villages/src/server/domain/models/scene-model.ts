@@ -233,9 +233,13 @@ export type VenueScene = {
     instruction: string;
     localIds: string[];
     remoteIds: string[];
+    /** Selected writers only; physical attendance and witnesses remain independent. */
+    actorIds?: string[];
     delivery?: "voice" | "loud" | "device";
   };
   departedIds?: string[];
+  /** Server-only destinations for validated forced departures, never another Scene's cast. */
+  departureDestinations?: Record<string, { venueId: string; zoneId: string }>;
   area: "outside" | "shared" | "private" | "public";
   privateOwnerId: string;
   privateAccessOwnerId: string;

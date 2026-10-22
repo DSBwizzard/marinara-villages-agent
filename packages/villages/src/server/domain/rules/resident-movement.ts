@@ -3,9 +3,37 @@ import type { VillageState, VillageVenue } from "../models/world.js";
 import { badGateway } from "./errors.js";
 import { contactNeighbors, contactPath, contactPosition, type ContactMove } from "./venue-contact.js";
 import { venueZones } from "./venue-zones.js";
+import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
+
+function sceneResidentIds(scene: VenueScene): string[] {
+  return [
+    ...new Set([
+      ...(scene.sceneAttendance?.occupants ?? []).map((person) => person.characterId),
+      ...scene.activeIds,
+      ...(scene.contactGeneration?.remoteIds ?? []),
+    ]),
+  ].filter((id) => !scene.departedIds?.includes(id));
+}
+
+/** Validate all captured occupants, including passive witnesses and offscreen destinations. */
+export function assertSceneMovementCapacity(scene: VenueScene, moves: readonly ContactMove[]): void {
+  const positions = new Map(sceneResidentIds(scene).map((id) => [id, contactPosition(scene, id)]));
+  const segments = [...new Set(moves.map((move) => move.segment ?? Infinity))].sort((a, b) => a - b);
+  for (const segment of segments) {
+    for (const move of moves.filter((row) => (row.segment ?? Infinity) === segment))
+      positions.set(move.characterId, move.zoneId);
+    const counts = new Map<string, number>();
+    for (const position of positions.values()) {
+      if (!position) continue;
+      counts.set(position, (counts.get(position) ?? 0) + 1);
+      if (counts.get(position)! > MAX_ZONE_VILLAGERS)
+        throw badGateway("The reply would overcrowd a Zone. Your draft is preserved.");
+    }
+  }
+}
 
 export function residentLocalIdsAt(scene: VenueScene, moves: ContactMove[], segment: number): string[] {
-  const ids = [...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])])];
+  const ids = sceneResidentIds(scene);
   return ids.filter((id) => {
     const move = moves.find(
       (entry) => entry.characterId === id && entry.segment !== undefined && entry.segment <= segment,
@@ -50,9 +78,10 @@ export function applyResidentMovementTimeline(
   lines: VenueReplyLine[],
   moves: ContactMove[],
 ) {
+  assertSceneMovementCapacity(scene, moves);
   if (!moves.some((move) => move.segment !== undefined)) return;
   const origin = scene.zoneId ?? "exterior";
-  const ids = [...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])])];
+  const ids = sceneResidentIds(scene);
   const positions = new Map(ids.map((id) => [id, contactPosition(scene, id)]));
   const localIds = () => ids.filter((id) => positions.get(id) === origin);
   for (const [index, line] of lines.entries()) {

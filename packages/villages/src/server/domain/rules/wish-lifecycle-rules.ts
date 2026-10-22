@@ -5,6 +5,8 @@ import type { VillageState, VillageVillager, VillageWish } from "../models/world
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { agendaBlocksFor, agendaDateKey, flexibleAgendaInterval } from "./agenda-week.js";
 import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { zoneActivityFits } from "./venue-presence.js";
+import { venueResidentIds } from "./venue-model.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { wishExpired } from "./wish-definition.js";
 import { sceneWishProtected } from "./scene-wish-protection.js";
@@ -179,30 +181,19 @@ export function canApplyWishActivity(
       return false;
   }
   const destination =
-    activity.venueId || state.venues.find((venue) => venue.occupancy.residentCharacterId === resident.characterId)?.id;
-  const boundaries = new Set([activity.startMinute]);
-  const others = state.villagers
-    .filter((entry) => entry.characterId !== resident.characterId)
-    .map((entry) => ({
-      resident: entry,
-      blocks: entry.agenda ? agendaBlocksFor(entry.agenda, entry.ingestSchedule !== false, date) : [],
-    }));
-  for (const other of others)
-    for (const entry of other.blocks)
-      if (entry.startMinute > activity.startMinute && entry.startMinute < activity.endMinute)
-        boundaries.add(entry.startMinute);
-  for (const at of boundaries) {
-    const occupants = others.filter((other) => {
-      const entry = other.blocks.find((part) => part.startMinute <= at && part.endMinute > at);
-      return (
-        (entry?.venueId ||
-          state.venues.find((venue) => venue.occupancy.residentCharacterId === other.resident.characterId)?.id) ===
-        destination
-      );
-    });
-    if (destination && occupants.length >= 4) return false;
-  }
-  return true;
+    activity.venueId || state.venues.find((venue) => venueResidentIds(venue).includes(resident.characterId))?.id;
+  return (
+    !destination ||
+    zoneActivityFits(
+      state,
+      [resident.characterId],
+      destination,
+      activity.zoneId ?? "exterior",
+      activity.startMinute,
+      activity.endMinute,
+      date,
+    )
+  );
 }
 
 export function recordUsage(

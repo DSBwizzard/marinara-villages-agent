@@ -32,6 +32,22 @@ try {
         lastActivityAt: now,
         endedAt: "",
       };
+      const sceneSnapshot = structuredClone(snapshot);
+      const currentVenue = sceneSnapshot.settings.venues.find((venue) => venue.id === "mill");
+      currentVenue.zones = [
+        { id: "exterior", name: "Exterior", kind: "exterior", seen: true, connectedTo: ["workshop"] },
+        {
+          id: "workshop",
+          name: "Captured workshop",
+          kind: "public",
+          seen: true,
+          connectedTo: ["exterior"],
+          closed: false,
+        },
+      ];
+      sceneSnapshot.sceneVenue = { sceneId: session.id, venue: structuredClone(currentVenue) };
+      // A later Village renovation closes/removes a destination without rewriting this Scene.
+      currentVenue.zones = currentVenue.zones.filter((zone) => zone.id !== "workshop");
       await page.route("http://scene-navigation.test/", (route) =>
         route.fulfill({
           contentType: "text/html",
@@ -51,7 +67,7 @@ try {
             body: JSON.stringify({ session: restore ? session : null }),
           });
         }
-        return route.fulfill({ contentType: "application/json", body: JSON.stringify(snapshot) });
+        return route.fulfill({ contentType: "application/json", body: JSON.stringify(sceneSnapshot) });
       });
       await page.goto("http://scene-navigation.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
@@ -69,6 +85,12 @@ try {
       if (restore) {
         await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
         await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
+        await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
+        await expect(page.getByRole("menuitemradio", { name: "Move", exact: true })).toBeEnabled();
+        await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+        await expect(page.getByRole("combobox", { name: "Move to Zone" }).locator("option[value=workshop]")).toHaveText(
+          "Captured workshop",
+        );
       } else await expect(page.locator(".marinara-capability-villages-home")).toBeVisible();
       assert.deepEqual(errors, []);
       await page.close();

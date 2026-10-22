@@ -1077,6 +1077,11 @@ async function main() {
           sourceLineId: "movement-crash",
         });
     });
+    // This invitation is part of the Scene; later unrelated world edits remain outside its snapshot.
+    const recoveringRecord = records.get(`villages-venue-visit-${recoveringMove.id}`)!;
+    recoveringRecord.data.continuity.facts.venues[0].playerInvitations = structuredClone(
+      (await readVillageState()).venues[0].playerInvitations,
+    );
     failMovementCommit = true;
     await assert.rejects(
       () => moveVenueZone(recoveringMove.id, "stock", recoveringMove.sceneRevision),

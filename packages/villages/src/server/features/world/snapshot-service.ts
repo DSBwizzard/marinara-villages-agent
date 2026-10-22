@@ -4,6 +4,7 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { canOccupyZone, legacyZoneId, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity, villagerPlaceView } from "../../domain/rules/village-projections.js";
@@ -77,6 +78,8 @@ export function createVillageSnapshot({
     const player = readPlayerIdentity(village);
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();
+    const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess) : village;
+    const capturedVenue = residenceAccess && sceneWorld.venues.find((venue) => venue.id === residenceAccess.placeId);
     // ONE schedule read for the whole village, so every villager's pin and their
     // own drawer's plate are resolved off the same answer. Null when the Engine
     // will not answer, which leaves every villager unplaced rather than failing
@@ -85,22 +88,25 @@ export function createVillageSnapshot({
       const card = cardsById.get(villager.characterId) ?? null;
       let destination = villagerPlaceView(village, villager, null, minuteOfDay, now);
       const companion = residenceAccess?.accompanying?.find((entry) => entry.characterId === villager.characterId);
-      const companionVenue = companion && village.venues.find((entry) => entry.id === residenceAccess?.placeId);
+      const companionVenue = companion && capturedVenue;
       const companionZone = companionVenue && resolveVenueZone(companionVenue, companion!.zoneId);
       if (residenceAccess?.sceneAttendance) {
         const position = sceneAccessContext(residenceAccess, village).positions?.[villager.characterId];
         if (position && position !== residenceAccess.zoneId) destination = null;
         else if (position) {
-          const sceneVenue = village.venues.find((venue) => venue.id === residenceAccess.placeId)!;
-          const sceneZone = resolveVenueZone(sceneVenue, position)!;
-          destination = {
-            id: sceneVenue.id,
-            name: sceneVenue.name,
-            image: sceneZone.image,
-            kind: "venue",
-            zoneId: position,
-            zoneName: sceneZone.name,
-          };
+          const sceneVenue = capturedVenue;
+          const sceneZone = sceneVenue && resolveVenueZone(sceneVenue, position);
+          destination =
+            sceneVenue && sceneZone
+              ? {
+                  id: sceneVenue.id,
+                  name: sceneVenue.name,
+                  image: sceneZone.image,
+                  kind: "venue",
+                  zoneId: position,
+                  zoneName: sceneZone.name,
+                }
+              : null;
         }
       }
       if (
@@ -108,7 +114,7 @@ export function createVillageSnapshot({
         companionVenue &&
         companionZone &&
         canOccupyZone(companionVenue, companionZone, villager.characterId) &&
-        !zoneClosed(village, companionVenue, companionZone)
+        !zoneClosed(sceneWorld, companionVenue, companionZone)
       )
         destination = {
           id: companionVenue.id,
@@ -226,6 +232,19 @@ export function createVillageSnapshot({
         residenceAccess,
         residenceAccess ? sceneAccessContext(residenceAccess, village) : undefined,
       ),
+      ...(residenceAccess && capturedVenue
+        ? {
+            sceneVenue: {
+              sceneId: residenceAccess.id,
+              venue: villageSettings(
+                sceneWorld,
+                player,
+                residenceAccess,
+                sceneAccessContext(residenceAccess, sceneWorld),
+              ).venues.find((venue) => venue.id === capturedVenue.id)!,
+            },
+          }
+        : {}),
       recap: null,
       backgroundWork: await backgroundWorkSummaries(),
     };

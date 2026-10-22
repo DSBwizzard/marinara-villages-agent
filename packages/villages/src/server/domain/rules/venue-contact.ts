@@ -1,4 +1,5 @@
-import { sceneLayoutVenue } from "./scene-layout.js";
+import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
+import { sceneRelationshipView } from "./relationship-rules.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { AttentionPlan } from "./scene-attention.js";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
@@ -95,13 +96,16 @@ export function contactPosition(scene: VenueScene, characterId: string): string 
   );
 }
 export function sceneAccessContext(
-  scene: Pick<VenueScene, "id" | "startedAt" | "sceneAttendance" | "accompanying" | "departedIds" | "zoneId">,
+  scene: Pick<
+    VenueScene,
+    "id" | "startedAt" | "sceneAttendance" | "accompanying" | "departedIds" | "zoneId" | "continuity" | "villageSeed"
+  >,
   state: VillageState,
 ): AccessContext {
   return {
     sceneId: scene.id,
     at: new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt),
-    relationships: state.relationshipContext,
+    relationships: sceneRelationshipView(state.relationshipContext, scene),
     positions: {
       ...Object.fromEntries((scene.sceneAttendance?.occupants ?? []).map((row) => [row.characterId, row.zoneId])),
       ...Object.fromEntries((scene.accompanying ?? []).map((row) => [row.characterId, row.zoneId])),
@@ -117,6 +121,7 @@ export function contactCanEnter(
   characterId: string,
   scene?: VenueScene,
 ): boolean {
+  if (scene) state = sceneAccessState(state, scene);
   venue = sceneLayoutVenue(venue, scene);
   const zone = venueZones(venue).find((entry) => entry.id === zoneId);
   if (zone?.closed) return false;

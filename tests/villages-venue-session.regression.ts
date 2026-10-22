@@ -2353,6 +2353,11 @@ async function main() {
         space.state.traces = [...room.state.traces!];
       }
     });
+    // Outside setup changes belong to a new Scene, rather than rewriting the open snapshot.
+    const physicalSceneIds = new Set([group.id]);
+    await endVenueSession(group.id);
+    group = await greetVenue((await enterVenue("park")).id);
+    physicalSceneIds.add(group.id);
     const beforeChatRepair = calls;
     const chatRepair = await sendVenueTurn({
       sessionId: group.id,
@@ -2397,6 +2402,9 @@ async function main() {
         const zone = venue.zones?.find((zone) => zone.id === chatRepair.session.zoneId);
         if (zone && !zone.state.items.includes(item)) zone.state.items.push(item);
       });
+      await endVenueSession(group.id);
+      group = await greetVenue((await enterVenue("park")).id);
+      physicalSceneIds.add(group.id);
     }
     const transferProofs = [];
     for (const mode of ["chat", "act", "fulfill"] as const) {
@@ -2662,21 +2670,21 @@ async function main() {
     const beforeReplay = calls;
     const replay = await sendVenueTurn({
       sessionId: group.id,
-      message: "A quiet question",
-      mode: "ask",
-      targetId: "bob",
-      submissionId: "ask-1",
+      message: "I moved the tables",
+      mode: "chat",
+      targetId: "",
+      submissionId: "chat-tables",
     });
     assert.equal(calls, beforeReplay, "retry does not generate a duplicate turn");
-    assert.equal(replay.session.lines.filter((line) => line.content === "A quiet question").length, 1);
+    assert.equal(replay.session.lines.filter((line) => line.content === "I moved the tables").length, 1);
     await assert.rejects(
       () =>
         sendVenueTurn({
           sessionId: group.id,
           message: "different",
-          mode: "ask",
-          targetId: "bob",
-          submissionId: "ask-1",
+          mode: "chat",
+          targetId: "",
+          submissionId: "chat-tables",
         }),
       /different line/u,
     );
@@ -2719,8 +2727,8 @@ async function main() {
     await endVenueSession(group.id);
     assert.equal(await activeVenueSession(), null, "Visit ends only when the player leaves");
     assert.equal(memoryCalls, 0, "Scene close makes no memory generation request");
-    assert.equal((await listVenueVisits({ characterId: "bob" })).length, 1);
-    assert.equal((await listVenueVisits({ placeId: "park" })).length, 1);
+    assert.equal((await listVenueVisits({ characterId: "bob" })).length, physicalSceneIds.size);
+    assert.equal((await listVenueVisits({ placeId: "park" })).length, physicalSceneIds.size);
     assert.equal((await listVenueVisits({ placeId: "empty" })).length, 1);
 
     await mutateVillageState((state) => {

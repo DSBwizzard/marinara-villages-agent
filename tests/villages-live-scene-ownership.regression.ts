@@ -348,6 +348,7 @@ async function main() {
     privateZone = resolveVenueZone(privateVenue, "community")!;
   privateZone.access!.mode = "permission-required";
   privateVenue.access!.managerIds = ["player"];
+  privateExit.saved.continuity!.facts.venues = structuredClone(privateExit.world.venues);
   privateExit.saved.zoneId = "exterior";
   privateExit.saved.activeIds = [];
   privateExit.retry();
@@ -366,6 +367,8 @@ async function main() {
   hiddenZone.access!.mode = "permission-required";
   hiddenZone.access!.managerIds = ["player"];
   unseenVenue.zones!.push(hiddenZone);
+  unseen.saved.continuity!.facts.venues = structuredClone(unseen.world.venues);
+  unseen.saved.sceneAttendance!.layout = captureSceneLayout(unseenVenue);
   unseen.saved.sceneAttendance!.occupants[0]!.zoneId = hiddenZone.id;
   unseen.saved.sceneAttendance!.occupants.push({
     characterId: "unrelated",
@@ -387,6 +390,7 @@ async function main() {
     concurrentVenue = concurrent.world.venues[0]!;
   resolveVenueZone(concurrentVenue, "community")!.access!.mode = "permission-required";
   concurrentVenue.access!.managerIds = ["player"];
+  concurrent.saved.continuity!.facts.venues = structuredClone(concurrent.world.venues);
   concurrent.saved.zoneId = "exterior";
   concurrent.saved.activeIds = [];
   concurrent.onChange(() => {
