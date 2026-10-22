@@ -8,6 +8,7 @@ import {
 } from "../../domain/rules/opening-project.js";
 import {
   RESIDENT_ACTION_WRITING,
+  RESIDENT_ACTION_WRITING_V1,
   RESIDENT_ACTION_PUBLIC_SOCIAL,
   readResidentActions,
   assertResidentActionWitnesses,
@@ -782,7 +783,9 @@ export function createSceneWriting({
       if ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion)))
         blocks.push({
           text:
-            RESIDENT_ACTION_WRITING +
+            (Number(venueOperationInput()?.residentActionsVersion) === 2
+              ? RESIDENT_ACTION_WRITING
+              : RESIDENT_ACTION_WRITING_V1) +
             (Number(venueOperationInput()?.residentActionsVersion) === 2 ? " " + RESIDENT_ACTION_PUBLIC_SOCIAL : ""),
         });
       blocks.push({

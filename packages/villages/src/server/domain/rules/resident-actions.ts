@@ -37,12 +37,19 @@ export const RESIDENT_ACTION_SHAPE =
   'residentActions:[{id:"unique action ID",actorId,visitorId:"player",source:{speakerId,quote:"exact full current segment text"},venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved|revoke-standing",duration:"visit|standing",conditions:[],accompanies:false,command?:exact supported access command}]';
 export const RESIDENT_ACTION_PUBLIC_SOCIAL =
   "Social invitations to sit, share food or join conversation within the player's already occupied public Zone do not change access; do not propose or discover an access action for that alone. Actual entry, restricted scope, visitor hours, accompaniment, standing permission, dismissal and withdrawal still require their supported access actions and issuer authority.";
-export const RESIDENT_ACTION_WRITING =
+export const RESIDENT_ACTION_WRITING_V1 =
   "Decide resident access actions together with their dialogue. Return " +
   RESIDENT_ACTION_SHAPE +
   '. Always include residentActions, even []. Only player access is in this contract; invitations to other residents are not player permission. Every invitation, refusal, dismissal, withdrawal or standing permission expressed by current resident speech or a player-witnessed gesture needs an attached action. This includes natural paraphrases; no special wording is needed. One visit never implies standing access. Unclear scope or unsupported conditions use unresolved and preserve the condition. Conditional accompaniment uses conditions:["accompanied"]. Never invent consent or a player move. Source must match one exact current segment; speakerId for narrated gestures is __venue_scene__. Hidden speech cannot grant player permission. These are proposals; System and code retain authority. Do not describe the player entering merely because a resident invites them.';
 const RESIDENT_ACTION_REVIEW_BASE =
   'Return residentActionReview:{version:1,additionalActions:[],decisions:[{id,status:"accepted|rejected|unresolved",reason}],coverage:[{segment:0,status:"none|actions|unresolved",actionIds:[],reason}]}. additionalActions uses the SAME residentActions action shape. Adjudicate EVERY supplied and additional action exactly once. Check every player-heard non-player segment, including narration, for missing or contradictory access actions; coverage must contain each such segment exactly once. Discover omitted invitations/refusals/withdrawals/standing permissions as additionalActions. Do not endorse empty metadata when the dialogue expresses an action. Check actual issuer intent, visitor, destination, conditions, timing and visit versus standing scope. Reject unsupported proposals; unresolved scope/conditions remain unresolved. Each action must be referenced by coverage of its exact primary source segment. The same action ID may also be cited on corroborating current dialogue by that actor. Optional player coverage may only be none with empty actionIds. No changes to proposed actions: a mismatch must be rejected, not silently broadened or substituted. Return access:[] and relationshipChanges.permissions:[]; code constructs these from accepted actions. Set authority flags for the resulting accepted actions. A visit invitation enables choice, never player movement. Standing grants require explicit unconditional controller speech, never a gesture or one-time welcome. outcome revoke-standing withdraws standing permission; dismiss ends current access. All unresolved/rejected dispositions hold this draft before commitment.';
+
+export const RESIDENT_ACTION_WRITING =
+  RESIDENT_ACTION_WRITING_V1.replace("Every invitation,", "Every player-access invitation,").replace(
+    "Unclear scope or unsupported conditions",
+    "For player access, unclear scope or unsupported conditions",
+  ) +
+  ' Never substitute visitorId:"player" for a resident visitor, including an unresolved proposal. Permission, invitations and refusals addressed only to another resident belong in prose with no residentActions row.';
 
 export const RESIDENT_ACTION_REVIEW =
   RESIDENT_ACTION_REVIEW_BASE +
