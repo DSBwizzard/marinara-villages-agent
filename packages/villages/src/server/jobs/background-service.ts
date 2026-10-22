@@ -8,6 +8,7 @@ import {
   clockAdministration,
 } from "../adapters/time/clock-gate.js";
 import { backgroundRevision } from "../domain/rules/background-revision.js";
+import { reserveEventAttempt } from "../domain/rules/event-attempts.js";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import type { withUsagePurpose } from "../adapters/models/usage-ledger.js";
@@ -418,7 +419,15 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw conflict("Background work changed. Refresh before requesting another event.");
         if (work.kind === "story" && running.has(id) && previous) return previous;
         if (
+          work.kind === "story" &&
           work.automaticDate &&
+          previous?.seed === work.seed &&
+          ["failed", "interrupted"].includes(previous.status)
+        )
+          return previous;
+        if (
+          work.automaticDate &&
+          work.kind !== "story" &&
           previous?.seed === work.seed &&
           previous?.highWaterDate &&
           work.automaticDate <= previous.highWaterDate
@@ -536,6 +545,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Paused("This connection is paused. Retry an affected job to resume it.");
         }
         checkCurrent(job!, await readVillageState());
+        if (job!.kind === "story" && job!.automaticDate && !job!.retrying) {
+          if (job!.requests >= 2) throw new Error("An automatic Event may make at most two principal requests.");
+          await mutateVillageState((state) => {
+            if (state.seed !== job!.seed) throw new Obsolete("Village identity changed.");
+            reserveEventAttempt(state, job!.id, job!.automaticDate!, Date.now());
+          });
+        }
         job = await changeJob(id, (current) => {
           if (current?.id !== job!.id || superseded.has(current.id)) throw new Obsolete("This job was replaced.");
           if (current.steps[index]?.status === "running") throw new Paused("This request is already reserved.");

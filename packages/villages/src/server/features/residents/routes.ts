@@ -9,13 +9,20 @@ import { type CharacterParams, fail, readCharacterId } from "../../adapters/http
 import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { addVillager, removeVillager, editIdentityDescription } from "./resident-roster.js";
-import { changeRelationshipCreator, readRelationshipsView } from "./relationships.js";
+import { clarifyRelationships, readRelationshipsInspect, readRelationshipsView } from "./relationships.js";
 import { generateResidentSignature, readResidentSignature } from "./resident-signature.js";
 import { readWishHistoryPage } from "./wishes/wish-archive.js";
 import { retireResidentWish } from "./wishes/wish-lifecycle.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerRelationshipRoutes(engine: FastifyInstance) {
+  engine.post("/relationships/clarifications", async (request, reply) => {
+    try {
+      return await clarifyRelationships(request.body);
+    } catch (error) {
+      return fail(reply, error, "clarify starting history");
+    }
+  });
   engine.get("/relationships", async (_request, reply) => {
     try {
       return await readRelationshipsView();
@@ -34,11 +41,11 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
       }
     },
   );
-  engine.post("/relationships/creator", async (request, reply) => {
+  engine.get("/relationships/inspect", async (_request, reply) => {
     try {
-      return await changeRelationshipCreator(request.body);
+      return await readRelationshipsInspect();
     } catch (error) {
-      return fail(reply, error, "relationship creator");
+      return fail(reply, error, "inspect relationships");
     }
   });
 }

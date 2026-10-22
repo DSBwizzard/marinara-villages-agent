@@ -3,7 +3,7 @@ import type { SocialOutboxEntry } from "../models/social-outbox-model.js";
 import type { VillageState } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { asRecord } from "./coerce.js";
-import { parseRelationshipProposals, substantiveContact } from "./relationship-review.js";
+import { parseRelationshipProposals } from "./relationship-review.js";
 import { canEnter } from "./social-rules.js";
 
 export function readEncounter(value: unknown, entry: SocialOutboxEntry, village: VillageState): SocialEncounter | null {
@@ -86,21 +86,6 @@ export function readEncounter(value: unknown, entry: SocialOutboxEntry, village:
     },
     raw.semanticVersion === 2,
   );
-  for (const fromId of actors)
-    for (const toId of actors)
-      if (raw.semanticVersion !== 2 && fromId !== toId && substantiveContact(lines, fromId, toId))
-        review.changes.push({
-          id: entry.id + ":contact:" + fromId + ":" + toId,
-          fromId,
-          toId,
-          dimension: "warmth",
-          amount: 0,
-          ordinary: true,
-          reason: "Shared substantive contact.",
-          lineIds: lines.map((line) => line.id),
-          disclosed: false,
-          contact: true,
-        });
   return {
     ...(raw.semanticVersion === 2
       ? {

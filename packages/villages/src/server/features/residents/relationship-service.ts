@@ -1,178 +1,101 @@
-import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
-import type { StartingTie } from "../../domain/models/relationship-types.js";
-import { asRecord } from "../../domain/rules/coerce.js";
-import { badRequest } from "../../domain/rules/errors.js";
-import { relationshipScore } from "../../domain/rules/relationship-policy.js";
-import {
-  neutralRelationship,
-  reconcileRelationships,
-  relationshipFor,
-  relationshipKey,
-} from "../../domain/rules/relationship-rules.js";
-import {
-  captureRelationshipKnowledge,
-  projectRelationshipProfiles,
-} from "../../domain/rules/relationship-knowledge.js";
+import { projectRelationshipProfiles } from "../../domain/rules/relationship-knowledge.js";
+import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
 import type { readVillageState } from "../world/village-store.js";
 import type { mutateRelationships } from "./relationship-store.js";
 export type RelationshipPorts = {
+  backgroundWorkSummaries?: typeof import("../../jobs/background-work.js").backgroundWorkSummaries;
+  clarifyStartingTies?: (value: unknown) => Promise<void>;
   prepareStartingTies?: () => Promise<void>;
   applySavedStartingTies?: () => Promise<void>;
   readVillageLore: typeof readVillageLore;
   readVillageState: typeof readVillageState;
   mutateRelationships: typeof mutateRelationships;
 };
-/** Relationship views and creator edits retain their originating world connections. */
+/** Both reads are pure projections. Inspect is an explicit, separate privacy boundary. */
 export function createRelationships(ports: RelationshipPorts) {
-  const { readVillageState, mutateRelationships } = ports;
-
-  async function readRelationshipsView() {
-    await ports.applySavedStartingTies?.();
-    const village = await readVillageState();
-    let current = village.relationshipContext;
-    if (!current) return { profiles: [], starting: { pending: false, spoilers: false, summaries: [] } };
-    const preview = structuredClone(current);
-    captureRelationshipKnowledge(preview, village);
-    if (
-      JSON.stringify(preview.knowledge) !== JSON.stringify(current.knowledge) ||
-      JSON.stringify(preview.edges) !== JSON.stringify(current.edges)
-    ) {
-      current = await mutateRelationships(village.seed, (state) => {
-        reconcileRelationships(state, village);
-        captureRelationshipKnowledge(state, village);
-      });
-    }
-    const pendingIds = village.villagers
-      .filter((person) => !current!.reviewedActorIds.includes(person.characterId))
-      .map((person) => person.characterId);
-    if (pendingIds.length && JSON.stringify(pendingIds) !== JSON.stringify(current.startingActorIds)) {
-      current = await mutateRelationships(village.seed, (state) => {
-        state.startingTies = [];
-        state.startingActorIds = pendingIds;
-      });
-    }
-    const label = (tie: StartingTie) =>
-      !tie.established
-        ? "No established history"
-        : (tie.warmth > 0 && tie.trust < 0) || (tie.warmth < 0 && tie.trust > 0)
-          ? "Mixed"
-          : tie.warmth < 0 || tie.trust < 0
-            ? "Strained"
-            : "Friendly";
-    const names = (id: string) =>
-      id === "player"
-        ? "You"
-        : (village.villagers.find((person) => person.characterId === id)?.cardSnapshot.name ?? "Former resident");
+  async function readRelationshipsView(): Promise<RelationshipView> {
+    const village = await ports.readVillageState(),
+      current = village.relationshipContext;
     return {
-      profiles: projectRelationshipProfiles(current, village),
+      profiles: current ? projectRelationshipProfiles(current, village) : [],
       starting: {
-        pending: pendingIds.length > 0,
-        spoilers: current.spoilers,
-        summaries: current.startingTies.map((tie) => ({
-          fromId: tie.fromId,
-          toId: tie.toId,
-          fromName: names(tie.fromId),
-          toName: names(tie.toId),
-          status: label(tie),
-        })),
-        ...(current.spoilers
-          ? {
-              values: village.villagers.flatMap((person) =>
-                ["player", ...village.villagers.map((resident) => resident.characterId)]
-                  .filter((toId) => toId !== person.characterId)
-                  .map((toId) => {
-                    const proposal = pendingIds.length
-                      ? current!.startingTies.find((tie) => tie.fromId === person.characterId && tie.toId === toId)
-                      : undefined;
-                    const edge = relationshipFor(current, person.characterId, toId);
-                    return {
-                      fromId: person.characterId,
-                      toId,
-                      fromName: names(person.characterId),
-                      toName: names(toId),
-                      warmth: proposal?.warmth ?? edge.warmth,
-                      trust: proposal?.trust ?? edge.trust,
-                      proposed: !!proposal,
-                    };
-                  }),
-              ),
-            }
-          : {}),
+        pending: village.villagers.some((person) => !current?.reviewedActorIds.includes(person.characterId)),
       },
     };
   }
-
-  async function changeRelationshipCreator(value: unknown) {
-    if (asRecord(value).action === "prepare") {
-      await ports.prepareStartingTies?.();
-      return readRelationshipsView();
-    }
-    const raw = asRecord(value),
-      village = await readVillageState();
-    await mutateRelationships(village.seed, (state) => {
-      if (raw.action === "acknowledge") {
-        if (raw.spoilerAcknowledged !== true)
-          throw badRequest("Acknowledge that relationship values are gameplay spoilers.");
-        state.spoilers = true;
-        return;
-      }
-      if (raw.action === "hide") {
-        state.spoilers = false;
-        return;
-      }
-      if (raw.action === "accept" || raw.action === "neutral") {
-        if (raw.action === "accept")
-          for (const tie of state.startingTies) {
-            if (!state.startingActorIds.includes(tie.fromId) && !state.startingActorIds.includes(tie.toId)) continue;
-            const key = relationshipKey(tie.fromId, tie.toId),
-              edge = (state.edges[key] ??= neutralRelationship(tie.fromId, tie.toId));
-            // Add the approved baseline without wiping interactions played while setup was pending.
-            edge.warmth = relationshipScore(edge.warmth + tie.warmth);
-            edge.trust = relationshipScore(edge.trust + tie.trust);
-            if (tie.established) {
-              edge.familiarity = Math.max(1, edge.familiarity);
-              edge.lastContactAt ||= villageNow().toISOString();
-              const playerKey = relationshipKey(tie.fromId, "player");
-              (state.edges[playerKey] ??= neutralRelationship(tie.fromId, "player")).knowledgeBlockedUntilContact =
-                true;
-            }
-          }
-        state.reviewedActorIds = [...new Set([...state.reviewedActorIds, ...state.startingActorIds])];
-        state.startingTies = [];
-        state.startingActorIds = [];
-      } else if (raw.action === "edit") {
-        if (!state.spoilers) throw badRequest("Reveal and acknowledge gameplay spoilers before editing values.");
-        const fromId = String(raw.fromId ?? ""),
-          toId = String(raw.toId ?? "");
-        const residents = new Set(village.villagers.map((person) => person.characterId));
-        if (!residents.has(fromId) || (toId !== "player" && !residents.has(toId)) || fromId === toId)
-          throw badRequest("Choose a current villager and a different subject.");
-        if (
-          ![raw.warmth, raw.trust].every(
-            (score) => typeof score === "number" && Number.isInteger(score) && score >= -100 && score <= 100,
-          )
-        )
-          throw badRequest("Warmth and trust must be integers from -100 to 100.");
-        const proposal = state.startingTies.find((tie) => tie.fromId === fromId && tie.toId === toId);
-        if (proposal) {
-          proposal.warmth = Number(raw.warmth);
-          proposal.trust = Number(raw.trust);
-          proposal.established = true;
-        } else {
-          const edge = (state.edges[relationshipKey(fromId, toId)] ??= neutralRelationship(fromId, toId));
-          edge.warmth = Number(raw.warmth);
-          edge.trust = Number(raw.trust);
-          edge.lastContactAt ||= villageNow().toISOString();
-          const playerKey = relationshipKey(fromId, "player");
-          (state.edges[playerKey] ??= neutralRelationship(fromId, "player")).knowledgeBlockedUntilContact = true;
-        }
-      } else throw badRequest("Unknown relationship creator action.");
-      reconcileRelationships(state, village);
-    });
-    return readRelationshipsView();
+  async function readRelationshipsInspect(): Promise<RelationshipInspectView> {
+    const village = await ports.readVillageState(),
+      state = village.relationshipContext;
+    const name = (id: string) =>
+      id === "player"
+        ? village.playerPersonaName || village.playerName || "Player"
+        : (village.villagers.find((person) => person.characterId === id)?.cardSnapshot.name ?? "Former resident");
+    return {
+      processing: ((await ports.backgroundWorkSummaries?.()) ?? [])
+        .filter((row) => ["starting-ties", "story", "personal-mail"].includes(row.kind))
+        .map((row) => ({
+          label: row.label,
+          status: row.status,
+          message: row.error,
+          requests: row.requests,
+          tokens: row.tokens,
+        })),
+      residents: village.villagers.map((person) => ({
+        characterId: person.characterId,
+        name: name(person.characterId),
+        initialized: !!state?.reviewedActorIds.includes(person.characterId),
+        intentions: (state?.intentions[person.characterId] ?? []).map((item) => ({
+          text: item.text,
+          reason: item.reason,
+          targets: item.targetIds.map(name),
+          status: item.status,
+        })),
+        perspectives: Object.values(state?.edges ?? {})
+          .filter((edge) => edge.fromId === person.characterId)
+          .map((edge) => ({
+            aboutName: name(edge.toId),
+            connection: edge.connection,
+            stance: edge.stance,
+            expectations: edge.expectations,
+            concerns: edge.concerns,
+            updatedAt: edge.updatedAt,
+            revision: edge.revision,
+            records: Object.values(edge.records).map((record) => ({
+              ...record,
+              currentStatus: state?.sharedRecords[record.id]?.status,
+              participants: record.participants.map(name),
+            })),
+            experiences: edge.experiences.flatMap((id) => {
+              const receipt = state?.receipts[id];
+              return receipt
+                ? [
+                    {
+                      reason: receipt.reason,
+                      at: receipt.at,
+                      sourceId: receipt.sourceId,
+                      evidence: receipt.evidence.map((row) => ({ speaker: name(row.speakerId), text: row.content })),
+                    },
+                  ]
+                : [];
+            }),
+            technical: { fromId: edge.fromId, toId: edge.toId, receiptIds: edge.experiences },
+          })),
+      })),
+      conflicts: (state?.initializationConflicts ?? []).map((row) => ({
+        question: row.question,
+        residents: row.actorIds.map(name),
+        sourceIds: row.sourceIds,
+        actorIds: row.actorIds,
+        sourceHash: village.semanticStartingTies?.sourceHash ?? "",
+      })),
+    };
   }
-
-  return { readRelationshipsView, changeRelationshipCreator };
+  async function clarifyRelationships(value: unknown) {
+    if (!ports.clarifyStartingTies) throw new Error("History clarification unavailable.");
+    await ports.clarifyStartingTies(value);
+    return readRelationshipsInspect();
+  }
+  return { readRelationshipsView, readRelationshipsInspect, clarifyRelationships };
 }
 export type RelationshipService = ReturnType<typeof createRelationships>;

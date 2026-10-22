@@ -9,7 +9,6 @@ import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js"
 import type { SceneScreenController } from "./screen-contracts.js";
 import { DecisionsControl } from "../settings/villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
-import { MailboxImprovementEditor } from "../venues/VenuePanels.js";
 import { RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import { useContext, useEffect } from "react";
 import type { SceneErrorItem } from "./scene-errors.js";
@@ -81,10 +80,8 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     greetRoom,
     leaveRoom,
     loadSnapshot,
-    mailboxOpen,
     mobile,
     moveRoom,
-    nameOfCharacter,
     openMenu,
     openPerson,
     openRoom,
@@ -121,7 +118,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     setRoomError,
     setRoomMode,
     setRoomTargetId,
-    setSnapshot,
     openVenue,
     snapshot,
     spriteFlipDraft,
@@ -349,16 +345,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onContinueWithoutGreeting={() => {
             if (room.id) void continueRoomWithoutGreeting(room.id);
           }}
-          onUseMailbox={
-            snapshot?.settings.venues.some(
-              (venue) =>
-                venue.id === room.placeId &&
-                venue.occupancy.playerHome &&
-                (!room.spaceClass || room.spaceClass === "residence"),
-            )
-              ? () => setMailboxOpen(true)
-              : undefined
-          }
+          onUseMailbox={() => setMailboxOpen(true)}
           onProjects={() => openMenu("projects")}
           onProposals={() => openMenu("venueRequests")}
           spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}
@@ -398,87 +385,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           Back to village
         </button>
       )}
-      {/* Future flavor: let a village present this Mailbox as a crystal, terminal, messenger bird, or email. */}
-      {mailboxOpen && snapshot ? (
-        <div className={`${ELEMENT_TAG}-mailbox-backdrop`} onClick={() => setMailboxOpen(false)}>
-          <section
-            className={`${ELEMENT_TAG}-mailbox`}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Mailbox"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={`${ELEMENT_TAG}-row`} style={{ justifyContent: "space-between" }}>
-              <h2 className={`${ELEMENT_TAG}-panel-title`}>Mailbox</h2>
-              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setMailboxOpen(false)}>
-                Close
-              </button>
-            </div>
-            <p className={`${ELEMENT_TAG}-hint`}>Venue decisions and replies from the people affected by them.</p>
-            <div className={`${ELEMENT_TAG}-mailbox-list`}>
-              {[...(snapshot.venueMail ?? [])].reverse().map((entry) => (
-                <article className={`${ELEMENT_TAG}-mailbox-item`} key={entry.id}>
-                  <strong>{entry.title}</strong>
-                  <p>{entry.detail}</p>
-                  <p className={`${ELEMENT_TAG}-hint`}>
-                    {entry.status === "awaiting-villagers"
-                      ? `Awaiting replies · due ${new Date(entry.dueAt).toLocaleString()}`
-                      : entry.status === "pending-player"
-                        ? "Awaiting your decision"
-                        : entry.status === "approved"
-                          ? "Approved"
-                          : "Declined"}
-                  </p>
-                  {entry.decisions.map((decision) => (
-                    <p key={decision.characterId}>
-                      <strong>{nameOfCharacter(decision.characterId)}:</strong> {decision.reply}
-                    </p>
-                  ))}
-                  {entry.status === "pending-player" && entry.kind === "villager-change" ? (
-                    <MailboxImprovementEditor
-                      entry={entry}
-                      onDecide={async (approved, value) => {
-                        setSnapshot(
-                          await request<VillageSnapshot>(`/venue-mail/${encodeURIComponent(entry.id)}/decision`, {
-                            method: "POST",
-                            body: JSON.stringify({ approved, ...value }),
-                          }),
-                        );
-                      }}
-                    />
-                  ) : null}
-                  {entry.error ? <p className={`${ELEMENT_TAG}-hint`}>Reply delayed: {entry.error}</p> : null}
-                </article>
-              ))}
-              {(snapshot.venueMail?.length ?? 0) === 0 && snapshot.venueRequests.length === 0 ? (
-                <p className={`${ELEMENT_TAG}-empty`}>No Venue mail yet.</p>
-              ) : null}
-              {snapshot.venueRequests.map((entry) => (
-                <article className={`${ELEMENT_TAG}-mailbox-item`} key={entry.id}>
-                  <strong>
-                    {entry.requesterName || "A villager"} suggests {entry.venueDraft.name}
-                  </strong>
-                  <p>
-                    {entry.venueDraft.classes
-                      .map((venueClass) => venueClass[0].toUpperCase() + venueClass.slice(1))
-                      .join(" / ")}
-                  </p>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    onClick={() => {
-                      setMailboxOpen(false);
-                      openMenu("venueRequests");
-                    }}
-                  >
-                    Review request
-                  </button>
-                </article>
-              ))}
-            </div>
-          </section>
-        </div>
-      ) : null}
     </div>
   );
 }

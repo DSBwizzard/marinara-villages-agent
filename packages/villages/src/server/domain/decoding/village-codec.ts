@@ -27,7 +27,6 @@ import type {
   VillagePendingDecision,
   VillageProject,
   VillageRecollection,
-  VillageRelationship,
   VillageRemap,
   VillageRemapFailure,
   VillageRemapMove,
@@ -136,6 +135,7 @@ export function defaultVillageState(): VillageState {
     exchangeReceipts: {},
     noticeSequence: 0,
     dismissedNoticeIds: [],
+    socialContractVersion: 2,
     wishSystemVersion: WISH_SYSTEM_VERSION,
     wishResetPending: [],
     wishKnowledge: {},
@@ -209,7 +209,6 @@ export function defaultVillageState(): VillageState {
     processedOpportunityIds: [],
     opportunities: [],
     scheduledEvents: [],
-    relationships: [],
     projects: [],
     progressTasks: [],
     pendingDecisions: [],
@@ -1625,28 +1624,6 @@ function coerceScheduledEvents(value: unknown): VillageScheduledEvent[] {
     })
     .slice(-MAX_SIMULATION_RECORDS);
 }
-function coerceRelationships(value: unknown): VillageRelationship[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const raw = asRecord(entry);
-      const firstCharacterId = asTrimmedString(raw.firstCharacterId);
-      const secondCharacterId = asTrimmedString(raw.secondCharacterId);
-      if (!firstCharacterId || !secondCharacterId || firstCharacterId === secondCharacterId) return [];
-      return [
-        {
-          firstCharacterId,
-          secondCharacterId,
-          closeness:
-            typeof raw.closeness === "number" && Number.isFinite(raw.closeness)
-              ? Math.max(-5, Math.min(5, Math.trunc(raw.closeness)))
-              : 0,
-          updatedAt: asIsoString(raw.updatedAt) ?? "",
-        },
-      ];
-    })
-    .slice(0, MAX_SIMULATION_RECORDS);
-}
 function coerceProjects(value: unknown): VillageProject[] {
   if (!Array.isArray(value)) throw new Error("Invalid Project records.");
   return value.map((value) => {
@@ -1932,6 +1909,10 @@ function coerceVenueMail(value: unknown): VillageVenueMail[] {
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
   if (value != null && raw.version !== 3) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.foundedAt && raw.socialContractVersion !== 2)
+    throw new Error(
+      "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
+    );
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
@@ -1956,6 +1937,16 @@ export function coerceVillageState(value: unknown): VillageState {
     exchangeReceipts: structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"],
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
+    socialContractVersion: 2,
+    socialClarifications: Array.isArray(raw.socialClarifications)
+      ? (raw.socialClarifications as VillageState["socialClarifications"])
+      : [],
+    socialPublications: raw.socialPublications
+      ? (structuredClone(raw.socialPublications) as VillageState["socialPublications"])
+      : {},
+    eventAttempts: raw.eventAttempts
+      ? (structuredClone(raw.eventAttempts) as VillageState["eventAttempts"])
+      : undefined,
     wishSystemVersion: raw.wishSystemVersion === WISH_SYSTEM_VERSION ? WISH_SYSTEM_VERSION : 0,
     wishResetPending: [...new Set(asStringArray(raw.wishResetPending))].filter((id) =>
       villagers.some((resident) => resident.characterId === id),
@@ -2098,7 +2089,6 @@ export function coerceVillageState(value: unknown): VillageState {
       .slice(-MAX_SIMULATION_RECORDS),
     opportunities: coerceOpportunities(raw.opportunities),
     scheduledEvents: coerceScheduledEvents(raw.scheduledEvents),
-    relationships: coerceRelationships(raw.relationships),
     ...(raw.semanticRequestReceipts
       ? {
           semanticRequestReceipts: Object.fromEntries(

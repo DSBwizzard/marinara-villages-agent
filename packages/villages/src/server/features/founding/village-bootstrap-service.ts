@@ -272,10 +272,10 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
         },
         { role: "user" as const, content: JSON.stringify({ lines: record.lines, context: context.social }) },
       ];
-      const fittedReview = model.fitContext(reviewMessages, { maxTokens: 2400 });
+      const fittedReview = model.fitContext(reviewMessages, { maxTokens: 4096 });
       if (JSON.stringify(fittedReview.messages) !== JSON.stringify(reviewMessages))
         throw new Error("Offscreen semantic evidence does not fit System context.");
-      const judged = await completeWithRoom(model, reviewMessages, Math.min(fittedReview.maxTokens ?? 2400, 2400), {
+      const judged = await completeWithRoom(model, reviewMessages, Math.min(fittedReview.maxTokens ?? 4096, 4096), {
         responseFormat: { type: "json_object" },
         retryEmpty: false,
         temperature: 0.1,
@@ -299,8 +299,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       record.memoryChanges = interpreted!.memoryChanges;
       record.semanticSourceHash = createHash("sha256").update(JSON.stringify(reviewMessages)).digest("hex");
     }
-    // A usable visual entry is required; structured proposals are optional.
-    if (proposal.happenings.length === 0) throw fail(true);
+    if (!Array.isArray(payload.happenings)) throw fail(true); // Empty/no-action is a valid paid attempt.
     return { ...proposal, model: model.model };
   }
 

@@ -1033,13 +1033,6 @@ export type VillageOpportunity = {
   facts: string[];
 };
 
-export type VillageRelationship = {
-  firstCharacterId: string;
-  secondCharacterId: string;
-  closeness: number;
-  updatedAt: string;
-};
-
 export type VillageProjectPhase = "planning" | "working" | "paused" | "complete" | "cancelled";
 export type VillageProjectChange = {
   classes?: VillageVenueClass[];
@@ -1194,6 +1187,10 @@ export type VillageScenarioImprint = {
 
 export type VillageState = {
   development?: import("./development-model.js").DevelopmentState;
+  socialContractVersion: 2;
+  socialPublications?: Record<string, true>;
+  eventAttempts?: import("../rules/event-attempts.js").EventAttemptLedger;
+  socialClarifications?: { id: string; actorIds: string[]; text: string; at: string }[];
   opening?: import("../rules/opening-project.js").OpeningRecord;
   semanticRequestReceipts?: Record<string, string>;
   semanticContinuations?: Record<string, import("./exchange-model.js").ExchangeDomain[]>;
@@ -1201,6 +1198,8 @@ export type VillageState = {
     sourceHash: string;
     stateHash?: string;
     ties: import("./relationship-types.js").StartingTie[];
+    conflicts?: { actorIds: string[]; question: string; sourceIds: string[] }[];
+    sources?: import("./relationship-types.js").SocialEvidence[];
   };
   visitMemoryBackfilled?: boolean;
   wishSystemVersion: number;
@@ -1347,7 +1346,6 @@ export type VillageState = {
   processedOpportunityIds: string[];
   opportunities: VillageOpportunity[];
   scheduledEvents: VillageScheduledEvent[];
-  relationships: VillageRelationship[];
   projects: VillageProject[];
   /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
   progressTasks: ProgressTask[];

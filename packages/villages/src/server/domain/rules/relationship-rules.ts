@@ -3,17 +3,12 @@ import type {
   RelationshipReceipt,
   RelationshipReview,
   RelationshipState,
+  RelationshipUpdate,
 } from "../models/relationship-types.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import type { VenueScene } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
-import {
-  localRelationshipDate,
-  RELATIONSHIP_POLICY,
-  relationshipScore,
-  relationshipThreshold,
-} from "./relationship-policy.js";
-import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 
 export const relationshipKey = (fromId: string, toId: string): string => JSON.stringify([fromId, toId]);
 
@@ -41,19 +36,24 @@ export const permissionKey = (controllerId: string, visitorId: string, venueId: 
   JSON.stringify([controllerId, visitorId, venueId, zoneId]);
 export function defaultRelationshipState(seed: string): RelationshipState {
   return {
-    version: 1,
+    version: 2,
     noticeSequence: 0,
     seed,
     edges: {},
+    intentions: {},
     grants: {},
     receipts: {},
     applied: {},
     disclosures: {},
     knowledge: {},
+    sharedRecords: {},
     reviewedActorIds: [],
     startingTies: [],
     startingActorIds: [],
-    spoilers: false,
+    initializationConflicts: [],
+    mailThreads: {},
+    mailDeliveries: {},
+    invitations: {},
     socialPlans: [],
     socialEncounters: [],
   };
@@ -62,160 +62,47 @@ export function neutralRelationship(fromId: string, toId: string): RelationshipE
   return {
     fromId,
     toId,
-    warmth: 0,
-    trust: 0,
-    familiarity: 0,
-    lastContactAt: "",
-    decayAnchorAt: "",
-    knowledgeBlockedUntilContact: false,
-    decayThrough: 0,
-    decayAmount: 0,
-    playerContactAt: "",
+    revision: 0,
+    connection: "",
+    stance: "",
+    expectations: [],
+    concerns: [],
+    experiences: [],
+    records: {},
     updatedAt: "",
-    friend: false,
-    close: false,
-    ordinaryGains: {},
   };
 }
 export function relationshipFor(state: RelationshipState | undefined, fromId: string, toId: string): RelationshipEdge {
   return state?.edges[relationshipKey(fromId, toId)] ?? neutralRelationship(fromId, toId);
 }
 export function coerceRelationshipState(seed: string, value: unknown): RelationshipState {
-  const raw = asRecord(structuredClone(value)),
-    result = defaultRelationshipState(seed);
-  if (raw.seed !== seed) return result;
-  result.clockShiftMs =
-    typeof raw.clockShiftMs === "number" && Number.isFinite(raw.clockShiftMs) ? raw.clockShiftMs : 0;
-  for (const row of Object.values(asRecord(raw.edges))) {
-    const edge = asRecord(row);
-    if (
-      typeof edge.fromId !== "string" ||
-      !edge.fromId ||
-      edge.fromId === "player" ||
-      typeof edge.toId !== "string" ||
-      !edge.toId ||
-      edge.fromId === edge.toId
-    )
-      continue;
-    const base = neutralRelationship(edge.fromId, edge.toId);
-    result.edges[relationshipKey(edge.fromId, edge.toId)] = {
-      ...base,
-      warmth: relationshipScore(edge.warmth),
-      trust: relationshipScore(edge.trust),
-      familiarity: typeof edge.familiarity === "number" ? Math.max(0, Math.trunc(edge.familiarity)) : 0,
-      lastContactAt: typeof edge.lastContactAt === "string" ? edge.lastContactAt : "",
-      decayAnchorAt: typeof edge.decayAnchorAt === "string" ? edge.decayAnchorAt : "",
-      decayTimerAt: typeof edge.decayTimerAt === "string" ? edge.decayTimerAt : undefined,
-      knowledgeBlockedUntilContact: edge.knowledgeBlockedUntilContact === true,
-      decayThrough: typeof edge.decayThrough === "number" ? Math.max(0, Math.trunc(edge.decayThrough)) : 0,
-      decayAmount: relationshipScore(edge.decayAmount),
-      playerContactAt: typeof edge.playerContactAt === "string" ? edge.playerContactAt : "",
-      updatedAt: typeof edge.updatedAt === "string" ? edge.updatedAt : "",
-      friend: edge.friend === true,
-      close: edge.close === true,
-      ordinaryGains: asRecord(edge.ordinaryGains) as Record<string, number>,
-    };
-  }
-  // Package-owned documents are not a model output boundary. Their writer validates each receipt.
-  result.grants = asRecord(raw.grants) as RelationshipState["grants"];
-  result.receipts = asRecord(raw.receipts) as RelationshipState["receipts"];
-  result.noticeSequence = Object.values(result.receipts).reduce(
-    (sequence, receipt) => Math.max(sequence, receipt.noticeSequence ?? 0),
-    Math.max(0, Number(raw.noticeSequence) || 0),
-  );
-  result.applied = asRecord(raw.applied) as RelationshipState["applied"];
-  result.disclosures = asRecord(raw.disclosures) as RelationshipState["disclosures"];
-  result.knowledge = asRecord(raw.knowledge) as RelationshipState["knowledge"];
-  result.reviewedActorIds = Array.isArray(raw.reviewedActorIds)
-    ? raw.reviewedActorIds.filter((id): id is string => typeof id === "string")
-    : [];
-  result.startingTies = Array.isArray(raw.startingTies) ? (raw.startingTies as RelationshipState["startingTies"]) : [];
-  result.startingActorIds = Array.isArray(raw.startingActorIds) ? (raw.startingActorIds as string[]) : [];
-  result.spoilers = raw.spoilers === true;
-  result.socialPlans = Array.isArray(raw.socialPlans) ? (raw.socialPlans as RelationshipState["socialPlans"]) : [];
-  result.socialEncounters = Array.isArray(raw.socialEncounters)
-    ? (raw.socialEncounters as RelationshipState["socialEncounters"])
-    : [];
-  return result;
+  const raw = asRecord(structuredClone(value));
+  if (!Object.keys(raw).length || raw.seed !== seed) return defaultRelationshipState(seed);
+  if (raw.version !== 2)
+    throw new Error(
+      "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
+    );
+  // Package-owned documents have already passed the source and schema validator.
+  return { ...defaultRelationshipState(seed), ...raw, seed, version: 2 } as RelationshipState;
 }
+/** Absence and elapsed time are not social events. Only explicit permissions affect access. */
 export function reconcileRelationships(
   state: RelationshipState,
   village: Pick<VillageState, "villagers" | "venues" | "projects"> & Partial<Pick<VillageState, "clock">>,
-  now = Date.now(),
+  _now = Date.now(),
 ): void {
-  const clockShift = village.clock?.shiftTotalMs ?? 0;
-  const difference = clockShift - (state.clockShiftMs ?? 0);
-  state.clockShiftMs = clockShift;
-  for (const edge of Object.values(state.edges)) {
-    // Player absence is not a social event. Keep historical scores as saved;
-    // only witnessed interactions may change either directional player tie.
-    const playerTie = edge.fromId === "player" || edge.toId === "player";
-    if (difference && !playerTie) {
-      const at = Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt);
-      if (Number.isFinite(at)) edge.decayTimerAt = new Date(at + difference).toISOString();
-    }
-    const last = Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt);
-    if (Number.isFinite(last) && !playerTie) {
-      const days = Math.max(
-        0,
-        Math.floor((now - last) / RELATIONSHIP_POLICY.dayMs) - RELATIONSHIP_POLICY.decayGraceDays,
-      );
-      const loss = Math.max(0, days - edge.decayThrough);
-      if (loss) {
-        const amount = Math.sign(edge.warmth) * Math.min(Math.abs(edge.warmth), loss);
-        edge.warmth -= amount;
-        edge.decayAmount += amount;
-        edge.decayThrough = days;
-      }
-    }
-    edge.friend = relationshipThreshold(edge.warmth, edge.trust, edge.friend, "friend");
-    edge.close = relationshipThreshold(edge.warmth, edge.trust, edge.close, "close");
-  }
   const residents = new Set(village.villagers.map((person) => person.characterId));
   for (const grant of Object.values(state.grants)) {
     const venue = village.venues.find((place) => place.id === grant.venueId);
     const zone = venue && resolveVenueZone(venue, grant.zoneId);
-    if (
-      !venue ||
-      !zone ||
-      !residents.has(grant.controllerId) ||
-      (grant.visitorId !== "player" && !residents.has(grant.visitorId)) ||
-      !canInviteToZone(venue, zone, grant.controllerId)
-    ) {
-      grant.revoked = true;
-      grant.active = false;
-      continue;
-    }
-    const edge = relationshipFor(state, grant.controllerId, grant.visitorId);
-    const level = zone.kind === "shared-residence" ? "friend" : zone.kind === "private-residence" ? "close" : "staff";
-    grant.active = !grant.revoked && relationshipThreshold(edge.warmth, edge.trust, grant.active, level);
+    grant.active =
+      !grant.revoked &&
+      !!venue &&
+      !!zone &&
+      residents.has(grant.controllerId) &&
+      (grant.visitorId === "player" || residents.has(grant.visitorId)) &&
+      canInviteToZone(venue, zone, grant.controllerId);
   }
-  for (const venue of village.venues)
-    for (const zone of venueZones(venue)) {
-      if (venue.access || zone.kind !== "shared-residence") continue;
-      for (const edge of Object.values(state.edges)) {
-        if (
-          !residents.has(edge.fromId) ||
-          (edge.toId !== "player" && !residents.has(edge.toId)) ||
-          !canInviteToZone(venue, zone, edge.fromId)
-        )
-          continue;
-        const key = permissionKey(edge.fromId, edge.toId, venue.id, zone.id);
-        const previous = state.grants[key];
-        if (!previous && edge.friend)
-          state.grants[key] = {
-            id: key,
-            controllerId: edge.fromId,
-            visitorId: edge.toId,
-            venueId: venue.id,
-            zoneId: zone.id,
-            active: true,
-            automatic: true,
-            revoked: false,
-            at: new Date(now).toISOString(),
-          };
-      }
-    }
 }
 export function relationshipZoneController(
   state: RelationshipState | undefined,
@@ -237,6 +124,21 @@ export function relationshipZoneController(
     )?.controllerId ?? null
   );
 }
+function project(base: RelationshipEdge, update: RelationshipUpdate, receiptId: string, at: string): RelationshipEdge {
+  const after = structuredClone(base);
+  Object.assign(after, {
+    connection: update.connection,
+    stance: update.stance,
+    expectations: update.expectations,
+    concerns: update.concerns,
+    revision: base.revision + 1,
+    updatedAt: at,
+  });
+  for (const record of update.records) after.records[record.id] = structuredClone(record);
+  after.experiences = [...new Set([...after.experiences, receiptId])];
+  return after;
+}
+/** One atomic social-document write records both exact projections of the same witnessed event. */
 export function applyRelationshipReview(
   state: RelationshipState,
   review: RelationshipReview,
@@ -244,100 +146,76 @@ export function applyRelationshipReview(
   sourceId: string,
   at: string,
   now = Date.now(),
+  sceneState: RelationshipState | undefined = state,
 ): RelationshipReceipt[] {
-  // Pending reviews may settle out of order. Reconcile through their event date,
-  // then through the present once the new contact clock has been recorded.
-  reconcileRelationships(state, village, Date.parse(at));
   const residents = new Set(village.villagers.map((person) => person.characterId));
-  const dateKey = localRelationshipDate(at, village.timeZone);
-  const contactPairs = new Set<string>();
+  // Preflight every live revision before changing anything, including disclosures and permissions.
+  const pairs = new Set<string>();
+  const sharedUpdates = new Map<string, string>();
   for (const change of review.changes) {
     if (state.applied[change.id]) continue;
+    const key = relationshipKey(change.fromId, change.toId);
     if (
       !residents.has(change.fromId) ||
+      change.fromId === change.toId ||
       (change.toId !== "player" && !residents.has(change.toId)) ||
-      change.fromId === change.toId
+      pairs.has(key)
     )
-      continue;
-    const key = relationshipKey(change.fromId, change.toId);
-    const edge = (state.edges[key] ??= neutralRelationship(change.fromId, change.toId));
-    const contactEvidenceKeys = change.lineIds.map((id) =>
-      JSON.stringify(["contact-evidence", change.fromId, change.toId, id]),
-    );
-    const freshContact = change.contact && contactEvidenceKeys.some((id) => !state.applied[id]);
-    if (change.contact) for (const id of contactEvidenceKeys) state.applied[id] = true;
-    if (freshContact && (!edge.lastContactAt || Date.parse(at) > Date.parse(edge.decayTimerAt || edge.lastContactAt))) {
-      // A saved review can arrive after absence was already reconciled. Restore
-      // only the decay after this actual contact; retain the earlier elapsed loss.
-      const elapsedBeforeContact = Math.max(
-        0,
-        Math.floor(
-          (Date.parse(at) - Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt)) /
-            RELATIONSHIP_POLICY.dayMs,
-        ) - RELATIONSHIP_POLICY.decayGraceDays,
+      throw new Error("Invalid or repeated social perspective.");
+    pairs.add(key);
+    if (relationshipFor(state, change.fromId, change.toId).revision !== change.expectedRevision)
+      throw new Error(
+        "The live relationship changed during interpretation. Reinterpret against current relationships before exposing this exchange.",
       );
-      const playerTie = edge.fromId === "player" || edge.toId === "player";
-      const origin = edge.warmth + edge.decayAmount;
-      const beforeContact = Number.isFinite(elapsedBeforeContact)
-        ? Math.sign(origin) * Math.min(Math.abs(origin), elapsedBeforeContact)
-        : 0;
-      if (!playerTie) edge.warmth = relationshipScore(origin - beforeContact);
-      edge.lastContactAt = at;
-      edge.decayTimerAt = at;
-      edge.decayThrough = 0;
-      edge.decayAmount = 0;
+    for (const record of change.liveAfter.records) {
+      if (record.kind !== "agreement" && record.kind !== "commitment") continue;
+      const fingerprint = JSON.stringify({
+        ...record,
+        participants: [...record.participants].sort(),
+        evidenceIds: [...record.evidenceIds].sort(),
+      });
+      if (sharedUpdates.has(record.id) && sharedUpdates.get(record.id) !== fingerprint)
+        throw new Error("Conflicting interpretations of the same shared social terms.");
+      sharedUpdates.set(record.id, fingerprint);
+      const current = state.sharedRecords[record.id];
+      if ((current?.revision ?? 0) !== record.revision - 1)
+        throw new Error("Shared social terms changed during interpretation.");
     }
-    const evidenceKeys = change.lineIds.map((id) =>
-      JSON.stringify(["evidence", change.fromId, change.toId, change.dimension, id]),
-    );
-    let amount = evidenceKeys.some((id) => state.applied[id]) ? 0 : change.amount;
-    if (!change.contactOnly) for (const id of evidenceKeys) state.applied[id] = true;
-    if (change.ordinary && change.dimension === "warmth" && amount > 0) {
-      const used = edge.ordinaryGains[dateKey] ?? 0;
-      amount = Math.min(amount, Math.max(0, RELATIONSHIP_POLICY.ordinaryDailyWarmth - used));
-      edge.ordinaryGains[dateKey] = used + amount;
-      // Old daily caps cannot be needed by a pending review because its date is retained in the receipt.
-    }
-    const before = edge[change.dimension];
-    edge[change.dimension] = relationshipScore(before + amount);
-    if (amount && !edge.lastContactAt && !edge.decayAnchorAt) edge.decayAnchorAt = at;
-    if (freshContact && !contactPairs.has(key) && !state.applied[`${sourceId}:contact:${key}`]) {
-      edge.familiarity += 1;
-      if (change.toId === "player" && (!edge.playerContactAt || Date.parse(at) > Date.parse(edge.playerContactAt))) {
-        edge.playerContactAt = at;
-        edge.knowledgeBlockedUntilContact = false;
-      }
-      contactPairs.add(key);
-      state.applied[`${sourceId}:contact:${key}`] = true;
-    }
-    if (!edge.updatedAt || Date.parse(at) > Date.parse(edge.updatedAt)) edge.updatedAt = at;
+  }
+  for (const change of review.changes) {
+    if (state.applied[change.id]) continue;
+    const before = structuredClone(relationshipFor(state, change.fromId, change.toId));
+    const sceneBefore = structuredClone(relationshipFor(sceneState, change.fromId, change.toId));
+    const liveAfter = project(before, change.liveAfter, change.id, at);
+    const sceneAfter = project(sceneBefore, change.sceneAfter, change.id, at);
+    state.edges[relationshipKey(change.fromId, change.toId)] = liveAfter;
+    for (const record of change.liveAfter.records)
+      if (record.kind === "agreement" || record.kind === "commitment")
+        state.sharedRecords[record.id] = structuredClone(record);
     state.receipts[change.id] = {
       id: change.id,
       fromId: change.fromId,
       toId: change.toId,
-      dimension: change.dimension,
-      before,
-      after: edge[change.dimension],
+      beforeRevision: before.revision,
+      sceneAfter,
+      liveAfter,
       reason: change.reason,
       at,
       sourceId,
       lineIds: change.lineIds,
+      evidence: change.evidence,
     };
     state.applied[change.id] = true;
-    if (change.disclosed)
-      state.disclosures[change.id] = {
-        id: change.id,
-        fromId: change.fromId,
-        toId: change.toId,
-        text: change.reason,
-        kind: "explanation",
-        lineIds: change.lineIds,
-        at,
-        sourceId,
-      };
+  }
+  for (const entry of review.intentions ?? []) {
+    if (!residents.has(entry.actorId) || entry.items.length > 3) throw new Error("Invalid social intentions.");
+    const receipt = sourceId + ":intentions:" + entry.actorId;
+    if (state.applied[receipt]) continue;
+    state.intentions[entry.actorId] = structuredClone(entry.items);
+    state.applied[receipt] = true;
   }
   for (const disclosure of review.disclosures) {
-    if (state.applied[disclosure.id] || !residents.has(disclosure.fromId)) continue;
+    if (state.applied[disclosure.id]) continue;
     state.disclosures[disclosure.id] = { ...disclosure, at, sourceId };
     state.applied[disclosure.id] = true;
   }
@@ -345,43 +223,26 @@ export function applyRelationshipReview(
     if (state.applied[permission.id]) continue;
     const venue = village.venues.find((place) => place.id === permission.venueId);
     const zone = venue && resolveVenueZone(venue, permission.zoneId);
-    if (venue?.access) continue;
     if (
       !venue ||
       !zone ||
-      !residents.has(permission.controllerId) ||
-      (permission.visitorId !== "player" && !residents.has(permission.visitorId)) ||
       !(permission.action === "revoke"
         ? canRevokeZonePermission(venue, zone, permission.controllerId)
         : canInviteToZone(venue, zone, permission.controllerId))
     )
-      continue;
+      throw new Error("Standing permission authority changed.");
+    if (venue.access) continue; // Modern standing access settles in the owning Venue authority transaction.
     const key = permissionKey(permission.controllerId, permission.visitorId, venue.id, zone.id);
-    // Replaying an older invitation must not undo a later boundary.
     const previous = state.grants[key];
-    if (
-      previous &&
-      (Date.parse(previous.at) > Date.parse(at) ||
-        (previous.at === at && (previous.revoked || permission.action === "grant")))
-    ) {
-      state.applied[permission.id] = true;
-      continue;
-    }
-    state.grants[key] = {
-      id: permission.id,
-      controllerId: permission.controllerId,
-      visitorId: permission.visitorId,
-      venueId: venue.id,
-      zoneId: zone.id,
-      active: false,
-      revoked: permission.action === "revoke",
-      automatic: false,
-      at,
-    };
+    if (!previous || Date.parse(previous.at) <= Date.parse(at))
+      state.grants[key] = {
+        ...permission,
+        active: permission.action === "grant",
+        revoked: permission.action === "revoke",
+        at,
+      };
     state.applied[permission.id] = true;
   }
   reconcileRelationships(state, village, now);
-  return Object.values(state.receipts).filter(
-    (receipt) => receipt.sourceId === sourceId && receipt.before !== receipt.after,
-  );
+  return review.changes.flatMap((change) => (state.receipts[change.id] ? [state.receipts[change.id]!] : []));
 }

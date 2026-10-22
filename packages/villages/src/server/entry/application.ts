@@ -11,7 +11,7 @@ import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import { readRuntimeDebug } from "../adapters/observability/runtime-debug.js";
 import { recoverVenueSceneWork } from "../features/scenes/venue-session.js";
 import { startProgressRecovery } from "../features/scenes/progress.js";
-import { readVillageState } from "../features/world/village-store.js";
+import { readVillageAuthority, readVillageState } from "../features/world/village-store.js";
 import { startBackgroundWork } from "../jobs/background-work.js";
 import { startTownMapGeneration } from "../jobs/town-map-generation.js";
 import { stopVenueCoordinator } from "../jobs/venue-coordinator.js";
@@ -53,6 +53,7 @@ export interface ApplicationServices {
   startProgressRecovery(): Cleanup;
   startPrivateSpacePreparation(): Promise<Cleanup>;
   readVillageState(): Promise<unknown>;
+  assertSocialContract?(): Promise<unknown>;
 }
 const applicationServices: ApplicationServices = {
   registerSpinoffs: (api) => {
@@ -88,6 +89,7 @@ const applicationServices: ApplicationServices = {
     return startPrivateSpacePreparation();
   },
   readVillageState,
+  assertSocialContract: readVillageAuthority,
 };
 /** An activation owns its registrations and job cleanup in their existing order. */
 export async function startVillagesApplication(
@@ -141,6 +143,7 @@ async function assembleApplication({ api }: ActivationContext, services: Applica
   };
   try {
     cleanups.push(services.configureRuntime(api.runtime));
+    await services.assertSocialContract?.();
     cleanups.push(services.startTownMapGeneration());
     cleanups.push(services.configureDecisions(api.runtime));
     await services.readRuntimeDebug().catch(services.warnRuntimeDebug);

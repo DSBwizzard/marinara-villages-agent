@@ -39,7 +39,7 @@ export type SemanticExchange = {
   turnOutcome?: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
   intent?: SemanticIntent;
   checkpointKey: string;
-  authority: { physical: boolean; access: boolean; projects: boolean; standing: boolean };
+  authority: { physical: boolean; access: boolean; projects: boolean; standing: boolean; social?: boolean };
   version: 2;
   sourceHash: string;
   effects: Record<string, unknown>;

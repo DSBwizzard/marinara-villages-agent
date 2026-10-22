@@ -593,6 +593,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readVillageState,
       mutateRelationships,
       prepareStartingTies: startingTies.prepare,
+      clarifyStartingTies: startingTies.clarify,
+      backgroundWorkSummaries,
       applySavedStartingTies: startingTies.applySaved,
     }),
   );

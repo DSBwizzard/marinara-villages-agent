@@ -11,7 +11,7 @@ import type { KnownWish } from "./wish-journal.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
 import { venueZones, resolveVenueZone, legacyZoneId } from "./venue-zones.js";
 import { sceneWishProtected } from "./scene-wish-protection.js";
-import { sceneRelationshipView } from "./relationship-rules.js";
+import { relationshipKey } from "./relationship-rules.js";
 import { wishExpired } from "./wish-definition.js";
 import { contactNeighbors, contactPosition } from "./venue-contact.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
@@ -203,7 +203,21 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene): V
     }
   }
 
-  view.relationshipContext = sceneRelationshipView(current.relationshipContext, scene);
+  if (view.relationshipContext && current.relationshipContext) {
+    const baseReceipts = new Set(Object.keys(view.relationshipContext.receipts));
+    const ordered = scene.submissions.flatMap((turn) =>
+      Object.values(current.relationshipContext!.receipts).filter((receipt) => receipt.submissionId === turn.id),
+    );
+    for (const receipt of ordered) {
+      if (receipt.sceneId !== scene.id || baseReceipts.has(receipt.id)) continue;
+      const key = relationshipKey(receipt.fromId, receipt.toId);
+      view.relationshipContext.edges[key] = structuredClone(receipt.sceneAfter);
+      for (const record of Object.values(receipt.sceneAfter.records))
+        if (record.kind === "agreement" || record.kind === "commitment")
+          view.relationshipContext.sharedRecords[record.id] = structuredClone(record);
+      view.relationshipContext.receipts[receipt.id] = structuredClone(receipt);
+    }
+  }
 
   // Replay only already-committed physical receipts, in transcript order.
   // This edits a disposable presentation copy, never consumes live stock.

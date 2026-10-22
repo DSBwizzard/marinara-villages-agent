@@ -15,7 +15,7 @@ import { createLiveEvidenceContext, memoryVersion } from "../../domain/rules/liv
 
 import { MAX_MEMORY_LENGTH } from "../../domain/rules/memory-policy.js";
 
-import { parseRelationshipProposals, substantiveContact } from "../../domain/rules/relationship-review.js";
+import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
 
 import { applyRelationshipReview } from "../../domain/rules/relationship-rules.js";
 
@@ -25,6 +25,7 @@ import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 
 import { metadataFailure, WorkFailureError, coerceWorkFailure } from "../../domain/rules/work-failure.js";
 
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { captureRelationshipKnowledge } from "../../domain/rules/relationship-knowledge.js";
 
 import type { mutateVillageState, readVillageAuthority, readVillageState } from "../world/village-store.js";
@@ -392,35 +393,15 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         lineIds: refs(row.lineIds, proposals),
       }),
       turn.semanticProvenance?.version === 2,
+      sceneContinuityView(village, scene).relationshipContext,
     );
-    const actors = [...new Set(lines.map((line) => (line.role === "user" ? "player" : line.speakerId)))].filter(
-      (id) => id === "player" || village.villagers.some((person) => person.characterId === id),
-    );
-    for (const fromId of actors.filter((id) => id !== "player"))
-      for (const toId of actors) {
-        if (turn.semanticProvenance?.version === 2 || fromId === toId || !substantiveContact(lines, fromId, toId))
-          continue;
-        review.changes.push({
-          id: `${scene.id}:${turn.id}:contact:${fromId}:${toId}`,
-          fromId,
-          toId,
-          dimension: "warmth",
-          amount: 0,
-          ordinary: true,
-          reason: "Shared substantive contact.",
-          lineIds: lines.filter((line) => line.heardBy.includes(fromId)).map((line) => line.id),
-          disclosed: false,
-          contact: true,
-          contactOnly: true,
-        });
-      }
+    if (rejections.length)
+      throw new Error("Social interpretation needs correction: " + rejections.map((row) => row.reason).join("; "));
     const receiptIds = [...review.changes, ...review.permissions, ...review.disclosures].map((row) => row.id);
-    if (!receiptIds.length)
+    if (!receiptIds.length && !review.intentions?.length)
       return {
         status: rejections.length ? (turn.semanticProvenance?.version === 2 ? "failed" : "rejected") : "applied",
-        reason: rejections.length
-          ? "Relationship proposals rejected"
-          : "No relationship changes or substantive contact",
+        reason: rejections.length ? "Relationship proposals rejected" : "No social changes",
         receiptIds,
         rejectedProposals: rejections,
       };
@@ -436,7 +417,9 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           lineIds: refs(row.lineIds, proposals),
         }),
         turn.semanticProvenance?.version === 2,
+        sceneContinuityView(authority, scene).relationshipContext,
       );
+      if (fresh.rejections.length) throw new Error("Social authority changed before settlement.");
       for (const permission of fresh.review.permissions) {
         const venue = authority.venues.find((row) => row.id === permission.venueId);
         if (venue?.access)
@@ -451,6 +434,7 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
       const authority = await readVillageAuthority();
       if (semanticContinued(authority, scene.id, turn.id, "relationships")) return;
       if (authority.seed !== village.seed) throw new Error("Village identity changed");
+      authority.relationshipContext = state;
       const fresh = parseRelationshipProposals(
         raw,
         scene.id + ":" + turn.id,
@@ -461,22 +445,24 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           lineIds: refs(row.lineIds, proposals),
         }),
         turn.semanticProvenance?.version === 2,
+        sceneContinuityView(authority, scene).relationshipContext,
       );
-      fresh.review.changes.push(
-        ...review.changes.filter(
-          (change) =>
-            change.contactOnly &&
-            authority.villagers.some((person) => person.characterId === change.fromId) &&
-            (change.toId === "player" || authority.villagers.some((person) => person.characterId === change.toId)),
-        ),
-      );
+      if (fresh.rejections.length) throw new Error("Social authority changed before settlement.");
       rejections.splice(0, rejections.length, ...fresh.rejections);
       receiptIds.splice(
         0,
         receiptIds.length,
         ...[...fresh.review.changes, ...fresh.review.permissions, ...fresh.review.disclosures].map((row) => row.id),
       );
-      applyRelationshipReview(state, fresh.review, authority, scene.id, turn.at, villageNow().getTime());
+      applyRelationshipReview(
+        state,
+        fresh.review,
+        authority,
+        scene.id + ":" + turn.id,
+        turn.at,
+        villageNow().getTime(),
+        sceneContinuityView({ ...authority, relationshipContext: state }, scene).relationshipContext,
+      );
       for (const id of receiptIds) {
         const receipt = state.receipts[id];
         if (!receipt || receipt.noticeSequence) continue;
@@ -485,6 +471,9 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         receipt.committedAt = villageNow().toISOString();
         receipt.noticeSequence = ++state.noticeSequence;
       }
+      for (const disclosure of fresh.review.disclosures)
+        if (state.disclosures[disclosure.id])
+          state.disclosures[disclosure.id]!.publicationId = scene.id + ":" + turn.id;
       captureRelationshipKnowledge(state, authority);
     });
     return {

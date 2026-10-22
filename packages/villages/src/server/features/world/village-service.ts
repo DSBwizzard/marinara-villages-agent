@@ -11,6 +11,7 @@ import type {
   VillageSnapshot,
   VillageVenue,
 } from "../../domain/models/world.js";
+import { eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import { openingPresence } from "../../domain/rules/opening-presence.js";
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
@@ -280,17 +281,7 @@ export function createWorldCoordination({
     await reconcileWishLifecycle(now);
     const village = await readVillageState();
     const dateKey = localDateKey(now);
-    const remainingSocialEvents =
-      storyAllowance(village.storyPace, village.seed, dateKey) -
-      village.happenings.filter(
-        (entry) =>
-          localDateKey(
-            new ZonedDate(
-              entry.occurredAt,
-              now instanceof ZonedDate ? now.zone : Intl.DateTimeFormat().resolvedOptions().timeZone,
-            ),
-          ) === dateKey,
-      ).length;
+    const remainingSocialEvents = eventAttemptAvailable(village, dateKey, Date.now()) ? 1 : 0;
     const activeSocialPlan =
       !forced && village.storyPace !== "off" && remainingSocialEvents > 0
         ? village.relationshipContext?.socialPlans.find(
@@ -302,8 +293,7 @@ export function createWorldCoordination({
               plan.endMinute > moment.minuteOfDay,
           )
         : undefined;
-    const shouldCreateStory =
-      forced || (village.storyPace !== "off" && (village.lastCreativeDate < dateKey || !!activeSocialPlan));
+    const shouldCreateStory = forced || remainingSocialEvents > 0;
     if (!shouldCreateStory) {
       const snapshot = await buildVillageSnapshot(now);
       return { ...snapshot, recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs) };
@@ -321,7 +311,7 @@ export function createWorldCoordination({
           zoneId: activeSocialPlan.zoneId,
           facts: [activeSocialPlan.activity, "An accepted free-time plan is happening now."],
         }
-      : creativeOpportunity(village, routines, moment, previousThrough);
+      : creativeOpportunity(village, routines, moment, now.toISOString());
     if (!opportunity) {
       const snapshot = await buildVillageSnapshot(now);
       return { ...snapshot, recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs) };
@@ -380,9 +370,11 @@ export function createWorldCoordination({
     };
     await queueBackgroundJob({
       kind: "story",
-      subjectId: activeSocialPlan ? "social:" + activeSocialPlan.id : "village",
+      subjectId: "village",
       seed: village.seed,
-      revision: forced ? "manual:" + (options.actionId ?? opportunity.id) : dateKey,
+      revision: forced
+        ? "manual:" + (options.actionId ?? opportunity.id)
+        : "automatic:" + dateKey + ":" + Math.floor(Date.now() / (15 * 60_000)),
       finite: forced,
       label: forced ? "Requested village event" : "Today's village story",
       automaticDate: forced ? undefined : dateKey,
@@ -421,8 +413,7 @@ export function createWorldCoordination({
       (!input.opportunity.venueId || state.venues.some((venue) => venue.id === input.opportunity.venueId)) &&
       (input.forced ||
         (state.storyPace !== "off" &&
-          (state.lastCreativeDate < input.dateKey ||
-            (input.socialPlanId && socialContinuationValid(state, input.socialPlanId, input.socialPlan))) &&
+          (!input.socialPlanId || socialContinuationValid(state, input.socialPlanId, input.socialPlan)) &&
           localDateKey(
             new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
           ) <= input.dateKey)),
@@ -430,21 +421,8 @@ export function createWorldCoordination({
       const { forced, dateKey, opportunity } = input;
       const now = new ZonedDate(input.now, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 
-      if (!forced && (state.storyPace === "off" || (!input.socialPlanId && state.lastCreativeDate >= dateKey))) return;
-      const dailyAllowance = storyAllowance(state.storyPace, state.seed, dateKey);
-      const used = state.happenings.filter(
-        (entry) =>
-          localDateKey(
-            new ZonedDate(entry.occurredAt, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
-          ) === dateKey,
-      ).length;
-      const offeredPlan = input.context.social?.candidates.some((plan) => plan.id === proposal.social?.planId);
-      const allowance = forced
-        ? 3
-        : input.socialPlanId
-          ? Math.max(0, dailyAllowance - used)
-          : Math.max(1, dailyAllowance - (offeredPlan ? 1 : 0));
-      if (!allowance) return;
+      if (!forced && state.storyPace === "off") return;
+      const allowance = forced ? 3 : 1;
       const opportunityId = opportunity.id;
       if (state.processedOpportunityIds.includes(opportunityId)) return;
       const happenings = proposal.happenings.slice(0, allowance);

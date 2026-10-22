@@ -430,10 +430,7 @@ export function VillagerDossier({
                     <Sheet title="Known routine" icon="agenda">
                       {profile?.knownAt ? (
                         <>
-                          <p>
-                            {profile.friend ? "Current shared information" : "Last known information"} ·{" "}
-                            {new Date(profile.knownAt).toLocaleString()}
-                          </p>
+                          <p>Last shared information · {new Date(profile.knownAt).toLocaleString()}</p>
                           <ul>
                             {profile.routine?.map((line, index) => (
                               <li key={index}>{line}</li>

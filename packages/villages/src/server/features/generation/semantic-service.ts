@@ -418,7 +418,7 @@ export function createSemanticService(ports: SemanticPorts) {
         (combined
           ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
           : "") +
-        "consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
+        "consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
         (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
         "}. Return exactly one JSON object. " +
         (actionContractV2
@@ -447,7 +447,7 @@ export function createSemanticService(ports: SemanticPorts) {
         WISH_PROPOSAL_INSTRUCTION.replace('evidence:["player",0]', "evidence:[0]") +
         ' Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".' +
         " Memory subjectCharacterIds and knownByCharacterIds contain resident IDs only, never player. Never use an opening proposal, its name, or a newly spoken desire as a Wish ID. If there is no matching supplied Wish ID, return no Wish proposal. Use numeric indexes matching evidence draft:N for current memory evidence/relationship lineIds/Wish evidence. Consolidate memory facts sharing kind, category, subject IDs, knower IDs and evidence IDs into one row; never repeat a unit. Do not emit systemVerification fields. Every knower must witness ALL support and meaning-bearing context. Temporary seating/company may be passing, never automatically trust. " +
-        'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist. Relationship changes additionally use contact:boolean for substantive actual shared contact; private opinion changes alone are not contact.' +
+        'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist. Set social authority true for expressed bond transitions, concrete commitments, consequential boundaries and permissions. These effects settle before publication. Private attitude/intention enrichment alone may be delayed. Claims are not fulfilled physical deeds.' +
         (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
         " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
         (scene.operation?.input.developmentVersion === 1 ? DEVELOPMENT_SCENE_INSTRUCTION : ""),
@@ -746,6 +746,18 @@ export function createSemanticService(ports: SemanticPorts) {
           access: access.results.some((row) => row.outcome !== "unresolved"),
           projects: Array.isArray(effects.projectSpeech) && effects.projectSpeech.length > 0,
           standing: Array.isArray(permissions) && permissions.length > 0,
+          social:
+            asRecord(raw.authority).social === true ||
+            (Array.isArray(asRecord(effects.relationshipChanges).changes) &&
+              (asRecord(effects.relationshipChanges).changes as unknown[]).some((value: unknown) => {
+                const row = asRecord(value),
+                  after = asRecord(row.liveAfter);
+                const before = state.relationshipContext?.edges[JSON.stringify([row.fromId, row.toId])];
+                return (
+                  (Array.isArray(after.records) && after.records.length > 0) ||
+                  after.connection !== (before?.connection ?? "")
+                );
+              })),
         };
         const invalidAuthority = Object.entries(authority).find(
           ([key, value]) => asRecord(raw.authority)[key] !== value,

@@ -25,9 +25,6 @@ export const zonePolicySchema = z
     memberIds: ids,
     memberRoles: z.array(z.enum(["residents", "workers"])).max(2),
     inviterIds: ids,
-    regularVisitors: z
-      .array(z.object({ inviterId: id, relationship: z.enum(["friend", "close"]), accompanied: z.boolean() }).strict())
-      .max(20),
     visitorHours: z.union([z.literal("inherit"), z.literal("always"), hoursSchema]),
     accompanied: z.boolean(),
   })
@@ -152,7 +149,6 @@ export function defaultZonePolicy(venue: VillageVenue, zone: VillageVenueZone): 
             ? ["workers"]
             : [],
     inviterIds: [],
-    regularVisitors: [],
     visitorHours: "inherit",
     accompanied: false,
   };
@@ -337,13 +333,6 @@ export function evaluateZoneAccess(
   }
   if (!bans.length && policy.mode === "public" && !policy.accompanied)
     return result(true, "public", "Public during visitor hours.");
-  if (!bans.length)
-    for (const rule of policy.regularVisitors) {
-      const edge = context.relationships?.edges[JSON.stringify([rule.inviterId, actor])];
-      if (!mayInvite(venue, zone, rule.inviterId) || !edge?.[rule.relationship]) continue;
-      if ((rule.accompanied || policy.accompanied) && !escortPresent(rule.inviterId)) continue;
-      return result(true, "regular-visitor", "This Zone allows you under its regular-visitor rule.");
-    }
   if (eligible.some((grant) => grant.accompaniedBy || policy.accompanied))
     return result(false, "accompaniment-required", "Your named escort must be here with you.");
   return result(false, "permission-required", "Permission is required for this Zone.");
@@ -459,22 +448,9 @@ export function applyAccessCommand(
       break;
     case "zone-policy":
       if (!zone || !manager) forbidden();
-      assertIds([
-        ...(command.policy.managerIds ?? []),
-        ...command.policy.memberIds,
-        ...command.policy.inviterIds,
-        ...command.policy.regularVisitors.map((rule) => rule.inviterId),
-      ]);
+      assertIds([...(command.policy.managerIds ?? []), ...command.policy.memberIds, ...command.policy.inviterIds]);
       if (command.policy.managerIds?.length === 0)
         throw badRequest("Choose at least one manager or inherit Venue managers.");
-      if (
-        command.policy.regularVisitors.some(
-          (rule) =>
-            !(command.policy.managerIds ?? ledger.managerIds).includes(rule.inviterId) &&
-            !command.policy.inviterIds.includes(rule.inviterId),
-        )
-      )
-        throw badRequest("Regular-visitor rules must belong to someone who may invite guests.");
       zone!.access = command.policy;
       break;
     case "invite":
