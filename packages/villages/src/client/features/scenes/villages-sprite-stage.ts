@@ -26,8 +26,8 @@ export function selectSpriteImage(
   const defaults = (item: SpriteImage) => (item.expressionId ?? item.label) === defaultId;
   const image =
     images.find((item) => item.view === view && matches(item)) ??
-    images.find(matches) ??
     images.find((item) => item.view === view && defaults(item)) ??
+    images.find(matches) ??
     images.find(defaults);
   return image
     ? {

@@ -611,6 +611,112 @@ try {
       await page.close();
     }
   }
+  // A side-only expression must not override a later turn toward the player.
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1440, height: 900 },
+  ]) {
+    const page = await browser.newPage({ viewport });
+    const front = spriteImage("#a7c7ff");
+    const side = spriteImage("#fadd70");
+    const castIds = residents.slice(0, 2).map((person) => person.characterId);
+    const fixture = {
+      ...snapshot,
+      villagers: residents.slice(0, 2).map((person) => ({
+        ...person,
+        sprite: {
+          ...person.sprite,
+          images: [
+            { view: "front", label: "neutral", expressionId: "e-neutral", isDefault: true, url: front },
+            { view: "side", direction: "right", label: "smile", expressionId: "e-smile", url: side },
+          ],
+        },
+      })),
+    };
+    const session = {
+      version: 1,
+      stagingVersion: 1,
+      id: "attention-views",
+      placeId: "mill",
+      placeName: "The Mill",
+      spaceClass: "workplace",
+      area: "public",
+      startedAt: now,
+      lastActivityAt: now,
+      endedAt: "",
+      status: "active",
+      activeIds: castIds,
+      participants: residents.slice(0, 2).map(({ characterId, name }) => ({ characterId, name })),
+      lines: [
+        {
+          id: "residents",
+          role: "assistant",
+          kind: "dialogue",
+          speakerId: "mara",
+          name: "Mara",
+          content: "Let us discuss the landing.",
+          at: now,
+          staging: castIds.map((characterId, index) => ({
+            characterId,
+            expression: "e-smile",
+            look: { target: "villager", characterId: castIds[1 - index] },
+          })),
+        },
+        {
+          id: "player",
+          role: "assistant",
+          kind: "dialogue",
+          speakerId: "mara",
+          name: "Mara",
+          content: "Welcome. Come join us.",
+          at: now,
+          staging: castIds.map((characterId) => ({ characterId, look: { target: "player" } })),
+        },
+      ],
+      submissions: [],
+    };
+    await page.route("**/api/villages**", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const value = path.endsWith("/rooms/active") ? { session } : fixture;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+    });
+    await page.route("http://villages.test/", (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: "<style>html,body{margin:0;width:100%;height:100%;background:#171b25;color:white}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+      }),
+    );
+    await page.goto("http://villages.test/");
+    await page.addScriptTag({ content: sceneBundle });
+    const people = page.locator(".marinara-capability-villages-chat-cast-person");
+    const previous = page.getByRole("button", { name: "Previous paragraph" });
+    await expect(people).toHaveCount(2);
+    await expect(people.first().locator("img")).toHaveAttribute("src", front);
+    await expect(people.last().locator("img")).toHaveAttribute("src", front);
+    await previous.click();
+    await expect(people.first()).toHaveAttribute("data-attention", "right");
+    await expect(people.last()).toHaveAttribute("data-attention", "left");
+    await expect(people.first().locator("img")).toHaveAttribute("src", side);
+    await expect(people.last().locator("img")).toHaveAttribute("src", side);
+    await expect(people.first().locator("img")).toHaveCSS("transform", "none");
+    await expect(people.last().locator("img")).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
+    await page.getByRole("button", { name: "Next paragraph" }).click();
+    for (const person of await people.all()) {
+      await expect(person).toHaveAttribute("data-attention", "front");
+      await expect(person.locator("img")).toHaveAttribute("src", front);
+      await expect(person.locator("img")).toHaveAttribute("data-facing", "front");
+      await expect(person.locator("img")).toHaveAttribute("data-flipping", "false");
+    }
+    if (process.env.VILLAGES_VISUAL_OUTPUT)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "facing-player-" + viewport.width + ".png"),
+      });
+    await page.reload();
+    await page.addScriptTag({ content: sceneBundle });
+    await expect(people.first().locator("img")).toHaveAttribute("src", front);
+    await expect(people.last().locator("img")).toHaveAttribute("src", front);
+    await page.close();
+  }
   console.log(
     "Villages staging browser checks: one through four residents, four viewports, framing, movement, card flips, shared settings, failures, loading, cancellation, replay, refresh, departures, legacy visits, and reduced motion passed",
   );

@@ -41,8 +41,8 @@ const images = [
   { view: "front" as const, label: "happy", url: "/front-happy" },
   { view: "side" as const, label: "neutral", url: "/side-neutral" },
 ];
-assert.deepEqual(selectSpriteImage(images, "happy", "left"), { image: images[1], mirrored: false });
-assert.deepEqual(selectSpriteImage(images, "happy", "right"), { image: images[1], mirrored: false });
+assert.deepEqual(selectSpriteImage(images, "happy", "left"), { image: images[2], mirrored: true });
+assert.deepEqual(selectSpriteImage(images, "happy", "right"), { image: images[2], mirrored: false });
 assert.deepEqual(selectSpriteImage(images.slice(0, 2), "happy", "left"), { image: images[1], mirrored: false });
 const customImages = [
   {
@@ -55,13 +55,39 @@ const customImages = [
   { view: "front" as const, label: "running", expressionId: "e-running", url: "/running" },
 ];
 assert.equal(selectSpriteImage(customImages, "", "left")?.image.url, "/delighted");
-assert.equal(selectSpriteImage(customImages, "e-running", "left")?.image.url, "/running");
+assert.equal(selectSpriteImage(customImages, "e-running", "left")?.image.url, "/delighted");
 assert.equal(
   selectSpriteImage(customImages, "pleased", "front")?.image.url,
   "/delighted",
   "unavailable labels use the default",
 );
 assert.equal(selectSpriteImage(customImages, "unknown", "front")?.image.url, "/delighted");
+const directionalImages = [
+  { view: "front" as const, label: "neutral", expressionId: "e-neutral", isDefault: true, url: "/front-default" },
+  { view: "side" as const, direction: "right" as const, label: "smile", expressionId: "e-smile", url: "/side-smile" },
+  {
+    view: "side" as const,
+    direction: "left" as const,
+    label: "neutral",
+    expressionId: "e-neutral",
+    url: "/side-default",
+  },
+];
+assert.deepEqual(
+  selectSpriteImage(directionalImages, "e-smile", "front"),
+  { image: directionalImages[0], mirrored: false },
+  "player attention uses the front default when the expression has only side artwork",
+);
+assert.deepEqual(selectSpriteImage(directionalImages, "e-smile", "left"), {
+  image: directionalImages[1],
+  mirrored: true,
+});
+assert.deepEqual(
+  selectSpriteImage(directionalImages, "missing", "right"),
+  { image: directionalImages[2], mirrored: true },
+  "left-facing originals mirror toward a resident on the right",
+);
+assert.equal(selectSpriteImage([], "e-smile", "front"), null);
 const semanticSprite = {
   assetId: "villages-123e4567-e89b-42d3-a456-426614174000",
   expressions: [
@@ -79,6 +105,13 @@ const semanticSprite = {
 };
 assert.match(describeSpriteExpressions(semanticSprite), /Already moving quickly/);
 assert.match(describeSpriteExpressions(semanticSprite), /e-running/);
+const catalog = describeSpriteExpressions({
+  ...semanticSprite,
+  expressions: [...semanticSprite.expressions, { ...semanticSprite.expressions[0], view: "side" as const }],
+});
+const described = JSON.parse(catalog);
+assert.deepEqual(described.views, ["front", "side"], "the writer sees every available view of one expression");
+assert.equal(described.id, "e-running");
 assert.equal(validateSpriteExpression(semanticSprite, "e-running"), "e-running");
 assert.equal(validateSpriteExpression(semanticSprite, "running"), "", "new selections require stable IDs");
 assert.equal(validateSpriteExpression(semanticSprite, "e-someone-else"), "", "another character's IDs are rejected");
