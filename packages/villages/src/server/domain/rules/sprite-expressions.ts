@@ -14,6 +14,9 @@ export function describeSpriteExpressions(sprite: VillageResidentSprite | null |
           id,
           name: entry.name,
           useWhen: entry.useWhen || "",
+          views: [
+            ...new Set((sprite?.expressions ?? []).filter((item) => item.expressionId === id).map((item) => item.view)),
+          ],
           isDefault: id === defaultId,
         }),
       ];

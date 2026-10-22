@@ -224,8 +224,8 @@ const art = [
 ];
 assert.equal(
   selectSpriteImage(art, "e-thinking", "left")?.image.url,
-  "/thinking",
-  "matching front expression retains existing fallback",
+  "/side",
+  "attention uses the default in the requested view before an expression in the other view",
 );
 assert.equal(selectSpriteImage(art, "", "left")?.mirrored, true);
 assert.equal(selectSpriteImage(art, "unavailable", "front")?.image.url, "/side");
