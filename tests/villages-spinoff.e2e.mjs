@@ -153,9 +153,14 @@ try {
     await expect(page.getByRole("button", { name: "Keep this spinoff separate and return" })).toBeDisabled();
     assert.equal(requests.filter((path) => path.endsWith("/begin")).length, 1, "recovery never starts a new spinoff");
     assert.equal(requests.filter((path) => path.endsWith("/prepare")).length, 1, "recovery never prepares memories");
+    const resolvedRefresh = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith("/spinoffs/active"),
+    );
     await page.getByRole("button", { name: "Save selected memories and return" }).click();
     assert.deepEqual(selections, [["m1"], ["m1"]]);
     await expect(page.getByRole("menuitem", { name: "Start a spinoff", exact: true })).toBeEnabled();
+    // Include the explicit save's final refresh before measuring unsolicited work.
+    await resolvedRefresh;
     const completedRequests = requests.length;
     failRead = true;
     await page.evaluate(() => {
