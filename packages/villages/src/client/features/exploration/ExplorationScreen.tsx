@@ -42,19 +42,41 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
   } = controller;
   const [collapsed, setCollapsed] = useState(false);
   const [focusSearch, setFocusSearch] = useState(false);
+  const [popupOpen, setPopupOpen] = useState(false);
   const places = snapshot?.settings.venues ?? [];
   const navigatorOpen = !placingProjectId && (mobile ? exploreSheet?.tab === "places" : !collapsed);
   const selectPlace = (place: VillageVenue, fromMap = false) => {
     setFocusSearch(false);
-    if (fromMap) setExplorationSearch((current) => ({ ...current, places: "" }));
+    setPopupOpen(fromMap);
     explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     explorationReturnTab.current = "map";
     setOpenPlaceId(place.id);
     const point = placeSpot(place);
     if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
-    if (mobile) setExploreSheet({ tab: "places" });
-    else setCollapsed(false);
+    if (fromMap) {
+      setExploreSheet(null);
+      setCollapsed(true);
+    } else {
+      if (mobile) setExploreSheet({ tab: "places" });
+      else setCollapsed(false);
+    }
   };
+  const rows = places.map((place) => ({
+    id: place.id,
+    name: place.name,
+    detail: [
+      place.classes
+        .map((value) => (value === "other" ? "Venue" : value[0].toUpperCase() + value.slice(1)))
+        .join(" · ") || "Venue",
+      !placeSpot(place) ? "Not on map" : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    selected: openPlaceId === place.id,
+    onSelect: () => selectPlace(place),
+    actions: venueExplorationActions(place),
+  }));
+  const popupRow = popupOpen ? rows.find((row) => row.id === openPlaceId) : undefined;
   const pins = savedPins
     .filter((pin) => pin.kind !== "person")
     .map((pin) => {
@@ -71,6 +93,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       active={mobile ? (exploreSheet?.tab ?? "map") : "map"}
       disabled={!snapshot || busy}
       onChoose={(tab, button) => {
+        setPopupOpen(false);
         explorationOrigin.current = button;
         explorationReturnTab.current = tab;
         if (tab === "map") closeExploration();
@@ -126,21 +149,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
               }
               setFocusSearch(false);
             }}
-            rows={places.map((place) => ({
-              id: place.id,
-              name: place.name,
-              detail: [
-                place.classes
-                  .map((value) => (value === "other" ? "Venue" : value[0].toUpperCase() + value.slice(1)))
-                  .join(" · ") || "Venue",
-                !placeSpot(place) ? "Not on map" : "",
-              ]
-                .filter(Boolean)
-                .join(" · "),
-              selected: openPlaceId === place.id,
-              onSelect: () => selectPlace(place),
-              actions: venueExplorationActions(place),
-            }))}
+            rows={rows}
           />
         ) : !mobile && !placingProjectId ? (
           <button
@@ -148,6 +157,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
             className={`${ELEMENT_TAG}-navigator-toggle`}
             aria-label="Show places"
             onClick={() => {
+              setPopupOpen(false);
               setFocusSearch(true);
               setCollapsed(false);
               setExploreSheet({ tab: "places" });
@@ -184,11 +194,15 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 .finally(() => setBusy(false));
             }}
             onDismiss={() => {
+              setPopupOpen(false);
               setExploreSheet(null);
               setOpenPlaceId(null);
             }}
             mobile={mobile}
             exploration
+            placePopup={
+              popupRow && !placingProjectId ? { row: popupRow, disabled: busy, onClose: closeExploration } : undefined
+            }
             navigationView={navigationView}
             onNavigationView={setNavigationView}
           >

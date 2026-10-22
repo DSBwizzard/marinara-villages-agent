@@ -554,7 +554,7 @@ try {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();
       await home
-        .getByRole("complementary", { name: "Places navigator" })
+        .getByRole("dialog", { name: "Mara's home", exact: true })
         .getByRole("button", { name: "View venue", exact: true })
         .click();
       await page

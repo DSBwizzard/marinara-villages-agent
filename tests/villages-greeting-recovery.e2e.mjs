@@ -129,10 +129,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
     // Clicking waits for the map pin to remain attached and settle after the
     // initial image/layout read; a key press can lose focus during that render.
     await page.locator('[data-pin-id="mill"]').click();
-    await page
-      .getByRole("complementary", { name: "Places navigator" })
-      .getByRole("button", { name: "Visit", exact: true })
-      .click();
+    await page.getByRole("dialog").getByRole("button", { name: "Visit", exact: true }).click();
   }
   async function focus() {
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));

@@ -102,7 +102,6 @@ assert.ok(source.includes('data-mobile-gesturing", "true"'));
 assert.ok(
   source.includes("left: `${picture.left + pin.x * picture.width + (pinOffset?.id === pin.id ? pinOffset.x : 0)}px`"),
 );
-assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)"));
 assert.equal(source.includes('mobileStart="contain"'), false);
 assert.ok(
   source.includes("const tapped = !cancelled && pointersRef.current.size === 1 && !suppressTouchClickRef.current"),

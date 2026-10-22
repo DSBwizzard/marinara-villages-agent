@@ -3,6 +3,7 @@ import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
 import { clamp, round4 } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin, MapZoomRange, PictureBox } from "../../shared/types.js";
 import { ExplorationMarkers } from "./villages-exploration";
+import { MapPlacePopup, type MapPlacePopupProps } from "./MapPlacePopup.js";
 import {
   focusedPhotoScale,
   mobileCoverZoom,
@@ -199,6 +200,7 @@ export function MapStage({
   fitToRoom,
   mobile,
   exploration = false,
+  placePopup,
   navigationView,
   onNavigationView,
   compactPhotos = false,
@@ -242,6 +244,7 @@ export function MapStage({
   fitToRoom?: boolean;
   mobile?: boolean;
   exploration?: boolean;
+  placePopup?: Omit<MapPlacePopupProps, "point" | "frame">;
   navigationView?: MobileMapView | null;
   onNavigationView?(next: MobileMapView | null): void;
   /** Show the village's photo cards while keeping desktop's fitted map. */
@@ -537,7 +540,11 @@ export function MapStage({
       suppressTouchClickRef.current = false;
     }
     if (!frameRef.current) return;
-    if (event.target instanceof Element && event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom, .${ELEMENT_TAG}-map-place-popup`)
+    )
+      return;
     stageRef.current?.setAttribute("data-mobile-gesturing", "true");
     const rect = frameRef.current.getBoundingClientRect();
     pointersRef.current.set(event.pointerId, { x: event.clientX - rect.left, y: event.clientY - rect.top });
@@ -647,6 +654,7 @@ export function MapStage({
     onNavigationView?.(null);
   };
 
+  const popupPin = placePopup ? pins.find((pin) => pin.id === placePopup.row.id) : undefined;
   return (
     <div
       ref={stageRef}
@@ -1009,6 +1017,14 @@ export function MapStage({
               </div>
             ))
         : null}
+
+      {exploration && placePopup && popupPin && picture && frame ? (
+        <MapPlacePopup
+          {...placePopup}
+          point={{ x: picture.left + popupPin.x * picture.width, y: picture.top + popupPin.y * picture.height }}
+          frame={frame}
+        />
+      ) : null}
 
       {exploration && !placing ? (
         !mobile && (

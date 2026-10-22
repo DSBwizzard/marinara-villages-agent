@@ -157,6 +157,9 @@ try {
       { ...place("unplaced", null, null), name: "Unplaced Venue", presentation: { image: null, x: null, y: null } },
       { ...place("worksite", 0.8, 0.2), name: "New Mill" },
       { ...place("edge", 0.5, 0.01), name: "Edge Venue" },
+      { ...place("left-edge", 0.01, 0.5), name: "Left Edge Venue" },
+      { ...place("right-edge", 0.99, 0.5), name: "Right Edge Venue" },
+      { ...place("bottom-edge", 0.5, 0.99), name: "Bottom Edge Venue" },
     ];
     fixture.projects = [
       {
@@ -316,10 +319,68 @@ try {
     }
     await cover();
     assert.equal(sceneRequests.length, 0);
-    await marker.click();
-    await expect(navigator.getByRole("searchbox")).toHaveValue("");
-    await expect(navigator.locator('[data-selected="true"]')).toBeInViewport();
-    await screenshot("selected");
+    await marker.locator("." + P + "-map-point").click();
+    const popup = home.getByRole("dialog");
+    await expect(popup).toHaveAccessibleName("Village Market");
+    await expect(navigator).toHaveCount(0);
+    await expect(popup).toBeFocused();
+    const popupFits = async () => {
+      await settleLayout();
+      const p = await popup.boundingBox(),
+        f = await canvas.boundingBox();
+      assert.ok(
+        p && p.x >= f.x && p.y >= f.y && p.x + p.width <= f.x + f.width + 1 && p.y + p.height <= f.y + f.height + 1,
+        "attached popup stays inside the map",
+      );
+      for (const button of await popup.getByRole("button").all()) {
+        const b = await button.boundingBox();
+        assert.ok(
+          b.height >= 44 && b.width >= 44 && b.y + b.height <= f.y + f.height + 1,
+          "popup actions stay reachable",
+        );
+      }
+    };
+    await popupFits();
+    await screenshot("popup");
+    await popup.getByRole("button", { name: "Close location" }).click();
+    await expect(popup).toHaveCount(0);
+    await expect(marker).toBeFocused();
+    await marker.press("Enter");
+    await expect(popup).toBeVisible();
+    await popup.press("Escape");
+    await expect(popup).toHaveCount(0);
+    await expect(marker).toBeFocused();
+    await marker.press("Enter");
+    const emptyMap = await canvas.boundingBox();
+    await canvas.click({ position: { x: 10, y: emptyMap.height - 12 } });
+    await expect(popup).toHaveCount(0);
+    for (const [id, name] of [
+      ["edge", "Edge Venue"],
+      ["left-edge", "Left Edge Venue"],
+      ["right-edge", "Right Edge Venue"],
+      ["bottom-edge", "Bottom Edge Venue"],
+    ]) {
+      await select(name);
+      await home.locator('[data-pin-id="' + id + '"]').click({ position: { x: 14, y: 22 } });
+      await expect(popup).toHaveAccessibleName(name);
+      await popupFits();
+      if (id === "bottom-edge") await expect(popup).toHaveAttribute("data-side", "above");
+      await screenshot("popup-" + id);
+      await popup.getByRole("button", { name: "Close location" }).click();
+    }
+    await select("A nearby venue with a very long readable name");
+    await home.locator('[data-pin-id="crowded"]').click();
+    await expect(popup).toHaveAccessibleName("A nearby venue with a very long readable name");
+    await popupFits();
+    await showPlaces();
+    await expect(popup).toHaveCount(0);
+    await expect(navigator.getByRole("searchbox")).toBeFocused();
+    await select("Village Market");
+    await marker.locator("." + P + "-map-point").click();
+    await popup.getByRole("button", { name: "View venue", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Village Market", exact: true })).toBeVisible();
+    assert.equal(sceneRequests.length, 0, "popup selection, dismissal and View venue do not start a Scene");
+    await page.getByRole("button", { name: "Back", exact: true }).click();
     await select("New Mill");
     await expect(navigator.getByRole("button", { name: "View Project", exact: true })).toBeVisible();
     await expect(navigator.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
@@ -426,9 +487,10 @@ try {
     await page.getByRole("button", { name: "Close ×", exact: true }).click();
     await showPlaces();
     await select("Village Market");
+    await marker.locator("." + P + "-map-point").click();
     await screenshot("visit");
     assert.equal(sceneRequests.length, 0, "search, selection, pan, zoom and People remain free of Scene requests");
-    await navigator.getByRole("button", { name: "Visit", exact: true }).click();
+    await popup.getByRole("button", { name: "Visit", exact: true }).click();
     await expect.poll(() => sceneRequests.length).toBe(1);
     assert.equal(sceneRequests[0].venueId, "market");
     await expect(page.getByRole("textbox", { name: "Message at Village Market" })).toBeVisible();
