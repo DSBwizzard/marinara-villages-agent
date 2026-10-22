@@ -28,7 +28,7 @@ export const EXPLORATION_STYLES = `
 .${P}-explore-notices { display:inline-flex; align-items:center; gap:6px; padding:0 10px; cursor:pointer; }
 .${P}-explore-notices svg { width:18px; height:18px; }
 .${P}-explore-badge { display:grid; place-items:center; min-width:20px; height:20px; padding:0 3px; box-sizing:border-box; border:1px solid var(--explore-border); border-radius:50%; font-size:12px; }
-.${P}-explore-nav { display:flex; flex:0 0 auto; min-height:56px; padding-bottom:env(safe-area-inset-bottom,0px); border-top:1px solid var(--explore-border); background:var(--explore-background); }
+.${P}-explore-nav { display:flex; flex:0 0 auto; min-height:56px; padding:0; border-top:1px solid var(--explore-border); background:var(--explore-background); }
 .${P}-explore-nav button { flex:1; min-width:0; min-height:56px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:0; border-top:3px solid transparent; background:transparent; color:var(--explore-muted); font:inherit; font-size:12px; cursor:pointer; }
 .${P}-explore-nav svg { width:22px; height:22px; }
 .${P}-explore-nav button[aria-pressed="true"] { color:var(--explore-selected); border-top-color:var(--explore-selected); background:#a88aff0d; }
