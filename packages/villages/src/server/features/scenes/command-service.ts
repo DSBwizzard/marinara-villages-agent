@@ -3919,11 +3919,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   /** Only saved local results can finish a deferred natural conclusion. */
   async function finishSemanticScene(id: string): Promise<void> {
     let scene = await readSession(id);
-    const authority = await readVillageState();
-    for (const turn of scene.submissions.filter(
-      (row) =>
-        row.semanticProvenance?.version === 2 &&
-        (!row.semanticReady || !authority.socialPublications?.[scene.id + ":" + row.id]),
+    const semanticTurns = scene.submissions.filter((row) => row.semanticProvenance?.version === 2);
+    const authority = semanticTurns.length ? await readVillageState() : undefined;
+    for (const turn of semanticTurns.filter(
+      (row) => !row.semanticReady || !authority?.socialPublications?.[scene.id + ":" + row.id],
     )) {
       try {
         await settleSemanticAuthority(scene, turn, false);
