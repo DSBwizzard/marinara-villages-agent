@@ -160,6 +160,7 @@ export function VillagesRelationships({
                   <p>{conflict.question}</p>
                   <p>{conflict.residents.join(", ")}</p>
                   <form
+                    autoComplete="off"
                     onSubmit={async (event) => {
                       event.preventDefault();
                       setSaving(true);
