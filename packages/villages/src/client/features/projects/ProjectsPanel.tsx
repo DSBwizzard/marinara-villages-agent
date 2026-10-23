@@ -145,6 +145,11 @@ export function ProjectsPanel({
             <h1>{project ? "02 / Project Portfolio" : "01 / Project Portfolio"}</h1>
           </div>
           <div className="vp-actions">
+            {project || c.draftType ? (
+              <button type="button" className="vp-subtle" onClick={allProjects}>
+                ‹ All Projects
+              </button>
+            ) : null}
             <button type="button" className="vp-subtle" onClick={onMap}>
               Map
             </button>
@@ -153,11 +158,6 @@ export function ProjectsPanel({
             </button>
           </div>
         </header>
-        {project || c.draftType ? (
-          <button type="button" className="vp-subtle" onClick={allProjects}>
-            ‹ All Projects
-          </button>
-        ) : null}
         {!project && !c.draftType ? (
           <>
             <div className="vp-panel-heading">

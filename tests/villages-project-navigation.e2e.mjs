@@ -63,6 +63,24 @@ try {
     await select(/Canvas Tent/);
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeEnabled();
     await page.getByRole("tab", { name: "Design", exact: true }).click();
+    await page.getByRole("tab", { name: "Design", exact: true }).hover();
+    const selectedContrast = await page.getByRole("tab", { name: "Design", exact: true }).evaluate((element) => {
+      const style = getComputedStyle(element);
+      const luminance = (color) =>
+        color
+          .match(/[0-9.]+/g)
+          .slice(0, 3)
+          .map(Number)
+          .map((channel) => {
+            const value = channel / 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+          })
+          .reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
+      const a = luminance(style.color),
+        b = luminance(style.backgroundColor);
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    });
+    assert(selectedContrast >= 4.5, "a hovered selected tab retains readable contrast");
     await page.getByLabel("Physical form", { exact: true }).fill("An edited pavilion");
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
     // Keyboard navigation changes tabs, never the design or server.

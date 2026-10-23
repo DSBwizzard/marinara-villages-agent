@@ -81,6 +81,8 @@ ${P} .${P}-project-board{position:relative;max-width:90rem;min-height:calc(100vh
 .${P}-project-board .villages-space-connections legend{font-size:1.2rem;margin-bottom:.6rem}
 .${P}-project-board .villages-space-connections ul{padding-left:1.25rem}
 .${P}-project-board .vp-zone-list button[aria-pressed=true],.${P}-project-board .vp-person[aria-pressed=true]{background:#d1e9ef;color:#064773;border-color:#d1e9ef}
+.${P}-project-board button:is([aria-pressed=true],[aria-selected=true],.vp-primary):hover:not(:disabled){background:#e0f1f4;color:#064773}
+.${P}-project-board textarea[rows="2"]{min-height:3.5rem}
 @media(max-width:700px){
  ${P} .${P}-project-desk{padding:.6rem}
  ${P} .${P}-project-board{padding:.85rem;outline-width:2px;min-height:calc(100vh - 4rem)}
