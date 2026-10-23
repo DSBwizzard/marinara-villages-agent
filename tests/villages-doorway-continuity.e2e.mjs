@@ -103,7 +103,8 @@ try {
     let status = await openSceneErrors(page);
     await expect(status).toContainText("memories update not saved");
     await expect(status).toContainText("Not saved");
-    await expect(status).toContainText("not witnessed by everyone");
+    await expect(status).toContainText("residents saw or heard");
+    await expect(status).toContainText("conversation is still in the transcript");
     await expect(status.getByRole("button", { name: /Retry|Replay/ })).toHaveCount(0);
     await page.screenshot({ path: `.build-tmp/doorway-continuity/errors-${width}.png` });
     await closeSceneErrors(page);
