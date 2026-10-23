@@ -131,3 +131,38 @@ assert.doesNotMatch(
   /Hidden private/,
 );
 console.log("Independent agreements, shared citations, stale revisions and Project privacy passed.");
+
+// Recovering a withdrawal spoken before Start cannot manufacture extra work time.
+const delayed = fixture(),
+  delayedId = await delayed.newProject();
+const startedAt = new Date("2026-10-24T11:00:00.000Z");
+await delayed.service.startProjectConstruction(delayedId, delayed.body(delayedId), startedAt);
+const withdrawal = {
+  ...turn,
+  at: "2026-10-24T10:00:00.000Z",
+  villageSeed: delayed.state().seed,
+  lines: [{ ...line, content: "I withdraw my commitment to lead." }],
+  projectContexts: [{ projectId: delayedId, revision: delayed.get(delayedId).lifecycle!.revision, phase: "planning" }],
+  projectSpeech: [
+    {
+      version: 1,
+      projectId: delayedId,
+      revision: delayed.get(delayedId).lifecycle!.revision,
+      kind: "withdrawal",
+      speakerId: "a",
+      citations: [{ lineId: line.id, quote: "I withdraw my commitment to lead." }],
+    },
+  ],
+};
+await createProjectEvidence({
+  readVillageState: async () => delayed.state(),
+  mutateVillageState: delayed.mutate,
+  sceneQueries: () => ({ readProjectTurnEvidence: async () => withdrawal }),
+} as any).processProjectSpeechTurn("old-scene", "old-turn");
+assert.equal(delayed.get(delayedId).status, "paused");
+assert.equal(delayed.get(delayedId).lifecycle!.workOrder!.remainingMs, 24 * 3600000);
+assert.equal(delayed.get(delayedId).lifecycle!.spokenProofs[0].at, withdrawal.at, "evidence retains the speech time");
+await delayed.agree(delayedId);
+const resumedAt = new Date("2026-10-24T11:01:00.000Z");
+await delayed.service.resumeProject(delayedId, delayed.body(delayedId), resumedAt);
+assert.equal(Date.parse(delayed.get(delayedId).lifecycle!.workOrder!.completesAt) - resumedAt.getTime(), 24 * 3600000);

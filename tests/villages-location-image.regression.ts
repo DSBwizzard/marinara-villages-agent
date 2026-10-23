@@ -262,7 +262,7 @@ async function main() {
           id: "mill",
           name: "the mill pond",
           form: "a stone watermill",
-          description: "A stone mill beside shallow water",
+          description: "A stone mill beside shallow water with a new roof.",
           exteriorState: {
             condition: "weathered but sound",
             items: ["oak workbench"],
@@ -272,7 +272,6 @@ async function main() {
             condition: "a private interior repair",
             furniture: ["a hidden cabinet"],
             publicFacts: ["a Private Space fact"],
-            upgrades: ["new roof"],
             updatedAt: "",
           },
         },

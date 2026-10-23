@@ -3,6 +3,7 @@ import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
 import {
   reconcileProjectLifecycles,
   PROJECT_DURATION_MS,
+  pauseProject,
 } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { projectDesignKey } from "../packages/villages/src/server/domain/rules/project-terms.js";
@@ -100,3 +101,14 @@ assert.equal(
   "b",
   "untouched current ownership survives renewed consent and completion",
 );
+
+// An old saved pause event cannot restore time already spent before Resume.
+const bounded = fixture(),
+  boundedId = await bounded.newProject();
+await bounded.service.startProjectConstruction(boundedId, bounded.body(boundedId), now);
+await bounded.mutate((state) =>
+  pauseProject(state.projects[0], new Date(now.getTime() + 6 * 3600000).toISOString(), "Lead withdrew."),
+);
+await bounded.service.resumeProject(boundedId, bounded.body(boundedId), new Date(now.getTime() + 8 * 3600000));
+await bounded.mutate((state) => pauseProject(state.projects[0], now.toISOString(), "Delayed withdrawal."));
+assert.equal(bounded.get(boundedId).lifecycle!.workOrder!.remainingMs, 18 * 3600000);

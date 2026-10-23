@@ -31,7 +31,7 @@ function place(id: string, residentCharacterId: string | null = null): VillageVe
     presentation: { image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId, homeKind: residentCharacterId ? "cottage" : null },
     capabilities: [],
-    state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
   } as VillageVenue;
 }
 

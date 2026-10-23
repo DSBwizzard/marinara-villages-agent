@@ -32,7 +32,7 @@ const place = (id, x, y) => ({
   capabilities: [],
   presentation: { image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id }, x, y },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-  state: { condition: "sound", upgrades: [], furniture: [], publicFacts: [], updatedAt: now },
+  state: { condition: "sound", furniture: [], publicFacts: [], updatedAt: now },
 });
 const snapshot = {
   status: "ready",

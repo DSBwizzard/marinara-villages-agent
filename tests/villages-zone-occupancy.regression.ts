@@ -375,25 +375,22 @@ assert.throws(
       return state;
     },
   } as any);
-  await assert.rejects(
-    () =>
-      service.sceneReplayEffects().applyVenueTurnChange(saved, {
-        id: "red",
-        at: stamp,
-        areaAtTurn: "public",
-        zoneIdAtTurn: "a",
-        activeIdsAtTurn: ids,
-        semanticProvenance: { version: 2 },
-        sceneChange: {
-          narration: "Painted red.",
-          conditionBefore: "blue motorcycle",
-          conditionAfter: "red motorcycle",
-        },
-      } as any),
-    /Authority over this Zone changed/,
-  );
+  await service.sceneReplayEffects().applyVenueTurnChange(saved, {
+    id: "red",
+    at: stamp,
+    areaAtTurn: "public",
+    zoneIdAtTurn: "a",
+    activeIdsAtTurn: ids,
+    semanticProvenance: { version: 2 },
+    sceneChange: {
+      narration: "Painted red.",
+      conditionBefore: "blue motorcycle",
+      conditionAfter: "red motorcycle",
+    },
+  } as any);
   assert.equal(resolveVenueZone(state.venues[0], "a")!.state.condition, "blue motorcycle");
-  assert.equal(state.exchangeReceipts["venue-chat:ownership-fence:red"], undefined);
+  assert.equal(state.exchangeReceipts["venue-chat:ownership-fence:red"].status, "rejected");
+  assert.match(state.exchangeReceipts["venue-chat:ownership-fence:red"].reason!, /changed/);
 }
 
 // Village polling and Scene navigation survive background removal of the captured current Zone.

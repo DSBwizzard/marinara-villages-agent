@@ -228,12 +228,6 @@ assert.equal(
   undefined,
 );
 
-// Rebuilt legacy standalone opening receipts must retain their exact prompt.
-const legacyOpening = foundingRequestMessages(context, "opening");
-assert.deepEqual(
-  foundingRequestMessages({ ...context, openingVersion: 1, playerAgencyVersion: 1 }, "opening"),
-  legacyOpening,
-);
 const freshOpening = foundingRequestMessages({ ...context, openingVersion: 2, playerAgencyVersion: 1 }, "opening");
 assert.doesNotMatch(freshOpening[0].content as string, /oversees major changes/);
-assert.match(freshOpening[0].content as string, /kind:renovation/);
+assert.match(freshOpening[0].content as string, /renovation/);

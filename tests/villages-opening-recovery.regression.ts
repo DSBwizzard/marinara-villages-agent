@@ -40,7 +40,7 @@ state.venues = [
     presentation: { x: 0.5, y: 0.5, image: null },
     occupancy: { playerHome: false, residentCharacterId: null },
     spaces: [defaultVenueSpace("community", "A common room")],
-    state: { condition: "Open", publicFacts: [], furniture: [], upgrades: [], updatedAt: "" },
+    state: { condition: "Open", publicFacts: [], furniture: [], updatedAt: "" },
   },
 ] as any;
 const old = new Date(Date.now() - 3_600_000).toISOString();

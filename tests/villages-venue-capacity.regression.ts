@@ -20,7 +20,7 @@ import { draftNewVenueProject } from "../packages/villages/src/server/features/p
 import { fixture, venue as currentVenue } from "./fixtures/villages-projects.fixture.js";
 
 async function main() {
-  const venue = (index: number) => currentVenue("venue-" + index, "residence");
+  const venue = (index: number) => ({ ...currentVenue("venue-" + index, "residence"), residentIds: [] });
   const fresh = defaultVillageState();
   fresh.setupAt = fresh.foundedAt = "2026-10-23T12:00:00.000Z";
   assert.equal(villageVenueLimit(fresh), 16);
@@ -113,8 +113,19 @@ async function main() {
     const bulk = defaultVillageState();
     records.set("villages-village", { id: "villages-village", kind: "village", data: bulk, revision: 1 });
     await setVillageVenues(Array.from({ length: 16 }, (_, i) => venue(i)));
+    await assert.rejects(
+      setVillageVenues(Array.from({ length: 17 }, (_, i) => venue(i))),
+      /After founding, new venues begin as projects/,
+    );
+    assert.equal((await readVillageState()).venues.length, 16);
+    records.set("villages-village", {
+      id: "villages-village",
+      kind: "village",
+      data: defaultVillageState(),
+      revision: 1,
+    });
     await assert.rejects(setVillageVenues(Array.from({ length: 17 }, (_, i) => venue(i))), /maximum 16/);
-    assert.equal((await readVillageState()).venues.length, 16, "bulk admission is atomic");
+    assert.equal((await readVillageState()).venues.length, 0, "bulk admission is atomic");
     const bootstrap = defaultVillageState();
     bootstrap.setting = "An apartment complex.";
     bootstrap.venues = Array.from({ length: 15 }, (_, i) => venue(i));

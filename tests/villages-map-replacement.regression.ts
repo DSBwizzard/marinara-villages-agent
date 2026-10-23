@@ -50,7 +50,6 @@ function venue(id: string, venueClass: "residence" | "workplace", x: number, y: 
     improvements: [null, null],
     state: {
       condition: "standing",
-      upgrades: [],
       furniture: [],
       publicFacts: ["The old bell remains."],
       updatedAt: at,

@@ -1358,7 +1358,7 @@ const venue = (id: string) => ({
   presentation: { image: null, x: 0.5, y: 0.5 },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   capabilities: [],
-  state: { condition: "quiet", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+  state: { condition: "quiet", furniture: [], publicFacts: [], updatedAt: "" },
 });
 const card = (id: string) => ({
   id,

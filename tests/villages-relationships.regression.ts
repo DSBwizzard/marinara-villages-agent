@@ -319,7 +319,6 @@ function venue(id: string, classes: VillageVenue["classes"]): VillageVenue {
     state: {
       condition: "standing",
       furniture: [],
-      upgrades: [],
       publicFacts: [],
       features: [],
       traces: [],

@@ -74,8 +74,12 @@ export function refreshProjectAgreements(state: VillageState): void {
 export function pauseProject(project: VillageProject, at: string, reason: string): void {
   const flow = project.lifecycle!;
   if (flow.workOrder && !flow.workOrder.pausedAt) {
-    flow.workOrder.remainingMs = Math.max(0, Date.parse(flow.workOrder.completesAt) - Date.parse(at));
-    flow.workOrder.pausedAt = at;
+    const pausedAt = Math.max(Date.parse(flow.workOrder.startsAt), Date.parse(at));
+    flow.workOrder.remainingMs = Math.max(
+      0,
+      Math.min(flow.workOrder.remainingMs, Date.parse(flow.workOrder.completesAt) - pausedAt),
+    );
+    flow.workOrder.pausedAt = new Date(pausedAt).toISOString();
   }
   project.status = flow.phase = "paused";
   flow.blockedReason = reason;

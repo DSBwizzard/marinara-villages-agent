@@ -28,7 +28,7 @@ const venue = {
   spaces: [residence, workplace],
   presentation: { image: null, x: 0.3, y: 0.4 },
   description: "A vehicle parked by the road.",
-  state: { condition: "", furniture: [], publicFacts: [], features: [], traces: [], upgrades: [], updatedAt: "" },
+  state: { condition: "", furniture: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   residenceCapacity: 2,
 } as any;

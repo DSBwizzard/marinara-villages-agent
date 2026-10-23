@@ -41,7 +41,7 @@ const validVenue = {
   presentation: { image: null, x: 0.4, y: 0.6 },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   capabilities: ["reading"],
-  state: { condition: "sound", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+  state: { condition: "sound", furniture: [], publicFacts: [], updatedAt: "" },
 };
 const malformedVenue = { id: "legacy-library", name: "Legacy Library" };
 const normalizedSnapshot = normalizeVillageSnapshot({

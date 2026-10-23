@@ -1,3 +1,4 @@
+import { shape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
 import { openingPresence } from "../../domain/rules/opening-presence.js";
 import { openingActive, gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
@@ -406,7 +407,7 @@ export function createSceneCommands({
       ];
       if (turn.semanticProvenance?.version === 2)
         messages[0].content +=
-          ' This is a v2 System-owned event. Interpret paraphrases and contextual short answers without phrase tests. Wish check/progress rows require criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} for the ORIGINAL goal. Relationship changes require contact:boolean for actual substantive shared contact. Project kinds also include offer/handoff with exact requirementId; a handoff requires an actual completed local transfer from a supplied existing source. No model-authored provenance or verification flags.';
+          ' This is a v2 System-owned event. Interpret paraphrases and contextual short answers without phrase tests. Wish check/progress rows require criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} for the ORIGINAL goal. Relationship changes require contact:boolean for actual substantive shared contact. No model-authored provenance or verification flags.';
       const output = turn.semanticProvenance?.version === 2 ? 2400 : VENUE_REPLY_MAX_TOKENS;
       const request = await venueCheckpoint("change-interpretation:input", async () => ({
         messages,
@@ -3260,7 +3261,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         );
       } catch (error) {
         if (submission.semanticProvenance?.version === 2) throw error;
-        villagesLogger().warn("[villages] upgrade request was no longer valid: %s", String(error));
+        villagesLogger().warn("[villages] Renovation request was no longer valid: %s", String(error));
       }
     }
   }
@@ -3448,11 +3449,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         (project) =>
           project.kind === "new-venue" && project.venueId === session.placeId && project.status === "cancelled",
       );
-      if (worksite || cancelled) {
+      const rejectPhysical = (reason: string) => {
         const at = submission.at || villageNow().toISOString();
-        const reason = cancelled
-          ? "Project cancelled; this Scene outcome was not applied."
-          : "Physical changes are unavailable at this unfinished worksite.";
         state.exchangeReceipts[id] = {
           id,
           sceneId: session.id,
@@ -3465,6 +3463,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           evidenceIds: submission.replyLineIds ?? [],
           notice: { id, kind: "project", text: reason },
         };
+      };
+      if (worksite || cancelled) {
+        rejectPhysical(
+          cancelled
+            ? "Project cancelled; this Scene outcome was not applied."
+            : "Physical changes are unavailable at this unfinished worksite.",
+        );
         return;
       }
       if (
@@ -3477,6 +3482,17 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, zoneId ?? "");
       const capturedVenue = session.continuity?.facts.venues.find((venue) => venue.id === session.placeId);
       const capturedZone = capturedVenue && resolveVenueZone(capturedVenue, zoneId ?? "");
+      if (
+        capturedVenue &&
+        (capturedVenue.constructionStatus === "worksite" ||
+          !controlledVenue ||
+          !controlledZone ||
+          !capturedZone ||
+          JSON.stringify(projectZoneShape(controlledZone)) !== JSON.stringify(projectZoneShape(capturedZone)))
+      ) {
+        rejectPhysical("The Venue structure changed; this captured Scene outcome was not applied.");
+        return;
+      }
       if (controlledVenue && controlledZone && capturedVenue && capturedZone) {
         const authority = (venue: VillageVenue, zone: NonNullable<typeof controlledZone>) =>
           JSON.stringify({
@@ -3488,10 +3504,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
             residents: zone.venueClass === "residence" ? [...venueResidentIds(venue)].sort() : [],
             workers: zone.kind === "staff" ? [...(venue.workerIds ?? [])].sort() : [],
           });
-        if (authority(controlledVenue, controlledZone) !== authority(capturedVenue, capturedZone))
-          throw conflict(
-            "Authority over this Zone changed. The Scene is preserved; this effect cannot change the current Village.",
-          );
+        if (authority(controlledVenue, controlledZone) !== authority(capturedVenue, capturedZone)) {
+          rejectPhysical("Authority over this Zone changed; this captured Scene outcome was not applied.");
+          return;
+        }
       }
       if (
         submission.semanticProvenance?.version !== 2 &&

@@ -10,7 +10,7 @@ const venue: VillageVenue = {
   presentation: { image: null, x: null, y: null },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   capabilities: [],
-  state: { condition: "tidy", upgrades: [], furniture: ["book", "cupcake"], publicFacts: [], updatedAt: "" },
+  state: { condition: "tidy", furniture: ["book", "cupcake"], publicFacts: [], updatedAt: "" },
 };
 const before = structuredClone(venue);
 assert.equal(readVenueSceneChange(null, venue), null);

@@ -66,7 +66,6 @@ const house: any = {
   state: {
     condition: "standing",
     furniture: ["pebble"],
-    upgrades: [],
     features: [],
     traces: [],
     publicFacts: [],

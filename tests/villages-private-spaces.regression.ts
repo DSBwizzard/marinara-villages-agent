@@ -56,7 +56,7 @@ function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): Villa
     residentIds: [],
     workerIds: [],
     spaces: classes.map((c) => defaultVenueSpace(c, "Public lobby")),
-    state: { condition: "", furniture: [], publicFacts: [], features: [], traces: [], upgrades: [], updatedAt: stamp },
+    state: { condition: "", furniture: [], publicFacts: [], features: [], traces: [], updatedAt: stamp },
   };
 }
 const state = defaultVillageState();
