@@ -388,6 +388,20 @@ try {
   ]);
   assert.match(JSON.stringify(local), /Aqua, yes/);
   const initialPrompt = narrationPrompts.at(-1)!;
+  const locationFrame = JSON.parse(
+    initialPrompt
+      .split("Current physical Scene state (server authority, not shared character knowledge): ")[1]
+      .split("\n")[0],
+  );
+  assert.equal(locationFrame.player.zone.id, state().zoneId);
+  assert.deepEqual(
+    locationFrame.residents
+      .filter((row: any) => row.location === "with player")
+      .map((row: any) => row.characterId)
+      .sort(),
+    [...state().activeIds].sort(),
+    "the archive-identical writer's physical context matches app attendance",
+  );
   assert(initialPrompt.includes('ALREADY in player Zone terrace: ["aqua","feddy"]'));
   assert(!initialPrompt.includes("normally steps into"), "local residents receive no doorway-arrival encouragement");
   const example = initialPrompt.match(/JSON syntax example for spoken input "Hello\.": (.+?)\. Example is structure/);
