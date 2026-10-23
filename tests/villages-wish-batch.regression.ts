@@ -196,6 +196,12 @@ async function main() {
         },
       ],
     };
+    records.set("villages-venue-visit-" + scene.id, {
+      id: "villages-venue-visit-" + scene.id,
+      kind: "venue-visit",
+      revision: 1,
+      data: structuredClone(scene),
+    });
     malformed = true;
     await processWishExchange(scene, "turn");
     await settleBackgroundWork();
@@ -203,6 +209,7 @@ async function main() {
     const status = await processWishExchange(scene, "turn");
     await settleBackgroundWork();
     assert.equal(status.status, "failed");
+    assert.ok(records.get("villages-venue-visit-" + scene.id).data.submissions[0].progressProcessedAt);
     assert.equal(calls, afterMalformed, "invalid output cannot auto-repair or bill again");
     // An unrevealed Wish must retain accepted witnessed progress across Scene boundaries.
     malformed = false;

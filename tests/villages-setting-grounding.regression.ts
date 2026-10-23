@@ -77,10 +77,25 @@ async function main() {
   let answer: unknown = null;
   let captured = "";
   let calls = 0;
+  let usageDocument: any = null;
   const release = configureVillagesRuntime({
     isDebugAgentsEnabled: () => false,
     getAgentConfig: async () => ({ connectionId: "grounding-test" }),
-    persistence: { documents: { getById: async () => null } },
+    persistence: {
+      documents: {
+        getById: async () => structuredClone(usageDocument),
+        create: async (input: any) => {
+          assert.equal(usageDocument, null);
+          usageDocument = { ...structuredClone(input), revision: 1 };
+          return structuredClone(usageDocument);
+        },
+        update: async (input: any) => {
+          assert.equal(input.expectedRevision, usageDocument.revision);
+          usageDocument = { ...structuredClone(input), revision: usageDocument.revision + 1 };
+          return structuredClone(usageDocument);
+        },
+      },
+    },
     languageModels: {
       resolveForRequest: async () => ({
         name: "Grounding fixture",
@@ -301,6 +316,8 @@ async function main() {
     assert.equal(legacy.promptKnowledge, "My custom prompt");
     assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
     assert.equal(coerceVillageState({ wishSystemVersion: 3, setupAt: legacy.setupAt }).playerBackground, "");
+    assert.equal(usageDocument.data.requests.length, calls, "every grounding request is accounted for");
+    assert.ok(usageDocument.data.requests.every((request: any) => request.status === "complete"));
   } finally {
     release();
   }

@@ -252,10 +252,25 @@ async function main() {
   let capturedPrompt = "";
   let options: Record<string, unknown> = {};
   let answer = payload(0);
+  let usageDocument: any = null;
   const release = configureVillagesRuntime({
     isDebugAgentsEnabled: () => false,
     getAgentConfig: async () => ({ connectionId: "flash-class" }),
-    persistence: { documents: { getById: async () => null } },
+    persistence: {
+      documents: {
+        getById: async () => structuredClone(usageDocument),
+        create: async (input: any) => {
+          assert.equal(usageDocument, null);
+          usageDocument = { ...structuredClone(input), revision: 1 };
+          return structuredClone(usageDocument);
+        },
+        update: async (input: any) => {
+          assert.equal(input.expectedRevision, usageDocument.revision);
+          usageDocument = { ...structuredClone(input), revision: usageDocument.revision + 1 };
+          return structuredClone(usageDocument);
+        },
+      },
+    },
     languageModels: {
       resolveForRequest: async () => ({
         name: "Flash-class test model",
@@ -307,6 +322,8 @@ async function main() {
       capturedPrompt,
       /chocolate|identifying a tune|stuck in their head|borrowing a pencil|repair a favorite chair|arrange a picnic|perform a song|"activity":"reading"/,
     );
+    assert.equal(usageDocument.data.requests.length, calls, "every founding request is accounted for");
+    assert.ok(usageDocument.data.requests.every((request: any) => request.status === "complete"));
     assert.equal(options.maxTokens, 2048);
     assert.equal(options.reasoningEffort, "none");
   } finally {
