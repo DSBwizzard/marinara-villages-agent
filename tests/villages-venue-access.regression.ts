@@ -592,8 +592,8 @@ async function main() {
       );
     });
     const exited = await activeVenueSession();
-    assert.equal(exited!.zoneId, "office", "Revocation records return to the previously occupied permitted Zone.");
-    assert.match(exited!.lines.at(-1)!.content, /access has ended/);
+    assert.equal(exited!.zoneId, "bedroom", "A background revocation cannot rewrite captured Scene permission.");
+    assert(!exited!.lines.some((line) => /access has ended/.test(line.content)));
     const lineCount = exited!.lines.length;
     assert.equal(
       (await activeVenueSession())!.lines.length,
@@ -748,7 +748,7 @@ async function main() {
     );
     revokeBeforeSceneCommit = true;
     const refusedMove = await moveVenueZone(arrival.id, "living", arrival.sceneRevision);
-    assert.equal(refusedMove.zoneId, "exterior", "Revocation between validation and Scene commit records an exit.");
+    assert.equal(refusedMove.zoneId, "living", "A later outside revocation preserves admission in the captured Scene.");
     assert.equal(
       (await readVillageState()).venues[0].zones!.find((zone) => zone.id === "living")!.seen,
       false,

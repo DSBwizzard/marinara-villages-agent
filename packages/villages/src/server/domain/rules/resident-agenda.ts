@@ -3,7 +3,6 @@ import type { VillageAgenda, VillageState, VillageVillager } from "../models/wor
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { influenceSettings, routineDay, validateRoutineDay } from "./owned-routine.js";
 import { remapVenues } from "./prompt-preset.js";
-import { venueResidentIds } from "./venue-model.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 export function planRoutineDays(state: VillageState, now: Date): void {
@@ -22,7 +21,7 @@ export function planRoutineDays(state: VillageState, now: Date): void {
         if (offset > 0) agenda.plannedDays[key] = validateRoutineDay(agenda.plannedDays[key]!, resident, state, date);
         continue;
       }
-      let blocks = validateRoutineDay(
+      const blocks = validateRoutineDay(
         routineDay(
           agenda.routineProfile,
           agenda.generatedAt || agenda.routineSummary,
@@ -34,44 +33,6 @@ export function planRoutineDays(state: VillageState, now: Date): void {
         state,
         date,
       );
-      blocks = blocks.map((block) => {
-        if (!block.venueId) return block;
-        const otherBlocks = state.villagers
-          .filter((other) => other.characterId !== resident.characterId)
-          .map((other) => {
-            const home = state.venues.find((venue) => venueResidentIds(venue).includes(other.characterId))?.id ?? "";
-            return {
-              blocks:
-                other.agenda?.plannedDays?.[key] ?? (other.agenda ? agendaBlocksFor(other.agenda, false, date) : []),
-              home,
-            };
-          });
-        const boundaries = new Set([
-          block.startMinute,
-          ...otherBlocks.flatMap((other) =>
-            other.blocks
-              .filter((row) => row.startMinute > block.startMinute && row.startMinute < block.endMinute)
-              .map((row) => row.startMinute),
-          ),
-        ]);
-        const full = [...boundaries].some(
-          (minute) =>
-            otherBlocks.filter(
-              (other) =>
-                (other.blocks.find((row) => row.startMinute <= minute && row.endMinute > minute)?.venueId ||
-                  other.home) === block.venueId,
-            ).length >= 4,
-        );
-        return full
-          ? {
-              ...block,
-              venueId: "",
-              zoneId: undefined,
-              activity: "Taking care of their own affairs",
-              flexible: true,
-            }
-          : block;
-      });
       agenda.plannedDays[key] = blocks;
     }
     const today = agendaDateKey(now);

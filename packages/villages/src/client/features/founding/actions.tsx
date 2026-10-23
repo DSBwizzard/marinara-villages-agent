@@ -25,10 +25,13 @@ export function useUpdateSetupMapRequest(ports: {
   setupMapRequestRef: React.RefObject<SetupMapRequest>;
 }) {
   const { setSetupMapRequest, setupMapRequestRef } = ports;
-  return useCallback((value: SetupMapRequest | null) => {
-    setupMapRequestRef.current = value;
-    setSetupMapRequest(value);
-  }, []);
+  return useCallback(
+    (value: SetupMapRequest | null) => {
+      setupMapRequestRef.current = value;
+      setSetupMapRequest(value);
+    },
+    [setSetupMapRequest, setupMapRequestRef],
+  );
 }
 
 export function useSuggestPlaces(ports: {
@@ -69,7 +72,7 @@ export function useSuggestPlaces(ports: {
     } finally {
       setBusy(false);
     }
-  }, [snapshot]);
+  }, [setBusy, setSettingsError, setVenuesDraft, snapshot]);
 }
 
 export function usePickSetupTownMap(ports: {
@@ -121,7 +124,17 @@ export function usePickSetupTownMap(ports: {
         setSetupMapBusy(false);
       }
     },
-    [snapshot, updateSetupMapRequest],
+    [
+      setSetupMapBusy,
+      setSetupMapImage,
+      setSetupMapImageSource,
+      setSetupMapProblem,
+      setSetupMapReviewed,
+      setSetupMapSize,
+      setSetupMapSource,
+      snapshot,
+      updateSetupMapRequest,
+    ],
   );
 }
 
@@ -134,7 +147,6 @@ export function usePlaceSetupPin(ports: {
   setSetupWorkspace: React.Dispatch<SetStateAction<FoundingWorkspaceState>>;
   setupEditorOpen: boolean;
   setupMapBusy: boolean;
-  setupMapSource: SetupMapSource;
   setupMapSrc: string;
   setupVenuesRef: React.RefObject<VillageVenue[]>;
   setupWorkspace: FoundingWorkspaceState;
@@ -148,7 +160,6 @@ export function usePlaceSetupPin(ports: {
     setSetupWorkspace,
     setupEditorOpen,
     setupMapBusy,
-    setupMapSource,
     setupMapSrc,
     setupVenuesRef,
     setupWorkspace,
@@ -190,7 +201,19 @@ export function usePlaceSetupPin(ports: {
       setSetupPlacementError("");
       setSetupMapReviewed(false);
     },
-    [movingSetupVenueId, setupEditorOpen, setupWorkspace.paused, setupMapSource, setupMapSrc, setupMapBusy],
+    [
+      setupVenuesRef,
+      setupEditorOpen,
+      setupWorkspace?.paused,
+      movingSetupVenueId,
+      setupMapSrc,
+      setupMapBusy,
+      setSetupVenues,
+      setSetupWorkspace,
+      setMovingSetupVenueId,
+      setSetupPlacementError,
+      setSetupMapReviewed,
+    ],
   );
 }
 
@@ -199,22 +222,25 @@ export function usePatchSetupVenue(ports: {
   setSetupVenues: React.Dispatch<SetStateAction<VillageVenue[]>>;
 }) {
   const { setSetupAuthoredFields, setSetupVenues } = ports;
-  return useCallback((id: string, next: (venue: SetupVenueDraft) => SetupVenueDraft) => {
-    setSetupVenues((rows) =>
-      rows.map((row) => {
-        if (row.id !== id) return row;
-        const changed = next(row);
-        const fields = ["name", "venueType", "form", "description", "layout", "spaces", "privateSpaces"] as const;
-        const edited = fields.filter((field) => JSON.stringify(row[field]) !== JSON.stringify(changed[field]));
-        if (edited.length)
-          setSetupAuthoredFields((current) => ({
-            ...current,
-            [id]: [...new Set([...(current[id] ?? []), ...edited])],
-          }));
-        return changed;
-      }),
-    );
-  }, []);
+  return useCallback(
+    (id: string, next: (venue: SetupVenueDraft) => SetupVenueDraft) => {
+      setSetupVenues((rows) =>
+        rows.map((row) => {
+          if (row.id !== id) return row;
+          const changed = next(row);
+          const fields = ["name", "venueType", "form", "description", "layout", "spaces", "privateSpaces"] as const;
+          const edited = fields.filter((field) => JSON.stringify(row[field]) !== JSON.stringify(changed[field]));
+          if (edited.length)
+            setSetupAuthoredFields((current) => ({
+              ...current,
+              [id]: [...new Set([...(current[id] ?? []), ...edited])],
+            }));
+          return changed;
+        }),
+      );
+    },
+    [setSetupAuthoredFields, setSetupVenues],
+  );
 }
 
 export function useOpenSetup(ports: {
@@ -376,7 +402,51 @@ export function useOpenSetup(ports: {
       void loadCatalog();
       setScreen("setup");
     },
-    [loadCatalog, loadLorebooks, loadPersonas, updateSetupMapRequest],
+    [
+      loadCatalog,
+      loadLorebooks,
+      loadPersonas,
+      setMapVisualLore,
+      setMovingSetupVenueId,
+      setPersonaDraft,
+      setPersonalizeHomes,
+      setPickerOpen,
+      setResetArmed,
+      setSceneryStyle,
+      setSceneryStyleProfileId,
+      setScreen,
+      setSearch,
+      setSelectedSetupVenueId,
+      setSettingsError,
+      setSetupEditorOpen,
+      setSetupFocusIssue,
+      setSetupFoundingVillagerIds,
+      setSetupLoreTokenBudgetDraft,
+      setSetupLorebookDraft,
+      setSetupMapBusy,
+      setSetupMapGeneratedKey,
+      setSetupMapImage,
+      setSetupMapImageSource,
+      setSetupMapNegativePrompt,
+      setSetupMapProblem,
+      setSetupMapPrompt,
+      setSetupMapSize,
+      setSetupMapSource,
+      setSetupName,
+      setSetupPlacementError,
+      setSetupPlayerBackground,
+      setSetupProblem,
+      setSetupResidentAdmissions,
+      setSetupSetting,
+      setSetupShowIssues,
+      setSetupStep,
+      setSetupVenues,
+      setSetupWorkspace,
+      setSetupWorldFacts,
+      setSetupWorldName,
+      setVisualLoreDefault,
+      updateSetupMapRequest,
+    ],
   );
 }
 
@@ -419,6 +489,8 @@ export function useFoundVillage(ports: {
   snapshot: VillageSnapshot;
   visualLoreDefault: boolean;
 }) {
+  const { setupTimeZone } = ports;
+
   const {
     draftSaveQueue,
     element,
@@ -493,7 +565,7 @@ export function useFoundVillage(ports: {
         method: "POST",
         body: JSON.stringify({
           name: setupName.trim(),
-          timeZone: ports.setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
+          timeZone: setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
           worldName: setupWorldName,
           setting: setupSetting.trim(),
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : "none",
@@ -537,38 +609,47 @@ export function useFoundVillage(ports: {
       setBusy(false);
     }
   }, [
-    flushSetupDraft,
-    element,
-    setupVenues,
-    setupSpriteRevisions,
-    setupFoundingVillagerIds,
     snapshot?.isFounded,
-    snapshot?.settings.foundingReason,
-    snapshot?.settings.foundingDetails,
-    snapshot?.settings.foundingGuidance,
-    snapshot?.settings.playerBackground,
-    snapshot?.settings.scenarioImprint,
+    snapshot?.clock?.timeZone,
+    snapshot?.village?.timeZone,
+    snapshot?.settings?.foundingReason,
+    snapshot?.settings?.foundingDetails,
+    snapshot?.settings?.foundingGuidance,
+    snapshot?.settings?.playerBackground,
+    snapshot?.settings?.scenarioImprint,
     residentContextProblem,
-    selectedResidentAdmissions,
-    personaDraft,
-    savedTownMapView,
     setupBlocker,
-    sceneryStyle,
-    sceneryStyleProfileId,
-    mapVisualLore,
-    personalizeHomes,
-    visualLoreDefault,
-    setupMapSource,
-    setupMapSrc,
+    setBusy,
+    setSetupProblem,
+    setupVenues,
+    setSelectedSetupVenueId,
+    setSetupStep,
+    element,
+    flushSetupDraft,
     setupName,
-    ports.setupTimeZone,
-
+    setupTimeZone,
+    setupWorldName,
+    setupSetting,
     setupPlayerBackground,
     setupWorldFacts,
     setupLorebookDraft,
+    personalizeHomes,
+    visualLoreDefault,
+    sceneryStyle,
+    sceneryStyleProfileId,
+    mapVisualLore,
     setupLoreTokenBudgetDraft,
-    setupWorldName,
-    setupSetting,
+    personaDraft,
+    setupMapSrc,
+    setupMapSource,
+    savedTownMapView,
+    setupSpriteRevisions,
+    setupFoundingVillagerIds,
+    selectedResidentAdmissions,
+    setSnapshot,
+    setDraftReady,
+    draftSaveQueue,
+    setScreen,
   ]);
 }
 
@@ -577,17 +658,20 @@ export function useRetryPreparation(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setPreparationProblem, setSnapshot } = ports;
-  return useCallback(async (target?: { characterId: string; task: "routine" | "wish"; expectedAttempt: number }) => {
-    setPreparationProblem("");
-    try {
-      setSnapshot(
-        await request<VillageSnapshot>("/setup/preparation/retry", {
-          method: "POST",
-          body: JSON.stringify({ ...target, actionId: createVillagesClientId() }),
-        }),
-      );
-    } catch (cause) {
-      setPreparationProblem(messageFrom(cause, "Preparation could not be retried."));
-    }
-  }, []);
+  return useCallback(
+    async (target?: { characterId: string; task: "routine" | "wish"; expectedAttempt: number }) => {
+      setPreparationProblem("");
+      try {
+        setSnapshot(
+          await request<VillageSnapshot>("/setup/preparation/retry", {
+            method: "POST",
+            body: JSON.stringify({ ...target, actionId: createVillagesClientId() }),
+          }),
+        );
+      } catch (cause) {
+        setPreparationProblem(messageFrom(cause, "Preparation could not be retried."));
+      }
+    },
+    [setPreparationProblem, setSnapshot],
+  );
 }

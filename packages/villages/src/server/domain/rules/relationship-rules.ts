@@ -5,6 +5,7 @@ import type {
   RelationshipState,
 } from "../models/relationship-types.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
+import type { VenueScene } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
 import {
   localRelationshipDate,
@@ -15,6 +16,27 @@ import {
 import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 
 export const relationshipKey = (fromId: string, toId: string): string => JSON.stringify([fromId, toId]);
+
+/** Captured relationships plus only this Scene's accepted relationship receipts. */
+export function sceneRelationshipView(
+  current: RelationshipState | undefined,
+  scene: Pick<VenueScene, "id" | "continuity">,
+) {
+  if (!scene.continuity) return current;
+  const view = structuredClone(scene.continuity.facts.relationshipContext);
+  if (!view || !current) return view;
+  for (const receipt of Object.values(current.receipts)) {
+    if (receipt.sceneId !== scene.id || view.receipts[receipt.id]) continue;
+    const key = relationshipKey(receipt.fromId, receipt.toId);
+    const edge = (view.edges[key] ??= neutralRelationship(receipt.fromId, receipt.toId));
+    edge[receipt.dimension] = relationshipScore(edge[receipt.dimension] + receipt.after - receipt.before);
+    edge.familiarity = Math.max(1, edge.familiarity);
+    edge.friend = relationshipThreshold(edge.warmth, edge.trust, edge.friend, "friend");
+    edge.close = relationshipThreshold(edge.warmth, edge.trust, edge.close, "close");
+    view.receipts[receipt.id] = { ...receipt, at: scene.continuity.capturedAt };
+  }
+  return view;
+}
 export const permissionKey = (controllerId: string, visitorId: string, venueId: string, zoneId: string): string =>
   JSON.stringify([controllerId, visitorId, venueId, zoneId]);
 export function defaultRelationshipState(seed: string): RelationshipState {

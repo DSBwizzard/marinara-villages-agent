@@ -2,13 +2,28 @@ import { asRecord } from "./coerce.js";
 import { conflict } from "./errors.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VenueScene } from "../models/scene-model.js";
-import type { VillageVenue } from "../models/world.js";
+import type { VillageState, VillageVenue } from "../models/world.js";
 import { defaultVenueSpace } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
+import { sceneRelationshipView } from "./relationship-rules.js";
 
-/** Preserve active layout while allowing current access revocations to remain authoritative. */
+/** Only captured access inputs; persistent effects still validate against the current world. */
+export function sceneAccessState(state: VillageState, scene: VenueScene): VillageState {
+  const facts = scene.continuity?.facts;
+  return facts && scene.villageSeed === state.seed
+    ? {
+        ...state,
+        venues: facts.venues,
+        projects: facts.projects,
+        relationshipContext: sceneRelationshipView(state.relationshipContext, scene),
+      }
+    : state;
+}
+
+/** Scene layout and authority follow its captured world and witnessed developments. */
 export function sceneLayoutVenue(venue: VillageVenue, scene?: VenueScene): VillageVenue {
+  venue = scene?.continuity?.facts.venues.find((row) => row.id === venue.id) ?? venue;
   const layout = scene?.sceneAttendance?.layout;
   // Already admitted pre-v5 work keeps its purchased type-inferred routing contract.
   if (scene?.operation?.kind === "turn" && ![5, 6].includes(Number(scene.operation.input.interactionScopeVersion)))

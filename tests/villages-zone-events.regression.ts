@@ -361,6 +361,50 @@ const embeddedEvidence = liveEvidence(embeddedRestored, {
 } as any);
 assert.deepEqual(embeddedEvidence[0].heardBy, ["local"], "remote sound is not evidence of a handoff");
 
+// Ambient narration has no actor position; even a narrator-tagged loud cue stays local.
+const ambientProse = "A pipe ticks beside the open doorway.";
+for (const loud of [false, true]) {
+  const ambient = routed(
+    response([
+      {
+        kind: "narration",
+        text: ambientProse,
+        sound: { sourceId: "__venue_scene__", text: "A metallic tick.", loud },
+        staging: [{ characterId: "far", position: "center" }],
+      },
+    ]),
+  );
+  assert.equal(ambient.lines[0].content, ambientProse);
+  assert.equal(ambient.lines[0].zoneId, "exterior");
+  assert.deepEqual(ambient.lines[0].heardBy, ["local"]);
+  assert.equal(ambient.lines[0].soundOnly, undefined);
+  assert.deepEqual(ambient.lines[0].staging, []);
+}
+const emptyScene = zoneEventScene(
+  coerceSession({
+    ...base,
+    activeIds: [],
+    participants: [],
+    sceneAttendance: { ...base.sceneAttendance, occupants: [] },
+  }),
+  venue,
+);
+const alone = routed(
+  response([
+    {
+      kind: "narration",
+      text: ambientProse,
+      sound: { sourceId: "__venue_scene__", text: "A metallic tick." },
+    },
+  ]),
+  "I walk over to investigate without leaving this space.",
+  [],
+  emptyScene,
+);
+assert.equal(alone.lines[0].content, ambientProse);
+assert.deepEqual(alone.lines[0].heardBy, []);
+assert.equal(alone.lines[0].soundOnly, undefined);
+
 const offscreenProse = "A clatter carries from nearby, briefly interrupting the conversation.";
 const offscreen = routed(
   response([
@@ -404,6 +448,8 @@ for (const sound of [
   null,
   {},
   { sourceId: "unknown", text: "A click." },
+  { sourceId: "__venue_scene__", text: "x".repeat(301) },
+  { sourceId: "__venue_scene__", text: "A click.", loud: "true" },
   { sourceId: "local", text: "" },
   { sourceId: "local", text: "x".repeat(301) },
   { sourceId: "local", text: "A click.", loud: "true" },
@@ -416,12 +462,49 @@ assert.throws(
         {
           kind: "dialogue",
           speakerId: "local",
-          text: "Hello.",
-          sound: { sourceId: "local", text: "A click." },
+          text: "I'm stuck. There's a wheel on my arm.",
+          sound: { sourceId: "local", text: "A metallic grinding, a squeaking wheel, then feedback." },
         },
       ]),
     ),
   /invalid narrated sound/,
+);
+const separateSound = routed(
+  response([
+    { kind: "dialogue", speakerId: "local", text: "I'm stuck. There's a wheel on my arm." },
+    {
+      kind: "narration",
+      text: "The motor grinds, then a wheel squeaks.",
+      sound: { sourceId: "local", text: "A metallic grinding, a squeaking wheel, then feedback." },
+    },
+  ]),
+);
+assert.equal(separateSound.lines.length, 2, "actual narration owns its own sound without synthesizing a segment");
+assert.deepEqual(separateSound.lines[0].heardBy, ["local", "near"]);
+assert.deepEqual(separateSound.lines[1].heardBy, ["local"]);
+assert.deepEqual(separateSound.lines[1].soundOnly?.characterIds, ["near"]);
+assert.throws(
+  () => routed(response([{ kind: "narration", text: "", sound: { sourceId: "local", text: "A motor rattles." } }])),
+  /unreadable speaker or line/,
+  "a routing cue cannot silently replace missing narration text",
+);
+assert.throws(
+  () =>
+    routed(
+      response([
+        {
+          kind: "dialogue",
+          speakerId: "local",
+          text: "Hello.",
+          sound: { sourceId: "__venue_scene__", text: "A click." },
+        },
+      ]),
+    ),
+  /invalid narrated sound/,
+);
+assert.throws(
+  () => routed(response([{ kind: "sound", speakerId: "__venue_scene__", text: "A click." }])),
+  /unknown sound source/,
 );
 const movingSound = routed(
   response([

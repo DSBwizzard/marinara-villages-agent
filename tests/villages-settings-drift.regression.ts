@@ -32,7 +32,6 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SERVICES = "packages/villages/src/server";
-const CLIENT = "packages/villages/src/client/entry/index.tsx";
 
 const read = (relative: string) => readFileSync(resolve(repoRoot, relative), "utf8");
 

@@ -1,4 +1,3 @@
-import { clientImplementation } from "./client-source.js";
 // Villages — proof that the tab's calls carry the Engine's admin secret.
 //
 // Every route this package serves sits behind the Engine's privileged gate, and

@@ -6,14 +6,15 @@ export function useKnowledgeCaret(ports: {
   readonly knowledgeRef: SettingsState["knowledgeRef"];
   readonly pendingCaretRef: React.RefObject<number>;
 }) {
-  useEffect(() => {
-    const { knowledgeRef, pendingCaretRef } = ports;
+  const { knowledgeRef, pendingCaretRef } = ports;
+  const { knowledgeDraft } = ports;
 
+  useEffect(() => {
     const caret = pendingCaretRef.current;
     const node = knowledgeRef.current;
     if (caret === null || !node) return;
     pendingCaretRef.current = null;
     node.focus();
     node.setSelectionRange(caret, caret);
-  }, [ports.knowledgeDraft]);
+  }, [knowledgeDraft, knowledgeRef, pendingCaretRef]);
 }

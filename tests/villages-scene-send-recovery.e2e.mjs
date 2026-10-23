@@ -16,6 +16,16 @@ try {
       viewport: mobile ? { width: 390, height: 620 } : { width: 1440, height: 900 },
       hasTouch: mobile,
     });
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text) => {
+            window.copiedSceneError = text;
+          },
+        },
+      });
+    });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const fixture = structuredClone(snapshot);
@@ -55,6 +65,7 @@ try {
     let loseOperationRead = false;
     let staleRecovery = null;
     let semanticRecovery = null;
+    let changeFailureReason = "The suggested memory had no witnessed evidence.";
     let continuations = 0;
     const turns = [];
     const settingsWrites = [];
@@ -94,7 +105,7 @@ try {
               domain: "memories",
               status: "rejected",
               at: now,
-              reason: "The suggested memory had no witnessed evidence.",
+              reason: changeFailureReason,
             },
           ],
           nextCursor: "0:0",
@@ -123,13 +134,17 @@ try {
         const input = request.postDataJSON();
         turns.push(input);
         if (failure) {
+          const message =
+            failure === "sound"
+              ? "The reply used an invalid narrated sound. Your draft is preserved."
+              : "Invalid request details";
           session.operation = {
             id: input.submissionId,
             kind: "turn",
             status: "interrupted",
             attemptId: "failed-attempt",
             stage: "turn-reply",
-            error: "Invalid request details",
+            error: message,
             input: { message: input.message, mode: input.mode, targetId: input.targetId },
           };
           const detail = failure;
@@ -140,7 +155,7 @@ try {
               hideReads = false;
             }, 1000);
           }
-          return route.fulfill({ status: 400, json: { error: "Bad Request", message: "Invalid request details" } });
+          return route.fulfill({ status: 400, json: { error: "Bad Request", message } });
         }
         const beforeSuccess = structuredClone(session);
         session.lines.push(
@@ -206,12 +221,38 @@ try {
     await expect(composer).toHaveValue("First line\n");
     assert.equal(turns.length, 0, "Enter is disabled by default");
 
-    failure = "normal";
+    failure = "sound";
+    changeFailureReason = "The reply used an invalid narrated sound. Your draft is preserved.";
     await composer.fill("Original draft");
     await send.click();
     await expect(composer).toBeEnabled();
     await expect(composer).toHaveValue("Original draft");
-    await expectSceneError(page, "Invalid request details");
+    const failurePanel = await openSceneErrors(page);
+    await expect(page.getByRole("button", { name: "2 Scene errors", exact: true })).toBeVisible();
+    await expect(failurePanel.locator("details")).toHaveCount(2);
+    await expect(
+      failurePanel.getByText(
+        "The reply described a sound that the game could not place in the Scene. Your draft is still here.",
+        { exact: true },
+      ),
+    ).toHaveCount(2);
+    const failedMessage = failurePanel.locator("details").filter({ hasText: "Message failed" });
+    await expect(failedMessage.getByRole("button", { name: "Retry original message", exact: true })).toHaveCount(1);
+    await expect(failedMessage).toContainText(
+      "The reply described a sound that the game could not place in the Scene. Your draft is still here.",
+    );
+    await expect(failedMessage).not.toContainText("invalid narrated sound");
+    await failedMessage.getByRole("button", { name: "Copy details", exact: true }).click();
+    const copied = await page.evaluate(() => window.copiedSceneError);
+    assert.match(copied, /Original error: The reply used an invalid narrated sound/u);
+    assert.ok(copied.includes("Request: " + turns[0].submissionId));
+    assert.match(
+      copied,
+      /Scene ID: send-recovery\nRequest: [^\n]+\nAttempt: failed-attempt\nStage: turn-reply\nStatus: interrupted/u,
+    );
+    await page.screenshot({ path: `.build-tmp/scene-status/friendly-error-${mobile ? "mobile" : "desktop"}.png` });
+    await closeSceneErrors(page);
+    changeFailureReason = "The suggested memory had no witnessed evidence.";
     assert.equal(turns.length, 1, "no automatic resend");
     await expect(page.getByText("Original draft", { exact: true }).and(page.locator(":not(textarea)"))).toHaveCount(0);
     await composer.fill("Revised draft");
@@ -230,9 +271,14 @@ try {
     await expect(composer).toBeEnabled();
     await page.waitForTimeout(1700);
     assert.equal(turns.length, 3, "recovery waits do not send");
-    await send.click();
+    const retryPanel = await openSceneErrors(page);
+    await retryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
+    await closeSceneErrors(page);
+    const retryNext = page.getByRole("button", { name: "Next paragraph", exact: true });
+    while (await retryNext.isEnabled()) await retryNext.click();
     await expect(composer).toHaveValue("");
     await expect(composer).toBeEnabled();
+    assert.equal(turns[3].message, "Same draft");
     assert.equal(turns[3].submissionId, turns[2].submissionId);
     assert.equal(turns[3].retryOfAttemptId, "failed-attempt");
 
@@ -284,7 +330,9 @@ try {
         await expect(page.getByRole("button", { name: "Check saved reply", exact: true })).toHaveCount(0);
         const panel = await openSceneErrors(page);
         await expect(panel).toContainText("Reply connection interrupted");
-        await expect(panel).toContainText("The suggested memory had no witnessed evidence.");
+        await expect(panel).toContainText(
+          "The game could not confirm this update from what the residents saw or heard.",
+        );
         const canvas = page.locator(`.${tag}-chat`);
         const screen = page.locator(`.${tag}-room-screen`);
         const canvasBox = await canvas.boundingBox();

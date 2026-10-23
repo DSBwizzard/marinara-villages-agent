@@ -11,8 +11,12 @@ node_modules/
 # Obsolete capture copies from older local builders are not maintained source.
 /sources/engine/
 
-# Local agent instructions and credentials never enter product archives.
-/.codex/
+# Share the portable worktree setup; keep local agent settings and credentials ignored.
+!/.codex/
+/.codex/*
+!/.codex/environments/
+/.codex/environments/*
+!/.codex/environments/environment.toml
 /AGENTS.override.md
 
 # Generated conversation assets and local diagnostic output.

@@ -6,6 +6,7 @@ import {
 import { routineRevision, routineRevisionMatches } from "../packages/villages/src/server/domain/rules/wish-policy.js";
 import { adoptedProfile } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
+import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
 import {
   influenceSettings,
   deriveInfluence,
@@ -532,16 +533,16 @@ async function main() {
     });
     records.set("villages-village", { ...records.get("villages-village"), data: crowd });
     await rollActiveAgendas(today);
-    const capacity = (await readVillageState()).villagers;
-    for (let minute = 0; minute < 1440; minute += 30)
-      assert.ok(
-        capacity.filter((person) =>
-          person.agenda!.activeDay!.blocks.some(
-            (row) => row.venueId === "library" && row.startMinute <= minute && row.endMinute > minute,
-          ),
-        ).length <= 4,
-        "capacity checked locally",
-      );
+    const capacity = await readVillageState();
+    for (let minute = 0; minute < 1440; minute += 30) {
+      const positions = [...villagePresence(capacity, minute, today).values()];
+      assert.equal(positions.length, 6);
+      for (const position of positions)
+        assert.ok(
+          positions.filter((other) => other.id === position.id && other.zoneId === position.zoneId).length <= 4,
+          "all agenda overlays resolve to capacity-bounded Zones",
+        );
+    }
     assert.equal(calls, 1);
     records.set("villages-village", { ...records.get("villages-village"), data: state });
     fail = true;

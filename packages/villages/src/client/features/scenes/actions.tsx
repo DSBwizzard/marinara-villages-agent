@@ -33,15 +33,18 @@ export function useReceiveRoomRecordEvents(ports: {
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
 }) {
   const { dismissedRoomEventIdsRef, seenRoomEventIdsRef, setRoomNotices } = ports;
-  return useCallback((events: readonly RoomRecordEvent[]) => {
-    const fresh: RoomRecordEvent[] = [];
-    for (const event of events) {
-      if (seenRoomEventIdsRef.current.has(event.id) || dismissedRoomEventIdsRef.current.has(event.id)) continue;
-      seenRoomEventIdsRef.current.add(event.id);
-      fresh.push(event);
-    }
-    if (fresh.length > 0) setRoomNotices((current) => [...current, ...fresh]);
-  }, []);
+  return useCallback(
+    (events: readonly RoomRecordEvent[]) => {
+      const fresh: RoomRecordEvent[] = [];
+      for (const event of events) {
+        if (seenRoomEventIdsRef.current.has(event.id) || dismissedRoomEventIdsRef.current.has(event.id)) continue;
+        seenRoomEventIdsRef.current.add(event.id);
+        fresh.push(event);
+      }
+      if (fresh.length > 0) setRoomNotices((current) => [...current, ...fresh]);
+    },
+    [dismissedRoomEventIdsRef, seenRoomEventIdsRef, setRoomNotices],
+  );
 }
 
 export function useDismissRoomNotice(ports: {
@@ -66,7 +69,7 @@ export function useDismissRoomNotice(ports: {
         setRoomError(messageFrom(cause, "The notice dismissal could not be saved. It will return after refresh."));
       });
     },
-    [room?.id],
+    [dismissedRoomEventIdsRef, room?.id, seenRoomEventIdsRef, setRoomError, setRoomNotices],
   );
 }
 
@@ -75,15 +78,18 @@ export function useOpenVisit(ports: {
   setOpenArchivedVisit: React.Dispatch<SetStateAction<SceneView>>;
 }) {
   const { setArchiveError, setOpenArchivedVisit } = ports;
-  return useCallback(async (id: string) => {
-    try {
-      const response = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(id)}`);
-      setOpenArchivedVisit(response.visit);
-      setArchiveError("");
-    } catch (cause) {
-      setArchiveError(messageFrom(cause, "That Scene could not be read."));
-    }
-  }, []);
+  return useCallback(
+    async (id: string) => {
+      try {
+        const response = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(id)}`);
+        setOpenArchivedVisit(response.visit);
+        setArchiveError("");
+      } catch (cause) {
+        setArchiveError(messageFrom(cause, "That Scene could not be read."));
+      }
+    },
+    [setArchiveError, setOpenArchivedVisit],
+  );
 }
 
 export function useDeleteArchivedVisits(ports: {
@@ -94,28 +100,31 @@ export function useDeleteArchivedVisits(ports: {
   setOpenArchivedVisit: React.Dispatch<SetStateAction<SceneView>>;
 }) {
   const { setArchiveError, setArchiveOffset, setArchiveVersion, setBusy, setOpenArchivedVisit } = ports;
-  return useCallback(async (id?: string) => {
-    if (
-      !window.confirm(
-        id
-          ? "Delete this exact Scene transcript? Filed memories and world changes remain."
-          : "Delete all completed Scene transcripts? Filed memories and world changes remain.",
+  return useCallback(
+    async (id?: string) => {
+      if (
+        !window.confirm(
+          id
+            ? "Delete this exact Scene transcript? Filed memories and world changes remain."
+            : "Delete all completed Scene transcripts? Filed memories and world changes remain.",
+        )
       )
-    )
-      return;
-    setBusy(true);
-    try {
-      await request(id ? `/rooms/archive/${encodeURIComponent(id)}` : "/rooms/archive", { method: "DELETE" });
-      setOpenArchivedVisit(null);
-      setArchiveOffset(0);
-      setArchiveVersion((version) => version + 1);
-      setArchiveError("");
-    } catch (cause) {
-      setArchiveError(messageFrom(cause, "Scene transcripts could not be deleted."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+        return;
+      setBusy(true);
+      try {
+        await request(id ? `/rooms/archive/${encodeURIComponent(id)}` : "/rooms/archive", { method: "DELETE" });
+        setOpenArchivedVisit(null);
+        setArchiveOffset(0);
+        setArchiveVersion((version) => version + 1);
+        setArchiveError("");
+      } catch (cause) {
+        setArchiveError(messageFrom(cause, "Scene transcripts could not be deleted."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [setArchiveError, setArchiveOffset, setArchiveVersion, setBusy, setOpenArchivedVisit],
+  );
 }
 
 export function useCloseRoom(ports: {
@@ -261,27 +270,28 @@ export function useCloseRoom(ports: {
       if (lifetime.finish(claim)) setRoomBusy(false);
     }
   }, [
-    lifetime,
-    leavingRoomPendingRef,
-    loadSnapshot,
-    receiveRoomRecordEvents,
     room,
     roomBusy,
-    roomCompletionRef,
-    roomEnded,
     roomSendInFlightRef,
-    seenRoomEventIdsRef,
-    setEndFailed,
-    setLastSceneEnding,
-    setRoom,
+    lifetime,
+    roomEnded,
     setRoomBusy,
-    setRoomDraft,
-    setRoomEnded,
     setRoomError,
-    setRoomGreetingNotice,
-    setRoomNotices,
+    setEndFailed,
+    setRoom,
+    roomCompletionRef,
+    onUnknownSceneExit,
     setRoomOpen,
+    setRoomNotices,
+    seenRoomEventIdsRef,
+    setRoomDraft,
+    setRoomGreetingNotice,
     setScreen,
+    loadSnapshot,
+    leavingRoomPendingRef,
+    setRoomEnded,
+    receiveRoomRecordEvents,
+    setLastSceneEnding,
   ]);
 }
 
@@ -501,7 +511,20 @@ export function useDiscardRoomDebug(ports: {
     } finally {
       setRoomBusy(false);
     }
-  }, [room, debugDiscardEnabled, roomBusy, loadSnapshot]);
+  }, [
+    room?.id,
+    debugDiscardEnabled,
+    roomBusy,
+    setRoomBusy,
+    setRoom,
+    setRoomOpen,
+    setRoomNotices,
+    seenRoomEventIdsRef,
+    setRoomDraft,
+    setScreen,
+    loadSnapshot,
+    setRoomError,
+  ]);
 }
 
 export function useMoveRoom(ports: {
@@ -662,6 +685,8 @@ export function useSendRoom(ports: {
   >;
   snapshot: VillageSnapshot;
 }) {
+  const { composerEditVersionRef } = ports;
+
   const {
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -709,12 +734,13 @@ export function useSendRoom(ports: {
     setRoomError,
     setRoomDraft,
     submission: roomSubmissionIdRef,
-    editVersion: ports.composerEditVersionRef,
+    editVersion: composerEditVersionRef,
   });
+  const { pending: recoveryPending, begin: beginRecovery } = recovery;
   const sendRoom = useCallback(
     async (attentionZoneId?: string) => {
-      if (recovery.pending) return;
-      const editVersion = ports.composerEditVersionRef?.current ?? 0;
+      if (recoveryPending) return;
+      const editVersion = composerEditVersionRef?.current ?? 0;
       const venue = snapshot?.settings.venues.find((place) => place.id === room?.placeId);
       const targetZone = venue?.zones?.find((zone) => zone.id === roomContactBoundary);
       const contactLabel = targetZone ? sceneZoneLabel(targetZone) : "the adjacent Zone";
@@ -898,7 +924,7 @@ export function useSendRoom(ports: {
           cause.status === 0 ||
           ["RESPONSE_READ_FAILED", "INVALID_RESPONSE"].includes(cause.code ?? "");
         if (uncertain) {
-          recovery.begin(submissionId, text, editVersion, messageFrom(cause, "The reply connection was interrupted."));
+          beginRecovery(submissionId, text, editVersion, messageFrom(cause, "The reply connection was interrupted."));
           setRoomError("");
         } else setRoomError(messageFrom(cause, "That line could not be sent."));
       } finally {
@@ -906,24 +932,42 @@ export function useSendRoom(ports: {
       }
     },
     [
-      recovery.pending,
-      recovery.begin,
-      ports.composerEditVersionRef,
-      loadSnapshot,
-      receiveRoomRecordEvents,
-      room,
-      roomBusy,
+      recoveryPending,
+      composerEditVersionRef,
+      snapshot?.settings?.venues,
       roomDraft,
-      roomEnded,
       roomMode,
-      roomContactBoundary,
-      roomContactKind,
-      roomTargetId,
-      snapshot?.settings.venues,
+      room,
+      roomEnded,
+      roomBusy,
+      roomSendInFlightRef,
       lifetime,
+      roomSubmissionIdRef,
+      setRoomBusy,
+      setRoomError,
+      setRoomDraft,
+      setRoom,
+      roomCompletionRef,
+      roomContactBoundary,
+      roomTargetId,
+      roomContactKind,
+      setRoomOpen,
+      setRoomNotices,
+      seenRoomEventIdsRef,
+      setLastSceneEnding,
+      setScreen,
+      loadSnapshot,
+      setRoomEnded,
+      receiveRoomRecordEvents,
+      setRoomTargetId,
+      setRoomRuling,
+      setRoomMode,
+      setRoomGreetingNotice,
+      setRoomContactKind,
+      beginRecovery,
     ],
   );
-  return { sendRoom, turnRecovery: recovery.status, checkSavedReply: recovery.check, replyPending: recovery.pending };
+  return { sendRoom, turnRecovery: recovery.status, checkSavedReply: recovery.check, replyPending: recoveryPending };
 }
 
 type EntryGreeting = { owns(): boolean; handoff(session: SceneView): boolean };
@@ -1004,7 +1048,7 @@ export function useGreetRoom(ports: {
         if (claim && lifetime.finish(claim)) setRoomBusy(false);
       }
     },
-    [loadSnapshot, roomBusy, lifetime],
+    [roomBusy, lifetime, setRoomBusy, setRoomError, setRoomGreetingError, setRoomGreetingNotice, setRoom, loadSnapshot],
   );
 }
 
@@ -1382,6 +1426,30 @@ export function useOpenRoom(ports: {
         if (lifetime.finish(claim)) setRoomBusy(false);
       }
     },
-    [greetRoom, loadSnapshot, room, roomBusy, lifetime],
+    [
+      roomBusy,
+      room,
+      lifetime,
+      leavingRoomPendingRef,
+      roomCompletionRef,
+      setOpenPlaceId,
+      setPlaceProblem,
+      setRoomDraft,
+      setRoomEnded,
+      setRoomError,
+      setRoomGreetingNotice,
+      setRoomNotices,
+      seenRoomEventIdsRef,
+      setRoomBusy,
+      setRoom,
+      setRoomOpen,
+      setScreen,
+      setRoomTargetId,
+      loadSnapshot,
+      setRoomMode,
+      setRoomRuling,
+      setLastSceneEnding,
+      greetRoom,
+    ],
   );
 }

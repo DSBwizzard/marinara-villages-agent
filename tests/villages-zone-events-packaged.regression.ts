@@ -388,6 +388,20 @@ try {
   ]);
   assert.match(JSON.stringify(local), /Aqua, yes/);
   const initialPrompt = narrationPrompts.at(-1)!;
+  const locationFrame = JSON.parse(
+    initialPrompt
+      .split("Current physical Scene state (server authority, not shared character knowledge): ")[1]
+      .split("\n")[0],
+  );
+  assert.equal(locationFrame.player.zone.id, state().zoneId);
+  assert.deepEqual(
+    locationFrame.residents
+      .filter((row: any) => row.location === "with player")
+      .map((row: any) => row.characterId)
+      .sort(),
+    [...state().activeIds].sort(),
+    "the archive-identical writer's physical context matches app attendance",
+  );
   assert(initialPrompt.includes('ALREADY in player Zone terrace: ["aqua","feddy"]'));
   assert(!initialPrompt.includes("normally steps into"), "local residents receive no doorway-arrival encouragement");
   const example = initialPrompt.match(/JSON syntax example for spoken input "Hello\.": (.+?)\. Example is structure/);
@@ -564,6 +578,28 @@ try {
     audibleCue,
   );
   assert(!heardLines(coerceSession(state()), "distant").some((line) => line.id === narratedLine.id));
+
+  const ambientProse = "A pipe ticks beside the open doorway.";
+  const ambient = await turn("ambient-narration", "I investigate without leaving this space.", [
+    {
+      kind: "narration",
+      text: ambientProse,
+      sound: {
+        sourceId: "__venue_scene__",
+        text: "A metallic tick.",
+        loud: true,
+      },
+    },
+  ]);
+  const ambientLine = state().lines.findLast((line: any) => line.content === ambientProse);
+  assert.equal(ambient.session.lines.filter((line: any) => line.content === ambientProse).length, 1);
+  assert.deepEqual(ambientLine.heardBy, ["aqua", "feddy"]);
+  assert.equal(ambientLine.soundOnly, undefined);
+  const ambientRestored = coerceSession(JSON.parse(JSON.stringify(state())));
+  assert(heardLines(ambientRestored, "aqua").some((line) => line.id === ambientLine.id));
+  for (const remote of ["neighbor", "distant"])
+    assert(!heardLines(ambientRestored, remote).some((line) => line.id === ambientLine.id));
+  assert.doesNotMatch(JSON.stringify(ambient), /sourceId|soundOnly|A metallic tick/);
 
   const durable = {
     kind: "durable",
@@ -985,14 +1021,18 @@ try {
   );
   const teaSource = state().lines.find((line: any) => line.attentionEvidence && line.content === preference);
   assert(teaSource?.heardBy.includes("aqua"));
-  for (let i = 0; i < 24; i++)
-    await turn("tea-distance-" + i, "*listens*", [
-      {
-        kind: "dialogue",
-        speakerId: "aqua",
-        text: "We discuss the wooden bench and its grain. " + "Timber and joinery. ".repeat(8) + i,
-      },
-    ]);
+  // Age the witnessed preference through the real HTTP path in one exchange.
+  // Repeating admission/replay 24 times only grows unrelated fixture checkpoints.
+  await turn(
+    "tea-distance",
+    "*listens*",
+    Array.from({ length: 24 }, (_, i) => ({
+      kind: "dialogue",
+      speakerId: "aqua",
+      text: "We discuss the wooden bench and its grain. " + "Timber and joinery. ".repeat(8) + i,
+    })),
+  );
+  assert(state().lines.findIndex((line: any) => line.id === teaSource.id) < state().lines.length - 24);
   await turn("old-tea-retrieval", '"Which tea flavour did I dislike?"', [
     { kind: "dialogue", speakerId: "aqua", text: "Cinnamon. You preferred mint." },
   ]);
@@ -1257,6 +1297,150 @@ try {
   assert.equal(recoveredMetadata.statusCode, 200, recoveredMetadata.body);
   assert.equal(modelCalls, beforeMetadata + 3, "Explicit retry replaces only the failed System stage");
   assert.equal(narrationCalls, beforeMetadataNarration + 1, "The saved narration is retained byte for byte");
+  // Invalid writer sound metadata must be replaced only by a deliberate retry,
+  // including after System has completed and across package reactivation.
+  const beforeInvalidSound = clone(records);
+  for (const [semanticVersion, writingVersion] of [
+    [1, 3],
+    [2, 3],
+    [2, 2],
+    [2, 1],
+  ]) {
+    records.clear();
+    for (const [key, record] of clone(beforeInvalidSound)) records.set(key, record);
+    state().semanticVersion = semanticVersion;
+    const beforeScene = clone(state());
+    const beforeWorld = clone(records.get("villages-village"));
+    const payload: Record<string, any> = {
+      sessionId: scene.id,
+      submissionId: `invalid-sound-${semanticVersion}-${writingVersion}`,
+      message: "*waits*",
+      mode: "chat",
+      targetId: "",
+      expectedSceneRevision: state().sceneRevision,
+    };
+    if (writingVersion !== 3) {
+      const { operation, ...snapshot } = clone(state());
+      const input = { ...operation.input, writingContractVersion: writingVersion };
+      if (writingVersion === 1) delete input.writingCapabilities;
+      state().operation = {
+        ...operation,
+        id: payload.submissionId,
+        input,
+        snapshot,
+        status: "interrupted",
+        sceneRevision: state().sceneRevision,
+        checkpoints: {},
+        attempts: {},
+      };
+      payload.retryOfAttemptId = state().operation.attemptId;
+    }
+    answer = {
+      playerSpeechCapture: { status: "silent", segments: [] },
+      residentActions: [],
+      segments: [{ text: "Aqua sets her cup down.", sound: { sourceId: "aqua", text: "x".repeat(301) } }],
+    };
+    const beforeCalls = modelCalls,
+      beforeWriting = narrationCalls;
+    const failed = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(failed.statusCode, 502, failed.body);
+    assert.match(failed.body, /invalid narrated sound/);
+    assert.equal(narrationCalls, beforeWriting + 1);
+    assert.deepEqual(state().lines, beforeScene.lines);
+    assert.deepEqual(state().submissions, beforeScene.submissions);
+    assert.deepEqual(state().sceneAttendance, beforeScene.sceneAttendance);
+    assert.deepEqual(records.get("villages-village"), beforeWorld, "invalid sound applies no world effects");
+    assert.equal(state().operation.input.message, payload.message, "the player's original draft survives");
+    assert(!Object.keys(state().operation.checkpoints).some((key) => key.startsWith("writing-completion:")));
+    assert(
+      Object.entries(state().operation.attempts).some(
+        ([key, value]: [string, any]) =>
+          key.startsWith(writingVersion === 3 ? "writing-completion:" : "turn-reply:") && value.status === "rejected",
+      ),
+    );
+    assert(
+      records
+        .get("villages-rejected-responses")
+        .data.entries.some(
+          (entry: any) => entry.reason === "invalid-narrated-sound" && entry.content.includes("x".repeat(301)),
+        ),
+      "the rejected writer response remains in bounded server-only diagnostics",
+    );
+    const afterFailure = modelCalls;
+    assert.equal(afterFailure, beforeCalls + (semanticVersion === 2 ? 2 : 1));
+    await stop?.();
+    await app.close();
+    app = Fastify();
+    await start();
+    const restored = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.doesNotMatch(restored.body, /"checkpoints"|"attempts"|rejected-responses|x{301}/);
+    const blocked = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(blocked.statusCode, 409, blocked.body);
+    const stale = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: { ...payload, retryOfAttemptId: "wrong-attempt" },
+    });
+    assert.equal(stale.statusCode, 409, stale.body);
+    assert.equal(modelCalls, afterFailure, "read, restart and unauthorized replay never replace a reply");
+    answer.segments = [{ text: "Aqua puts her cup beside the railing." }];
+    const retryPayload = { ...payload, retryOfAttemptId: state().operation.attemptId };
+    const recovered = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: retryPayload });
+    assert.equal(recovered.statusCode, 200, recovered.body);
+    assert.equal(narrationCalls, beforeWriting + 2, "explicit retry replaces the invalid writer completion");
+    assert.equal(modelCalls, afterFailure + (semanticVersion === 2 ? 2 : 1));
+    assert.equal(state().submissions.filter((row: any) => row.id === payload.submissionId).length, 1);
+    assert(!state().lines.some((line: any) => line.content === "Aqua sets her cup down."));
+    const afterRetry = modelCalls;
+    const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: retryPayload });
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(modelCalls, afterRetry, "successful retry replays without another model request");
+  }
+  records.clear();
+  for (const [key, record] of clone(beforeInvalidSound)) records.set(key, record);
+  // A wrong System move can invalidate routing without making the writer invalid.
+  semanticExchangeAnswer.events = {
+    moves: [{ characterId: "aqua", zoneId: "kitchen", segment: 0 }],
+    departures: [],
+    contactEnd: [],
+  };
+  answer = {
+    playerSpeechCapture: { status: "silent", segments: [] },
+    residentActions: [],
+    segments: [
+      { text: "Aqua settles beside the railing." },
+      { speakerId: "aqua", text: "Just between us.", delivery: "whisper", targetId: "player" },
+    ],
+  };
+  const routingPayload = {
+    sessionId: scene.id,
+    submissionId: "system-routing-recovery",
+    message: "*waits*",
+    mode: "chat",
+    targetId: "",
+    expectedSceneRevision: state().sceneRevision,
+  };
+  const beforeRoutingWriting = narrationCalls;
+  const wrongRouting = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: routingPayload });
+  assert.equal(wrongRouting.statusCode, 502, wrongRouting.body);
+  assert.match(wrongRouting.body, /recipient in the same Zone/);
+  assert(Object.keys(state().operation.checkpoints).some((key) => key.startsWith("writing-completion:")));
+  semanticExchangeAnswer.events = { moves: [], departures: [], contactEnd: [] };
+  const beforeRoutingRetry = modelCalls;
+  const routingRetry = await app.inject({
+    method: "POST",
+    url: "/api/villages/rooms/turn",
+    payload: { ...routingPayload, retryOfAttemptId: state().operation.attemptId },
+  });
+  assert.equal(routingRetry.statusCode, 200, routingRetry.body);
+  assert.equal(modelCalls, beforeRoutingRetry + 1, "only the incorrect System interpretation is replaced");
+  assert.equal(narrationCalls, beforeRoutingWriting + 1, "valid writing survives movement-dependent routing failure");
+  assert.deepEqual(
+    state().sceneAttendance,
+    beforeInvalidSound.get("villages-venue-visit-" + scene.id).data.sceneAttendance,
+  );
+  records.clear();
+  for (const [key, record] of clone(beforeInvalidSound)) records.set(key, record);
   // A simple complete System verdict is consumed once, without Decisions or a second Wish judge.
   const liveWorld = records.get("villages-village").data;
   const wish = {

@@ -419,6 +419,7 @@ export function RoomPanel({
 
   const requestFields = [
     { label: "Scene", value: room.placeName },
+    { label: "Scene ID", value: room.id },
     ...(room.operation
       ? [
           { label: "Request", value: room.operation.id },
@@ -491,6 +492,8 @@ export function RoomPanel({
       message: change.reason ?? "Update could not be saved.",
       fields: [
         { label: "Scene", value: room.placeName },
+        { label: "Scene ID", value: room.id },
+        { label: "Message ID", value: change.submissionId },
         { label: "World update", value: change.domain },
         { label: "Result", value: change.status === "rejected" ? "Not saved" : "Needs attention" },
         ...(change.at ? [{ label: "Time", value: new Date(change.at).toLocaleString() }] : []),

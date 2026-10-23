@@ -19,6 +19,10 @@ export async function currentScenePrompt(
   mode: "greet" | "chat" | "leave" = "chat",
   message = "What do you think?",
   overrides: Partial<VenueScene> = {},
+  operationInput: ReturnType<SceneWritingPorts["venueOperationInput"]> = {
+    interactionScopeVersion: 1,
+    playerAgencyVersion: 1,
+  },
 ) {
   const snapshot = {
     ...snapshotFromCard(
@@ -62,6 +66,8 @@ export async function currentScenePrompt(
     submissions: [],
     ...overrides,
   });
+  // Contact generation is request-local and intentionally absent from saved decoding.
+  session.contactGeneration = overrides.contactGeneration;
   const forbidden = () => assert.fail("Prompt preparation must not generate, interpret, or mutate a Scene.");
   type Model = Awaited<ReturnType<ReturnType<SceneWritingPorts["villagesLanguageModels"]>["resolveForRequest"]>>;
   const model: Model = {
@@ -100,7 +106,7 @@ export async function currentScenePrompt(
     measurePipeline: forbidden,
     runtimeDebug() {},
     venueOperationId: () => "",
-    venueOperationInput: () => ({ interactionScopeVersion: 1, playerAgencyVersion: 1 }),
+    venueOperationInput: () => operationInput,
     venueOperationSignal: () => undefined,
     rejectVenueCompletion: forbidden,
     completeWithRoom: forbidden,
@@ -119,7 +125,7 @@ export async function currentScenePrompt(
     "appearance",
     "postHistoryInstructions",
   ] as const) {
-    if (card[field]?.trim())
+    if (result.audience.includes(card.id) && card[field]?.trim())
       assert.ok(prompt.includes(card[field].trim()), `the actual Scene writer includes authored ${field}`);
   }
   if (mode === "chat")

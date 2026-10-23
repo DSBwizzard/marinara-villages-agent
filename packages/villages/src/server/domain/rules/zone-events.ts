@@ -1,9 +1,17 @@
 import type { VenueLine, VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { badGateway } from "./errors.js";
+import { badGateway, VillagesRequestError } from "./errors.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
+import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
+
+/** Invalid writer metadata, independent of System's movement interpretation. */
+export class InvalidNarratedSound extends VillagesRequestError {
+  constructor() {
+    super(502, "The reply used an invalid narrated sound. Your draft is preserved.");
+  }
+}
 
 /** One Scene writer resolves events. Code owns their sources and audiences. */
 export function zoneEventScene(
@@ -65,8 +73,22 @@ export function zoneEventScene(
   const offered = [
     ...new Map([...required, ...candidates].map((person) => [person.characterId, person])).values(),
   ].slice(0, Math.max(4, required.length));
-  const cast = scene.participants.filter((person) => scene.activeIds.includes(person.characterId));
-  for (const person of offered) if (!cast.some((entry) => entry.characterId === person.characterId)) cast.push(person);
+  const bounded = !scene.operation || scene.operation.input.castLimitVersion === 1;
+  const priority = [
+    ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
+    ...named.map((person) => person.characterId),
+    ...scene.activeIds.filter((id) => continuing.has(id)),
+    ...scene.activeIds,
+    ...offered.map((person) => person.characterId),
+  ];
+  const actorIds = bounded ? [...new Set(priority)].slice(0, MAX_ZONE_VILLAGERS) : undefined;
+  const selected = actorIds ?? [...scene.activeIds, ...offered.map((person) => person.characterId)];
+  const cast = selected.flatMap((id) => {
+    const person =
+      scene.participants.find((entry) => entry.characterId === id) ??
+      occupants.find((entry) => entry.characterId === id);
+    return person ? [person] : [];
+  });
   return {
     ...scene,
     participants: cast,
@@ -75,7 +97,8 @@ export function zoneEventScene(
       venue,
       instruction: "",
       localIds: scene.activeIds,
-      remoteIds: offered.map((person) => person.characterId),
+      remoteIds: offered.map((person) => person.characterId).filter((id) => selected.includes(id)),
+      ...(actorIds ? { actorIds } : {}),
     },
   };
 }
@@ -83,11 +106,14 @@ export function zoneEventScene(
 export const ZONE_PLAYER_SPEECH_CONTRACT =
   'Represent CURRENT player speech first with speakerId:"player"; unquoted roleplay speech is valid. Copy spoken words EXACTLY, excluding actions/thoughts. Interrupted speech uses separate segments or fragments:["first exact span","second exact span"] in source order. No recalled, hypothetical, imagined, example or negated events. Attempted impacts make sound only if they occur. No player speech on arrival/silent input; these segments permit no invented words.';
 
+export const ZONE_SOUND_CONTRACT =
+  "Player/supplied-resident noise uses narration.sound:{sourceId,text,loud?:true}; audible-only text,max300 chars. Ambience stays observable narration only,no sound or remote witnesses. No invented sources/impacts/unseen activity, silence/thought/speech tags, repeats or sound-effect captions. Sound proves no deed.";
+
 export const ZONE_EVENT_CONTRACT = [
   "ZONE EVENTS. Resolve this turn in one response. Code routes sound. Return no listener lists, hearing/comprehension flags, attentionWitnesses, acousticReplies or acousticEvents.",
   'Ordered segments: speech {kind:"dialogue",speakerId,text,delivery:"ordinary|whisper|shout",presentation:"main|aside",targetId?}; narration {kind:"narration",text,sound?:{sourceId,text,loud?:true}}. Each key occurs ONCE. Whisper is delivery, never kind, and requires targetId. Either presentation supports every delivery; placement never changes hearing. Include a visible main moment for asides. Offstage speech is dialogue.',
   "Write natural prose, including audible events in their relevant action or reaction. Offscreen sounds reveal only perceptible qualities/direction, never unseen identity, objects, activity or rooms. Do not duplicate noises, add filler sound or use detached sound-effect captions; a meaningful sound may stand alone.",
-  "To send a nonverbal sound across Zones, annotate that SAME narration segment: sourceId is player or a supplied resident ID, privately used for routing; sound.text is audible-only, at most 300 characters, without unseen causes or surrounding visuals. One source per segment. Include the event in displayed narration.text only if the player perceives it. Metadata is not another message. Never annotate silence, thoughts, imagined events or speech, or return kind:sound.",
+  ZONE_SOUND_CONTRACT,
   ZONE_PLAYER_SPEECH_CONTRACT,
   "Ordinary speech/asides and sound reach the source and directly connected Zones. Explicit shouting (delivery:shout) or actually very loud sound (loud:true) alerts the Venue; words are clear only locally/adjacently, farther listeners perceive indistinct noise. Whispers reach only their local addressee. Permissions never block sound; sound grants no entry. No cross-Venue sound.",
   "Use captured Scene positions and completed segment movements. Visual narration/gestures are witnessed only in the player's Zone; thoughts are private. Remote residents know only reachable audio and their own witnessed history, never surrounding player narration, private thoughts, unseen actions or others' private knowledge.",
@@ -235,7 +261,7 @@ export function routeZoneEvents(
       throw badGateway("A whisper needs a recipient. Your draft is preserved.");
     const actor = sound ? asTrimmedString(row.speakerId) : line.speakerId;
     const origin = sound || line.kind !== "narration" ? position(actor, index) : playerZone;
-    const sources = [
+    const sources = scene.contactGeneration?.actorIds ?? [
       ...(scene.contactGeneration?.localIds ?? scene.activeIds),
       ...(scene.contactGeneration?.remoteIds ?? []),
     ];
@@ -282,21 +308,27 @@ export function routeZoneEvents(
         !text ||
         text.length > 300 ||
         (cue.loud !== undefined && typeof cue.loud !== "boolean") ||
-        (sourceId !== "player" && (!ids.includes(sourceId) || !sources.includes(sourceId)))
+        (sourceId !== "__venue_scene__" &&
+          sourceId !== "player" &&
+          (!ids.includes(sourceId) || !sources.includes(sourceId)))
       )
-        throw badGateway("The reply used an invalid narrated sound. Your draft is preserved.");
-      const sourceZone = position(sourceId, index);
-      if (!sourceZone) throw badGateway("The reply used an unknown sound source. Your draft is preserved.");
-      const soundZones = [sourceZone, ...contactNeighbors(venue, sourceZone, scene)];
-      if (cue.loud !== true && !soundZones.includes(playerZone))
-        throw badGateway("The reply narrated a sound outside hearing range. Your draft is preserved.");
-      // Full prose remains local. Other listeners receive only the acoustic cue,
-      // under this same line ID; neither visuals nor evidence audiences expand.
-      line.soundOnly = {
-        characterIds: (cue.loud === true ? ids : inZones(soundZones, index)).filter((id) => !local.includes(id)),
-        player: false,
-        text,
-      };
+        throw new InvalidNarratedSound();
+      // Narrator-tagged ambience stays ordinary local prose, even with loud:true.
+      // It has no actor position and cannot grant remote hearing or evidence.
+      if (sourceId !== "__venue_scene__") {
+        const sourceZone = position(sourceId, index);
+        if (!sourceZone) throw badGateway("The reply used an unknown sound source. Your draft is preserved.");
+        const soundZones = [sourceZone, ...contactNeighbors(venue, sourceZone, scene)];
+        if (cue.loud !== true && !soundZones.includes(playerZone))
+          throw badGateway("The reply narrated a sound outside hearing range. Your draft is preserved.");
+        // Full prose remains local. Other listeners receive only the acoustic cue,
+        // under this same line ID; neither visuals nor evidence audiences expand.
+        line.soundOnly = {
+          characterIds: (cue.loud === true ? ids : inZones(soundZones, index)).filter((id) => !local.includes(id)),
+          player: false,
+          text,
+        };
+      }
     }
     if (loud && spoken) {
       const distant = ids.filter((id) => !near.includes(position(id, index)));

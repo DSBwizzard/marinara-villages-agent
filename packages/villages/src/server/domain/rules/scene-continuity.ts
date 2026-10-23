@@ -5,17 +5,52 @@ import type {
   VillageChronicleEntry,
   VillageRecollection,
   VillageVenueSpace,
+  VillageVenue,
 } from "../models/world.js";
 import type { KnownWish } from "./wish-journal.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
 import { venueZones, resolveVenueZone, legacyZoneId } from "./venue-zones.js";
 import { sceneWishProtected } from "./scene-wish-protection.js";
-import { neutralRelationship, relationshipKey } from "./relationship-rules.js";
-import { relationshipScore, relationshipThreshold } from "./relationship-policy.js";
+import { sceneRelationshipView } from "./relationship-rules.js";
 import { wishExpired } from "./wish-definition.js";
+import { contactNeighbors, contactPosition } from "./venue-contact.js";
+import { sceneLayoutVenue } from "./scene-layout.js";
+
+/** Current writer context, never evidence or a public attendance/room disclosure. */
+export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, actorIds: readonly string[]) {
+  const zones = venueZones(sceneLayoutVenue(venue, scene));
+  const origin = scene.zoneId ?? legacyZoneId(venue, scene.area, scene.spaceClass, scene.privateOwnerId);
+  const adjacent = contactNeighbors(venue, origin, scene);
+  const knownZone = (id: string) => {
+    const zone = zones.find((row) => row.id === id);
+    return zone && (id === origin || zone.seen) ? { id: zone.id, name: zone.name, kind: zone.kind } : undefined;
+  };
+  return {
+    venue: scene.placeName,
+    player: { zone: knownZone(origin) ?? { id: origin } },
+    residents: [...new Set(actorIds)]
+      .filter((id) => !scene.departedIds?.includes(id))
+      .map((characterId) => {
+        const position = contactPosition(scene, characterId) || (scene.activeIds.includes(characterId) ? origin : "");
+        return {
+          characterId,
+          name: scene.participants.find((row) => row.characterId === characterId)?.name ?? characterId,
+          location: !position
+            ? "unrecorded"
+            : position === origin
+              ? "with player"
+              : adjacent.includes(position)
+                ? "adjacent Zone, apart from player"
+                : "offstage, apart from player",
+          ...(knownZone(position) ? { zone: knownZone(position) } : {}),
+        };
+      }),
+  };
+}
 
 // Source facts consumed by Scene writing/meaning, never a replacement world.
-// Settings, operational clocks, receipts and live authority stay outside this copy.
+// Settings, operational clocks and world-write receipts stay outside this copy.
+// Captured access governs Scene participation; live authority still protects world writes.
 export const sceneContinuityFields = [
   "name",
   "setting",
@@ -160,19 +195,7 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene): V
     }
   }
 
-  if (view.relationshipContext && current.relationshipContext) {
-    const baseReceipts = new Set(Object.keys(view.relationshipContext.receipts));
-    for (const receipt of Object.values(current.relationshipContext.receipts)) {
-      if (receipt.sceneId !== scene.id || baseReceipts.has(receipt.id)) continue;
-      const key = relationshipKey(receipt.fromId, receipt.toId);
-      const edge = (view.relationshipContext.edges[key] ??= neutralRelationship(receipt.fromId, receipt.toId));
-      edge[receipt.dimension] = relationshipScore(edge[receipt.dimension] + receipt.after - receipt.before);
-      edge.familiarity = Math.max(1, edge.familiarity);
-      edge.friend = relationshipThreshold(edge.warmth, edge.trust, edge.friend, "friend");
-      edge.close = relationshipThreshold(edge.warmth, edge.trust, edge.close, "close");
-      view.relationshipContext.receipts[receipt.id] = { ...receipt, at: context.capturedAt };
-    }
-  }
+  view.relationshipContext = sceneRelationshipView(current.relationshipContext, scene);
 
   // Replay only already-committed physical receipts, in transcript order.
   // This edits a disposable presentation copy, never consumes live stock.

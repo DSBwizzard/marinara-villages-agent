@@ -30,7 +30,6 @@ import { previewVillageBurst } from "./usage-preview.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerInterpretationRoutes(engine: FastifyInstance) {
-  const app = engine;
   engine.get("/interpretation-settings", async (_request, reply) => {
     try {
       const settings = await readInterpretationSettings();

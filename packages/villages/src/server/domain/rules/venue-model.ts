@@ -4,7 +4,7 @@ export const VENUE_CLASSES: readonly VillageVenueClass[] = ["residence", "workpl
 export const MAX_VENUE_CLASSES = 2;
 export const MAX_VENUE_IMPROVEMENTS = 2;
 export const MAX_VENUE_RESIDENTS = 4;
-export const MAX_VENUE_PRESENT_VILLAGERS = 4;
+export const MAX_ZONE_VILLAGERS = 4;
 
 export function venueClasses(venue: Pick<VillageVenue, "classes" | "occupancy">): VillageVenueClass[] {
   if (venue.classes?.length) return venue.classes;

@@ -252,6 +252,22 @@ export function coerceSession(value: unknown): VenueScene {
             : [];
         })
       : [],
+    ...(raw.departureDestinations
+      ? {
+          departureDestinations: Object.fromEntries(
+            Object.entries(asRecord(raw.departureDestinations)).flatMap(([actor, value]) => {
+              const row = asRecord(value);
+              return actor &&
+                typeof row.venueId === "string" &&
+                row.venueId &&
+                typeof row.zoneId === "string" &&
+                row.zoneId
+                ? [[actor, { venueId: row.venueId, zoneId: row.zoneId }]]
+                : [];
+            }),
+          ),
+        }
+      : {}),
     departedIds: Array.isArray(raw.departedIds)
       ? raw.departedIds.filter((id): id is string => typeof id === "string")
       : [],

@@ -14,6 +14,8 @@ import { useContext, useEffect } from "react";
 import type { SceneErrorItem } from "./scene-errors.js";
 import { SpinoffActionContext, SpinoffErrorContext } from "./SpinoffPanel.js";
 
+const requestErrorIds = new Set(["room", "operation", "greeting"]);
+
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
   const displayedSubmissionId = controller.room?.submissions?.at(-1)?.id;
   useEffect(() => {
@@ -26,6 +28,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     { sceneId: string; id: string; title: string; message: string }[]
   >([]);
   const sceneId = controller.room?.id;
+  const sceneVenues =
+    controller.snapshot?.sceneVenue && controller.snapshot.sceneVenue.sceneId === sceneId
+      ? [controller.snapshot.sceneVenue.venue]
+      : (controller.snapshot?.settings.venues ?? []);
   const reportSettingsError = useCallback(
     (id: string, title: string, message: string) => {
       if (!sceneId) return;
@@ -116,14 +122,29 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           sceneErrors={[
             ...[
               {
+                id: "operation",
+                title:
+                  room.operation?.status === "interrupted"
+                    ? room.operation.kind === "turn"
+                      ? "Message failed"
+                      : "Saved request interrupted"
+                    : "Saved request failed",
+                message:
+                  room.operation?.error ||
+                  (room.operation?.status === "interrupted"
+                    ? "The saved request was interrupted. Retry it when you are ready."
+                    : ""),
+                actions:
+                  room.operation?.status === "interrupted" && room.status !== "opening" ? (
+                    <button type="button" disabled={roomBusy} onClick={() => void retrySavedScene()}>
+                      {room.operation.kind === "turn" ? "Retry original message" : "Retry saved request"}
+                    </button>
+                  ) : undefined,
+              },
+              {
                 id: "room",
                 title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
                 message: roomError,
-              },
-              {
-                id: "operation",
-                title: "Saved request failed",
-                message: room.operation?.status === "interrupted" ? "" : room.operation?.error,
               },
               {
                 id: "greeting",
@@ -138,23 +159,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             ]
               .filter(
                 (entry, index, all) =>
-                  !!entry.message && all.findIndex((other) => other.message === entry.message) === index,
+                  !!entry.message &&
+                  (!requestErrorIds.has(entry.id) ||
+                    all.findIndex((other) => requestErrorIds.has(other.id) && other.message === entry.message) ===
+                      index),
               )
               .map((entry): SceneErrorItem => ({ ...entry, message: entry.message! })),
-            ...(room.operation?.status === "interrupted"
-              ? [
-                  {
-                    id: "interrupted-" + room.operation.id,
-                    title: room.operation.kind === "turn" ? "Message failed" : "Saved request interrupted",
-                    message: room.operation.error,
-                    actions: (
-                      <button type="button" disabled={roomBusy} onClick={() => void retrySavedScene()}>
-                        {room.operation.kind === "turn" ? "Retry original message" : "Retry saved request"}
-                      </button>
-                    ),
-                  },
-                ]
-              : []),
           ]}
           turnRecovery={controller.turnRecovery}
           onCheckSavedReply={() => void controller.checkSavedReply?.()}
@@ -170,12 +180,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               ? Object.fromEntries(snapshot.villagers.map((villager) => [villager.characterId, villager.dialogueColor]))
               : {}
           }
-          picture={venuePictureOf(snapshot?.settings.venues ?? [], room)}
+          picture={venuePictureOf(sceneVenues, room)}
           draft={roomDraft}
           mode={roomMode}
           targetId={roomTargetId}
           contactDoors={(() => {
-            const zones = snapshot?.settings.venues.find((venue) => venue.id === room.placeId)?.zones ?? [];
+            const zones = sceneVenues.find((venue) => venue.id === room.placeId)?.zones ?? [];
             return contactNeighborIds(room.connectionMap ?? zones, room.zoneId ?? "exterior").map((id) => {
               const zone = zones.find((entry) => entry.id === id);
               return {
@@ -191,7 +201,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             setRoomContactBoundary(id);
           }}
           movementZones={(() => {
-            const venue = snapshot?.settings.venues.find((entry) => entry.id === room.placeId);
+            const venue = sceneVenues.find((entry) => entry.id === room.placeId);
             return (venue?.zones ?? [])
               .filter((zone) => {
                 if (zone.id === room.zoneId) return true;
@@ -214,9 +224,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           })()}
           onMovementTarget={(zoneId) => void moveRoom(zoneId)}
           currentZoneLabel={sceneZoneLabel(
-            snapshot?.settings.venues
-              .find((venue) => venue.id === room.placeId)
-              ?.zones?.find((zone) => zone.id === room.zoneId),
+            sceneVenues.find((venue) => venue.id === room.placeId)?.zones?.find((zone) => zone.id === room.zoneId),
           )}
           busy={roomBusy || controller.replyPending || room.operation?.status === "running"}
           error={

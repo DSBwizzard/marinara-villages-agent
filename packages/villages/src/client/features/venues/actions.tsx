@@ -38,7 +38,14 @@ export function useOpenVenue(ports: {
       }
       openPlace(place);
     },
-    [openPlace],
+    [
+      explorationOrigin,
+      explorationReturnTab,
+      openPlace,
+      setExploreSheet,
+      setMovePrivateZoneId,
+      setPlayerMovePrivateZoneId,
+    ],
   );
 }
 
@@ -69,6 +76,8 @@ export function useLeaveVenue(ports: {
   >;
   setVenueZoneKey: React.Dispatch<SetStateAction<string>>;
 }) {
+  const { screen, element, explorationReturnTab, venueId, explorationOrigin, venueReturnTo } = ports;
+
   const {
     setExploreSheet,
     setOpenPlaceId,
@@ -81,8 +90,7 @@ export function useLeaveVenue(ports: {
   } = ports;
   const focusSelector = useRef("");
   useLayoutEffect(() => {
-    if (ports.screen !== "home" || !focusSelector.current) return;
-    const element = ports.element;
+    if (screen !== "home" || !focusSelector.current) return;
     if (!element) return;
     const restore = () => {
       if (!focusSelector.current) return true;
@@ -99,12 +107,10 @@ export function useLeaveVenue(ports: {
     });
     observer.observe(element, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [ports.screen, ports.element]);
+  }, [screen, element]);
   return useCallback(() => {
     const pinId =
-      ports.explorationReturnTab?.current === "map"
-        ? ports.venueId
-        : ports.explorationOrigin?.current?.getAttribute("data-pin-id");
+      explorationReturnTab?.current === "map" ? venueId : explorationOrigin?.current?.getAttribute("data-pin-id");
     setExploreSheet(null);
     setVenueId(null);
     setVenuePage("view");
@@ -112,12 +118,25 @@ export function useLeaveVenue(ports: {
     setVenueEditDraft(null);
     setVenueProposalDraft(null);
     setOpenPlaceId(null);
-    setScreen(ports.venueReturnTo ?? "home");
-    if (!ports.venueReturnTo || ports.venueReturnTo === "home")
+    setScreen(venueReturnTo ?? "home");
+    if (!venueReturnTo || venueReturnTo === "home")
       focusSelector.current = pinId
         ? `[data-pin-id="${CSS.escape(pinId)}"]`
-        : `[data-explore-tab="${ports.explorationReturnTab?.current ?? "map"}"]`;
-  }, [ports.venueReturnTo, ports.venueId]);
+        : `[data-explore-tab="${explorationReturnTab?.current ?? "map"}"]`;
+  }, [
+    explorationReturnTab,
+    venueId,
+    explorationOrigin,
+    setExploreSheet,
+    setVenueId,
+    setVenuePage,
+    setVenueZoneKey,
+    setVenueEditDraft,
+    setVenueProposalDraft,
+    setOpenPlaceId,
+    setScreen,
+    venueReturnTo,
+  ]);
 }
 
 export function useAddVenue(ports: { setVenueEditDraft: React.Dispatch<SetStateAction<VillageVenue>> }) {
@@ -139,7 +158,7 @@ export function useAddVenue(ports: { setVenueEditDraft: React.Dispatch<SetStateA
       capabilities: [],
       state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
     });
-  }, []);
+  }, [setVenueEditDraft]);
 }
 
 export function useSaveVenue(ports: {

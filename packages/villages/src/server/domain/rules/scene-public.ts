@@ -141,6 +141,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "navigationReceipts",
             "spinoff",
             "accompanying",
+            "departureDestinations",
             "access",
             "accessEvents",
             "accessOperationId",

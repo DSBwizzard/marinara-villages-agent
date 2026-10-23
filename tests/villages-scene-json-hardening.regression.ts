@@ -88,14 +88,16 @@ for (const effects of [
   { residentActions: { malformed: "must remain supplied and fail action validation" } },
   { memoryChanges: { malformed: "must remain a failed domain, not discarded" } },
 ]) {
-  const appended = coreJson + "," + JSON.stringify(effects).slice(1);
-  const expected = { ...core, ...effects };
-  assert.deepEqual(completeSceneObject(appended, "stop"), expected);
-  assert.deepEqual(completeSceneObject("```json\n" + appended + "\n```", "end_turn"), expected);
-  for (const finish of ["length", "unknown", undefined]) assert.equal(completeSceneObject(appended, finish), null);
-  assert.equal(completeSceneObject(appended.slice(0, -1), "stop"), null, "no missing closer is invented");
-  assert.equal(completeSceneObject(appended + " prose", "stop"), null);
-  assert.equal(completeSceneObject(appended + "{}", "stop"), null);
+  for (const boundary of [",", "],"]) {
+    const appended = coreJson + boundary + JSON.stringify(effects).slice(1);
+    const expected = { ...core, ...effects };
+    assert.deepEqual(completeSceneObject(appended, "stop"), expected);
+    assert.deepEqual(completeSceneObject("```json\n" + appended + "\n```", "end_turn"), expected);
+    for (const finish of ["length", "unknown", undefined]) assert.equal(completeSceneObject(appended, finish), null);
+    assert.equal(completeSceneObject(appended.slice(0, -1), "stop"), null, "no missing closer is invented");
+    assert.equal(completeSceneObject(appended + " prose", "stop"), null);
+    assert.equal(completeSceneObject(appended + "{}", "stop"), null);
+  }
 }
 const malformedEffect = completeSceneObject(coreJson + ',"memoryChanges":{"bad":true}}', "stop")!;
 const isolated = normalizeRecoverableSceneReply(malformedEffect);
@@ -113,17 +115,21 @@ for (const key of [
   "additionalSpeech",
   "unknown",
 ]) {
-  assert.equal(
-    completeSceneObject(coreJson + "," + JSON.stringify({ [key]: [] }).slice(1), "stop"),
-    null,
-    "critical and unknown suffix members are never folded into a core",
-  );
+  for (const boundary of [",", "],"])
+    assert.equal(
+      completeSceneObject(coreJson + boundary + JSON.stringify({ [key]: [] }).slice(1), "stop"),
+      null,
+      "critical and unknown suffix members are never folded into a core",
+    );
 }
 for (const invalid of [
   coreJson + ',"memoryChanges":[],"memoryChanges":[]}',
   coreJson + ',"memoryChanges":[],"\\u006demoryChanges":[]}',
   coreJson + ',"relationshipChanges":{"changes":[],"changes":[]}}',
   coreJson + ',"residentActions":[],"residentActions":[]}',
+  coreJson + '],"residentActions":[],"residentActions":[]}',
+  coreJson + '],"residentActions":[],"segments":[]}',
+  coreJson + ']],"residentActions":[]}',
   coreJson + ',"residentActions":[],"unknown":[]}',
   coreJson + ',"segments":[]}',
   coreJson + ',"playerSpeechCapture":{}}',
@@ -137,3 +143,17 @@ for (const invalid of [
   '{"playerSpeechCapture":{"status":"silent","status":"captured"},"segments":[]},"memoryChanges":[]}',
 ])
   assert.equal(completeSceneObject(invalid, "stop"), null, invalid);
+assert.equal(
+  completeSceneObject(
+    coreJson +
+      "\nWait, let me correct that.<｜end▁of▁thinking｜>" +
+      JSON.stringify({
+        ...core,
+        segments: [{ text: "A different answer." }],
+        residentActions: [],
+      }),
+    "stop",
+  ),
+  null,
+  "competing answers are never selected by a provider-specific thinking marker",
+);

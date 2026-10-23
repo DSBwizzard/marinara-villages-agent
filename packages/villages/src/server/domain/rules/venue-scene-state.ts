@@ -158,6 +158,7 @@ export function applyVenueSceneChange(
   area: "outside" | "shared" | "private" | "public" = "public",
   privateOwnerId = "",
   zoneId?: string,
+  rebaseCondition = false,
 ): void {
   const venue = state.venues.find((place) => place.id === placeId);
   if (!venue) throw conflict("That place is no longer in the village.");
@@ -208,7 +209,7 @@ export function applyVenueSceneChange(
       updatedAt: areaState.updatedAt,
     };
   if (change.conditionBefore !== undefined) {
-    if (venue.state.condition !== change.conditionBefore)
+    if (!rebaseCondition && venue.state.condition !== change.conditionBefore)
       throw conflict("The room changed while you acted. Try again.");
     venue.state.condition = change.conditionAfter ?? "";
   }

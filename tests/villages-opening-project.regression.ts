@@ -208,6 +208,44 @@ function pitch(state: ReturnType<typeof world>, residentId: string) {
   assert.equal(old.opening!.reveals.length, 0, "Legacy abbreviated quotes retain their original rule");
 }
 
+// A short exact segment can anchor a complete System-verified pitch in either saved opening version.
+for (const version of [1, 2] as const) {
+  const state = world();
+  state.opening!.version = version;
+  const { scene, turn } = pitch(state, "a");
+  scene.openingIntroductionResidentId = "a";
+  turn.id = "greeting";
+  const quote = "My idea is Sky Terrace.";
+  scene.lines[0].content = quote;
+  turn.openingSignal!.quote = quote;
+  turn.openingContext!.proposalFingerprint = semanticHash([
+    state.opening!.proposals[0].residentId,
+    state.opening!.proposals[0].name,
+    state.opening!.proposals[0].description,
+    state.opening!.proposals[0].situation ?? "",
+    state.opening!.proposals[0].venueClass,
+    state.opening!.proposals[0].established,
+    state.opening!.proposals[0].provenance,
+    state.opening!.proposals[0].work,
+    state.opening!.proposals[0].firstUse,
+  ]);
+  turn.semanticProvenance = { version: 2, pipelineVersion: 3, sourceHash: "f".repeat(64) };
+  turn.semanticReady = true;
+  const saved = coerceSession({ ...scene, submissions: [turn] });
+  applyOpeningExchange(state, saved, saved.submissions[0]);
+  applyOpeningExchange(state, saved, saved.submissions[0]);
+  assert.equal(state.opening!.reveals.length, 1, "A bound short citation records the reveal exactly once");
+  for (const fingerprint of [undefined, "", "a".repeat(64)]) {
+    const invalid = structuredClone(turn),
+      next = structuredClone(state);
+    next.opening!.reveals = [];
+    if (fingerprint === undefined) delete invalid.openingContext!.proposalFingerprint;
+    else invalid.openingContext!.proposalFingerprint = fingerprint;
+    applyOpeningExchange(next, scene, invalid);
+    assert.equal(next.opening!.reveals.length, 0, "Short evidence cannot bypass missing, malformed or stale binding");
+  }
+}
+
 // Player knowledge, exact witnesses, replay identity, and the whole founding roster.
 for (const count of [1, 2, 3]) {
   const state = world(count);

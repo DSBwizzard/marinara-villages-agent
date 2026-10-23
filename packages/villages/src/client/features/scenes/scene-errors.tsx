@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useId, useRef } from "react";
+import { sceneErrorMessage } from "./scene-error-message.js";
 import { ELEMENT_TAG as tag } from "../../shared/constants.js";
 
 export type SceneErrorItem = {
@@ -99,7 +100,7 @@ export function SceneErrorChip({
                 <span>{item.title}</span>
               </summary>
               <div className={`${tag}-scene-error-detail`}>
-                <p>{item.message}</p>
+                <p>{sceneErrorMessage(item.message)}</p>
                 {item.fields?.length ? (
                   <dl>
                     {item.fields.map((field) => (
@@ -118,7 +119,10 @@ export function SceneErrorChip({
                       ?.writeText(
                         [
                           item.title,
-                          item.message,
+                          sceneErrorMessage(item.message),
+                          ...(sceneErrorMessage(item.message) !== item.message
+                            ? [`Original error: ${item.message}`]
+                            : []),
                           ...(item.fields ?? []).map((field) => `${field.label}: ${field.value}`),
                         ].join("\n"),
                       )

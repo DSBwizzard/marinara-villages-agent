@@ -24,6 +24,6 @@ export function useResidentsRetryWork(ports: {
       backgroundRetryActions.current.delete(job.id);
       await loadAgendas();
     },
-    [loadAgendas],
+    [loadAgendas, setSnapshot],
   );
 }

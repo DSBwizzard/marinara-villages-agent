@@ -20,7 +20,9 @@ import {
 } from "../../domain/rules/semantic-continuity.js";
 import { readSemanticEffects, SEMANTIC_OPERATION_BUDGET } from "../../domain/rules/semantic-contract.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
+import { assertSceneMovementCapacity } from "../../domain/rules/resident-movement.js";
 import { captureSceneLayout, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { villageNow, villageClockShiftMs } from "../../adapters/time/clock-gate.js";
 import { type SceneReply } from "./writing.js";
 import { interpretAttention } from "./attention-interpretation.js";
@@ -703,7 +705,7 @@ export function createSceneCommands({
     const blocker = semanticBlocker(session);
     if (blocker) throw conflict(blocker);
     if (session.status !== "active") throw conflict("Wait for the current scene to finish opening.");
-    const village = await readVillageState(),
+    const village = sceneContinuityView(await readVillageState(), session),
       venue = village.venues
         .map((entry) => sceneLayoutVenue(entry, session))
         .find((entry) => entry.id === session.placeId);
@@ -745,8 +747,21 @@ export function createSceneCommands({
           ],
         }
       : venue;
+    const routingScene = recoveredPermission
+      ? {
+          ...session,
+          grantedZoneIds: [...new Set([...(session.grantedZoneIds ?? []), zone.id])],
+          zoneGrants: [
+            ...(session.zoneGrants ?? []),
+            { zoneId: zone.id, controllerId: String(savedInvitation.residentId) },
+          ],
+        }
+      : session;
     if (
-      !contactPath(village, routingVenue, session.zoneId ?? "exterior", zone.id, "player", { ...session, accompanying })
+      !contactPath(village, routingVenue, session.zoneId ?? "exterior", zone.id, "player", {
+        ...routingScene,
+        accompanying,
+      })
     )
       throw conflict(
         "There is no permitted connection route to that space; its controller may need to grant an invitation.",
@@ -765,15 +780,29 @@ export function createSceneCommands({
     const ongoingController = relationshipZoneController(village.relationshipContext, village, venue, zone, "player");
     if (ongoingController) controllerId = ongoingController;
     if (venue.access) {
+      const decision = evaluateZoneAccess(venue, zone, "player", {
+        ...sceneAccessContext({ ...session, accompanying }, village),
+        accepting: true,
+        unavailable: zoneClosed(village, venue, zone),
+      });
+      if (!decision.allowed) throw conflict(decision.explanation);
+      await changeSceneVenues(session, (state) => {
+        const captured = state.venues.find((row) => row.id === venue.id)!;
+        claimVisitPermission(captured, decision.permissionId, session.id);
+      });
       await mutateVillageState((state) => {
-        const current = state.venues.find((row) => row.id === venue.id)!;
-        const target = resolveVenueZone(current, zone.id)!;
+        const current = state.venues.find((row) => row.id === venue.id);
+        const target = current && resolveVenueZone(current, zone.id);
+        if (!current || !target) return;
         const decision = evaluateZoneAccess(current, target, "player", {
           ...sceneAccessContext({ ...session, accompanying }, state),
           accepting: true,
           unavailable: zoneClosed(state, current, target),
         });
-        if (!decision.allowed) throw conflict(decision.explanation);
+        if (!decision.allowed) {
+          if (session.continuity) return;
+          throw conflict(decision.explanation);
+        }
         claimVisitPermission(current, decision.permissionId, session.id);
       });
     } else if (
@@ -789,11 +818,22 @@ export function createSceneCommands({
         return selected;
       });
       controllerId = invitation.residentId;
+      await changeSceneVenues(session, (state) => {
+        const captured = state.venues.find((entry) => entry.id === venue.id)!;
+        captured.playerInvitations = captured.playerInvitations?.filter(
+          (row) => row.sourceLineId !== invitation.sourceLineId,
+        );
+        captured.usedInvitationIds = [...new Set([...(captured.usedInvitationIds ?? []), invitation.sourceLineId])];
+      });
       await mutateVillageState((state) => {
-        const current = state.venues.find((entry) => entry.id === venue.id)!;
+        const current = state.venues.find((entry) => entry.id === venue.id);
+        if (!current && session.continuity) return;
+        if (!current) throw conflict("This Venue is no longer here.");
         const target = resolveVenueZone(current, zone.id);
-        if (!target || zoneClosed(state, current, target) || !canInviteToZone(current, target, invitation.residentId))
+        if (!target || zoneClosed(state, current, target) || !canInviteToZone(current, target, invitation.residentId)) {
+          if (session.continuity) return;
           throw conflict("This zone's invitation is no longer valid.");
+        }
         // The Village receipt closes the crash gap between consuming access and committing the scene.
         if (current.usedInvitationIds?.includes(invitation.sourceLineId)) return;
         const index =
@@ -803,7 +843,10 @@ export function createSceneCommands({
               entry.sourceLineId === invitation.sourceLineId &&
               entry.residentId === invitation.residentId,
           ) ?? -1;
-        if (index < 0) throw conflict("This zone needs its controller's invitation.");
+        if (index < 0) {
+          if (session.continuity) return;
+          throw conflict("This zone needs its controller's invitation.");
+        }
         const consumed = current.playerInvitations!.splice(index, 1)[0]!;
         current.usedInvitationIds = [...new Set([...(current.usedInvitationIds ?? []), consumed.sourceLineId])];
       });
@@ -893,6 +936,14 @@ export function createSceneCommands({
   }
 
   async function markZoneSeen(session: VenueScene, generateImage = true): Promise<void> {
+    if (session.continuity) {
+      await changeSceneVenues(session, (state) => {
+        const venue = state.venues.find((entry) => entry.id === session.placeId);
+        const zone = venue && resolveVenueZone(venue, session.zoneId ?? "exterior");
+        if (venue && zone && contactCanEnter(state, venue, zone.id, "player", session))
+          observePrivateInterior(zone, villageNow().toISOString());
+      });
+    }
     let admitted = false;
     await mutateVillageState((state) => {
       admitted = false;
@@ -919,7 +970,7 @@ export function createSceneCommands({
     });
     if (!admitted) return;
     if (!generateImage) return;
-    const village = await readVillageState(),
+    const village = sceneContinuityView(await readVillageState(), await readSession(session.id)),
       venue = village.venues.find((entry) => entry.id === session.placeId),
       zone =
         venue &&
@@ -982,7 +1033,8 @@ export function createSceneCommands({
       throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another Zone.");
     const existing = await activeVenueSession();
     if (!existing) await rollActiveAgendas(villageNow());
-    const village = await readVillageState(),
+    const live = await readVillageState();
+    const village = existing ? sceneContinuityView(live, existing) : live,
       place = village.venues.find((entry) => entry.id === placeId);
     if (!place) throw notFound("That place is not in this village.");
     if (!existing && village.opening?.stage === "gathering" && placeId !== village.opening.communityVenueId)
@@ -998,7 +1050,16 @@ export function createSceneCommands({
       zone = resolveVenueZone(place, "exterior");
     if (!zone) throw notFound("That zone is not in this Venue.");
     if (zoneClosed(village, place, zone)) {
-      if (place.constructionStatus === "worksite" && !requestedZoneId && !entryArea)
+      if (
+        !existing &&
+        (place.constructionStatus === "worksite" ||
+          village.projects.some(
+            (project) =>
+              project.kind === "renovation" &&
+              project.venueId === place.id &&
+              ["construction", "finishing"].includes(project.lifecycle?.phase ?? ""),
+          ))
+      )
         zone = resolveVenueZone(place, "exterior")!;
       else throw conflict("This Venue zone is closed for Renovation. Other zones remain open.");
     }
@@ -1245,6 +1306,7 @@ export function createSceneCommands({
             ? admission.operation.input
             : {
                 writingContractVersion: 3,
+                castLimitVersion: 1,
                 playerAgencyVersion: 1,
                 ...(admission.semanticVersion === 2
                   ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3, residentActionsVersion: 2 }
@@ -1839,6 +1901,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       : undefined;
     const payload = {
       ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.castLimitVersion === 1
+          ? { castLimitVersion: 1 }
+          : {}
+        : prior
+          ? {}
+          : { castLimitVersion: 1 }),
+      ...(scene.operation?.id === input.submissionId
         ? scene.operation.input.turnPolicyVersion === 1
           ? { turnPolicyVersion: 1 }
           : {}
@@ -2061,7 +2130,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     }
     let movementVenue: VillageVenue | undefined;
     if (input.mode !== "leave" && session.zoneId) {
-      const village = await readVillageState(),
+      const village = sceneContinuityView(await readVillageState(), session),
         venue = village.venues
           .map((entry) => sceneLayoutVenue(entry, session))
           .find((entry) => entry.id === session.placeId),
@@ -2371,18 +2440,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         )
           throw badGateway("The proposed contact movement was not permitted. Your draft is preserved.");
       }
-      if (
-        new Set([
-          ...session.activeIds.filter(
-            (id) => !reply.contactMoves.some((move) => move.characterId === id && move.zoneId !== session.zoneId),
-          ),
-          ...reply.contactMoves.filter((move) => move.zoneId === session.zoneId).map((move) => move.characterId),
-        ]).size > 4
-      )
-        throw badGateway("The reply would overcrowd this Zone. Your draft is preserved.");
+      assertSceneMovementCapacity(session, reply.contactMoves);
     }
     const applicationVillage = await readVillageState();
-    validateCurrentRoomInvitation(reply, applicationVillage);
+    validateCurrentRoomInvitation(reply, sceneContinuityView(applicationVillage, session));
     let projectFailure = reply.effectFailures?.projects;
     let projectInterpretation: Awaited<ReturnType<typeof interpretProjectDraft>> = null;
     try {
@@ -2777,6 +2838,18 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     };
   }
 
+  /** Retain only this Scene's validated access/discovery changes in its existing private snapshot. */
+  async function changeSceneVenues(scene: VenueScene, change: (state: VillageState) => void) {
+    if (!scene.continuity) return;
+    const current = await readVillageState();
+    await changeSession(scene.id, (saved) => {
+      if (!saved.continuity || saved.villageSeed !== current.seed) return;
+      const view = { ...current, ...structuredClone(saved.continuity.facts) };
+      change(view);
+      saved.continuity.facts.venues = view.venues;
+    });
+  }
+
   async function applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission) {
     const events = (turn.accessEvents ?? []).filter((event) => event.interpretationVersion === 1);
     if (events.length !== (turn.accessEvents ?? []).length) await holdLegacyRoomEffect(scene.id);
@@ -2796,7 +2869,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   ) {
     const turn = scene.submissions.find((turn) => turn.id === submissionId);
     if (!turn?.replyLineIds?.length || !turn.at) return;
-    await mutateVillageState((state) => {
+    const apply = (state: VillageState) => {
       if (scene.villageSeed && state.seed !== scene.villageSeed) return;
       const initialRevisions = new Map(state.venues.map((venue) => [venue.id, venue.access?.revision]));
       for (const [index, result] of batch.results.entries()) {
@@ -2938,7 +3011,9 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           reject("Rejected: " + safeFailureMessage(error));
         }
       }
-    });
+    };
+    await changeSceneVenues(scene, apply);
+    await mutateVillageState(apply);
   }
 
   async function finalizeRoomInvitationDiagnostics(
@@ -3054,7 +3129,9 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     signal: NonNullable<VenueSubmission["invitationSignal"]>,
   ): Promise<void> {
     if (signal.accessOperationId) {
-      const venue = (await readVillageState()).venues.find((row) => row.id === signal.venueId);
+      const venue = sceneContinuityView(await readVillageState(), await readSession(session.id)).venues.find(
+        (row) => row.id === signal.venueId,
+      );
       const receipt = venue?.access?.receipts[signal.accessOperationId];
       if (!receipt || receipt.outcome === "rejected") throw conflict("The saved invitation needs recovery.");
       return;
@@ -3071,7 +3148,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         (!signal.sourceLineId || line.id === signal.sourceLineId),
     );
     if (!spoken || !quote) return;
-    await mutateVillageState((state) => {
+    const apply = (state: VillageState) => {
       if (session.villageSeed && session.villageSeed !== state.seed) return;
       const venue = state.venues.find((entry) => entry.id === signal.venueId);
       if (!venue) return;
@@ -3142,7 +3219,9 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           quote: signal.quote,
         },
       ].slice(-16);
-    });
+    };
+    await changeSceneVenues(session, apply);
+    await mutateVillageState(apply);
   }
 
   async function applyVenueRequests(session: VenueScene, submission: VenueSubmission): Promise<void> {
@@ -3347,7 +3426,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         throw conflict("The saved standing permission needs recovery.");
     }
     if (turn.accessEvents?.length) {
-      const state = await readVillageState();
+      const state = sceneContinuityView(await readVillageState(), currentScene);
       for (const event of turn.accessEvents) {
         const venue = state.venues.find((row) => row.id === event.facts.venueId);
         if (!venue?.access) continue;
@@ -3384,6 +3463,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     const id = `venue-chat:${session.id}:${submission.id}`;
     await mutateVillageState((state) => {
       if (session.villageSeed && state.seed !== session.villageSeed) return;
+      if (state.venueEvents.some((event) => event.id === id) || state.exchangeReceipts[id]?.physicalOutcome) return;
       if (state.venues.some((venue) => venue.id === session.placeId && venue.constructionStatus === "worksite")) return;
       if (
         submission.semanticProvenance?.version !== 2 &&
@@ -3393,16 +3473,33 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         return;
       const controlledVenue = state.venues.find((venue) => venue.id === session.placeId);
       const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, zoneId ?? "");
+      const capturedVenue = session.continuity?.facts.venues.find((venue) => venue.id === session.placeId);
+      const capturedZone = capturedVenue && resolveVenueZone(capturedVenue, zoneId ?? "");
+      if (controlledVenue && controlledZone && capturedVenue && capturedZone) {
+        const authority = (venue: VillageVenue, zone: NonNullable<typeof controlledZone>) =>
+          JSON.stringify({
+            kind: zone.kind,
+            venueClass: zone.venueClass,
+            ownerId: zone.ownerId ?? "",
+            controllers: [...(zone.controllerIds ?? [])].sort(),
+            managers: [...(zone.access?.managerIds ?? venue.access?.managerIds ?? [])].sort(),
+            residents: zone.venueClass === "residence" ? [...venueResidentIds(venue)].sort() : [],
+            workers: zone.kind === "staff" ? [...(venue.workerIds ?? [])].sort() : [],
+          });
+        if (authority(controlledVenue, controlledZone) !== authority(capturedVenue, capturedZone))
+          throw conflict(
+            "Authority over this Zone changed. The Scene is preserved; this effect cannot change the current Village.",
+          );
+      }
       if (
         submission.semanticProvenance?.version !== 2 &&
         (controlledZone?.kind === "staff" || controlledZone?.kind === "restricted")
       )
         return;
-      if (state.venueEvents.some((event) => event.id === id) || state.exchangeReceipts[id]?.physicalOutcome) return;
       const change = readVenueSceneChange(
         { happened: true, ...submission.sceneChange },
         (() => {
-          const place = state.venues.find((entry) => entry.id === session.placeId);
+          const place = sceneContinuityView(state, session).venues.find((entry) => entry.id === session.placeId);
           return place
             ? zoneId
               ? venueInZone(place, zoneId)
@@ -3425,6 +3522,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         area,
         privateOwnerId,
         zoneId,
+        !!session.continuity,
       );
       const venue = state.venues.find((place) => place.id === session.placeId)!;
       const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date(at) });
