@@ -168,7 +168,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
 try {
   for (const restored of [false, true]) {
     const f = await fixture({ restored });
-    await expectSceneError(f.page, "Could not reach the server");
+    await expectSceneError(f.page, "The connection was interrupted. Check the saved reply before sending again.");
     await openSceneErrors(f.page);
     await expect(f.page.getByRole("button", { name: "Retry opening", exact: true })).toBeVisible();
     await expect(f.page.getByRole("button", { name: "Continue without opening", exact: true })).toBeVisible();

@@ -14,6 +14,8 @@ import { useContext, useEffect } from "react";
 import type { SceneErrorItem } from "./scene-errors.js";
 import { SpinoffActionContext, SpinoffErrorContext } from "./SpinoffPanel.js";
 
+const requestErrorIds = new Set(["room", "operation", "greeting"]);
+
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
   const displayedSubmissionId = controller.room?.submissions?.at(-1)?.id;
   useEffect(() => {
@@ -120,14 +122,29 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           sceneErrors={[
             ...[
               {
+                id: "operation",
+                title:
+                  room.operation?.status === "interrupted"
+                    ? room.operation.kind === "turn"
+                      ? "Message failed"
+                      : "Saved request interrupted"
+                    : "Saved request failed",
+                message:
+                  room.operation?.error ||
+                  (room.operation?.status === "interrupted"
+                    ? "The saved request was interrupted. Retry it when you are ready."
+                    : ""),
+                actions:
+                  room.operation?.status === "interrupted" && room.status !== "opening" ? (
+                    <button type="button" disabled={roomBusy} onClick={() => void retrySavedScene()}>
+                      {room.operation.kind === "turn" ? "Retry original message" : "Retry saved request"}
+                    </button>
+                  ) : undefined,
+              },
+              {
                 id: "room",
                 title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
                 message: roomError,
-              },
-              {
-                id: "operation",
-                title: "Saved request failed",
-                message: room.operation?.status === "interrupted" ? "" : room.operation?.error,
               },
               {
                 id: "greeting",
@@ -142,23 +159,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             ]
               .filter(
                 (entry, index, all) =>
-                  !!entry.message && all.findIndex((other) => other.message === entry.message) === index,
+                  !!entry.message &&
+                  (!requestErrorIds.has(entry.id) ||
+                    all.findIndex((other) => requestErrorIds.has(other.id) && other.message === entry.message) ===
+                      index),
               )
               .map((entry): SceneErrorItem => ({ ...entry, message: entry.message! })),
-            ...(room.operation?.status === "interrupted"
-              ? [
-                  {
-                    id: "interrupted-" + room.operation.id,
-                    title: room.operation.kind === "turn" ? "Message failed" : "Saved request interrupted",
-                    message: room.operation.error,
-                    actions: (
-                      <button type="button" disabled={roomBusy} onClick={() => void retrySavedScene()}>
-                        {room.operation.kind === "turn" ? "Retry original message" : "Retry saved request"}
-                      </button>
-                    ),
-                  },
-                ]
-              : []),
           ]}
           turnRecovery={controller.turnRecovery}
           onCheckSavedReply={() => void controller.checkSavedReply?.()}

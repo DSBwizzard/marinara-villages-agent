@@ -215,7 +215,7 @@ try {
   await chip.click();
   const status = page.getByRole("region", { name: "Scene errors" });
   await status.locator("summary").filter({ hasText: "memories update failed" }).click();
-  await expect(status).toContainText("A citation is unavailable or was not witnessed by every affected resident");
+  await expect(status).toContainText("The game could not confirm this update from what the residents saw or heard.");
   await expect(status.getByRole("button", { name: "Retry memories" })).toBeVisible();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
