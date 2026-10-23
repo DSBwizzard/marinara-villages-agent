@@ -3,6 +3,14 @@ import { spawnSync } from "node:child_process";
 import { checkPlan } from "../scripts/check-changed.mjs";
 assert.equal(checkPlan(["README.md"]).types, false);
 assert.equal(checkPlan(["packages/villages/src/shared/example.ts"]).types, true);
+for (const path of [
+  "scripts/example.mjs",
+  "scripts/check-architecture.mjs",
+  "packages/villages/package-definition.mjs",
+  "tsconfig.package.json",
+])
+  assert.equal(checkPlan([path]).architecture, true, `${path} must check relative imports`);
+assert.equal(checkPlan(["README.md"]).architecture, false);
 for (const args of [
   ["--filter=does-not-exist"],
   ["--case=does-not-exist"],

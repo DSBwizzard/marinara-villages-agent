@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isEngineBoundary } from "./change-scope.mjs";
 
 export function maintainedCode(path) {
   // Upstream declarations are hash-pinned; validate them through engineTypes.
@@ -19,8 +18,15 @@ export function checkPlan(paths) {
     format: code,
     lint: code.filter((path) => /\.(?:[cm]?js|tsx?)$/.test(path)),
     types: code.some((path) => /^(packages\/.*\/src\/|sources\/|tsconfig\.)/.test(path)),
-    architecture: code.some((path) => /^packages\/.*\/src\//.test(path)),
-    engineTypes: paths.some(isEngineBoundary),
+    architecture: code.some((path) =>
+      /^(packages\/.*\/src\/|packages\/villages\/[^/]+\.mjs$|scripts\/|sources\/|tsconfig\.)/.test(path),
+    ),
+    engineTypes: paths.some(
+      (path) =>
+        path === "packages/villages/engine-boundary.json" ||
+        path === "engine-boundary.json" ||
+        path.startsWith("sources/engine-public/"),
+    ),
   };
 }
 

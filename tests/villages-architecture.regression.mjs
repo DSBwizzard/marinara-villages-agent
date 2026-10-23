@@ -377,6 +377,29 @@ try {
       'export const request = globalThis.fetch; export const later = () => globalThis["setTimeout"](() => {}, 0);',
   });
   assert.ok(qualified.failures.some((message) => message.includes("through globals")));
+
+  const scriptsRoot = join(root, "scripts");
+  await mkdir(scriptsRoot);
+  await writeFile(join(scriptsRoot, "helper.mjs"), "export const value = 1;");
+  await writeFile(join(scriptsRoot, "types.ts"), "export type Value = number;");
+  await writeFile(
+    join(scriptsRoot, "valid.mjs"),
+    'import "node:fs"; import "external-package"; import "./helper.mjs"; export { value } from "./helper.mjs"; const load = () => import("./helper.mjs"); const computed = (name) => import(name);',
+  );
+  await writeFile(join(scriptsRoot, "valid.ts"), 'export type Value = import("./types.js").Value;');
+  await writeFile(
+    join(scriptsRoot, "missing.mjs"),
+    'import "./missing-static.mjs"; export * from "./missing-export.mjs"; const load = () => import("./missing-dynamic.mjs");',
+  );
+  const scriptImports = await analyzeArchitecture({
+    sourceRoot: join(root, "types-and-shared-calculations"),
+    scriptsRoot,
+  });
+  assert.deepEqual(scriptImports.failures, [
+    "scripts/missing.mjs: missing relative import: ./missing-dynamic.mjs",
+    "scripts/missing.mjs: missing relative import: ./missing-export.mjs",
+    "scripts/missing.mjs: missing relative import: ./missing-static.mjs",
+  ]);
 } finally {
   await rm(root, { recursive: true, force: true });
 }

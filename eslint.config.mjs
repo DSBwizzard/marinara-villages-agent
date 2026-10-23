@@ -72,40 +72,6 @@ export default tseslint.config(
     },
   },
   {
-    files: ["packages/pixelforge/src/**/*.js"],
-    languageOptions: {
-      globals: {
-        PF: "readonly",
-      },
-    },
-    rules: {
-      "no-control-regex": "off",
-    },
-  },
-  {
-    // Beholder's client modules are concatenated into one IIFE by
-    // scripts/build-beholder-package.mjs, so they share a scope that per-file
-    // linting cannot see. BH_STYLE_CSS, BH_FA_CSS, BH_LOCALES and BH_LOGO are
-    // emitted by that builder; the rest are defined in a sibling module.
-    files: ["packages/beholder/src/**/*.js"],
-    languageOptions: {
-      globals: {
-        BH: "readonly",
-        BH_FA_CSS: "readonly",
-        BH_HOST_CSS: "readonly",
-        BH_LOCALES: "readonly",
-        BH_LOGO: "readonly",
-        BH_STYLE_CSS: "readonly",
-        GARMENT_CANON: "readonly",
-        canonicalGarment: "readonly",
-        normalizeColor: "readonly",
-        renderDollPanel: "readonly",
-        setDollLayout: "readonly",
-        withDependentMissing: "readonly",
-      },
-    },
-  },
-  {
     files: ["scripts/**/*.{js,mjs}", "tests/**/*.{js,mjs,ts,tsx}"],
     ignores: ["scripts/esbuild.mjs", "tests/fixtures/browser-diagnostics.mjs"],
     rules: {
@@ -126,12 +92,6 @@ export default tseslint.config(
           ],
         },
       ],
-    },
-  },
-  {
-    files: ["scripts/validate-pr-triage.mjs"],
-    rules: {
-      "no-regex-spaces": "off",
     },
   },
 );

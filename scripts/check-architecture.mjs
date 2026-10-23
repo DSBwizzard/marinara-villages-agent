@@ -148,12 +148,14 @@ function declaresPick(source) {
 /** Check all maintained modules, including code currently unreachable from packaged entry points. */
 export async function analyzeArchitecture({
   sourceRoot,
+  scriptsRoot,
   compilerOptions = {},
   featureInterfaces = serverFeatureInterfaces,
   clientFeatureInterfaces = defaultClientFeatureInterfaces,
 }) {
   const root = canonical(sourceRoot);
   const files = await sourceFiles(root);
+  const scripts = scriptsRoot ? await sourceFiles(scriptsRoot) : [];
   const names = new Set(files.map(canonical));
   const failures = [];
   const graph = new Map();
@@ -164,6 +166,20 @@ export async function analyzeArchitecture({
   }
   function label(path) {
     return relative(root, path).replaceAll("\\", "/");
+  }
+  for (const file of scripts) {
+    const syntax = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true);
+    for (const { specifier } of imports(syntax)) {
+      if (
+        specifier &&
+        ts.isStringLiteralLike(specifier) &&
+        specifier.text.startsWith(".") &&
+        !target(file, specifier.text)
+      )
+        failures.push(
+          `${relative(dirname(scriptsRoot), file).replaceAll("\\", "/")}: missing relative import: ${specifier.text}`,
+        );
+    }
   }
   for (const file of files) {
     const from = label(file);
@@ -303,7 +319,7 @@ export async function analyzeArchitecture({
     visited.add(file);
   }
   for (const file of graph.keys()) visit(file);
-  return { modules: files.length, failures: [...new Set(failures)].sort() };
+  return { modules: files.length + scripts.length, failures: [...new Set(failures)].sort() };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -315,6 +331,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   );
   const result = await analyzeArchitecture({
     sourceRoot: join(root, "packages/villages/src"),
+    scriptsRoot: join(root, "scripts"),
     compilerOptions: config.options,
   });
   if (result.failures.length) throw new Error(result.failures.join("\n"));
