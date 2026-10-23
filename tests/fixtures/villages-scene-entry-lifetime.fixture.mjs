@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "@playwright/test";
 
 /** Actual mounted entry/actions; synthetic HTTP owns each independently held reply. */
@@ -74,6 +75,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   }
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       held = [],
       requests = [],
@@ -82,7 +84,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       greetingId = "A";
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("http://entry-lifetimes.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) => {
       const request = route.request(),
@@ -113,7 +115,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       };
       if ((options.holdAllPosts && request.method() === "POST") || options.hold === kind)
         held.push({ route, reply, kind });
-      else return route.fulfill(reply);
+      else return fulfill(route, reply);
     });
     await page.goto("http://entry-lifetimes.test/");
     await page.evaluate(
@@ -136,7 +138,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       run: (kind) => page.evaluate((kind) => window.h.run(kind), kind),
       settle: (index) => page.evaluate((index) => window.pending[index], index),
       release: async (index) => {
-        await held[index].route.fulfill(held[index].reply);
+        await fulfill(held[index].route, held[index].reply);
       },
       refs: () => page.evaluate(() => window.h.refs()),
       loads: () => page.evaluate(() => window.loads),

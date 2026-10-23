@@ -1,8 +1,9 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as base, mapImage, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -22,6 +23,7 @@ try {
     [320, 650],
   ].filter(([width]) => !process.env.VILLAGES_DOSSIER_WIDTH || width === Number(process.env.VILLAGES_DOSSIER_WIDTH))) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
+    await mockEngineLookups(page);
     const errors = [],
       writes = [],
       reads = [];
@@ -43,7 +45,7 @@ try {
     let failSignature = false;
     const signatureUrl = "http://villages.test/saved-signature.png";
     await page.route(signatureUrl, (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "image/svg+xml",
         body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="180"><text x="20" y="120" font-size="100" font-style="italic">Mara</text></svg>',
       }),
@@ -182,7 +184,7 @@ try {
       })),
     );
     await page.route("**/api/characters/summaries", (route) =>
-      route.fulfill({ contentType: "application/json", body: "[]" }),
+      fulfill(route, { contentType: "application/json", body: "[]" }),
     );
     await page.route("**/api/villages**", async (route) => {
       const request = route.request(),
@@ -193,7 +195,7 @@ try {
       let value = village;
       if (path.endsWith("/villagers/mara/description")) {
         if (failDescription)
-          return route.fulfill({
+          return fulfill(route, {
             status: 409,
             contentType: "application/json",
             body: JSON.stringify({ error: "Description changed. Reopen the editor to try again." }),
@@ -236,7 +238,7 @@ try {
       } else if (path.endsWith("/relationships")) value = relationships;
       else if (path.endsWith("/memories")) {
         if (failMemories)
-          return route.fulfill({
+          return fulfill(route, {
             status: 503,
             contentType: "application/json",
             body: '{"error":"Memory service unavailable"}',
@@ -277,10 +279,10 @@ try {
         relationships.profiles[0].knownWishes[0].status = "retired";
         value = relationships;
       } else if (/\/greet|\/turn|\/interpret/.test(path)) throw Error("Unexpected generation request " + path);
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: `<style>:root{--background:#29251f;--foreground:#f4f0e8;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;font:16px Arial}${P}{display:block;height:100vh}</style><${P}></${P}>`,
       }),

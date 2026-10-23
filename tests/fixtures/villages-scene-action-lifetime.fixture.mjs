@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { runCase, wantsCase } from "../../scripts/test-cases.mjs";
 
@@ -98,6 +99,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   }
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       requests = [],
       held = [],
@@ -105,7 +107,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     let operationId;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("http://action-lifetimes.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) => {
       const request = route.request(),
@@ -166,7 +168,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       };
       if (options.hold === kind && requests.filter((item) => item.kind === kind).length >= (options.holdOrdinal ?? 1))
         held.push({ route, response });
-      else return route.fulfill(response);
+      else return fulfill(route, response);
     });
     await page.goto("http://action-lifetimes.test/");
     await page.evaluate(
@@ -204,7 +206,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     const release = async () => {
       assert.equal(held.length, 1);
       const { route, response } = held.shift();
-      await route.fulfill(response);
+      await fulfill(route, response);
     };
     return {
       page,
@@ -365,12 +367,12 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         const second = await replacement.launch(action);
         await expect.poll(() => replacement.held.length).toBe(2);
         const old = replacement.held.shift();
-        await old.route.fulfill(old.response);
+        await fulfill(old.route, old.response);
         await replacement.settle(first);
         assert.equal((await replacement.state()).busy, true);
         assert.equal((await replacement.refs()).flight, true);
         const current = replacement.held.shift();
-        await current.route.fulfill(current.response);
+        await fulfill(current.route, current.response);
         await replacement.settle(second);
         assert.equal((await replacement.state()).id, "B");
         assert.equal((await replacement.state()).busy, false);
@@ -833,11 +835,11 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             if (action === "move") await expect.poll(() => replacement.held.length).toBe(2);
             else await expect.poll(() => replacement.requests.length).toBe(2);
             const old = replacement.held.shift();
-            await old.route.fulfill(old.response);
+            await fulfill(old.route, old.response);
             await replacement.settle(index);
             assert.equal((await replacement.state()).busy, true);
             const current = replacement.held.shift();
-            await current.route.fulfill({
+            await fulfill(current.route, {
               ...current.response,
               body: JSON.stringify(action === "move" ? { operation: null } : { session: scene("B") }),
             });

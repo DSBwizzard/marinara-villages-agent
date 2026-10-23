@@ -1,3 +1,4 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { residentsFixture } from "./fixtures/residents-browser.fixture.mjs";
 const residentsBundle = await residentsFixture();
 import assert from "node:assert/strict";
@@ -5,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
-import { chromium } from "@playwright/test";
+import { chromium } from "./fixtures/browser-diagnostics.mjs";
 import { fastExpect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 const expect = fastExpect({ timeout: 15000 });
@@ -34,6 +35,7 @@ try {
     { width: 360, height: 640 },
   ]) {
     const page = await browser.newPage({ viewport, hasTouch: viewport.width < 720 });
+    await mockEngineLookups(page);
     const errors = [],
       requests = [],
       files = new Map();
@@ -98,14 +100,14 @@ try {
       return id;
     }
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--primary:#a7c7ff;--primary-foreground:#152132}html,body{margin:0;background:#171b25;color:#f4f0e8;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
     );
     await page.route("**/api/sprites/**", (route) => {
       const bytes = files.get(new URL(route.request().url()).pathname);
-      return route.fulfill({ status: bytes ? 200 : 404, contentType: "image/png", body: bytes ?? "" });
+      return fulfill(route, { status: bytes ? 200 : 404, contentType: "image/png", body: bytes ?? "" });
     });
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -150,7 +152,7 @@ try {
           } else if (path.endsWith("/save")) {
             if (failSave) {
               failSave = false;
-              await route.fulfill({
+              await fulfill(route, {
                 status: 500,
                 contentType: "application/json",
                 body: JSON.stringify({ error: "Storage failed; your assigned artwork is unchanged." }),
@@ -179,7 +181,7 @@ try {
           } else if (path.endsWith("/unassign")) {
             if (failUnassign) {
               failUnassign = false;
-              await route.fulfill({
+              await fulfill(route, {
                 status: 500,
                 contentType: "application/json",
                 body: JSON.stringify({ error: "Assignment removal failed." }),
@@ -220,7 +222,7 @@ try {
       else if (path.endsWith("/personas")) value = { personas: [] };
       else if (path.endsWith("/interpretation-settings"))
         value = { settings: { decisionsEnabled: false }, status: { available: false } };
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     async function openManager() {
       await expect.poll(() => page.evaluate(() => !!window.featureController?.snapshot)).toBe(true);

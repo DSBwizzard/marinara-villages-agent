@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
-import { chromium, expect } from "@playwright/test";
+import { build } from "../scripts/esbuild.mjs";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 const bundle = await build({
   stdin: {
     contents: `
@@ -41,19 +42,20 @@ try {
       "unknown",
     ]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await mockEngineLookups(page);
       let scene = structuredClone(initial),
         unavailable = true;
       const requests = [],
         errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.route("http://recovery.test/", (r) =>
-        r.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+        fulfill(r, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
       );
       await page.route("**/api/villages/**", (r) => {
         requests.push(r.request().method());
-        if (unavailable) return r.fulfill({ status: 503, json: { error: "offline" } });
+        if (unavailable) return fulfill(r, { status: 503, json: { error: "offline" } });
         const path = new URL(r.request().url()).pathname;
-        return r.fulfill({
+        return fulfill(r, {
           status: 200,
           json: path.includes("/operations/")
             ? { operation: scene.operation }

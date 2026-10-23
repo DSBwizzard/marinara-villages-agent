@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -87,8 +88,9 @@ const errors = [],
   routeErrors = [];
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await mockEngineLookups(context);
   await context.route("http://villages.test/", (route) =>
-    route.fulfill({
+    fulfill(route, {
       status: 200,
       contentType: "text/html",
       body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -155,10 +157,10 @@ try {
         );
         value = { session: publicRoom(), verdict: null, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
     } catch (error) {
       routeErrors.push(error.message);
-      await route.fulfill({
+      await fulfill(route, {
         status: error.statusCode ?? 502,
         contentType: "application/json",
         body: JSON.stringify({ error: error.message, code: error.code }),

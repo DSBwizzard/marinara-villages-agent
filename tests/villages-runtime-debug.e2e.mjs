@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 const browser = await chromium.launch({
   headless: true,
@@ -8,6 +9,7 @@ const browser = await chromium.launch({
 try {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let verbose = false,
@@ -15,7 +17,7 @@ try {
       patchCount = 0,
       failPatch = false;
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: "<style>html,body{margin:0;background:#171b25;color:white;font-family:Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -30,7 +32,7 @@ try {
       else if (path.endsWith("/debug/runtime")) {
         if (route.request().method() === "PATCH") {
           if (failPatch) {
-            await route.fulfill({
+            await fulfill(route, {
               status: 500,
               contentType: "application/json",
               body: JSON.stringify({ error: "Could not save diagnostics" }),
@@ -42,7 +44,7 @@ try {
         }
         value = { verbose, effective: verbose || engineEnabled, engineEnabled };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });

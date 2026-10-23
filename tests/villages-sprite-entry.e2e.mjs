@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium } from "@playwright/test";
+import { chromium } from "./fixtures/browser-diagnostics.mjs";
 import { fastExpect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
@@ -11,10 +12,11 @@ const browser = await chromium.launch({ headless: true });
 try {
   for (const width of [1917, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("http://sprite-entry.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: "<style>html,body{margin:0}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
@@ -38,7 +40,7 @@ try {
       else if (path.endsWith("/personas")) value = { personas: [] };
       else if (path.endsWith("/interpretation-settings"))
         value = { settings: { decisionsEnabled: false }, status: { available: false } };
-      return route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+      return fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.goto("http://sprite-entry.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });

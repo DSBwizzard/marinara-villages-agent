@@ -106,6 +106,29 @@ export default tseslint.config(
     },
   },
   {
+    files: ["scripts/**/*.{js,mjs}", "tests/**/*.{js,mjs,ts,tsx}"],
+    ignores: ["scripts/esbuild.mjs", "tests/fixtures/browser-diagnostics.mjs"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "esbuild",
+              importNames: ["build", "transform"],
+              message: "Use scripts/esbuild.mjs so returned warnings fail validation.",
+            },
+            ...["@playwright/test", "playwright", "playwright-core"].map((name) => ({
+              name,
+              importNames: ["chromium", "firefox", "webkit"],
+              message: "Use the browser-diagnostics fixture so console diagnostics are checked.",
+            })),
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["scripts/validate-pr-triage.mjs"],
     rules: {
       "no-regex-spaces": "off",

@@ -1,7 +1,8 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({ headless: true });
@@ -50,6 +51,7 @@ async function open(width, stage, version = 1, holdSnapshotAfterClose = false) {
   const snapshot = data(stage);
   snapshot.opening.version = version;
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 700 });
+  await mockEngineLookups(page);
   const errors = [],
     calls = [];
   let scene = null;
@@ -210,13 +212,13 @@ async function open(width, stage, version = 1, holdSnapshotAfterClose = false) {
     } else if (path === "/connections")
       value = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "" };
     else if (path === "/lorebooks") value = { books: [] };
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+    await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
   });
   await page.route("**/api/connections", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+    fulfill(route, { status: 200, contentType: "application/json", body: "[]" }),
   );
   await page.route("http://opening.test/", (route) =>
-    route.fulfill({
+    fulfill(route, {
       status: 200,
       contentType: "text/html",
       body: "<style>:root{font-size:18px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",

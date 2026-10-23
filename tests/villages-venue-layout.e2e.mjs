@@ -1,8 +1,9 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 // Test cases: venues/layout/exterior, venues/layout/common, venues/layout/private, venues/layout/both, venues/screen-lifetimes
 import { runCase, wantsCase } from "../scripts/test-cases.mjs";
 import { resolve } from "node:path";
-import { chromium } from "@playwright/test";
+import { chromium } from "./fixtures/browser-diagnostics.mjs";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 import { verifyVenueScreenLifetimes } from "./fixtures/villages-venue-screen-lifetime.fixture.mjs";
@@ -14,6 +15,7 @@ try {
     for (const layout of ["exterior", "common", "private", "both"]) {
       if (!wantsCase("venues/layout/" + layout + "/" + width)) continue;
       const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+      await mockEngineLookups(page);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       const snapshot = structuredClone(fixture);
@@ -64,17 +66,17 @@ try {
           : path.endsWith("/lorebooks")
             ? { books: [] }
             : snapshot;
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+        await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
       });
       await page.route("**/api/connections", (route) =>
-        route.fulfill({
+        fulfill(route, {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify([{ id: "talk", provider: "language", name: "Talk", defaultForAgents: true }]),
         }),
       );
       await page.route("http://layout.test/", (route) =>
-        route.fulfill({
+        fulfill(route, {
           status: 200,
           contentType: "text/html",
           body: "<style>:root{font-size:20px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",

@@ -1,11 +1,12 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import { foundingFixture } from "./founding-browser.fixture.mjs";
 const foundingBundle = await foundingFixture();
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
-import { chromium } from "@playwright/test";
+import { chromium } from "./browser-diagnostics.mjs";
 import { expect } from "./fast-browser-expect.mjs";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { wantsCase, runCase } from "../../scripts/test-cases.mjs";
 
 const art = new PNG({ width: 1536, height: 1024 });
@@ -109,6 +110,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
   });
   for (const strict of [false, true]) {
     const context = await browser.newContext();
+    await mockEngineLookups(context);
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -178,6 +180,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
     jsx: "automatic",
   });
   const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  await mockEngineLookups(context);
   const page = await context.newPage();
   await page.setContent('<div id="root"></div>');
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
@@ -259,6 +262,7 @@ export async function verifyFoundingLayout(group) {
           hasTouch: width < 600,
           isMobile: width < 600,
         });
+        await mockEngineLookups(context);
         const page = await context.newPage();
         const errors = [];
         page.on("pageerror", (error) => errors.push(error.message));
@@ -277,7 +281,7 @@ export async function verifyFoundingLayout(group) {
           const path = new URL(route.request().url()).pathname;
           if (path.endsWith("/villagers/background/draft")) {
             const body = route.request().postDataJSON();
-            return route.fulfill({
+            return fulfill(route, {
               contentType: "application/json",
               body: JSON.stringify({
                 text: JSON.stringify({
@@ -299,7 +303,7 @@ export async function verifyFoundingLayout(group) {
               assert.equal(route.request().postDataJSON().revision, spriteRevisions[id] ?? 0);
               spriteRevisions[id] = (spriteRevisions[id] ?? 0) + 1;
             }
-            return route.fulfill({
+            return fulfill(route, {
               contentType: "application/json",
               body: JSON.stringify({
                 revision: spriteRevisions[id] ?? 0,
@@ -322,7 +326,7 @@ export async function verifyFoundingLayout(group) {
             assert.equal(imageBody.useAssignedVillagerContext, true, "assigned personality is automatic");
             assert.equal(imageBody.useVisualLore, true, "selected lore context is automatic");
             if (imageCalls === 1)
-              return route.fulfill({
+              return fulfill(route, {
                 status: 503,
                 contentType: "application/json",
                 body: JSON.stringify({ error: "Optional image unavailable" }),
@@ -331,10 +335,10 @@ export async function verifyFoundingLayout(group) {
               await new Promise((resolve) => {
                 releaseImage = resolve;
               });
-            return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(imageRef) });
+            return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(imageRef) });
           }
           if (path.endsWith("/setup/venue-image") && route.request().method() === "PUT")
-            return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(imageRef) });
+            return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(imageRef) });
           if (path.endsWith("/setup") && route.request().method() === "POST") {
             foundingPayload = route.request().postDataJSON();
             for (const id of foundingPayload.foundingCharacterIds ?? [])
@@ -353,7 +357,7 @@ export async function verifyFoundingLayout(group) {
               await new Promise((resolve) => {
                 releaseSuggestion = resolve;
               });
-            return route.fulfill({
+            return fulfill(route, {
               status: 200,
               contentType: "application/json",
               body: JSON.stringify(
@@ -418,19 +422,19 @@ export async function verifyFoundingLayout(group) {
                 result: mapCalls === 1 ? null : { image: mapImage, width: 1536, height: 1024 },
               };
             };
-            return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
+            return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
           }
           if (path.includes("/setup/town-map/generation/")) {
             if (failMapStatus)
-              return route.fulfill({
+              return fulfill(route, {
                 status: 503,
                 contentType: "application/json",
                 body: JSON.stringify({ error: "Connection interrupted" }),
               });
-            return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
+            return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
           }
           if (path.endsWith("/image-style-profiles"))
-            return route.fulfill({
+            return fulfill(route, {
               status: 200,
               contentType: "application/json",
               body: JSON.stringify({
@@ -452,13 +456,13 @@ export async function verifyFoundingLayout(group) {
                   : path.endsWith("/catalog")
                     ? { characters }
                     : snapshot;
-          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+          await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
         });
         await page.route("**/api/characters/summaries", (route) =>
-          route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+          fulfill(route, { status: 200, contentType: "application/json", body: "[]" }),
         );
         await page.route("**/api/connections", (route) =>
-          route.fulfill({
+          fulfill(route, {
             status: 200,
             contentType: "application/json",
             body: JSON.stringify([
@@ -468,7 +472,7 @@ export async function verifyFoundingLayout(group) {
           }),
         );
         await page.route("http://villages.test/", (route) =>
-          route.fulfill({
+          fulfill(route, {
             status: 200,
             contentType: "text/html",
             body: `<meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:${chromeHeight}px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">☰</button></header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
@@ -1630,7 +1634,7 @@ export async function verifyFoundingLayout(group) {
           // Another tab's newer revision wins; this tab must not overwrite it.
           const competingTab = await page.context().newPage();
           await competingTab.route("http://villages.test/", (route) =>
-            route.fulfill({ status: 200, contentType: "text/html", body: "<title>Competing draft tab</title>" }),
+            fulfill(route, { status: 200, contentType: "text/html", body: "<title>Competing draft tab</title>" }),
           );
           await competingTab.goto("http://villages.test/");
           await competingTab.evaluate(async () => {

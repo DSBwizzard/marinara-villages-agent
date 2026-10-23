@@ -1,7 +1,8 @@
-import { build } from "esbuild";
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { build } from "../scripts/esbuild.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -11,6 +12,7 @@ try {
   for (const width of [390, 1440])
     for (const restore of [false, true]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await mockEngineLookups(page);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       let held,
@@ -49,7 +51,7 @@ try {
       // A later Village renovation closes/removes a destination without rewriting this Scene.
       currentVenue.zones = currentVenue.zones.filter((zone) => zone.id !== "workshop");
       await page.route("http://scene-navigation.test/", (route) =>
-        route.fulfill({
+        fulfill(route, {
           contentType: "text/html",
           body: '<marinara-capability-villages style="display:block;height:900px"></marinara-capability-villages>',
         }),
@@ -62,19 +64,19 @@ try {
             held = route;
             return;
           }
-          return route.fulfill({
+          return fulfill(route, {
             contentType: "application/json",
             body: JSON.stringify({ session: restore ? session : null }),
           });
         }
-        return route.fulfill({ contentType: "application/json", body: JSON.stringify(sceneSnapshot) });
+        return fulfill(route, { contentType: "application/json", body: JSON.stringify(sceneSnapshot) });
       });
       await page.goto("http://scene-navigation.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await expect(page.getByRole("status")).toContainText("Loading Scene");
       await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
       await expect.poll(() => !!held).toBe(true);
-      await held.fulfill({
+      await fulfill(held, {
         status: 503,
         contentType: "application/json",
         body: JSON.stringify({ error: "Temporarily unavailable" }),
@@ -121,6 +123,7 @@ try {
     jsx: "automatic",
   });
   const page = await browser.newPage();
+  await mockEngineLookups(page);
   const session = {
     id: "guard",
     version: 1,
@@ -137,7 +140,7 @@ try {
     endedAt: "",
   };
   await page.route("http://scene-guard.test/", (route) =>
-    route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }),
+    fulfill(route, { contentType: "text/html", body: '<div id="root"></div>' }),
   );
   let holdGuardRead = false,
     guardRead;
@@ -146,7 +149,7 @@ try {
       guardRead = route;
       return;
     }
-    return route.fulfill({
+    return fulfill(route, {
       contentType: "application/json",
       body: JSON.stringify(route.request().url().endsWith("/rooms/active") ? { session } : snapshot),
     });
@@ -209,7 +212,7 @@ try {
   await page.evaluate(() => window.navigation.closeRoom());
   await expect(page.locator("#screen")).toHaveText("checking");
   await expect.poll(() => !!guardRead).toBe(true);
-  await guardRead.fulfill({
+  await fulfill(guardRead, {
     contentType: "application/json",
     body: JSON.stringify({ session: { ...session, status: "opening" } }),
   });

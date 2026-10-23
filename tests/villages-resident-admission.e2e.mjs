@@ -1,8 +1,9 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 // Test cases: residents/admission/desktop, residents/admission/phone
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import { build } from "esbuild";
-import { chromium, expect } from "@playwright/test";
+import { build } from "../scripts/esbuild.mjs";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 const bundle = await build({
   stdin: {
     loader: "tsx",
@@ -33,25 +34,26 @@ try {
         isMobile: width < 600,
         hasTouch: width < 600,
       });
+      await mockEngineLookups(context);
       try {
         const page = await context.newPage(),
           errors = [],
           unexpected = [];
         page.on("pageerror", (e) => errors.push(e.message));
         await page.route("http://admission.test/", (route) =>
-          route.fulfill({
+          fulfill(route, {
             contentType: "text/html",
             body: '<meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div>',
           }),
         );
         await page.route("**/api/connections", (route) =>
-          route.fulfill({ contentType: "application/json", body: "[]" }),
+          fulfill(route, { contentType: "application/json", body: "[]" }),
         );
         await page.route("**/api/villages/**", (route) => {
           if (
             /\/characters\/buster\/sprites\/setup(?:\/(?:save|settled))?$/.test(new URL(route.request().url()).pathname)
           )
-            return route.fulfill({
+            return fulfill(route, {
               contentType: "application/json",
               body: JSON.stringify({
                 revision: 1,
@@ -68,7 +70,7 @@ try {
               }),
             });
           unexpected.push(route.request().url());
-          return route.abort();
+          return abort(route);
         });
         await page.goto("http://admission.test/");
         await page.addScriptTag({ content: bundle.outputFiles[0].text });

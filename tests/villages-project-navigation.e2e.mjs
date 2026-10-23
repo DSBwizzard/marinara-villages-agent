@@ -1,8 +1,9 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
-import { build } from "esbuild";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { build } from "../scripts/esbuild.mjs";
 import { snapshot as fixture, image } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const output = process.env.VILLAGES_VISUAL_OUTPUT;
@@ -56,6 +57,7 @@ function projectSnapshot() {
 
 async function openPage(width, snapshot, imageHandler, mutationHandler) {
   const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+  await mockEngineLookups(page);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/api/villages**", async (route) => {
@@ -68,17 +70,17 @@ async function openPage(width, snapshot, imageHandler, mutationHandler) {
       : path.endsWith("/lorebooks")
         ? { books: [] }
         : snapshot;
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+    await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
   });
   await page.route("**/api/connections", (route) =>
-    route.fulfill({
+    fulfill(route, {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify([{ id: "talk", provider: "language", name: "Talk", defaultForAgents: true }]),
     }),
   );
   await page.route("http://projects.test/", (route) =>
-    route.fulfill({
+    fulfill(route, {
       status: 200,
       contentType: "text/html",
       body: "<style>:root{font-size:20px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -136,12 +138,13 @@ async function checkControllerLifetime() {
     jsx: "automatic",
   });
   const page = await browser.newPage();
+  await mockEngineLookups(page);
   const imageRequests = [];
   const mutationRequests = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("http://project-hooks.test/", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+    fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
   );
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -165,7 +168,7 @@ async function checkControllerLifetime() {
     page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
   const respond = async (index, id) => {
     const completed = page.waitForResponse((response) => response.url().endsWith("/setup/venue-image/generate"));
-    await imageRequests[index].fulfill({
+    await fulfill(imageRequests[index], {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ id, url: image("#997755") }),
@@ -228,7 +231,7 @@ async function checkControllerLifetime() {
   await page.evaluate((next) => window.projectsHarness.setSnapshot(next), reset);
   await expect.poll(async () => (await state()).founded).toBe(false);
   const completedMutation = page.waitForResponse((response) => response.url().endsWith("/projects/canvas-build/plan"));
-  await mutationRequests[0].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+  await fulfill(mutationRequests[0], { status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
   await (await completedMutation).finished();
   await settle();
   assert.equal(
@@ -393,7 +396,7 @@ try {
     await selectProject(page, /RENOVATION.*Workshop/);
     await page.getByRole("button", { name: "Generate image", exact: true }).click();
     await expect.poll(() => requests.length).toBe(2);
-    await requests[0].fulfill({
+    await fulfill(requests[0], {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ id: "canvas-image", url: image("#aa7744") }),
@@ -408,7 +411,7 @@ try {
     await expect(page.getByAltText("exterior preview")).toBeVisible();
     await page.getByRole("button", { name: "Back to Project", exact: true }).click();
     await selectProject(page, /RENOVATION.*Workshop/);
-    await requests[1].fulfill({
+    await fulfill(requests[1], {
       status: 500,
       contentType: "application/json",
       body: JSON.stringify({ error: "Workshop image failed" }),
@@ -423,7 +426,7 @@ try {
     await page.getByLabel("Physical form", { exact: true }).fill("A changed shelter");
     await page.getByRole("button", { name: "Back to Project", exact: true }).click();
     await selectProject(page, /RENOVATION.*Workshop/);
-    await requests[2].fulfill({
+    await fulfill(requests[2], {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ id: "outdated-image", url: image("#4488aa") }),
@@ -436,7 +439,7 @@ try {
     await expect(page.getByAltText("exterior preview")).toBeVisible();
     await page.getByRole("button", { name: "Generate image", exact: true }).click();
     await expect.poll(() => requests.length).toBe(4);
-    await requests[3].fulfill({
+    await fulfill(requests[3], {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ id: "discarded-image", url: image("#44aa88") }),

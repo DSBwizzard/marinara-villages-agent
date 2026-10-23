@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { chromium, expect } from "@playwright/test";
-import { build } from "esbuild";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { build } from "../scripts/esbuild.mjs";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 // Actual Settings UI/start-over hook with mocked HTTP and synthetic device-local data.
@@ -39,32 +40,33 @@ const browser = await chromium.launch({
 try {
   for (const width of [1366, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 844 } });
+    await mockEngineLookups(page);
     const errors = [];
     let resets = 0;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("http://reset.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path === "/api/villages/setup/reset") {
         resets++;
         if (resets === 1)
-          return route.fulfill({
+          return fulfill(route, {
             status: 403,
             contentType: "text/plain",
             body: "The review gateway blocked POST /api/villages/setup/reset. Report this action in its Codex chat.",
           });
         if (resets === 2)
-          return route.fulfill({ status: 200, contentType: "text/html", body: "<html>Broken response</html>" });
-        return route.fulfill({
+          return fulfill(route, { status: 200, contentType: "text/html", body: "<html>Broken response</html>" });
+        return fulfill(route, {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({ ...fixture, isFounded: false }),
         });
       }
       if (path === "/api/villages/connections")
-        return route.fulfill({
+        return fulfill(route, {
           status: 200,
           contentType: "application/json",
           body: JSON.stringify({
@@ -74,7 +76,7 @@ try {
           }),
         });
       if (path === "/api/connections")
-        return route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+        return fulfill(route, { status: 200, contentType: "application/json", body: "[]" });
       throw Error("Unexpected reset fixture request: " + path);
     });
     await page.goto("http://reset.test/");

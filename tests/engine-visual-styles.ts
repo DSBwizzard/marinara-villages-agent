@@ -30,7 +30,12 @@ export async function compileEngineVisualStyles(engineRoot: string, packageClien
       build: {
         emptyOutDir: true,
         outDir: output,
-        rollupOptions: { input },
+        rollupOptions: {
+          input,
+          onwarn(warning) {
+            throw new Error(warning.message);
+          },
+        },
       },
     });
 

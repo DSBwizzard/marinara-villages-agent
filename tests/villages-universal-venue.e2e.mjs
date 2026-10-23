@@ -1,7 +1,8 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({ headless: true });
@@ -9,6 +10,7 @@ const prefix = "marinara-capability-villages";
 try {
   for (const width of [1366, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await mockEngineLookups(page);
     const errors = [],
       writes = [];
     page.on("pageerror", (error) => {
@@ -98,7 +100,7 @@ try {
       status: "pending",
       requestedBy: "villager",
     });
-    await page.route("**/api/characters/summaries", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/characters/summaries", (route) => fulfill(route, { json: [] }));
     await page.route("**/api/villages**", async (route) => {
       const request = route.request(),
         path = new URL(request.url()).pathname;
@@ -147,10 +149,10 @@ try {
         const zone = place.zones.find((zone) => zone.id === decodeURIComponent(path.split("/").at(-1)));
         zone.name = request.postDataJSON().name;
       } else if (path.endsWith("/image/generate")) value = { ...snapshot };
-      await route.fulfill({ json: value });
+      await fulfill(route, { json: value });
     });
     await page.route("http://venue.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: `<style>:root{--background:#141b2c;--foreground:#f3f0ff;--popover:#202c44;--border:#60708e;--primary:#d2c0ff;--primary-foreground:#25183b;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial}${prefix}{display:block;height:100%}</style><header style="height:48px">Engine</header><${prefix} style="height:calc(100% - 48px)"></${prefix}>`,
       }),

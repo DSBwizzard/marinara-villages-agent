@@ -1,7 +1,8 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, mapImage, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -11,6 +12,7 @@ mkdirSync(".build-tmp/wish-journal", { recursive: true });
 try {
   for (const width of [390, 1280]) {
     const page = await browser.newPage({ viewport: { width, height: 844 } });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const village = structuredClone(snapshot);
@@ -74,7 +76,7 @@ try {
       wishUpdate: { actorId: "feddy", wishId: "swim", state: "progress" },
     };
     await page.route("**/api/characters/summaries", (route) =>
-      route.fulfill({ contentType: "application/json", body: "[]" }),
+      fulfill(route, { contentType: "application/json", body: "[]" }),
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -144,10 +146,10 @@ try {
       else if (path.endsWith("/rooms/activity")) value = { session };
       else if (/generate|regenerate|\/greet|\/turn|\/interpret/.test(path))
         throw Error("Unexpected model-capable request: " + path);
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: "<style>:root{--background:#29251f;--foreground:#f4f0e8;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;background:#29251f;color:#f4f0e8;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),

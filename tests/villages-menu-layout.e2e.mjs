@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -112,6 +113,7 @@ try {
   ]) {
     const mobile = width <= 704;
     const page = await browser.newPage({ viewport: { width, height } });
+    await mockEngineLookups(page);
     const errors = [];
     let progressReads = 0;
     let progressFails = false;
@@ -120,7 +122,7 @@ try {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/progress/debug")) {
         progressReads += 1;
-        return route.fulfill({
+        return fulfill(route, {
           status: progressFails ? 503 : 200,
           contentType: "application/json",
           body: JSON.stringify(
@@ -169,17 +171,17 @@ try {
                         : path.endsWith("/rooms/active")
                           ? { session: null, debugDiscardEnabled: true }
                           : snapshot;
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
+      return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(response) });
     });
     await page.route("**/api/connections", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: "[]",
       }),
     );
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: `<style>:root{--background:${surface};--foreground:${foreground};--popover:${surface};--border:#ccc;--primary:#8a64ff;--muted-foreground:#888}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}${tag}{display:block;width:100%;height:100%}</style><${tag}></${tag}>`,

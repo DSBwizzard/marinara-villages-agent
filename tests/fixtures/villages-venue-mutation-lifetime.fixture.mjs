@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
@@ -58,6 +59,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
   };
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 900 } });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       requests = [],
       errors = [];
@@ -79,7 +81,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     const initialRows = options.local ? [...seed.settings.venues, { ...draft, id: "local" }] : seed.settings.venues;
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://venue-mutations.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) =>
       requests.push({
@@ -117,7 +119,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
           snapshot.settings.venues = snapshot.settings.venues.filter((venue) => venue.id !== "venue / A");
         if (options.returned)
           snapshot.settings.venues.push({ ...draft, id: "returned", name: options.create ? "new café" : "Returned" });
-        await requests[index].route.fulfill({
+        await fulfill(requests[index].route, {
           status: options.fail ? 502 : 200,
           contentType: "application/json",
           body: JSON.stringify(

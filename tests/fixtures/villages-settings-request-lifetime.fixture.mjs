@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
@@ -45,6 +46,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   });
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, hasTouch: width === 390 });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       requests = [],
       errors = [];
@@ -54,7 +56,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     Object.assign(seed.settings, { setting: "A", sendOnEnter: false, characterSpeechColors: true });
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://settings-lifetimes.test/", (r) =>
-      r.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(r, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) =>
       requests.push({
@@ -86,7 +88,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         answer.isFounded = options.founded ?? true;
         answer.settings.setting = "saved " + index;
         Object.assign(answer.settings, requests[index].body);
-        await requests[index].route.fulfill({
+        await fulfill(requests[index].route, {
           status: fail ? 502 : 200,
           contentType: "application/json",
           body: JSON.stringify(fail ? { error: "synthetic settings failure" } : answer),

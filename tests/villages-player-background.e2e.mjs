@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
-import { chromium, expect } from "@playwright/test";
+import { build } from "../scripts/esbuild.mjs";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 const bundle = await build({
   stdin: {
     loader: "tsx",
@@ -24,16 +25,17 @@ try {
   for (const width of [1366, 390, 320]) {
     const context = await browser.newContext({ viewport: { width, height: 844 } }),
       page = await context.newPage();
+    await mockEngineLookups(context);
     let paid = 0;
     await page.route("http://cast.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: '<meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div>',
       }),
     );
     await page.route("**/api/**", (route) => {
       paid++;
-      return route.abort();
+      return abort(route);
     });
     const load = async () => {
       await page.goto("http://cast.test/");

@@ -1,8 +1,9 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { PNG } from "pngjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -43,6 +44,7 @@ try {
       viewport: mobile ? { width, height: 844 } : { width: 1440, height: 900 },
       hasTouch: mobile,
     });
+    await mockEngineLookups(page);
     let savedImage = image("#719b77");
     let mapSetAt = now;
     let venues = [
@@ -137,6 +139,8 @@ try {
       const path = new URL(route.request().url()).pathname;
       let value = snapshot();
       let status = 200;
+      if (path.endsWith("/connections"))
+        value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
       if (path.endsWith("/town-map") && route.request().method() === "GET") value = { image: savedImage };
       else if (path.endsWith("/town-map") && route.request().method() === "PUT") {
         const body = route.request().postDataJSON();
@@ -189,12 +193,12 @@ try {
           person: "third",
           rating: "sfw",
         };
-      await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { status, contentType: "application/json", body: JSON.stringify(value) });
     });
     // This map fixture omits Engine's toolbar. Keep the unrelated owner meter disabled.
-    await page.route("**/api/villages/debug/runtime", (route) => route.fulfill({ json: { showUsageMeter: false } }));
+    await page.route("**/api/villages/debug/runtime", (route) => fulfill(route, { json: { showUsageMeter: false } }));
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:var(--background);color:var(--foreground);font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",

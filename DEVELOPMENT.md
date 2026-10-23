@@ -1,6 +1,6 @@
 # Developing Villages
 
-Use Node 24. The checked-in [Villages Codex environment](.codex/environments/environment.toml) runs `npm ci` when a new worktree is created; use it for implementation chats. If setup fails or dependencies change, run `npm ci` in that worktree. Maintained source is in `packages/villages/src`; package identity, version, permissions and entry points are in `packages/villages/package-definition.mjs`. [AGENTS.md](AGENTS.md) owns development principles.
+Use Node 24 and npm 11.19+ (CI pins Node 24.21.0 with npm 11.19.0). The checked-in [Villages Codex environment](.codex/environments/environment.toml) runs `npm ci` when a new worktree is created; use it for implementation chats. If setup fails or dependencies change, run `npm ci` in that worktree. Maintained source is in `packages/villages/src`; package identity, version, permissions and entry points are in `packages/villages/package-definition.mjs`. [AGENTS.md](AGENTS.md) owns development principles.
 
 ## Ordinary work
 
@@ -21,6 +21,7 @@ Task scratch files belong in `.build-tmp/`; generated conversation assets belong
 ## Commands and coverage
 
 ```sh
+npm run audit:dependencies # fail on low-or-higher dependency advisories
 npm run check             # format, lint, types, Engine declarations, architecture
 npm run check:changed     # affected static checks; optional --base=<ref> or --file=<path>
 npm test -- --filter=name # explicit regression feedback
@@ -30,6 +31,8 @@ npm run validate          # full static + two builds + package + regression/brow
 ```
 
 Install the locked Chromium runtime locally with `npx playwright install chromium`. CI runs full static/build/regression validation on Linux and Windows without browser provisioning, plus the complete browser inventory split into two fixed partitions per OS (`--shard=1/2`, `--shard=2/2`). Linux browser jobs use the official Playwright Noble image pinned by version and digest, with its preinstalled browsers at `/ms-playwright`; update that pin together with the locked Playwright dependency. Windows browser jobs cache the locked Chromium runtime. Node is pinned and npm downloads are cached. Package parity waits for every partition. Required job names are `validate`, `validate-windows`, and `package-parity`. A new PR head cancels its superseded run. CI runs on PRs and manual dispatch. Protected current-base requirements apply.
+
+Unexpected build warnings, test stderr, browser console warnings/errors and uncaught page exceptions fail validation. Deliberate negative browser responses use the shared fixture helper to allow at most one diagnostic for that exact URL and response; other messages fail. Full and filtered runs verify the completion of every declared selected case. Dependency install scripts require the reviewed package.json policy; new scripts fail installation.
 
 There is no reuse of passing test results. Focused local tests are feedback; passing CI describes the tested merge candidate. The runner defaults to four workers and up to two local browser workers. `--jobs=1`, `--browser-jobs=1`, `--keep-going` and `--fail-fast` control execution. Resource locks prevent unsafe overlap; unknown suites run exclusively. Logs, progress, first failure and coverage are under `.build-tmp/test-results`. Inspect the owner before recovering an interrupted checkout lock.
 

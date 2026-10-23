@@ -1,3 +1,4 @@
+import { runCase } from "../scripts/test-cases.mjs";
 import {
   applyRelationshipReview,
   defaultRelationshipState,
@@ -223,44 +224,50 @@ async function main() {
     5,
     "future calendar history cannot erase a fresh contact",
   );
-  const summer = new ZonedDate("2026-07-01T12:00:00Z", "America/Los_Angeles");
-  const winter = new ZonedDate("2026-12-01T12:00:00Z", "America/Los_Angeles");
-  assert.equal(summer.getTimezoneOffset(), 420);
-  const island = calendarDate(new ZonedDate("2026-10-14T12:00:00Z", "Pacific/Kiritimati"), 2026, 9, 14, 0);
-  assert.equal(island.getDate(), 14);
-  assert.equal(island.getHours(), 0);
-  const gap = calendarDate(summer, 2026, 2, 8, 2, 30);
-  assert.equal(gap.getHours(), 3);
-  assert.equal(gap.getMinutes(), 30);
-  const repeat = calendarDate(summer, 2026, 10, 1, 1, 30);
-  assert.equal(repeat.toISOString(), "2026-11-01T08:30:00.000Z");
-  assert.throws(
-    () => coerceVillageState({ ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
-    /saved village clock/,
-  );
-  assert.equal(winter.getTimezoneOffset(), 480);
-  assert.equal(calendarDate(summer, 2026, 11, 1, 12).getHours(), 12);
-  assert.equal(new ZonedDate("2026-11-01T08:30:00Z", "America/Los_Angeles").getHours(), 1);
-  assert.equal(new ZonedDate("2026-11-01T09:30:00Z", "America/Los_Angeles").getHours(), 1);
-  assert.equal(coerceVillageState({ ...defaultVillageState(), clock: fixture().state.clock }).clock, null);
 
-  for (const [before, after, firstHour, secondHour] of [
-    ["2026-03-08T09:30:00Z", "2026-03-08T10:30:00Z", 1, 3],
-    ["2026-11-01T08:30:00Z", "2026-11-01T09:30:00Z", 1, 1],
-  ] as const) {
-    const a = new ZonedDate(before, "America/Los_Angeles"),
-      b = new ZonedDate(after, "America/Los_Angeles");
-    assert.equal(a.getHours(), firstHour);
-    assert.equal(b.getHours(), secondHour);
-    assert.equal(b.getTime() - a.getTime(), 3600000, "DST changes civil time, never elapsed waits");
-  }
-  assert.equal(new ZonedDate("2026-07-01T12:00:00Z", "America/Phoenix").getTimezoneOffset(), 420);
-  assert.equal(new ZonedDate("2026-12-01T12:00:00Z", "America/Phoenix").getTimezoneOffset(), 420);
   console.log(
     "Nonblocking sleep, long downtime, backward clocks, old-pause migration, calendar replay and DST passed.",
   );
 }
-main().catch((error) => {
+async function verify() {
+  await runCase("village-clock-recovery", main);
+  await runCase("founding-timezone", async () => {
+    const summer = new ZonedDate("2026-07-01T12:00:00Z", "America/Los_Angeles");
+    const winter = new ZonedDate("2026-12-01T12:00:00Z", "America/Los_Angeles");
+    assert.equal(summer.getTimezoneOffset(), 420);
+    const island = calendarDate(new ZonedDate("2026-10-14T12:00:00Z", "Pacific/Kiritimati"), 2026, 9, 14, 0);
+    assert.equal(island.getDate(), 14);
+    assert.equal(island.getHours(), 0);
+    const gap = calendarDate(summer, 2026, 2, 8, 2, 30);
+    assert.equal(gap.getHours(), 3);
+    assert.equal(gap.getMinutes(), 30);
+    const repeat = calendarDate(summer, 2026, 10, 1, 1, 30);
+    assert.equal(repeat.toISOString(), "2026-11-01T08:30:00.000Z");
+    assert.throws(
+      () => coerceVillageState({ ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
+      /saved village clock/,
+    );
+    assert.equal(winter.getTimezoneOffset(), 480);
+    assert.equal(calendarDate(summer, 2026, 11, 1, 12).getHours(), 12);
+    assert.equal(new ZonedDate("2026-11-01T08:30:00Z", "America/Los_Angeles").getHours(), 1);
+    assert.equal(new ZonedDate("2026-11-01T09:30:00Z", "America/Los_Angeles").getHours(), 1);
+    assert.equal(coerceVillageState({ ...defaultVillageState(), clock: fixture().state.clock }).clock, null);
+
+    for (const [before, after, firstHour, secondHour] of [
+      ["2026-03-08T09:30:00Z", "2026-03-08T10:30:00Z", 1, 3],
+      ["2026-11-01T08:30:00Z", "2026-11-01T09:30:00Z", 1, 1],
+    ] as const) {
+      const a = new ZonedDate(before, "America/Los_Angeles"),
+        b = new ZonedDate(after, "America/Los_Angeles");
+      assert.equal(a.getHours(), firstHour);
+      assert.equal(b.getHours(), secondHour);
+      assert.equal(b.getTime() - a.getTime(), 3600000, "DST changes civil time, never elapsed waits");
+    }
+    assert.equal(new ZonedDate("2026-07-01T12:00:00Z", "America/Phoenix").getTimezoneOffset(), 420);
+    assert.equal(new ZonedDate("2026-12-01T12:00:00Z", "America/Phoenix").getTimezoneOffset(), 420);
+  });
+}
+verify().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -1,8 +1,9 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
@@ -16,6 +17,7 @@ try {
       viewport: mobile ? { width: 390, height: 620 } : { width: 1440, height: 900 },
       hasTouch: mobile,
     });
+    await mockEngineLookups(page);
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "clipboard", {
         configurable: true,
@@ -86,8 +88,10 @@ try {
           hasMore: false,
           nextCursor: "0:0",
         };
-      } else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) {
-        if (hideReads) return route.fulfill({ status: 503, json: { error: "Read unavailable" } });
+      } else if (path.endsWith("/connections"))
+        value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
+      else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) {
+        if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         value = { session: active ? session : null };
         if (path.endsWith("/rooms/active") && staleRecovery) {
           value = { session: staleRecovery };
@@ -116,11 +120,11 @@ try {
           value.unresolved = [semanticRecovery];
         }
       } else if (/\/rooms\/[^/]+\/operations?/.test(path)) {
-        if (hideReads) return route.fulfill({ status: 503, json: { error: "Read unavailable" } });
-        if (loseOperationRead) return route.fulfill({ status: 404, json: { error: "Operation unavailable" } });
+        if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
+        if (loseOperationRead) return fulfill(route, { status: 404, json: { error: "Operation unavailable" } });
         value = { operation: session.operation };
       } else if (path.includes("/rooms/archive/")) {
-        if (hideReads) return route.fulfill({ status: 503, json: { error: "Read unavailable" } });
+        if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         value = { visit: session };
       } else if (path.endsWith("/interpretation-settings")) {
         value = { settings: { decisionsEnabled: false, compareSystem: true }, status: { available: false } };
@@ -155,7 +159,7 @@ try {
               hideReads = false;
             }, 1000);
           }
-          return route.fulfill({ status: 400, json: { error: "Bad Request", message } });
+          return fulfill(route, { status: 400, json: { error: "Bad Request", message } });
         }
         const beforeSuccess = structuredClone(session);
         session.lines.push(
@@ -195,14 +199,14 @@ try {
           if (loseSuccessResponse === "late") staleRecovery = beforeSuccess;
           if (loseSuccessResponse === "operation") loseOperationRead = true;
           loseSuccessResponse = false;
-          return route.abort("failed");
+          return abort(route, "failed");
         }
         value = { session, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, json: value });
+      await fulfill(route, { status: 200, json: value });
     });
     await page.route("http://scene-send.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: `<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;height:100%;font-family:Arial}${tag}{display:block;height:100%}</style><${tag}></${tag}>`,

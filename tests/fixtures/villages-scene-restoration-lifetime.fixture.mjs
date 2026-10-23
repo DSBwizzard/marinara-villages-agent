@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "@playwright/test";
 
 /** Mounted startup restoration and real replacement actions, with synthetic HTTP. */
@@ -74,6 +75,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   }
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       held = [],
       requests = [],
@@ -81,7 +83,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     let greeted = false;
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://restoration-lifetimes.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) => {
       const request = route.request(),
@@ -125,7 +127,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         (request.method() === "POST" && options.holdPosts)
       )
         held.push(entry);
-      else return route.fulfill(reply);
+      else return fulfill(route, reply);
     });
     await page.goto("http://restoration-lifetimes.test/");
     await page.evaluate(
@@ -140,7 +142,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     await expect.poll(async () => typeof (await page.evaluate(() => window.h))).toBe("object");
     const release = async (entry) => {
       try {
-        await entry.route.fulfill(entry.reply);
+        await fulfill(entry.route, entry.reply);
       } catch (cause) {
         if (!/closed|cancel|abort/i.test(cause.message)) throw cause;
       }

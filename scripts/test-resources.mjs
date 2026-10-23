@@ -3,6 +3,9 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  // Independent temporary runner copies/artifacts and browser contexts.
+  "tests/villages-ci-diagnostics.regression.mjs",
+  "tests/villages-browser-diagnostics.e2e.mjs",
   // Mounted hooks, intercepted HTTP, in-memory bundles and per-test browser contexts.
   "tests/villages-client-load-lifetimes.e2e.mjs",
   "tests/villages-build-reproducibility.regression.mjs",
