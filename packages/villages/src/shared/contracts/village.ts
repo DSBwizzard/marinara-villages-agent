@@ -677,18 +677,18 @@ export type VillageSettings = {
   setting: string;
   settingMaxLength: number;
   foundingReason: string;
-  worldName: string;
+  worldName: string | null;
   foundingDetails: string;
   foundingGuidance: string;
-  playerBackground?: PlayerBackground | null;
+  playerBackground: PlayerBackground | null;
   scenarioImprint: ScenarioImprint | null;
   worldFacts: string[];
   selectedLorebookIds: string[];
-  sceneryArtStyle?: string;
-  sceneryStyleProfileId?: string | null;
-  automaticZonePictures?: boolean;
-  personalizeVenueImagesByDefault?: boolean;
-  useVisualLoreByDefault?: boolean;
+  sceneryArtStyle: string;
+  sceneryStyleProfileId: string | null;
+  automaticZonePictures: boolean;
+  personalizeVenueImagesByDefault: boolean;
+  useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
   loreTokenBudgetMin: number;
   loreTokenBudgetMax: number;
@@ -741,6 +741,9 @@ export type VillageSettings = {
   townMapImageSetAt: string;
   /** How large a stored town map may be, as the length of its data URL. */
   townMapImageMaxLength: number;
+  /** Stored canvas size; older maps retain their original frame. */
+  townMapCanvasWidth: number;
+  townMapCanvasHeight: number;
   /** How the drawn map is framed right now. */
   townMapView: TownMapView;
   /**
