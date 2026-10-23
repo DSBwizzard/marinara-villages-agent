@@ -351,7 +351,8 @@ export function applyOpeningExchange(state: VillageState, scene: VenueScene, tur
     turn.activeIdsAtTurn[0] === signal.residentId &&
     line.speakerId === signal.residentId &&
     line.kind === "dialogue" &&
-    (opening.version === 2 ? Object.hasOwn(turn.openingContext, "proposalFingerprint") : signal.quote.length >= 24) &&
+    (Object.hasOwn(turn.openingContext, "proposalFingerprint") ||
+      (opening.version === 1 && signal.quote.length >= 24)) &&
     opening.proposals.some(
       (entry) =>
         entry.residentId === signal.residentId &&
