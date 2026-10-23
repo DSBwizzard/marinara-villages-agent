@@ -244,14 +244,17 @@ async function verify() {
     const repeat = calendarDate(summer, 2026, 10, 1, 1, 30);
     assert.equal(repeat.toISOString(), "2026-11-01T08:30:00.000Z");
     assert.throws(
-      () => coerceVillageState({ ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
+      () => coerceVillageState({ version: 3, ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
       /saved village clock/,
     );
     assert.equal(winter.getTimezoneOffset(), 480);
     assert.equal(calendarDate(summer, 2026, 11, 1, 12).getHours(), 12);
     assert.equal(new ZonedDate("2026-11-01T08:30:00Z", "America/Los_Angeles").getHours(), 1);
     assert.equal(new ZonedDate("2026-11-01T09:30:00Z", "America/Los_Angeles").getHours(), 1);
-    assert.equal(coerceVillageState({ ...defaultVillageState(), clock: fixture().state.clock }).clock, null);
+    assert.equal(
+      coerceVillageState({ version: 3, ...defaultVillageState(), clock: fixture().state.clock }).clock,
+      null,
+    );
 
     for (const [before, after, firstHour, secondHour] of [
       ["2026-03-08T09:30:00Z", "2026-03-08T10:30:00Z", 1, 3],

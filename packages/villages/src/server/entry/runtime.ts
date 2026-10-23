@@ -111,7 +111,6 @@ import { dispatchExchange } from "../features/scenes/exchange-processing.js";
 import { processLiveRelationships } from "../features/residents/live-memory.js";
 import { processLiveMemories } from "../features/residents/live-memory.js";
 import { processWishExchange } from "../features/residents/wishes/wish-progress.js";
-import { applyProjectPickup } from "../features/projects/project-checks.js";
 import { createLiveEvidenceContext } from "../domain/rules/live-exchange.js";
 import { configureProjectEvidence, processProjectSpeechTurn } from "../features/projects/project-evidence.js";
 import { createProjectEvidence } from "../features/projects/project-evidence-service.js";
@@ -802,7 +801,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       changeSession,
       measurePipeline,
       createLiveEvidenceContext,
-      applyProjectPickup,
       processWishExchange,
       processLiveMemories,
       processLiveRelationships,
@@ -943,7 +941,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateVillageState,
       buildVillageSnapshot,
       draftNewVenueProject,
-      draftRenovationProject,
       queueVenueCounteroffer,
     }),
   );

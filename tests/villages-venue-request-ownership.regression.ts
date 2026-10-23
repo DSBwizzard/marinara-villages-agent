@@ -13,7 +13,6 @@ import {
   configureVenueRequests,
   queueVillageVenueRequest,
   decideVillageVenueRequest,
-  requestVillageHomeUpgrade,
 } from "../packages/villages/src/server/features/venues/venue-requests.js";
 import {
   draftNewVenueProject,
@@ -32,6 +31,7 @@ function deferred() {
 }
 function fixture(name: string) {
   const state = coerceVillageState({
+    version: 3,
     name,
     setupAt: stamp,
     foundedAt: stamp,
@@ -154,7 +154,7 @@ const accepted = await recorded.service.decideVillageVenueRequest(decision.id, t
 });
 assert.equal(accepted.village.name, "Recorded");
 assert.equal(recorded.state.projects[0]!.kind, "new-venue");
-assert.equal(recorded.state.projects[0]!.lifecycle!.phase, "concept");
+assert.equal(recorded.state.projects[0]!.lifecycle!.phase, "planning");
 assert.equal(recorded.state.pendingDecisions[0]!.status, "approved");
 assert.equal(recorded.state.venues.length, 1, "Planning does not create a constructed Venue.");
 assert.deepEqual(recorded.calls.slice(-3), ["mutate", "new-project", "snapshot"]);
@@ -182,39 +182,6 @@ await denied.service.decideVillageVenueRequest(deniedRequest.id, false, null);
 assert.equal(denied.state.pendingDecisions[0]!.status, "denied");
 assert.deepEqual(denied.calls, ["mutate", "snapshot"]);
 
-const upgrade = fixture("Upgrade");
-await upgrade.service.requestVillageHomeUpgrade("same", "home", "request-line");
-await upgrade.service.requestVillageHomeUpgrade("same", "home", "request-line");
-assert.equal(upgrade.state.pendingDecisions.length, 1);
-assert.deepEqual(upgrade.state.processedOpportunityIds, ["request-line"]);
-const homeRequest = upgrade.state.pendingDecisions[0]!;
-await upgrade.service.decideVillageHomeUpgrade(homeRequest.id, true);
-assert.equal(upgrade.state.venues[0]!.occupancy.homeKind, "small-home");
-assert.equal(upgrade.state.projects[0]!.lifecycle!.change!.homeKind, "medium-home");
-assert(
-  upgrade.state.projects[0]!.lifecycle!.approvals.some(
-    (approval) => approval.residentId === "same" && approval.evidenceId === homeRequest.id,
-  ),
-);
-const changedHome = fixture("Changed home");
-await changedHome.service.requestVillageHomeUpgrade("same", "home");
-changedHome.retryWith((state) => {
-  state.venues[0]!.occupancy.residentCharacterId = "someone-else";
-  state.name = "Concurrent saved world";
-});
-await assert.rejects(
-  changedHome.service.decideVillageHomeUpgrade(changedHome.state.pendingDecisions[0]!.id, true),
-  /no longer lives/,
-);
-assert.equal(changedHome.state.projects.length, 0);
-assert.equal(changedHome.state.pendingDecisions[0]!.status, "pending");
-assert.equal(changedHome.state.name, "Concurrent saved world");
-const unreadable = fixture("Persistence failure"),
-  failure = Error("Save unavailable");
-unreadable.failWith(failure);
-await assert.rejects(unreadable.service.requestVillageHomeUpgrade("same", "home"), (error) => error === failure);
-assert.deepEqual(unreadable.calls, ["mutate"]);
-
 const a = createActivationScope(),
   b = createActivationScope();
 const original = fixture("Original"),
@@ -238,11 +205,9 @@ assert(replacement.owners.every((owner) => owner === b));
 a.run(releaseA);
 a.dispose();
 clearA();
-await requestVillageHomeUpgrade("same", "home");
-assert.equal(replacement.state.pendingDecisions.at(-1)!.kind, "venue-upgrade");
 const missing = createActivationScope();
 await assert.rejects(
-  missing.run(() => requestVillageHomeUpgrade("same", "home")),
+  missing.run(() => decideVillageVenueRequest("missing", false, null)),
   /not configured/,
 );
 b.run(releaseB);
@@ -253,6 +218,6 @@ await assert.rejects(
   /not configured/,
 );
 console.log(
-  "Venue request ownership: inert ports, grounded deduplication, decision/counteroffer and Project planning, home save retries, originating activation and cleanup passed (mocked storage/projection; no model connections).",
+  "Venue request ownership: inert ports, grounded deduplication, decision/counteroffer and Project planning, originating activation and cleanup passed (mocked storage/projection; no model connections).",
 );
 await assertMailboxOwnership();

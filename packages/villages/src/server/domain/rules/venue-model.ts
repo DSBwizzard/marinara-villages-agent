@@ -1,8 +1,7 @@
-import type { VillageVenue, VillageVenueClass, VillageVenueImprovement, VillageVenueSpace } from "../models/world.js";
+import type { VillageVenue, VillageVenueClass, VillageVenueSpace } from "../models/world.js";
 
 export const VENUE_CLASSES: readonly VillageVenueClass[] = ["residence", "workplace", "community", "other"];
 export const MAX_VENUE_CLASSES = 2;
-export const MAX_VENUE_IMPROVEMENTS = 2;
 export const MAX_VENUE_RESIDENTS = 4;
 export const MAX_ZONE_VILLAGERS = 4;
 
@@ -24,10 +23,8 @@ export function venueResidentIds(venue: Pick<VillageVenue, "residentIds" | "occu
   return venue.residentIds ?? (venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : []);
 }
 
-export function venueCapacity(venue: Pick<VillageVenue, "residenceCapacity" | "improvements">): number {
-  const base = venue.residenceCapacity ?? 1;
-  const bonus = (venue.improvements ?? []).reduce((sum, entry) => sum + (entry?.extraBeds ?? 0), 0);
-  return Math.min(MAX_VENUE_RESIDENTS, base + bonus);
+export function venueCapacity(venue: Pick<VillageVenue, "residenceCapacity">): number {
+  return Math.min(MAX_VENUE_RESIDENTS, venue.residenceCapacity ?? 1);
 }
 
 export function venueAssignedCount(venue: Pick<VillageVenue, "residentIds" | "occupancy">): number {
@@ -132,24 +129,5 @@ export function validVenueClasses(value: unknown): value is VillageVenueClass[] 
     value.length <= MAX_VENUE_CLASSES &&
     value.every((entry) => VENUE_CLASSES.includes(entry)) &&
     new Set(value).size === value.length
-  );
-}
-
-export function validVenueImprovements(value: unknown): value is (VillageVenueImprovement | null)[] {
-  return (
-    Array.isArray(value) &&
-    value.length === MAX_VENUE_IMPROVEMENTS &&
-    value.every(
-      (entry) =>
-        entry === null ||
-        (typeof entry === "object" &&
-          typeof entry.id === "string" &&
-          typeof entry.title === "string" &&
-          typeof entry.description === "string" &&
-          typeof entry.extraBeds === "number" &&
-          Number.isInteger(entry.extraBeds) &&
-          entry.extraBeds >= 0 &&
-          entry.extraBeds <= MAX_VENUE_RESIDENTS - 1),
-    )
   );
 }

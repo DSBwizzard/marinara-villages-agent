@@ -1,6 +1,5 @@
 import type { VillageState } from "../models/world.js";
 import { ingestProgressEvent, type ProgressEvidence, type ProgressRegistry } from "./progress-engine.js";
-import { ingestProjectProgressEvent } from "./project-progress.js";
 
 /** Dispatch only durable, typed events. A transcript's prose is context, never a completion verdict. */
 export function ingestSavedProgressEvent(state: VillageState, evidence: ProgressEvidence): void {
@@ -24,11 +23,5 @@ export function ingestSavedProgressEvent(state: VillageState, evidence: Progress
     },
     resolvers: { "progress.noop": () => undefined },
   };
-  ingestProgressEvent(
-    state.progressTasks.filter((task) => task.definition.owner.kind !== "project"),
-    evidence,
-    state,
-    registry,
-  );
-  for (const project of state.projects) ingestProjectProgressEvent(state, project, evidence);
+  ingestProgressEvent(state.progressTasks, evidence, state, registry);
 }

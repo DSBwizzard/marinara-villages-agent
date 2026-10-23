@@ -1,3 +1,4 @@
+import { refreshProjectAgreements } from "./project-lifecycle-rules.js";
 import { reconcileOpening } from "./opening-project.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { initializeVenueAccess, reconcileVenueAccess } from "./venue-access.js";
@@ -78,6 +79,7 @@ export function normalizeVillageMutation(
       });
     }
   }
+  refreshProjectAgreements(state);
   pruneWishActivities(state, sources.now());
   if (state.foundedAt.length === 0) state.foundedAt = sources.now().toISOString();
   if (state.seed.length === 0) state.seed = sources.seed();

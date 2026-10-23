@@ -360,9 +360,6 @@ export function createWorldCoordination({
       venues: village.venues,
       pendingHousingCharacterIds: [
         ...village.residences.filter((entry) => entry.status !== "current").map((entry) => entry.characterId),
-        ...village.pendingDecisions
-          .filter((decision) => decision.kind === "venue-upgrade" && decision.status === "pending")
-          .map((decision) => decision.requesterCharacterId ?? ""),
       ],
       social:
         !forced && village.storyPace !== "off"
@@ -472,15 +469,7 @@ export function createWorldCoordination({
         const resident = state.villagers.find((entry) => entry.characterId === request.characterId);
         const venue = state.venues.find((entry) => entry.id === request.venueId);
         if (!resident || !venue) continue;
-        if (
-          state.residences.some((entry) => entry.characterId === request.characterId && entry.status !== "current") ||
-          state.pendingDecisions.some(
-            (entry) =>
-              entry.kind === "venue-upgrade" &&
-              entry.requesterCharacterId === request.characterId &&
-              entry.status === "pending",
-          )
-        )
+        if (state.residences.some((entry) => entry.characterId === request.characterId && entry.status !== "current"))
           continue;
         if (request.kind === "move") {
           if (venue.occupancy.playerHome || venue.occupancy.residentCharacterId) continue;

@@ -42,13 +42,13 @@ export function newSetupVenue(
     spaces: [],
     residenceCapacity: 1,
     residentIds: [],
-    improvements: [null, null],
+
     description: "",
     category: venueClass === "community" ? "public-center" : "",
     presentation: { image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
   };
   return {
     ...venue,

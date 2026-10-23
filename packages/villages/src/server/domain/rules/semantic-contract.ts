@@ -1,4 +1,3 @@
-import { availableProjectSupplyTransfers } from "./project-supply-transfer.js";
 import { openingSemanticContext } from "./opening-context.js";
 import { createHash } from "node:crypto";
 import { asRecord } from "./coerce.js";
@@ -164,7 +163,7 @@ export function semanticContext(
             : {}),
         }))
       : [],
-    projectSupplyTransfers: availableProjectSupplyTransfers(authority, scene.placeId, scene.zoneId, scene.activeIds),
+
     projects: projectSpeechPrompt(authority, projectSpeechContexts(authority, actors, "", query, scene.placeId)),
     requests: {
       venues: authority.venues.map((row) => ({
@@ -202,7 +201,7 @@ export function semanticImmediate(value: unknown, lines: readonly VenueReplyLine
   for (const key of [
     "residenceRequest",
     "residenceDecision",
-    "upgradeRequest",
+    "renovationRequest",
     "venueRequest",
     "editApproval",
     "sceneEnded",

@@ -89,7 +89,6 @@ export type MenuScreenController = {
   readonly debugDiscardEnabled: ScenesState["debugDiscardEnabled"];
   readonly decideVenueRequest: ReturnType<typeof useDecideVenueRequest>;
   readonly generateRequestDescription: VenueRequestsPagePorts["generateRequestDescription"];
-  readonly decideHomeUpgrade: VenueRequestsPagePorts["decideHomeUpgrade"];
   readonly completeResidenceMove: VenueRequestsPagePorts["completeResidenceMove"];
   readonly decideResidenceMove: VenueRequestsPagePorts["decideResidenceMove"];
   readonly deleteArchivedVisits: ReturnType<typeof useDeleteArchivedVisits>;

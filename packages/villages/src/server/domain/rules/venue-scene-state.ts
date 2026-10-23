@@ -1,11 +1,3 @@
-import type { ProjectSupplyTransfer } from "../models/venue-action-model.js";
-import {
-  projectDeliveryReserved,
-  availableProjectSupplyTransfers,
-  readProjectSupplyTransfer,
-  sameProjectSupplyTransfer,
-  projectSourceClaimKey,
-} from "./project-supply-transfer.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueEvent } from "../models/world.js";
 import { badGateway, conflict } from "./errors.js";
 import { boundText, MAX_HAPPENING_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
@@ -27,7 +19,6 @@ export function physicalVenueEvents(state: VillageState): VillageVenueEvent[] {
 
 /** The small, present-tense consequence of a player action resolved by the scene reply. */
 export type VenueSceneChange = {
-  projectSupplyTransfer?: ProjectSupplyTransfer;
   narration: string;
   conditionBefore?: string;
   conditionAfter?: string;
@@ -53,7 +44,6 @@ export function readVenueSceneChange(
   venue: VillageVenue | undefined,
   presentIds: readonly string[] = [],
   residentIds: readonly string[] = presentIds,
-  supplyTransfers: readonly ProjectSupplyTransfer[] = [],
 ): VenueSceneChange | null {
   if (value === undefined || value === null) return null;
   if (!venue || typeof value !== "object" || Array.isArray(value)) throw fail();
@@ -61,13 +51,6 @@ export function readVenueSceneChange(
   if (raw.happened !== true) return null;
   const read = (key: string) => (typeof raw[key] === "string" ? (raw[key] as string) : "");
   const narration = boundText(raw.narration, MAX_HAPPENING_LENGTH);
-  const projectSupplyTransfer = readProjectSupplyTransfer(raw.projectSupplyTransfer);
-  if (
-    raw.projectSupplyTransfer !== undefined &&
-    (!projectSupplyTransfer ||
-      !supplyTransfers.some((option) => sameProjectSupplyTransfer(option, projectSupplyTransfer)))
-  )
-    throw fail();
   const conditionBefore = read("conditionBefore");
   const conditionAfter = read("conditionAfter");
   const featureId = read("featureId");
@@ -102,24 +85,7 @@ export function readVenueSceneChange(
     (traceKind && (venue.state.traces ?? []).length >= 16 && !resolveTraceId) ||
     (addItem && !venue.state.furniture.includes(addItem) && venue.state.furniture.length >= 24 && !removeItem) ||
     (sceneNote && (venue.state.traces ?? []).filter((trace) => trace.kind !== "scene-note").length >= 13) ||
-    (projectSupplyTransfer &&
-      [
-        conditionBefore,
-        conditionAfter,
-        featureId,
-        publicFactBefore,
-        publicFactAfter,
-        resolveTraceId,
-        addItem,
-        removeItem,
-        transferTo,
-        traceKind,
-        traceText,
-        recipientId,
-        sceneNote,
-      ].some(Boolean)) ||
     ![
-      projectSupplyTransfer,
       conditionBefore,
       conditionAfter,
       featureId,
@@ -134,7 +100,6 @@ export function readVenueSceneChange(
     throw fail();
   return {
     narration,
-    ...(projectSupplyTransfer ? { projectSupplyTransfer } : {}),
     ...(conditionBefore || conditionAfter ? { conditionBefore, conditionAfter } : {}),
     ...(featureId ? { featureId, featureText } : {}),
     ...(publicFactBefore ? { publicFactBefore, publicFactAfter } : {}),
@@ -162,30 +127,6 @@ export function applyVenueSceneChange(
 ): void {
   const venue = state.venues.find((place) => place.id === placeId);
   if (!venue) throw conflict("That place is no longer in the village.");
-  if (change.removeItem && projectDeliveryReserved(state, placeId, zoneId, "", change.removeItem))
-    throw conflict("That supply is reserved for an assigned Project delivery.");
-  if (change.projectSupplyTransfer) {
-    const transfer = change.projectSupplyTransfer;
-    if (
-      !availableProjectSupplyTransfers(state, placeId, zoneId, [transfer.supplierId]).some((option) =>
-        sameProjectSupplyTransfer(option, transfer),
-      )
-    )
-      throw conflict("That Project supply source changed before the handoff.");
-    const source = state.projects
-      .find((project) => project.id === transfer.projectId)!
-      .lifecycle!.sources.find(
-        (source) => source.evidenceId === transfer.sourceId && source.requirementId === transfer.requirementId,
-      )!;
-    if (!Number.isFinite(Date.parse(at)) || Date.parse(at) < Date.parse(source.at))
-      throw conflict("The handoff must follow its recorded offer.");
-    state.projectSourceClaims.push({
-      key: projectSourceClaimKey(placeId, source.supplierId, source.itemName),
-      projectId: transfer.projectId,
-      sourceId: source.evidenceId,
-      submissionId,
-    });
-  }
   const originalState = venue.state;
   const space = zoneId
     ? resolveVenueZone(venue, zoneId)
@@ -241,7 +182,6 @@ export function applyVenueSceneChange(
   if (change.addItem && !venue.state.furniture.includes(change.addItem)) {
     if (venue.state.furniture.length >= 24) throw conflict("There is no room for another item here.");
     venue.state.furniture.push(change.addItem);
-    state.narrativeItems.push({ venueId: placeId, zoneId, itemName: change.addItem });
   }
   if (change.sceneNote) {
     const notes = (venue.state.traces ?? []).filter((trace) => trace.kind === "scene-note");

@@ -1,10 +1,5 @@
-import type {
-  VillageResidence,
-  VillageState,
-  VillageVenue,
-  VillageVenueClass,
-  VillageVenueMail,
-} from "../../domain/models/world.js";
+import { approvalScope } from "../../domain/rules/project-terms.js";
+import type { VillageResidence, VillageState, VillageVenue, VillageVenueMail } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { assertCanAddVillageVenue } from "../../domain/rules/venue-capacity.js";
 import { assertResidencePrivateDestination } from "../../domain/rules/venue-layout.js";
@@ -22,10 +17,7 @@ export interface VenueMailRulesPorts {
 /** Supplied-state rules retain standard allocation at their original call sites. */
 export function createVenueMailRules({ draftNewVenueProject, draftRenovationProject }: VenueMailRulesPorts) {
   function proposedCapacity(venue: VillageVenue, mail: VillageVenueMail): number {
-    const base = mail.proposedCapacity ?? venue.residenceCapacity ?? 1;
-    const improvements = [...(venue.improvements ?? [null, null])];
-    if (mail.improvementSlot !== undefined) improvements[mail.improvementSlot] = mail.improvement ?? null;
-    return base + improvements.reduce((sum, entry) => sum + (entry?.extraBeds ?? 0), 0);
+    return mail.proposedCapacity ?? venue.residenceCapacity ?? 1;
   }
 
   function validateMail(state: VillageState, mail: VillageVenueMail): VillageVenue | null {
@@ -80,12 +72,6 @@ export function createVenueMailRules({ draftNewVenueProject, draftRenovationProj
       throw conflict("Unassign every worker before removing Workplace.");
     if (classes.includes("residence") && venueAssignedCount(venue) > proposedCapacity(venue, mail))
       throw conflict("The change would displace a resident.");
-    if (
-      mail.improvement &&
-      mail.improvement.spaceId &&
-      !classes.includes(mail.improvement.spaceId as VillageVenueClass)
-    )
-      throw badRequest("The improvement must belong to one of this Venue's spaces.");
     return venue;
   }
 
@@ -96,7 +82,7 @@ export function createVenueMailRules({ draftNewVenueProject, draftRenovationProj
       const request = state.pendingDecisions.find((entry) => entry.id === mail.counterofferRequestId)!;
       draftNewVenueProject(
         state,
-        { ...draft, classes: draft.classes.slice(0, 1), requestQuote: request.requestQuote },
+        { ...draft, classes: draft.classes, requestQuote: request.requestQuote },
         request.requesterCharacterId,
         `request:${request.id}`,
       );
@@ -141,24 +127,30 @@ export function createVenueMailRules({ draftNewVenueProject, draftRenovationProj
         personal.preparation = undefined;
       }
     } else {
-      const project = draftRenovationProject(state, mail.venueId, {
-        title: mail.title,
-        detail: mail.detail,
-        ...(mail.proposedClasses ? { classes: mail.proposedClasses } : {}),
-        ...(mail.proposedCapacity !== undefined ? { capacity: mail.proposedCapacity } : {}),
-        ...(mail.improvementSlot !== undefined
-          ? { slot: mail.improvementSlot, improvement: mail.improvement ?? null }
-          : {}),
-      });
+      const project = draftRenovationProject(
+        state,
+        mail.venueId,
+        {
+          title: mail.title,
+          detail: mail.detail,
+          ...(mail.proposedClasses ? { classes: mail.proposedClasses } : {}),
+          ...(mail.proposedCapacity !== undefined ? { capacity: mail.proposedCapacity } : {}),
+        },
+        "mail:" + mail.id,
+      );
       const flow = project.lifecycle!;
       flow.approvals = flow.affectedIds
         .filter(
           (id) =>
             id === mail.requesterCharacterId || mail.decisions.some((row) => row.characterId === id && row.accepted),
         )
-        .map((residentId) => ({ residentId, source: "mailbox" as const, evidenceId: mail.id, at }));
-      if (flow.affectedIds.every((id) => flow.approvals.some((entry) => entry.residentId === id)))
-        flow.phase = "builder";
+        .map((residentId) => ({
+          residentId,
+          source: "mailbox" as const,
+          evidenceId: mail.id,
+          scope: approvalScope(venue!, flow.change!, residentId, flow.changedZoneIds),
+          at,
+        }));
     }
     mail.status = "approved";
     mail.resolvedAt = at;
@@ -253,8 +245,7 @@ export function createVenueMailRules({ draftNewVenueProject, draftRenovationProj
       mail.counterofferDraft,
       mail.counterofferRequestId,
       mail.movingCharacterId,
-      mail.improvement,
-      mail.improvementSlot,
+      mail.projectRevision,
     ]);
   }
   return { addMail, applyMail, dueAt, mailRevision, queueSharedMoveConsent, queueVenueCounteroffer };

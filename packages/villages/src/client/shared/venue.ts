@@ -10,11 +10,7 @@ export function venueClassesFor(place: VillageVenue): VenueClass[] {
   return place.classes?.length ? place.classes : isHouse(place) ? ["residence"] : ["other"];
 }
 export function venueCapacityFor(place: VillageVenue): number {
-  return Math.min(
-    4,
-    (place.residenceCapacity ?? 1) +
-      (place.improvements ?? []).reduce((sum, entry) => sum + (entry?.extraBeds ?? 0), 0),
-  );
+  return Math.min(4, place.residenceCapacity ?? 1);
 }
 export function venueAssignedCountFor(place: VillageVenue): number {
   return (

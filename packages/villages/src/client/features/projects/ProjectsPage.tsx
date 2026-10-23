@@ -1,5 +1,5 @@
 import type { ProjectsPagePorts } from "./page-contracts.js";
-import { ProjectsPanelV2 } from "./ProjectsPanel.js";
+import { ProjectsPanel } from "./ProjectsPanel.js";
 
 export function renderProjectsPage(ports: ProjectsPagePorts) {
   const {
@@ -16,7 +16,7 @@ export function renderProjectsPage(ports: ProjectsPagePorts) {
     snapshot,
   } = ports;
   return (
-    <ProjectsPanelV2
+    <ProjectsPanel
       snapshot={snapshot}
       onPeople={() => ports.openMenu?.("villagers")}
       onVenue={(id) => {

@@ -46,7 +46,6 @@ function isVillageVenue(value: unknown): boolean {
     isNullableString(occupancy.residentCharacterId) &&
     isNullableString(occupancy.homeKind) &&
     typeof state.condition === "string" &&
-    isStringArray(state.upgrades) &&
     isStringArray(state.furniture) &&
     isStringArray(state.publicFacts) &&
     typeof state.updatedAt === "string"

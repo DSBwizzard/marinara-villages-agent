@@ -51,10 +51,9 @@ export function useOpenPlace(ports: {
     SetStateAction<{
       classes: VenueClass[];
       capacity: number;
-      slot: number;
+
       title: string;
       description: string;
-      extraBeds: number;
     }>
   >;
   setVenueZoneKey: React.Dispatch<SetStateAction<string>>;

@@ -1,3 +1,4 @@
+import { fixture } from "./fixtures/villages-projects.fixture.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
@@ -41,28 +42,12 @@ await runCase("village-clock-recovery", async () => {
       differenceMs: 3 * 3600000,
     },
   };
-  seed.projects = [
-    {
-      id: "timer",
-      title: "Building",
-      venueId: "",
-      participantIds: [],
-      status: "building",
-      kind: "new-venue",
-      updatedAt: new Date(wall).toISOString(),
-      lifecycle: {
-        version: 2,
-        phase: "construction",
-        workOrder: {
-          startsAt: new Date(wall).toISOString(),
-          completesAt: new Date(wall + 7200000).toISOString(),
-          pausedAt: "",
-          remainingMs: 7200000,
-        },
-        completedAt: "",
-      },
-    },
-  ];
+  const projectFixture = fixture(),
+    projectId = await projectFixture.newProject();
+  await projectFixture.service.startProjectConstruction(projectId, projectFixture.body(projectId), new Date(wall));
+  seed.projects = structuredClone(projectFixture.state().projects);
+  seed.venues = structuredClone(projectFixture.state().venues);
+  seed.villagers = structuredClone(projectFixture.state().villagers);
   records.set("villages-village", {
     id: "villages-village",
     packageId: "villages",

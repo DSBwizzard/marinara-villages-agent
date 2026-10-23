@@ -1,3 +1,4 @@
+import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { MapStage } from "./MapStage.js";
 import { ExplorationNavigation, LocationNavigator, MapIcon, NoticesButton } from "./villages-exploration.js";
@@ -173,7 +174,12 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
               setError("");
               void request<VillageSnapshot>(`/projects/${encodeURIComponent(projectId)}/place`, {
                 method: "POST",
-                body: JSON.stringify({ x, y }),
+                body: JSON.stringify({
+                  x,
+                  y,
+                  requestId: createVillagesClientId(),
+                  expectedRevision: snapshot?.projects.find((project) => project.id === projectId)?.lifecycle?.revision,
+                }),
               })
                 .then((next) => {
                   setSnapshot(next);

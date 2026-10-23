@@ -158,7 +158,7 @@ export function createVenueCommands({
         playerSeenShared: prior?.playerSeenShared,
         playerSeenPublic: prior?.playerSeenPublic,
         playerSeenPrivateIds: prior?.playerSeenPrivateIds,
-        improvements: prior?.improvements ?? [null, null],
+
         description: prior?.description ?? place.description,
         capabilities: prior?.capabilities ?? place.capabilities,
         workerIds: prior?.workerIds ?? [],

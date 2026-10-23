@@ -27,7 +27,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     debugDiscardEnabled,
     decideVenueRequest,
     generateRequestDescription,
-    decideHomeUpgrade,
     completeResidenceMove,
     decideResidenceMove,
     deleteArchivedVisits,
@@ -199,7 +198,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("venueRequests")}
               >
-                {`Venue Requests (${(snapshot?.venueRequests?.length ?? 0) + (snapshot?.upgradeRequests?.length ?? 0) + (snapshot?.residences?.filter((entry) => entry.status === "pending" && entry.requestedBy === "villager").length ?? 0)})`}
+                {`Venue Requests (${(snapshot?.venueRequests?.length ?? 0) + (snapshot?.residences?.filter((entry) => entry.status === "pending" && entry.requestedBy === "villager").length ?? 0)})`}
               </button>
               <button
                 type="button"
@@ -421,7 +420,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                   busy: busy,
                   decideVenueRequest,
                   generateRequestDescription,
-                  decideHomeUpgrade,
                   completeResidenceMove,
                   decideResidenceMove,
                   nameOfCharacter,

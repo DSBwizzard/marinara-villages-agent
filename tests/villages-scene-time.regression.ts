@@ -36,6 +36,7 @@ const start = Date.now() - 3 * day,
   at = new Date(start).toISOString();
 function fixture() {
   const state = coerceVillageState({
+    version: 3,
     seed: "time-world",
     foundedAt: new Date(start - day).toISOString(),
     timeZone: "America/Los_Angeles",

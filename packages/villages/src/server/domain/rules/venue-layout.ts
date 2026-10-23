@@ -37,9 +37,9 @@ export function readBaseVenueLayout(
     (common && !spaces.length) ||
     (!personal && rooms.length) ||
     (personal && !rooms.length) ||
-    spaces.length + rooms.length > 24
+    spaces.length + rooms.length > 6
   )
-    throw badRequest("Provide Zones matching its selected layout, with at most 24 Zones.");
+    throw badRequest("Provide Zones matching its selected layout, with at most six Zones besides Entrance.");
   const result: VillageVenueZone[] = [
     {
       ...defaultVenueSpace(classes[0]!),
@@ -111,6 +111,7 @@ export function validateLayoutZones(
   classes: VillageVenueClass[],
   state: VillageState,
 ): void {
+  if (drafts.length > 6) throw badRequest("A Venue may have at most six Zones besides Entrance.");
   if (new Set(drafts.map((zone) => zone.id)).size !== drafts.length)
     throw badRequest("Every physical zone must have a distinct ID.");
   const allowed = new Set(["exterior", ...drafts.map((zone) => zone.id)]);

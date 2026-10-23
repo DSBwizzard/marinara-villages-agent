@@ -1,3 +1,4 @@
+import { refreshProjectAgreements } from "../../domain/rules/project-lifecycle-rules.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { VillageState } from "../../domain/models/world.js";
@@ -15,6 +16,7 @@ export function createVillageStateService(repository: VillageRepository, worldRe
   /** Read-only ledger snapshot for feeds and diagnostics; never applies an outbox. */
   async function readVillageSnapshot(): Promise<VillageState> {
     const state = await readVillageAuthority();
+    refreshProjectAgreements(state);
     if (state.seed) {
       const { readRelationshipState, reconcileRelationships } = worldRelationships();
       state.relationshipContext = await readRelationshipState(state.seed);

@@ -29,6 +29,7 @@ function deferred<T = void>() {
 const stamp = "2026-10-07T00:00:00.000Z";
 function documents(name: string) {
   const state = coerceVillageState({
+    version: 3,
     seed: "identical-seed",
     name,
     foundedAt: stamp,

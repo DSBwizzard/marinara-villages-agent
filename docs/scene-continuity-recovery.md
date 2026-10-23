@@ -26,7 +26,7 @@ Complete syntax, speaker attribution, capture, hearing/privacy, movement and phy
 
 Accepted prose, stable line IDs, proposals and failures commit together before acknowledgement. Provider completions are checkpointed before validation. Storage replay makes no provider calls. Domain receipts prevent completed effects from being applied twice. Explicit interpretation retry calls System only for the selected failed domain, using saved evidence and relevant context; it never rewrites accepted prose.
 
-Projects retain responsibility for physical effects and receipt checks. Physical settlement precedes Project bookkeeping, and dependent Wish work waits for its physical receipt. Ordinary conversation can continue while noncritical domains remain pending. Existing state/revision/authority gates continue to govern dependent actions.
+Projects consume consent, lead commitment and withdrawal evidence; objects and transfers have no Project effects. Scene physical settlement precedes agreement bookkeeping, and physical Wishes wait for their authoritative receipt. Ordinary conversation can continue while noncritical domains remain pending. Existing state/revision/authority gates continue to govern dependent actions.
 
 Raw completions remain server-only until recoverable payloads commit; normal operation completion clears redundant checkpoints and attempt payloads. Public Scene projections exclude raw failures, provenance, fingerprints, checkpoints and interpretation history.
 

@@ -5,7 +5,6 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
   const {
     busy,
     generateRequestDescription,
-    decideHomeUpgrade,
     completeResidenceMove,
     decideResidenceMove,
     decideVenueRequest,
@@ -19,7 +18,6 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
     ? {
         ...ports.snapshot,
         venueRequests: [],
-        upgradeRequests: [],
         residences: ports.snapshot.residences.filter(
           (entry) => entry.proposedVenueId === venueId || entry.venueId === venueId,
         ),
@@ -131,32 +129,6 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                 );
               })}
             </ul>
-          )}
-          <h3 className={`${ELEMENT_TAG}-panel-title`}>Home upgrade requests</h3>
-          {snapshot.upgradeRequests.length === 0 ? (
-            <p className={`${ELEMENT_TAG}-hint`}>No home upgrades requested.</p>
-          ) : (
-            snapshot.upgradeRequests.map((entry) => (
-              <div
-                key={entry.id}
-                className={`${ELEMENT_TAG}-notice-row`}
-                data-villager-request={"upgrade:" + entry.id}
-                tabIndex={-1}
-              >
-                <span>{entry.detail}</span>
-                {([true, false] as const).map((approved) => (
-                  <button
-                    key={String(approved)}
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy}
-                    onClick={() => void decideHomeUpgrade(entry, approved)}
-                  >
-                    {approved ? "Approve upgrade" : "Deny"}
-                  </button>
-                ))}
-              </div>
-            ))
           )}
         </>
       ) : null}

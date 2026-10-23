@@ -45,6 +45,7 @@ async function until(ready: () => boolean) {
 function fixture(name: string) {
   const stamp = new Date().toISOString();
   let state = coerceVillageState({
+    version: 3,
     seed: "same-seed",
     name,
     setting: name,

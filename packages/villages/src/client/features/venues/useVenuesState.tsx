@@ -26,10 +26,9 @@ export function useVenuesState() {
   const [venueProposalDraft, setVenueProposalDraft] = useState<{
     classes: VenueClass[];
     capacity: number;
-    slot: number;
+
     title: string;
     description: string;
-    extraBeds: number;
   } | null>(null);
 
   const [venueEditBusy, setVenueEditBusy] = useState(false);

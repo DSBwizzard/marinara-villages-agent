@@ -30,7 +30,6 @@ const snapshot = {
   noticeboard: [],
   venueRequests: [],
   projects: [],
-  upgradeRequests: [],
   residences: [],
   venueMail: [],
   happenings: [],

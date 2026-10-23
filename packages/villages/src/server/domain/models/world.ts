@@ -1,4 +1,3 @@
-import type { ProjectSupplyTransfer } from "./venue-action-model.js";
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { ProgressTask } from "../rules/progress-engine.js";
@@ -122,16 +121,6 @@ export type VillageAgenda = {
   /** The day already in progress never changes when a week is rewritten. */
   activeDay?: { dateKey: string; weekday: string; blocks: VillageAgendaBlock[]; scheduleInformed: boolean };
   /** A single agreed construction shift overrides the ordinary plan while it runs. */
-  projectDelivery?: {
-    projectId: string;
-    requirementId: string;
-    venueId: string;
-    zoneId: string;
-    startsAt: string;
-    endsAt: string;
-    activity: string;
-  };
-  projectWork?: { projectId: string; venueId: string; zoneId?: string; startsAt: string; endsAt: string };
   /** Failed generation keeps the owned routine; only deliberate retry can spend again. */
   personalizationPending?: boolean;
   /** Latest actionable generation failure; empty while work is queued or successful. */
@@ -635,7 +624,6 @@ export type VillageVenueZone = VillageVenueSpace & {
   closed?: boolean;
   name: string;
   kind: VillageZoneKind;
-  upgradeId?: string;
   ownerId?: string;
   seen?: boolean;
   initialImageAttemptedAt?: string;
@@ -682,18 +670,6 @@ export type VillageVenueEditProposal = {
 };
 
 /** An active structural change occupies one of the venue's two slots. */
-export type VillageVenueImprovement = {
-  id: string;
-  title: string;
-  description: string;
-  spaceId: string | null;
-  classContribution?: VillageVenueClass;
-  zones?: VillageZoneDraft[];
-  /** Bounded mechanical effect. Other improvements are durable narrative truth. */
-  extraBeds: number;
-  approvedAt: string;
-};
-
 export type VillageVenue = {
   venueType?: string;
   access?: import("../../../shared/helpers/venue-access.js").VenueAccessState;
@@ -713,10 +689,9 @@ export type VillageVenue = {
   /** One or two mechanical roles. There is no shared venue-type catalogue. */
   classes?: VillageVenueClass[];
   spaces?: VillageVenueSpace[];
-  baseClasses?: VillageVenueClass[];
   zones?: VillageVenueZone[];
   archivedZones?: { zone: VillageVenueZone; archivedAt: string }[];
-  /** Starting capacity; active improvements may add beds, up to four total people. */
+  /** Direct residence capacity, up to four people. */
   residenceCapacity?: number;
   /** The complete resident roster. The older occupancy field remains a read projection. */
   residentIds?: string[];
@@ -740,7 +715,6 @@ export type VillageVenue = {
   playerSeenPrivateIds?: string[];
   archivedPrivateSpaces?: { ownerId: string; archivedAt: string; space: VillagePrivateSpace }[];
   editProposals?: VillageVenueEditProposal[];
-  improvements?: (VillageVenueImprovement | null)[];
   /** Player-approved exterior description. */
   description: string;
   category: string;
@@ -763,7 +737,6 @@ export type VillageVenue = {
   /** Durable physical state visible to the village by default. */
   state: {
     condition: string;
-    upgrades: string[];
     furniture: string[];
     publicFacts: string[];
     features?: VillageVenueFeature[];
@@ -781,6 +754,7 @@ export type VillageVenueMail = {
   detail: string;
   kind: "change" | "player-move" | "counteroffer" | "villager-change" | "villager-move" | "project-approval";
   projectId?: string;
+  projectRevision?: number;
   status: "pending-player" | "awaiting-villagers" | "approved" | "declined";
   createdAt: string;
   dueAt: string;
@@ -792,8 +766,6 @@ export type VillageVenueMail = {
   /** Exact reviewed terms; retained alongside the outcome for future relationship use. */
   proposedClasses?: VillageVenueClass[];
   proposedCapacity?: number;
-  improvementSlot?: number;
-  improvement?: VillageVenueImprovement | null;
   affectedIds: string[];
   decisions: { characterId: string; accepted: boolean; reply: string }[];
   error: string;
@@ -815,7 +787,6 @@ export type VillageVenueEvent = {
   text: string;
   at: string;
   actionReceipt?: {
-    projectSupplyTransfer?: ProjectSupplyTransfer;
     submissionId: string;
     happened: boolean;
     narration: string;
@@ -1069,69 +1040,28 @@ export type VillageRelationship = {
   updatedAt: string;
 };
 
-export type VillageProjectPhase =
-  "concept" | "approval" | "builder" | "requirements" | "materials" | "construction" | "finishing" | "complete";
-
+export type VillageProjectPhase = "planning" | "working" | "paused" | "complete" | "cancelled";
+export type VillageProjectChange = {
+  classes?: VillageVenueClass[];
+  capacity?: number;
+  zones?: VillageZoneDraft[];
+  detail: string;
+};
 export type VillageProjectLifecycle = {
-  version: 2;
   phase: VillageProjectPhase;
+  revision: number;
   targetVenueId: string;
-  change: {
-    classes?: VillageVenueClass[];
-    capacity?: number;
-    baseZones?: VillageZoneDraft[];
-    homeKind?: HomeBuildingKind;
-    slot?: number;
-    improvement?: VillageVenueImprovement | null;
-    detail: string;
-  } | null;
+  change: VillageProjectChange | null;
   affectedIds: string[];
-  approvals: { residentId: string; source: "conversation" | "mailbox"; evidenceId: string; at: string }[];
-  candidates: { residentId: string; evidenceId: string; at: string }[];
-  deliveries?: {
-    requirementId: string;
+  approvals: {
     residentId: string;
-    sourceId: string;
-    revision: number;
+    source: "conversation" | "mailbox";
     evidenceId: string;
-    agreedAt: string;
-    startsAt: string;
-    completesAt: string;
-    completedAt: string;
-    blockedReason: string;
-  }[];
-  builderId: string;
-  requirements: {
-    id: string;
-    category: "structure" | "equipment" | "finish";
-    title: string;
-    needed: boolean;
-    carriedAt: string;
-    deliveredAt: string;
-  }[];
-  requirementsEvidenceId: string;
-  requirementsAcceptedAt: string;
-  /** Supplies recorded when the checklist was accepted, before later scene claims. */
-  recordedItems: { venueId: string; zoneId?: string; itemName: string }[];
-  sources: {
-    requirementId: string;
-    kind: "existing-item" | "resident-offer" | "held-supply";
-    venueId: string;
-    zoneId?: string;
-    itemName: string;
-    supplierId: string;
-    evidenceId: string;
+    scope: string;
     at: string;
-    acquiredAt: string;
   }[];
-  /** Physical supplies already obtained survive plan and builder revisions. */
-  heldSupplies: {
-    id: string;
-    itemName: string;
-    acquiredAt: string;
-    deliveredAt: string;
-    assignedRequirementId: string;
-  }[];
+  candidates: { residentId: string; evidenceId: string; scope: string; at: string }[];
+  builderId: string;
   spokenProofs: {
     lineId: string;
     sessionId: string;
@@ -1146,6 +1076,9 @@ export type VillageProjectLifecycle = {
     citations?: { lineId: string; quote: string }[];
   }[];
   evidenceIds: string[];
+  commandReceipts: Record<string, string>;
+  baseDesignHash: string;
+  changedZoneIds: string[];
   workOrder: { startsAt: string; completesAt: string; pausedAt: string; remainingMs: number } | null;
   blockedReason: string;
   completedAt: string;
@@ -1153,6 +1086,7 @@ export type VillageProjectLifecycle = {
 
 export type VillageProject = {
   plan?: {
+    capacity: number;
     form: string;
     venueType: string;
     exteriorDescription: string;
@@ -1165,29 +1099,32 @@ export type VillageProject = {
   };
 
   opening?: {
-    version: 1;
     established: boolean;
     provenance: string;
     work: string;
     firstUse: string;
-    durationMs: number;
   };
   id: string;
   title: string;
   venueId: string;
   participantIds: string[];
   progress: number;
-  status: "draft" | "active" | "building" | "blocked" | "finishing" | "complete" | "abandoned";
+  status: VillageProjectPhase;
   updatedAt: string;
   kind: "new-venue" | "renovation";
-  venueDraft?: VillageVenueDraft;
+  venueDraft?: {
+    name: string;
+    classes: VillageVenueClass[];
+    description: string;
+    position: { x: number | null; y: number | null };
+  };
   requesterCharacterId?: string;
   lifecycle?: VillageProjectLifecycle;
 };
 
 export type VillagePendingDecision = {
   id: string;
-  kind: "residence" | "project" | "venue" | "venue-upgrade" | "departure" | "other";
+  kind: "residence" | "project" | "venue" | "departure" | "other";
   title: string;
   detail: string;
   proposedAt: string;
@@ -1195,7 +1132,6 @@ export type VillagePendingDecision = {
   status?: "pending" | "approved" | "denied" | "countered";
   venueDraft?: VillageVenueDraft;
   venueId?: string;
-  proposedHomeKind?: HomeBuildingKind;
   requesterCharacterId?: string;
   requesterName?: string;
   requestQuote?: string;
@@ -1280,8 +1216,8 @@ export type VillageState = {
   wishRefillIntents: Record<string, { id: string; settled: string }>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
   sceneWishProtections?: Record<string, import("../rules/scene-wish-protection.js").SceneWishProtection>;
-  version: 2;
-  /** 0 keeps the established Project path; 1 enables the evidence-backed path at founding. */
+  version: 3;
+  /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;
   /** Per-village writing choices for live Scenes. */
@@ -1307,7 +1243,6 @@ export type VillageState = {
   /** Editable facts that still hold in the present village. */
   worldFacts: string[];
   /** Internal admission policy; older founded saves retain their original limits. */
-  venueCapacityPolicy: import("../rules/venue-capacity.js").VenueCapacityPolicy;
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
@@ -1416,9 +1351,7 @@ export type VillageState = {
   /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
   progressTasks: ProgressTask[];
   /** Ordinary scene props are visible but cannot become project stock. */
-  narrativeItems: { venueId: string; zoneId?: string; itemName: string }[];
   /** Finite resident source yields already transferred into a project. */
-  projectSourceClaims: { key: string; projectId: string; sourceId: string; submissionId: string }[];
   pendingDecisions: VillagePendingDecision[];
   venueMail: VillageVenueMail[];
   villagers: VillageVillager[];
@@ -1800,8 +1733,7 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   foundingPreparation: NonNullable<VillageState["foundingPreparation"]> | null;
   village: VillageMomentView;
   venueRequests: VillagePendingDecision[];
-  projects: VillageProject[];
-  upgradeRequests: VillagePendingDecision[];
+  projects: import("../../../shared/contracts/village.js").BuildProject[];
   residences: VillageResidence[];
   venueMail: VillageVenueMail[];
   /** Newest last, so the board reads the way a board fills up. */

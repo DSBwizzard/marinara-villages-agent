@@ -168,9 +168,6 @@ function fixture(name: string) {
       note("physical");
       assert.equal(scene.placeName, name);
     },
-    async applyProjectPickup() {
-      note("pickup");
-    },
     async processWishExchange(scene) {
       note("wishes");
       assert.equal(scene.placeName, name);
@@ -441,20 +438,19 @@ async function main() {
   assert.equal(physical.turn().processing!.domains.wishes.status, "rejected");
   assert(!physical.calls.includes("speech:same:turn"));
   assert(!physical.calls.includes("pickup"));
-  const pickup = fixture("pickup");
+  const pickup = fixture("physical-order");
   pickup.turn().physicalOutcomeVersion = 1;
-  pickup.turn().action = { happened: true, narration: "Picked up timber" };
+  pickup.turn().action = { happened: true, narration: "Recorded a physical change" };
   pickup.world.venueEvents.push({
     id: "venue-chat:same:turn",
     venueId: "venue",
     venueName: "Workshop",
     at: pickup.saved.startedAt,
-    text: "Picked up timber",
-    actionReceipt: { submissionId: "turn", happened: true, narration: "Picked up timber" },
+    text: "Recorded a physical change",
+    actionReceipt: { submissionId: "turn", happened: true, narration: "Recorded a physical change" },
   });
   await pickup.service.processSavedExchange("same", "turn");
-  assert(pickup.calls.indexOf("physical") < pickup.calls.indexOf("pickup"));
-  assert(pickup.calls.indexOf("pickup") < pickup.calls.indexOf("speech:same:turn"));
+  assert(pickup.calls.indexOf("physical") < pickup.calls.indexOf("speech:same:turn"));
   assert.equal(pickup.turn().processing!.domains.projects.status, "applied");
   const missingTurn = fixture("missing-turn");
   await missingTurn.service.processSavedProgressSubmission("same", "missing");

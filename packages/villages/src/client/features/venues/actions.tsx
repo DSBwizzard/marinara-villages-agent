@@ -68,10 +68,9 @@ export function useLeaveVenue(ports: {
     SetStateAction<{
       classes: VenueClass[];
       capacity: number;
-      slot: number;
+
       title: string;
       description: string;
-      extraBeds: number;
     }>
   >;
   setVenueZoneKey: React.Dispatch<SetStateAction<string>>;
@@ -150,13 +149,13 @@ export function useAddVenue(ports: { setVenueEditDraft: React.Dispatch<SetStateA
       spaces: [],
       residenceCapacity: 1,
       residentIds: [],
-      improvements: [null, null],
+
       description: "",
       category: "",
       presentation: { image: null, x: null, y: null },
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       capabilities: [],
-      state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+      state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
     });
   }, [setVenueEditDraft]);
 }

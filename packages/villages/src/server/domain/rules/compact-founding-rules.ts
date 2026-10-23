@@ -36,9 +36,7 @@ type PaletteEntry = {
 
 export type CompactFoundingContext = {
   identityDescriptionRevision?: string;
-  /** Legacy frozen requests may include a proposal; Routine validation ignores it. */
-  openingProposal?: boolean;
-  openingVersion?: 1 | 2;
+  openingVersion?: 2;
   playerAgencyVersion?: 1;
   sourceRevision?: string;
   contractVersion?: 1 | 2;
@@ -64,7 +62,6 @@ export type CompactFoundingContext = {
 
 export type CompactFoundingResult = {
   identityDescription?: string;
-  openingProposal?: unknown;
   agenda: VillageAgenda;
   moves: VillageRemapMove[];
 };
@@ -358,7 +355,6 @@ export function parseCompactFounding(
     ...(context.identityDescriptionRevision
       ? { identityDescription: generatedIdentityDescription(payload.identityDescription) }
       : {}),
-    ...(context.openingProposal ? { openingProposal: payload.openingProposal } : {}),
     agenda: {
       routineProfile: profile,
       wishes: [...context.activeWishes, ...wishes].slice(0, Math.min(2, MAX_VILLAGER_WISHES)),

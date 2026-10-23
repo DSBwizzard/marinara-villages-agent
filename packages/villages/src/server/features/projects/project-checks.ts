@@ -10,6 +10,3 @@ export async function interpretProjectDraft(...args: Parameters<ProjectChecks["i
 export async function finalizeProjectDiagnostics(...args: Parameters<ProjectChecks["finalizeProjectDiagnostics"]>) {
   return binding.get().finalizeProjectDiagnostics(...args);
 }
-export async function applyProjectPickup(...args: Parameters<ProjectChecks["applyProjectPickup"]>) {
-  return binding.get().applyProjectPickup(...args);
-}

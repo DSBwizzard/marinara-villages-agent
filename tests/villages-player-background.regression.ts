@@ -19,6 +19,7 @@ assert.equal(playerBackgroundForSetup("Before", undefined, false), "Before");
 assert.equal(playerBackgroundForSetup("Before", "Before", false), "Before");
 assert.equal(playerBackgroundForSetup("Before", "After", true), "After");
 const state = coerceVillageState({
+  version: 3,
   ...defaultVillageState(),
   playerBackground: "At founding I held the crown.",
   worldFacts: ["The player later abdicated."],

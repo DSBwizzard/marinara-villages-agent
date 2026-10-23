@@ -137,7 +137,7 @@ export function createResidentRoster({
       if (removed)
         for (const project of state.projects) {
           if (
-            project.lifecycle?.phase === "construction" &&
+            project.lifecycle?.phase === "working" &&
             project.lifecycle.builderId === characterId &&
             project.lifecycle.workOrder &&
             !project.lifecycle.workOrder.pausedAt
@@ -148,8 +148,8 @@ export function createResidentRoster({
               Date.parse(project.lifecycle.workOrder.completesAt) - now.getTime(),
             );
             project.lifecycle.workOrder.pausedAt = now.toISOString();
-            project.lifecycle.blockedReason = "The Builder left. Choose another willing Villager to finish the work.";
-            project.status = "blocked";
+            project.lifecycle.blockedReason = "Choose a willing resident lead, then Resume.";
+            project.status = project.lifecycle.phase = "paused";
             project.updatedAt = now.toISOString();
           }
         }

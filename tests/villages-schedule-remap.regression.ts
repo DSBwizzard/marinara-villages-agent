@@ -1340,6 +1340,7 @@ async function main() {
   // because the failure happens on a tick nobody is watching.
   const store = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
   const refusals = store.coerceVillageState({
+    version: 3,
     wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",
     villagers: [

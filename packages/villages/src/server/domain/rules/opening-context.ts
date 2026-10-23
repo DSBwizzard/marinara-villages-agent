@@ -14,13 +14,7 @@ export function openingSemanticContext(state: VillageState, scene: VenueScene) {
         )
       : undefined;
   const project = state.projects.find(
-    (entry) =>
-      entry.id === opening.projectId &&
-      entry.status === "complete" &&
-      entry.venueId === scene.placeId &&
-      (entry.kind !== "renovation" ||
-        !entry.lifecycle?.change?.improvement?.spaceId ||
-        entry.lifecycle.change.improvement.spaceId === scene.zoneId),
+    (entry) => entry.id === opening.projectId && entry.status === "complete" && entry.venueId === scene.placeId && true,
   );
   return {
     id: opening.id,

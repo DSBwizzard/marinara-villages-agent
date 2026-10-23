@@ -1,4 +1,3 @@
-import { requireOrdinaryProjects } from "./opening-project.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueFeature } from "../models/world.js";
 import { asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
@@ -140,7 +139,7 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
   if (spaces.some((space) => !space.description)) throw badRequest("Approve a description for every Venue space.");
   const draft: VillageVenue = {
     layoutVersion: existing?.layoutVersion,
-    baseClasses: existing?.baseClasses,
+
     zones: existing?.zones,
     archivedZones: existing?.archivedZones,
     usedInvitationIds: existing?.usedInvitationIds,
@@ -159,7 +158,7 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
     playerSeenShared: existing?.playerSeenShared,
     playerSeenPublic: existing?.playerSeenPublic,
     playerSeenPrivateIds: existing?.playerSeenPrivateIds,
-    improvements: existing?.improvements ?? [null, null],
+
     description,
     category,
     presentation: {
@@ -172,7 +171,6 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
     workerIds: venueStringList(record.workerIds, existing?.workerIds ?? []),
     state: {
       condition: venueFieldText(state.condition, existing?.state.condition ?? "", MAX_VENUE_NOTE_LENGTH),
-      upgrades: venueStringList(state.upgrades, existing?.state.upgrades ?? []),
       furniture: venueStringList(state.furniture, existing?.state.furniture ?? []),
       publicFacts: venueStringList(state.publicFacts, existing?.state.publicFacts ?? []),
       features: venueFeatures(state.features, existing?.state.features ?? []),
@@ -196,7 +194,6 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
   return draft;
 }
 export function addVillageVenue(state: VillageState, draft: VillageVenue): void {
-  requireOrdinaryProjects(state);
   assertCanAddVillageVenue(state, draft.classes);
   if (state.venues.some((venue) => venue.name.trim().toLowerCase() === draft.name.toLowerCase())) {
     throw badRequest("A venue with that name already exists.");

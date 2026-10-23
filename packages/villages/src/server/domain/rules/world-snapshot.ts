@@ -297,8 +297,7 @@ export function villageSettings(
           .map((zone) => zone.id),
       );
       const primary = zones.find(
-        (zone) =>
-          !zone.upgradeId && zone.kind !== "exterior" && zone.kind !== "private-residence" && visibleIds.has(zone.id),
+        (zone) => zone.kind !== "exterior" && zone.kind !== "private-residence" && visibleIds.has(zone.id),
       );
       return {
         ...venue,
@@ -317,25 +316,10 @@ export function villageSettings(
               traces: primary.state.traces,
             }
           : { ...venue.state, condition: "", furniture: [], publicFacts: [], features: [], traces: [] },
-        spaces: zones.filter(
-          (zone) => !zone.upgradeId && zone.kind !== "exterior" && zone.kind !== "private-residence",
-        ),
+        spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence"),
         privateSpaces: zones
           .filter((zone) => zone.kind === "private-residence")
           .map((zone) => ({ ...zone, ownerId: zone.ownerId! })),
-        improvements: venue.improvements?.map((upgrade) =>
-          upgrade
-            ? {
-                ...upgrade,
-                zones: upgrade.zones?.map((zone) => ({
-                  ...zone,
-                  access: undefined,
-                  controllerIds: venue.access ? undefined : zone.controllerIds,
-                  description: zones.find((observed) => observed.id === zone.id)?.description ?? "",
-                })),
-              }
-            : null,
-        ),
         editProposals: venue.editProposals
           ?.filter((proposal) =>
             visibleIds.has(proposal.zoneId ?? legacyZoneId(venue, proposal.target, "residence", proposal.ownerId)),

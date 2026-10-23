@@ -23,7 +23,6 @@ function Harness(){
  const commands=useVenueRequestCommands(ports),pace=useSaveStoryPace(ports);
  const launch=fn=>{const promise=fn();window.pending.push(Promise.resolve(promise));return window.pending.length-1};
  const actions={description:()=>commands.generateRequestDescription(window.entry,edits[window.entry.id]??snapshot.venueRequests[0].venueDraft),
- upgradeApprove:()=>commands.decideHomeUpgrade({id:'upgrade / A'},true),upgradeDeny:()=>commands.decideHomeUpgrade({id:'upgrade / A'},false),
  complete:()=>commands.completeResidenceMove({characterId:'resident / A'}),
  residenceApprove:()=>commands.decideResidenceMove({characterId:'resident / A'},true),residenceDeny:()=>commands.decideResidenceMove({characterId:'resident / A'},false),pace:()=>pace('quiet')};
  const ui=Object.fromEntries(Object.entries(commands).map(([name,fn])=>[name,(...args)=>{const promise=fn(...args);window.pending.push(Promise.resolve(promise));return promise}]));
@@ -64,7 +63,6 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
       venueDraft: { name: " Fallback ", classes: ["community"], description: "Fallback description" },
     };
     seed.venueRequests = [entry];
-    seed.upgradeRequests = [];
     seed.residences = [];
     const overrides = { unrelated: { name: "Keep", classes: ["other"], description: "Keep" } };
     if (!options.fallback)
@@ -120,11 +118,9 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
 
 export async function verifyVenueRequestLifetimes(browser) {
   const mount = await createVenueRequestHarness(browser);
-  const commands = ["description", "upgradeApprove", "upgradeDeny", "complete", "residenceApprove", "residenceDeny"];
+  const commands = ["description", "complete", "residenceApprove", "residenceDeny"];
   const paths = {
     description: "/locations/venue/descriptions/draft",
-    upgradeApprove: "/venue-upgrades/upgrade%20%2F%20A/approve",
-    upgradeDeny: "/venue-upgrades/upgrade%20%2F%20A/deny",
     complete: "/residences/debug/complete-now",
     residenceApprove: "/residences/approvals",
     residenceDeny: "/residences/denials",
@@ -291,7 +287,7 @@ export async function verifyVenueRequestLifetimes(browser) {
       }
       for (const hydrate of [false, true]) {
         const f = await mount(strict, width, hydrate ? { hydrate: true } : { founded: false });
-        await f.run("upgradeApprove");
+        await f.run("complete");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => window.h.hydrate());
         await expect.poll(async () => (await f.state()).founded).toBe(true);

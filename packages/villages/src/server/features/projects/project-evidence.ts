@@ -11,12 +11,6 @@ export async function recordProjectSpokenEvidence(...args: Parameters<ProjectEvi
 export async function processProjectSpeechTurn(...args: Parameters<ProjectEvidence["processProjectSpeechTurn"]>) {
   return binding.get().processProjectSpeechTurn(...args);
 }
-export async function recordExistingProjectSource(...args: Parameters<ProjectEvidence["recordExistingProjectSource"]>) {
-  return binding.get().recordExistingProjectSource(...args);
-}
-export async function reallocateHeldProjectSupply(...args: Parameters<ProjectEvidence["reallocateHeldProjectSupply"]>) {
-  return binding.get().reallocateHeldProjectSupply(...args);
-}
 export async function listProjectEvidenceCandidates(
   ...args: Parameters<ProjectEvidence["listProjectEvidenceCandidates"]>
 ) {

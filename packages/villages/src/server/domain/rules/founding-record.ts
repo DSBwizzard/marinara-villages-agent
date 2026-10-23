@@ -44,7 +44,6 @@ export type ParsedPlace = {
   spaces: NonNullable<VillageVenue["spaces"]>;
   residenceCapacity: number;
   residentIds: string[];
-  improvements: NonNullable<VillageVenue["improvements"]>;
   description: string;
   category: string;
   presentation: VillageVenue["presentation"];
@@ -226,7 +225,7 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
         }),
     residenceCapacity: founding && record.layoutVersion === 1 ? 1 : capacity,
     residentIds: characterId ? [characterId] : [],
-    improvements: [null, null],
+
     description,
     category: typeof record.category === "string" ? record.category.trim() : "",
     presentation: { image: founding ? foundingImage(presentationRecord.image) : null, x, y },
@@ -236,7 +235,7 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
       homeKind,
     },
     capabilities: [],
-    state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
   };
   if (founding) {
     initializeVenueAccess(result);

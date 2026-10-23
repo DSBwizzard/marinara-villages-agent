@@ -7,9 +7,8 @@ export function savedVenueClass(value: unknown): unknown {
 
 export function savedVenueClassRecord(value: unknown): Record<string, unknown> {
   const row = { ...asRecord(value) };
-  for (const key of ["classes", "baseClasses", "proposedClasses"])
+  for (const key of ["classes", "proposedClasses"])
     if (Array.isArray(row[key])) row[key] = row[key].map(savedVenueClass);
-  for (const key of ["venueClass", "classContribution", "spaceClass"])
-    if (key in row) row[key] = savedVenueClass(row[key]);
+  for (const key of ["venueClass", "spaceClass"]) if (key in row) row[key] = savedVenueClass(row[key]);
   return row;
 }

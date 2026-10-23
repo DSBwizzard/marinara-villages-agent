@@ -103,8 +103,7 @@ export function ResidentsScreen({
         !project.participantIds?.includes(personProfile.actorId) &&
         flow?.builderId !== personProfile.actorId &&
         !flow?.affectedIds?.includes(personProfile.actorId) &&
-        !flow?.approvals?.some((entry) => entry.residentId === personProfile.actorId) &&
-        !flow?.sources?.some((entry) => entry.supplierId === personProfile.actorId)
+        !flow?.approvals?.some((entry) => entry.residentId === personProfile.actorId)
       )
         continue;
       relatedLinks.push({
@@ -127,18 +126,6 @@ export function ResidentsScreen({
         onOpen: () => {
           openMenu("venueRequests");
           setFocusedRequestId("request:" + proposal.id);
-        },
-      });
-    }
-    for (const proposal of snapshot?.upgradeRequests ?? []) {
-      if (proposal.requesterCharacterId !== personProfile.actorId) continue;
-      relatedLinks.push({
-        id: "upgrade:" + proposal.id,
-        title: proposal.detail,
-        detail: "Venue upgrade request",
-        onOpen: () => {
-          openMenu("venueRequests");
-          setFocusedRequestId("upgrade:" + proposal.id);
         },
       });
     }

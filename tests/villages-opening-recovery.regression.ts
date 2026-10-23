@@ -173,13 +173,13 @@ console.log(
   "Opening recovery passed: persistent gathering, missing-pointer recovery, transcript preservation and interrupted opening receipts.",
 );
 
-// A committed labor-only offer must be reinterpreted BEFORE replay can grant a material source.
+// Invalid saved lead metadata is reassessed before replay can grant a commitment.
 {
   const village = defaultVillageState();
   village.seed = "project-recovery";
   const processing = createExchangeProcessing({
     seed: village.seed,
-    sceneId: "supply",
+    sceneId: "commitment",
     submissionId: "offer",
     order: 0,
     lineIds: ["player", "invite", "labor"],
@@ -189,15 +189,15 @@ console.log(
   processing.domains.projects = {
     ...processing.domains.projects,
     status: "failed",
-    reason: "Interpreted speech cannot authorize physical Project effects.",
+    reason: "Project commitment metadata is invalid.",
     failure: {
-      cause: "storage_application",
-      stage: "application",
-      message: "Interpreted speech cannot authorize physical Project effects.",
+      cause: "missing_result",
+      stage: "metadata",
+      message: "Project commitment metadata is invalid.",
     },
   };
   const scene = coerceSession({
-    id: "supply",
+    id: "commitment",
     placeId: "venue",
     status: "active",
     processingVersion: 1,
@@ -207,7 +207,7 @@ console.log(
         id: "player",
         role: "user",
         speakerId: "player",
-        content: "May I collect your contribution?",
+        content: "Will you lead the Project?",
         heardBy: ["builder"],
       },
       {
@@ -223,7 +223,7 @@ console.log(
         role: "assistant",
         kind: "dialogue",
         speakerId: "builder",
-        content: "My hands are free; I can sand. Linseed oil I do not have.",
+        content: "I can help sometimes; I cannot lead the work.",
         heardBy: ["builder"],
       },
     ],
@@ -238,18 +238,16 @@ console.log(
           authority: { projects: true, access: true, physical: false, standing: false },
         },
         action: null,
-        projectContexts: [{ projectId: "rail", revision: 2, phase: "materials" }],
+        projectContexts: [{ projectId: "rail", revision: 2, phase: "planning" }],
         projectSpeech: [
           {
             version: 1,
             projectId: "rail",
             revision: 2,
-            phase: "materials",
-            kind: "offer",
-            requirementId: "finish",
+            phase: "planning",
+            kind: "builder",
             speakerId: "builder",
-            citations: [{ lineId: "labor", quote: "My hands are free; I can sand." }],
-            checklist: [],
+            citations: [{ lineId: "labor", quote: "I can help sometimes;" }],
             contextual: { version: 1, source: "system", checkId: "original-system" },
           },
         ],
@@ -351,7 +349,7 @@ console.log(
   automaticFixture = true;
   for (const malformed of [false, true]) {
     scene.submissions = [structuredClone(originalTurn)];
-    scene.submissions[0].message = "May I collect your contribution?";
+    scene.submissions[0].message = "Will you lead the Project?";
     scene.submissions[0].mode = "chat";
     scene.submissions[0].targetId = "";
     scene.submissions[0].invitationSignal = { ...originalInvitation!, venueId: "venue", timing: "now" } as any;
@@ -360,7 +358,7 @@ console.log(
     const input = {
       sessionId: scene.id,
       submissionId: "offer",
-      message: "May I collect your contribution?",
+      message: "Will you lead the Project?",
       mode: "chat" as const,
       targetId: "",
     };
@@ -395,7 +393,7 @@ console.log(
     "replay-guard",
   ]) {
     scene.submissions = [structuredClone(originalTurn)];
-    Object.assign(scene.submissions[0], { message: "May I collect your contribution?", mode: "chat", targetId: "" });
+    Object.assign(scene.submissions[0], { message: "Will you lead the Project?", mode: "chat", targetId: "" });
     scene.submissions[0].invitationSignal = { ...originalInvitation!, venueId: "venue", timing: "now" } as any;
     systemCalls = 0;
     malformedRecovery = true;
@@ -409,7 +407,7 @@ console.log(
     const input = {
       sessionId: scene.id,
       submissionId: "offer",
-      message: "May I collect your contribution?",
+      message: "Will you lead the Project?",
       mode: "chat" as const,
       targetId: "",
     };

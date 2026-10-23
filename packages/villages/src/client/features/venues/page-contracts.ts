@@ -7,7 +7,6 @@ export type VenueRequestsPagePorts = {
   readonly openPlace?: (place: import("../../../shared/contracts/village.js").VillageVenue) => void;
   readonly busy: boolean;
   readonly generateRequestDescription: (entry: VenueRequest, draft: VenueRequest["venueDraft"]) => Promise<void>;
-  readonly decideHomeUpgrade: (entry: { id: string }, approved: boolean) => Promise<void>;
   readonly completeResidenceMove: (entry: { characterId: string }) => Promise<void>;
   readonly decideResidenceMove: (entry: { characterId: string }, approved: boolean) => Promise<void>;
   readonly decideVenueRequest: (entry: VenueRequest, approved: boolean) => Promise<void>;

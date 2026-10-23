@@ -1,3 +1,4 @@
+import { lifecycle } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
   initialOpening,
   openingSceneDirection,
@@ -950,30 +951,22 @@ async function main() {
       {
         id: "diagnostic-project",
         title: "Shared shelf",
-        status: "active",
-        lifecycle: { phase: "requirements", builderId: "host", affectedIds: [], requirements: [], sources: [] },
+        status: "planning",
+        lifecycle: lifecycle(),
       },
-    ] as any;
-    projectWorld.progressTasks = [
-      { definition: { owner: { kind: "project", id: "diagnostic-project" }, revision: 1 } },
     ] as any;
     const projectScene = {
       ...combinedScene,
       activeIds: ["host"],
       participants: [{ characterId: "host", name: "Host", doing: "Planning" }],
     } as typeof combinedScene;
-    const speech = "We need timber, a clamp, and oil.";
+    const speech = "I will lead the work on the shared shelf.";
     const validProject = {
       projectId: "diagnostic-project",
       revision: 1,
-      kind: "requirements",
+      kind: "builder",
       speakerId: "host",
       citations: [{ segment: 0, quote: speech }],
-      checklist: [
-        { category: "structure", title: "timber", needed: true, citation: 0 },
-        { category: "equipment", title: "clamp", needed: true, citation: 0 },
-        { category: "finish", title: "oil", needed: true, citation: 0 },
-      ],
     };
     const cases = [
       {
@@ -987,18 +980,6 @@ async function main() {
           row.revision = 2;
         },
         error: /stale revision/u,
-      },
-      {
-        change: (row: typeof validProject) => {
-          row.checklist[0].title = "x".repeat(101);
-        },
-        error: /1.100 characters/u,
-      },
-      {
-        change: (row: typeof validProject) => {
-          row.checklist.pop();
-        },
-        error: /all three checklist categories/u,
       },
       {
         change: (row: typeof validProject) => {
@@ -1651,8 +1632,6 @@ async function main() {
     ),
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
-  assert(systemPrompt.includes("never labor, willingness to sand or drill"));
-  assert(systemPrompt.includes('"I can sand; I do not have linseed oil" cannot offer the finishing bundle'));
   const rootExchangeExample = systemPrompt.slice(
     systemPrompt.indexOf("Return {sourceHash"),
     systemPrompt.indexOf("Return exactly one JSON object."),
@@ -1662,39 +1641,6 @@ async function main() {
     "The required V2 review belongs in the complete root response example even with no proposed access actions",
   );
   assert(systemPrompt.includes("residentActionReview is required even when residentActions is empty"));
-  assert(
-    systemPrompt.includes(
-      "Every projectSpeech citation must be dialogue spoken by that row's speakerId; never cite narration or player speech",
-    ),
-    "A saved supply offer repeatedly cited narration as the resident commitment",
-  );
-  assert(
-    systemPrompt.includes("For offer and handoff, requirementId is required"),
-    "The live source offer omitted its mandatory supply target under the old optional-field schema",
-  );
-  assert(
-    systemPrompt.includes("An offer alone sets projects:true and physical:false"),
-    "Project metadata authority is independent of a completed physical action",
-  );
-
-  assert(
-    systemPrompt.includes(
-      'checklist:[{category:"structure|equipment|finish",title:"1-100 characters",needed:boolean,citation:0}]',
-    ),
-    "System must receive the checklist item schema required by Project validation",
-  );
-  assert(
-    systemPrompt.includes(
-      "For requirements, include exactly three checklist entries, one each for structure, equipment and finish",
-    ),
-    "An empty requirements checklist interrupted a live opening planning conversation",
-  );
-  assert(
-    systemPrompt.includes("citation is a zero-based index into this row's citations array, not an evidence segment"),
-    "Checklist references must bind to the declared speech citations",
-  );
-  assert(systemPrompt.includes("If the saved speech cannot support all three categories, omit the requirements row"));
-
   assert(
     systemPrompt.includes("Return {sourceHash,intent:{"),
     "The combined response example must contain required intent inside the single exchange object",

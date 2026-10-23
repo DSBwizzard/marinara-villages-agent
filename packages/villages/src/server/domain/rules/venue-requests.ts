@@ -44,6 +44,6 @@ export function venueRequestDraft(core: VenueRequestCore): VillageVenueDraft {
     position: { x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
   };
 }

@@ -111,6 +111,7 @@ async function main() {
     "",
   );
   const legacy = coerceVillageState({
+    version: 3,
     wishSystemVersion: 3,
     setting: "Misty cliffs",
     foundingReason: "rebuild",
@@ -123,31 +124,32 @@ async function main() {
   assert.deepEqual([defaultVillageState().townMapCanvasWidth, defaultVillageState().townMapCanvasHeight], [2560, 1440]);
   assert.deepEqual(
     [
-      coerceVillageState({ wishSystemVersion: 3 }).townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 3 }).townMapCanvasHeight,
+      coerceVillageState({ version: 3, wishSystemVersion: 3 }).townMapCanvasWidth,
+      coerceVillageState({ version: 3, wishSystemVersion: 3 }).townMapCanvasHeight,
     ],
     [2560, 1440],
   );
   assert.deepEqual(
     [
-      coerceVillageState({ wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasHeight,
+      coerceVillageState({ version: 3, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasWidth,
+      coerceVillageState({ version: 3, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasHeight,
     ],
     [1216, 832],
   );
   assert.deepEqual(
     [
-      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
+      coerceVillageState({ version: 3, wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
         .townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
+      coerceVillageState({ version: 3, wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
         .townMapCanvasHeight,
     ],
     [1264, 848],
   );
   assert.deepEqual(
     [
-      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 }).townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 })
+      coerceVillageState({ version: 3, wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 })
+        .townMapCanvasWidth,
+      coerceVillageState({ version: 3, wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 })
         .townMapCanvasHeight,
     ],
     [2560, 1440],
@@ -158,10 +160,10 @@ async function main() {
   assert.ok(acceptedMap.length <= MAX_TOWN_MAP_IMAGE_LENGTH);
   assert.ok(oversizedMap.length > MAX_TOWN_MAP_IMAGE_LENGTH);
   assert.equal(
-    coerceVillageState({ wishSystemVersion: 3, townMapImage: acceptedMap }).townMapImage.length,
+    coerceVillageState({ version: 3, wishSystemVersion: 3, townMapImage: acceptedMap }).townMapImage.length,
     acceptedMap.length,
   );
-  assert.equal(coerceVillageState({ wishSystemVersion: 3, townMapImage: oversizedMap }).townMapImage, "");
+  assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, townMapImage: oversizedMap }).townMapImage, "");
   assert.match(
     DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
     /Make rooms, outdoor spaces, entrances and connecting routes easy to distinguish/,

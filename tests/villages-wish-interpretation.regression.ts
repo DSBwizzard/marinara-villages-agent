@@ -552,9 +552,9 @@ async function main() {
         kind: "renovation",
         title: "Greenhouse",
         venueId: "garden",
-        status: "finishing",
+        status: "working",
         updatedAt: at,
-        lifecycle: { version: 2, phase: "finishing", completedAt: at, builderId: "a" },
+        lifecycle: { phase: "working", completedAt: "", builderId: "a" },
       },
     ] as any;
     state.venues = [{ id: "garden", name: "Garden" }] as any;
@@ -565,13 +565,13 @@ async function main() {
     );
     state.projects[0].status = "complete";
     state.projects[0].lifecycle!.phase = "complete";
-    state.progressEngineVersion = 1;
     assert.equal(
       wishReceiptRecords(state, "a").filter((event) => event.completedProject).length,
       0,
-      "Engine Villages require canonical resolution",
+      "Completion needs a canonical completion timestamp",
     );
-    state.progressTasks = [{ definition: { owner: { id: "project", kind: "project" } }, resolvedAt: at }] as any;
+    state.projects[0].lifecycle!.completedAt = at;
+    assert.deepEqual(state.progressTasks, [], "Projects do not create phase/proof tasks");
     const complete = wishReceiptRecords(state, "a").find((event) => event.completedProject)!;
     assert.ok(complete);
     assert.equal(complete.actionReceipt?.witnessIds, undefined, "Public verified state does not invent witnesses");

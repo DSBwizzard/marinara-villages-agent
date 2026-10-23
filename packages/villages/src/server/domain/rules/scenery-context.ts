@@ -125,7 +125,6 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
           zone.image,
         ]
       : null,
-    venue.improvements?.filter((upgrade) => upgrade && (upgrade.spaceId === zoneId || upgrade.id === zone?.upgradeId)),
   ]);
 }
 

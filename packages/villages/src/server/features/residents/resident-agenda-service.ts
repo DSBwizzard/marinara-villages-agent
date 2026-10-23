@@ -1,8 +1,6 @@
 import { openingPresence } from "../../domain/rules/opening-presence.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
-import { readOpeningProposal } from "../../domain/rules/opening-project.js";
-import { proposalSourceCompatible } from "../../domain/rules/opening-proposal-source.js";
 import {
   completeFoundingTask,
   foundingTaskRevision,
@@ -251,18 +249,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           input.context.identityDescriptionRevision,
           result.identityDescription,
         );
-      if (
-        input.context.openingProposal &&
-        state.opening?.stage === "gathering" &&
-        proposalSourceCompatible({ input, revision: input.revision }, state, input.characterId) &&
-        !state.opening.proposals.some((row) => row.residentId === input.characterId)
-      ) {
-        try {
-          state.opening.proposals.push(readOpeningProposal(result.openingProposal, input.characterId));
-        } catch {
-          /* An invalid bundled idea cannot reject a valid Routine. */
-        }
-      }
       applyAgenda(
         state,
         input.characterId,
@@ -313,19 +299,14 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         .filter((wish, index, all) => all.findIndex((entry) => entry.id === wish.id) === index)
         .slice(0, previous?.wishes.length ? Math.max(previous.wishes.length, 2) : acceptsInitialWish ? 1 : 0),
       plannedDays: Object.fromEntries(
-        Object.entries(previous?.plannedDays ?? {}).filter(
-          ([key]) =>
-            [...(previous?.wishActivities ?? []), ...(previous?.socialActivities ?? [])].some(
-              (entry) => entry.dateKey === key,
-            ) ||
-            (previous?.projectWork &&
-              key >= previous.projectWork.startsAt.slice(0, 10) &&
-              key <= previous.projectWork.endsAt.slice(0, 10)),
+        Object.entries(previous?.plannedDays ?? {}).filter(([key]) =>
+          [...(previous?.wishActivities ?? []), ...(previous?.socialActivities ?? [])].some(
+            (entry) => entry.dateKey === key,
+          ),
         ),
       ),
       wishActivities: previous?.wishActivities ?? [],
       socialActivities: previous?.socialActivities ?? [],
-      projectWork: previous?.projectWork,
       scheduleInfluenceSnapshot: previous?.scheduleInfluenceSnapshot,
       activeDay:
         previous?.activeDay?.dateKey === agendaDateKey(now)

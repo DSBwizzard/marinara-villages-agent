@@ -35,7 +35,6 @@ const snapshot = {
   noticeboard: [],
   projects: [],
   venueRequests: [],
-  upgradeRequests: [],
   residences: [],
   happenings: [],
   villagers: [],

@@ -1,143 +1,59 @@
-import { setVillageName } from "../packages/villages/src/server/features/settings/village-settings.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   assertCanAddVillageVenue,
   assertVillageVenueCapacity,
   villageVenueLimit,
   villageVenueUsage,
 } from "../packages/villages/src/server/domain/rules/venue-capacity.js";
+import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { setVillageVenues } from "../packages/villages/src/server/features/venues/services.js";
+import { readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { setVillageName } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { resetVillage } from "../packages/villages/src/server/features/world/village.js";
 import { runVillageBootstrap } from "../packages/villages/src/server/features/founding/founding-setup.js";
-import { setVillageVenues } from "../packages/villages/src/server/features/venues/services.js";
-import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
-
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  createNewVenueProject,
-  draftNewVenueProject,
-  draftRenovationProject,
-  placeNewVenueProject,
-} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
-import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
+import { draftNewVenueProject } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { fixture, venue as currentVenue } from "./fixtures/villages-projects.fixture.js";
 
 async function main() {
-  const venue = (index: number, residential = true): VillageVenue => ({
-    id: "venue-" + index,
-    name: "Venue " + index,
-    classes: [residential ? "residence" : "other"],
-    description: "A usable existing room.",
-    category: "",
-    spaces: [defaultVenueSpace(residential ? "residence" : "other", "An existing room.")],
-    presentation: { image: null, x: null, y: null },
-    occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-    capabilities: [],
-    state: { condition: "standing", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
-  });
+  const venue = (index: number) => currentVenue("venue-" + index, "residence");
   const fresh = defaultVillageState();
+  fresh.setupAt = fresh.foundedAt = "2026-10-23T12:00:00.000Z";
   assert.equal(villageVenueLimit(fresh), 16);
-  assert.equal(coerceVillageState({ wishSystemVersion: 3 }).venueCapacityPolicy, "sixteen-total-v1");
   fresh.venues = Array.from({ length: 15 }, (_, i) => venue(i));
+  const draft = draftNewVenueProject(fresh, {
+    name: "Workshop",
+    classes: ["workplace"],
+    description: "A shared room.",
+  });
+  assert.equal(villageVenueUsage(fresh).total, 15, "drafts reserve nothing");
+  assert.doesNotThrow(() => assertCanAddVillageVenue(fresh, ["community"]));
+  assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(fresh))).projects, fresh.projects);
   addVillageVenue(fresh, venue(15));
-  assert.equal(fresh.venues.length, 16);
   assert.throws(() => addVillageVenue(fresh, venue(16)), /maximum 16 total/);
-  assert.throws(() => assertVillageVenueCapacity(fresh, [...fresh.venues, venue(16)]), /maximum 16 total/);
-  assert.equal(coerceVillageState(fresh).venueCapacityPolicy, "sixteen-total-v1");
-
-  const legacyRaw: any = {
-    ...fresh,
-    setupAt: "2026-10-03T12:00:00.000Z",
-    venues: Array.from({ length: 30 }, (_, i) => venue(i)),
-  };
-  delete legacyRaw.venueCapacityPolicy;
-  const legacy = coerceVillageState(legacyRaw);
-  assert.equal(legacy.venueCapacityPolicy, "legacy-v1");
-  assert.equal(villageVenueLimit(legacy), 48);
-  assert.equal(legacy.venues.length, 30, "older saves are never truncated to sixteen");
-  addVillageVenue(legacy, venue(31));
-  assert.equal(coerceVillageState(legacy).venues.length, 31);
-  legacy.venues = Array.from({ length: 24 }, (_, i) => venue(i, false));
-  assert.throws(() => assertCanAddVillageVenue(legacy, ["other"]), /no room/);
-  assert.doesNotThrow(() => assertCanAddVillageVenue(legacy, ["residence"]));
-
-  const currentBuild = defaultVillageState();
-  currentBuild.setupAt = "2026-10-03T12:00:00.000Z";
-  currentBuild.venues = Array.from({ length: 15 }, (_, i) => venue(i));
-  draftNewVenueProject(currentBuild, { name: "Workshop", classes: ["workplace"], description: "An adaptable room." });
-  assert.equal(villageVenueUsage(currentBuild).total, 16, "current drafts reserve one place");
-  assert.throws(() => assertCanAddVillageVenue(currentBuild, ["community"]), /maximum 16/);
-  draftRenovationProject(currentBuild, currentBuild.venues[0]!.id, {
-    title: "Room Renovation",
-    detail: "Adjust the existing residence.",
-    classes: ["residence"],
+  assert.throws(() => assertVillageVenueCapacity(fresh, [...fresh.venues, venue(16)]), /maximum 16/);
+  assert.equal(draft.status, "planning");
+  for (const incompatible of [0, 1, 2, 4, undefined])
+    assert.throws(() => coerceVillageState({ ...fresh, version: incompatible }), /Unsupported Village format/);
+  assert.equal(coerceVillageState(null).version, 3);
+  const f = fixture();
+  await f.mutate((state) => {
+    state.venues = Array.from({ length: 15 }, (_, i) => venue(i));
   });
-  const storedCurrent = JSON.parse(JSON.stringify(currentBuild));
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(coerceVillageState(storedCurrent).projects)),
-    storedCurrent.projects,
-    "current New Venue and Renovation drafts survive save/reload",
-  );
-  const currentDraft = storedCurrent.projects[0];
-  const unsupported = [
-    { ...currentDraft, id: "old-build", kind: "build-venue", plan: { revision: 1, need: "Old timber" } },
-    { ...currentDraft, id: "unknown-project", kind: "unknown" },
-    { ...currentDraft, id: "untagged-project", kind: undefined },
-    { ...currentDraft, id: "missing-lifecycle", lifecycle: undefined },
-    { ...currentDraft, id: "old-lifecycle", lifecycle: { ...currentDraft.lifecycle, version: 1 } },
-  ];
-  assert.deepEqual(
-    JSON.parse(
-      JSON.stringify(
-        coerceVillageState({ ...storedCurrent, projects: [...storedCurrent.projects, ...unsupported] }).projects,
-      ),
-    ),
-    storedCurrent.projects,
-    "unsupported rows are discarded without conversion into generic Projects",
-  );
-  assert.equal(villageVenueUsage(coerceVillageState(storedCurrent)).total, 16);
-  const requestState = defaultVillageState();
-  requestState.setupAt = currentBuild.setupAt;
-  requestState.venues = Array.from({ length: 15 }, (_, i) => venue(i));
-  const counter = () => {
-    requestState.pendingDecisions = [
-      {
-        id: "request",
-        kind: "venue",
-        status: "pending",
-        requesterCharacterId: "rosa",
-        venueDraft: { name: "Original", classes: ["community"] },
-      } as any,
-    ];
-    queueVenueCounteroffer(
-      requestState,
-      "request",
-      { name: "Counter", classes: ["community"] },
-      "A shared room.",
-      new Date(currentBuild.setupAt),
-    );
-  };
-  counter();
-  assert.equal(requestState.venueMail.length, 1, "counteroffer may propose the sixteenth Venue");
-  requestState.venues.push(venue(15));
-  assert.throws(counter, /maximum 16/);
-  legacy.projects = [];
-  const residentialBuild = draftNewVenueProject(legacy, {
-    name: "Legacy residence",
-    classes: ["residence"],
-    description: "Another existing room.",
-  });
-  assert.deepEqual(
-    residentialBuild.venueDraft?.classes,
-    ["residence"],
-    "legacy non-residential limit permits a residential draft",
-  );
-
+  const first = await f.newProject("One", "a", { x: 0.7, y: 0.7 });
+  const second = await f.newProject("Two", "b", { x: 0.4, y: 0.7 });
+  await f.service.startProjectConstruction(first, f.body(first));
+  assert.equal(villageVenueUsage(f.state()).total, 16, "active worksite counts once");
+  await assert.rejects(f.service.startProjectConstruction(second, f.body(second)), /maximum 16/);
+  assert.equal(f.get(second).status, "planning", "failed admission is atomic");
+  await f.service.cancelProject(first, f.body(first));
+  assert.equal(villageVenueUsage(f.state()).total, 15);
+  await f.service.startProjectConstruction(second, f.body(second));
+  assert.equal(villageVenueUsage(f.state()).total, 16);
   const records = new Map<string, any>();
   let proposedNames = ["Shared room"];
   const documents = {
@@ -182,72 +98,37 @@ async function main() {
     },
     logger: { info() {}, debug() {}, warn() {}, error() {}, debugOverride() {} },
   } as any);
-  const seed = defaultVillageState();
-  seed.setupAt = "2026-10-03T12:00:00.000Z";
-  seed.foundedAt = seed.setupAt;
-  seed.venues = Array.from({ length: 15 }, (_, i) => venue(i));
-  records.set("villages-village", { id: "villages-village", kind: "village", data: seed, revision: 1 });
+
   try {
-    await createNewVenueProject({
-      name: "New shared room",
-      description: "A room for shared activities.",
-      venueClass: "community",
-    });
-    let state = await readVillageState();
-    assert.equal(villageVenueUsage(state).total, 16, "a concept reserves its future Venue");
-    await assert.rejects(
-      mutateVillageState((current) => {
-        current.venues.push(venue(99));
-      }),
-      /maximum 16/,
-    );
-    const project = state.projects.find((row) => row.kind === "new-venue")!;
-    await placeNewVenueProject(project.id, { x: 0.5, y: 0.5 });
-    state = await readVillageState();
-    assert.equal(state.venues.length, 16);
-    assert.equal(villageVenueUsage(state).total, 16, "worksite does not consume its reservation twice");
-    await mutateVillageState((current) => {
-      current.venues[0].description = "Renamed room.";
-    });
-    assert.equal((await readVillageState()).venues[0].description, "Renamed room.");
-    const copy = structuredClone(state);
-    copy.projects.push({ ...project, id: "renovation", kind: "renovation", venueId: copy.venues[0].id } as any);
-    assert.equal(villageVenueUsage(copy).total, 16, "Renovations reserve no new Venue");
-    copy.projects.find((row) => row.id === project.id)!.status = "complete";
-    copy.venues.find((row) => row.buildProjectId === project.id)!.constructionStatus = "complete";
-    assert.equal(villageVenueUsage(copy).total, 16, "completed worksite remains one Venue");
-    assert.doesNotThrow(() => assertVillageVenueCapacity(copy));
-    // Public settings do not own capacity; a normal persisted edit retains legacy policy.
-    records.set("villages-village", { id: "villages-village", kind: "village", data: legacy, revision: 1 });
-    await setVillageName("Legacy preserved");
-    assert.equal((await readVillageState()).venueCapacityPolicy, "legacy-v1");
+    const incompatible = { ...fresh, version: 2 };
+    records.set("villages-village", { id: "villages-village", kind: "village", data: incompatible, revision: 7 });
+    await assert.rejects(readVillageState(), /Unsupported Village format/);
+    await assert.rejects(setVillageName("Unadmitted edit"), /Unsupported Village format/);
+    assert.equal(records.get("villages-village").revision, 7);
+    assert.deepEqual(records.get("villages-village").data, incompatible, "rejected data is never rewritten");
+    records.delete("villages-village");
+    assert.equal((await readVillageState()).version, 3);
     const reset = await resetVillage();
     assert.equal(reset.settings.maxPlaces, 16);
     const bulk = defaultVillageState();
     records.set("villages-village", { id: "villages-village", kind: "village", data: bulk, revision: 1 });
-    await setVillageVenues(Array.from({ length: 16 }, (_, i) => venue(i, false)));
-    await assert.rejects(setVillageVenues(Array.from({ length: 17 }, (_, i) => venue(i, false))), /maximum 16/);
-    assert.equal((await readVillageState()).venues.length, 16, "rejected bulk update is atomic");
+    await setVillageVenues(Array.from({ length: 16 }, (_, i) => venue(i)));
+    await assert.rejects(setVillageVenues(Array.from({ length: 17 }, (_, i) => venue(i))), /maximum 16/);
+    assert.equal((await readVillageState()).venues.length, 16, "bulk admission is atomic");
     const bootstrap = defaultVillageState();
-    bootstrap.setting = "An existing apartment complex.";
+    bootstrap.setting = "An apartment complex.";
     bootstrap.venues = Array.from({ length: 15 }, (_, i) => venue(i));
     records.set("villages-village", { id: "villages-village", kind: "village", data: bootstrap, revision: 1 });
     await runVillageBootstrap();
-    assert.equal((await readVillageState()).venues.length, 16, "bootstrap accommodates the sixteenth");
+    assert.equal((await readVillageState()).venues.length, 16);
     proposedNames = ["Shared room", "Service room"];
     await assert.rejects(runVillageBootstrap(), /maximum 16/);
-    assert.equal((await readVillageState()).venues.length, 16, "oversize bootstrap preserves all saved Venues");
-    records.delete("villages-village");
-    assert.equal(
-      (await readVillageState()).venueCapacityPolicy,
-      "sixteen-total-v1",
-      "fresh/reset records adopt sixteen",
-    );
+    assert.equal((await readVillageState()).venues.length, 16);
   } finally {
     release();
   }
   console.log(
-    "Villages capacity: total sixteen, legacy limits, reservations, atomic admission and worksite continuity ok",
+    "Villages current capacity: draft admission, worksite limits, atomic rejection, fresh saves and bootstrap passed",
   );
 }
-void main();
+await main();

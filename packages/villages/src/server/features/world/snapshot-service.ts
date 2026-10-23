@@ -5,7 +5,7 @@ import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
-import { canOccupyZone, legacyZoneId, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
+import { canOccupyZone, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity, villagerPlaceView } from "../../domain/rules/village-projections.js";
 import {
@@ -174,30 +174,35 @@ export function createVillageSnapshot({
           decision.venueDraft,
       ),
       opening: openingView(village),
-      projects: village.projects.map((project) =>
-        project.lifecycle
+      projects: village.projects.map((project) => ({
+        id: project.id,
+        kind: project.kind,
+        title: project.title,
+        venueId: project.venueId,
+        status: project.status,
+        progress: project.progress,
+        updatedAt: project.updatedAt,
+        participantIds: project.participantIds,
+        requesterCharacterId: project.requesterCharacterId,
+        venueDraft: project.venueDraft,
+        plan: project.plan,
+        opening: project.opening ? { ...project.opening, provenance: "" } : undefined,
+        lifecycle: project.lifecycle
           ? {
-              ...project,
-              opening: project.opening ? { ...project.opening, provenance: "" } : undefined,
-              lifecycle: {
-                ...project.lifecycle,
-                recordedItems: project.lifecycle.recordedItems.filter((item) => {
-                  const venue = village.venues.find((entry) => entry.id === item.venueId);
-                  const zone = venue && resolveVenueZone(venue, item.zoneId ?? legacyZoneId(venue, "public"));
-                  return (
-                    !!zone &&
-                    (zone.seen ||
-                      zone.kind === "exterior" ||
-                      (venue!.occupancy.playerHome && zone.kind === "shared-residence"))
-                  );
-                }),
-              },
+              phase: project.lifecycle.phase,
+              revision: project.lifecycle.revision,
+              targetVenueId: project.lifecycle.targetVenueId,
+              change: project.lifecycle.change,
+              affectedIds: project.lifecycle.affectedIds,
+              approvals: project.lifecycle.approvals.map(({ residentId, source }) => ({ residentId, source })),
+              candidates: project.lifecycle.candidates.map(({ residentId }) => ({ residentId })),
+              builderId: project.lifecycle.builderId,
+              workOrder: project.lifecycle.workOrder,
+              blockedReason: project.lifecycle.blockedReason,
+              completedAt: project.lifecycle.completedAt,
             }
-          : project,
-      ),
-      upgradeRequests: village.pendingDecisions.filter(
-        (decision) => decision.kind === "venue-upgrade" && decision.status === "pending",
-      ),
+          : undefined,
+      })),
       residences: village.residences,
       venueMail: village.venueMail,
       noticeboard: village.noticeboard,

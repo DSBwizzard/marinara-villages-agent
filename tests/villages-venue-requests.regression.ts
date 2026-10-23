@@ -52,7 +52,7 @@ const venue = (name: string): VillageVenue => {
   };
 };
 const state = defaultVillageState();
-state.setupAt = at;
+state.setupAt = state.foundedAt = at;
 state.foundedAt = at;
 state.villagers.push({
   characterId: "rosa",
@@ -151,8 +151,8 @@ applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse for he
 assert.equal(persisted.pendingDecisions[0]?.status, "approved");
 assert.equal(persisted.venues.length, 0, "approval begins planning without creating a venue");
 assert.equal(persisted.projects[0]?.kind, "new-venue");
-assert.equal(persisted.projects[0]?.status, "draft");
-assert.equal(persisted.projects[0]?.lifecycle?.phase, "concept");
+assert.equal(persisted.projects[0]?.status, "planning");
+assert.equal(persisted.projects[0]?.lifecycle?.phase, "planning");
 assert.deepEqual(persisted.projects[0]?.venueDraft?.classes, ["community"]);
 assert.equal(persisted.projects[0]?.venueDraft?.description, "A shared glasshouse for herbs.");
 assert.match(persisted.chronicle[0]?.text ?? "", /accepted Rosa's request to plan/u);
@@ -166,7 +166,7 @@ assert.equal(persisted.venues.length, 0, "denial must leave the map unchanged");
 assert.match(persisted.chronicle[0]?.text ?? "", /declined Rosa's request/u);
 
 const competing = defaultVillageState();
-competing.setupAt = at;
+competing.setupAt = competing.foundedAt = at;
 competing.villagers.push({
   characterId: "rosa",
   cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
@@ -177,20 +177,16 @@ competing.villagers.push({
 queueVillageVenueRequest(competing, core, "rosa", "chat", "chat-competing", at);
 addVillageVenue(competing, venue(core.name));
 assert.equal(competing.venues.length, 1, "direct creation adds an ordinary map venue");
-assert.throws(
-  () =>
-    applyVillageVenueDecision(
-      competing,
-      competing.pendingDecisions[0]!.id,
-      true,
-      core,
-      "A shared glasshouse.",
-      new Date(at),
-    ),
-  /already in use/u,
-  "approval rechecks names after a player creates a competing venue",
+applyVillageVenueDecision(
+  competing,
+  competing.pendingDecisions[0]!.id,
+  true,
+  core,
+  "A shared glasshouse.",
+  new Date(at),
 );
-assert.equal(competing.pendingDecisions[0]?.status, "pending", "a failed approval remains reviewable");
+assert.equal(competing.pendingDecisions[0]?.status, "approved", "acceptance creates a non-reserving draft");
+assert.equal(competing.projects[0]?.status, "planning", "Start rechecks the live name and location");
 
 const full = defaultVillageState();
 full.venues = Array.from({ length: 48 }, (_, index) => venue(`Place ${index}`));

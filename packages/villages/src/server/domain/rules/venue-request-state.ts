@@ -1,4 +1,3 @@
-import { ordinaryProjectsLocked } from "./opening-project.js";
 import type { VillageState, VillagePendingDecision } from "../models/world.js";
 import { boundText, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
 import { randomVillageSeed } from "./village-clock.js";
@@ -14,7 +13,6 @@ export function queueVillageVenueRequest(
   at: string,
   requestQuote = "",
 ): void {
-  if (ordinaryProjectsLocked(state)) return;
   const requester = state.villagers.find((villager) => villager.characterId === requesterCharacterId);
   if (!requester || !sourceKey) return;
   if (

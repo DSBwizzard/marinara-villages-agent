@@ -77,7 +77,6 @@ export function buildLocationPrompt(
     condition ? `Current condition: ${condition}.` : "",
     items.length ? `Visible ${outside ? "exterior details" : "furniture and items"}: ${items.join(", ")}.` : "",
     facts.length ? `Established venue facts: ${facts.join("; ")}.` : "",
-    venue.state.upgrades.length ? `Approved improvements: ${venue.state.upgrades.join(", ")}.` : "",
     setting.length > 0 ? `Village setting and theme: ${setting}.` : "",
     village.worldFacts.length ? `Current world facts: ${village.worldFacts.join("; ")}.` : "",
     surrounding ? `Other known places in the village: ${surrounding}.` : "",

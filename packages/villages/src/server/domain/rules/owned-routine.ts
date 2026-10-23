@@ -644,7 +644,7 @@ export function addRoutineIdea(
 ): boolean {
   const row = record(value),
     profile = agenda.routineProfile;
-  if (!profile || row.flexible !== true || !text(row.activity) || agenda.projectWork) return false;
+  if (!profile || row.flexible !== true || !text(row.activity)) return false;
   // Optional repertoire entries cannot create employment, assets or world effects.
   if (
     profile.semanticVersion !== 2 &&
