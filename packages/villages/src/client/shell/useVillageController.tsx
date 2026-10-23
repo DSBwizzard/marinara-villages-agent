@@ -214,6 +214,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   }, [element]);
 
   const { snapshot, setSnapshot, beginSnapshotRead } = useVillageSnapshot();
+  const [error, setError] = useState("");
 
   const homeBuildings = snapshot?.settings.homeBuildings ?? [];
 
@@ -493,9 +494,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const openPerson = useNavigationOpenPerson({
     element,
     profileOrigin,
-    get setError() {
-      return setError;
-    },
+    setError,
     setPersonProfile,
     setProfileInspection,
     setScreen,
@@ -947,8 +946,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   /** What is true of the picture being previewed, if the panel is holding one. */
   const townMapAdvice = calculateTownMapAdvice({ townMapPick });
-
-  const [error, setError] = useState("");
 
   const [busy, setBusy] = useState(false);
 
