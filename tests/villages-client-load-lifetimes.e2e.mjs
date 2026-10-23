@@ -55,6 +55,14 @@ async function mount({ strict = false, width = 1280, presence = false, wanted = 
     requests.push(entry);
     if (path.endsWith("/presence") && body.visible === false) return route.fulfill({ json: {} });
   });
+  // Keep heartbeat scheduling explicit: native observer delivery can race held responses.
+  await page.addInitScript(() => {
+    window.IntersectionObserver = class {
+      observe() {}
+      disconnect() {}
+    };
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  });
   await page.goto("http://client-loads.test/");
   await page.evaluate((options) => Object.assign(window, options), { seed, strict, presence, wanted });
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
