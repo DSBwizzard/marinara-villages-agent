@@ -2,7 +2,8 @@ import type { ProjectSupplyTransfer } from "./venue-action-model.js";
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { ProgressTask } from "../rules/progress-engine.js";
-import type { HomeBuildingKind, VillageBuildingOption, VillagePresetMacro } from "../rules/prompt-preset.js";
+import type { HomeBuildingKind } from "../rules/prompt-preset.js";
+import type { VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillagesTurnBeat } from "../rules/turn-beats.js";
 
 // Villages — the shapes the server half of the package trades in.
@@ -1757,133 +1758,7 @@ export type VillageVillagerView = {
  * Venue writing style lives on the village record and travels on `/narration`.
  * This snapshot view stays focused on the village's world context and knowledge.
  */
-export type VillageSettingsView = {
-  characterSpeechColors: boolean;
-  sendOnEnter: boolean;
-  spriteCardFlipEnabled: boolean;
-  visitRetention: VillageState["visitRetention"];
-  promptKnowledge: string;
-  defaultPromptKnowledge: string;
-  /** The cap on the box. */
-  promptBoxMaxLength: number;
-  macros: readonly VillagePresetMacro[];
-  /** Controls optional model-shaped stories; time and deterministic state always advance. */
-  storyPace: VillageStoryPace;
-  storyPaces: readonly VillageStoryPace[];
-  /** How long the village's own name may be. The wizard is the only editor of it. */
-  villageNameMaxLength: number;
-  /**
-   * The Persona the player is, or "" for a village that has never been founded.
-   *
-   * There is no typed name and description beside it any more. "Who are you" is
-   * the Persona's job now, and a second answer to it was only ever a way for the
-   * two to disagree.
-   */
-  playerPersonaId: string;
-  /**
-   * That Persona's name, cached. Survives the Persona being deleted, so the tab
-   * can still say who the player was while it tells them the link is broken.
-   */
-  playerPersonaName: string;
-  /** True when a Persona is linked but is no longer in the library. */
-  playerPersonaMissing: boolean;
-  maxNoticeboardNotes: number;
-  maxNoticeLength: number;
-  /** The world, as the settings panel edits it. */
-  setting: string;
-  settingMaxLength: number;
-  foundingReason: string;
-  worldName: string;
-  foundingDetails: string;
-  foundingGuidance: string;
-  /** Founding-only narrative role; null preserves legacy framing. */
-  playerBackground: VillagePlayerBackground | null;
-  scenarioImprint: VillageScenarioImprint | null;
-  worldFacts: string[];
-  selectedLorebookIds: string[];
-  sceneryArtStyle: string;
-  sceneryStyleProfileId?: string | null;
-  automaticZonePictures?: boolean;
-  zonePictureEpoch?: number;
-  personalizeVenueImagesByDefault: boolean;
-  useVisualLoreByDefault: boolean;
-  loreTokenBudget: number;
-  loreTokenBudgetMin: number;
-  loreTokenBudgetMax: number;
-  foundingDetailsMaxLength: number;
-  foundingGuidanceMaxLength: number;
-  /** Testing-only editable copy; omitted from the image prompt unless explicitly submitted. */
-  townMapLayoutPrompt: string;
-  townMapNegativePrompt: string;
-  /** Every place the village holds, homes included. The tab draws its map and its editor from this one list. */
-  venues: VillageVenue[];
-  homeBuildingNames: Record<HomeBuildingKind, string>;
-  maxPlaces: number;
-  maxVenueNameLength: number;
-  maxVenueNoteLength: number;
-  /**
-   * How big a place's stored picture reference may be, and how long its gallery
-   * id may run. The tab uses these to refuse an edit the server would refuse,
-   * rather than to enforce anything of its own.
-   */
-  maxVenueImageUrlLength: number;
-  maxVenueImageIdLength: number;
-  /**
-   * How large a place's picture may be, in bytes of image data. The tab checks
-   * a picked file against this before it is encoded, so a picture that is too
-   * large is refused with both sizes in the message instead of being uploaded,
-   * refused at the other end, and reported as a field.
-   */
-  maxVenueImageBytes: number;
-  /**
-   * The gallery folder a place's picture is filed in. Named so the tab can say
-   * where the village's pictures live instead of leaving the player to find
-   * them among every other image in the Engine.
-   */
-  villageGalleryFolderName: string;
-  /**
-   * The buildings a place may be, with the class each one belongs to. The tab
-   * draws what a place IS from here and offers no family of its own.
-   *
-   * Only the places somebody lives in use this: everything else is a place with
-   * no building of its own, which is `building: null` on the record rather than
-   * a kind of its own in here.
-   */
-  homeBuildings: readonly VillageBuildingOption[];
-  /** What a home is until it is something else, so a new pin is drawn as the server would store it. */
-  defaultHomeBuilding: HomeBuildingKind;
-  /** The maximum homes the founding wizard places: one player home plus initial Villager homes. */
-  setupHomeCount: number;
-  /** The complete first-founding graph: homes plus one public center. */
-  setupPlaceCount: number;
-  setupMinVillagerCount: number;
-  setupMaxVillagerCount: number;
-  /**
-   * The stamp of the current town map, not the image itself. The tab compares
-   * it against the map it already holds and refetches when it changes, so the
-   * snapshot stays small while the homepage still notices an edit elsewhere.
-   */
-  townMapImageSetAt: string;
-  townMapImageMaxLength: number;
-  /** Kept per village so pre-1536×1024 pictures retain their original frame. */
-  townMapCanvasWidth: number;
-  townMapCanvasHeight: number;
-  /** How the map is framed right now, so an editor can open on the current crop. */
-  townMapView: VillageTownMapView;
-  /**
-   * The picture size the map's shape is authored against. A picture at least
-   * this large fills the frame without being blown up; a smaller one is what
-   * the tab warns about, not a size the village refuses.
-   */
-  townMapExpectedWidth: number;
-  townMapExpectedHeight: number;
-  townMapGenerationWidth: number;
-  townMapGenerationHeight: number;
-  /** How far the picture may be magnified, and how much one press moves it. */
-  townMapZoomMin: number;
-  townMapZoomMax: number;
-  townMapZoomStep: number;
-};
+export type VillageSettingsView = VillageSettings;
 
 /**
  * The village as the tab draws it. Every field here except `name` and `setting`

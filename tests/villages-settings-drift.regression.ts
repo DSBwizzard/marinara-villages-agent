@@ -1,130 +1,269 @@
-import { clientImplementation } from "./client-source.js";
-// Villages — the tab and the server have to agree about what a village's settings
-// are, and nothing was saying whether they did.
-//
-// This exists because they quietly stopped agreeing. When the Persona took over
-// the question "who are you", the server dropped the typed player name and blurb
-// from the settings view it sends — deliberately, with a comment saying so, because
-// a second answer to a question the Persona already answers is a way for the two to
-// disagree. The tab went on being written against the view as it used to be: it
-// keeps its own copy of the view's shape, and it read `settings.playerName` in three
-// places. Two of those reads fell through to their `?? "You"` fallback, so the
-// conversation drawer and the record of a village's conversations called the player
-// "You" however carefully they had said who they were. The third handed `undefined`
-// to `.trim()` inside founding a village, and founding a village stopped working
-// with a TypeError about a property of undefined.
-//
-// None of that could fail a check it was ever run against. A type is only ever
-// compared against the keys it declares — a field missing from the other side of an
-// object from another package is not an error the compiler is asked to look for, and
-// this package is bundled with no type pass at all. So the seam is read here as
-// text on both sides and held together, which is what the package's build genuinely
-// does with it.
-//
-// What is checked is the shape of the seam and not a behaviour: every settings field
-// the tab reads has to be declared by the view the server sends, the tab's own copy
-// of that view may not declare anything the server does not send, and the fields
-// that were removed for the Persona's sake may not come back on either side.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import Fastify from "fastify";
+import type { VillageSettings } from "../packages/villages/src/shared/contracts/village.js";
+import type { VillageVenueZone } from "../packages/villages/src/server/domain/models/world.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import {
+  createActivationScope,
+  installDefaultActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
+import { configureVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
+import { registerSnapshotCatalogRoutes } from "../packages/villages/src/server/features/world/routes.js";
+import { createVillageSettings } from "../packages/villages/src/server/features/settings/village-settings-service.js";
+import { configureVillageSettings } from "../packages/villages/src/server/features/settings/village-settings.js";
+import { registerVillageSettingsRoutes } from "../packages/villages/src/server/features/settings/routes.js";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SERVICES = "packages/villages/src/server";
+const state = defaultVillageState();
+state.playerPersonaId = "persona";
+state.playerPersonaName = "Robin Hale";
+state.playerPersonaIdentity = "PRIVATE-PERSONA-IDENTITY";
+state.zonePictureEpoch = 73;
+state.townMapCanvasWidth = 1024;
+state.townMapCanvasHeight = 768;
+const venue = venueDraft({ name: "Hall", description: "A public hall", classes: ["community"] }, null);
+venue.access = {
+  version: 1,
+  revision: 1,
+  managerIds: ["resident"],
+  visitorHours: null,
+  permissions: [],
+  bans: [],
+  exceptions: [],
+  changes: [],
+  visitDenials: [],
+  receipts: { "private-operation": { fingerprint: "PRIVATE-ACCESS-RECEIPT", revision: 1 } },
+};
+const visible: VillageVenueZone = {
+  ...defaultVenueSpace("community", "A visible room"),
+  id: "public",
+  name: "Common Space",
+  kind: "public" as const,
+  seen: true,
+  picture: { base: null, claim: "PRIVATE-PICTURE-CLAIM", failed: true },
+  pictureRevision: 12,
+  imageInteriorKey: "PRIVATE-IMAGE-KEY",
+  preparation: { status: "ready" as const, claimId: "PRIVATE-PREPARATION-CLAIM", attempt: 2 },
+};
+const hidden: VillageVenueZone = {
+  ...defaultVenueSpace("residence", "PRIVATE-UNSEEN-DESCRIPTION"),
+  id: "private",
+  name: "Private room",
+  kind: "private-residence" as const,
+  ownerId: "resident",
+  seen: false,
+  image: { ref: "global-gallery:hidden", url: "/hidden.png", id: "hidden" },
+  lastObserved: {
+    description: "PRIVATE-OBSERVATION",
+    state: defaultVenueSpace("residence").state,
+    observedAt: "2026-10-20T12:00:00.000Z",
+  },
+  preparation: { status: "pending" as const, claimId: "PRIVATE-PREPARATION-CLAIM" },
+};
+hidden.state.items = ["PRIVATE-UNSEEN-ITEM"];
+venue.zones = [visible, hidden];
+state.venues = [venue];
 
-const read = (relative: string) => readFileSync(resolve(repoRoot, relative), "utf8");
+async function mutateVillageState(update: (world: typeof state) => void) {
+  update(state);
+  return state;
+}
+const snapshot = createVillageSnapshot({
+  readVillageState: async () => state,
+  mutateVillageState,
+  listVillagerCards: async () => [],
+  captureMissingVillagerCardColors: () => {
+    throw new Error("No resident cards in this fixture");
+  },
+  rollActiveAgendas: async () => false,
+  sceneQueries: () => ({ activeVenueSession: async () => null }),
+  backgroundWorkSummaries: async () => [],
+  privatePreparationRooms: () => [],
+});
+const settings = createVillageSettings({
+  mutateVillageState,
+  buildVillageSnapshot: snapshot.buildVillageSnapshot,
+  readLinkedPersona: async () => {
+    throw new Error("No Persona lookup requested");
+  },
+  runVillageBootstrap: async () => {
+    throw new Error("No bootstrap requested");
+  },
+  villagesLogger: () => ({ warn() {} }),
+});
+const scope = createActivationScope();
+const releaseSnapshot = scope.run(() => configureVillageSnapshot(snapshot));
+const releaseSettings = scope.run(() => configureVillageSettings(settings));
+const clear = installDefaultActivation(scope, () => {});
+const app = Fastify();
 
-/*
-  The fields a declared object type owns.
+// The public HTTP surface is explicit: adding a saved-world field must not expose it.
+const publicFields = [
+  "automaticZonePictures",
+  "characterSpeechColors",
+  "defaultHomeBuilding",
+  "defaultPromptKnowledge",
+  "foundingDetails",
+  "foundingDetailsMaxLength",
+  "foundingGuidance",
+  "foundingGuidanceMaxLength",
+  "foundingReason",
+  "homeBuildingNames",
+  "homeBuildings",
+  "loreTokenBudget",
+  "loreTokenBudgetMax",
+  "loreTokenBudgetMin",
+  "macros",
+  "maxNoticeLength",
+  "maxNoticeboardNotes",
+  "maxPlaces",
+  "maxVenueImageBytes",
+  "maxVenueImageIdLength",
+  "maxVenueImageUrlLength",
+  "maxVenueNameLength",
+  "maxVenueNoteLength",
+  "personalizeVenueImagesByDefault",
+  "playerBackground",
+  "playerPersonaId",
+  "playerPersonaMissing",
+  "playerPersonaName",
+  "promptBoxMaxLength",
+  "promptKnowledge",
+  "scenarioImprint",
+  "sceneryArtStyle",
+  "sceneryStyleProfileId",
+  "selectedLorebookIds",
+  "sendOnEnter",
+  "setting",
+  "settingMaxLength",
+  "setupHomeCount",
+  "setupMaxVillagerCount",
+  "setupMinVillagerCount",
+  "setupPlaceCount",
+  "spriteCardFlipEnabled",
+  "storyPace",
+  "storyPaces",
+  "townMapCanvasHeight",
+  "townMapCanvasWidth",
+  "townMapExpectedHeight",
+  "townMapExpectedWidth",
+  "townMapGenerationHeight",
+  "townMapGenerationWidth",
+  "townMapImageMaxLength",
+  "townMapImageSetAt",
+  "townMapLayoutPrompt",
+  "townMapNegativePrompt",
+  "townMapView",
+  "townMapZoomMax",
+  "townMapZoomMin",
+  "townMapZoomStep",
+  "useVisualLoreByDefault",
+  "venues",
+  "villageGalleryFolderName",
+  "villageNameMaxLength",
+  "visitRetention",
+  "worldFacts",
+  "worldName",
+] satisfies (keyof VillageSettings)[];
 
-  Declared fields sit two spaces in and carry a colon; everything deeper than that
-  belongs to a field's own type, and a doc comment's lines begin with an asterisk
-  rather than a name, so neither is mistaken for a field. A parse that quietly
-  found nothing would leave every comparison below vacuously true, which is why
-  both sides are also counted.
-*/
-function declaredFields(source: string, typeName: string): string[] {
-  const at = source.indexOf(`type ${typeName} = {`);
-  assert.ok(at >= 0, `${typeName} must still be declared`);
-  const end = source.indexOf("\n};", at);
-  assert.ok(end > at, `${typeName} must still be closed by a brace in the first column`);
-  const body = source.slice(at, end);
-  return [...body.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*)\??:/gmu)].map((match) => match[1]);
+async function request(method: "GET" | "PATCH", payload?: Record<string, unknown>) {
+  const response = await app.inject({ method, url: method === "GET" ? "/" : "/settings", payload });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.match(response.headers["content-type"]!, /application\/json/);
+  const result = JSON.parse(response.body).settings as VillageSettings;
+  assert.deepEqual(Object.keys(result).sort(), [...publicFields].sort());
+  for (const privateField of ["zonePictureEpoch", "playerPersonaIdentity", "playerName", "playerDescription"])
+    assert.equal(Object.hasOwn(result, privateField), false, privateField);
+  assert.equal(JSON.stringify(result).includes("PRIVATE-"), false, "Private state must not reach HTTP settings");
+  return result;
 }
 
-/*
-  The fields the tab reads out of the settings box, and the fields its own copy of
-  the view claims to have.
+try {
+  registerSnapshotCatalogRoutes(app);
+  registerVillageSettingsRoutes(app);
+  const initial = await request("GET");
+  assert.equal(initial.worldName, "");
+  assert.equal(initial.playerBackground, "");
+  assert.equal(initial.scenarioImprint, null);
+  assert.equal(initial.sceneryStyleProfileId, null);
+  assert.equal(initial.playerPersonaName, "Robin Hale");
+  assert.equal(initial.townMapCanvasWidth, 1024);
+  assert.equal(initial.townMapCanvasHeight, 768);
+  assert.equal(initial.townMapExpectedWidth, 1024);
+  assert.equal(initial.townMapExpectedHeight, 768);
+  for (const field of ["automaticZonePictures", "personalizeVenueImagesByDefault", "useVisualLoreByDefault"] as const)
+    assert.equal(typeof initial[field], "boolean", field);
+  assert.equal(typeof initial.sceneryArtStyle, "string");
+  const projected = initial.venues[0];
+  assert.equal(Object.hasOwn(projected, "access"), false);
+  assert.equal(projected.accessView?.canManage, false);
+  const publicZone = projected.zones!.find((zone) => zone.id === "public")!;
+  assert.equal(publicZone.description, "A visible room");
+  assert.equal(publicZone.pictureRetryAvailable, true);
+  assert.deepEqual(publicZone.preparation, { status: "ready" }, "Undefined optional error is omitted");
+  for (const field of ["lastObserved", "picture", "pictureRevision", "imageInteriorKey", "access", "controllerIds"])
+    assert.equal(Object.hasOwn(publicZone, field), false, field);
+  const privateZone = projected.zones!.find((zone) => zone.id === "private")!;
+  assert.equal(privateZone.description, "");
+  assert.equal(privateZone.image, null);
+  assert.deepEqual(privateZone.state.items, []);
 
-  Comments are stripped first. Both sides of this seam explain the removed fields in
-  prose, and prose that names `settings.playerName` is not a read of it — the whole
-  point of the check is that the reads are gone while the explanation stays.
-*/
-const stripComments = (source: string) =>
-  source.replace(/\/\*[\s\S]*?\*\//gu, " ").replace(/(^|\s)\/\/[^\n]*/gmu, "$1");
+  // Older stored data can lack these fields; explicit response fallbacks remain present.
+  Reflect.deleteProperty(state, "worldName");
+  state.playerBackground = null;
+  Reflect.deleteProperty(state, "sceneryStyleProfileId");
+  Reflect.deleteProperty(state, "automaticZonePictures");
+  state.playerPersonaMissing = true;
+  const legacy = await request("GET");
+  assert.equal(legacy.worldName, null);
+  assert.equal(legacy.playerBackground, null);
+  assert.equal(legacy.sceneryStyleProfileId, null);
+  assert.equal(legacy.automaticZonePictures, true);
+  assert.equal(legacy.playerPersonaName, "Robin Hale");
+  assert.equal(legacy.playerPersonaMissing, true);
 
-const clientSource = stripComments(clientImplementation());
-
-const serverView = declaredFields(read(`${SERVICES}/domain/models/world.ts`), "VillageSettingsView");
-const clientCopy = declaredFields(clientSource, "VillageSettings");
-const clientReads = [
-  ...new Set(
-    [...clientSource.matchAll(/(?:snapshot|village)\??\.settings\??\.([A-Za-z][A-Za-z0-9]*)/gu)].map(
-      (match) => match[1],
-    ),
-  ),
-];
-
-// A scan that found nothing, or almost nothing, would let every assertion below
-// pass while checking nothing at all — and a scan of the tab's copy of the view is
-// the one that goes quiet first, because a copy that stops parsing stops being
-// compared to anything rather than starting to disagree.
-assert.ok(serverView.length >= 30, `the view should still carry its fields (found ${serverView.length})`);
-assert.ok(clientCopy.length >= 30, `the tab's copy of the view should still be readable (found ${clientCopy.length})`);
-assert.ok(clientReads.length >= 30, `the tab should still read its settings (found ${clientReads.length})`);
-
-/*
-  Every field the tab reads is a field the server sends.
-
-  This is the assertion that would have caught the crash: `playerName` was read here
-  and absent there, and the read came back `undefined` at runtime with nothing in
-  between to object.
-*/
-const serverSet = new Set(serverView);
-const unreadable = clientReads.filter((field) => !serverSet.has(field));
-assert.deepEqual(unreadable, [], `the tab reads fields the server does not send: ${unreadable.join(", ")}`);
-
-/*
-  The tab's copy of the view does not claim more than the view has.
-
-  Same failure, one step earlier: the copy declared `playerName` and
-  `playerDescription`, which is why the reads above were written at all and why they
-  looked reasonable while they were being written.
-*/
-const overclaiming = [...new Set(clientCopy)].filter((field) => !serverSet.has(field));
-assert.deepEqual(
-  overclaiming,
-  [],
-  `the tab's copy of the settings view declares fields the server does not send: ${overclaiming.join(", ")}`,
-);
-
-/*
-  And the fields that moved to the Persona stay moved.
-
-  The view must not carry them, because carrying them is the two answers disagreeing
-  the server's own comment warns about; the tab must not read them, because reading
-  one is how founding a village stopped working.
-*/
-for (const gone of ["playerName", "playerDescription", "playerNameMaxLength", "playerDescriptionMaxLength"]) {
-  assert.ok(!serverSet.has(gone), `${gone} belongs to the Persona now and must not be on the settings view`);
-  assert.ok(!clientReads.includes(gone), `${gone} is not sent any more, so the tab must not read it`);
+  state.playerBackground = "A cartographer";
+  state.scenarioImprint = {
+    origin: "Arrived by boat",
+    worldFacts: ["An island"],
+    openingConditions: ["A storm"],
+    visualCues: ["A lighthouse"],
+  };
+  visible.preparation = { status: "failed", error: "Drawing unavailable", claimId: "PRIVATE-FAILED-CLAIM", attempt: 3 };
+  const updated = await request("PATCH", {
+    worldName: "Harbor",
+    sendOnEnter: false,
+    storyPace: "quiet",
+    sceneryArtStyle: "Watercolor",
+    sceneryStyleProfileId: "watercolor",
+    automaticZonePictures: false,
+    personalizeVenueImagesByDefault: false,
+    useVisualLoreByDefault: false,
+  });
+  assert.equal(updated.worldName, "Harbor");
+  assert.equal(updated.sendOnEnter, false);
+  assert.equal(updated.storyPace, "quiet");
+  assert.equal(updated.sceneryArtStyle, "Watercolor");
+  assert.equal(updated.sceneryStyleProfileId, "watercolor");
+  assert.equal(updated.automaticZonePictures, false);
+  assert.equal(updated.personalizeVenueImagesByDefault, false);
+  assert.equal(updated.useVisualLoreByDefault, false);
+  assert.equal(updated.playerBackground, "A cartographer");
+  assert.deepEqual(updated.scenarioImprint, state.scenarioImprint);
+  assert.deepEqual(
+    updated.venues[0].zones!.find((zone) => zone.id === "public")!.preparation,
+    { status: "failed", error: "Drawing unavailable" },
+    "Present optional error is serialized without internal claims",
+  );
+  assert.equal(state.playerPersonaIdentity, "PRIVATE-PERSONA-IDENTITY");
+  assert.equal(state.zonePictureEpoch > 0, true, "Internal picture generation state remains persisted");
+} finally {
+  await app.close();
+  releaseSettings();
+  releaseSnapshot();
+  clear();
+  scope.dispose();
 }
-
-// The name the tab prints for the player is the one the village cached of the linked
-// Persona, read through a single reader so that there is one place for it to be wrong
-// in — and so that a scan of the form above can see it.
-const name = /settings\??\.playerPersonaName/gu.exec(clientSource);
-assert.ok(name, "the player's name must still come from the Persona the village cached");
-
-console.log("Villages settings drift regression: view, copy, reads ok");
+console.log("Settings HTTP contract: serialized values, nullability, optional fields and privacy passed");
