@@ -259,7 +259,7 @@ try {
         await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(false);
         await flipSwitch.check();
         await expect(flipSwitch).toBeChecked();
-        assert.equal(fixture.settings.spriteCardFlipEnabled, true);
+        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(true);
       }
       if (count === 1 && width === 1440) {
         failSpriteSave = true;

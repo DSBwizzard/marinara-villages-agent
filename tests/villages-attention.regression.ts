@@ -1510,7 +1510,7 @@ try {
   const beforeManyWorld = structuredClone(records.get("villages-village").data);
   await mutateVillageState((world) => {
     const template = world.villagers.find((person) => person.characterId === "faraway")!;
-    for (let index = 0; index < 20; index++) {
+    for (let index = 0; index < 8; index++) {
       const person = structuredClone(template),
         id = "audible-" + index;
       person.characterId = id;

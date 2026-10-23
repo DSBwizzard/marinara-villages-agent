@@ -150,6 +150,7 @@ export type BackgroundWork = {
 };
 
 export type VillageSnapshot = {
+  sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
   opening?: import("./opening.js").OpeningView;
   clock?: import("./clock.js").VillageClockView;
   backgroundWork?: BackgroundWork[];

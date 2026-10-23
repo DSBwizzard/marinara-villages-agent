@@ -396,7 +396,11 @@ async function main() {
       await mutateVillageState((current) => {
         current.venues[2].workerIds = [];
       });
-      assert.equal((await activeVenueSession()).zoneId, "exterior", "removed workers revoke the active invitation");
+      assert.equal(
+        (await activeVenueSession()).zoneId,
+        "staff",
+        "background worker removal preserves the captured invitation",
+      );
       await assert.rejects(() => assertVenueImageAccess("bank", undefined, "", "staff"), /current invitation/);
       assert.equal(
         resolveVenueZone((await readVillageState()).venues[2], "staff").seen,

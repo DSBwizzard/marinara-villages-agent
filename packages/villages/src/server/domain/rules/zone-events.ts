@@ -4,6 +4,7 @@ import { asRecord, asTrimmedString } from "./coerce.js";
 import { badGateway } from "./errors.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
+import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 
 /** One Scene writer resolves events. Code owns their sources and audiences. */
 export function zoneEventScene(
@@ -65,8 +66,22 @@ export function zoneEventScene(
   const offered = [
     ...new Map([...required, ...candidates].map((person) => [person.characterId, person])).values(),
   ].slice(0, Math.max(4, required.length));
-  const cast = scene.participants.filter((person) => scene.activeIds.includes(person.characterId));
-  for (const person of offered) if (!cast.some((entry) => entry.characterId === person.characterId)) cast.push(person);
+  const bounded = !scene.operation || scene.operation.input.castLimitVersion === 1;
+  const priority = [
+    ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
+    ...named.map((person) => person.characterId),
+    ...scene.activeIds.filter((id) => continuing.has(id)),
+    ...scene.activeIds,
+    ...offered.map((person) => person.characterId),
+  ];
+  const actorIds = bounded ? [...new Set(priority)].slice(0, MAX_ZONE_VILLAGERS) : undefined;
+  const selected = actorIds ?? [...scene.activeIds, ...offered.map((person) => person.characterId)];
+  const cast = selected.flatMap((id) => {
+    const person =
+      scene.participants.find((entry) => entry.characterId === id) ??
+      occupants.find((entry) => entry.characterId === id);
+    return person ? [person] : [];
+  });
   return {
     ...scene,
     participants: cast,
@@ -75,7 +90,8 @@ export function zoneEventScene(
       venue,
       instruction: "",
       localIds: scene.activeIds,
-      remoteIds: offered.map((person) => person.characterId),
+      remoteIds: offered.map((person) => person.characterId).filter((id) => selected.includes(id)),
+      ...(actorIds ? { actorIds } : {}),
     },
   };
 }
@@ -238,7 +254,7 @@ export function routeZoneEvents(
       throw badGateway("A whisper needs a recipient. Your draft is preserved.");
     const actor = sound ? asTrimmedString(row.speakerId) : line.speakerId;
     const origin = sound || line.kind !== "narration" ? position(actor, index) : playerZone;
-    const sources = [
+    const sources = scene.contactGeneration?.actorIds ?? [
       ...(scene.contactGeneration?.localIds ?? scene.activeIds),
       ...(scene.contactGeneration?.remoteIds ?? []),
     ];

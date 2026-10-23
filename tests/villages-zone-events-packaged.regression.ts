@@ -1007,14 +1007,18 @@ try {
   );
   const teaSource = state().lines.find((line: any) => line.attentionEvidence && line.content === preference);
   assert(teaSource?.heardBy.includes("aqua"));
-  for (let i = 0; i < 24; i++)
-    await turn("tea-distance-" + i, "*listens*", [
-      {
-        kind: "dialogue",
-        speakerId: "aqua",
-        text: "We discuss the wooden bench and its grain. " + "Timber and joinery. ".repeat(8) + i,
-      },
-    ]);
+  // Age the witnessed preference through the real HTTP path in one exchange.
+  // Repeating admission/replay 24 times only grows unrelated fixture checkpoints.
+  await turn(
+    "tea-distance",
+    "*listens*",
+    Array.from({ length: 24 }, (_, i) => ({
+      kind: "dialogue",
+      speakerId: "aqua",
+      text: "We discuss the wooden bench and its grain. " + "Timber and joinery. ".repeat(8) + i,
+    })),
+  );
+  assert(state().lines.findIndex((line: any) => line.id === teaSource.id) < state().lines.length - 24);
   await turn("old-tea-retrieval", '"Which tea flavour did I dislike?"', [
     { kind: "dialogue", speakerId: "aqua", text: "Cinnamon. You preferred mint." },
   ]);

@@ -462,12 +462,31 @@ assert.throws(
         {
           kind: "dialogue",
           speakerId: "local",
-          text: "Hello.",
-          sound: { sourceId: "local", text: "A click." },
+          text: "I'm stuck. There's a wheel on my arm.",
+          sound: { sourceId: "local", text: "A metallic grinding, a squeaking wheel, then feedback." },
         },
       ]),
     ),
   /invalid narrated sound/,
+);
+const separateSound = routed(
+  response([
+    { kind: "dialogue", speakerId: "local", text: "I'm stuck. There's a wheel on my arm." },
+    {
+      kind: "narration",
+      text: "The motor grinds, then a wheel squeaks.",
+      sound: { sourceId: "local", text: "A metallic grinding, a squeaking wheel, then feedback." },
+    },
+  ]),
+);
+assert.equal(separateSound.lines.length, 2, "actual narration owns its own sound without synthesizing a segment");
+assert.deepEqual(separateSound.lines[0].heardBy, ["local", "near"]);
+assert.deepEqual(separateSound.lines[1].heardBy, ["local"]);
+assert.deepEqual(separateSound.lines[1].soundOnly?.characterIds, ["near"]);
+assert.throws(
+  () => routed(response([{ kind: "narration", text: "", sound: { sourceId: "local", text: "A motor rattles." } }])),
+  /unreadable speaker or line/,
+  "a routing cue cannot silently replace missing narration text",
 );
 assert.throws(
   () =>

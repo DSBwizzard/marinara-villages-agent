@@ -1,4 +1,5 @@
 import { validDecisionEvidence } from "./decision-candidates.js";
+import { sceneAccessState } from "./scene-layout.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -12,6 +13,7 @@ export function applyInterpretedRoomEvents(
   village: VillageState,
 ): void {
   if (!batch) return;
+  village = sceneAccessState(village, session);
   session.pendingRoomQuestions = batch.checks
     .filter((_check, index) => batch.results[index].outcome === "unresolved")
     .map((check) => check.question)

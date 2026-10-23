@@ -10,12 +10,12 @@ import type { KnownWish } from "./wish-journal.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
 import { venueZones, resolveVenueZone, legacyZoneId } from "./venue-zones.js";
 import { sceneWishProtected } from "./scene-wish-protection.js";
-import { neutralRelationship, relationshipKey } from "./relationship-rules.js";
-import { relationshipScore, relationshipThreshold } from "./relationship-policy.js";
+import { sceneRelationshipView } from "./relationship-rules.js";
 import { wishExpired } from "./wish-definition.js";
 
 // Source facts consumed by Scene writing/meaning, never a replacement world.
-// Settings, operational clocks, receipts and live authority stay outside this copy.
+// Settings, operational clocks and world-write receipts stay outside this copy.
+// Captured access governs Scene participation; live authority still protects world writes.
 export const sceneContinuityFields = [
   "name",
   "setting",
@@ -160,19 +160,7 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene): V
     }
   }
 
-  if (view.relationshipContext && current.relationshipContext) {
-    const baseReceipts = new Set(Object.keys(view.relationshipContext.receipts));
-    for (const receipt of Object.values(current.relationshipContext.receipts)) {
-      if (receipt.sceneId !== scene.id || baseReceipts.has(receipt.id)) continue;
-      const key = relationshipKey(receipt.fromId, receipt.toId);
-      const edge = (view.relationshipContext.edges[key] ??= neutralRelationship(receipt.fromId, receipt.toId));
-      edge[receipt.dimension] = relationshipScore(edge[receipt.dimension] + receipt.after - receipt.before);
-      edge.familiarity = Math.max(1, edge.familiarity);
-      edge.friend = relationshipThreshold(edge.warmth, edge.trust, edge.friend, "friend");
-      edge.close = relationshipThreshold(edge.warmth, edge.trust, edge.close, "close");
-      view.relationshipContext.receipts[receipt.id] = { ...receipt, at: context.capturedAt };
-    }
-  }
+  view.relationshipContext = sceneRelationshipView(current.relationshipContext, scene);
 
   // Replay only already-committed physical receipts, in transcript order.
   // This edits a disposable presentation copy, never consumes live stock.

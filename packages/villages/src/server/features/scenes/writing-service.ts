@@ -8,6 +8,7 @@ import {
 } from "../../domain/rules/opening-project.js";
 import {
   RESIDENT_ACTION_WRITING,
+  RESIDENT_ACTION_WRITING_V1,
   RESIDENT_ACTION_PUBLIC_SOCIAL,
   readResidentActions,
   assertResidentActionWitnesses,
@@ -241,9 +242,11 @@ export function createSceneWriting({
       timeZone: village.timeZone || undefined,
       now: session.sceneAttendance ? new Date(session.sceneAttendance.capturedAt) : new Date(session.startedAt),
     });
-    const audibleIds = session.contactGeneration
-      ? [...session.contactGeneration.localIds, ...session.contactGeneration.remoteIds]
-      : session.activeIds;
+    const audibleIds =
+      session.contactGeneration?.actorIds ??
+      (session.contactGeneration
+        ? [...session.contactGeneration.localIds, ...session.contactGeneration.remoteIds]
+        : session.activeIds);
     const active = session.participants.filter((person) => audibleIds.includes(person.characterId));
     const memoryQuery = `${session.placeName} ${message}`;
     const promptMemories = selectPromptMemories(
@@ -471,10 +474,10 @@ export function createSceneWriting({
               ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
                 ? "playerSpeechCapture, segments and residentActions (required even when [])."
                 : "playerSpeechCapture then segments.") +
-              ' No outside prose. segments are {speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?,staging?:[]} for speech and {text,sound?:{sourceId,text,loud?:true},staging?:[]} for visible narration. Max24 segments,2000 characters each. Omit unused optional fields. System independently validates consequences; residentActions are access proposals, never applied permission.',
+              ' No outside prose. JSON-encode all text, escaping embedded quotation marks; actions belong in narration, never outside a text string. segments are {kind:"dialogue",speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?,staging?:[]} for speech and {kind:"narration",text,sound?:{sourceId,text,loud?:true},staging?:[]} for visible narration. Sound belongs only on narration, never on a speech segment. If speech accompanies a separate meaningful nonverbal noise, use a separate narration segment with sound; otherwise omit sound. Every segment needs nonempty text; include a perceptible noise in narration text as well as its routing cue. Max24 segments,2000 characters each. Omit unused optional fields. System independently validates consequences; residentActions are access proposals, never applied permission.',
             ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
               ? [
-                  'JSON structure for a silent input with no access action: {"playerSpeechCapture":{"status":"silent","utterances":[]},"segments":[{"text":"A visible response."}],"residentActions":[]}. Example is structure only; write the actual Scene and attach every expressed access action.',
+                  'JSON structure for a silent input with no access action: {"playerSpeechCapture":{"status":"silent","utterances":[]},"segments":[{"kind":"narration","text":"A visible response."}],"residentActions":[]}. Example is structure only; write the actual Scene and attach every expressed access action.',
                 ]
               : []),
             PLAYER_CAPTURE_CONTRACT,
@@ -597,7 +600,10 @@ export function createSceneWriting({
           ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
           : "",
         `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
-        accessManagementPrompt(authority, audience, session.placeId),
+        accessManagementPrompt(village, audience, session.placeId),
+        session.contactGeneration?.actorIds
+          ? `Only selected residents ${JSON.stringify(audience)} may speak, act or receive invented reactions. Other physically present residents remain passive witnesses; their silence is not departure. Four complete resident profiles is the total reply budget across all Zones.`
+          : "",
         venueFoundingBackground(village),
         `A Venue is the place; Zones are its separate spaces. A Scene continues across Zone movement. Local residents: ${session.activeIds.join(", ")}. ${session.contactGeneration?.zoneEvents ? "Other candidate residents remain in their captured Zones; they are not onstage." : "Only server-listed residents occupy this Zone."} Attendance, activities and time were captured at Scene start. Witnessed developments establish what is happening now. Background agendas cannot move anyone in this Scene. Only evidenced movement changes positions. A resident may leave after a clear spoken departure; do not force departure because real time passed.`,
         session.continuity
@@ -778,7 +784,9 @@ export function createSceneWriting({
       if ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion)))
         blocks.push({
           text:
-            RESIDENT_ACTION_WRITING +
+            (Number(venueOperationInput()?.residentActionsVersion) === 2
+              ? RESIDENT_ACTION_WRITING
+              : RESIDENT_ACTION_WRITING_V1) +
             (Number(venueOperationInput()?.residentActionsVersion) === 2 ? " " + RESIDENT_ACTION_PUBLIC_SOCIAL : ""),
         });
       blocks.push({
@@ -817,9 +825,9 @@ export function createSceneWriting({
       pendingMoves: authority.residences.filter(
         (row) => row.status === "pending" && audience.includes(row.characterId),
       ),
-      storedPlace: authority.venues.find((row) => row.id === session.placeId),
+      storedPlace: village.venues.find((row) => row.id === session.placeId),
       place: (() => {
-        const current = authority.venues.find((row) => row.id === session.placeId);
+        const current = village.venues.find((row) => row.id === session.placeId);
         return current
           ? session.zoneId
             ? venueInZone(current, session.zoneId)
@@ -1366,7 +1374,7 @@ export function createSceneWriting({
         }
       const requestedVenueId = request ? asTrimmedString(request.entry.venueId) : "";
       const invitedVenueId = invitation ? asTrimmedString(invitation.entry.venueId) : "";
-      const invitedVenue = village.venues.find((venue) => venue.id === invitedVenueId);
+      const invitedVenue = sceneContinuityView(village, session).venues.find((venue) => venue.id === invitedVenueId);
       let invitationScope: "shared" | "private" = invitation?.entry.scope === "private" ? "private" : "shared";
       const invitationZoneId = asTrimmedString(invitation?.entry.privateSpaceId ?? invitation?.entry.zoneId);
       const invitationZone = invitedVenue
@@ -1595,7 +1603,7 @@ export function createSceneWriting({
             : null,
         editApprovalSignal:
           editApproval &&
-          (place?.editProposals ?? []).some(
+          (village.venues.find((venue) => venue.id === session.placeId)?.editProposals ?? []).some(
             (proposal) =>
               proposal.id === asTrimmedString(editApproval.entry.proposalId) &&
               !proposal.declined &&
@@ -1668,13 +1676,14 @@ export function createSceneWriting({
         line.attentionEvidence,
     ),
   ) {
+    currentVillage = sceneContinuityView(currentVillage, session);
     const roomInterpretation =
       session.semanticVersion === 2
         ? (reply.semanticAccess ?? null)
         : eligible
           ? await interpretRoomReply(
               session,
-              currentVillage,
+              sceneContinuityView(currentVillage, session),
               message,
               evidenceLines,
               `${venueOperationId()}:${createHash("sha256").update(JSON.stringify(reply.lines)).digest("hex").slice(0, 12)}`,

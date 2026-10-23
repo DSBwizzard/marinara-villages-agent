@@ -1,4 +1,5 @@
 import { openingPresence } from "./opening-presence.js";
+import { zoneActivityFits } from "./venue-presence.js";
 import { hashString } from "./village-clock.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
@@ -71,24 +72,27 @@ export function socialPlanValid(
     )
   )
     return false;
-  return plan.actorIds.every((actorId) => {
-    const actor = village.villagers.find((person) => person.characterId === actorId),
-      agenda = actor?.agenda;
-    if (
-      !agenda ||
-      !canEnter(village, plan.venueId, plan.zoneId, actorId, calendarAt(now, plan.dateKey, plan.startMinute))
-    )
-      return false;
-    const blocks = agendaBlocksFor({ ...agenda, socialActivities: [] }, actor!.ingestSchedule !== false, now);
-    let covered = plan.startMinute;
-    for (const block of blocks.filter(
-      (entry) => entry.endMinute > plan.startMinute && entry.startMinute < plan.endMinute,
-    )) {
-      if (block.startMinute > covered || !flexibleAgendaBlock(block)) return false;
-      covered = Math.max(covered, block.endMinute);
-    }
-    return covered >= plan.endMinute;
-  });
+  return (
+    zoneActivityFits(village, plan.actorIds, plan.venueId, plan.zoneId, plan.startMinute, plan.endMinute, now) &&
+    plan.actorIds.every((actorId) => {
+      const actor = village.villagers.find((person) => person.characterId === actorId),
+        agenda = actor?.agenda;
+      if (
+        !agenda ||
+        !canEnter(village, plan.venueId, plan.zoneId, actorId, calendarAt(now, plan.dateKey, plan.startMinute))
+      )
+        return false;
+      const blocks = agendaBlocksFor({ ...agenda, socialActivities: [] }, actor!.ingestSchedule !== false, now);
+      let covered = plan.startMinute;
+      for (const block of blocks.filter(
+        (entry) => entry.endMinute > plan.startMinute && entry.startMinute < plan.endMinute,
+      )) {
+        if (block.startMinute > covered || !flexibleAgendaBlock(block)) return false;
+        covered = Math.max(covered, block.endMinute);
+      }
+      return covered >= plan.endMinute;
+    })
+  );
 }
 /** Feasibility candidates are not character preferences. System chooses a plan or no change. */
 export function socialPlanCandidates(village: VillageState, now = new Date()): SocialPlan[] {

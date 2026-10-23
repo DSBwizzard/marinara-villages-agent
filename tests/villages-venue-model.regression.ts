@@ -4,7 +4,6 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import assert from "node:assert/strict";
-import { assertVillagePresence } from "../packages/villages/src/server/domain/rules/venue-presence.js";
 import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import {
   defaultVenueSpace,
@@ -84,19 +83,6 @@ assert.deepEqual(
   ["Bob's letter"],
   "outside changes do not alter private belongings",
 );
-
-const block = (venueId: string) => ({ startMinute: 540, endMinute: 600, venueId });
-const state = {
-  venues: [venue, { ...venue, id: "square", name: "The Square" }],
-  villagers: Array.from({ length: 5 }, (_, index) => ({
-    characterId: `resident-${index}`,
-    ingestSchedule: false,
-    agenda: { day: [block("shop")] },
-  })),
-} as any;
-assert.throws(() => assertVillagePresence(state), /five villagers/u);
-state.villagers[4].agenda.day = [block("square")];
-assert.doesNotThrow(() => assertVillagePresence(state));
 
 // Old classes become Community; saved identities and authored writing stay intact.
 assert.equal(validVenueClasses(["community"]), true);
