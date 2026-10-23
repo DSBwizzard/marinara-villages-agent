@@ -188,6 +188,13 @@ export type VenueScene = {
   /** Idempotent free navigation, separate from conversational turns. */
   pictureEvaluatedZoneIds?: string[];
   navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];
+  /** Operational receipts only: rejected inputs never become fictional submissions. */
+  rejectedSubmissions?: {
+    id: string;
+    inputHash: string;
+    sceneRevision: number;
+    turnOutcome: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
+  }[];
   generationReceipts?: {
     operationId: string;
     attemptId: string;

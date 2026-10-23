@@ -21,6 +21,7 @@ import {
   staleVenueReason,
 } from "./ScenePanel.js";
 import { recordTurnTiming } from "../../shared/turn-timing.js";
+import { OCCUPANCY_UNAVAILABLE_MESSAGE, type SceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
 import { useTurnRecovery } from "./turn-recovery.js";
 import { sceneResend } from "./villages-venue-send";
 import { useSceneRequestLifetime } from "./request-lifetime.js";
@@ -735,6 +736,7 @@ export function useSendRoom(ports: {
     setRoomDraft,
     submission: roomSubmissionIdRef,
     editVersion: composerEditVersionRef,
+    setRoomRuling,
   });
   const { pending: recoveryPending, begin: beginRecovery } = recovery;
   const sendRoom = useCallback(
@@ -760,6 +762,7 @@ export function useSendRoom(ports: {
         : (roomSubmissionIdRef.current ?? createVillagesClientId());
       let resend: ReturnType<typeof sceneResend>;
       const before = room;
+      setRoomRuling("");
       recordTurnTiming(room.id, submissionId, "send");
       try {
         const { operation } = await request<{ operation: RoomOperation | null }>(
@@ -818,6 +821,7 @@ export function useSendRoom(ports: {
         const answer = await request<{
           session: SceneView;
           verdict: WishVerdict | null;
+          turnOutcome?: SceneTurnOutcome;
           action: { narration: string } | null;
           recordEvents: RoomRecordEvent[];
         }>("/rooms/turn", {
@@ -845,6 +849,15 @@ export function useSendRoom(ports: {
           claim.completion = null;
         }
         receiveRoomRecordEvents(answer.recordEvents ?? []);
+        if (answer.turnOutcome === "occupancy-unavailable") {
+          if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
+            setRoomDraft(text);
+            setRoomRuling(OCCUPANCY_UNAVAILABLE_MESSAGE);
+          }
+          roomSubmissionIdRef.current = null;
+          claim.submission = null;
+          return;
+        }
         if (answer.session.attentionClarification) {
           setRoomDraft(text);
           roomSubmissionIdRef.current = null;
@@ -866,6 +879,21 @@ export function useSendRoom(ports: {
         if (!owns()) return;
         const latest = await refreshSceneAfterFailure(room.id, submissionId, owns);
         if (!owns()) return;
+        const { operation } = await request<{ operation: RoomOperation | null }>(
+          `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(submissionId)}`,
+        ).catch(() => ({ operation: null }));
+        if (!owns()) return;
+        if (operation?.id === submissionId && operation.turnOutcome === "occupancy-unavailable") {
+          setRoom(currentRoom(latest ?? before));
+          setRoomError("");
+          if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
+            setRoomDraft(text);
+            setRoomRuling(OCCUPANCY_UNAVAILABLE_MESSAGE);
+          }
+          roomSubmissionIdRef.current = null;
+          claim.submission = null;
+          return;
+        }
         // A turn can commit between recovery reads. Check the final active read
         // for our receipt before restoring the draft or displaying the POST error.
         let recovered = latest?.submissions?.some((entry) => entry.id === submissionId)
@@ -1065,6 +1093,7 @@ export function useRetrySavedScene(ports: {
   roomMoveOperationIdRef: React.RefObject<string>;
   roomSendInFlightRef: React.RefObject<boolean>;
   roomSubmissionIdRef: React.RefObject<string>;
+  composerEditVersionRef?: React.RefObject<number>;
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomContactBoundary: React.Dispatch<SetStateAction<string>>;
@@ -1072,6 +1101,7 @@ export function useRetrySavedScene(ports: {
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomRuling: React.Dispatch<SetStateAction<string>>;
   setRoomMode: React.Dispatch<SetStateAction<SceneComposerMode>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<SetStateAction<string>>;
@@ -1089,6 +1119,7 @@ export function useRetrySavedScene(ports: {
     roomMoveOperationIdRef,
     roomSendInFlightRef,
     roomSubmissionIdRef,
+    composerEditVersionRef,
     setRoom,
     setRoomBusy,
     setRoomContactBoundary,
@@ -1096,6 +1127,7 @@ export function useRetrySavedScene(ports: {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomRuling,
     setRoomMode,
     setRoomMoveZoneId,
     setRoomTargetId,
@@ -1118,6 +1150,7 @@ export function useRetrySavedScene(ports: {
     if (!claim) return;
     claim.busy = true;
     setRoomBusy(true);
+    const editVersion = composerEditVersionRef?.current;
     try {
       const { operation } = await request<{ operation: RoomOperation }>(
         `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
@@ -1133,24 +1166,39 @@ export function useRetrySavedScene(ports: {
                 ? "/rooms/leave"
                 : "/rooms/turn"
               : "/rooms/end";
-      const answer = await request<{ session: SceneView; recordEvents?: RoomRecordEvent[] }>(path, {
-        method: "POST",
-        body: JSON.stringify({
-          ...operation.input,
-          sessionId: room.id,
-          submissionId: operation.id,
-          operationId: operation.id,
-          expectedSceneRevision: room.sceneRevision ?? 0,
-          ...(operation.kind === "greet" && operation.recoverable
-            ? { recovery: true }
-            : { retryOfAttemptId: operation.attemptId }),
-        }),
-      });
+      const answer =
+        operation.turnOutcome === "occupancy-unavailable"
+          ? {
+              session: (await refreshSceneAfterFailure(room.id, operation.id, () => lifetime.owns(claim))) ?? room,
+              turnOutcome: operation.turnOutcome,
+              recordEvents: [],
+            }
+          : await request<{ session: SceneView; turnOutcome?: SceneTurnOutcome; recordEvents?: RoomRecordEvent[] }>(
+              path,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  ...operation.input,
+                  sessionId: room.id,
+                  submissionId: operation.id,
+                  operationId: operation.id,
+                  expectedSceneRevision: room.sceneRevision ?? 0,
+                  ...(operation.kind === "greet" && operation.recoverable
+                    ? { recovery: true }
+                    : { retryOfAttemptId: operation.attemptId }),
+                }),
+              },
+            );
       if (!lifetime.owns(claim)) return;
       setRoom(currentRoom(answer.session));
       setRoomEnded(answer.session.status === "closed");
       receiveRoomRecordEvents(answer.recordEvents ?? []);
-      if (roomDraft.trim() === operation.input?.message) setRoomDraft("");
+      if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
+        if (answer.turnOutcome === "occupancy-unavailable") {
+          setRoomDraft(operation.input?.message ?? roomDraft);
+          setRoomRuling(OCCUPANCY_UNAVAILABLE_MESSAGE);
+        } else if (roomDraft.trim() === operation.input?.message) setRoomDraft("");
+      }
       roomSubmissionIdRef.current = null;
       roomLeaveSubmissionIdRef.current = null;
       roomCompletionRef.current = null;
@@ -1187,6 +1235,7 @@ export function useRetrySavedScene(ports: {
     roomLeaveSubmissionIdRef,
     roomMoveOperationIdRef,
     roomSubmissionIdRef,
+    composerEditVersionRef,
     setRoom,
     setRoomBusy,
     setRoomContactBoundary,
@@ -1194,6 +1243,7 @@ export function useRetrySavedScene(ports: {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomRuling,
     setRoomMode,
     setRoomMoveZoneId,
     setRoomTargetId,

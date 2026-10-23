@@ -95,6 +95,9 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-scene-notice-chips .${tag}-room-stars { top: calc(100% + .5rem); left: 0; right: auto; }
 .${tag}-scene-error-trigger { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 44px; min-width: 3.5rem; padding: .35rem .65rem; border: 1px solid var(--border); border-radius: 1.5rem; background: var(--popover); color: var(--foreground); font: inherit; font-size: .75rem; cursor: pointer; }
 .${tag}-scene-error-trigger[aria-expanded="true"] { border-color: #ed6689; }
+.${tag}-scene-errors[data-information] .${tag}-scene-error-trigger[aria-expanded="true"] { border-color: #75b7f5; }
+.${tag}-scene-errors[data-information] .${tag}-scene-error-icon { background: #75b7f5; color: #102a43; }
+.${tag}-scene-errors[data-information] .${tag}-scene-error-detail { padding-top: .75rem; }
 .${tag}-scene-error-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #ed6689; color: #2c101a; font-weight: 750; font-size: .875rem; line-height: 1; }
 .${tag}-scene-error-panel { position: absolute; top: calc(100% + .5rem); left: 0; width: min(26rem, 100%); max-height: max(5rem, calc(var(--villages-scene-visible-height, 100cqh) - 12rem)); overflow-y: auto; box-sizing: border-box; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); color: var(--foreground); box-shadow: 0 .75rem 2rem #0006; font-size: .8125rem; }
 .${tag}-scene-error-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .25rem .75rem; border-bottom: 1px solid var(--border); }

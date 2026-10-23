@@ -39,7 +39,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
       const session = await activeVenueSession();
       return {
         session,
-        operation: operationSummary(session?.operation),
+        operation: operationSummary(session?.operation, session?.rejectedSubmissions),
         debugDiscardEnabled: villagesDebugAgentsEnabled(),
       };
     } catch (error) {

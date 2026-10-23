@@ -1,5 +1,6 @@
 import { recordTurnTiming } from "../../shared/turn-timing.js";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useRef } from "react";
+import { OCCUPANCY_UNAVAILABLE_MESSAGE } from "../../../shared/contracts/scene-turn-outcome.js";
 import type { RoomOperation, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -53,6 +54,19 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   const clarificationId = controller.room?.attentionClarification?.id;
   const clarificationMessage = controller.room?.attentionClarification?.message;
   const restoreRoomDraft = controller.setRoomDraft;
+  const currentOperation = controller.room?.operation;
+  const editVersionRef = controller.composerEditVersionRef;
+  const showInformation = controller.setRoomRuling;
+  const restoredInformation = useRef("");
+  useEffect(() => {
+    const operation = currentOperation;
+    const key = `${sceneId}:${operation?.id}`;
+    if (operation?.turnOutcome !== "occupancy-unavailable" || restoredInformation.current === key) return;
+    restoredInformation.current = key;
+    if (editVersionRef.current !== 0) return;
+    restoreRoomDraft((current) => current || operation.input?.message || "");
+    showInformation(OCCUPANCY_UNAVAILABLE_MESSAGE);
+  }, [sceneId, currentOperation, editVersionRef, showInformation, restoreRoomDraft]);
   useEffect(() => {
     if (clarificationId && clarificationMessage) restoreRoomDraft((current) => current || clarificationMessage);
   }, [controller.room?.id, clarificationId, clarificationMessage, restoreRoomDraft]);
@@ -92,6 +106,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomNotices,
     roomOpen,
     roomRuling,
+    setRoomRuling,
     roomSubmissionIdRef,
     roomTargetId,
     roomUnresolvedChanges,
@@ -244,12 +259,14 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             (snapshot?.villagers ?? []).map((villager) => [villager.characterId, villager.sprite]),
           )}
           onDraft={(value) => {
+            if (roomRuling === OCCUPANCY_UNAVAILABLE_MESSAGE) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             roomLeaveSubmissionIdRef.current = null;
             setRoomDraft(value);
           }}
           onMode={(value) => {
+            if (roomRuling === OCCUPANCY_UNAVAILABLE_MESSAGE) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             setRoomMode(value);
@@ -260,6 +277,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           onTarget={(value) => {
             composerEditVersionRef.current++;
+            if (roomRuling === OCCUPANCY_UNAVAILABLE_MESSAGE) setRoomRuling("");
             roomSubmissionIdRef.current = null;
             setRoomTargetId(value);
           }}

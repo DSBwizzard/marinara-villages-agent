@@ -22,7 +22,13 @@ import { zoneEventScene, routeZoneEvents } from "../packages/villages/src/server
 import {
   assertSceneMovementCapacity,
   residentMovementOptions,
+  residentMovementUnavailable,
 } from "../packages/villages/src/server/domain/rules/resident-movement.js";
+import type { SemanticIntent } from "../packages/villages/src/server/domain/models/semantic-model.js";
+import {
+  rejectedInputHash,
+  rejectedSubmission,
+} from "../packages/villages/src/server/domain/rules/rejected-submissions.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import { contactCanEnter } from "../packages/villages/src/server/domain/rules/venue-contact.js";
 import {
@@ -231,6 +237,64 @@ assert.equal(
     "a specifically selected pair remains possible",
   );
   assert.deepEqual(saved, before, "planning never moves a resident");
+
+  const intent: SemanticIntent = {
+    version: 2,
+    sourceHash: "bound-input",
+    status: "resolved",
+    reason: "",
+    instructions: "",
+    action: null,
+    movement: null,
+    timeline: [{ kind: "speech", text: "Come into the Painting Room now.", start: 0, end: 37 }],
+  };
+  const requested = (members: string[], zoneId = "b") => [{ characterIds: members, zoneId, source: 0 }];
+  assert.equal(residentMovementUnavailable(requested(ids.slice(0, 4)), intent, state, saved), true);
+  assert.equal(residentMovementUnavailable(requested(ids.slice(0, 2)), intent, state, saved), false);
+  assert.equal(
+    residentMovementUnavailable(requested([ids[0], ...ids.slice(4)]), intent, state, saved),
+    false,
+    "people already at the destination use no arrival slots",
+  );
+  assert.equal(
+    residentMovementUnavailable([...requested(ids.slice(0, 2)), ...requested(ids.slice(2, 4))], intent, state, saved),
+    true,
+    "splitting an immediate group across nominations cannot bypass capacity",
+  );
+  assert.equal(
+    residentMovementUnavailable([], intent, state, saved),
+    false,
+    "ordinary speech has no crossing nomination",
+  );
+  for (const bad of [
+    undefined,
+    {},
+    requested(["unknown"]),
+    requested(ids.slice(0, 1), "hidden"),
+    [{ ...requested(ids.slice(0, 1))[0], source: 9 }],
+    requested([ids[0], ids[0]]),
+  ])
+    assert.throws(() => residentMovementUnavailable(bad, intent, state, saved), /interpretation is incomplete/);
+  assert.deepEqual(saved, before, "request review never changes attendance or fictional state");
+  const submitted = { message: "Come here. Also fold the cloth.", mode: "act", targetId: "" };
+  saved.rejectedSubmissions = [
+    { id: "blocked", inputHash: rejectedInputHash(submitted), sceneRevision: 0, turnOutcome: "occupancy-unavailable" },
+  ];
+  assert.equal(rejectedSubmission(saved, "blocked", submitted)?.turnOutcome, "occupancy-unavailable");
+  assert.throws(
+    () => rejectedSubmission(saved, "blocked", { ...submitted, message: "Different input" }),
+    /different line/,
+  );
+  assert.deepEqual(
+    coerceSession(saved).rejectedSubmissions,
+    saved.rejectedSubmissions,
+    "private receipts survive reload",
+  );
+  assert(
+    !JSON.stringify(publicSceneResponse(saved)).includes("rejectedSubmissions"),
+    "receipt count and hashes stay private",
+  );
+  delete saved.rejectedSubmissions;
 
   // Moving the player changes the viewpoint, not the available arrival slots.
   saved.zoneId = "b";

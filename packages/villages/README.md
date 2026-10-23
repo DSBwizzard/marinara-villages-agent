@@ -42,6 +42,8 @@ A Scene continues within one Venue across Zone movement. At its start, Villages 
 
 Every Zone holds at most four villagers; the player does not use a villager slot. A Venue can hold more across separate Zones. Movement checks every destination, including offscreen Zones. A blocked group movement preserves positions. Forced relocation uses available permitted spaces, then home or another Venue's Exterior. A villager leaving the Venue leaves this Scene without loading the destination cast.
 
+If an immediate request to move villagers between recorded Zones is mechanically unavailable, Villages preserves the entire input as an editable draft and shows a blue `i` chip: “The requested change in Zone occupancy could not be completed.” Neither the input nor the generated response enters the Scene or its memories, including other dialogue/actions in the same input. The notice clears when editing or sending again. This result does not reveal unseen occupants or explain the private constraint. Available movement still depends on the villagers’ choices; future plans remain plans. Already admitted saved requests retain their original interpretation contract.
+
 The composer offers:
 
 - **Say / Do** for speech and local actions in the current Zone.

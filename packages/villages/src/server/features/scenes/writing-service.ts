@@ -33,6 +33,7 @@ import {
   ZONE_PLAYER_SPEECH_CONTRACT,
 } from "../../domain/rules/zone-events.js";
 import { contactPosition } from "../../domain/rules/venue-contact.js";
+import { UnavailableResidentMovement } from "../../domain/rules/resident-movement.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { renderResidentAdmission } from "../../domain/rules/resident-admission.js";
 import {
@@ -1156,6 +1157,7 @@ export function createSceneWriting({
               throw error;
             })
         : null;
+    if (semanticResult?.turnOutcome === "occupancy-unavailable") throw new UnavailableResidentMovement();
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
     const semanticAccess = semanticResult?.access;
     if (semanticResult) {
