@@ -1,7 +1,8 @@
 import { openingRenovationChoices } from "./opening-renovation.js";
 import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
-export const OPENING_PROPOSAL_INSTRUCTIONS = `Also return openingProposal:{name,description,situation,venueClass:"workplace|community|other",established:boolean,provenance,work,firstUse}. Prepare this resident's own modest Project idea grounded in identity, founding history, setting, lore and existing places. Produce a distinct new playable Venue without duplicating a supplied Venue. A place may already exist in lore: preserve its history and working condition. situation is the broad concern/interest they can mention without pitching the solution. provenance gives supporting setting facts. work describes useful preparation or coordination fitting twelve real hours, not necessarily construction. Never invent defects, lost access, ownership, supplies, promises or consent to justify work. Prefer ordinary coordination and available finite resources. firstUse describes an observable intended use, never a prescribed event. Preserve nonhuman identities. All fields must suit a public pitch without secrets, private motives or undisclosed personal history. This unspoken idea is separate from a Wish or commitment.`;
+export const OPENING_IDEA_FORMAT_VERSION = 2;
+export const OPENING_PROPOSAL_INSTRUCTIONS = `Prepare this resident's own modest Project idea grounded in identity, founding history, setting, lore and existing places. Produce a distinct new playable Venue without duplicating a supplied Venue. A place may already exist in lore: preserve its history and working condition. situation is the broad concern/interest they can mention without pitching the solution. provenance gives supporting setting facts. work describes useful preparation or coordination fitting twelve real hours, not necessarily construction. Never invent defects, lost access, ownership, supplies, promises or consent to justify work. Prefer ordinary coordination and available finite resources. firstUse describes an observable intended use, never a prescribed event. Preserve nonhuman identities. All fields must suit a public pitch without secrets, private motives or undisclosed personal history. This unspoken idea is separate from a Wish or commitment.`;
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import type { CompactFoundingContext } from "./compact-founding-rules.js";
@@ -94,7 +95,14 @@ export function foundingRequestMessages(
             ? ROUTINE_INGREDIENT_INSTRUCTIONS
             : ROUTINE_INSTRUCTIONS
           : task === "opening"
-            ? "Return JSON only: {openingProposal:{...}}. " +
+            ? "Return JSON only: {openingProposal:{" +
+              (context.openingVersion === 2
+                ? 'kind:"new-venue|renovation",renovation?:{venueId:string,spaceId:string,slot:0|1,title:string,description:string},'
+                : "") +
+              'name:string,description:string,situation:string,venueClass:"workplace|community|other",established:boolean,provenance:string,work:string,firstUse:string}}. All text fields are nonempty strings, never arrays. name is at most 100 characters; description, provenance and work at most 1000 each; situation and firstUse at most 500 each. ' +
+              (context.openingVersion === 2
+                ? "kind and renovation belong inside openingProposal, never beside it. Choose exactly one kind. For renovation include its target; for new-venue omit renovation. "
+                : "") +
               (context.openingVersion === 2
                 ? OPENING_PROPOSAL_INSTRUCTIONS.replace(
                     "Produce a distinct new playable Venue without duplicating a supplied Venue.",
