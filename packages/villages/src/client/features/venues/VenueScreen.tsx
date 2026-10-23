@@ -92,7 +92,7 @@ function ZoneName({
         className={`${ELEMENT_TAG}-button`}
         disabled={busy || !name.trim() || name.trim() === zone.name}
       >
-        {busy ? "Saving�" : "Save zone name"}
+        {busy ? "Saving…" : "Save zone name"}
       </button>
       {notice ? <p role="status">{notice}</p> : null}
     </form>
