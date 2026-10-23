@@ -664,6 +664,72 @@ async function main() {
   const pitched = await service.exchange(scene, "Tell me your idea", [pitchLine], null);
   assert.deepEqual(pitched.effects.openingSignal, openingSignal);
   assert.deepEqual(pitched.effects.openingContext, { stage: "conversations", projectId: "" });
+  const splitPitch = [
+    { ...pitchLine, kind: "narration", speakerId: "__venue_scene__", content: "The host sets down the plans." },
+    { ...pitchLine, content: "My idea is called Sky Terrace." },
+    { ...pitchLine, content: "We can watch the sky there without blocking the path." },
+    { ...pitchLine, content: "We need to build a low platform and put a railing around it." },
+  ];
+  openingSignal = { kind: "pitch", residentId: "host", segment: 1, quote: "Sky Terrace ... a platform ... sky" };
+  const indexedPitch = await service.exchange(scene, "Pitch spread across speech segments", splitPitch, null);
+  assert.deepEqual(
+    indexedPitch.effects.openingSignal,
+    {
+      kind: "pitch",
+      residentId: "host",
+      quote: splitPitch[1].content,
+      playerQuote: "",
+    },
+    "Code retains exact saved speech without asking the checker to reconstruct the pitch",
+  );
+  const savedIndexed = coerceSession({
+    ...scene,
+    submissions: [
+      {
+        id: "greeting",
+        mode: "chat",
+        message: "",
+        at: scene.startedAt,
+        openingSignal: indexedPitch.effects.openingSignal,
+      },
+    ],
+  });
+  assert.deepEqual(
+    savedIndexed.submissions[0].openingSignal,
+    indexedPitch.effects.openingSignal,
+    "Indexed citations reload through the existing saved OpeningSignal format",
+  );
+  const indexedCalls = calls.length;
+  await service.exchange(scene, "Pitch spread across speech segments", splitPitch, null);
+  assert.equal(calls.length, indexedCalls, "Replaying accepted indexed evidence makes no new request");
+  for (const segment of [-1, 0.5, 99, "2", null]) {
+    openingSignal = { kind: "pitch", residentId: "host", segment, quote: pitchLine.content };
+    await assert.rejects(
+      service.exchange(scene, "Invalid opening index " + String(segment), [pitchLine], null),
+      /AI check returned details that do not match/,
+    );
+    assert.equal(
+      rejected.at(-1).options.preserveWriting,
+      true,
+      "An invalid index retains the draft without quote fallback",
+    );
+  }
+  for (const [label, cited] of [
+    ["unheard", { ...pitchLine, contactHidden: true }],
+    ["wrong speaker", { ...pitchLine, speakerId: "other" }],
+    ["narration", { ...pitchLine, kind: "narration" }],
+    ["private thought", { ...pitchLine, kind: "thought" }],
+    ["player speech", { ...pitchLine, role: "user" }],
+    ["sound only", { ...pitchLine, soundOnly: true }],
+  ] as const) {
+    openingSignal = { kind: "pitch", residentId: "host", segment: 1 };
+    await assert.rejects(
+      service.exchange(scene, "Invalid indexed pitch: " + label, [pitchLine, cited] as any, null),
+      /AI check returned details that do not match/,
+    );
+    assert.equal(rejected.at(-1).options.preserveWriting, true, "Only the cited segment may justify the result");
+  }
+  openingSignal = { kind: "pitch", residentId: "host", segment: 0 };
   const bound = await service.exchange(
     { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as any,
     "Bound opening proposal",
@@ -826,6 +892,42 @@ async function main() {
   );
   assert.equal(extraFirstUse.effects.openingSignal, null, "Gathering metadata cannot finish the tutorial");
   gatheringContributions = undefined;
+  state.opening.stage = "first-use";
+  state.opening.projectId = "opening-use";
+  state.projects = [
+    {
+      id: "opening-use",
+      status: "complete",
+      venueId: scene.placeId,
+      requesterCharacterId: "host",
+      venueDraft: { description: "Watch the sky together" },
+    },
+  ] as any;
+  const useMessage = "I sit down and watch the sky.";
+  const useResponse = {
+    ...pitchLine,
+    kind: "narration",
+    speakerId: "__venue_scene__",
+    content: "The sky-watching begins as you settle beside the host.",
+  } as any;
+  openingSignal = { kind: "first-use", residentId: "", segment: 0, playerQuote: useMessage };
+  const firstUse = await service.exchange(scene, useMessage, [useResponse], null);
+  assert.deepEqual(firstUse.effects.openingSignal, {
+    kind: "first-use",
+    residentId: "",
+    quote: useResponse.content,
+    playerQuote: useMessage,
+  });
+  await assert.rejects(
+    service.exchange(scene, useMessage, [{ ...useResponse, contactHidden: true }, useResponse], null),
+    /AI check returned details that do not match/,
+  );
+  openingSignal = { kind: "first-use", residentId: "", segment: 0, playerQuote: "Invented participation" };
+  await assert.rejects(
+    service.exchange(scene, "No matching participation", [useResponse], null),
+    /AI check returned details that do not match/,
+  );
+  state.projects = [];
   state.opening = undefined;
   scene.activeIds = [];
   openingSignal = null;
