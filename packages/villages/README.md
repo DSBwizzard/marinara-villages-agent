@@ -49,7 +49,7 @@ The composer offers:
 - **Contact** for a directed knock, call or conversation toward an adjacent Zone.
 - **Conclude** to end the Scene.
 
-Invitations do not automatically move the player. Speech and physical sounds use captured connections and server-calculated witnesses. Addressing one person does not isolate audible bystanders. Hearing a noise does not reveal private words, attendance or its unseen cause. Whispering does not bypass witness validation.
+Invitations do not automatically move the player. Speech and physical sounds use captured connections and server-calculated witnesses. Ambient sounds without a character source remain local narration and create no offstage witnesses. Addressing one person does not isolate audible bystanders. Hearing a noise does not reveal private words, attendance or its unseen cause. Whispering does not bypass witness validation.
 
 A resident continuing a doorway conversation may approach, stay inside or decline. Audible remote dialogue does not put its speaker into the physical cast. Physical handoffs still require the participants to share the relevant Zone.
 
@@ -113,7 +113,7 @@ Character sprites are independent artwork copies. Sprite setup shows a wrapping 
 
 Choose a vision-capable chat connection for explicit sprite analysis. The browser remembers the choice. Image Captioning and System selections do not control it. Analysis sends temporary PNG copies capped at a 1024px longest edge without enlarging smaller sources, with up to two requests in flight and an 800-token allowance per image. Saved originals and framing remain unchanged. Each completed proposal is saved independently. Failure or cancellation stops new dispatches; an already dispatched sibling may also be billed, and a successful sibling survives failure. A successful run can suggest a neutral front-facing default; older results are not automatically reanalyzed.
 
-**Use when** is a short Scene selection rule grounded in the visible expression. Ordinary standing postures need no matching narration; depicted actions, physical states and props must fit the existing Scene. Analysis does not infer occupations or invent situations from appearance. Existing descriptions remain available for review and editing.
+**Use when** is a short Scene selection rule grounded in the visible expression. Ordinary standing postures need no matching narration; depicted actions, physical states and props must fit the existing Scene. Analysis does not infer occupations or invent situations from appearance. Existing descriptions remain available for review and editing. Scene attention chooses the view: front toward the player and side toward another resident. A default in the requested view takes priority over an expression available only in the other view.
 
 Preparation marks indicate complete included metadata, not saved approval. **Add villager with sprites** or **Use sprites** accepts the reviewed set and included default. Back, framing saves and analysis preserve unapproved drafts. Excluded artwork remains available.
 

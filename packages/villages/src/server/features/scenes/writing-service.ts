@@ -347,7 +347,7 @@ export function createSceneWriting({
       );
       if (spriteLabels)
         expressionContexts.push(
-          `Filled expressions for ${card.name}: ${spriteLabels}. Select a listed expression id that fits the current dialogue and visible emotion. useWhen guides image selection; it must not create story events or establish an occupation, personality or intent. Ordinary postures such as hands on hips or folded arms need no matching narration. Clearly depicted actions, physical states and props must fit what is already happening in the Scene. Never add an action merely to use a picture. Omit expression to use the default image.`,
+          `Filled expressions for ${card.name}: ${spriteLabels}. Select a listed expression id that fits the current visible emotion and offers the required view (front toward the player, side toward a resident or direction). Prefer the default over an unsupported or exaggerated emotion. useWhen guides image selection; it must not create story events or establish an occupation, personality or intent. Ordinary postures such as hands on hips or folded arms need no matching narration. Clearly depicted actions, physical states and props must fit what is already happening in the Scene. Never add an action merely to use a picture. In staged Scenes, omission preserves the previous expression; explicitly select the default id to reset it. Otherwise omit expression to use the default image.`,
         );
       return venueCardProfile(card, player.name, false);
     });
@@ -744,7 +744,8 @@ export function createSceneWriting({
                     ...stageState[characterId],
                     ...layout[characterId],
                   })),
-                )
+                ) +
+                '\nUse look:{target:"villager",characterId} when addressing another resident and look:{target:"player"} when addressing the player. Update attention when the addressee changes. Screen position is not gaze: reserve absolute left/right looks for a motivated look away at the surroundings.'
               : "",
           expressions: expressionContexts,
         }),

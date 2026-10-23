@@ -565,6 +565,28 @@ try {
   );
   assert(!heardLines(coerceSession(state()), "distant").some((line) => line.id === narratedLine.id));
 
+  const ambientProse = "A pipe ticks beside the open doorway.";
+  const ambient = await turn("ambient-narration", "I investigate without leaving this space.", [
+    {
+      kind: "narration",
+      text: ambientProse,
+      sound: {
+        sourceId: "__venue_scene__",
+        text: "A metallic tick.",
+        loud: true,
+      },
+    },
+  ]);
+  const ambientLine = state().lines.findLast((line: any) => line.content === ambientProse);
+  assert.equal(ambient.session.lines.filter((line: any) => line.content === ambientProse).length, 1);
+  assert.deepEqual(ambientLine.heardBy, ["aqua", "feddy"]);
+  assert.equal(ambientLine.soundOnly, undefined);
+  const ambientRestored = coerceSession(JSON.parse(JSON.stringify(state())));
+  assert(heardLines(ambientRestored, "aqua").some((line) => line.id === ambientLine.id));
+  for (const remote of ["neighbor", "distant"])
+    assert(!heardLines(ambientRestored, remote).some((line) => line.id === ambientLine.id));
+  assert.doesNotMatch(JSON.stringify(ambient), /sourceId|soundOnly|A metallic tick/);
+
   const durable = {
     kind: "durable",
     text: "Aqua prefers mint tea without sugar.",
