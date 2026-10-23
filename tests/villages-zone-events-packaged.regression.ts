@@ -187,6 +187,7 @@ let semanticIntentAnswer: Record<string, unknown> | undefined;
 let semanticExchangeAnswer: Record<string, unknown> | undefined;
 let beforeSemanticResponse: (() => void) | undefined;
 const semanticStages: string[] = [];
+let lastSemanticInput: any;
 const model = {
   connectionId: "synthetic",
   model: "fixture",
@@ -208,6 +209,7 @@ const model = {
     modelCalls++;
     if (messages[0].content.startsWith("You interpret Villages gameplay.")) {
       const packet = JSON.parse(messages[1].content);
+      lastSemanticInput = clone(packet.input);
       const intent = messages[0].content.includes("Interpret current player intent");
       semanticStages.push(intent ? "intent" : "exchange");
       if (!intent && beforeSemanticResponse) {
@@ -1774,6 +1776,12 @@ try {
     const result = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
     assert.equal(result.statusCode, 200, result.body);
     assert.equal(result.json().turnOutcome, "occupancy-unavailable");
+    assert.deepEqual(
+      [...lastSemanticInput.residentRequestLocalIds].sort(),
+      ["aqua", "feddy"],
+      "Request resolution receives captured local residents separately from reply profiles",
+    );
+    assert(!lastSemanticInput.residentRequestLocalIds.includes("passive"), "Unseen occupancy stays private");
     assert.equal(result.json().session.operation.status, "complete");
     assert.equal(result.json().session.operation.error, "");
     assert.equal(result.json().session.operation.input.message, mixed, "reload can restore the player's own draft");

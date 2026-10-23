@@ -1,5 +1,5 @@
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
-import { residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
+import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
 import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
 import {
   readOpeningSignal,
@@ -392,7 +392,9 @@ export function createSemanticService(ports: SemanticPorts) {
       {
         message,
         turnPolicyVersion: 1,
-        ...(movementReview ? { residentMovementReviewVersion: 1 } : {}),
+        ...(movementReview
+          ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
+          : {}),
         residentActionsOmitted,
         evidence,
         prepared,
@@ -413,7 +415,7 @@ export function createSemanticService(ports: SemanticPorts) {
           ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. An empty player input is normal for a Scene greeting: return resolved intent with empty instructions and timeline, null action and movement; still independently validate all draft evidence. Include every meaningful input span in source order. Only explicit Move changes the player Zone. Local walking within the current Zone is kind:action, not movement. Identify an actual attempted crossing as kind:movement with exact destination zoneId; code blocks the entire turn. Never invent or complete a player crossing. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
           : "") +
         (movementReview
-          ? "Also return immediateResidentMoves:[], required even when empty. Independently identify EVERY immediate request in the original player input for residents to cross into a recorded Zone, regardless of the draft response or their willingness. Polite questions asking for movement now (Can/Could/Would you join them there now?) are immediate requests; modal wording alone does not make them hypothetical. Resolve group references such as 'the four of you' from the addressed residents before considering their replies. Rows are {characterIds:[exact resident IDs for the COMPLETE requested group],zoneId,source:zero-based intent.timeline index}. Keep every requested resident even if some refuse, stay, or only a smaller group crosses in the draft. Include requests within mixed speech/actions. Do not nominate future appointments, conditional/hypothetical travel, quoted examples or private thoughts. For these recorded-Zone requests, unresolved actor or destination identity remains unresolved intent; never invent a Zone or silently choose a smaller group. Ordinary movement toward fictional spaces does not itself require a recorded Zone nomination. These are request nominations, never completed moves or authority. "
+          ? "Also return immediateResidentMoves:[], required even when empty. Independently identify EVERY immediate request in the original player input for residents to cross into a recorded Zone, regardless of the draft response or their willingness. residentRequestLocalIds lists ALL residents physically with the player before this reply, including passive residents absent from context.actors. context.actors is the selected reply cast, never the complete set of possible addressees. Resolve group references from the original input, these local IDs and established context before considering the draft. For example, when four residents are here and two others are already in the Studio, 'Can the four of you join those two in the Studio now?' requests the four local residents, not the selected four-person reply cast. Polite Can/Could/Would questions asking for movement now are immediate requests, not hypothetical merely because of modal wording. Rows are {characterIds:[exact resident IDs for the COMPLETE requested group],zoneId,source:zero-based intent.timeline index}. Keep every requested resident even if some refuse, stay, or only a smaller group crosses in the draft. Include requests within mixed speech/actions. Do not nominate future appointments, conditional/hypothetical travel, quoted examples or private thoughts. For these recorded-Zone requests, unresolved actor or destination identity remains unresolved intent; never invent a Zone or silently choose a smaller group. Ordinary movement toward fictional spaces does not itself require a recorded Zone nomination. These are request nominations, never completed moves or authority. "
           : "") +
         "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash," +
         (movementReview ? "immediateResidentMoves:[{characterIds:[residentIds],zoneId,source}]," : "") +
