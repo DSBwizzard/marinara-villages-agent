@@ -48,7 +48,11 @@ import { accessManagementPrompt } from "../../domain/rules/access-speech.js";
 import { asRecord, asString, asTrimmedString } from "../../domain/rules/coerce.js";
 import { validDecisionEvidence } from "../../domain/rules/decision-candidates.js";
 import { applyAttentionWitnesses } from "../../domain/rules/attention-witnesses.js";
-import { sceneContinuityView, visibleSceneContinuity } from "../../domain/rules/scene-continuity.js";
+import {
+  sceneContinuityView,
+  sceneLocationContext,
+  visibleSceneContinuity,
+} from "../../domain/rules/scene-continuity.js";
 import {
   applyResidentMovementTimeline,
   residentMovementPrompt,
@@ -797,6 +801,13 @@ export function createSceneWriting({
           " Omit memoryChanges, relationshipChanges, wishChanges, projectSpeech, roomEvents, sceneChange and interpretationRouting. Existing cards and private audience boundaries still govern characterization.",
       });
     }
+    if (storedPlace)
+      blocks.push({
+        text:
+          "Current physical Scene state (server authority, not shared character knowledge): " +
+          JSON.stringify(sceneLocationContext(session, storedPlace, audience)) +
+          "\nThese current positions include validated movement and override card scenarios, older narration and conversational assumptions. A Venue name is not a room or proof of co-location. Residents apart from the player remain remote until a completed permitted crossing; do not stage them sharing a table, exchanging objects or making visible gestures here. An invitation or request to join establishes no movement. Continue naturally from the recorded positions without replaying arrival. Private routing context must not disclose unseen rooms, occupants or activity.",
+      });
     blocks.push({
       text: "Only the player's explicit Move action changes their Zone. Act/Do and conversation remain in the current Zone. Walking toward furniture or people here is an ordinary local action. Never narrate the player crossing into another Zone, following a villager across Zones, or accepting entry automatically. Villager movement remains subject to access; presence does not confer housing residency or permission.",
     });

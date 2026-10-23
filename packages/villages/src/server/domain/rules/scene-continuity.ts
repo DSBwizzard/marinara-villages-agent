@@ -5,6 +5,7 @@ import type {
   VillageChronicleEntry,
   VillageRecollection,
   VillageVenueSpace,
+  VillageVenue,
 } from "../models/world.js";
 import type { KnownWish } from "./wish-journal.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
@@ -12,6 +13,40 @@ import { venueZones, resolveVenueZone, legacyZoneId } from "./venue-zones.js";
 import { sceneWishProtected } from "./scene-wish-protection.js";
 import { sceneRelationshipView } from "./relationship-rules.js";
 import { wishExpired } from "./wish-definition.js";
+import { contactNeighbors, contactPosition } from "./venue-contact.js";
+import { sceneLayoutVenue } from "./scene-layout.js";
+
+/** Current writer context, never evidence or a public attendance/room disclosure. */
+export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, actorIds: readonly string[]) {
+  const zones = venueZones(sceneLayoutVenue(venue, scene));
+  const origin = scene.zoneId ?? legacyZoneId(venue, scene.area, scene.spaceClass, scene.privateOwnerId);
+  const adjacent = contactNeighbors(venue, origin, scene);
+  const knownZone = (id: string) => {
+    const zone = zones.find((row) => row.id === id);
+    return zone && (id === origin || zone.seen) ? { id: zone.id, name: zone.name, kind: zone.kind } : undefined;
+  };
+  return {
+    venue: scene.placeName,
+    player: { zone: knownZone(origin) ?? { id: origin } },
+    residents: [...new Set(actorIds)]
+      .filter((id) => !scene.departedIds?.includes(id))
+      .map((characterId) => {
+        const position = contactPosition(scene, characterId) || (scene.activeIds.includes(characterId) ? origin : "");
+        return {
+          characterId,
+          name: scene.participants.find((row) => row.characterId === characterId)?.name ?? characterId,
+          location: !position
+            ? "unrecorded"
+            : position === origin
+              ? "with player"
+              : adjacent.includes(position)
+                ? "adjacent Zone, apart from player"
+                : "offstage, apart from player",
+          ...(knownZone(position) ? { zone: knownZone(position) } : {}),
+        };
+      }),
+  };
+}
 
 // Source facts consumed by Scene writing/meaning, never a replacement world.
 // Settings, operational clocks and world-write receipts stay outside this copy.
