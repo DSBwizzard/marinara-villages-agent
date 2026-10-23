@@ -72,7 +72,13 @@ export function ArtworkUpload({ busy, onUpload }: { busy: boolean; onUpload(file
   return (
     <label className={P + "-artwork-upload"}>
       <span>Upload artwork</span>
-      <input type="file" accept="image/*" disabled={busy} onChange={(event) => onUpload(event.target.files?.[0])} />
+      <input
+        autoComplete="off"
+        type="file"
+        accept="image/*"
+        disabled={busy}
+        onChange={(event) => onUpload(event.target.files?.[0])}
+      />
     </label>
   );
 }

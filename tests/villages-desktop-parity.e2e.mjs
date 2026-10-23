@@ -420,8 +420,8 @@ try {
     await expect(composer).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
+    await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
+    await page.getByRole("button", { name: /^Close/ }).click();
     await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
