@@ -78,7 +78,14 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
   async function recordProjectSpokenEvidence(projectId: string, value: unknown): Promise<void> {
     const input = asRecord(value);
     const kind = input.kind;
-    if (kind !== "approval" && kind !== "builder" && kind !== "requirements" && kind !== "offer" && kind !== "handoff")
+    if (
+      kind !== "approval" &&
+      kind !== "builder" &&
+      kind !== "requirements" &&
+      kind !== "offer" &&
+      kind !== "handoff" &&
+      kind !== "delivery"
+    )
       throw badRequest("Choose a Project evidence kind.");
     const sessionId = asTrimmedString(input.sessionId);
     const submissionId = asTrimmedString(input.submissionId);
@@ -137,7 +144,23 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
       failure = "";
       const project = projectFor(state, projectId);
       const flow = project.lifecycle!;
-      if (flow.spokenProofs.some((entry) => entry.lineId === lineId)) return;
+      if (kind === "delivery" && flow.deliveries?.some((entry) => entry.evidenceId === lineId)) return;
+      // One witnessed line can both offer this source and commit its supplier to delivery.
+      const combinedDelivery =
+        kind === "delivery" &&
+        !!interpreted?.contextual &&
+        flow.sources.some(
+          (source) =>
+            source.kind === "resident-offer" &&
+            source.requirementId === requirementId &&
+            source.evidenceId === lineId &&
+            source.supplierId === line?.speakerId &&
+            source.at === turn.at,
+        ) &&
+        flow.spokenProofs.some(
+          (entry) => entry.lineId === lineId && entry.sessionId === sessionId && entry.submissionId === submissionId,
+        );
+      if (flow.spokenProofs.some((entry) => entry.lineId === lineId) && !combinedDelivery) return;
       // A duplicate semantic row may acknowledge this turn's already committed physical handoff.
       // It cannot create or upgrade that proof, or apply another turn's receipt.
       if (
@@ -236,7 +259,8 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         if (
           interpreted.projectId !== projectId ||
           interpreted.kind !== kind ||
-          ((kind === "offer" || kind === "handoff") && interpreted.requirementId !== requirementId) ||
+          ((kind === "offer" || kind === "handoff" || kind === "delivery") &&
+            interpreted.requirementId !== requirementId) ||
           interpreted.speakerId !== line.speakerId ||
           interpreted.citations[0]?.lineId !== lineId ||
           interpreted.revision !== task.definition.revision ||
@@ -265,6 +289,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
             [proof.lineId, ...(proof.citations?.map((citation) => citation.lineId) ?? [])].some(
               (id) =>
                 citedIds.includes(id) &&
+                !(combinedDelivery && other.id === projectId && id === lineId) &&
                 !(kind === "requirements" && interpreted?.contextual && other.id === projectId && id !== lineId),
             ),
           ),
@@ -278,9 +303,15 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
           [...task.receipts, ...task.revisionHistory.flatMap((revision) => revision.receipts)].some((receipt) =>
             [receipt.evidence.lineId, ...(receipt.evidence.citations?.map((citation) => citation.lineId) ?? [])].some(
               (id) =>
-                id === lineId ||
-                (interpreted?.citations.some((citation) => citation.lineId === id) &&
-                  !(kind === "requirements" && interpreted?.contextual && task.definition.owner.id === projectId)),
+                !(
+                  combinedDelivery &&
+                  task.definition.owner.id === projectId &&
+                  receipt.requirementId === "source:" + requirementId &&
+                  id === lineId
+                ) &&
+                (id === lineId ||
+                  (interpreted?.citations.some((citation) => citation.lineId === id) &&
+                    !(kind === "requirements" && interpreted?.contextual && task.definition.owner.id === projectId))),
             ),
           ),
         )
@@ -364,6 +395,35 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         }));
         flow.requirementsEvidenceId = line.id;
         flow.evidenceIds = [...new Set([...flow.evidenceIds, line.id])];
+      } else if (kind === "delivery") {
+        if (!interpreted?.contextual)
+          return fail("A saved interpretation of the resident's delivery agreement is required.");
+        const requirement = flow.requirements.find(
+          (entry) => entry.id === requirementId && entry.needed && !entry.carriedAt,
+        );
+        const source = flow.sources.find(
+          (entry) => entry.requirementId === requirementId && !entry.acquiredAt && entry.kind !== "held-supply",
+        );
+        if (!requirement || !source) return fail("Record a finite source before arranging its delivery.");
+        flow.deliveries ??= [];
+        const previous = flow.deliveries.find(
+          (entry) => entry.requirementId === requirementId && entry.residentId === line.speakerId,
+        );
+        if (previous?.startsAt) return fail("Cancel the assigned delivery before changing its agreement.");
+        const agreement = {
+          requirementId,
+          residentId: line.speakerId,
+          sourceId: source.evidenceId,
+          revision: task.definition.revision,
+          evidenceId: line.id,
+          agreedAt: turn.at,
+          startsAt: "",
+          completesAt: "",
+          completedAt: "",
+          blockedReason: "",
+        };
+        if (previous) Object.assign(previous, agreement);
+        else flow.deliveries.push(agreement);
       } else {
         const requirement = flow.requirements.find((entry) => entry.id === requirementId && entry.needed);
         if (!requirement) return fail("Choose a currently needed Project supply.");
@@ -477,7 +537,9 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
           throw error;
       }
     };
-    for (const [interpretationIndex, proposal] of turn.projectSpeech.entries())
+    for (const [interpretationIndex, proposal] of [...turn.projectSpeech.entries()].sort(
+      (left, right) => Number(left[1].kind === "delivery") - Number(right[1].kind === "delivery"),
+    ))
       await tryRecord(proposal.projectId, {
         kind: proposal.kind,
         lineId: proposal.citations[0]?.lineId ?? "",

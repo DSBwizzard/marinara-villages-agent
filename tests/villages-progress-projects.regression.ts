@@ -3,6 +3,7 @@ import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/r
 import {
   acceptProjectRequirements,
   createNewVenueProject,
+  saveProjectPlan,
   createRenovationProject,
   reviseRenovationProject,
   renewRenovationApprovals,
@@ -393,6 +394,26 @@ async function main() {
       "concept",
     );
     await placeNewVenueProject(projectId, { x: 0.7, y: 0.7 });
+    await saveProjectPlan(projectId, {
+      imageContext: { useAssignedVillagerContext: false, useVisualLore: false },
+      layoutVersion: 1,
+      layout: "both",
+      spaces: [{ venueClass: "community", description: "Tables and a hearth." }],
+      form: "A timber hall",
+      exteriorDescription: "Warm windows.",
+      interiorDescription: "Tables and a hearth.",
+      privateSpaces: [
+        {
+          id: "restricted:archive",
+          venueClass: "community",
+          name: "Archive",
+          purpose: "Store records",
+          controllerIds: ["player"],
+          description: "An authored archive",
+        },
+      ],
+      imageContext: { useAssignedVillagerContext: false, useVisualLore: false },
+    });
     state = await readVillageState();
     assert.equal(state.progressTasks.find((task) => task.definition.owner.id === projectId)?.phaseIndex, 1);
     const absent = saveTurn("Will you build Lantern House?", "I will build Lantern House.");
@@ -464,7 +485,7 @@ async function main() {
     assert.equal(state.projects.find((entry) => entry.id === projectId)?.lifecycle?.heldSupplies.length, 2);
     assert.equal(
       state.progressTasks.find((entry) => entry.definition.owner.id === projectId)?.revisionHistory.length,
-      2,
+      3,
     );
     const revisedPlan = saveTurn(
       "What does Lantern House need now?",
@@ -483,7 +504,7 @@ async function main() {
     state = await readVillageState();
     assert.equal(
       state.progressTasks.find((entry) => entry.definition.owner.id === projectId)?.revisionHistory.length,
-      3,
+      4,
     );
     await deliverProjectMaterial(projectId, { requirementId: timberId });
     await deliverProjectMaterial(projectId, { requirementId: benchesId });
@@ -538,21 +559,14 @@ async function main() {
     assert.deepEqual(openedVenue.imageContext, { useAssignedVillagerContext: false, useVisualLore: false });
     assert.equal(
       state.progressTasks.find((entry) => entry.definition.owner.id === projectId)?.resolutionKey,
-      `project:${projectId}:4:resolved`,
+      `project:${projectId}:${state.progressTasks.find((entry) => entry.definition.owner.id === projectId)!.definition.revision}:resolved`,
     );
     assert.equal(
       state.venues.filter((entry) => entry.buildProjectId === projectId && entry.constructionStatus === "complete")
         .length,
       1,
     );
-    await assert.rejects(
-      openFinishedProject(projectId, {
-        form: "A timber hall",
-        exteriorDescription: "Warm windows.",
-        interiorDescription: "Tables and a hearth.",
-      }),
-      /Construction must finish|phase and verified progress/u,
-    );
+    await openFinishedProject(projectId, {});
     assert.equal(
       (await readVillageState()).progressTasks
         .find((entry) => entry.definition.owner.id === projectId)
@@ -605,13 +619,6 @@ async function main() {
     await acceptProjectRequirements(renovationId);
     await startProjectConstruction(renovationId);
     state = await readVillageState();
-    await mutateVillageState((current) =>
-      reconcileProjectLifecycles(
-        current,
-        new Date(current.projects.find((entry) => entry.id === renovationId)!.lifecycle!.workOrder!.completesAt),
-      ),
-    );
-    await assert.rejects(openFinishedProject(renovationId, { improvement: null }), /Reviewed structural terms/);
     await mutateVillageState((current) => {
       current.villagers.push({
         ...structuredClone(current.villagers.find((entry) => entry.characterId === "rosa")!),
@@ -623,6 +630,13 @@ async function main() {
       });
       current.venues.find((entry) => entry.id === "mill")!.workerIds!.push("new-worker");
     });
+    await mutateVillageState((current) =>
+      reconcileProjectLifecycles(
+        current,
+        new Date(current.projects.find((entry) => entry.id === renovationId)!.lifecycle!.workOrder!.completesAt),
+      ),
+    );
+    await assert.rejects(openFinishedProject(renovationId, { improvement: null }), /Reviewed structural terms/);
     await assert.rejects(openFinishedProject(renovationId, {}), /Renew.*approvals/);
     const completedReceipts = (await readVillageState()).progressTasks
       .find((task) => task.definition.owner.id === renovationId)!

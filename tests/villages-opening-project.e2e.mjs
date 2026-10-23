@@ -202,8 +202,9 @@ async function open(width, stage, version = 1, holdSnapshotAfterClose = false) {
       }
     } else if (path === "/projects/opening-project/open") {
       const body = request.postDataJSON();
-      assert.equal(body.spaces[0].id, "community", "finishing preserves the actual established Zone identity");
-      assert.equal(body.form, "A familiar theatre", "player edits survive leaving and returning to finishing");
+      assert.deepEqual(body, {}, "completion retries the saved plan without late design edits");
+      assert.equal(snapshot.projects[0].plan.spaces[0].id, "community");
+      assert.equal(snapshot.projects[0].plan.form, "A familiar theatre");
       snapshot.projects[0].status = "complete";
       snapshot.projects[0].lifecycle.phase = "complete";
       snapshot.opening.stage = "first-use";
@@ -370,19 +371,27 @@ try {
     };
     snapshot.settings.venues.push(venue);
     snapshot.projects[0].venueId = venue.id;
+    snapshot.projects[0].plan = {
+      layoutVersion: 1,
+      layout: "common",
+      form: "A familiar theatre",
+      exteriorDescription: "A familiar entrance",
+      spaces: venue.spaces,
+      privateSpaces: [],
+    };
     snapshot.projects[0].status = "finishing";
     snapshot.projects[0].lifecycle.phase = "finishing";
     snapshot.opening.action = "Open the Venue";
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
-    await expect(page.getByLabel("Physical form", { exact: true })).toHaveValue("An existing theatre");
-    await page.getByLabel("Physical form", { exact: true }).fill("A familiar theatre");
+    await page.getByRole("button", { name: "Review completion", exact: true }).click();
+    await expect(page.getByText("A familiar theatre", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Physical form", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Back to Project", exact: true }).click();
-    await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
-    await expect(page.getByLabel("Physical form", { exact: true })).toHaveValue("A familiar theatre");
-    await expect(page.getByRole("button", { name: "Open Venue", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Review completion", exact: true }).click();
+    await expect(page.getByText("A familiar theatre", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry completion", exact: true })).toBeEnabled();
     if (output) await page.screenshot({ path: resolve(output, `opening-finish-${width}.png`) });
-    await page.getByRole("button", { name: "Open Venue", exact: true }).click();
+    await page.getByRole("button", { name: "Retry completion", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Venue open", exact: true })).toBeVisible();
     assert.equal(snapshot.opening.stage, "first-use");
     page.on("dialog", (dialog) => dialog.accept());

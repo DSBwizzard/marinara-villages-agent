@@ -5,6 +5,17 @@ const binding = createActivationBinding<ProjectLifecycle>("Project lifecycle ser
 export function configureProjectLifecycle(service: ProjectLifecycle): () => void {
   return binding.configure(bindActivationService(service));
 }
+export async function delegateProjectSupply(
+  ...args: Parameters<ProjectLifecycle["delegateProjectSupply"]>
+): Promise<void> {
+  return binding.get().delegateProjectSupply(...args);
+}
+export async function cancelProjectSupply(...args: Parameters<ProjectLifecycle["cancelProjectSupply"]>): Promise<void> {
+  return binding.get().cancelProjectSupply(...args);
+}
+export async function saveProjectPlan(...args: Parameters<ProjectLifecycle["saveProjectPlan"]>): Promise<void> {
+  return binding.get().saveProjectPlan(...args);
+}
 export async function decideOpeningProposal(
   ...args: Parameters<ProjectLifecycle["decideOpeningProposal"]>
 ): Promise<void> {

@@ -335,9 +335,16 @@ export function recordProjectProgress(
     if (task.phaseIndex === before) break;
   }
   project.lifecycle!.phase = projectProgressPhase(state, project) as NonNullable<VillageProject["lifecycle"]>["phase"];
+  if (project.lifecycle!.phase === "finishing") {
+    project.status = "finishing";
+    project.lifecycle!.blockedReason = "";
+  }
 }
 
 export function reviseProjectProgress(state: VillageState, project: VillageProject, keepBeforePhase: string): void {
+  for (const person of state.villagers)
+    if (person.agenda?.projectDelivery?.projectId === project.id) delete person.agenda.projectDelivery;
+  if (project.lifecycle) project.lifecycle.deliveries = [];
   const task = progressProject(state, project);
   if (!task) return;
   const boundary = task.definition.phases.findIndex((phase) => phase.id === keepBeforePhase);

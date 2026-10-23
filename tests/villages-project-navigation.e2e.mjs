@@ -1,9 +1,13 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { build } from "../scripts/esbuild.mjs";
 import { snapshot as fixture, image } from "./fixtures/villages-scene-browser.fixture.mjs";
+
+const output = process.env.VILLAGES_VISUAL_OUTPUT;
+if (output) await mkdir(output, { recursive: true });
 
 const browser = await chromium.launch({
   headless: true,
@@ -29,13 +33,13 @@ function projectSnapshot() {
       kind: index ? "renovation" : "new-venue",
       title: venue.name,
       venueId: id,
-      status: "finishing",
+      status: index ? "finishing" : "active",
       progress: 100,
       participantIds: [],
       updatedAt: new Date().toISOString(),
       venueDraft: { name: venue.name, classes: venue.classes, description: "A useful place" },
       lifecycle: {
-        phase: "finishing",
+        phase: index ? "finishing" : "builder",
         targetVenueId: id,
         change: index ? { detail: "Renovate the Workshop" } : null,
         affectedIds: [],
@@ -51,7 +55,7 @@ function projectSnapshot() {
   return snapshot;
 }
 
-async function openPage(width, snapshot, imageHandler) {
+async function openPage(width, snapshot, imageHandler, mutationHandler) {
   const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });
   await mockEngineLookups(page);
   const errors = [];
@@ -59,6 +63,8 @@ async function openPage(width, snapshot, imageHandler) {
   await page.route("**/api/villages**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/setup/venue-image/generate")) return imageHandler(route);
+    if (route.request().method() === "POST" && path.includes("/projects/") && mutationHandler)
+      return mutationHandler(route, path);
     const value = path.endsWith("/connections")
       ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
       : path.endsWith("/lorebooks")
@@ -90,7 +96,7 @@ async function openPage(width, snapshot, imageHandler) {
 async function selectProject(page, name) {
   await page.getByRole("button", { name: "All Projects", exact: true }).click();
   await page.getByRole("button", { name }).click();
-  await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
+  await page.getByRole("button", { name: /^(Define design|Edit design|Review completion)$/, exact: true }).click();
 }
 
 // A mounted source-hook harness makes reset, repeated focus and application
@@ -143,7 +149,7 @@ async function checkControllerLifetime() {
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/setup/venue-image/generate")) imageRequests.push(route);
-    else if (path.endsWith("/projects/canvas-build/open")) mutationRequests.push(route);
+    else if (path.endsWith("/projects/canvas-build/plan")) mutationRequests.push(route);
     else throw new Error(`Unexpected controller request: ${path}`);
   });
   const snapshot = projectSnapshot();
@@ -224,7 +230,7 @@ async function checkControllerLifetime() {
   await expect.poll(() => mutationRequests.length).toBe(1);
   await page.evaluate((next) => window.projectsHarness.setSnapshot(next), reset);
   await expect.poll(async () => (await state()).founded).toBe(false);
-  const completedMutation = page.waitForResponse((response) => response.url().endsWith("/projects/canvas-build/open"));
+  const completedMutation = page.waitForResponse((response) => response.url().endsWith("/projects/canvas-build/plan"));
   await fulfill(mutationRequests[0], { status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
   await (await completedMutation).finished();
   await settle();
@@ -274,6 +280,82 @@ try {
     assert.deepEqual(draftErrors, []);
     await draftPage.close();
 
+    const passive = projectSnapshot(),
+      canvas = passive.projects[0],
+      mutations = [];
+    canvas.status = "active";
+    canvas.lifecycle.phase = "builder";
+    // Tentative builder speech must leave the design editor available.
+    canvas.lifecycle.candidates = [{ residentId: "mara", evidenceId: "builder", at: canvas.updatedAt }];
+    const { page: passivePage, errors: passiveErrors } = await openPage(
+      width,
+      passive,
+      () => {
+        throw Error("Planning must not request an image automatically.");
+      },
+      async (route, path) => {
+        const body = route.request().postDataJSON();
+        mutations.push({ path, body });
+        if (path.endsWith("/plan")) canvas.plan = body;
+        else if (path.endsWith("/delegate"))
+          Object.assign(canvas.lifecycle.deliveries[0], {
+            startsAt: "2026-10-23T10:00:00Z",
+            completesAt: "2026-10-23T11:00:00Z",
+          });
+        else if (path.endsWith("/cancel-delivery"))
+          Object.assign(canvas.lifecycle.deliveries[0], { startsAt: "", completesAt: "" });
+        else throw Error("Unexpected mutation: " + path);
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(passive) });
+      },
+    );
+    await passivePage.getByRole("button", { name: /NEW VENUE.*Canvas Tent/ }).click();
+    await passivePage.getByRole("button", { name: "Define design", exact: true }).click();
+    await passivePage.getByLabel("Physical form", { exact: true }).fill("A timber workshop");
+    await passivePage.getByLabel("Exterior appearance", { exact: true }).fill("A broad workshop entrance.");
+    await passivePage.getByRole("button", { name: "Use Exterior only", exact: true }).click();
+    if (output) await passivePage.screenshot({ path: resolve(output, `project-plan-${width}.png`) });
+    await passivePage.getByRole("button", { name: "Save plan", exact: true }).click();
+    await expect(passivePage.getByRole("button", { name: "Edit design", exact: true })).toBeVisible();
+    assert.equal(mutations[0].path, "/api/villages/projects/canvas-build/plan");
+    assert.equal(mutations[0].body.form, "A timber workshop");
+    canvas.lifecycle.phase = "materials";
+    canvas.lifecycle.sources = [];
+    canvas.lifecycle.requirements = [
+      { id: "structure", category: "structure", title: "Timber", needed: true, carriedAt: "", deliveredAt: "" },
+    ];
+    canvas.lifecycle.deliveries = [
+      {
+        requirementId: "structure",
+        residentId: "mara",
+        evidenceId: "delivery-agreement",
+        sourceId: "offer",
+        startsAt: "",
+        completesAt: "",
+        completedAt: "",
+        blockedReason: "",
+      },
+    ];
+    await passivePage.reload();
+    await passivePage.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await passivePage.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
+    await passivePage.getByRole("button", { name: /^Projects \(/ }).click();
+    await passivePage.getByRole("button", { name: /NEW VENUE.*Canvas Tent/ }).click();
+    await passivePage.getByRole("button", { name: "Assign delivery", exact: true }).click();
+    await expect(passivePage.getByRole("button", { name: "Cancel delivery", exact: true })).toBeVisible();
+    await expect(passivePage.getByText(/Expected/)).toBeVisible();
+    if (output) await passivePage.screenshot({ path: resolve(output, `project-delivery-${width}.png`) });
+    await passivePage.getByRole("button", { name: "Cancel delivery", exact: true }).click();
+    await expect(passivePage.getByRole("button", { name: "Assign delivery", exact: true })).toBeVisible();
+    assert.deepEqual(
+      mutations.slice(1).map((entry) => ({ action: entry.path.split("/").at(-1), ...entry.body })),
+      [
+        { action: "delegate", requirementId: "structure", residentId: "mara" },
+        { action: "cancel-delivery", requirementId: "structure" },
+      ],
+    );
+    assert.deepEqual(passiveErrors, []);
+    await passivePage.close();
+
     const revisionSnapshot = projectSnapshot();
     revisionSnapshot.projects[1].lifecycle.phase = "approval";
     const { page: revisionPage, errors: revisionErrors } = await openPage(width, revisionSnapshot, () => {
@@ -298,7 +380,7 @@ try {
       requests.push(route);
     });
     await page.getByRole("button", { name: /NEW VENUE.*Canvas Tent/ }).click();
-    await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
+    await page.getByRole("button", { name: "Define design", exact: true }).click();
     let editor = page.locator(".marinara-capability-villages-project-finish-visit");
     await editor.getByLabel("Physical form", { exact: true }).fill("A retained canvas shelter");
     await editor.getByLabel("Exterior appearance", { exact: true }).fill("Canvas in morning light.");

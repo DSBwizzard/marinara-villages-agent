@@ -11,6 +11,9 @@ import {
   recordProjectSpokenEvidence,
 } from "./project-evidence.js";
 import {
+  delegateProjectSupply,
+  cancelProjectSupply,
+  saveProjectPlan,
   decideOpeningProposal,
   acceptProjectRequirements,
   createNewVenueProject,
@@ -58,6 +61,9 @@ export function registerProjectRoutes(engine: FastifyInstance) {
       },
     );
   };
+  projectAction("delegate", delegateProjectSupply);
+  projectAction("cancel-delivery", cancelProjectSupply);
+  projectAction("plan", saveProjectPlan);
   projectAction("place", placeNewVenueProject);
   projectAction("request-approval", (projectId) => requestProjectMailbox(projectId));
   projectAction("builder", lockProjectBuilder);

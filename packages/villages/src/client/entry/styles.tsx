@@ -3410,8 +3410,13 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-project-finish-visit header { display: grid; gap: .5rem; }
 .${ELEMENT_TAG}-project-finish-visit h2, .${ELEMENT_TAG}-project-finish-visit p { margin: 0; }
 .${ELEMENT_TAG}-project-finish-visit label { display: grid; gap: .4rem; }
-.${ELEMENT_TAG}-project-finish-visit input:not([type="file"]), .${ELEMENT_TAG}-project-finish-visit textarea { width: 100%; box-sizing: border-box; border: 1px solid #5470bf; border-radius: .55rem; background: #172b60; color: #f4f6ff; padding: .7rem; font: inherit; }
+.${ELEMENT_TAG}-project-finish-visit input:not([type="file"]):not([type="checkbox"]), .${ELEMENT_TAG}-project-finish-visit select, .${ELEMENT_TAG}-project-finish-visit textarea { width: 100%; box-sizing: border-box; border: 1px solid #5470bf; border-radius: .55rem; background: #172b60; color: #f4f6ff; padding: .7rem; font: inherit; }
 .${ELEMENT_TAG}-project-finish-visit textarea { min-height: 7rem; }
+.${ELEMENT_TAG}-project-finish-visit fieldset { display: grid; gap: .6rem; min-width: 0; border: 1px solid #5470bf; border-radius: .55rem; padding: .8rem; }
+.${ELEMENT_TAG}-project-finish-visit button:not(.${ELEMENT_TAG}-button) { border: 1px solid #5470bf; border-radius: .55rem; background: #172b60; color: #f4f6ff; padding: .6rem; font: inherit; cursor: pointer; min-height: 44px; }
+.${ELEMENT_TAG}-project-finish-visit button:disabled { opacity: .5; cursor: default; }
+.${ELEMENT_TAG}-project-finish-visit label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: .5rem; }
+.${ELEMENT_TAG}-project-material > div { display: grid; gap: .4rem; }
 .${ELEMENT_TAG}-project-image { display: grid; gap: .5rem; border-top: 1px solid #425ba1; padding-top: .8rem; }
 .${ELEMENT_TAG}-project-image img { max-width: min(100%, 20rem); aspect-ratio: 3 / 2; object-fit: cover; border-radius: .5rem; }
 .${ELEMENT_TAG}-project-footer { display: flex; justify-content: flex-start; border-top: 1px solid #425ba1; padding-top: .8rem; }

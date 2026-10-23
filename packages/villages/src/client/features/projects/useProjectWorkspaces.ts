@@ -63,25 +63,31 @@ function emptyDraft(snapshot: VillageSnapshot | null): ProjectDraft {
 function seedEstablishedDraft(draft: ProjectDraft, key: string, snapshot: VillageSnapshot | null): ProjectDraft {
   const project = snapshot?.projects.find((entry) => `project:${entry.id}` === key);
   const venue =
-    project?.opening?.established && snapshot?.settings.venues.find((entry) => entry.id === project.venueId);
+    (project?.plan || project?.opening?.established) &&
+    snapshot?.settings.venues.find((entry) => entry.id === project.venueId);
   if (!venue || draft.venueSeeded) return draft;
-  const spaces = structuredClone(venue.spaces ?? []);
-  const privateSpaces = structuredClone(venue.privateSpaces ?? []);
+  const plan = project?.plan;
+  const spaces = structuredClone(plan?.spaces ?? venue.spaces ?? []);
+  const privateSpaces = structuredClone(plan?.privateSpaces ?? venue.privateSpaces ?? []).map((zone) => ({
+    ...zone,
+    ownerId: zone.ownerId ?? "",
+  }));
   return {
     ...draft,
     venueSeeded: true,
-    form: draft.form || venue.form || "",
-    openingVenueType: draft.openingVenueType || venue.venueType || "",
-    exterior: draft.exterior || venue.description,
+    form: draft.form || plan?.form || venue.form || "",
+    openingVenueType: draft.openingVenueType || plan?.venueType || venue.venueType || "",
+    exterior: draft.exterior || plan?.exteriorDescription || venue.description,
     interior: draft.interior || spaces[0]?.description || "",
     openingLayout:
       draft.openingLayout ??
+      plan?.layout ??
       venue.layout ??
       (spaces.length ? (privateSpaces.length ? "both" : "common") : privateSpaces.length ? "private" : "exterior"),
     openingCommonClass: draft.openingCommonClass ?? spaces[0]?.venueClass,
     openingSpaces: draft.openingSpaces.length ? draft.openingSpaces : spaces,
     openingPrivateSpaces: draft.openingPrivateSpaces.length ? draft.openingPrivateSpaces : privateSpaces,
-    exteriorImage: draft.exteriorImage ?? venue.presentation.image,
+    exteriorImage: draft.exteriorImage ?? plan?.exteriorImage ?? venue.presentation.image,
     interiorImage: draft.interiorImage ?? spaces[0]?.image ?? null,
   };
 }
