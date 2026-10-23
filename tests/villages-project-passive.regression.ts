@@ -507,3 +507,79 @@ console.log(
   assert.equal(f.state.projects[0].lifecycle!.deliveries![0].startsAt, job.startsAt);
 }
 console.log("One witnessed offer and delivery commitment records once in either proposal order.");
+
+function arrangeCrowdedSource(f: Awaited<ReturnType<typeof fixture>>, clearsAt = 1440) {
+  const quiet = structuredClone(f.state.venues.find((venue) => venue.id === "stock")!);
+  quiet.id = "quiet";
+  quiet.name = "Quiet";
+  quiet.zones!.push({
+    ...structuredClone(quiet.zones![0]),
+    id: "quiet-yard",
+    kind: "public",
+    name: "Quiet yard",
+    connectedTo: ["exterior"],
+  });
+  f.state.venues.push(quiet);
+  const ordinary = (venueId: string, startMinute = 0, endMinute = 1440) => ({
+    startMinute,
+    endMinute,
+    venueId,
+    zoneId: "exterior",
+    activity: "Free",
+    flexible: true,
+  });
+  for (const person of f.state.villagers) {
+    const agenda = person.agenda!;
+    delete agenda.routineProfile;
+    delete agenda.activeDay;
+    delete agenda.week;
+    agenda.day = [ordinary("quiet")];
+  }
+  for (const id of ["aa", "ab", "ac", "ad"]) {
+    const person = structuredClone(f.state.villagers[0]);
+    person.characterId = id;
+    person.cardSnapshot.id = id;
+    person.agenda!.day = [ordinary("stock", 0, clearsAt), ...(clearsAt < 1440 ? [ordinary("quiet", clearsAt)] : [])];
+    f.state.villagers.push(person);
+  }
+  for (const person of f.state.villagers)
+    person.agenda!.week = Object.fromEntries(
+      ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => [
+        day,
+        person.agenda!.day,
+      ]),
+    );
+}
+{
+  const f = await fixture();
+  await f.agree();
+  arrangeCrowdedSource(f, 660);
+  assignProjectDelivery(
+    f.state,
+    f.state.projects[0],
+    "structure",
+    "b",
+    new ZonedDate("2026-11-02T10:00:00+13:00", f.state.timeZone),
+  );
+  const job = f.state.projects[0].lifecycle!.deliveries![0];
+  assert.equal(
+    new ZonedDate(job.startsAt, f.state.timeZone).getHours(),
+    11,
+    "a full source Zone defers the courier until a place is free",
+  );
+  assert.equal(new ZonedDate(job.startsAt, f.state.timeZone).getMinutes(), 0);
+}
+{
+  const f = await fixture();
+  await f.agree();
+  await f.service.delegateProjectSupply(f.id, { requirementId: "structure", residentId: "b" });
+  const end = f.state.projects[0].lifecycle!.deliveries![0].completesAt;
+  arrangeCrowdedSource(f);
+  reconcileProjectDeliveries(f.state, new ZonedDate(end, f.state.timeZone));
+  assert.equal(f.state.projects[0].lifecycle!.requirements[0].deliveredAt, "");
+  assert.equal(f.state.projectSourceClaims.length, 0);
+  assert.equal(f.state.villagers.find((person) => person.characterId === "b")!.agenda!.projectDelivery, undefined);
+  assert.match(f.state.projects[0].lifecycle!.deliveries![0].blockedReason, /source is unavailable/i);
+  assert.doesNotMatch(f.state.projects[0].lifecycle!.deliveries![0].blockedReason, /\b(?:aa|ab|ac|ad)\b|crowd|four/i);
+}
+console.log("Project deliveries honor source Zone occupancy when assigned and before committing pickup.");

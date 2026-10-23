@@ -4,6 +4,7 @@ import { agendaBlocksFor, flexibleAgendaInterval } from "./agenda-week.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { canOccupyZone, resolveVenueZone, zoneClosed, zoneControllerIds } from "./venue-zones.js";
 import { conflict } from "./errors.js";
+import { zoneActivityFits } from "./venue-presence.js";
 import { progressProject, recordProjectProgress } from "./project-progress.js";
 import { projectDeliveryReserved, projectSupplyKey } from "./project-supply-transfer.js";
 
@@ -38,7 +39,17 @@ export function deliveryProblem(
     !venue ||
     !zone ||
     zoneClosed(state, venue, zone) ||
-    (admission && !canOccupyZone(venue, zone, job.residentId, { at: now, relationships: state.relationshipContext }))
+    (admission &&
+      (!canOccupyZone(venue, zone, job.residentId, { at: now, relationships: state.relationshipContext }) ||
+        !zoneActivityFits(
+          state,
+          [job.residentId],
+          venue.id,
+          zone.id,
+          now.getHours() * 60 + now.getMinutes(),
+          now.getHours() * 60 + now.getMinutes() + 60,
+          now,
+        )))
   )
     return "The source is unavailable to this Villager. Arrange access or a different source.";
   if (source.kind === "resident-offer") {
