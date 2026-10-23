@@ -914,6 +914,7 @@ export type RoomRecollection = {
 };
 
 export type RoomOperation = {
+  turnOutcome?: import("./scene-turn-outcome.js").SceneTurnOutcome;
   recoverable?: boolean;
   id: string;
   kind: string;

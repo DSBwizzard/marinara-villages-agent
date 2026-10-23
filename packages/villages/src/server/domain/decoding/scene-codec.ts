@@ -180,6 +180,26 @@ export function coerceSession(value: unknown): VenueScene {
     ...(raw.villageSeed ? { villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,
+    rejectedSubmissions: Array.isArray(raw.rejectedSubmissions)
+      ? raw.rejectedSubmissions
+          .map(asRecord)
+          .filter(
+            (row) =>
+              typeof row.id === "string" &&
+              row.id.length > 0 &&
+              typeof row.inputHash === "string" &&
+              /^[a-f0-9]{64}$/u.test(row.inputHash) &&
+              Number.isSafeInteger(row.sceneRevision) &&
+              Number(row.sceneRevision) >= 0 &&
+              row.turnOutcome === "occupancy-unavailable",
+          )
+          .map((row) => ({
+            id: String(row.id),
+            inputHash: String(row.inputHash),
+            sceneRevision: Number(row.sceneRevision),
+            turnOutcome: "occupancy-unavailable" as const,
+          }))
+      : [],
     navigationReceipts: Array.isArray(raw.navigationReceipts)
       ? raw.navigationReceipts
           .map(asRecord)

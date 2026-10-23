@@ -138,6 +138,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "playerSpeechCapture",
             "failure",
             "sceneAttendance",
+            "rejectedSubmissions",
             "navigationReceipts",
             "spinoff",
             "accompanying",

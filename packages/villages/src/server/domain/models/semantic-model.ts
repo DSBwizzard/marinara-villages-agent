@@ -36,6 +36,7 @@ export type SemanticIntent = {
 
 /** Interpreter provenance is created by code, never accepted from Narration. */
 export type SemanticExchange = {
+  turnOutcome?: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
   intent?: SemanticIntent;
   checkpointKey: string;
   authority: { physical: boolean; access: boolean; projects: boolean; standing: boolean };

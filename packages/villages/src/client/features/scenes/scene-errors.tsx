@@ -11,15 +11,18 @@ export type SceneErrorItem = {
 };
 
 /** Presentation only. Opening details never starts recovery, replay or generation. */
-export function SceneErrorChip({
+function SceneMessageChip({
   items,
   open,
   onOpen,
+  information = false,
 }: {
   items: SceneErrorItem[];
   open: boolean;
   onOpen: (open: boolean) => void;
+  information?: boolean;
 }) {
+  const label = information ? "Information" : "Scene errors";
   const id = useId();
   const anchor = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -50,6 +53,7 @@ export function SceneErrorChip({
     <div
       ref={anchor}
       className={`${tag}-scene-errors`}
+      data-information={information || undefined}
       onKeyDown={(event) => {
         if (open && event.key === "Escape") {
           event.preventDefault();
@@ -63,26 +67,30 @@ export function SceneErrorChip({
         ref={trigger}
         type="button"
         className={`${tag}-scene-error-trigger`}
-        aria-label={`${items.length} Scene ${items.length === 1 ? "error" : "errors"}`}
+        aria-label={
+          information ? "Scene information" : `${items.length} Scene ${items.length === 1 ? "error" : "errors"}`
+        }
         aria-expanded={open}
         aria-controls={id}
         onClick={() => onOpen(!open)}
       >
         <span className={`${tag}-scene-error-icon`} aria-hidden="true">
-          !
+          {information ? "i" : "!"}
         </span>
         <span aria-hidden="true">{items.length}</span>
       </button>
       <span className={`${tag}-visually-hidden`} role="status">
-        {items.length} Scene {items.length === 1 ? "error" : "errors"}. Open the error chip for details.
+        {information
+          ? "Scene information available."
+          : `${items.length} Scene ${items.length === 1 ? "error" : "errors"}. Open the error chip for details.`}
       </span>
       {open ? (
-        <section id={id} className={`${tag}-scene-error-panel`} aria-label="Scene errors">
+        <section id={id} className={`${tag}-scene-error-panel`} aria-label={label}>
           <div className={`${tag}-scene-error-head`}>
-            <h2>Scene errors · {items.length}</h2>
+            <h2>{information ? label : `${label} · ${items.length}`}</h2>
             <button
               type="button"
-              aria-label="Close Scene errors"
+              aria-label={`Close ${label}`}
               onClick={() => {
                 onOpen(false);
                 trigger.current?.focus();
@@ -91,51 +99,65 @@ export function SceneErrorChip({
               ×
             </button>
           </div>
-          {items.map((item) => (
-            <details key={item.id} className={`${tag}-scene-error-item`}>
-              <summary>
-                <span className={`${tag}-scene-error-icon`} aria-hidden="true">
-                  !
-                </span>
-                <span>{item.title}</span>
-              </summary>
-              <div className={`${tag}-scene-error-detail`}>
-                <p>{sceneErrorMessage(item.message)}</p>
-                {item.fields?.length ? (
-                  <dl>
-                    {item.fields.map((field) => (
-                      <div key={field.label}>
-                        <dt>{field.label}</dt>
-                        <dd>{field.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                ) : null}
-                {item.actions ? <div className={`${tag}-scene-error-actions`}>{item.actions}</div> : null}
-                <button
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard
-                      ?.writeText(
-                        [
-                          item.title,
-                          sceneErrorMessage(item.message),
-                          ...(sceneErrorMessage(item.message) !== item.message
-                            ? [`Original error: ${item.message}`]
-                            : []),
-                          ...(item.fields ?? []).map((field) => `${field.label}: ${field.value}`),
-                        ].join("\n"),
-                      )
-                      .catch(() => {});
-                  }}
-                >
-                  Copy details
-                </button>
-              </div>
-            </details>
-          ))}
+          {information
+            ? items.map((item) => (
+                <div key={item.id} className={`${tag}-scene-error-detail`}>
+                  <p>{item.message}</p>
+                </div>
+              ))
+            : items.map((item) => (
+                <details key={item.id} className={`${tag}-scene-error-item`}>
+                  <summary>
+                    <span className={`${tag}-scene-error-icon`} aria-hidden="true">
+                      !
+                    </span>
+                    <span>{item.title}</span>
+                  </summary>
+                  <div className={`${tag}-scene-error-detail`}>
+                    <p>{sceneErrorMessage(item.message)}</p>
+                    {item.fields?.length ? (
+                      <dl>
+                        {item.fields.map((field) => (
+                          <div key={field.label}>
+                            <dt>{field.label}</dt>
+                            <dd>{field.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
+                    {item.actions ? <div className={`${tag}-scene-error-actions`}>{item.actions}</div> : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard
+                          ?.writeText(
+                            [
+                              item.title,
+                              sceneErrorMessage(item.message),
+                              ...(sceneErrorMessage(item.message) !== item.message
+                                ? [`Original error: ${item.message}`]
+                                : []),
+                              ...(item.fields ?? []).map((field) => `${field.label}: ${field.value}`),
+                            ].join("\n"),
+                          )
+                          .catch(() => {});
+                      }}
+                    >
+                      Copy details
+                    </button>
+                  </div>
+                </details>
+              ))}
         </section>
       ) : null}
     </div>
   );
+}
+
+type SceneChipProps = { items: SceneErrorItem[]; open: boolean; onOpen: (open: boolean) => void };
+export function SceneErrorChip(props: SceneChipProps) {
+  return <SceneMessageChip {...props} />;
+}
+export function SceneInformationChip(props: SceneChipProps) {
+  return <SceneMessageChip {...props} information />;
 }

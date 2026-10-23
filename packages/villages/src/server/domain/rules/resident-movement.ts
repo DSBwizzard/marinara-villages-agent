@@ -5,6 +5,62 @@ import { contactNeighbors, contactPath, contactPosition, type ContactMove } from
 import { venueZones } from "./venue-zones.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
+import { asRecord } from "./coerce.js";
+import type { SemanticIntent } from "../models/semantic-model.js";
+
+/** Private control signal, handled as an expected result before coordinator failure handling. */
+export class UnavailableResidentMovement extends Error {}
+
+/** Bind System's immediate-request nominations; code alone decides mechanical availability. */
+export function residentMovementUnavailable(
+  value: unknown,
+  intent: SemanticIntent,
+  state: VillageState,
+  scene: VenueScene,
+): boolean {
+  const invalid = () => badGateway("System movement request interpretation is incomplete. Your draft is preserved.");
+  if (!Array.isArray(value) || value.length > 8) throw invalid();
+  const venue = state.venues.find((row) => row.id === scene.placeId);
+  if (!venue) throw invalid();
+  const zones = venueZones(sceneLayoutVenue(venue, scene));
+  const residents = sceneResidentIds(scene);
+  const cohorts = new Map<string, Set<string>>();
+  const destinations = new Map<string, string>();
+  for (const entry of value) {
+    const row = asRecord(entry);
+    const source = Number.isSafeInteger(row.source) ? intent.timeline[Number(row.source)] : undefined;
+    if (
+      !source ||
+      !["speech", "action"].includes(source.kind) ||
+      typeof row.zoneId !== "string" ||
+      !zones.some((zone) => zone.id === row.zoneId && (zone.seen || zone.id === scene.zoneId)) ||
+      !Array.isArray(row.characterIds) ||
+      !row.characterIds.length ||
+      row.characterIds.length > residents.length ||
+      new Set(row.characterIds).size !== row.characterIds.length ||
+      row.characterIds.some((id) => typeof id !== "string" || !residents.includes(id))
+    )
+      throw invalid();
+    const cohort = cohorts.get(row.zoneId) ?? new Set<string>();
+    for (const id of row.characterIds as string[]) {
+      if (destinations.has(id) && destinations.get(id) !== row.zoneId) throw invalid();
+      destinations.set(id, row.zoneId);
+      if (contactPosition(scene, id) !== row.zoneId) cohort.add(id);
+    }
+    cohorts.set(row.zoneId, cohort);
+  }
+  for (const [zoneId, cohort] of cohorts) {
+    const ids = [...cohort];
+    if (!ids.length) continue;
+    const options = residentMovementOptions(state, venue, scene, ids);
+    const allowed =
+      ids.length === 1
+        ? options.destinations[0]?.zoneIds.includes(zoneId)
+        : options.groups.some((group) => group.characterIds.length === ids.length && group.zoneIds.includes(zoneId));
+    if (!allowed) return true;
+  }
+  return false;
+}
 
 function sceneResidentIds(scene: VenueScene): string[] {
   return [
@@ -121,7 +177,7 @@ export function residentMovementPrompt(
     );
     const bounded = !scene.operation || scene.operation.input.castLimitVersion === 1;
     const options = bounded ? residentMovementOptions(state, venue, scene, ids) : undefined;
-    return `${options ? `Known recorded Zones: ${JSON.stringify(options.zones)}. These names ground recorded destinations; omission is not proof that a door or fictional space does not exist. Do not replace a known connected Zone with a wall or a different room.\n` : ""}Resident movement destinations: ${JSON.stringify(options?.destinations ?? destinations)}. ${options ? `Complete selected crossing cohorts: ${JSON.stringify(options.cohorts)}. Each result applies only when that exact cohort is requested; canCrossTogether:false means none of that requested cohort crosses this reply. Smaller crossing choices, only for explicitly requested smaller groups: ${JSON.stringify(options.groups)}. Private movement planning only: a maximum of four villagers per Zone; the player uses no villager slot. Individual choices do not authorize a combined move: every multi-resident crossing into one destination must fit a listed group. Count only residents changing Zones, not those already there. Determine the requested movers first, then check that exact group. A listed smaller group is usable only when that smaller group was requested; never choose it as a fallback for a larger request. If the requested whole group has no listed choice, nobody in that group crosses in this reply, including in separate segments. Keep them in place and respond naturally; do not invent an access refusal or promise an impossible crossing. Missing choices reveal no reason, occupant, headcount or interior. Never turn these private constraints into character knowledge, dialogue explanations or memory evidence. A resident can decline or wait for an established reason.\n` : ""}ALREADY in player Zone ${origin}: ${JSON.stringify(local)}. Continue captured positions; never stage these residents arriving from a kitchen, doorway or other Zone. Same-Zone steps/seating need no metadata. ${doorway.length ? `Actual remote doorway speakers ${JSON.stringify(doorway)} may willingly enter or remain remote.` : "No doorway arrival is required."} Others stay offstage unless a completed permitted crossing brings them here. contactMoves only for a DIFFERENT listed destination; no player movement/access is granted.`;
+    return `${options ? `Known recorded Zones: ${JSON.stringify(options.zones)}. These names ground recorded destinations; omission is not proof that a door or fictional space does not exist. Do not replace a known connected Zone with a wall or a different room.\n` : ""}Resident movement destinations: ${JSON.stringify(options?.destinations ?? destinations)}. ${options ? `Complete selected crossing cohorts: ${JSON.stringify(options.cohorts)}. Each result applies only when that exact cohort is requested; canCrossTogether:false means none of that requested cohort crosses this reply. Smaller crossing choices, only for explicitly requested smaller groups: ${JSON.stringify(options.groups)}. Private movement planning only: a maximum of four villagers per Zone; the player uses no villager slot. Individual choices do not authorize a combined move: every multi-resident crossing into one destination must fit a listed group. Count only residents changing Zones, not those already there. Determine the requested movers first, then check that exact group. A listed smaller group is usable only when that smaller group was requested; never choose it as a fallback for a larger request. If the requested whole group has no listed choice, nobody in that group crosses in this reply, including in separate segments. Keep them in place and respond naturally; do not invent an access refusal or promise an impossible crossing. Missing choices reveal no reason, occupant, headcount or interior. Never turn these private constraints into character knowledge, dialogue explanations or memory evidence. A resident can decline or wait for an established reason. When a resident willingly accepts a permitted immediate crossing, complete it in this reply rather than repeatedly preparing or promising. Ordinary future plans remain plans.\n` : ""}ALREADY in player Zone ${origin}: ${JSON.stringify(local)}. Continue captured positions; never stage these residents arriving from a kitchen, doorway or other Zone. Same-Zone steps/seating need no metadata. ${doorway.length ? `Actual remote doorway speakers ${JSON.stringify(doorway)} may willingly enter or remain remote.` : "No doorway arrival is required."} Others stay offstage unless a completed permitted crossing brings them here. contactMoves only for a DIFFERENT listed destination; no player movement/access is granted.`;
   }
   return `Resident movement: ${JSON.stringify(destinations)}. A willing resident continuing an in-person doorway conversation normally steps into the player's Zone (${scene.zoneId}). They may instead explicitly stay inside, decline, or speak remotely. Opening a door alone is not movement. Residents already here may stay or willingly return to another permitted Zone during this reply. Return contactMoves:[{characterId,zoneId,segment,quote}] only for a completed voluntary move. segment is the zero-based visible narration segment describing that resident crossing into the exact destination; quote is the exact completed-movement narration, naming the resident. No ceremonial spoken agreement is required. One move per resident per reply. Dialogue after that segment uses the new position; earlier words are never retroactively heard. Narrate only movement visible from the player's Zone, not unseen journeys or destination interiors. Do not narrate a crossing without matching movement metadata. Movement never grants player access or moves the player.`;
 }

@@ -140,6 +140,7 @@ const records = new Map<string, any>([
 ]);
 let failedSaveId = "";
 let saveFault: "before" | "after" | "" = "";
+let saveFaultStage: "submission" | "rejection" = "submission";
 const documents = {
   getById: async (_package: string, id: string) => clone(records.get(id) ?? null),
   list: async (_package: string, kind: string) => [...records.values()].filter((row) => row.kind === kind).map(clone),
@@ -157,8 +158,12 @@ const documents = {
       failedSaveId &&
       saveFault &&
       input.id === "villages-venue-visit-" + scene.id &&
-      row.data.submissions?.some((turn: any) => turn.id === failedSaveId) &&
-      !prior.data.submissions?.some((turn: any) => turn.id === failedSaveId)
+      (saveFaultStage === "rejection" ? row.data.rejectedSubmissions : row.data.submissions)?.some(
+        (turn: any) => turn.id === failedSaveId,
+      ) &&
+      !(saveFaultStage === "rejection" ? prior.data.rejectedSubmissions : prior.data.submissions)?.some(
+        (turn: any) => turn.id === failedSaveId,
+      )
         ? saveFault
         : "";
     if (fault) saveFault = "";
@@ -180,6 +185,7 @@ let narrationCalls = 0;
 const narrationPrompts: string[] = [];
 let semanticIntentAnswer: Record<string, unknown> | undefined;
 let semanticExchangeAnswer: Record<string, unknown> | undefined;
+let beforeSemanticResponse: (() => void) | undefined;
 const semanticStages: string[] = [];
 const model = {
   connectionId: "synthetic",
@@ -204,7 +210,14 @@ const model = {
       const packet = JSON.parse(messages[1].content);
       const intent = messages[0].content.includes("Interpret current player intent");
       semanticStages.push(intent ? "intent" : "exchange");
-      const response = intent ? semanticIntentAnswer : { ...semanticExchangeAnswer, intent: semanticIntentAnswer };
+      if (!intent && beforeSemanticResponse) {
+        const intervene = beforeSemanticResponse;
+        beforeSemanticResponse = undefined;
+        intervene();
+      }
+      const response = intent
+        ? semanticIntentAnswer
+        : { immediateResidentMoves: [], ...semanticExchangeAnswer, intent: semanticIntentAnswer };
       assert(response, "A labeled System response is required");
       // The fixture supplies meaning explicitly; System discovers these omitted Narration actions.
       const accessActions = ((response as any).access ?? []).map(({ evidence, ...row }: any, index: number) => ({
@@ -1691,6 +1704,182 @@ try {
   ]);
   assert.equal(state().zoneId, "terrace");
   assert.deepEqual(state().submissions.at(-1).semanticPlayerMoves, []);
+
+  // The whole mixed submission is an expected rejection, before consistency/effect review.
+  {
+    const retained = clone(records),
+      oldIntent = clone(semanticIntentAnswer),
+      oldExchange = clone(semanticExchangeAnswer);
+    const blocked = coerceSession({ ...clone(scene), semanticVersion: 2, sceneRevision: 0 });
+    blocked.sceneAttendance!.occupants.find((row) => row.characterId === "distant")!.zoneId = "kitchen";
+    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen = true;
+    records.get("villages-venue-visit-" + scene.id).data = blocked;
+    const mixed = '"Aqua and Feddy, come into the Kitchen now." *folds the cloth*';
+    semanticIntentAnswer = {
+      status: "resolved",
+      instructions: "",
+      action: null,
+      movement: null,
+      timeline: [
+        { kind: "speech", text: "Aqua and Feddy, come into the Kitchen now." },
+        { kind: "action", text: "*folds the cloth*" },
+      ],
+    };
+    semanticExchangeAnswer = {
+      consistent: false,
+      reason: "Draft promises an impossible crossing.",
+      immediateResidentMoves: [{ characterIds: ["aqua", "feddy"], zoneId: "kitchen", source: 0 }],
+      authority: { physical: true, access: true, projects: true, standing: true },
+      action: { invalid: "must never be applied" },
+      access: [{ invalid: "must never be applied", evidence: [1] }],
+      events: { moves: [{ characterId: "aqua", zoneId: "kitchen", segment: 2 }] },
+      memoryChanges: [{ invalid: "must never become a memory" }],
+    };
+    answer = {
+      playerSpeechCapture: {
+        status: "captured",
+        segments: [{ segment: 0, sources: [{ text: "Aqua and Feddy, come into the Kitchen now.", occurrence: 1 }] }],
+      },
+      segments: [
+        { speakerId: "player", text: "Aqua and Feddy, come into the Kitchen now." },
+        { speakerId: "aqua", text: "I'm coming." },
+      ],
+    };
+    // Kitchen has two occupants: add one more captured passive resident, leaving one slot.
+    blocked.sceneAttendance!.occupants.push({
+      ...clone(blocked.sceneAttendance!.occupants[2]),
+      characterId: "passive",
+      name: "Passive witness",
+    });
+    const fictional = () =>
+      clone({
+        lines: state().lines,
+        submissions: state().submissions,
+        heardHistory: state().heardHistory,
+        accompanying: state().accompanying,
+        attendance: state().sceneAttendance,
+        revision: state().sceneRevision,
+      });
+    const beforeFiction = fictional(),
+      beforeWorld = clone(records.get("villages-village"));
+    const payload = {
+      sessionId: scene.id,
+      submissionId: "occupancy-unavailable",
+      message: mixed,
+      mode: "act",
+      targetId: "",
+      expectedSceneRevision: 0,
+    };
+    const beforeCalls = modelCalls;
+    const result = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(result.json().turnOutcome, "occupancy-unavailable");
+    assert.equal(result.json().session.operation.status, "complete");
+    assert.equal(result.json().session.operation.error, "");
+    assert.equal(result.json().session.operation.input.message, mixed, "reload can restore the player's own draft");
+    assert(!result.body.includes("rejectedSubmissions"));
+    assert(!result.body.includes("passive"), "private attendance does not explain occupancy");
+    assert.equal(modelCalls, beforeCalls + 2, "only the existing writer and System exchange are used");
+    assert.deepEqual(fictional(), beforeFiction, "mixed input and generated reaction add no fictional state");
+    assert.deepEqual(
+      records.get("villages-village").data,
+      beforeWorld.data,
+      "no world, memory, access or physical effect",
+    );
+    const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(replay.json().turnOutcome, "occupancy-unavailable");
+    assert.equal(modelCalls, beforeCalls + 2);
+    const mismatch = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: { ...payload, message: "Different request" },
+    });
+    assert.equal(mismatch.statusCode, 409);
+
+    // Lost storage acknowledgements on either side of the receipt cannot cause new provider work.
+    saveFaultStage = "rejection";
+    for (const fault of ["before", "after"] as const) {
+      failedSaveId = "occupancy-fault-" + fault;
+      saveFault = fault;
+      const faultPayload = { ...payload, submissionId: failedSaveId };
+      const failed = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: faultPayload });
+      assert.equal(failed.statusCode, 500, failed.body);
+      const savedCalls = modelCalls;
+      if (fault === "after") {
+        const read = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+        assert.equal(
+          read.json().session.operation.status,
+          "complete",
+          "a durable unavailable receipt is terminal on reload",
+        );
+        assert.equal(read.json().session.operation.turnOutcome, "occupancy-unavailable");
+        const edited = await app.inject({
+          method: "POST",
+          url: "/api/villages/rooms/turn",
+          payload: { ...payload, submissionId: "occupancy-edited-before-cleanup" },
+        });
+        assert.equal(edited.statusCode, 200, edited.body);
+        assert.equal(
+          edited.json().turnOutcome,
+          "occupancy-unavailable",
+          "an edited Send is not stuck behind receipt cleanup",
+        );
+      }
+      await stop?.();
+      await app.close();
+      app = Fastify();
+      await start();
+      const recovered = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: { ...faultPayload, retryOfAttemptId: state().operation.attemptId },
+      });
+      assert.equal(recovered.statusCode, 200, recovered.body);
+      assert.equal(recovered.json().turnOutcome, "occupancy-unavailable");
+      assert.equal(state().operation.status, "complete");
+      assert.equal(
+        modelCalls,
+        savedCalls + (fault === "after" ? 2 : 0),
+        "recovery uses the saved semantic result or receipt",
+      );
+      assert.deepEqual(fictional(), beforeFiction);
+    }
+    saveFaultStage = "submission";
+    failedSaveId = "";
+    const oldId = payload.submissionId;
+    const history = await app.inject({ method: "GET", url: `/api/villages/rooms/${scene.id}/operations/${oldId}` });
+    assert.equal(
+      history.json().operation.turnOutcome,
+      "occupancy-unavailable",
+      "a newer operation cannot hide a rejected result",
+    );
+    assert.equal(history.json().operation.input, null, "historical receipt stores no discarded dialogue");
+    const callsBeforeHistoricalReplay = modelCalls;
+    const historicalReplay = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(historicalReplay.statusCode, 200, historicalReplay.body);
+    assert.equal(historicalReplay.json().turnOutcome, "occupancy-unavailable");
+    assert.equal(modelCalls, callsBeforeHistoricalReplay, "superseded rejected IDs never regenerate");
+    const receiptsBeforeStale = clone(state().rejectedSubmissions);
+    beforeSemanticResponse = () => {
+      state().sceneRevision++;
+    };
+    const stale = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: { ...payload, submissionId: "occupancy-stale" },
+    });
+    assert.equal(stale.statusCode, 409, stale.body);
+    assert.deepEqual(
+      state().rejectedSubmissions,
+      receiptsBeforeStale,
+      "stale owners cannot save an unavailable receipt",
+    );
+    records.clear();
+    for (const [key, record] of retained) records.set(key, record);
+    semanticIntentAnswer = oldIntent;
+    semanticExchangeAnswer = oldExchange;
+  }
 
   const afterMovePhysical = {
     ...physical,

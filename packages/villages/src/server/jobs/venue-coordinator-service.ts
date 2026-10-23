@@ -544,6 +544,17 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         if (spinoffLocksScene(data.spinoff as import("../domain/models/spinoff-model.js").VillageSpinoff | undefined))
           throw venueRefusal("SCENE_BUSY", "Finish or discard your spinoff before continuing in Villages.");
         const prior = data.operation as VenueOperation | undefined;
+        // A durable business result survives a crash before coordinator cleanup.
+        // It cannot keep a later edited submission behind an interrupted request.
+        if (
+          prior &&
+          prior.id !== id &&
+          (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.some((receipt) => receipt.id === prior.id)
+        ) {
+          prior.status = "complete";
+          prior.error = "";
+          prior.turnOutcome = "occupancy-unavailable";
+        }
         if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
           throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
         let abandoned: VenueOperation | undefined;
@@ -617,7 +628,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           (prior.status !== "complete" || rejectedTerminal) &&
           prior.sceneRevision !== sceneRevision(data) &&
           !(data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === id) &&
-          !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
+          !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id) &&
+          !(data.rejectedSubmissions as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
         )
           throw venueRefusal("SCENE_STALE", "The Scene changed after generation. Saved results are preserved.");
         if (prior?.id === id && (prior.status !== "complete" || rejectedTerminal)) {
@@ -691,6 +703,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           try {
             const result = await work();
             assertVenueOwnership();
+            if (asRecord(result).turnOutcome === "occupancy-unavailable")
+              operation.turnOutcome = "occupancy-unavailable";
             if (current.blocked.size)
               throw venueRefusal(
                 "OPERATION_INTERRUPTED",
@@ -840,6 +854,17 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     if (!record) throw new VillagesRequestError(404, "That Scene is no longer available.");
     const data = record.data as Record<string, unknown>;
     const operation = data.operation as VenueOperation | undefined;
+    const rejected = (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.find(
+      (row) => row.id === (operationId ?? operation?.id),
+    );
+    if (rejected)
+      return {
+        id: rejected.id,
+        status: "complete" as const,
+        kind: "turn",
+        turnOutcome: rejected.turnOutcome,
+        input: operation?.id === rejected.id ? operation.input : null,
+      };
     if (operationId && operation?.id !== operationId) {
       const saved =
         (data.submissions as { id: string }[] | undefined)?.some((item) => item.id === operationId) ||
