@@ -125,7 +125,7 @@ export async function currentScenePrompt(
     "appearance",
     "postHistoryInstructions",
   ] as const) {
-    if (card[field]?.trim())
+    if (result.audience.includes(card.id) && card[field]?.trim())
       assert.ok(prompt.includes(card[field].trim()), `the actual Scene writer includes authored ${field}`);
   }
   if (mode === "chat")

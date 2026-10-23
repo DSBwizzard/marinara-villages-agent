@@ -177,6 +177,37 @@ for (const context of [
     "the actual writer refreshes positions on arrival and movement, including legacy writing contracts",
   );
 }
+const empty = {
+  ...scene,
+  zoneId: "exterior",
+  area: "outside" as const,
+  activeIds: [],
+  participants: [],
+  sceneAttendance: { ...scene.sceneAttendance!, occupants: [] },
+  lines: [{ ...scene.lines[0], content: 'A message appears on the laptop: "one minute".' }],
+  contactGeneration: { ...scene.contactGeneration!, localIds: [], remoteIds: [], actorIds: [] },
+};
+for (const mode of ["greet", "chat", "leave"] as const) {
+  const prompt = await currentScenePrompt(world, card, mode, mode === "greet" ? "" : '"Mari?"', empty, {
+    interactionScopeVersion: 6,
+    writingContractVersion: 3,
+    semanticPipelineVersion: 3,
+    writingCapabilities: {
+      movement: false,
+      management: false,
+      residences: false,
+      residenceDecision: false,
+      editApproval: false,
+    },
+  });
+  assert.deepEqual(JSON.parse(prompt.split(marker)[1].split("\n")[0]).residents, []);
+  assert(!prompt.includes(card.description), "an absent resident's profile cannot supply an invented response");
+  const guard = prompt.indexOf("No resident is available in the supplied Scene cast.");
+  assert(guard > prompt.indexOf(marker), "empty-cast guidance follows the authoritative physical state");
+  if (mode !== "greet")
+    assert(guard > prompt.indexOf(empty.lines[0].content), "misleading old narration cannot override the empty cast");
+  assert.doesNotMatch(prompt, /HIDDEN ROOM NAME|HIDDEN OCCUPANT|HIDDEN ACTIVITY/);
+}
 console.log(
   "Scene writing locations match captured/current positions across doorway contact, movement and reload without revealing unseen rooms or occupants (provider-free).",
 );
