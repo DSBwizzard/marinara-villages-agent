@@ -26,6 +26,7 @@ import { sceneWritingHistory } from "../../domain/rules/scene-writing-history.js
 import { applyAcousticWitnesses } from "../../domain/rules/acoustic-witnesses.js";
 import {
   routeZoneEvents,
+  InvalidNarratedSound,
   zoneEventScene,
   zoneEventReply,
   zoneEventHearingContext,
@@ -808,6 +809,10 @@ export function createSceneWriting({
           JSON.stringify(sceneLocationContext(session, storedPlace, audience)) +
           "\nThese current positions include validated movement and override card scenarios, older narration and conversational assumptions. A Venue name is not a room or proof of co-location. Residents apart from the player remain remote until a completed permitted crossing; do not stage them sharing a table, exchanging objects or making visible gestures here. An invitation or request to join establishes no movement. Continue naturally from the recorded positions without replaying arrival. Private routing context must not disclose unseen rooms, occupants or activity.",
       });
+    if (!audience.length)
+      blocks.push({
+        text: "No resident is available in the supplied Scene cast. Continue with observable surroundings and the player's own actions only. Do not invent an unseen person, incoming messages on a screen/device, or human activity/noises to imply someone is listening or answering. A name in the Venue title, player input or earlier narration does not establish presence. Do not continue an unsupported implied conversation from earlier narration.",
+      });
     blocks.push({
       text: "Only the player's explicit Move action changes their Zone. Act/Do and conversation remain in the current Zone. Walking toward furniture or people here is an ordinary local action. Never narrate the player crossing into another Zone, following a villager across Zones, or accepting entry automatically. Villager movement remains subject to access; presence does not confer housing residency or permission.",
     });
@@ -1232,8 +1237,20 @@ export function createSceneWriting({
         }
       }
       const playerMoves = semanticResult ? semanticPlayerMoves(raw?.semanticPlayerMoves, session, parsed.lines) : [];
-      if (session.contactGeneration?.zoneEvents && eventRaw)
-        routeZoneEvents(eventRaw, session, parsed, contactMoves, playerMoves);
+      if (session.contactGeneration?.zoneEvents && eventRaw) {
+        try {
+          routeZoneEvents(eventRaw, session, parsed, contactMoves, playerMoves);
+        } catch (cause) {
+          if (cause instanceof InvalidNarratedSound)
+            await rejectVenueCompletion(
+              { model: model.model, connectionId: model.connectionId, reason: "invalid-narrated-sound" },
+              writingVersion === 3
+                ? { preserveWriting: true, stages: ["writing-completion:" + requestKey] }
+                : undefined,
+            );
+          throw cause;
+        }
+      }
       const physicalContext =
         semanticResult && raw?.sceneChange
           ? semanticPhysicalContext(raw.sceneChange, parsed.lines, session)

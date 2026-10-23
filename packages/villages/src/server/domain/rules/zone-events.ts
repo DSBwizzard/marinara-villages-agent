@@ -1,10 +1,17 @@
 import type { VenueLine, VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { badGateway } from "./errors.js";
+import { badGateway, VillagesRequestError } from "./errors.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
+
+/** Invalid writer metadata, independent of System's movement interpretation. */
+export class InvalidNarratedSound extends VillagesRequestError {
+  constructor() {
+    super(502, "The reply used an invalid narrated sound. Your draft is preserved.");
+  }
+}
 
 /** One Scene writer resolves events. Code owns their sources and audiences. */
 export function zoneEventScene(
@@ -305,7 +312,7 @@ export function routeZoneEvents(
           sourceId !== "player" &&
           (!ids.includes(sourceId) || !sources.includes(sourceId)))
       )
-        throw badGateway("The reply used an invalid narrated sound. Your draft is preserved.");
+        throw new InvalidNarratedSound();
       // Narrator-tagged ambience stays ordinary local prose, even with loud:true.
       // It has no actor position and cannot grant remote hearing or evidence.
       if (sourceId !== "__venue_scene__") {
