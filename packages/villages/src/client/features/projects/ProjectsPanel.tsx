@@ -439,14 +439,46 @@ export function ProjectsPanelV2({
     )?.focus();
     setOpeningFocusArea(undefined);
   }, [openingFocusArea, openingLayout]);
-  if (project && phase === "finishing" && finishingVisit)
+  if (project?.kind === "new-venue" && finishingVisit && phase === "finishing")
+    return (
+      <div className={ELEMENT_TAG + "-project-finish-visit"}>
+        <button type="button" className={ELEMENT_TAG + "-button"} onClick={() => setFinishingVisit(false)}>
+          Back to Project
+        </button>
+        <h2>Review {project.title}</h2>
+        <p>{project.plan?.form}</p>
+        <p>{project.plan?.exteriorDescription}</p>
+        {flow?.blockedReason ? <p role="status">{flow.blockedReason}</p> : null}
+        <button
+          type="button"
+          className={ELEMENT_TAG + "-button"}
+          disabled={busy}
+          onClick={async () => {
+            if (await action("open")) setFinishingVisit(false);
+          }}
+        >
+          Retry completion
+        </button>
+        {error ? (
+          <p className={ELEMENT_TAG + "-error"} role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
+  if (
+    project &&
+    finishingVisit &&
+    (phase === "finishing" ||
+      (project.kind === "new-venue" && ["builder", "requirements", "materials"].includes(phase ?? "")))
+  )
     return (
       <div className={`${ELEMENT_TAG}-project-finish-visit`} ref={openingEditors}>
         <header>
           <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setFinishingVisit(false)}>
             Back to Project
           </button>
-          <h2>{project.kind === "new-venue" ? `Open ${project.title}` : `Review ${project.title}`}</h2>
+          <h2>{project.kind === "new-venue" ? `Plan ${project.title}` : `Review ${project.title}`}</h2>
         </header>
         {project.kind === "renovation" ? (
           <button
@@ -617,7 +649,7 @@ export function ProjectsPanelV2({
             await openVenue();
           }}
         >
-          Open Venue
+          {phase !== "finishing" ? "Save plan" : "Retry completion"}
         </button>
         {error ? (
           <p className={`${ELEMENT_TAG}-error`} role="alert">
@@ -1125,6 +1157,34 @@ export function ProjectsPanelV2({
                     busy={busy}
                   />
                 ) : null}
+                {project.kind === "renovation" && ["builder", "requirements", "materials"].includes(phase ?? "") ? (
+                  <button
+                    type="button"
+                    className={ELEMENT_TAG + "-button"}
+                    disabled={busy}
+                    onClick={() => void action("renew-approvals")}
+                  >
+                    Refresh affected approvals
+                  </button>
+                ) : null}
+                {project.kind === "new-venue" && ["builder", "requirements", "materials"].includes(phase ?? "") ? (
+                  <>
+                    <h3>Venue design</h3>
+                    {project.plan ? (
+                      <p>
+                        {project.plan.form} · {project.plan.layout}
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={ELEMENT_TAG + "-button"}
+                      disabled={busy}
+                      onClick={() => setFinishingVisit(true)}
+                    >
+                      {project.plan ? "Edit design" : "Define design"}
+                    </button>
+                  </>
+                ) : null}
                 {phase === "concept" ? (
                   <>
                     <h3>Choose a site</h3>
@@ -1304,6 +1364,46 @@ export function ProjectsPanelV2({
                               )}
                             </>
                           ) : null}
+                          {(flow.deliveries ?? [])
+                            .filter((job) => job.requirementId === entry.id && !job.completedAt)
+                            .map((job) => (
+                              <div key={job.evidenceId}>
+                                <span>
+                                  {snapshot.villagers.find((person) => person.characterId === job.residentId)?.name ??
+                                    "Villager"}
+                                  {job.startsAt
+                                    ? " · Expected " +
+                                      new Date(job.completesAt).toLocaleString(undefined, {
+                                        timeZone: snapshot.village.timeZone,
+                                        dateStyle: "medium",
+                                        timeStyle: "short",
+                                      })
+                                    : " · Agreed to deliver"}
+                                </span>
+                                {job.blockedReason ? <p role="status">{job.blockedReason}</p> : null}
+                                {!job.startsAt ? (
+                                  <button
+                                    type="button"
+                                    className={ELEMENT_TAG + "-button"}
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void action("delegate", { requirementId: entry.id, residentId: job.residentId })
+                                    }
+                                  >
+                                    Assign delivery
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={ELEMENT_TAG + "-button"}
+                                    disabled={busy}
+                                    onClick={() => void action("cancel-delivery", { requirementId: entry.id })}
+                                  >
+                                    Cancel delivery
+                                  </button>
+                                )}
+                              </div>
+                            ))}
                           {entry.carriedAt && !entry.deliveredAt && siteProjectId === project.id ? (
                             <button
                               type="button"
@@ -1375,10 +1475,11 @@ export function ProjectsPanelV2({
                 ) : null}
                 {phase === "finishing" ? (
                   <>
-                    <h3>Work complete</h3>
+                    <h3>Completion needs attention</h3>
+                    {flow?.blockedReason ? <p role="status">{flow.blockedReason}</p> : null}
 
                     <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setFinishingVisit(true)}>
-                      Visit finished Venue
+                      Review completion
                     </button>
                   </>
                 ) : null}

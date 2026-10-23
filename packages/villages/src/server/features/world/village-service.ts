@@ -54,6 +54,7 @@ import type { buildVillageSnapshot } from "./snapshot.js";
 import type { readVillageState, mutateVillageState } from "./village-store.js";
 
 export interface WorldCoordinationPorts {
+  processProjectWishOutbox?: typeof import("../residents/wishes/wish-progress.js").processProjectWishOutbox;
   readScene?: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
@@ -80,6 +81,7 @@ export interface WorldCoordinationPorts {
 
 /** Owns world advancement and history connections. Construction never reads, writes or dispatches work. */
 export function createWorldCoordination({
+  processProjectWishOutbox,
   readScene,
   readVillageState,
   mutateVillageState,
@@ -170,6 +172,7 @@ export function createWorldCoordination({
     await mutateVillageState((state) => {
       reconcileProjectLifecycles(state, now);
     });
+    await processProjectWishOutbox?.();
     recorded = await readVillageState();
     const moment = deriveVillageMoment({
       foundedAt: recorded.foundedAt,

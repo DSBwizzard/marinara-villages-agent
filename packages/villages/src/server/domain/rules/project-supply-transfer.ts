@@ -24,6 +24,46 @@ export function readProjectSupplyTransfer(value: unknown): ProjectSupplyTransfer
   };
 }
 
+export function projectSupplyKey(source: {
+  kind: string;
+  venueId: string;
+  zoneId?: string;
+  supplierId: string;
+  itemName: string;
+}): string {
+  return source.kind === "resident-offer"
+    ? projectSourceClaimKey(source.venueId, source.supplierId, source.itemName)
+    : ["recorded-stock", source.venueId, source.zoneId ?? "exterior", source.itemName.trim().toLocaleLowerCase()].join(
+        "\u0000",
+      );
+}
+export function projectDeliveryReserved(
+  state: Pick<VillageState, "projects">,
+  venueId: string,
+  zoneId: string | undefined,
+  supplierId: string,
+  itemName: string,
+): boolean {
+  const key = projectSupplyKey({
+    kind: supplierId ? "resident-offer" : "existing-item",
+    venueId,
+    zoneId,
+    supplierId,
+    itemName,
+  });
+  return state.projects.some((project) =>
+    project.lifecycle?.deliveries?.some(
+      (delivery) =>
+        delivery.startsAt &&
+        !delivery.completedAt &&
+        !delivery.blockedReason &&
+        project.lifecycle?.sources.some(
+          (source) => source.evidenceId === delivery.sourceId && projectSupplyKey(source) === key,
+        ),
+    ),
+  );
+}
+
 /** An offer authorizes no stock. These are the finite sources eligible for a separately witnessed transfer. */
 export function availableProjectSupplyTransfers(
   state: VillageState,
@@ -52,6 +92,7 @@ export function availableProjectSupplyTransfers(
       if (
         !requirement ||
         source.kind !== "resident-offer" ||
+        projectDeliveryReserved(state, source.venueId, source.zoneId, source.supplierId, source.itemName) ||
         source.acquiredAt ||
         source.venueId !== venueId ||
         (source.zoneId && source.zoneId !== zoneId) ||

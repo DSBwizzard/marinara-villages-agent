@@ -1,5 +1,6 @@
 import type { ProjectSupplyTransfer } from "../models/venue-action-model.js";
 import {
+  projectDeliveryReserved,
   availableProjectSupplyTransfers,
   readProjectSupplyTransfer,
   sameProjectSupplyTransfer,
@@ -161,6 +162,8 @@ export function applyVenueSceneChange(
 ): void {
   const venue = state.venues.find((place) => place.id === placeId);
   if (!venue) throw conflict("That place is no longer in the village.");
+  if (change.removeItem && projectDeliveryReserved(state, placeId, zoneId, "", change.removeItem))
+    throw conflict("That supply is reserved for an assigned Project delivery.");
   if (change.projectSupplyTransfer) {
     const transfer = change.projectSupplyTransfer;
     if (

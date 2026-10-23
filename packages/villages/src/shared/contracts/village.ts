@@ -255,6 +255,18 @@ export type VenueRequest = {
 };
 
 export type BuildProject = {
+  plan?: {
+    form: string;
+    venueType: string;
+    exteriorDescription: string;
+    imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };
+    layoutVersion: 1;
+    layout: "exterior" | "common" | "private" | "both";
+    spaces: NonNullable<VillageVenue["zones"]>;
+    privateSpaces: NonNullable<VillageVenue["zones"]>;
+    exteriorImage: VillageVenueImage | null;
+  };
+
   opening?: {
     version: 1;
     established: boolean;
@@ -293,6 +305,18 @@ export type BuildProject = {
     affectedIds: string[];
     approvals: { residentId: string; source: "conversation" | "mailbox" }[];
     candidates: { residentId: string }[];
+    deliveries?: {
+      requirementId: string;
+      residentId: string;
+      sourceId: string;
+      revision: number;
+      evidenceId: string;
+      agreedAt: string;
+      startsAt: string;
+      completesAt: string;
+      completedAt: string;
+      blockedReason: string;
+    }[];
     builderId: string;
     requirements: {
       id: string;

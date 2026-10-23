@@ -1,15 +1,9 @@
-import type {
-  VillageProject,
-  VillageProjectLifecycle,
-  VillageState,
-  VillageVenue,
-  VillageVenueImage,
-} from "../models/world.js";
-import { asRecord, asTrimmedString } from "./coerce.js";
+import { reconcileProjectDeliveries } from "./project-deliveries.js";
+import { completeProject } from "./project-completion.js";
+export { validImage, renovationAffectedIds } from "./project-terms.js";
+import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import { conflict, notFound } from "./errors.js";
 import { projectProgressPhase, recordProjectProgress } from "./project-progress.js";
-import { venueResidentIds } from "./venue-model.js";
-import { venueZones } from "./venue-zones.js";
 
 export function active(state: VillageState, kind: "new-venue" | "renovation"): boolean {
   return state.projects.some(
@@ -41,6 +35,7 @@ export function lifecycle(
     affectedIds,
     approvals: [],
     candidates: [],
+    deliveries: [],
     builderId: "",
     requirements: [],
     requirementsEvidenceId: "",
@@ -125,16 +120,10 @@ export function finishConstruction(
   if (builder?.agenda?.projectWork?.projectId === project.id) delete builder.agenda.projectWork;
 }
 
-export function validImage(value: unknown): VillageVenueImage | null {
-  const row = asRecord(value);
-  const ref = asTrimmedString(row.ref),
-    url = asTrimmedString(row.url),
-    id = asTrimmedString(row.id);
-  return /^global-gallery:[^\s]{1,200}$/u.test(ref) && url.startsWith("/") && id ? { ref, url, id } : null;
-}
-
 export function reconcileProjectLifecycles(state: VillageState, now: Date): void {
-  for (const entry of state.projects) {
+  reconcileProjectDeliveries(state, now);
+  for (const id of state.projects.map((project) => project.id)) {
+    const entry = state.projects.find((project) => project.id === id)!;
     if (!entry.lifecycle || entry.lifecycle.phase !== "construction") continue;
     const project = entry as VillageProject & { lifecycle: VillageProjectLifecycle };
     const flow = project.lifecycle;
@@ -148,19 +137,32 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
       flow.blockedReason = "The Builder left. Choose another willing Villager to finish the work.";
       continue;
     }
+    if (flow.workOrder && !flow.workOrder.pausedAt && builder.agenda.projectWork?.projectId !== project.id) {
+      flow.workOrder.remainingMs = Math.max(0, Date.parse(flow.workOrder.completesAt) - now.getTime());
+      flow.workOrder.pausedAt = now.toISOString();
+      project.status = "blocked";
+      flow.blockedReason = "The Builder's work assignment changed. Choose a willing available Builder.";
+      continue;
+    }
     if (flow.workOrder && !flow.workOrder.pausedAt && Date.parse(flow.workOrder.completesAt) <= now.getTime())
       finishConstruction(state, project, flow.workOrder.completesAt);
   }
-}
-
-export function renovationAffectedIds(venue: VillageVenue, change?: VillageProjectLifecycle["change"]): string[] {
-  return [
-    ...new Set([
-      ...venueResidentIds(venue),
-      ...(venue.workerIds ?? []),
-      ...venueZones(venue).flatMap((zone) => zone.controllerIds ?? []),
-      ...(change?.baseZones ?? []).flatMap((zone) => zone.controllerIds ?? []),
-      ...(change?.improvement?.zones ?? []).flatMap((zone) => zone.controllerIds ?? []),
-    ]),
-  ].filter((id) => id !== "player");
+  for (const project of state.projects.filter((project) => project.lifecycle?.phase === "finishing")) {
+    if (project.kind === "new-venue" && !project.plan) continue;
+    const staged = structuredClone(state);
+    try {
+      const candidate = staged.projects.find((entry) => entry.id === project.id)!;
+      completeProject(
+        staged,
+        candidate,
+        (candidate.plan ?? {}) as unknown as Record<string, unknown>,
+        now.toISOString(),
+      );
+      Object.assign(state, staged);
+    } catch (error) {
+      const current = state.projects.find((entry) => entry.id === project.id)!;
+      current.lifecycle!.blockedReason = error instanceof Error ? error.message : "The completed Project needs review.";
+      current.status = "blocked";
+    }
+  }
 }

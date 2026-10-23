@@ -6,7 +6,7 @@ import { renovationTerms } from "./project-terms.js";
 export type ProjectSpeechContext = { projectId: string; revision: number; phase: string };
 export type ProjectSpeechProposal = ProjectSpeechContext & {
   version: 1;
-  kind: "approval" | "builder" | "requirements" | "offer" | "handoff";
+  kind: "approval" | "builder" | "requirements" | "offer" | "handoff" | "delivery";
   requirementId?: string;
   speakerId: string;
   citations: { lineId: string; quote: string }[];
@@ -75,11 +75,29 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
           .filter((entry) => entry.needed)
           .map((entry) => ({ id: entry.id, title: entry.title })),
         sources: flow.sources,
+        deliveries: flow.deliveries ?? [],
+        design: project.plan
+          ? {
+              form: project.plan.form,
+              layout: project.plan.layout,
+              spaces: project.plan.spaces.map((zone) => ({
+                id: zone.id,
+                name: zone.name,
+                purpose: zone.purpose,
+                description: zone.description,
+              })),
+              privateSpaces: project.plan.privateSpaces.map((zone) => ({
+                id: zone.id,
+                name: zone.name,
+                kind: zone.kind,
+              })),
+            }
+          : undefined,
       });
     })
     .join(
       " | ",
-    )}. Discuss these naturally, without forced agreements or special checklist wording. Villagers may express approval, capability, conditional willingness, commitments, changed requirements, or refusal in their own words. Do not invent supplies, handoffs or completed work. Only speak about relevant Projects; state context is not an instruction to agree or recite a complete checklist.`;
+    )}. Discuss these naturally, without forced agreements or special checklist wording. Villagers may express approval, capability, conditional willingness, commitments, changed requirements, or refusal in their own words. A villager may agree to collect and deliver one named required supply from its recorded source (kind delivery with the exact requirementId); agreement does not perform the transfer or start a delivery. Do not invent supplies, handoffs or completed work. Project construction and completion are controlled by the saved work order; never narrate the Project finished early. Only speak about relevant Projects; state context is not an instruction to agree or recite a complete checklist.`;
 }
 
 /** Preserve bounded proposals on the saved turn, including invalid ones for rejection diagnostics. */
@@ -94,7 +112,7 @@ export function bindProjectSpeech(
     const context = contexts.find((entry) => entry.projectId === row.projectId);
     if (!context) return [];
     const kind = row.kind;
-    if (!["approval", "builder", "requirements", "offer", "handoff"].includes(String(kind))) return [];
+    if (!["approval", "builder", "requirements", "offer", "handoff", "delivery"].includes(String(kind))) return [];
     return [
       {
         ...context,
@@ -138,7 +156,10 @@ export function coerceProjectSpeech(value: unknown): ProjectSpeechProposal[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 6).flatMap((value) => {
     const row = asRecord(value);
-    if (row.version !== 1 || !["approval", "builder", "requirements", "offer", "handoff"].includes(String(row.kind)))
+    if (
+      row.version !== 1 ||
+      !["approval", "builder", "requirements", "offer", "handoff", "delivery"].includes(String(row.kind))
+    )
       return [];
     return [
       {
@@ -192,7 +213,10 @@ export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: Sp
     )
       return "Interpretation citation does not match this speaker's saved words.";
   }
-  if ((proposal.kind === "offer" || proposal.kind === "handoff") && !asTrimmedString(proposal.requirementId))
+  if (
+    (proposal.kind === "offer" || proposal.kind === "handoff" || proposal.kind === "delivery") &&
+    !asTrimmedString(proposal.requirementId)
+  )
     return "Project supply proposal has no requirement ID.";
   if (proposal.kind !== "requirements") {
     if (proposal.contextual?.source === "decisions" && proposal.contextual.decisionEvidenceVersion !== 1)

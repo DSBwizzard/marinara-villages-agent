@@ -121,6 +121,15 @@ export type VillageAgenda = {
   /** The day already in progress never changes when a week is rewritten. */
   activeDay?: { dateKey: string; weekday: string; blocks: VillageAgendaBlock[]; scheduleInformed: boolean };
   /** A single agreed construction shift overrides the ordinary plan while it runs. */
+  projectDelivery?: {
+    projectId: string;
+    requirementId: string;
+    venueId: string;
+    zoneId: string;
+    startsAt: string;
+    endsAt: string;
+    activity: string;
+  };
   projectWork?: { projectId: string; venueId: string; zoneId?: string; startsAt: string; endsAt: string };
   /** Failed generation keeps the owned routine; only deliberate retry can spend again. */
   personalizationPending?: boolean;
@@ -1078,6 +1087,18 @@ export type VillageProjectLifecycle = {
   affectedIds: string[];
   approvals: { residentId: string; source: "conversation" | "mailbox"; evidenceId: string; at: string }[];
   candidates: { residentId: string; evidenceId: string; at: string }[];
+  deliveries?: {
+    requirementId: string;
+    residentId: string;
+    sourceId: string;
+    revision: number;
+    evidenceId: string;
+    agreedAt: string;
+    startsAt: string;
+    completesAt: string;
+    completedAt: string;
+    blockedReason: string;
+  }[];
   builderId: string;
   requirements: {
     id: string;
@@ -1130,6 +1151,18 @@ export type VillageProjectLifecycle = {
 };
 
 export type VillageProject = {
+  plan?: {
+    form: string;
+    venueType: string;
+    exteriorDescription: string;
+    imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };
+    layoutVersion: 1;
+    layout: "exterior" | "common" | "private" | "both";
+    spaces: VillageVenueZone[];
+    privateSpaces: VillageVenueZone[];
+    exteriorImage: VillageVenueImage | null;
+  };
+
   opening?: {
     version: 1;
     established: boolean;
