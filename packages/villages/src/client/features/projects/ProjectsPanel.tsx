@@ -10,10 +10,10 @@ import { readFileAsDataUrl } from "../../shared/presentation.js";
 const classes: VenueClass[] = ["residence", "workplace", "community", "other"];
 function ClassChoices({ value, onChange }: { value: VenueClass[]; onChange(value: VenueClass[]): void }) {
   return (
-    <fieldset>
+    <fieldset className={P + "-project-classes"}>
       <legend>Classes</legend>
       {classes.map((role) => (
-        <label key={role}>
+        <label className={P + "-project-class"} key={role}>
           <input
             autoComplete="off"
             type="checkbox"
@@ -104,14 +104,16 @@ export function ProjectsPanel({
     <section className={P + "-project-screen"}>
       <style>{projectStyles}</style>
       <header>
-        <h2>Projects</h2>
-        <button onClick={onMap}>Map</button>
+        <button className={P + "-button"} onClick={onMap}>
+          Map
+        </button>
       </header>
       {snapshot.opening && !["complete", "ended"].includes(snapshot.opening.stage) ? (
         <OpeningProjects snapshot={snapshot} busy={draft.busy} decide={c.openingAction} onPeople={onPeople} />
       ) : null}
       <div className={P + "-project-actions"}>
         <button
+          className={P + "-button"}
           onClick={() => {
             c.setSelectedId("");
             c.setDraftType("new-venue");
@@ -120,6 +122,7 @@ export function ProjectsPanel({
           New Venue
         </button>
         <button
+          className={P + "-button"}
           onClick={() => {
             c.setSelectedId("");
             c.setDraftType("renovation");
@@ -132,6 +135,7 @@ export function ProjectsPanel({
         <nav aria-label="Projects">
           {snapshot.projects.map((entry) => (
             <button
+              className={P + "-button"}
               key={entry.id}
               aria-pressed={entry.id === project?.id}
               onClick={() => {
@@ -192,7 +196,9 @@ export function ProjectsPanel({
                 />
               </label>
               {c.draftType === "new-venue" ? <ClassChoices value={c.classes} onChange={c.setClasses} /> : null}
-              <button disabled={draft.busy || (c.draftType === "renovation" && !c.venueId)}>Create draft</button>
+              <button className={P + "-button"} disabled={draft.busy || (c.draftType === "renovation" && !c.venueId)}>
+                Create draft
+              </button>
             </form>
           ) : null}
           {project && flow ? (
@@ -277,13 +283,13 @@ export function ProjectsPanel({
                       />
                     </>
                   )}
-                  <button type="button" onClick={() => void c.save()}>
+                  <button className={P + "-button"} type="button" onClick={() => void c.save()}>
                     Save design
                   </button>
                 </fieldset>
               ) : null}
               {project.kind === "new-venue" && editable ? (
-                <button disabled={draft.busy} onClick={() => onPlaceOnMap(project.id)}>
+                <button className={P + "-button"} disabled={draft.busy} onClick={() => onPlaceOnMap(project.id)}>
                   {project.venueDraft?.position?.x == null ? "Choose map position" : "Change map position"}
                 </button>
               ) : null}
@@ -308,15 +314,24 @@ export function ProjectsPanel({
                   {missing.length ? (
                     <>
                       <p>Agreement needed · {missing.map(person).join(", ")}</p>
-                      <button disabled={draft.busy} onClick={() => void c.action("request-approval")}>
+                      <button
+                        className={P + "-button"}
+                        disabled={draft.busy}
+                        onClick={() => void c.action("request-approval")}
+                      >
                         Request agreement
                       </button>
                     </>
                   ) : (
                     <p>Necessary agreements ready</p>
                   )}
-                  {!flow.candidates.length ? <button onClick={onPeople}>Talk to residents</button> : null}
+                  {!flow.candidates.length ? (
+                    <button className={P + "-button"} onClick={onPeople}>
+                      Talk to residents
+                    </button>
+                  ) : null}
                   <button
+                    className={P + "-button"}
                     disabled={
                       draft.busy ||
                       draft.dirty ||
@@ -342,15 +357,17 @@ export function ProjectsPanel({
                 <p>{Math.ceil(flow.workOrder.remainingMs / 60_000)} minutes remaining</p>
               ) : null}
               {debugEnabled && project.status === "working" ? (
-                <button disabled={draft.busy} onClick={() => void c.action("debug-complete")}>
+                <button className={P + "-button"} disabled={draft.busy} onClick={() => void c.action("debug-complete")}>
                   Complete · Debug
                 </button>
               ) : null}
               {project.status === "complete" ? (
-                <button onClick={() => onVenue(project.venueId)}>Visit Venue</button>
+                <button className={P + "-button"} onClick={() => onVenue(project.venueId)}>
+                  Visit Venue
+                </button>
               ) : null}
               {!["complete", "cancelled"].includes(project.status) ? (
-                <button disabled={draft.busy} onClick={() => void c.action("cancel")}>
+                <button className={P + "-button"} disabled={draft.busy} onClick={() => void c.action("cancel")}>
                   Cancel Project
                 </button>
               ) : null}
@@ -373,6 +390,10 @@ const projectStyles =
 .${P}-projects-workspace main{min-width:0}
 .${P}-project-screen label{display:flex;flex-direction:column;gap:.3rem;margin:.6rem 0}
 .${P}-project-screen fieldset{min-width:0;margin:.75rem 0}
+.${P}-project-screen .${P}-project-classes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
+.${P}-project-screen .${P}-project-class{flex-direction:row;align-items:center;margin:.25rem 0}
+.${P}-project-screen .${P}-project-class input{width:1rem;height:1rem;flex:0 0 auto;margin:0}
+.${P}-projects-workspace nav button[aria-pressed="true"]{border-color:var(--primary);background:var(--accent,var(--muted))}
 .${P}-project-screen input,.${P}-project-screen select,.${P}-project-screen textarea{max-width:100%;box-sizing:border-box}
 .${P}-project-screen button{min-height:44px;overflow-wrap:anywhere}
 @media(max-width:700px){.${P}-projects-workspace{grid-template-columns:minmax(0,1fr)}.${P}-projects-workspace nav{flex-direction:row;overflow-x:auto}.${P}-projects-workspace nav button{min-width:10rem}}
