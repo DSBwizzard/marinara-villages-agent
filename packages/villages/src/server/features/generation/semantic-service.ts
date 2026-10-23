@@ -512,7 +512,7 @@ export function createSemanticService(ports: SemanticPorts) {
                 (!opening.firstUse || !signal.playerQuote || !savedInput.message.includes(signal.playerQuote))))
           )
             throw badGateway(
-              "The opening check could not match its result to the spoken dialogue. The draft is preserved. Retry the check.",
+              "The AI check returned details that do not match the opening dialogue. Your draft is saved. Retry the failed request to check it again.",
             );
           if (opening.requiredPitch && signal?.kind !== "pitch") throw new IncompleteOpeningPitch();
           let gatheringComplete = false;

@@ -708,7 +708,7 @@ async function main() {
   openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
   await assert.rejects(
     service.exchange(scene, "Forged gathering pitch", [pitchLine], null),
-    /opening check could not match/,
+    /AI check returned details that do not match/,
   );
   state.opening.stage = "conversations";
   openingSignal = undefined;
@@ -719,13 +719,13 @@ async function main() {
   openingSignal = { kind: "pitch", residentId: "host", quote: "Invented evidence", playerQuote: "" };
   await assert.rejects(
     service.exchange(scene, "Invalid opening metadata", [pitchLine], null),
-    /opening check could not match/,
+    /AI check returned details that do not match/,
   );
   assert.equal(rejected.at(-1).options.preserveWriting, true, "Invalid System metadata retains the draft");
   openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
   await assert.rejects(
     service.exchange(scene, "Unheard opening metadata", [{ ...pitchLine, contactHidden: true }], null),
-    /opening check could not match/,
+    /AI check returned details that do not match/,
   );
   assert.doesNotMatch(
     systemPrompt,
