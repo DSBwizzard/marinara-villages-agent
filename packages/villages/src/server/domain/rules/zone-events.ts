@@ -84,7 +84,7 @@ export const ZONE_PLAYER_SPEECH_CONTRACT =
   'Represent CURRENT player speech first with speakerId:"player"; unquoted roleplay speech is valid. Copy spoken words EXACTLY, excluding actions/thoughts. Interrupted speech uses separate segments or fragments:["first exact span","second exact span"] in source order. No recalled, hypothetical, imagined, example or negated events. Attempted impacts make sound only if they occur. No player speech on arrival/silent input; these segments permit no invented words.';
 
 export const ZONE_SOUND_CONTRACT =
-  "ACTION-BASED SOUND. Player/supplied-resident noise uses narration.sound:{sourceId,text,loud?:true}; audible-only text,max300 chars. Ambience stays observable narration only,no sound or remote witnesses. No invented sources/impacts/unseen activity, silence/thought/speech tags, repeats or sound-effect captions. Sound proves no deed.";
+  "Player/supplied-resident noise uses narration.sound:{sourceId,text,loud?:true}; audible-only text,max300 chars. Ambience stays observable narration only,no sound or remote witnesses. No invented sources/impacts/unseen activity, silence/thought/speech tags, repeats or sound-effect captions. Sound proves no deed.";
 
 export const ZONE_EVENT_CONTRACT = [
   "ZONE EVENTS. Resolve this turn in one response. Code routes sound. Return no listener lists, hearing/comprehension flags, attentionWitnesses, acousticReplies or acousticEvents.",
