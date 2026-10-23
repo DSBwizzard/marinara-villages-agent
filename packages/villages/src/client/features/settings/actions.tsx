@@ -16,6 +16,8 @@ export function useSaveSettings(ports: {
   acceptSavedSettings: (next: VillageSnapshot, submitted: SavedSettingsDraft) => void;
   snapshot: VillageSnapshot | null;
 }) {
+  const { snapshot } = ports;
+
   const {
     knowledgeDraft,
     lorebookDraft,
@@ -27,7 +29,7 @@ export function useSaveSettings(ports: {
     settingDraft,
     acceptSavedSettings,
   } = ports;
-  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(async () => {
     const claim = lifetime.begin();
     if (!claim) return;
@@ -52,7 +54,18 @@ export function useSaveSettings(ports: {
     } finally {
       if (lifetime.finish(claim)) setBusy(false);
     }
-  }, [knowledgeDraft, lorebookDraft, loreTokenBudgetDraft, personaDraft, settingDraft, acceptSavedSettings, lifetime]);
+  }, [
+    lifetime,
+    setBusy,
+    setSettingsError,
+    knowledgeDraft,
+    personaDraft,
+    settingDraft,
+    lorebookDraft,
+    loreTokenBudgetDraft,
+    setSnapshot,
+    acceptSavedSettings,
+  ]);
 }
 
 export function useSaveScenerySettings(ports: {
@@ -122,8 +135,10 @@ export function useSaveSpriteCardFlip(ports: {
   setSpriteFlipError: React.Dispatch<SetStateAction<string>>;
   setSpriteFlipSaving: React.Dispatch<SetStateAction<boolean>>;
 }) {
+  const { snapshot } = ports;
+
   const { setSnapshot, setSpriteFlipDraft, setSpriteFlipError, setSpriteFlipSaving } = ports;
-  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setSpriteFlipSaving);
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setSpriteFlipSaving);
   return useCallback(
     async (spriteCardFlipEnabled: boolean) => {
       const claim = lifetime.begin();
@@ -150,7 +165,7 @@ export function useSaveSpriteCardFlip(ports: {
         }
       }
     },
-    [lifetime],
+    [lifetime, setSnapshot, setSpriteFlipDraft, setSpriteFlipError, setSpriteFlipSaving],
   );
 }
 
@@ -160,8 +175,10 @@ export function useSaveStoryPace(ports: {
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
+  const { snapshot } = ports;
+
   const { setBusy, setSettingsError, setSnapshot } = ports;
-  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
     async (storyPace: VillageStoryPace) => {
       const claim = lifetime.begin();
@@ -180,7 +197,7 @@ export function useSaveStoryPace(ports: {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [lifetime],
+    [lifetime, setBusy, setSettingsError, setSnapshot],
   );
 }
 
@@ -216,7 +233,7 @@ export function useSaveSendOnEnter(ports: {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [snapshot?.settings.sendOnEnter, lifetime],
+    [lifetime, snapshot?.settings?.sendOnEnter, setSnapshot, setBusy, setSettingsError],
   );
 }
 
@@ -254,7 +271,7 @@ export function useSaveCharacterSpeechColors(ports: {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [snapshot?.settings.characterSpeechColors, lifetime],
+    [lifetime, snapshot?.settings?.characterSpeechColors, setSnapshot, setBusy, setSettingsError],
   );
 }
 
@@ -265,8 +282,10 @@ export function useSaveVisitRetention(ports: {
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
+  const { snapshot } = ports;
+
   const { setArchiveVersion, setBusy, setSettingsError, setSnapshot } = ports;
-  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
     async (visitRetention: VillageSettings["visitRetention"]) => {
       const claim = lifetime.begin();
@@ -287,7 +306,7 @@ export function useSaveVisitRetention(ports: {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [lifetime],
+    [lifetime, setArchiveVersion, setBusy, setSettingsError, setSnapshot],
   );
 }
 
@@ -306,7 +325,7 @@ export function useInsertMacro(ports: {
       pendingCaretRef.current = start + token.length;
       setKnowledgeDraft(`${knowledgeDraft.slice(0, start)}${token}${knowledgeDraft.slice(end)}`);
     },
-    [knowledgeDraft],
+    [knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft],
   );
 }
 
@@ -318,8 +337,10 @@ export function useAddNotice(ports: {
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
+  const { snapshot } = ports;
+
   const { noticeDraft, setBusy, setNoticeDraft, setSettingsError, setSnapshot } = ports;
-  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(async () => {
     const notice = noticeDraft.trim();
     if (notice.length === 0) return;
@@ -340,7 +361,7 @@ export function useAddNotice(ports: {
     } finally {
       if (lifetime.finish(claim)) setBusy(false);
     }
-  }, [noticeDraft, lifetime]);
+  }, [noticeDraft, lifetime, setBusy, setSettingsError, setSnapshot, setNoticeDraft]);
 }
 
 export function useRemoveNotice(ports: {
@@ -349,8 +370,10 @@ export function useRemoveNotice(ports: {
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
+  const { snapshot } = ports;
+
   const { setBusy, setSettingsError, setSnapshot } = ports;
-  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
     async (index: number) => {
       const claim = lifetime.begin();
@@ -366,6 +389,6 @@ export function useRemoveNotice(ports: {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [lifetime],
+    [lifetime, setBusy, setSettingsError, setSnapshot],
   );
 }

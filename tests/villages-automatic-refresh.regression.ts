@@ -3,7 +3,6 @@ import { clientImplementation } from "./client-source.js";
 // Continuous Villages time: exact projection, migration, idempotent restart
 // reconciliation, model-independent progress, and the live unreferenced timer.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 

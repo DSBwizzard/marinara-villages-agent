@@ -8,32 +8,35 @@ export function useResidentsLoadCatalog(ports: {
   readonly setCatalog: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village").CatalogEntry[]>>;
   readonly setError: React.Dispatch<React.SetStateAction<string>>;
 }) {
-  return useCallback(async (signal?: AbortSignal) => {
-    const { setCatalog, setError } = ports;
+  const { setCatalog, setError } = ports;
 
-    try {
-      const response = await request<CatalogResponse>("/catalog", { signal });
-      setCatalog(response.characters);
-      setError("");
-    } catch (cause) {
-      if (signal?.aborted) return;
-      setError(messageFrom(cause, "Could not read your character library."));
-    }
-  }, []);
+  return useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const response = await request<CatalogResponse>("/catalog", { signal });
+        setCatalog(response.characters);
+        setError("");
+      } catch (cause) {
+        if (signal?.aborted) return;
+        setError(messageFrom(cause, "Could not read your character library."));
+      }
+    },
+    [setCatalog, setError],
+  );
 }
 
 export function useResidentPickerLoad(ports: {
   readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
   readonly pickerOpen: boolean;
 }) {
-  useEffect(() => {
-    const { loadCatalog, pickerOpen } = ports;
+  const { loadCatalog, pickerOpen } = ports;
 
+  useEffect(() => {
     if (!pickerOpen) return;
     const controller = new AbortController();
     void loadCatalog(controller.signal);
     return () => controller.abort();
-  }, [ports.pickerOpen, ports.loadCatalog]);
+  }, [pickerOpen, loadCatalog]);
 }
 
 /**
@@ -58,32 +61,40 @@ export function useResidentPortraits(ports: {
   readonly portraitWanted: string;
   readonly setPortraits: ResidentsState["setPortraits"];
 }) {
-  useEffect(() => {
-    const { portraitsAsked, portraitWanted, setPortraits } = ports;
+  const { portraitsAsked, portraitWanted, setPortraits } = ports;
 
-    const missing = portraitWanted.split("\n").filter((id) => id.length > 0 && !portraitsAsked.current.has(id));
+  useEffect(() => {
+    const asked = portraitsAsked.current;
+    const missing = portraitWanted.split("\n").filter((id) => id.length > 0 && !asked.has(id));
     if (missing.length === 0) return;
-    for (const id of missing) portraitsAsked.current.add(id);
+    for (const id of missing) asked.add(id);
     const controller = new AbortController();
+    let settled = false;
     void (async () => {
       try {
         const read = await readPortraits(missing, controller.signal);
         if (!controller.signal.aborted) setPortraits((current) => ({ ...current, ...read }));
       } catch {
         // The initial is already on screen, and it is the whole fallback.
+      } finally {
+        if (!controller.signal.aborted) settled = true;
       }
     })();
-    return () => controller.abort();
-  }, [ports.portraitWanted]);
+    return () => {
+      controller.abort();
+      // Cleanup runs before the next wanted list claims these IDs.
+      if (!settled) for (const id of missing) asked.delete(id);
+    };
+  }, [portraitWanted, portraitsAsked, setPortraits]);
 }
 
 export function usePersonaPortrait(ports: {
   readonly personaPortraitId: string;
   readonly setPersonaPortrait: React.Dispatch<React.SetStateAction<import("../../shared/types").Portrait>>;
 }) {
-  useEffect(() => {
-    const { personaPortraitId, setPersonaPortrait } = ports;
+  const { personaPortraitId, setPersonaPortrait } = ports;
 
+  useEffect(() => {
     setPersonaPortrait(null);
     if (personaPortraitId.length === 0) return;
     const controller = new AbortController();
@@ -97,5 +108,5 @@ export function usePersonaPortrait(ports: {
       }
     })();
     return () => controller.abort();
-  }, [ports.personaPortraitId]);
+  }, [personaPortraitId, setPersonaPortrait]);
 }

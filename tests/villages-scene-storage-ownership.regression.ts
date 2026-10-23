@@ -15,7 +15,6 @@ import {
 } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import {
   createActivationScope,
   installDefaultActivation,

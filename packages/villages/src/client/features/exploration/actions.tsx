@@ -30,7 +30,7 @@ export function useCloseExploration(ports: {
           .querySelector<HTMLElement>(`[data-explore-tab="${explorationReturnTab.current}"]`)
           ?.focus({ preventScroll: true });
     });
-  }, [element]);
+  }, [element, explorationOrigin, explorationReturnTab, setExploreSheet, setOpenPlaceId]);
 }
 
 export function useOpenPlace(ports: {
@@ -59,6 +59,8 @@ export function useOpenPlace(ports: {
   >;
   setVenueZoneKey: React.Dispatch<SetStateAction<string>>;
 }) {
+  const { screen, setVenueReturnTo, setVenueSection, setVenueEditError, setVenueEditNotice } = ports;
+
   const {
     setExploreSheet,
     setOpenPlaceId,
@@ -71,21 +73,35 @@ export function useOpenPlace(ports: {
   } = ports;
   return useCallback(
     (place: VillageVenue) => {
-      if (ports.screen === "menu" || ports.screen === "room" || ports.screen === "person" || ports.screen === "home")
-        ports.setVenueReturnTo?.(ports.screen);
+      if (screen === "menu" || screen === "room" || screen === "person" || screen === "home")
+        setVenueReturnTo?.(screen);
       setExploreSheet(null);
       setOpenPlaceId(null);
       setVenueId(place.id);
       setVenuePage("view");
-      ports.setVenueSection?.("about");
+      setVenueSection?.("about");
       setVenueZoneKey("exterior");
       setVenueEditDraft((current) => (current?.id === place.id ? current : null));
-      ports.setVenueEditError?.("");
-      ports.setVenueEditNotice?.("");
+      setVenueEditError?.("");
+      setVenueEditNotice?.("");
       setVenueProposalDraft(null);
       setScreen("venue");
     },
-    [ports.screen],
+    [
+      screen,
+      setExploreSheet,
+      setOpenPlaceId,
+      setScreen,
+      setVenueEditDraft,
+      setVenueEditError,
+      setVenueEditNotice,
+      setVenueId,
+      setVenuePage,
+      setVenueProposalDraft,
+      setVenueReturnTo,
+      setVenueSection,
+      setVenueZoneKey,
+    ],
   );
 }
 
@@ -130,7 +146,19 @@ export function useStartMapReplacement(ports: {
     setTownMapDraft(null);
     setReframingMap(false);
     setSettingsError("");
-  }, [snapshot]);
+  }, [
+    setMapBasePositions,
+    setMapExpectedSetAt,
+    setMapPinDraft,
+    setMapRemoveDraft,
+    setMapReplaceOpen,
+    setReframingMap,
+    setSelectedMapVenueId,
+    setSettingsError,
+    setTownMapDraft,
+    setTownMapPick,
+    snapshot,
+  ]);
 }
 
 export function useGenerateReplacementMap(ports: {
@@ -174,7 +202,7 @@ export function useGenerateReplacementMap(ports: {
     } finally {
       setMapGenerating(false);
     }
-  }, [snapshot]);
+  }, [setMapGenerating, setMapRemoveDraft, setSettingsError, setTownMapDraft, setTownMapPick, snapshot]);
 }
 
 export function usePickTownMap(ports: {
@@ -215,7 +243,7 @@ export function usePickTownMap(ports: {
         setBusy(false);
       }
     },
-    [snapshot],
+    [setBusy, setMapRemoveDraft, setSettingsError, setTownMapDraft, setTownMapPick, snapshot],
   );
 }
 
@@ -298,13 +326,23 @@ export function useSaveTownMap(ports: {
     }
   }, [
     snapshot,
-    townMapDraft,
-    townMapImage,
-    townMapPick,
     mapRemoveDraft,
+    townMapPick?.image,
+    townMapImage,
+    setBusy,
+    setSettingsError,
+    townMapDraft,
     mapReplaceOpen,
     mapExpectedSetAt,
     mapBasePositions,
+    setSnapshot,
+    setTownMapImage,
+    setTownMapPick,
+    setTownMapDraft,
+    setReframingMap,
+    setMapReplaceOpen,
+    setMapRemoveDraft,
+    setPlacingMapVenueId,
     mapPinDraft,
   ]);
 }
@@ -335,7 +373,15 @@ export function useDiscardTownMapDraft(ports: {
     setMapRemoveDraft(false);
     setPlacingMapVenueId(null);
     setSettingsError("");
-  }, []);
+  }, [
+    setMapRemoveDraft,
+    setMapReplaceOpen,
+    setPlacingMapVenueId,
+    setReframingMap,
+    setSettingsError,
+    setTownMapDraft,
+    setTownMapPick,
+  ]);
 }
 
 export function useDrawPlaceImage(ports: {
@@ -365,7 +411,7 @@ export function useDrawPlaceImage(ports: {
         setPlaceBusyId("");
       }
     },
-    [placeBusyId],
+    [placeBusyId, setPlaceBusyId, setPlaceProblem, setSettingsError, setSnapshot],
   );
 }
 
@@ -408,7 +454,7 @@ export function useKeepPlaceImage(ports: {
         setPlaceBusyId("");
       }
     },
-    [placeBusyId, snapshot],
+    [placeBusyId, setPlaceBusyId, setPlaceProblem, setSettingsError, setSnapshot, snapshot],
   );
 }
 
@@ -439,6 +485,6 @@ export function useDropPlaceImage(ports: {
         setPlaceBusyId("");
       }
     },
-    [placeBusyId],
+    [placeBusyId, setPlaceBusyId, setPlaceProblem, setSettingsError, setSnapshot],
   );
 }

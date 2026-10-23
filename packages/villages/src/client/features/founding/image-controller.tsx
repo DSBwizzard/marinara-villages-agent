@@ -32,28 +32,29 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
   readonly updateSetupMapRequest: (value: import("../../../shared/contracts/village").SetupMapRequest) => void;
 }) {
-  return useCallback(async () => {
-    const {
-      mapVisualLore,
-      persistSetupDraft,
-      sceneryStyle,
-      sceneryStyleProfileId,
-      setSetupMapBusy,
-      setSetupMapProblem,
-      setSetupProblem,
-      setupDraftData,
-      setupLorebookDraft,
-      setupLoreTokenBudgetDraft,
-      setupMapGenerationKey,
-      setupMapNegativePrompt,
-      setupMapPrompt,
-      setupMapRequestRef,
-      setupSetting,
-      setupWorldFacts,
-      snapshot,
-      updateSetupMapRequest,
-    } = ports;
+  const {
+    mapVisualLore,
+    persistSetupDraft,
+    sceneryStyle,
+    sceneryStyleProfileId,
+    setSetupMapBusy,
+    setSetupMapProblem,
+    setSetupProblem,
+    setupDraftData,
+    setupLorebookDraft,
+    setupLoreTokenBudgetDraft,
+    setupMapGenerationKey,
+    setupMapNegativePrompt,
+    setupMapPrompt,
+    setupMapRequestRef,
+    setupSetting,
+    setupWorldFacts,
+    snapshot,
+    updateSetupMapRequest,
+  } = ports;
+  const { setupWorldName } = ports;
 
+  return useCallback(async () => {
     if (setupMapRequestRef.current?.phase === "starting" || setupMapRequestRef.current?.phase === "waiting") return;
     if (setupSetting.trim().length === 0) {
       setSetupMapProblem("Describe what the village is like before generating its map.");
@@ -83,7 +84,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
           negative:
             setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt ? undefined : setupMapNegativePrompt,
           setting: setupSetting,
-          worldName: ports.setupWorldName,
+          worldName: setupWorldName,
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           sceneryArtStyle: sceneryStyle,
@@ -108,24 +109,30 @@ export function useFoundingGenerateSetupTownMap(ports: {
       setSetupMapBusy(false);
     }
   }, [
-    ports.setupLorebookDraft,
-    ports.setupMapNegativePrompt,
-    ports.setupMapPrompt,
-    ports.setupSetting,
-    ports.setupMapGenerationKey,
-    ports.sceneryStyle,
-    ports.sceneryStyleProfileId,
-    ports.mapVisualLore,
-    ports.setupWorldFacts,
-    ports.snapshot?.isFounded,
-    ports.snapshot?.settings.townMapLayoutPrompt,
-    ports.snapshot?.settings.townMapNegativePrompt,
-    ports.persistSetupDraft,
-    ports.setupDraftData,
-    ports.updateSetupMapRequest,
+    setupMapRequestRef,
+    setupSetting,
+    setSetupMapBusy,
+    setSetupMapProblem,
+    setSetupProblem,
+    setupMapGenerationKey,
+    updateSetupMapRequest,
+    persistSetupDraft,
+    setupDraftData,
+    setupMapPrompt,
+    snapshot?.settings?.townMapLayoutPrompt,
+    snapshot?.settings?.townMapNegativePrompt,
+    snapshot?.isFounded,
+    setupMapNegativePrompt,
+    setupWorldName,
+    setupLorebookDraft,
+    setupLoreTokenBudgetDraft,
+    sceneryStyle,
+    sceneryStyleProfileId,
+    mapVisualLore,
+    setupWorldFacts,
   ]);
 }
-export function createFoundingSetupDraftRow(ports: {}) {
+export function createFoundingSetupDraftRow() {
   return (venue: SetupVenueDraft) => {
     return {
       id: venue.id,
@@ -376,7 +383,7 @@ export function createFoundingUploadSetupImage(ports: {
     }
   };
 }
-export function createFoundingWithSetupImage(ports: {}) {
+export function createFoundingWithSetupImage() {
   return (
     venue: SetupVenueDraft,
     area: "exterior" | "interior" | "private",
