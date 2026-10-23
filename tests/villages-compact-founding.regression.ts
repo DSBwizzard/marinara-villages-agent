@@ -117,12 +117,14 @@ async function openingIdeaShapes() {
   const renovation = { venueId: "hall", spaceId: "exterior", slot: 0, title: "Garden", description: "Low shrubs." };
   let answer: unknown;
   let calls = 0;
+  const requestKeys: string[] = [];
   const model = { maxOutputTokens: 1536, fitContext: (messages: unknown) => ({ messages, maxTokens: 1536 }) };
   const service = createCompactFounding({
     villagesLanguageModels: () => ({ resolveForRequest: async () => model }),
     villagesConnectionIdFor: async () => "system",
     completeWithRoom: async (_model: unknown, _messages: unknown, _tokens: unknown, options: any) => {
       calls++;
+      requestKeys.push(options.savedRequest.key);
       const completion = { content: JSON.stringify(answer), finishReason: "stop" };
       assert.equal(
         options.savedRequest.valid(completion),
@@ -157,6 +159,11 @@ async function openingIdeaShapes() {
     }
   }
   assert.equal(calls, 2, "normalizing each response needs only its original request");
+  assert.deepEqual(
+    requestKeys,
+    ["new-venue:format:2", "renovation:format:2"],
+    "the corrected prompt uses new identities without overwriting earlier paid receipts",
+  );
 }
 async function main() {
   await openingIdeaShapes();
