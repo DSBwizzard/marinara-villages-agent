@@ -1,4 +1,5 @@
 import { bindOpeningRenovation } from "../../domain/rules/opening-renovation.js";
+import { asRecord } from "../../domain/rules/coerce.js";
 import { readOpeningProposal } from "../../domain/rules/opening-project.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { foundingRequestMessages } from "../../domain/rules/founding-requests.js";
@@ -104,8 +105,18 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
       if (["length", "max_tokens"].includes(completion.finishReason ?? ""))
         throw new Error("Opening idea was truncated.");
       const payload = extractModelJsonObject(completion);
-      const proposal = readOpeningProposal(payload?.openingProposal, context.characterId ?? context.card.id);
-      if (context.openingVersion === 2 && !proposal.kind) throw new Error("Opening idea needs a Project kind.");
+      const row = asRecord(payload?.openingProposal);
+      // Some responses put the explicitly supplied type beside the proposal.
+      const proposal = readOpeningProposal(
+        row.kind === undefined && payload?.kind !== undefined
+          ? { ...row, kind: payload.kind, renovation: row.renovation ?? payload.renovation }
+          : row,
+        context.characterId ?? context.card.id,
+      );
+      if (context.openingVersion === 2 && !proposal.kind)
+        throw new Error(
+          "The generated opening idea does not say whether to create a place or improve an existing one. Retry failed preparation.",
+        );
       return bindOpeningRenovation(proposal, context.venues);
     };
     const completion = await completeWithRoom(model, messages, requested, {

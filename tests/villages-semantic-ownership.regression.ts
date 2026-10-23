@@ -708,7 +708,7 @@ async function main() {
   openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
   await assert.rejects(
     service.exchange(scene, "Forged gathering pitch", [pitchLine], null),
-    /opening evidence did not validate/,
+    /opening check could not match/,
   );
   state.opening.stage = "conversations";
   openingSignal = undefined;
@@ -719,13 +719,13 @@ async function main() {
   openingSignal = { kind: "pitch", residentId: "host", quote: "Invented evidence", playerQuote: "" };
   await assert.rejects(
     service.exchange(scene, "Invalid opening metadata", [pitchLine], null),
-    /opening evidence did not validate/,
+    /opening check could not match/,
   );
   assert.equal(rejected.at(-1).options.preserveWriting, true, "Invalid System metadata retains the draft");
   openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
   await assert.rejects(
     service.exchange(scene, "Unheard opening metadata", [{ ...pitchLine, contactHidden: true }], null),
-    /opening evidence did not validate/,
+    /opening check could not match/,
   );
   assert.doesNotMatch(
     systemPrompt,
@@ -781,8 +781,30 @@ async function main() {
     ["Unknown founder", [{ ...contribution, residentId: "unknown" }]],
   ] as const) {
     gatheringContributions = rows;
-    await assert.rejects(service.exchange(scene, label, [pitchLine], null), /Gathering evidence did not validate/);
+    await assert.rejects(service.exchange(scene, label, [pitchLine], null), /gathering check could not match/);
     assert.equal(rejected.at(-1).options.preserveWriting, true, `${label} retains the purchased dialogue`);
+  }
+  const interruptedSpeech = [
+    { ...pitchLine, content: "My backroom has tables, but the dust gets into the—" },
+    { ...pitchLine, speakerId: "__venue_scene__", kind: "narration", content: "His jaw clicks and pauses." },
+    { ...pitchLine, content: "—vents! I could sweep and make room for a gathering." },
+  ] as any;
+  const joinedSpeech = interruptedSpeech
+    .filter((line: any) => line.kind === "dialogue")
+    .map((line: any) => line.content)
+    .join(" ");
+  gatheringContributions = [{ residentId: "host", quote: joinedSpeech }];
+  const interruptedGathering = await service.exchange(scene, "Interrupted founder speech", interruptedSpeech, null);
+  assert.equal((interruptedGathering.effects.openingContext as any).gatheringComplete, true);
+  for (const [label, lines] of [
+    ["unheard speech", [interruptedSpeech[0], interruptedSpeech[1], { ...interruptedSpeech[2], contactHidden: true }]],
+    ["other speaker", [interruptedSpeech[0], interruptedSpeech[1], { ...interruptedSpeech[2], speakerId: "other" }]],
+    ["private thought", [interruptedSpeech[0], { ...interruptedSpeech[1], kind: "thought" }, interruptedSpeech[2]]],
+    ["intervening speaker", [interruptedSpeech[0], { ...pitchLine, speakerId: "other" }, interruptedSpeech[2]]],
+    ["sound only", [interruptedSpeech[0], interruptedSpeech[1], { ...interruptedSpeech[2], soundOnly: true }]],
+  ] as const) {
+    await assert.rejects(service.exchange(scene, label, lines as any, null), /gathering check could not match/);
+    assert.equal(rejected.at(-1).options.preserveWriting, true, "invalid evidence preserves purchased dialogue");
   }
   gatheringContributions = [];
   await assert.rejects(

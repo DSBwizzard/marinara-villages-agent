@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { physicalVenueEvents } from "./venue-scene-state.js";
 import type { OpeningProposal, OpeningView } from "../../../shared/contracts/opening.js";
 import type { VillageState } from "../models/world.js";
-import type { VenueScene, VenueSubmission } from "../models/scene-model.js";
+import type { VenueScene, VenueSubmission, VenueReplyLine } from "../models/scene-model.js";
 import { asRecord, asStringArray, asTrimmedString } from "./coerce.js";
 import { conflict, VillagesRequestError } from "./errors.js";
 
@@ -100,14 +100,21 @@ export function initialOpening(
 export function readOpeningProposal(value: unknown, residentId: string): OpeningProposal {
   const row = asRecord(value);
   if (row.kind !== undefined && row.kind !== "new-venue" && row.kind !== "renovation")
-    throw conflict("Unsupported opening Project kind.");
-  const text = (key: string, max: number) => {
-    const value = asTrimmedString(row[key]);
-    if (!value || value.length > max) throw conflict(`Opening proposal needs ${key}.`);
+    throw conflict("The generated opening idea has an unsupported Project type. Retry failed preparation.");
+  const text = (key: string, max: number, label = key) => {
+    const raw = row[key];
+    // Supporting facts are descriptive text, never authority or permission.
+    const value =
+      key === "provenance" && Array.isArray(raw) && raw.every((fact) => typeof fact === "string" && fact.trim())
+        ? raw.map((fact) => fact.trim()).join("\n")
+        : asTrimmedString(raw);
+    if (!value) throw conflict(`The generated opening idea is missing its ${label}. Retry failed preparation.`);
+    if (value.length > max)
+      throw conflict(`The generated opening idea has too much text in its ${label}. Retry failed preparation.`);
     return value;
   };
   if (!["workplace", "community", "other"].includes(String(row.venueClass)) || typeof row.established !== "boolean")
-    throw conflict("Opening proposal needs a Venue Class and place history.");
+    throw conflict("The generated opening idea is missing its place type or history. Retry failed preparation.");
   return {
     ...(row.kind === "new-venue" || row.kind === "renovation" ? { kind: row.kind } : {}),
     ...(row.kind === "renovation" ? { renovation: readOpeningRenovation(row.renovation) } : {}),
@@ -117,10 +124,33 @@ export function readOpeningProposal(value: unknown, residentId: string): Opening
     ...(asTrimmedString(row.situation) ? { situation: asTrimmedString(row.situation).slice(0, 500) } : {}),
     venueClass: row.venueClass as OpeningProposal["venueClass"],
     established: row.established,
-    provenance: text("provenance", 1000),
-    work: text("work", 1000),
-    firstUse: text("firstUse", 500),
+    provenance: text("provenance", 1000, "supporting setting facts"),
+    work: text("work", 1000, "practical preparation"),
+    firstUse: text("firstUse", 500, "intended first use"),
   };
+}
+
+/** Bind an exact quote across speech interrupted only by player-heard narration. */
+export function openingGatheringQuoteMatches(
+  lines: readonly {
+    speakerId: string;
+    kind: string;
+    content: string;
+    playerHeard: boolean;
+    soundOnly?: VenueReplyLine["soundOnly"];
+  }[],
+  residentId: string,
+  quote: string,
+): boolean {
+  if (!quote.trim()) return false;
+  let speech = "";
+  for (const line of lines) {
+    if (line.playerHeard && line.kind === "dialogue" && !line.soundOnly && line.speakerId === residentId) {
+      speech = speech ? speech + " " + line.content : line.content;
+      if (speech.includes(quote)) return true;
+    } else if (!line.playerHeard || line.kind !== "narration") speech = "";
+  }
+  return false;
 }
 
 export function readOpening(value: unknown): OpeningRecord | undefined {
