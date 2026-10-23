@@ -18,6 +18,7 @@ export function renderProjectsPage(ports: ProjectsPagePorts) {
   return (
     <ProjectsPanel
       snapshot={snapshot}
+      onClose={() => ports.openMenu?.("index")}
       onPeople={() => ports.openMenu?.("villagers")}
       onVenue={(id) => {
         const venue = snapshot.settings.venues.find((entry) => entry.id === id);

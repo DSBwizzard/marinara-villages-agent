@@ -186,7 +186,7 @@ export const clientFeatureInterfaces = Object.freeze({
     "venueHasCommon",
     "VenueLayoutFields",
   ],
-  "founding/villages-founding-zones.tsx": ["FoundingZoneFields", "foundingZoneProblem"],
+  "founding/villages-founding-zones.tsx": ["FoundingZoneFields", "foundingZoneProblem", "draftZonePolicy"],
   "founding/villages-player-background.tsx": ["PlayerBackgroundSummary"],
   "residents/ResidentPanels.tsx": ["AvatarFace", "readAvatarCrop"],
   "residents/SpriteSetupDialog.tsx": ["SpriteSetupDialog"],

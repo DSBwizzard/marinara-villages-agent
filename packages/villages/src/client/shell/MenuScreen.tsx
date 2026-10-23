@@ -139,6 +139,28 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     writeUpNote,
   } = controller;
 
+  if (screen === "menu" && menuPage === "projects" && snapshot) {
+    return (
+      <div className={ELEMENT_TAG + "-root " + ELEMENT_TAG + "-project-root"} data-page="projects" data-mobile={mobile}>
+        {renderProjectsPage({
+          debugDiscardEnabled,
+          projectsController,
+          openMenu,
+          openVenue: openPlace,
+          goHome,
+          mobile,
+          room,
+          setFocusedProjectId,
+          setPlacingProjectId,
+          setScreen,
+          setSiteProjectId,
+          siteProjectId,
+          snapshot,
+        })}
+      </div>
+    );
+  }
+
   // ── The dedicated menu screen ──────────────────────────────────────────────
   // The map is the homepage and carries no villager controls at all, so
   // everything you can change lives here behind one button that was already on
@@ -395,23 +417,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                 })
               : null}
 
-            {menuPage === "projects" && snapshot
-              ? renderProjectsPage({
-                  debugDiscardEnabled,
-                  projectsController,
-                  openMenu,
-                  openVenue: openPlace,
-                  goHome,
-                  mobile,
-                  room,
-                  setFocusedProjectId,
-                  setPlacingProjectId,
-                  setScreen,
-                  setSiteProjectId,
-                  siteProjectId,
-                  snapshot,
-                })
-              : null}
             {menuPage === "venueRequests" && snapshot
               ? renderVenueRequestsPage({
                   housingVenueId,

@@ -43,7 +43,10 @@ export function useProjectsController({
   const selected = useRef(selectedId);
   selected.current = selectedId;
   useEffect(() => {
-    if (focusProjectId) setSelectedId(focusProjectId);
+    if (focusProjectId) {
+      setSelectedId(focusProjectId);
+      setDraftType("");
+    }
   }, [focusProjectId, focusProjectRequest]);
   const project = snapshot?.projects.find((project) => project.id === selectedId);
   const target = snapshot?.settings.venues.find((venue) => venue.id === (project?.venueId || venueId));
@@ -70,6 +73,7 @@ export function useProjectsController({
   const workspace = useProjectWorkspaces(
     project ? "project:" + project.id : "draft:" + draftType + ":" + venueId,
     {
+      revision: project?.lifecycle?.revision,
       venue: initial,
       title: project?.title ?? name,
       detail: project?.lifecycle?.change?.detail ?? description,
@@ -103,8 +107,8 @@ export function useProjectsController({
   const action = (step: string, body: Record<string, unknown> = {}) =>
     project
       ? run("/projects/" + encodeURIComponent(project.id) + "/" + step, {
-          ...body,
           expectedRevision: project.lifecycle?.revision,
+          ...body,
         })
       : Promise.resolve(null);
   const create = async () => {
@@ -134,6 +138,7 @@ export function useProjectsController({
     if (!project || !venue) return Promise.resolve(null);
     const next = await (project.kind === "new-venue"
       ? action("plan", {
+          expectedRevision: draft.revision,
           classes: venue.classes,
           form: venue.form,
           venueType: venue.venueType,
@@ -146,6 +151,7 @@ export function useProjectsController({
           capacity: draft.capacity,
         })
       : action("revise", {
+          expectedRevision: draft.revision,
           title: draft.title,
           detail: draft.detail,
           classes: venue.classes,

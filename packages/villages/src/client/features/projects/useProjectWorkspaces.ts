@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { VillageVenue, VillageZoneDraft } from "../../../shared/contracts/village.js";
 export type ProjectWorkspace = {
+  revision: number | undefined;
   venue: VillageVenue | null;
   zones: VillageZoneDraft[];
   title: string;
@@ -34,12 +35,24 @@ export function useProjectWorkspaces(
       setDrafts({});
     }
   }, [seed]);
+  const resolveDraft = (stored?: ProjectWorkspace): ProjectWorkspace =>
+    stored && (stored.dirty || stored.revision === initial.revision)
+      ? stored
+      : { ...initial, busy: stored?.busy ?? false, error: stored?.error ?? "", dirty: false };
+  const discard = () => {
+    if (!lifetime.current || claims.current.has(key)) return;
+    setDrafts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
   const field =
     <K extends keyof ProjectWorkspace>(name: K) =>
     (value: React.SetStateAction<ProjectWorkspace[K]>) => {
       if (!lifetime.current || lastSeed.current !== seed) return;
       setDrafts((current) => {
-        const old = current[key] ?? { ...initial, busy: false, error: "", dirty: false };
+        const old = resolveDraft(current[key]);
         return {
           ...current,
           [key]: {
@@ -70,5 +83,5 @@ export function useProjectWorkspaces(
       },
     };
   };
-  return { key, draft: drafts[key] ?? { ...initial, busy: false, error: "", dirty: false }, field, begin, requests };
+  return { key, draft: resolveDraft(drafts[key]), discard, field, begin, requests };
 }
