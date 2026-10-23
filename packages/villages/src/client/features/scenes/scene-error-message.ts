@@ -33,12 +33,12 @@ export function sceneErrorMessage(original: string): string {
       "The server or AI connection refused access. Check the connection and access settings.",
     ],
     [
-      /\bno (?:language model |system )?connection\b|\b(?:choose|selected)\b.*\bconnection|\bconnection.*(?:not configured|not available|no longer exists|not found|has no (?:model|base URL))|System interpretation is not configured/iu,
-      "The AI connection is not ready. Check the System and Narration connections in settings.",
-    ],
-    [
       /connection rejected JSON mode|(?:response[_ ]?format|json[_ ]?(?:object|mode|schema)).*(?:unsupported|not support|invalid)|(?:unsupported|not support|invalid).*(?:response[_ ]?format|json[_ ]?(?:object|mode|schema))/iu,
       "The AI connection does not support the reply format the game needs. Check that connection's settings.",
+    ],
+    [
+      /\bno (?:language model |system )?connection\b|\b(?:choose|selected)\b.*\bconnection|\bconnection.*(?:not configured|not available|no longer exists|not found|has no (?:model|base URL))|System interpretation is not configured/iu,
+      "The AI connection is not ready. Check the System and Narration connections in settings.",
     ],
     [
       /quota|insufficient (?:credits|funds)|account balance|payment required/iu,

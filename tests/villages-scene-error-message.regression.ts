@@ -41,7 +41,10 @@ for (const [technical, meaning] of [
   ["The saved update could not be applied to storage.", /could not save/u],
   ["Insufficient credits", /account or usage limit/u],
   ["Rate limit exceeded (429)", /too many requests/u],
-  ["Connection rejected JSON mode", /connection does not support.*format/u],
+  [
+    "The selected connection rejected JSON mode. Choose a connection supporting JSON responses, then explicitly retry. No fallback request was made.",
+    /connection does not support.*format/u,
+  ],
   ["Saved Scene evidence fingerprint changed; recover saved data before replay.", /investigated before retrying/u],
   ["This saved request uses an unsupported writing contract. Its history is preserved.", /format.*cannot resume/u],
   ["TypeError: Cannot read properties of undefined", /Copy the details/u],
