@@ -262,7 +262,6 @@ export async function analyzeArchitecture({
     const output = await transform(source, {
       loader: file.endsWith(".tsx") ? "tsx" : "ts",
       jsx: "automatic",
-      format: "esm",
     });
     const emitted = ts.createSourceFile(file, output.code, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
     if (from.startsWith("server/domain/") || from.startsWith("shared/")) {
