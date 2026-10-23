@@ -47,7 +47,7 @@ The composer offers:
 - **Contact** for a directed knock, call or conversation toward an adjacent Zone.
 - **Conclude** to end the Scene.
 
-Invitations do not automatically move the player. Speech and physical sounds use captured connections and server-calculated witnesses. Addressing one person does not isolate audible bystanders. Hearing a noise does not reveal private words, attendance or its unseen cause. Whispering does not bypass witness validation.
+Invitations do not automatically move the player. Speech and physical sounds use captured connections and server-calculated witnesses. Ambient sounds without a character source remain local narration and create no offstage witnesses. Addressing one person does not isolate audible bystanders. Hearing a noise does not reveal private words, attendance or its unseen cause. Whispering does not bypass witness validation.
 
 A resident continuing a doorway conversation may approach, stay inside or decline. Audible remote dialogue does not put its speaker into the physical cast. Physical handoffs still require the participants to share the relevant Zone.
 

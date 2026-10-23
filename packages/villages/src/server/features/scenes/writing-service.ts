@@ -24,6 +24,7 @@ import { sceneEvidencePerception } from "../../domain/rules/scene-evidence-perce
 import { sceneWritingHistory } from "../../domain/rules/scene-writing-history.js";
 import { applyAcousticWitnesses } from "../../domain/rules/acoustic-witnesses.js";
 import {
+  AMBIENT_NARRATION_CONTRACT,
   routeZoneEvents,
   zoneEventScene,
   zoneEventReply,
@@ -477,6 +478,7 @@ export function createSceneWriting({
                   'JSON structure for a silent input with no access action: {"playerSpeechCapture":{"status":"silent","utterances":[]},"segments":[{"text":"A visible response."}],"residentActions":[]}. Example is structure only; write the actual Scene and attach every expressed access action.',
                 ]
               : []),
+            context.zoneEventContract ? AMBIENT_NARRATION_CONTRACT : "",
             PLAYER_CAPTURE_CONTRACT,
             "Input source quotes (text IDs, never audibility): " +
               JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
