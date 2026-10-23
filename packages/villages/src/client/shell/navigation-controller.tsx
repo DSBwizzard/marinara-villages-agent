@@ -17,19 +17,19 @@ export function useNavigationOpenPerson(ports: {
   readonly setSpriteManagerId: ResidentsState["setSpriteManagerId"];
   readonly spriteLeaveGuard: ResidentsState["spriteLeaveGuard"];
 }) {
+  const {
+    element,
+    profileOrigin,
+    setError,
+    setPersonProfile,
+    setProfileInspection,
+    setScreen,
+    setSpriteManagerId,
+    spriteLeaveGuard,
+  } = ports;
+
   return useCallback(
     (navigation: DossierNavigation) => {
-      const {
-        element,
-        profileOrigin,
-        setError,
-        setPersonProfile,
-        setProfileInspection,
-        setScreen,
-        setSpriteManagerId,
-        spriteLeaveGuard,
-      } = ports;
-
       if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return false;
       const button = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const key = button?.getAttribute("data-exploration-row");
@@ -55,7 +55,16 @@ export function useNavigationOpenPerson(ports: {
       setScreen("person");
       return true;
     },
-    [ports.element],
+    [
+      element,
+      profileOrigin,
+      setError,
+      setPersonProfile,
+      setProfileInspection,
+      setScreen,
+      setSpriteManagerId,
+      spriteLeaveGuard,
+    ],
   );
 }
 
@@ -70,17 +79,17 @@ export function useNavigationGoHome(ports: {
   readonly setSpriteManagerId: ResidentsState["setSpriteManagerId"];
   readonly spriteLeaveGuard: ResidentsState["spriteLeaveGuard"];
 }) {
-  return useCallback(() => {
-    const {
-      setExploreSheet,
-      setOpenPlaceId,
-      setPickerOpen,
-      setScreen,
-      setSettingsError,
-      setSpriteManagerId,
-      spriteLeaveGuard,
-    } = ports;
+  const {
+    setExploreSheet,
+    setOpenPlaceId,
+    setPickerOpen,
+    setScreen,
+    setSettingsError,
+    setSpriteManagerId,
+    spriteLeaveGuard,
+  } = ports;
 
+  return useCallback(() => {
     if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
     setSpriteManagerId(null);
     setExploreSheet(null);
@@ -88,5 +97,13 @@ export function useNavigationGoHome(ports: {
     setSettingsError("");
     setOpenPlaceId(null);
     setScreen("home");
-  }, []);
+  }, [
+    setExploreSheet,
+    setOpenPlaceId,
+    setPickerOpen,
+    setScreen,
+    setSettingsError,
+    setSpriteManagerId,
+    spriteLeaveGuard,
+  ]);
 }

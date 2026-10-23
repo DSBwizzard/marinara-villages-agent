@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";

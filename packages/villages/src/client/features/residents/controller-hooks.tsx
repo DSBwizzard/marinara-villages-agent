@@ -24,7 +24,7 @@ export function useResidentInspection(ports: {
       void loadAgendas(controller.signal);
     }
     return () => controller.abort();
-  }, [screen, personProfile, profileInspection, loadAgendas, loadMemoryLibrary]);
+  }, [screen, personProfile, profileInspection, loadAgendas, loadMemoryLibrary, setMemoryLibrary, setAgendas]);
 }
 
 export function useResidentAgendaPolling(ports: {

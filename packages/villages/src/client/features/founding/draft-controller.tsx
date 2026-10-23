@@ -23,43 +23,55 @@ export function useFoundingPersistSetupDraft(ports: {
     React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
   >;
 }) {
-  return useCallback((data: SetupDraftData) => {
-    const {
+  const {
+    draftBlocked,
+    draftRevision,
+    draftSaveQueue,
+    pendingDraftSaves,
+    setDraftSavedAt,
+    setDraftSaveError,
+    setDraftSaving,
+    setSavedSetupDraft,
+  } = ports;
+
+  return useCallback(
+    (data: SetupDraftData) => {
+      pendingDraftSaves.current += 1;
+      setDraftSaving(true);
+      const pending = draftSaveQueue.current.then(async () => {
+        if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open and retry saving.");
+        try {
+          const saved = await saveFoundingDraft(API_PATH, data, draftRevision.current);
+          draftRevision.current = saved.revision;
+          setSavedSetupDraft(saved);
+          setDraftSavedAt(saved.savedAt);
+          setDraftSaveError("");
+        } catch (cause) {
+          draftBlocked.current = true;
+          setDraftSaveError(messageFrom(cause, "Draft could not be saved. Keep this tab open."));
+          throw cause;
+        }
+      });
+      draftSaveQueue.current = pending.catch(() => undefined);
+      void pending
+        .finally(() => {
+          pendingDraftSaves.current -= 1;
+          if (!pendingDraftSaves.current) setDraftSaving(false);
+        })
+        .catch(() => undefined);
+      return pending;
+    },
+    [
       draftBlocked,
       draftRevision,
       draftSaveQueue,
       pendingDraftSaves,
-      setDraftSavedAt,
       setDraftSaveError,
+      setDraftSavedAt,
       setDraftSaving,
       setSavedSetupDraft,
-    } = ports;
-
-    pendingDraftSaves.current += 1;
-    setDraftSaving(true);
-    const pending = draftSaveQueue.current.then(async () => {
-      if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open and retry saving.");
-      try {
-        const saved = await saveFoundingDraft(API_PATH, data, draftRevision.current);
-        draftRevision.current = saved.revision;
-        setSavedSetupDraft(saved);
-        setDraftSavedAt(saved.savedAt);
-        setDraftSaveError("");
-      } catch (cause) {
-        draftBlocked.current = true;
-        setDraftSaveError(messageFrom(cause, "Draft could not be saved. Keep this tab open."));
-        throw cause;
-      }
-    });
-    draftSaveQueue.current = pending.catch(() => undefined);
-    void pending
-      .finally(() => {
-        pendingDraftSaves.current -= 1;
-        if (!pendingDraftSaves.current) setDraftSaving(false);
-      })
-      .catch(() => undefined);
-    return pending;
-  }, []);
+    ],
+  );
 }
 export function useFoundingDraftAutosave(ports: {
   readonly draftReady: FoundingState["draftReady"];
@@ -68,12 +80,12 @@ export function useFoundingDraftAutosave(ports: {
   readonly setupDraftData: ReturnType<typeof useFoundingSetupDraftData>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
-  useEffect(() => {
-    const { draftReady, persistSetupDraft, screen, setupDraftData, snapshot } = ports;
+  const { draftReady, persistSetupDraft, screen, setupDraftData, snapshot } = ports;
 
+  useEffect(() => {
     if (draftReady && !snapshot?.isFounded && (screen === "setup" || screen === "resume"))
       void persistSetupDraft(setupDraftData).catch(() => undefined);
-  }, [ports.draftReady, ports.persistSetupDraft, ports.setupDraftData, ports.snapshot?.isFounded, ports.screen]);
+  }, [draftReady, persistSetupDraft, setupDraftData, snapshot?.isFounded, screen]);
 }
 export function useFoundingFlushSetupDraft(ports: {
   readonly draftBlocked: FoundingState["draftBlocked"];
@@ -81,13 +93,13 @@ export function useFoundingFlushSetupDraft(ports: {
   readonly persistSetupDraft: (data: import("./draft-model").SetupDraftData) => Promise<void>;
   readonly setupDraftData: ReturnType<typeof useFoundingSetupDraftData>;
 }) {
-  return useCallback(async () => {
-    const { draftBlocked, draftReady, persistSetupDraft, setupDraftData } = ports;
+  const { draftBlocked, draftReady, persistSetupDraft, setupDraftData } = ports;
 
+  return useCallback(async () => {
     if (!draftReady) throw new Error("Draft storage is unavailable. Retry saving before leaving or founding.");
     await persistSetupDraft(setupDraftData);
     if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open.");
-  }, [ports.draftReady, ports.persistSetupDraft, ports.setupDraftData]);
+  }, [draftBlocked, draftReady, persistSetupDraft, setupDraftData]);
 }
 export function createFoundingRestoreSetupDraft(ports: {
   readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
@@ -416,21 +428,21 @@ export function useFoundingDraftOffer(ports: {
   readonly setupOfferedRef: FoundingState["setupOfferedRef"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
-  useEffect(() => {
-    const {
-      draftRevision,
-      loadCatalog,
-      loadPersonas,
-      openSetup,
-      setDraftReady,
-      setDraftSavedAt,
-      setDraftSaveError,
-      setSavedSetupDraft,
-      setScreen,
-      setupOfferedRef,
-      snapshot,
-    } = ports;
+  const {
+    draftRevision,
+    loadCatalog,
+    loadPersonas,
+    openSetup,
+    setDraftReady,
+    setDraftSavedAt,
+    setDraftSaveError,
+    setSavedSetupDraft,
+    setScreen,
+    setupOfferedRef,
+    snapshot,
+  } = ports;
 
+  useEffect(() => {
     if (!snapshot || setupOfferedRef.current) return;
     setupOfferedRef.current = true;
     if (!snapshot.isFounded) {
@@ -456,5 +468,17 @@ export function useFoundingDraftOffer(ports: {
       void removeFoundingDraft(API_PATH).catch(() => undefined);
       if (snapshot.foundingPreparation && snapshot.foundingPreparation.status !== "ready") setScreen("preparing");
     }
-  }, [ports.openSetup, ports.snapshot, ports.loadPersonas, ports.loadCatalog]);
+  }, [
+    openSetup,
+    snapshot,
+    loadPersonas,
+    loadCatalog,
+    setupOfferedRef,
+    draftRevision,
+    setSavedSetupDraft,
+    setDraftSavedAt,
+    setScreen,
+    setDraftReady,
+    setDraftSaveError,
+  ]);
 }

@@ -111,7 +111,7 @@ function fixture(name: string) {
     },
     async buildVillageSnapshot() {
       note("snapshot");
-      return { village: { name: state.name } } as VillageSnapshot;
+      return { village: { name: state.name, timeZone: state.timeZone } } as VillageSnapshot;
     },
     async readTownMapSubmission(value) {
       note("map");
@@ -240,6 +240,43 @@ for (const invalid of ["exterior-residence", "missing-purpose", "community-priva
     await server.close();
   }
 }
+// Exercise timezone selection through the HTTP adapter, including durable first-save semantics.
+{
+  const api = fixture("Timezone"),
+    server = Fastify();
+  const dispose = configureFoundingSetup(api.service);
+  registerFoundingRoutes(server);
+  try {
+    const payload = { ...input("Timezone"), timeZone: "Asia/Tokyo" };
+    const invalid = await server.inject({
+      method: "POST",
+      url: "/setup",
+      payload: { ...payload, timeZone: "Not/A_Zone" },
+    });
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(api.calls.includes("mutate"), false, "Invalid timezone is rejected before saved-world changes");
+    const saved = await server.inject({ method: "POST", url: "/setup", payload });
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.equal(saved.json().village.timeZone, "Asia/Tokyo");
+    assert.equal(api.state.timeZone, "Asia/Tokyo", "The selected timezone reaches durable setup state");
+    const before = structuredClone(api.state);
+    const changed = await server.inject({
+      method: "POST",
+      url: "/setup",
+      payload: { ...payload, timeZone: "America/Los_Angeles" },
+    });
+    assert.equal(changed.statusCode, 400);
+    assert.deepEqual(api.state, before, "An existing world's timezone stays fixed");
+    const { timeZone: _timeZone, foundingResidentAdmissions: _admissions, ...legacyPayload } = payload;
+    const legacy = await server.inject({ method: "POST", url: "/setup", payload: legacyPayload });
+    assert.equal(legacy.statusCode, 200, legacy.body);
+    assert.equal(api.state.timeZone, "Asia/Tokyo", "Omitting timezone preserves existing saved worlds");
+  } finally {
+    dispose();
+    await server.close();
+  }
+}
+
 const direct = fixture("Direct");
 for (const setting of ["A farm", "An abandoned farm"]) {
   const everyday = fixture("Everyday");

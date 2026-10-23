@@ -328,20 +328,20 @@ export function useFoundingStartOver(ports: {
     React.SetStateAction<import("../../../shared/contracts/village").VillageSnapshot>
   >;
 }) {
-  return useCallback(async () => {
-    const {
-      draftRevision,
-      draftSaveQueue,
-      openSetup,
-      setBusy,
-      setCatalog,
-      setDraftReady,
-      setResetArmed,
-      setSavedSetupDraft,
-      setSettingsError,
-      setSnapshot,
-    } = ports;
+  const {
+    draftRevision,
+    draftSaveQueue,
+    openSetup,
+    setBusy,
+    setCatalog,
+    setDraftReady,
+    setResetArmed,
+    setSavedSetupDraft,
+    setSettingsError,
+    setSnapshot,
+  } = ports;
 
+  return useCallback(async () => {
     setBusy(true);
     setSettingsError("");
     try {
@@ -362,5 +362,16 @@ export function useFoundingStartOver(ports: {
       setBusy(false);
       setResetArmed(false);
     }
-  }, [ports.openSetup]);
+  }, [
+    draftRevision,
+    draftSaveQueue,
+    openSetup,
+    setBusy,
+    setCatalog,
+    setDraftReady,
+    setResetArmed,
+    setSavedSetupDraft,
+    setSettingsError,
+    setSnapshot,
+  ]);
 }

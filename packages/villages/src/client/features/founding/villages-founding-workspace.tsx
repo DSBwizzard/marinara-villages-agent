@@ -139,6 +139,7 @@ export function FoundingWorkspace({
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
+    const workspace = root.current;
     const node = inspector.current;
     if (!sheet || !node) return;
     const opener = document.activeElement;
@@ -164,7 +165,7 @@ export function FoundingWorkspace({
       if (opener instanceof HTMLElement && opener.isConnected && opener !== document.body)
         opener.focus({ preventScroll: true });
       else
-        [...(root.current?.querySelectorAll<HTMLElement>("[data-venue-id], [data-pin-id]") ?? [])]
+        [...(workspace?.querySelectorAll<HTMLElement>("[data-venue-id], [data-pin-id]") ?? [])]
           .find((element) => (element.dataset.venueId ?? element.dataset.pinId) === selectedId)
           ?.focus({ preventScroll: true });
     };
@@ -174,6 +175,7 @@ export function FoundingWorkspace({
     inspector.current?.querySelector<HTMLElement>(".villages-workspace-sheet-body")?.scrollTo({ top: 0 });
   }, [sheet, selectedId, activeTab]);
   useEffect(() => {
+    const owner = inspector.current;
     const node = viewer.current;
     if (!preview || !sheet || !node) return;
     const opener = document.activeElement;
@@ -181,8 +183,7 @@ export function FoundingWorkspace({
     return () => {
       node.close();
       viewerBackdropPress.current = false;
-      if (inspector.current?.open && opener instanceof HTMLElement && opener.isConnected)
-        opener.focus({ preventScroll: true });
+      if (owner?.open && opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
     };
   }, [preview, sheet]);
   useEffect(() => {

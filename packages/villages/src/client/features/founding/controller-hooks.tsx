@@ -49,7 +49,7 @@ export function useFoundingImageContext(ports: {
   const { setupImageContextKey, setupImageContextKeyRef } = ports;
   useEffect(() => {
     setupImageContextKeyRef.current = setupImageContextKey;
-  }, [setupImageContextKey]);
+  }, [setupImageContextKey, setupImageContextKeyRef]);
 }
 
 export function useFoundingVenueReference(ports: {
@@ -59,7 +59,7 @@ export function useFoundingVenueReference(ports: {
   const { setupVenues, setupVenuesRef } = ports;
   useEffect(() => {
     setupVenuesRef.current = setupVenues;
-  }, [setupVenues]);
+  }, [setupVenues, setupVenuesRef]);
 }
 
 export function useFoundingBeginningReference(ports: {
@@ -72,7 +72,7 @@ export function useFoundingBeginningReference(ports: {
     if (setupBeginningSourceKeyRef.current !== setupBeginningSourceKey && !snapshot?.isFounded) {
     }
     setupBeginningSourceKeyRef.current = setupBeginningSourceKey;
-  }, [setupBeginningSourceKey, snapshot?.isFounded]);
+  }, [setupBeginningSourceKey, setupBeginningSourceKeyRef, snapshot?.isFounded]);
 }
 
 export function useFoundingAuthoredReference(ports: {
@@ -82,7 +82,7 @@ export function useFoundingAuthoredReference(ports: {
   const { setupAuthoredFields, setupAuthoredFieldsRef } = ports;
   useEffect(() => {
     setupAuthoredFieldsRef.current = setupAuthoredFields;
-  }, [setupAuthoredFields]);
+  }, [setupAuthoredFields, setupAuthoredFieldsRef]);
 }
 
 export function useFoundingSetupDraftData(ports: {
@@ -332,16 +332,14 @@ export function useFoundingSetupDraftData(ports: {
     }),
     [
       setupStep,
-      setupWorkspace,
       setupName,
       setupTimeZone,
       setupWorldName,
       setupSetting,
-
       setupPlayerBackground,
-
       setupWorldFacts,
       setupVenues,
+      setupZoneDrafts,
       setupSpriteRevisions,
       setupFoundingVillagerIds,
       setupResidentAdmissions,
@@ -366,8 +364,12 @@ export function useFoundingSetupDraftData(ports: {
       setupAuthoredFields,
       setupSuggestionsKey,
       selectedSetupVenueId,
+      setupWorkspace,
       movingSetupVenueId,
       setupEditorOpen,
+      setupEditorOriginal,
+      setupEditorAuthoredOriginal,
+      setupEditorZoneOriginal,
       setupKeyboardSpot,
       setupMapBusy,
       setupVenueBusy,
@@ -416,7 +418,7 @@ export function useFoundingRosterReconciliation(ports: {
       ];
       return next.length === rows.length && next.every((row, index) => row === rows[index]) ? rows : next;
     });
-  }, [screen, snapshot?.isFounded, draftReady, setupFoundingVillagerIds, catalog]);
+  }, [screen, snapshot?.isFounded, draftReady, setupFoundingVillagerIds, catalog, setSetupVenues]);
 }
 
 export function useFoundingMapReceipt(ports: {
@@ -491,7 +493,18 @@ export function useFoundingMapReceipt(ports: {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [screen, setupMapRequest, updateSetupMapRequest]);
+  }, [
+    screen,
+    setSetupMapBusy,
+    setSetupMapGeneratedKey,
+    setSetupMapImage,
+    setSetupMapImageSource,
+    setSetupMapProblem,
+    setSetupMapReviewed,
+    setSetupMapSize,
+    setupMapRequest,
+    updateSetupMapRequest,
+  ]);
 }
 
 export function useFoundingSetupBlocker(ports: {
@@ -505,7 +518,6 @@ export function useFoundingSetupBlocker(ports: {
   setupMapSrc: string;
   setupName: string;
   setupPlayerBackground: import("../../../shared/contracts/player-background.js").PlayerBackground;
-  setupWorldName?: string;
   setupSetting: string;
   setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
   setupWorldFacts: string[];
@@ -522,7 +534,6 @@ export function useFoundingSetupBlocker(ports: {
     setupMapSrc,
     setupName,
     setupPlayerBackground,
-    setupWorldName,
     setupSetting,
     setupVenues,
     setupWorldFacts,
@@ -603,11 +614,9 @@ export function useFoundingSetupBlocker(ports: {
       personaDraft,
       setupMapSrc,
       setupName,
-
       setupPlayerBackground,
       snapshot?.isFounded,
       setupWorldFacts,
-      setupWorldName,
       setupSetting,
     ],
   );
@@ -642,5 +651,5 @@ export function useFoundingPreparationPolling(ports: {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [screen]);
+  }, [screen, setPreparationProblem, setScreen, setSnapshot]);
 }
