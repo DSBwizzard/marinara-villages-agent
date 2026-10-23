@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
-import { chromium } from "@playwright/test";
+import { build } from "../scripts/esbuild.mjs";
+import { chromium } from "./fixtures/browser-diagnostics.mjs";
 import { mkdir } from "node:fs/promises";
 import { fastExpect } from "./fixtures/fast-browser-expect.mjs";
 import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -18,6 +19,7 @@ const browser = await chromium.launch({ headless: true });
 async function verifyStableLoading(viewport, spriteCount, loseImportResponse = false) {
   const touch = viewport.width < 1000;
   const page = await browser.newPage({ viewport, hasTouch: touch });
+  await mockEngineLookups(page);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const cold = {
@@ -62,9 +64,9 @@ async function verifyStableLoading(viewport, spriteCount, loseImportResponse = f
   const saves = [];
   let imported = false;
   await page.route("http://villages.test/", (route) =>
-    route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
+    fulfill(route, { contentType: "text/html", body: '<div id="app"></div>' }),
   );
-  await page.route("**/api/connections", (route) => route.fulfill({ contentType: "application/json", body: "[]" }));
+  await page.route("**/api/connections", (route) => fulfill(route, { contentType: "application/json", body: "[]" }));
   await page.route("**/api/villages/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     let value = cold;
@@ -72,7 +74,7 @@ async function verifyStableLoading(viewport, spriteCount, loseImportResponse = f
       await importing;
       imported = true;
       if (loseImportResponse) {
-        await route.fulfill({
+        await fulfill(route, {
           status: 503,
           contentType: "application/json",
           body: JSON.stringify({ error: "The import response was interrupted." }),
@@ -94,7 +96,7 @@ async function verifyStableLoading(viewport, spriteCount, loseImportResponse = f
       await reading;
       if (imported) value = prepared;
     }
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+    await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
   });
   try {
     await page.goto("http://villages.test/");
@@ -199,10 +201,10 @@ try {
     let holdRead = true,
       writes = 0;
     await coldPage.route("http://villages.test/", (route) =>
-      route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
+      fulfill(route, { contentType: "text/html", body: '<div id="app"></div>' }),
     );
     await coldPage.route("**/api/connections", (route) =>
-      route.fulfill({ contentType: "application/json", body: "[]" }),
+      fulfill(route, { contentType: "application/json", body: "[]" }),
     );
     await coldPage.route("**/api/villages/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -215,7 +217,7 @@ try {
         await new Promise((resolve) => {
           releaseRead = resolve;
         });
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(cold) }).catch(() => {});
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify(cold) }).catch(() => {});
     });
     await coldPage.goto("http://villages.test/");
     await coldPage.addScriptTag({ content: bundle.outputFiles[0].text });
@@ -269,6 +271,7 @@ try {
     await expect(coldPage.getByText("No character sprites available.", { exact: true })).toBeVisible();
     await coldPage.close();
     const page = await browser.newPage({ viewport });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const state = {
@@ -300,7 +303,7 @@ try {
       { id: "images", name: "Pictures", provider: "image_generation" },
     ];
     await page.route("**/api/connections", (route) =>
-      route.fulfill({ contentType: "application/json", body: JSON.stringify(connectionRows) }),
+      fulfill(route, { contentType: "application/json", body: JSON.stringify(connectionRows) }),
     );
     let failSave = false;
     let loseSaveResponse = false;
@@ -313,10 +316,10 @@ try {
     const analyzedIds = [];
     const finalizations = [];
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({ contentType: "text/html", body: '<div id="app"></div>' }),
+      fulfill(route, { contentType: "text/html", body: '<div id="app"></div>' }),
     );
     await page.route("http://villages.test/portrait.png", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "image/svg+xml",
         body: '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2400"><rect width="1600" height="2400" fill="#6085b0"/></svg>',
       }),
@@ -331,7 +334,7 @@ try {
           state.revision++;
         }
         if (body.revision !== state.revision) {
-          await route.fulfill({
+          await fulfill(route, {
             status: 409,
             contentType: "application/json",
             body: JSON.stringify({ error: "Sprite setup changed. Reopen it before saving." }),
@@ -357,7 +360,7 @@ try {
         state.suggestions = state.suggestions.filter((item) => body.pendingSuggestionIds.includes(item.artworkId));
         if (loseSaveResponse) {
           loseSaveResponse = false;
-          await route.fulfill({ status: 200, contentType: "application/json", body: "{" });
+          await fulfill(route, { status: 200, contentType: "application/json", body: "{" });
           return;
         }
       } else if (path.endsWith("/apply")) {
@@ -379,7 +382,7 @@ try {
             releaseAnalysis = resolve;
           });
           holdAnalysis = false;
-          await route.abort();
+          await abort(route);
           return;
         }
         for (const [index, artworkId] of body.artworkIds.entries()) {
@@ -404,7 +407,7 @@ try {
         if (body.finalize && body.artworkIds.every((id) => !state.errors[id]))
           state.suggestedDefaultArtworkId = body.artworkIds.at(-1);
       }
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(state) });
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify(state) });
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ content: bundle.outputFiles[0].text });

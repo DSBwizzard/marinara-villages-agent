@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
-import { chromium } from "@playwright/test";
+import { build } from "../scripts/esbuild.mjs";
+import { chromium } from "./fixtures/browser-diagnostics.mjs";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
 
 const bundle = await build({
@@ -41,11 +42,12 @@ const seed = { isFounded: true, village: { name: "initial" }, backgroundWork: [{
 const browser = await chromium.launch({ headless: true });
 async function mount({ strict = false, width = 1280, presence = false, wanted = "" } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+  await mockEngineLookups(page);
   const requests = [],
     errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("http://client-loads.test/", (route) =>
-    route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }),
+    fulfill(route, { contentType: "text/html", body: '<div id="root"></div>' }),
   );
   await page.route("**/api/**", (route) => {
     const request = route.request(),
@@ -53,7 +55,7 @@ async function mount({ strict = false, width = 1280, presence = false, wanted = 
       body = request.postDataJSON();
     const entry = { route, path, body, method: request.method() };
     requests.push(entry);
-    if (path.endsWith("/presence") && body.visible === false) return route.fulfill({ json: {} });
+    if (path.endsWith("/presence") && body.visible === false) return fulfill(route, { json: {} });
   });
   // Keep heartbeat scheduling explicit: native observer delivery can race held responses.
   await page.addInitScript(() => {
@@ -72,7 +74,7 @@ async function mount({ strict = false, width = 1280, presence = false, wanted = 
   const settle = (index) => page.evaluate((index) => window.pending[index], index);
   const reply = async (entry, json, status = 200) => {
     try {
-      await entry.route.fulfill({ status, json });
+      await fulfill(entry.route, { status, json });
     } catch (error) {
       if (!/closed|cancel|abort/i.test(error.message)) throw error;
     }

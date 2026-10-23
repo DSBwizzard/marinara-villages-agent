@@ -1,8 +1,9 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { chromium, expect } from "@playwright/test";
-import { build } from "esbuild";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { build } from "../scripts/esbuild.mjs";
 import { runCase, wantsCase } from "../scripts/test-cases.mjs";
 // Test cases: founding/quick-start/desktop, founding/quick-start/phone
 
@@ -67,6 +68,7 @@ try {
     if (!wantsCase(name)) continue;
     await runCase(name, async () => {
       const context = await browser.newContext({ viewport });
+      await mockEngineLookups(context);
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -79,7 +81,7 @@ try {
       await page.route("**/api/villages**", async (route) => {
         if (route.request().method() === "GET") {
           assert.ok(route.request().url().includes("/setup/venues/suggestions/"));
-          return route.fulfill({ contentType: "application/json", body: JSON.stringify(savedReceipt) });
+          return fulfill(route, { contentType: "application/json", body: JSON.stringify(savedReceipt) });
         }
         assert.ok(route.request().url().endsWith("/setup/venues/suggest"), "no background image or model requests");
         count++;
@@ -91,7 +93,7 @@ try {
             release = resolve;
           });
         if (fail)
-          return route.fulfill({
+          return fulfill(route, {
             status: 400,
             contentType: "application/json",
             body: JSON.stringify({ error: "System connection unavailable. Your draft is unchanged." }),
@@ -124,12 +126,12 @@ try {
         savedReceipt = { id: body.actionId, sourceKey: body.sourceKey, status: "complete", error: "", result };
         if (loseReply) {
           loseReply = false;
-          return route.abort("failed");
+          return abort(route, "failed");
         }
-        return route.fulfill({ contentType: "application/json", body: JSON.stringify(savedReceipt) });
+        return fulfill(route, { contentType: "application/json", body: JSON.stringify(savedReceipt) });
       });
       await page.route("http://quick-start.test/", (route) =>
-        route.fulfill({
+        fulfill(route, {
           contentType: "text/html",
           body: `<html><body style="margin:0;background:#121936;color:white;font:16px system-ui"><marinara-capability-villages style="display:block;height:100dvh"><div id="root" style="height:100dvh"></div></marinara-capability-villages><script>${bundle.outputFiles[0].text}</script></body></html>`,
         }),

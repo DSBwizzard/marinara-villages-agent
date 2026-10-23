@@ -140,6 +140,7 @@ try {
           });
           children.add(child);
           let output = "",
+            stderr = "",
             spawnError,
             timedOut = false;
           const timer = setTimeout(
@@ -153,6 +154,7 @@ try {
             output += data;
           });
           child.stderr.on("data", (data) => {
+            stderr += data;
             output += data;
           });
           child.on("error", (error) => {
@@ -163,7 +165,8 @@ try {
             children.delete(child);
             resolve({
               ...test,
-              code: timedOut || spawnError ? 1 : code,
+              code: timedOut || spawnError || stderr.trim() ? 1 : code,
+              stderr,
               signal,
               timedOut,
               error: spawnError,
@@ -172,15 +175,12 @@ try {
             });
           });
         });
-        if (testCases.length && result.code === 0) {
+        const requiredCases = testCases.length ? testCases : test.cases;
+        if (requiredCases.length && result.code === 0) {
           try {
             const coverage = JSON.parse(await readFile(caseReport, "utf8"));
-            if (
-              !testCases.every((name) =>
-                coverage.completed.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
-              )
-            )
-              throw new Error("A requested case did not execute");
+            if (!requiredCases.every((name) => coverage.completed.some((entry) => caseMatches(entry, name))))
+              throw new Error("A declared or requested case did not execute");
             result.cases = coverage.completed;
           } catch (error) {
             result.code = 1;

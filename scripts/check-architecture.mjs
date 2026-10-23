@@ -1,7 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { transform } from "esbuild";
+import { transform } from "./esbuild.mjs";
 import ts from "typescript";
 import {
   clientFeatureInterfaces as defaultClientFeatureInterfaces,

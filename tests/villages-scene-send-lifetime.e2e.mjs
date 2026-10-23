@@ -1,7 +1,8 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { build } from "esbuild";
-import { chromium, expect } from "@playwright/test";
+import { build } from "../scripts/esbuild.mjs";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot } from "./fixtures/villages-scene-browser.fixture.mjs";
 const bundle = await build({
   stdin: {
@@ -79,11 +80,12 @@ async function mount({
     held = [],
     errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  await mockEngineLookups(page);
   const submissions = new Map();
   let holdB = false;
   let activeReads = 0;
   await page.route("http://send-hooks.test/", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+    fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
   );
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname,
@@ -110,7 +112,7 @@ async function mount({
       return;
     }
     if (kind === "turn" && rejectTurn)
-      return route.fulfill({
+      return fulfill(route, {
         status: 502,
         contentType: "application/json",
         body: JSON.stringify({ error: "Synthetic lost reply" }),
@@ -118,19 +120,19 @@ async function mount({
     if (learnedRecovery && kind === "active") {
       activeReads++;
       if (activeReads > 1 && learnedRecovery === "unavailable")
-        return route.fulfill({
+        return fulfill(route, {
           status: 502,
           contentType: "application/json",
           body: '{"error":"Synthetic read failure"}',
         });
-      return route.fulfill({
+      return fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ session: { ...scene(id), sceneRevision: activeReads === 1 ? 10 : 2 } }),
       });
     }
     if (learnedRecovery && kind === "archive")
-      return route.fulfill({
+      return fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
@@ -152,7 +154,7 @@ async function mount({
             : kind === "archive"
               ? { visit: missingClosed ? { ...saved, status: "closed" } : saved }
               : {};
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(answer) });
+    return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(answer) });
   });
   await page.goto("http://send-hooks.test/");
   await page.evaluate(
@@ -197,7 +199,7 @@ async function mount({
             : item.kind === "archive"
               ? { visit: missingClosed ? { ...saved, status: "closed" } : saved }
               : {};
-    await item.route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    await fulfill(item.route, { status, contentType: "application/json", body: JSON.stringify(body) });
   };
   return {
     page,

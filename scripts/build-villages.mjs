@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
+import { build } from "./esbuild.mjs";
 import { villagesDefinition as feature } from "../packages/villages/package-definition.mjs";
 import { assertPackagePrivateImportBoundary } from "./package-engine-boundary.mjs";
 import { createDeterministicZip } from "./deterministic-zip.mjs";
@@ -30,7 +30,6 @@ try {
     target: "es2020",
     metafile: true,
     alias: { "@marinara-engine/shared": join(root, "sources/package-shared.ts") },
-    logLevel: "warning",
   };
   const server = await build({
     ...common,
@@ -134,6 +133,7 @@ try {
       "packages/villages/package-definition.mjs",
       "packages/villages/engine-boundary.json",
       "scripts/build-villages.mjs",
+      "scripts/esbuild.mjs",
       "scripts/deterministic-zip.mjs",
       "scripts/package-engine-boundary.mjs",
       "scripts/catalog-package-guidance.mjs",

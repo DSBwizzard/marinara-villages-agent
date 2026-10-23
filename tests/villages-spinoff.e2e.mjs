@@ -1,7 +1,8 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import { build } from "esbuild";
-import { chromium, expect } from "@playwright/test";
+import { build } from "../scripts/esbuild.mjs";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 
 const bundle = await build({
   stdin: {
@@ -32,6 +33,7 @@ await mkdir(".build-tmp/spinoff", { recursive: true });
 try {
   for (const width of [1440, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let spinoff = null;
@@ -39,7 +41,7 @@ try {
     const requests = [];
     const selections = [];
     await page.route("https://spinoff.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: '<style>body{margin:0;background:#171923;color:white;font:16px Arial}button,select,textarea{font:inherit;max-width:100%}p,blockquote{overflow-wrap:anywhere}</style><div id="root"></div>',
       }),
@@ -48,7 +50,7 @@ try {
       const path = new URL(route.request().url()).pathname;
       requests.push(path);
       if (path.endsWith("/active") && failRead)
-        return route.fulfill({ status: 503, json: { error: "Spinoff source Scene read failed." } });
+        return fulfill(route, { status: 503, json: { error: "Spinoff source Scene read failed." } });
       if (path.endsWith("/begin"))
         spinoff = {
           id: "spinoff",
@@ -89,7 +91,7 @@ try {
         spinoff.status = "resolved";
         spinoff.acceptedIds = body.acceptedIds;
       }
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ spinoff }) });
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify({ spinoff }) });
     });
     await page.goto("https://spinoff.test/");
     await page.addScriptTag({ content: bundle.outputFiles[0].text });

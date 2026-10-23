@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -51,11 +52,12 @@ try {
     let staleMove = true;
     const navigation = new Map();
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+    await mockEngineLookups(context);
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await context.route("http://actions.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: `<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:calc(100% - 180px)}</style><header style="height:180px"></header><marinara-capability-villages></marinara-capability-villages><script>document.querySelector('marinara-capability-villages').capabilityProps={startScene:async()=>null}</script>`,
@@ -70,7 +72,7 @@ try {
         const body = route.request().postDataJSON();
         if (staleMove || body.expectedSceneRevision !== scene.sceneRevision) {
           staleMove = false;
-          return route.fulfill({
+          return fulfill(route, {
             status: 409,
             contentType: "application/json",
             body: JSON.stringify({ code: "SCENE_STALE", error: "The Scene changed. Review it before moving." }),
@@ -86,7 +88,7 @@ try {
           operation: { id: body.operationId, kind: "move", status: "complete", input: { zoneId: body.zoneId } },
         };
         navigation.set(body.operationId, scene.operation);
-        if (width === 320) return route.abort("failed");
+        if (width === 320) return abort(route, "failed");
         value = { session: scene };
       } else if (path.includes("/operations/")) {
         value = { operation: navigation.get(decodeURIComponent(path.split("/").at(-1))) ?? null };
@@ -119,7 +121,7 @@ try {
         };
         value = { session: scene, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.goto("http://actions.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });

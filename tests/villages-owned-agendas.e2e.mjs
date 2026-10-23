@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({ headless: true });
@@ -10,6 +11,7 @@ try {
       errors = [],
       patches = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    await mockEngineLookups(page);
     let paid = 0;
     const categories = {
       rhythm: true,
@@ -50,7 +52,7 @@ try {
       },
     };
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: "<style>html,body{margin:0;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
@@ -83,7 +85,7 @@ try {
       else if (path.endsWith("/lorebooks")) value = { books: [] };
       else if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false, verbose: false, effective: false };
       else if (/generate|regenerate|remap/u.test(path)) paid++;
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });

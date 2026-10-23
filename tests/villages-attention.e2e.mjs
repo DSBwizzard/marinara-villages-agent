@@ -1,7 +1,8 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -44,10 +45,11 @@ try {
       errors = [];
     let loseClarification = width === 320;
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width < 500 });
+    await mockEngineLookups(context);
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
     await context.route("http://attention.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -85,7 +87,7 @@ try {
           };
           if (loseClarification) {
             loseClarification = false;
-            return route.abort("failed");
+            return abort(route, "failed");
           }
         } else {
           assert.equal(body.attentionChoice.id, scene.attentionClarification.id);
@@ -118,7 +120,7 @@ try {
         }
         value = { session: scene, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.goto("http://attention.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });

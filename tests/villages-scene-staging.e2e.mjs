@@ -1,8 +1,9 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { sceneFixture } from "./fixtures/scene-browser.fixture.mjs";
 const sceneBundle = await sceneFixture();
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -22,6 +23,7 @@ try {
   ]) {
     for (let count = 1; count <= 4; count++) {
       const page = await browser.newPage({ viewport: { width, height } });
+      await mockEngineLookups(page);
       await page.addInitScript(() => {
         window.spriteFlips = [];
         const animate = Element.prototype.animate;
@@ -111,7 +113,7 @@ try {
         let value = fixture;
         if (path.endsWith("/settings") && route.request().method() === "PATCH") {
           if (failSpriteSave)
-            return route.fulfill({
+            return fulfill(route, {
               status: 500,
               contentType: "application/json",
               body: JSON.stringify({ message: "Setting save failed" }),
@@ -228,12 +230,12 @@ try {
           }
           value = { session, verdict: null, action: null, recordEvents: [] };
         }
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+        await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
       };
       await page.route("**/api/villages**", api);
       async function mount(target = page) {
         await target.route("http://villages.test/", (route) =>
-          route.fulfill({
+          fulfill(route, {
             status: 200,
             contentType: "text/html",
             body: '<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:44px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">Menu</button></header><div style="height:calc(100% - 44px)"><marinara-capability-villages></marinara-capability-villages></div>',
@@ -270,6 +272,7 @@ try {
         await expect(flipSwitch).toBeChecked();
         failSpriteSave = false;
         const otherDevice = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        await mockEngineLookups(otherDevice);
         await otherDevice.route("**/api/villages**", api);
         await mount(otherDevice);
         await otherDevice.getByRole("button", { name: "Venue actions" }).click();
@@ -578,7 +581,7 @@ try {
         });
         await page.route("http://villages.test/delayed.png", async (route) => {
           await artworkReady;
-          await route.fulfill({ contentType: "image/svg+xml", body: Buffer.from(thoughts.split(",")[1], "base64") });
+          await fulfill(route, { contentType: "image/svg+xml", body: Buffer.from(thoughts.split(",")[1], "base64") });
         });
         const beforeLoading = await page.evaluate(() => window.spriteFlips.length);
         const requested = page.waitForRequest("http://villages.test/delayed.png");
@@ -593,7 +596,9 @@ try {
         releaseArtwork();
         await expect(img).toHaveAttribute("src", "http://villages.test/delayed.png");
         await expect(img).toHaveAttribute("data-flipping", "false");
-        await page.route("http://villages.test/failed.png", (route) => route.fulfill({ status: 404, body: "missing" }));
+        await page.route("http://villages.test/failed.png", (route) =>
+          fulfill(route, { status: 404, body: "missing" }),
+        );
         await sendExpression("e-failed");
         await expect(img).toHaveAttribute("src", initialArtwork);
         await expect(img).toHaveAttribute("data-flipping", "false");
@@ -617,6 +622,7 @@ try {
     { width: 1440, height: 900 },
   ]) {
     const page = await browser.newPage({ viewport });
+    await mockEngineLookups(page);
     const front = spriteImage("#a7c7ff");
     const side = spriteImage("#fadd70");
     const castIds = residents.slice(0, 2).map((person) => person.characterId);
@@ -678,10 +684,10 @@ try {
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
       const value = path.endsWith("/rooms/active") ? { session } : fixture;
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: "<style>html,body{margin:0;width:100%;height:100%;background:#171b25;color:white}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
       }),

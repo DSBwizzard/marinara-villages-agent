@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
@@ -66,6 +67,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       requests = [],
       errors = [];
     const seed = structuredClone(fixture);
+    await mockEngineLookups(context);
     seed.settings.setting = "A";
     seed.isFounded = options.founded ?? true;
     if (options.hydrate) delete seed.isFounded;
@@ -154,7 +156,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     };
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://venue-screen.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) =>
       requests.push({
@@ -197,7 +199,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
         snapshot.isFounded = options.founded ?? seed.isFounded ?? true;
         snapshot.settings.venues[0].name = "Saved A";
         snapshot.settings.venues[1].name = "Saved B";
-        await requests[index].route.fulfill({
+        await fulfill(requests[index].route, {
           status: options.fail ? 502 : 200,
           contentType: "application/json",
           body: JSON.stringify(options.fail ? { error: "synthetic Venue failure" } : snapshot),

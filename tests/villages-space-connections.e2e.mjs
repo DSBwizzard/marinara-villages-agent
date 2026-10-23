@@ -1,6 +1,7 @@
+import { mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { chromium, expect } from "@playwright/test";
-import { build } from "esbuild";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { build } from "../scripts/esbuild.mjs";
 const bundle = await build({
   stdin: {
     loader: "tsx",
@@ -20,6 +21,7 @@ const browser = await chromium.launch({
 try {
   for (const width of [1280, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 850 } });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.setContent('<div id="root"></div>');

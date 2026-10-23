@@ -1,9 +1,10 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 // Test cases: settings/hooks, settings/package
 import { runCase } from "../scripts/test-cases.mjs";
-import { chromium } from "@playwright/test";
+import { chromium } from "./fixtures/browser-diagnostics.mjs";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
-import { build } from "esbuild";
+import { build } from "../scripts/esbuild.mjs";
 import { resolve } from "node:path";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 
@@ -65,16 +66,17 @@ const bundle = await build({
 const browser = await chromium.launch({ headless: true });
 async function checkHooks(width) {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
+  await mockEngineLookups(page);
   const requests = [],
     errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("http://settings-hooks.test/", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+    fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
   );
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/personas"))
-      return route.fulfill({
+      return fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ personas: [{ id: "active-persona", name: "Active", isActive: true }] }),
@@ -97,7 +99,7 @@ async function checkHooks(width) {
   };
   const respond = async (index, response, status = 200, saveIndex = index, idle = true) => {
     const completed = page.waitForResponse((r) => r.url().endsWith("/settings"));
-    await requests[index].fulfill({ status, contentType: "application/json", body: JSON.stringify(response) });
+    await fulfill(requests[index], { status, contentType: "application/json", body: JSON.stringify(response) });
     await (await completed).finished();
     await page.evaluate((index) => window.pendingSettingsSaves[index], saveIndex);
     if (idle) await expect.poll(async () => (await state()).busy).toBe(false);
@@ -294,6 +296,7 @@ async function checkPackage(width) {
     scenerySaves = [],
     usagePreviews = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  await mockEngineLookups(page);
   const snapshot = initialSnapshot();
   const narration = {
     tense: "present",
@@ -307,7 +310,7 @@ async function checkPackage(width) {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/narration")) {
       if (route.request().method() === "PUT") Object.assign(narration, route.request().postDataJSON());
-      return route.fulfill({ json: narration });
+      return fulfill(route, { json: narration });
     }
     if (path.endsWith("/settings") && route.request().method() === "PATCH") {
       scenerySaves.push(route);
@@ -317,7 +320,7 @@ async function checkPackage(width) {
       const preview = route.request().postDataJSON();
       assert.ok(["images", "change"].includes(preview.action), "only Settings cost forecasts are admitted");
       usagePreviews.push(preview);
-      return route.fulfill({
+      return fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
@@ -352,17 +355,17 @@ async function checkPackage(width) {
                       residentGuidance: {},
                     }
                   : {};
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.route("**/api/connections", (route) =>
-    route.fulfill({
+    fulfill(route, {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify([{ id: "talk", provider: "language", name: "Talk", defaultForAgents: true }]),
     }),
   );
   await page.route("http://settings-package.test/", (route) =>
-    route.fulfill({
+    fulfill(route, {
       status: 200,
       contentType: "text/html",
       body: "<style>html,body{margin:0;width:100%;height:100%}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -417,7 +420,7 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: "Back to menu", exact: true }).click();
   const saved = structuredClone(snapshot);
   Object.assign(saved.settings, scenerySaves[0].request().postDataJSON());
-  await scenerySaves[0].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await fulfill(scenerySaves[0], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   await page.getByRole("button", { name: "Village Settings", exact: true }).click();
   await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeEnabled();
   await expect(page.getByLabel("Scenery style description", { exact: true })).toHaveValue(
@@ -430,13 +433,13 @@ async function checkPackage(width) {
   await expect.poll(() => scenerySaves.length).toBe(2);
   assert.deepEqual(scenerySaves[1].request().postDataJSON(), { automaticZonePictures: false });
   saved.settings.automaticZonePictures = false;
-  await scenerySaves[1].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await fulfill(scenerySaves[1], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   await expect(automatic).not.toBeChecked();
   await automatic.click();
   await expect.poll(() => scenerySaves.length).toBe(3);
   assert.deepEqual(scenerySaves[2].request().postDataJSON(), { automaticZonePictures: true });
   saved.settings.automaticZonePictures = true;
-  await scenerySaves[2].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await fulfill(scenerySaves[2], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   await expect(automatic).toBeChecked();
   const guidance = page.getByLabel("Additional writing guidance", { exact: true });
   await guidance.fill("Committed guidance");

@@ -1,5 +1,6 @@
+import { mockEngineLookups } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "@playwright/test";
 
 /** Mount the actual panel and feature-owned session to exercise lifecycle transitions. */
@@ -55,6 +56,7 @@ window.mount();
 
   for (const strict of [false, true]) {
     const page = await browser.newPage();
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.setContent('<div id="root"></div>');

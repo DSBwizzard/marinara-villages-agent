@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
@@ -49,6 +50,7 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
   });
   return async function mount(strict = false, width = 1280, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 900 } });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       requests = [],
       errors = [];
@@ -69,7 +71,7 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
       overrides[entry.id] = { name: " Counteroffer ", classes: ["workplace"], description: "Original description" };
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://venue-requests.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) =>
       requests.push({
@@ -102,7 +104,7 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
           : requests[index].path.endsWith("/descriptions/draft")
             ? { descriptions: options.missing ? {} : { [entry.id]: "Generated description" } }
             : snapshot;
-        await requests[index].route.fulfill({
+        await fulfill(requests[index].route, {
           status: options.fail ? 502 : 200,
           contentType: "application/json",
           body: JSON.stringify(body),

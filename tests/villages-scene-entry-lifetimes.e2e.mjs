@@ -1,4 +1,4 @@
-import { chromium } from "@playwright/test";
+import { chromium } from "./fixtures/browser-diagnostics.mjs";
 import { verifySceneEntryLifetimes } from "./fixtures/villages-scene-entry-lifetime.fixture.mjs";
 
 const browser = await chromium.launch({

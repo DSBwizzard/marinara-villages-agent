@@ -173,7 +173,7 @@ function SceneControlIcon({
       ) : name === "up" ? (
         <path d="m6 15 6-6 6 6" />
       ) : name === "down" ? (
-        <path d="m6 9 6 6-6" />
+        <path d="m6 9 6 6 6-6" />
       ) : name === "knock" ? (
         <>
           <path d="M10 3h10v18H10V3Z M4 10h4 M2 6l4 2 M2 16l4-2" />

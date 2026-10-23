@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Villages optional Marinara agent; repository-owned build and validation tools.",
   "engines": {
-    "node": ">=24"
+    "node": ">=24",
+    "npm": ">=11.19.0"
   },
   "dependencies": {
     "chess.js": "1.4.0",
@@ -45,12 +46,28 @@
     "test:browser": "node scripts/run-tests.mjs browser",
     "test:engine": "node scripts/run-tests.mjs engine",
     "test:inventory": "node scripts/run-tests.mjs --list",
-    "validate": "npm run check && npm run verify:build && npm run verify:package && npm run test:review",
+    "validate": "npm run audit:dependencies && npm run check && npm run verify:build && npm run verify:package && npm run test:review",
     "format": "prettier --write \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs \"packages/villages/*.mjs\" \"sources/package-shared.ts\" tsconfig.package.json",
     "format:check": "prettier --check \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs \"packages/villages/*.mjs\" \"sources/package-shared.ts\" tsconfig.package.json",
     "lint": "eslint --max-warnings=0 \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs \"packages/villages/*.mjs\" \"sources/package-shared.ts\"",
     "check:engine-types": "node scripts/engine-public-declarations.mjs",
     "test:review": "node scripts/run-tests.mjs review",
-    "verify:build": "node scripts/verify-build.mjs"
+    "verify:build": "node scripts/verify-build.mjs",
+    "audit:dependencies": "npm audit --audit-level=low"
+  },
+  "packageManager": "npm@11.19.0",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=24"
+    },
+    "packageManager": {
+      "name": "npm",
+      "version": ">=11.19.0"
+    }
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "fsevents": false
   }
 }

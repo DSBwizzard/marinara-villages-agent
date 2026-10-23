@@ -1,7 +1,8 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -12,6 +13,7 @@ if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
 try {
   for (const width of [1366, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const snapshot = structuredClone(fixture);
@@ -54,7 +56,7 @@ try {
     let retries = 0;
     let retryBody;
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: "<style>html,body{margin:0;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
@@ -85,9 +87,9 @@ try {
                 : path.endsWith("/agendas")
                   ? { villagers: [] }
                   : snapshot;
-      return route.fulfill({ json: response });
+      return fulfill(route, { json: response });
     });
-    await page.route("**/api/connections", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/connections", (route) => fulfill(route, { json: [] }));
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const root = page.locator(".villages-forging-preparing");

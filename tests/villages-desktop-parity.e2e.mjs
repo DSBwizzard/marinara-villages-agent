@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -111,6 +112,7 @@ try {
     { width: 1917, height: 655, mobile: false },
   ]) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
+    await mockEngineLookups(page);
     const fixtureSnapshot =
       width === 800
         ? {
@@ -167,7 +169,7 @@ try {
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/locations/venue/home/player-move")) {
-        await route.fulfill({
+        await fulfill(route, {
           status: 409,
           contentType: "application/json",
           body: JSON.stringify({ error: "This home has no room for another resident." }),
@@ -269,10 +271,10 @@ try {
         session = { ...session, status: "closed", endedAt: now };
         value = { session, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:var(--background);color:var(--foreground);font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",

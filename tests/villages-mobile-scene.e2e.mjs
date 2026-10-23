@@ -1,7 +1,8 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
@@ -36,6 +37,7 @@ try {
   for (const { width, height, count, mode } of cases) {
     const mobile = width !== 1440;
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript(() => {
@@ -106,10 +108,10 @@ try {
       submissions: [],
     };
     await page.route("http://scene-groups.test/missing.png", (route) =>
-      route.fulfill({ status: 404, body: "missing" }),
+      fulfill(route, { status: 404, body: "missing" }),
     );
     await page.route("**/api/characters/summaries", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(
@@ -172,10 +174,10 @@ try {
         session.endedAt = now;
         value = { session, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.route("http://scene-groups.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: `<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#d94491;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Arial}[data-component=HomeBrowserHub]{height:100%;display:flex;flex-direction:column}.mari-home-browser-chrome{height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-around;background:#201c25;color:#eee}main{flex:1;min-height:0;overflow:auto}${tag}{display:block;width:100%;height:100%}</style><div data-component="HomeBrowserHub"><header class="mari-home-browser-chrome"><span>Marinara</span><span>⌂ Home</span><span>Professor Mari</span><strong>Villages</strong></header><main data-component="HomeBrowserHub.Content"><${tag}></${tag}></main></div>`,

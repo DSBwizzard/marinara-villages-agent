@@ -1,12 +1,14 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
 });
 const page = await browser.newPage({ viewport: { width: 375, height: 740 } });
+await mockEngineLookups(page);
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const now = new Date().toISOString();
@@ -123,18 +125,18 @@ const api = async (route) => {
     value = {};
   } else if (path.endsWith("/retry-memory") || path.endsWith("/leave-pending")) {
     closingReviews++;
-    return route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
+    return fulfill(route, { status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
   } else if (path.endsWith("/operation")) value = { operation: null };
   else if (path.endsWith("/catalog")) value = { characters: [] };
   else if (path.endsWith("/relationships")) value = { profiles: [], starting: { pending: false, summaries: [] } };
-  await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+  await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
 };
 const html =
   "<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>";
 async function mount(tab) {
   await tab.route("**/api/villages**", api);
   await tab.route("http://villages.test/", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: html }),
+    fulfill(route, { status: 200, contentType: "text/html", body: html }),
   );
   await tab.goto("http://villages.test/");
   await tab.addScriptTag({ path: resolve("packages/villages/client.js") });

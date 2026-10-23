@@ -1,7 +1,8 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -12,6 +13,7 @@ const errors = [];
 
 async function fixture({ restored = true, recovery = "failed" } = {}) {
   const page = await browser.newPage({ viewport: { width: 375, height: 740 }, isMobile: true, hasTouch: true });
+  await mockEngineLookups(page);
   page.on("pageerror", (error) => errors.push(error.message));
   let session = restored ? opening("visit-1") : null;
   let greetingCalls = 0;
@@ -60,7 +62,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
   await page.route("**/*", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/")
-      return route.fulfill({
+      return fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: '<meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;height:100%}marinara-capability-villages{display:block;height:100%}</style><marinara-capability-villages></marinara-capability-villages>',
@@ -70,12 +72,12 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
       recoveryPending = true;
       if (recovery === "immediate") complete();
       if (nextFailure)
-        return route.fulfill({
+        return fulfill(route, {
           status: 502,
           contentType: "application/json",
           body: JSON.stringify({ error: nextFailure }),
         });
-      return route.abort("failed");
+      return abort(route, "failed");
     }
     if (path.endsWith("/rooms/active") && recoveryPending) {
       recoveryPending = false;
@@ -84,16 +86,16 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
           releaseRecovery = done;
         });
         recoverySettled = true;
-        return route.abort("failed");
+        return abort(route, "failed");
       }
       if (recovery === "failed") {
         failActiveReads = true;
-        return route.abort("failed");
+        return abort(route, "failed");
       }
     }
-    if (path.endsWith("/rooms/active") && failActiveReads) return route.abort("failed");
+    if (path.endsWith("/rooms/active") && failActiveReads) return abort(route, "failed");
     if (path.endsWith("/rooms/turn"))
-      return route.fulfill({ status: 400, json: { error: "This line could not be accepted." } });
+      return fulfill(route, { status: 400, json: { error: "This line could not be accepted." } });
     let value;
     if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity"))
       value = { session, debugDiscardEnabled: false };
@@ -118,7 +120,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
         },
       };
     else value = [];
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+    await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
   });
   async function mount() {
     await page.goto("http://villages.test/");

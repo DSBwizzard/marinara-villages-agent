@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -125,6 +126,7 @@ snapshot.backgroundWork.push({
   connectionPaused: false,
 });
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+await mockEngineLookups(page);
 const errors = [],
   heartbeats = [],
   retries = [];
@@ -136,7 +138,7 @@ try {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/background/presence")) {
       heartbeats.push(route.request().postDataJSON());
-      return route.fulfill({ json: { ready: true, snapshot } });
+      return fulfill(route, { json: { ready: true, snapshot } });
     }
     if (path.endsWith("/background/retry")) {
       const action = route.request().postDataJSON();
@@ -144,11 +146,11 @@ try {
       if (retries.length === 1) {
         acceptedRetries++;
         snapshot.backgroundWork[0].attempt++;
-        await route.abort(); // The server accepted it but its HTTP response was lost.
+        await abort(route); // The server accepted it but its HTTP response was lost.
         return;
       }
       assert.deepEqual(action, retries[0], "retrying a lost response retains action ID and expected attempt");
-      return route.fulfill({ json: snapshot });
+      return fulfill(route, { json: snapshot });
     }
     const response = path.endsWith("/catalog")
       ? { characters: [] }
@@ -161,11 +163,11 @@ try {
             : path.endsWith("/narration")
               ? { tense: "present", person: "second", rating: "sfw" }
               : snapshot;
-    return route.fulfill({ json: response });
+    return fulfill(route, { json: response });
   });
-  await page.route("**/api/connections", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/connections", (route) => fulfill(route, { json: [] }));
   await page.route("http://villages.test/", (route) =>
-    route.fulfill({
+    fulfill(route, {
       contentType: "text/html",
       body: "<style>html,body{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
     }),

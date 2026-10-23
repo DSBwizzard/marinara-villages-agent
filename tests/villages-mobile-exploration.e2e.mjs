@@ -1,6 +1,7 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -135,6 +136,7 @@ try {
     if (process.env.VILLAGES_TEST_WIDTH && width !== Number(process.env.VILLAGES_TEST_WIDTH)) continue;
     const mobile = width <= 704;
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
+    await mockEngineLookups(page);
     await page.addInitScript(() => {
       const viewport = new EventTarget();
       Object.assign(viewport, {
@@ -178,7 +180,7 @@ try {
     let servedImage = mapImage;
     let session = null;
     await page.route("**/api/characters/summaries", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "application/json",
         body: JSON.stringify(portraitRows),
       }),
@@ -214,10 +216,10 @@ try {
         value = { session, recordEvents: [] };
       } else if (/rooms\/(greet|turn)|town-map\/generate/.test(path))
         throw Error("Unexpected generation request: " + path);
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body:
           "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:#111b35;color:#eef2ff;font-family:Arial,sans-serif}body{display:flex;flex-direction:column}.shell{flex:0 0 " +

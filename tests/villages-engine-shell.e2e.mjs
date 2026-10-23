@@ -1,6 +1,7 @@
+import { fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { readFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 // Opt-in integration QA: the Engine serves its existing shell, but this browser
@@ -23,17 +24,17 @@ try {
     await page.route("**/*", async (route) => {
       const url = new URL(route.request().url());
       const path = url.pathname;
-      if (url.origin !== new URL(base).origin) return route.abort();
+      if (url.origin !== new URL(base).origin) return abort(route);
       if (path === "/api/capability-packages/villages/client")
-        return route.fulfill({ contentType: "application/javascript", path: resolve("packages/villages/client.js") });
+        return fulfill(route, { contentType: "application/javascript", path: resolve("packages/villages/client.js") });
       if (/^\/api\/capability-packages\/[^/]+\/client$/.test(path))
-        return route.fulfill({ contentType: "application/javascript", body: "" });
+        return fulfill(route, { contentType: "application/javascript", body: "" });
       if (path === "/api/capability-packages/installed") {
         const original = await route.fetch();
         const installed = await original.json();
         const villages = installed.find((item) => item.id === "villages");
         if (!villages) throw new Error("Running Engine has no Villages package entry for shell QA.");
-        return route.fulfill({
+        return fulfill(route, {
           json: [{ ...villages, status: "active", readiness: "ready", version: manifest.version, manifest }],
         });
       }
@@ -46,14 +47,14 @@ try {
         else if (path.endsWith("/personas")) value = { personas: [] };
         else if (path.endsWith("/lorebooks")) value = { books: [] };
         else if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false };
-        return route.fulfill({ json: value });
+        return fulfill(route, { json: value });
       }
-      if (path === "/api/characters/summaries") return route.fulfill({ json: [] });
-      if (path === "/api/connections/refresh-local-context") return route.fulfill({ json: { updated: [] } });
+      if (path === "/api/characters/summaries") return fulfill(route, { json: [] });
+      if (path === "/api/connections/refresh-local-context") return fulfill(route, { json: { updated: [] } });
       // Block every real Engine write, including automatic achievements/preferences.
       if (!["GET", "HEAD"].includes(route.request().method())) {
         blockedWrites.push({ path, method: route.request().method() });
-        return route.fulfill({ json: {} });
+        return fulfill(route, { json: {} });
       }
       return route.continue();
     });

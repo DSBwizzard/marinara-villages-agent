@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../scripts/esbuild.mjs";
 import { fileURLToPath } from "node:url";
 
 // Bundle the actual entry module, replacing only its application boundary.
