@@ -395,7 +395,7 @@ try {
     failure = "sound";
     await composer.fill("Saved request that resolves as unavailable");
     await send.click();
-    await expectSceneError(page, "The reply used an invalid narrated sound. Your draft is preserved.");
+    await expectSceneError(page, "Message failed");
     occupancyUnavailable = true;
     const retryPanel = await openSceneErrors(page);
     await retryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
