@@ -20,7 +20,8 @@ import {
 } from "../../domain/rules/semantic-continuity.js";
 import { readSemanticEffects, SEMANTIC_OPERATION_BUDGET } from "../../domain/rules/semantic-contract.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
-import { assertSceneMovementCapacity } from "../../domain/rules/resident-movement.js";
+import { assertSceneMovementCapacity, UnavailableResidentMovement } from "../../domain/rules/resident-movement.js";
+import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
 import { captureSceneLayout, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { villageNow, villageClockShiftMs } from "../../adapters/time/clock-gate.js";
@@ -1901,6 +1902,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       : undefined;
     const payload = {
       ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.residentMovementReviewVersion === 1
+          ? { residentMovementReviewVersion: 1 }
+          : {}
+        : !prior && scene.semanticVersion === 2 && input.mode !== "leave"
+          ? { residentMovementReviewVersion: 1 }
+          : {}),
+      ...(scene.operation?.id === input.submissionId
         ? scene.operation.input.castLimitVersion === 1
           ? { castLimitVersion: 1 }
           : {}
@@ -1967,7 +1975,32 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     return payload;
   }
 
+  function unavailableTurnResult(session: VenueScene) {
+    return {
+      session,
+      turnOutcome: "occupancy-unavailable" as const,
+      verdict: null,
+      action: null,
+      recordEvents: [] as VenueRecordEvent[],
+    };
+  }
+
   async function sendVenueTurn(input: VenueTurnInput) {
+    const rejected = await readSession(input.sessionId);
+    if (rejectedSubmission(rejected, input.submissionId, input)) {
+      if (rejected.operation?.id === input.submissionId && rejected.operation.status !== "complete")
+        return coordinateVenue(
+          input.sessionId,
+          input.submissionId,
+          "turn",
+          rejected.operation.input,
+          undefined,
+          undefined,
+          async () => unavailableTurnResult(await readSession(input.sessionId)),
+          { replay: true, recovery: true },
+        );
+      return unavailableTurnResult(rejected);
+    }
     if ((await readSession(input.sessionId)).openingReader)
       throw conflict("Continue from the gathering or skip the opening first.");
     const scene = await readSession(input.sessionId);
@@ -2058,8 +2091,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   }
 
   async function sendVenueTurnOnce(input: VenueTurnInput) {
+    const submittedInput = input;
     if (sceneWork().isMoving(input.sessionId)) throw conflict("Wait for zone navigation to finish before sending.");
     let session = await readSession(input.sessionId);
+    if (rejectedSubmission(session, input.submissionId, input)) return unavailableTurnResult(session);
     const compatibilityWishCheck = input.mode === "fulfill";
     const requestMode = input.mode === "act" || input.mode === "fulfill" ? input.mode : undefined;
     const prior = session.submissions.find((entry) => entry.id === input.submissionId);
@@ -2369,18 +2404,41 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       eventScene.contactGeneration!.instruction = `The Contact shortcut requests a ${input.contact?.kind === "knock" ? "knock" : "call"} toward ${input.contact?.boundaryZoneId || "the adjacent Zones"}. Resolve it as a current attempted action; never invent success. Explicit private or hypothetical wording still governs.`;
       contactIntentUsed = null;
     }
-    let reply = contactIntentUsed
-      ? await contactReply(session, contactIntentUsed)
-      : await venueCheckpoint("turn-reply", () =>
-          generate(
-            eventScene,
-            input.message,
-            input.mode === "contact" ? "chat" : input.mode,
-            responseTargetId,
-            null,
-            venueOperationSignal(),
-          ),
-        );
+    let reply: SceneReply;
+    try {
+      reply = contactIntentUsed
+        ? await contactReply(session, contactIntentUsed)
+        : await venueCheckpoint("turn-reply", () =>
+            generate(
+              eventScene,
+              input.message,
+              input.mode === "contact" ? "chat" : input.mode,
+              responseTargetId,
+              null,
+              venueOperationSignal(),
+            ),
+          );
+    } catch (error) {
+      if (!(error instanceof UnavailableResidentMovement)) throw error;
+      assertVenueOwnership();
+      venueOperationSignal()?.throwIfAborted();
+      const updated = await changeSession(session.id, (saved) => {
+        assertVenueOwnership(saved);
+        venueOperationSignal()?.throwIfAborted();
+        if (saved.sceneRevision !== session.sceneRevision)
+          throw conflict("The conversation moved on. Your draft is preserved.");
+        saved.rejectedSubmissions ??= [];
+        if (!rejectedSubmission(saved, input.submissionId, submittedInput))
+          saved.rejectedSubmissions.push({
+            id: input.submissionId,
+            inputHash: rejectedInputHash(submittedInput),
+            sceneRevision: session.sceneRevision,
+            turnOutcome: "occupancy-unavailable",
+          });
+        if (saved.operation) saved.operation.turnOutcome = "occupancy-unavailable";
+      });
+      return unavailableTurnResult(updated);
+    }
     if (!explicitSceneActions() && !contactIntentUsed && reply.contactIntent) {
       contactIntentUsed = reply.contactIntent;
       reply = await contactReply(session, contactIntentUsed);

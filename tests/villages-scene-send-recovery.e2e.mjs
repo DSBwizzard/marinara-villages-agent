@@ -67,6 +67,9 @@ try {
     let loseOperationRead = false;
     let staleRecovery = null;
     let semanticRecovery = null;
+    let occupancyUnavailable = false;
+    let loseUnavailableResponse = false;
+    let delayUnavailableResponse = false;
     let changeFailureReason = "The suggested memory had no witnessed evidence.";
     let continuations = 0;
     const turns = [];
@@ -137,6 +140,23 @@ try {
       } else if (path.endsWith("/rooms/turn")) {
         const input = request.postDataJSON();
         turns.push(input);
+        if (occupancyUnavailable) {
+          session.operation = {
+            id: input.submissionId,
+            kind: "turn",
+            status: "complete",
+            error: "",
+            turnOutcome: "occupancy-unavailable",
+            input: { message: input.message, mode: input.mode, targetId: input.targetId },
+          };
+          const result = { session: structuredClone(session), turnOutcome: "occupancy-unavailable", recordEvents: [] };
+          if (loseUnavailableResponse) {
+            loseUnavailableResponse = false;
+            return abort(route, "failed");
+          }
+          if (delayUnavailableResponse) await new Promise((resolve) => setTimeout(resolve, 800));
+          return fulfill(route, { status: 200, json: result });
+        }
         if (failure) {
           const message =
             failure === "sound"
@@ -275,8 +295,8 @@ try {
     await expect(composer).toBeEnabled();
     await page.waitForTimeout(1700);
     assert.equal(turns.length, 3, "recovery waits do not send");
-    const retryPanel = await openSceneErrors(page);
-    await retryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
+    const informationalRetryPanel = await openSceneErrors(page);
+    await informationalRetryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
     await closeSceneErrors(page);
     const retryNext = page.getByRole("button", { name: "Next paragraph", exact: true });
     while (await retryNext.isEnabled()) await retryNext.click();
@@ -362,6 +382,78 @@ try {
       assert.equal(turns.length, beforeLost + 1, "recovery never resends a completed turn");
       loseOperationRead = false;
     }
+
+    // An unavailable request is informational, editable, and absent from the story.
+    const savedStory = structuredClone({
+      lines: session.lines,
+      submissions: session.submissions,
+      revision: session.sceneRevision,
+    });
+    const info = page.getByRole("button", { name: "Scene information", exact: true });
+    const infoPanel = page.getByRole("region", { name: "Information", exact: true });
+    const occupancyMessage = "The requested change in Zone occupancy could not be completed.";
+    failure = "sound";
+    await composer.fill("Saved request that resolves as unavailable");
+    await send.click();
+    await expectSceneError(page, "Message failed");
+    occupancyUnavailable = true;
+    const retryPanel = await openSceneErrors(page);
+    await retryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
+    await expect(info).toBeVisible();
+    await expect(composer).toHaveValue("Saved request that resolves as unavailable");
+    await expect(composer).toBeEnabled();
+    await composer.fill("Edit after saved retry");
+    await expect(info).toHaveCount(0);
+    for (const lost of [false, true]) {
+      loseUnavailableResponse = lost;
+      const beforeBlocked = turns.length;
+      await composer.fill("Everyone, come here now. *folds the cloth*");
+      await send.click();
+      await expect(info).toBeVisible();
+      await expect(composer).toBeEnabled();
+      await expect(composer).toHaveValue("Everyone, come here now. *folds the cloth*");
+      assert.equal(turns.length, beforeBlocked + 1, "lost informational responses never resend");
+      await info.click();
+      await expect(infoPanel).toContainText(occupancyMessage);
+      await expect(infoPanel.locator("details")).toHaveCount(0);
+      await expect(infoPanel.getByRole("button", { name: /retry/i })).toHaveCount(0);
+      const icon = info.locator("span").first();
+      await expect(icon).toHaveText("i");
+      assert.deepEqual(
+        await icon.evaluate((node) => [getComputedStyle(node).backgroundColor, getComputedStyle(node).color]),
+        ["rgb(117, 183, 245)", "rgb(16, 42, 67)"],
+      );
+      await page.screenshot({
+        path: `.build-tmp/scene-status/information-${lost ? "lost-" : ""}${mobile ? "mobile" : "desktop"}.png`,
+      });
+      await infoPanel.getByRole("button", { name: "Close Information", exact: true }).click();
+      await composer.fill("Edited request");
+      await expect(info).toHaveCount(0);
+    }
+    assert.deepEqual(
+      { lines: session.lines, submissions: session.submissions, revision: session.sceneRevision },
+      savedStory,
+    );
+    await composer.fill("Reload unavailable draft");
+    await send.click();
+    await expect(info).toBeVisible();
+    await load();
+    await expect(info).toBeVisible();
+    await expect(composer).toHaveValue("Reload unavailable draft");
+    await composer.fill("Newer draft before blocked response");
+    delayUnavailableResponse = true;
+    const beforeDelayed = turns.length;
+    const delayedResponse = page.waitForResponse((response) => response.url().endsWith("/rooms/turn"));
+    await send.click();
+    await expect.poll(() => turns.length).toBe(beforeDelayed + 1);
+    await composer.fill("Newer edit while processing");
+    await delayedResponse;
+    await expect(send).toBeEnabled();
+    await expect(composer).toBeEnabled();
+    await expect(composer).toHaveValue("Newer edit while processing");
+    await expect(info).toHaveCount(0);
+    occupancyUnavailable = false;
+    delayUnavailableResponse = false;
 
     // Reach General settings with no active Scene, then verify persistence.
     active = false;

@@ -36,6 +36,7 @@ export function publicSceneRoutes(
                   : undefined,
                 operation: operationSummary(
                   saved.operation as import("../../domain/models/operation-model.js").VenueOperation | undefined,
+                  saved.rejectedSubmissions as import("../../domain/models/scene-model.js").VenueScene["rejectedSubmissions"],
                 ),
               };
             }

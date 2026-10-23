@@ -2219,6 +2219,89 @@ async function main() {
     );
     assert.equal(oldResult.effects.projectOfferReview, undefined);
   }
+  // Named remote speakers must not replace the local group when resolving "the four of you".
+  {
+    const requestState = defaultVillageState();
+    requestState.seed = "request-roster";
+    requestState.villagers = ["a", "b", "c", "d", "e", "f", "departed"].map((characterId) => ({
+      characterId,
+      cardSnapshot: { id: characterId, name: characterId },
+    })) as any;
+    requestState.venues = [
+      {
+        id: "house",
+        name: "House",
+        classes: ["community"],
+        layoutVersion: 1,
+        zones: ["exterior", "hall", "studio"].map((id) => ({
+          ...defaultVenueSpace("community"),
+          id,
+          name: id,
+          kind: id === "exterior" ? "exterior" : "public",
+          seen: true,
+          connectedTo: id === "hall" ? ["exterior", "studio"] : ["hall"],
+        })),
+      },
+    ] as any;
+    const requestScene = coerceSession({
+      id: "request-roster",
+      placeId: "house",
+      placeName: "House",
+      zoneId: "hall",
+      villageSeed: requestState.seed,
+      status: "active",
+      startedAt: new Date().toISOString(),
+      activeIds: ["a", "b", "c", "d"],
+      departedIds: ["departed"],
+      sceneAttendance: {
+        capturedAt: new Date().toISOString(),
+        layout: captureSceneLayout(requestState.venues[0]),
+        occupants: requestState.villagers.map(({ characterId }) => ({
+          characterId,
+          name: characterId,
+          doing: "Waiting",
+          zoneId: ["e", "f"].includes(characterId) ? "studio" : "hall",
+        })),
+      },
+    });
+    requestScene.contactGeneration = { actorIds: ["c", "d", "e", "f"], remoteIds: ["e", "f"] } as any;
+    requestScene.operation = { input: { semanticPipelineVersion: 3, residentMovementReviewVersion: 1 } } as any;
+    const message = "Can the four of you join e and f in the Studio right now?";
+    let calls = 0;
+    const requestService = createSemanticService({
+      ...ports,
+      readVillageState: async () => requestState,
+      venueSavedCheckpoint: () => undefined,
+      venueCheckpoint: async (_key, work) => work(),
+      completeWithRoom: async (_model, messages) => {
+        calls++;
+        const packet = JSON.parse(messages[1].content);
+        assert.deepEqual(
+          packet.input.context.actors.map((actor: any) => actor.id),
+          ["c", "d", "e", "f"],
+        );
+        assert.deepEqual(packet.input.residentRequestLocalIds, ["a", "b", "c", "d"]);
+        return {
+          finishReason: "stop",
+          content: JSON.stringify({
+            sourceHash: packet.sourceHash,
+            intent: {
+              status: "resolved",
+              instructions: "",
+              action: null,
+              movement: null,
+              timeline: [{ kind: "speech", text: message }],
+            },
+            immediateResidentMoves: [
+              { characterIds: packet.input.residentRequestLocalIds, zoneId: "studio", source: 0 },
+            ],
+          }),
+        };
+      },
+    });
+    assert.equal((await requestService.exchange(requestScene, message, [], null)).turnOutcome, "occupancy-unavailable");
+    assert.equal(calls, 1, "The existing System exchange resolves the whole group without another judge");
+  }
   console.log(
     "System ownership: connection routing, independent extraction, replay, failure isolation, evidence identity, privacy and legacy compatibility passed; fake providers only.",
   );

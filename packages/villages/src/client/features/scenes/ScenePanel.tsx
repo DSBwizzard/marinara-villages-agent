@@ -18,7 +18,8 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
 import type { Portrait, PortraitMap, RoomStep, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
-import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
+import { SceneErrorChip, SceneInformationChip, type SceneErrorItem } from "./scene-errors.js";
+import { OCCUPANCY_UNAVAILABLE_MESSAGE } from "../../../shared/contracts/scene-turn-outcome.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";
 import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene.js";
@@ -324,6 +325,7 @@ export function RoomPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
+  const [informationOpen, setInformationOpen] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState(false);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
@@ -1084,12 +1086,26 @@ export function RoomPanel({
         </p>
       ) : null}
       <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
+        <SceneInformationChip
+          items={
+            ruling === OCCUPANCY_UNAVAILABLE_MESSAGE ? [{ id: "occupancy", title: "Information", message: ruling }] : []
+          }
+          open={informationOpen}
+          onOpen={(value) => {
+            setInformationOpen(value);
+            if (value) {
+              setErrorsOpen(false);
+              setNoticesOpen(false);
+            }
+          }}
+        />
         {!settingsOpen ? (
           <SceneErrorChip
             items={errorItems}
             open={errorsOpen}
             onOpen={(value) => {
               setErrorsOpen(value);
+              if (value) setInformationOpen(false);
               if (value) setNoticesOpen(false);
             }}
           />
@@ -1102,6 +1118,7 @@ export function RoomPanel({
               onClick={() => {
                 setNoticesOpen((value) => !value);
                 setErrorsOpen(false);
+                setInformationOpen(false);
               }}
               aria-expanded={noticesOpen}
               aria-label={`${notices.length} village ${notices.length === 1 ? "notice" : "notices"}`}
@@ -1573,7 +1590,7 @@ export function RoomPanel({
             </span>
           </div>
         </div>
-        {ruling ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
+        {ruling && ruling !== OCCUPANCY_UNAVAILABLE_MESSAGE ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
         {canCompose && mode === "fulfill" && activeParticipants.length === 0 ? (

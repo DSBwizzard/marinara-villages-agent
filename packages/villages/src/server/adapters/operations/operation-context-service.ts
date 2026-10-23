@@ -15,16 +15,21 @@ export type Context = {
   usedAttemptKeys: Map<string, string>;
   blocked: Set<string>;
 };
-export function operationSummary(operation?: VenueOperation) {
-  if (!operation || (operation.status === "complete" && !operation.error)) return null;
+export function operationSummary(
+  operation?: VenueOperation,
+  rejected?: import("../../domain/models/scene-model.js").VenueScene["rejectedSubmissions"],
+) {
+  const turnOutcome = rejected?.find((receipt) => receipt.id === operation?.id)?.turnOutcome ?? operation?.turnOutcome;
+  if (!operation || (operation.status === "complete" && !operation.error && !turnOutcome)) return null;
   return {
     id: operation.id,
     kind: operation.kind,
     recoverable: operation.kind === "greet" && Object.hasOwn(operation.checkpoints, "greeting-reply"),
     attemptId: operation.attemptId,
-    status: operation.status,
+    status: turnOutcome ? ("complete" as const) : operation.status,
     stage: operation.stage,
-    error: operation.error,
+    error: turnOutcome ? "" : operation.error,
+    ...(turnOutcome ? { turnOutcome, input: { message: operation.input.message } } : {}),
   };
 }
 /** Scene authority belongs to its application, including nested asynchronous work. */

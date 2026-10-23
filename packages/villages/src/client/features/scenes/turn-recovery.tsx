@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SceneView } from "../../../shared/contracts/village.js";
 import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { refreshSceneAfterFailure } from "./ScenePanel.js";
+import { request } from "../../shared/api.js";
+import type { RoomOperation } from "../../../shared/contracts/village.js";
+import { OCCUPANCY_UNAVAILABLE_MESSAGE } from "../../../shared/contracts/scene-turn-outcome.js";
 
 type Pending = {
   sceneId: string;
@@ -23,6 +26,7 @@ export function useTurnRecovery(ports: {
   setRoomDraft: React.Dispatch<React.SetStateAction<string>>;
   submission: React.RefObject<string | null>;
   editVersion?: React.RefObject<number>;
+  setRoomRuling?: React.Dispatch<React.SetStateAction<string>>;
 }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [status, setStatus] = useState("");
@@ -59,8 +63,24 @@ export function useTurnRecovery(ports: {
       reading.current = token;
       const owns = () => owner.current === token && latest.current.room?.id === pending.sceneId;
       const scene = await refreshSceneAfterFailure(pending.sceneId, pending.submissionId, owns);
+      if (!owns()) return;
+      const { operation } = await request<{ operation: RoomOperation | null }>(
+        `/rooms/${encodeURIComponent(pending.sceneId)}/operations/${encodeURIComponent(pending.submissionId)}`,
+      ).catch(() => ({ operation: null }));
       if (reading.current === token) reading.current = null;
       if (!owns()) return;
+      if (operation?.id === pending.submissionId && operation.turnOutcome === "occupancy-unavailable") {
+        if (scene) latest.current.setRoom(scene);
+        latest.current.setRoomError("");
+        if (!latest.current.editVersion || latest.current.editVersion.current === pending.editVersion) {
+          latest.current.setRoomDraft(pending.text);
+          latest.current.setRoomRuling?.(OCCUPANCY_UNAVAILABLE_MESSAGE);
+        }
+        if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
+        setPending(null);
+        setStatus("");
+        return;
+      }
       if (scene?.submissions?.some((entry) => entry.id === pending.submissionId)) {
         recordTurnTiming(pending.sceneId, pending.submissionId, "recovered");
         latest.current.setRoom(scene);
