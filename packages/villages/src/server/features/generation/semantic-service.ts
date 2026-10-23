@@ -2,6 +2,7 @@ import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admis
 import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
 import {
   readOpeningSignal,
+  openingGatheringQuoteMatches,
   openingProposalFingerprint,
   IncompleteOpeningPitch,
   IncompleteOpeningGathering,
@@ -509,12 +510,16 @@ export function createSemanticService(ports: SemanticPorts) {
               (signal.kind === "first-use" &&
                 (!opening.firstUse || !signal.playerQuote || !savedInput.message.includes(signal.playerQuote))))
           )
-            throw badGateway("System opening evidence did not validate. The draft is preserved.");
+            throw badGateway(
+              "The opening check could not match its result to the spoken dialogue. The draft is preserved. Retry the check.",
+            );
           if (opening.requiredPitch && signal?.kind !== "pitch") throw new IncompleteOpeningPitch();
           let gatheringComplete = false;
           if (opening.gathering) {
             if (!Array.isArray(raw.gatheringContributions))
-              throw badGateway("Gathering interpretation is incomplete. The draft is preserved.");
+              throw badGateway(
+                "The gathering check did not identify the founders’ ideas. The draft is preserved. Retry the check.",
+              );
             const contributions = raw.gatheringContributions.map(asRecord);
             const contributors = new Set<string>();
             for (const contribution of contributions) {
@@ -525,15 +530,11 @@ export function createSemanticService(ports: SemanticPorts) {
                 contributors.has(residentId) ||
                 typeof quote !== "string" ||
                 !quote.trim() ||
-                !savedInput.evidence.some(
-                  (line) =>
-                    line.playerHeard &&
-                    line.kind === "dialogue" &&
-                    line.speakerId === residentId &&
-                    line.content.includes(quote),
-                )
+                !openingGatheringQuoteMatches(savedInput.evidence, residentId, quote)
               )
-                throw badGateway("Gathering evidence did not validate. The draft is preserved.");
+                throw badGateway(
+                  "The gathering check could not match a founder’s idea to their spoken dialogue. The draft is preserved. Retry the check.",
+                );
               contributors.add(residentId);
             }
             if (contributors.size !== opening.gathering.length) throw new IncompleteOpeningGathering();

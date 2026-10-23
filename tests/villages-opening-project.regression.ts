@@ -8,6 +8,7 @@ import {
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   initialOpening,
+  readOpeningProposal,
   openingView,
   openingSceneDirection,
   applyOpeningExchange,
@@ -39,6 +40,22 @@ const proposal = (residentId: string, established = false): OpeningProposal => (
   work: "Coordinate a shared gathering and its practical arrangements.",
   firstUse: "Watch a performance together.",
 });
+// Lists of supporting facts normalize to the same saved text contract.
+{
+  const facts = ["  The pavilion is open to the park. ", "Benches already stand under its roof."];
+  const parsed = readOpeningProposal({ ...proposal("a"), provenance: facts }, "a");
+  assert.equal(parsed.provenance, facts.map((fact) => fact.trim()).join("\n"));
+  assert.deepEqual(readOpeningProposal(parsed, "a"), parsed, "saved canonical text round-trips unchanged");
+  for (const invalid of [undefined, "", [], ["valid", 1], ["valid", ""], { fact: "a" }])
+    assert.throws(
+      () => readOpeningProposal({ ...proposal("a"), provenance: invalid }, "a"),
+      /missing its supporting setting facts/,
+    );
+  assert.throws(
+    () => readOpeningProposal({ ...proposal("a"), provenance: ["x".repeat(1000), "y"] }, "a"),
+    /too much text/,
+  );
+}
 function world(count = 3, established = false) {
   const state = defaultVillageState();
   state.seed = "opening-world";
