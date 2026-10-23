@@ -33,7 +33,7 @@ export function sceneErrorMessage(original: string): string {
       "The server or AI connection refused access. Check the connection and access settings.",
     ],
     [
-      /(?:no|choose|selected|not configured|not available).*(?:language model|System|Narration|connection)|System interpretation.*not configured/iu,
+      /\bno (?:language model |system )?connection\b|\b(?:choose|selected)\b.*\bconnection|\bconnection.*(?:not configured|not available|no longer exists|not found|has no (?:model|base URL))|System interpretation is not configured/iu,
       "The AI connection is not ready. Check the System and Narration connections in settings.",
     ],
     [

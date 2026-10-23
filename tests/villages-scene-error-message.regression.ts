@@ -7,6 +7,12 @@ for (const [technical, meaning] of [
   ["The generated opening idea is missing its provenance. Retry failed preparation.", /supporting setting facts/u],
   ["System update metadata is missing.", /missing information/u],
   [
+    "Could not reach the server (POST /api/villages/rooms/greet). Check your connection and reload to see whether the action completed before trying again.",
+    /connection was interrupted.*saved reply/u,
+  ],
+  ["No language model connection selected", /AI connection is not ready/u],
+  ["System interpretation is not configured.", /AI connection is not ready/u],
+  [
     "The saved physical outcome could not commit. Recover the saved request.",
     /unfinished saved action.*Recover the saved request/u,
   ],
