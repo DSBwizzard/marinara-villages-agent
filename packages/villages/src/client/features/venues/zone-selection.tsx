@@ -9,9 +9,9 @@ export function useVenueZoneSelection(ports: {
   readonly venueId: VenuesState["venueId"];
   readonly venueZoneKey: VenuesState["venueZoneKey"];
 }) {
-  useEffect(() => {
-    const { setVenueZoneKey, snapshot, venueId, venueZoneKey } = ports;
+  const { setVenueZoneKey, snapshot, venueId, venueZoneKey } = ports;
 
+  useEffect(() => {
     if (venueZoneKey === "exterior") return;
     const venue = snapshot?.settings.venues.find((entry) => entry.id === venueId);
     const available =
@@ -27,5 +27,5 @@ export function useVenueZoneSelection(ports: {
             venue.privateSpaces?.some((space) => space.ownerId === venueZoneKey.slice(8)),
           ));
     if (!available) setVenueZoneKey("exterior");
-  }, [ports.snapshot, ports.venueId, ports.venueZoneKey]);
+  }, [setVenueZoneKey, snapshot, venueId, venueZoneKey]);
 }

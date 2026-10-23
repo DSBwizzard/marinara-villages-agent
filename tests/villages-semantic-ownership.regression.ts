@@ -1339,7 +1339,7 @@ async function main() {
   };
   assert.deepEqual(reconcileResidentActions(actions, redundantReview, redundantEvidence).access[0].evidence, [1]);
   for (const mutation of [
-    (r: any, e: any[]) => {
+    (r: any) => {
       r.coverage[0].status = "actions";
       r.coverage[0].actionIds = ["invitation"];
     },
@@ -1387,10 +1387,10 @@ async function main() {
   assert.deepEqual(doorwayReview, originalDoorwayReview);
   assert.deepEqual(normalizedDoorway.receipt.coverageNormalization, [{ segment: 1, actionIds: ["invitation"] }]);
   for (const mutate of [
-    (r: any, e: any[]) => {
+    (r: any) => {
       r.coverage[1].actionIds.push("unknown");
     },
-    (r: any, e: any[]) => {
+    (r: any) => {
       r.coverage[1].actionIds.push("invitation");
     },
     (r: any, e: any[]) => {

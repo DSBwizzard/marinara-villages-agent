@@ -1098,9 +1098,6 @@ async function main() {
 
   // The settings view shows a complete Villages plan for every resident and
   // exposes a Marinara schedule only as an optional comparison and input.
-  const { readFileSync } = await import("node:fs");
-  const { dirname, resolve } = await import("node:path");
-  const { fileURLToPath } = await import("node:url");
   const clientSource = clientImplementation();
   assert.ok(clientSource.includes("Villages agenda</h4>"), "the village agenda is named as the primary plan");
   assert.ok(!clientSource.includes("Marinara schedule</h4>"), "the authoritative translation comparison is retired");

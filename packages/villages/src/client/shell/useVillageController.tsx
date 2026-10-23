@@ -1,6 +1,6 @@
 import { sceneNavigationScreen } from "./navigation.js";
 import { useSettingsDraftSession } from "../features/settings/draft-session.js";
-import type { TownMapView, VillageSnapshot, VillageVenue } from "../../shared/contracts/village.js";
+import type { TownMapView, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
 import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
 import { useProgressDiagnostics } from "../features/background/useProgressDiagnostics.js";
@@ -191,6 +191,7 @@ import {
   useVillagePresence,
   useVillageTransitions,
   useWriteVillageEvent,
+  useVillageSnapshot,
 } from "../shared/data-controller.js";
 import type { MapFrameShape, MapPin, MapZoomRange, MenuPage } from "../shared/types.js";
 import { useScenesOpenMenu } from "./navigation-actions.js";
@@ -212,7 +213,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     return () => observer.disconnect();
   }, [element]);
 
-  const [snapshot, setSnapshot] = useState<VillageSnapshot | null>(null);
+  const { snapshot, setSnapshot, beginSnapshotRead } = useVillageSnapshot();
 
   const homeBuildings = snapshot?.settings.homeBuildings ?? [];
 
@@ -962,7 +963,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     dismissedRoomEventIdsRef,
     receiveRoomRecordEvents,
     room,
-    roomChangeStatus,
     setRoomChangeStatus,
     setRoomNotices,
     setRoomUnresolvedChanges,
@@ -1033,7 +1033,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     currentSnapshotRef,
     reconcilingRef,
     setCatchingUp,
-    setSnapshot,
+    beginSnapshotRead,
     storyActionRef,
   });
 
@@ -1061,11 +1061,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * reading on screen instead of blanking a village that is working perfectly
    * well.
    */
-  const loadSnapshot = useLoadVillageSnapshot({ setError, setSnapshot });
+  const loadSnapshot = useLoadVillageSnapshot({ setError, beginSnapshotRead });
 
   const presenceSession = useRef("");
 
-  useVillagePresence({ element, loadSnapshot, presenceSession, reconcile, setSnapshot, snapshot });
+  useVillagePresence({ element, loadSnapshot, presenceSession, reconcile, beginSnapshotRead, snapshot });
 
   const backgroundPending =
     snapshot?.backgroundWork?.some((job) => ["queued", "running"].includes(job.status)) ?? false;
@@ -1849,7 +1849,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSetupWorkspace,
     setupEditorOpen,
     setupMapBusy,
-    setupMapSource,
     setupMapSrc,
     setupVenuesRef,
     setupWorkspace,
@@ -1950,7 +1949,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     snapshot,
   });
 
-  const setupDraftRow = createFoundingSetupDraftRow({});
+  const setupDraftRow = createFoundingSetupDraftRow();
 
   const generateSetupImage = createFoundingGenerateSetupImage({
     element,
@@ -2000,7 +1999,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     },
   });
 
-  const withSetupImage = createFoundingWithSetupImage({});
+  const withSetupImage = createFoundingWithSetupImage();
 
   /** Why the wizard cannot finish yet, or "" when it can. Checked here as well as on the server so the player is told before a request is made. */
   const setupBlocker = useFoundingSetupBlocker({
@@ -2014,7 +2013,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupMapSrc,
     setupName,
     setupPlayerBackground,
-    setupWorldName,
     setupSetting,
     setupVenues,
     setupWorldFacts,

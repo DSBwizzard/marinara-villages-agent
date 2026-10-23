@@ -77,9 +77,6 @@ import { clientImplementation } from "./client-source.js";
 // markup precedes the card's cannot be a child of the card, and this file asserts
 // the order rather than trusting the nesting.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { type VillagesWalkBeat } from "../packages/villages/src/shared/contracts/scene-beat.js";
 import {
   classifyVillagesParagraph,
@@ -358,7 +355,6 @@ for (const walk of [noBeats, lifted, mixedWalk, runWalk, trailing, leading]) {
   — and a name is matched with its closing brace or backtick so that one class
   cannot be read as another it is a prefix of.
 */
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const entrySource = clientImplementation();
 const tagName = /const ELEMENT_TAG = "([^"]+)";/u.exec(entrySource)?.[1];
 assert.ok(tagName);

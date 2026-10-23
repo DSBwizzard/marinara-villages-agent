@@ -16,18 +16,21 @@ export function useLoadMemoryLibrary(ports: {
   setMemoryLibrary: React.Dispatch<SetStateAction<MemoryLibrary>>;
 }) {
   const { setError, setMemoryLibrary } = ports;
-  return useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await request<MemoryLibrary>("/memories", { signal });
-      if (signal?.aborted) return;
-      setMemoryLibrary(response);
-      setError("");
-    } catch (cause) {
-      if (signal?.aborted) return;
-      setMemoryLibrary(null);
-      setError(messageFrom(cause, "Could not read villager memories."));
-    }
-  }, []);
+  return useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const response = await request<MemoryLibrary>("/memories", { signal });
+        if (signal?.aborted) return;
+        setMemoryLibrary(response);
+        setError("");
+      } catch (cause) {
+        if (signal?.aborted) return;
+        setMemoryLibrary(null);
+        setError(messageFrom(cause, "Could not read villager memories."));
+      }
+    },
+    [setError, setMemoryLibrary],
+  );
 }
 
 export function useForgetMemory(ports: {
@@ -50,7 +53,7 @@ export function useForgetMemory(ports: {
         setBusy(false);
       }
     },
-    [loadMemoryLibrary],
+    [loadMemoryLibrary, setBusy, setError],
   );
 }
 
@@ -59,17 +62,20 @@ export function useLoadAgendas(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
   const { setAgendas, setError } = ports;
-  return useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await request<AgendaListResponse>("/agendas", { signal });
-      if (signal?.aborted) return;
-      setAgendas(response.villagers);
-    } catch (cause) {
-      if (signal?.aborted) return;
-      setAgendas(null);
-      setError(messageFrom(cause, "Could not read what the villagers wish for."));
-    }
-  }, []);
+  return useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const response = await request<AgendaListResponse>("/agendas", { signal });
+        if (signal?.aborted) return;
+        setAgendas(response.villagers);
+      } catch (cause) {
+        if (signal?.aborted) return;
+        setAgendas(null);
+        setError(messageFrom(cause, "Could not read what the villagers wish for."));
+      }
+    },
+    [setAgendas, setError],
+  );
 }
 
 export function useRewriteAgenda(ports: {
@@ -110,7 +116,7 @@ export function useRewriteAgenda(ports: {
         setBusy(false);
       }
     },
-    [retryWork],
+    [currentSnapshotRef, retryWork, setAgendas, setBusy, setError],
   );
 }
 
@@ -120,21 +126,24 @@ export function useCorrectCompletedWish(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
   const { setAgendas, setBusy, setError } = ports;
-  return useCallback(async (characterId: string, wishId: string) => {
-    setBusy(true);
-    try {
-      const response = await request<AgendaListResponse>(
-        `/agendas/${encodeURIComponent(characterId)}/completed/${encodeURIComponent(wishId)}/correct`,
-        { method: "POST" },
-      );
-      setAgendas(response.villagers);
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "That wish completion could not be corrected."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  return useCallback(
+    async (characterId: string, wishId: string) => {
+      setBusy(true);
+      try {
+        const response = await request<AgendaListResponse>(
+          `/agendas/${encodeURIComponent(characterId)}/completed/${encodeURIComponent(wishId)}/correct`,
+          { method: "POST" },
+        );
+        setAgendas(response.villagers);
+        setError("");
+      } catch (cause) {
+        setError(messageFrom(cause, "That wish completion could not be corrected."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [setAgendas, setBusy, setError],
+  );
 }
 
 export function useSetAgendaScheduleIngestion(ports: {
@@ -143,21 +152,24 @@ export function useSetAgendaScheduleIngestion(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
   const { setAgendas, setBusy, setError } = ports;
-  return useCallback(async (characterId: string, enabled: boolean, categories?: Record<string, boolean>) => {
-    setBusy(true);
-    try {
-      const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/influence`, {
-        method: "PATCH",
-        body: JSON.stringify({ enabled, categories }),
-      });
-      setAgendas(response.villagers);
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "Schedule use could not be changed."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  return useCallback(
+    async (characterId: string, enabled: boolean, categories?: Record<string, boolean>) => {
+      setBusy(true);
+      try {
+        const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/influence`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled, categories }),
+        });
+        setAgendas(response.villagers);
+        setError("");
+      } catch (cause) {
+        setError(messageFrom(cause, "Schedule use could not be changed."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [setAgendas, setBusy, setError],
+  );
 }
 
 export function useAddVillager(ports: {
@@ -191,7 +203,7 @@ export function useAddVillager(ports: {
         setBusy(false);
       }
     },
-    [loadCatalog],
+    [loadCatalog, setBusy, setError, setSnapshot],
   );
 }
 
@@ -218,7 +230,7 @@ export function useRemoveVillager(ports: {
         setBusy(false);
       }
     },
-    [catalog, loadCatalog],
+    [catalog, loadCatalog, setBusy, setError, setSnapshot],
   );
 }
 
@@ -228,18 +240,21 @@ export function usePreviewVillagerRefresh(ports: {
   setRefreshPreviews: React.Dispatch<SetStateAction<Record<string, VillagerRefreshPreview>>>;
 }) {
   const { setError, setRefreshBusyId, setRefreshPreviews } = ports;
-  return useCallback(async (characterId: string) => {
-    setRefreshBusyId(characterId);
-    try {
-      const preview = await request<VillagerRefreshPreview>(`/villagers/${encodeURIComponent(characterId)}/refresh`);
-      setRefreshPreviews((current) => ({ ...current, [characterId]: preview }));
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "That villager's card could not be compared."));
-    } finally {
-      setRefreshBusyId("");
-    }
-  }, []);
+  return useCallback(
+    async (characterId: string) => {
+      setRefreshBusyId(characterId);
+      try {
+        const preview = await request<VillagerRefreshPreview>(`/villagers/${encodeURIComponent(characterId)}/refresh`);
+        setRefreshPreviews((current) => ({ ...current, [characterId]: preview }));
+        setError("");
+      } catch (cause) {
+        setError(messageFrom(cause, "That villager's card could not be compared."));
+      } finally {
+        setRefreshBusyId("");
+      }
+    },
+    [setError, setRefreshBusyId, setRefreshPreviews],
+  );
 }
 
 export function useApplyVillagerRefresh(ports: {
@@ -249,24 +264,27 @@ export function useApplyVillagerRefresh(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setError, setRefreshBusyId, setRefreshPreviews, setSnapshot } = ports;
-  return useCallback(async (characterId: string) => {
-    setRefreshBusyId(characterId);
-    try {
-      setSnapshot(
-        await request<VillageSnapshot>(`/villagers/${encodeURIComponent(characterId)}/refresh`, {
-          method: "POST",
-        }),
-      );
-      setRefreshPreviews((current) => {
-        const next = { ...current };
-        delete next[characterId];
-        return next;
-      });
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "That villager's card could not be refreshed."));
-    } finally {
-      setRefreshBusyId("");
-    }
-  }, []);
+  return useCallback(
+    async (characterId: string) => {
+      setRefreshBusyId(characterId);
+      try {
+        setSnapshot(
+          await request<VillageSnapshot>(`/villagers/${encodeURIComponent(characterId)}/refresh`, {
+            method: "POST",
+          }),
+        );
+        setRefreshPreviews((current) => {
+          const next = { ...current };
+          delete next[characterId];
+          return next;
+        });
+        setError("");
+      } catch (cause) {
+        setError(messageFrom(cause, "That villager's card could not be refreshed."));
+      } finally {
+        setRefreshBusyId("");
+      }
+    },
+    [setError, setRefreshBusyId, setRefreshPreviews, setSnapshot],
+  );
 }

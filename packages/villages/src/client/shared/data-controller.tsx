@@ -2,61 +2,113 @@ import type { PersonaResponse, VillageLorebookOption, VillageSnapshot } from "..
 import { messageFrom, request } from "./api.js";
 import { SHOW_CATCHING_UP_AFTER_MS, VILLAGE_PULSE_MS } from "./presentation.js";
 import { createVillagesClientId } from "./request-id.js";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+
+export type SnapshotRead = {
+  isCurrent(): boolean;
+  publish(next: VillageSnapshot | null): boolean;
+  publishMutation(next: VillageSnapshot): boolean;
+};
+
+/** Reads share one publication order; every mutation publication retires older reads. */
+export function useVillageSnapshot(initial: VillageSnapshot | null = null) {
+  const [snapshot, writeSnapshot] = useState(initial);
+  const mutationEpoch = useRef(0);
+  const nextRead = useRef(0);
+  const publishedRead = useRef(0);
+  const active = useRef(true);
+  const setSnapshot = useCallback((next: React.SetStateAction<VillageSnapshot | null>) => {
+    if (!active.current) return;
+    mutationEpoch.current += 1;
+    writeSnapshot(next);
+  }, []);
+  const beginSnapshotRead = useCallback((): SnapshotRead => {
+    const epoch = mutationEpoch.current;
+    const id = ++nextRead.current;
+    const ownsEpoch = () => active.current && mutationEpoch.current === epoch;
+    const isCurrent = () => ownsEpoch() && id >= publishedRead.current;
+    return {
+      isCurrent,
+      publish(next) {
+        if (!isCurrent()) return false;
+        if (next !== null) publishedRead.current = id;
+        writeSnapshot(next);
+        return true;
+      },
+      publishMutation(next) {
+        if (!ownsEpoch()) return false;
+        setSnapshot(next);
+        return true;
+      },
+    };
+  }, [setSnapshot]);
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+      mutationEpoch.current += 1;
+    };
+  }, []);
+  return { snapshot, setSnapshot, beginSnapshotRead };
+}
 
 export function useSnapshotReference(ports: {
   readonly currentSnapshotRef: React.RefObject<import("../../shared/contracts/village").VillageSnapshot>;
   readonly snapshot: import("../../shared/contracts/village").VillageSnapshot;
 }) {
-  useEffect(() => {
-    const { currentSnapshotRef, snapshot } = ports;
+  const { currentSnapshotRef, snapshot } = ports;
 
+  useEffect(() => {
     currentSnapshotRef.current = snapshot;
-  }, [ports.snapshot]);
+  }, [currentSnapshotRef, snapshot]);
 }
 
 export function useReconcileVillage(ports: {
   readonly currentSnapshotRef: React.RefObject<import("../../shared/contracts/village").VillageSnapshot>;
   readonly reconcilingRef: React.RefObject<boolean>;
   readonly setCatchingUp: React.Dispatch<React.SetStateAction<boolean>>;
-  readonly setSnapshot: React.Dispatch<React.SetStateAction<import("../../shared/contracts/village").VillageSnapshot>>;
+  readonly beginSnapshotRead: () => SnapshotRead;
   readonly storyActionRef: React.RefObject<{ id: string; expectedAttempt: number }>;
 }) {
-  return useCallback(async (forceStory = false): Promise<VillageSnapshot | null> => {
-    const { currentSnapshotRef, reconcilingRef, setCatchingUp, setSnapshot, storyActionRef } = ports;
+  const { currentSnapshotRef, reconcilingRef, setCatchingUp, beginSnapshotRead, storyActionRef } = ports;
 
-    if (reconcilingRef.current) return null;
-    reconcilingRef.current = true;
-    const notice = setTimeout(() => setCatchingUp(true), SHOW_CATCHING_UP_AFTER_MS);
-    try {
-      const next = await request<VillageSnapshot>("/reconcile", {
-        method: "POST",
-        body: forceStory
-          ? JSON.stringify({
-              forceStory: true,
-              ...(storyActionRef.current ??= {
-                id: createVillagesClientId(),
-                expectedAttempt:
-                  currentSnapshotRef.current?.backgroundWork?.find((job) => job.kind === "story")?.attempt ?? 0,
-              }),
-              actionId: storyActionRef.current.id,
-            })
-          : undefined,
-      });
-      setSnapshot(next);
-      if (forceStory) storyActionRef.current = null;
-      return next;
-    } catch {
-      // The village keeps whatever news it had and the tab keeps drawing it.
-      // Deterministic reconciliation is committed before optional narration;
-      // a later creative attempt can retry without replaying required state.
-      return null;
-    } finally {
-      clearTimeout(notice);
-      setCatchingUp(false);
-      reconcilingRef.current = false;
-    }
-  }, []);
+  return useCallback(
+    async (forceStory = false): Promise<VillageSnapshot | null> => {
+      if (reconcilingRef.current) return null;
+      reconcilingRef.current = true;
+      const read = beginSnapshotRead();
+      const notice = setTimeout(() => setCatchingUp(true), SHOW_CATCHING_UP_AFTER_MS);
+      try {
+        const next = await request<VillageSnapshot>("/reconcile", {
+          method: "POST",
+          body: forceStory
+            ? JSON.stringify({
+                forceStory: true,
+                ...(storyActionRef.current ??= {
+                  id: createVillagesClientId(),
+                  expectedAttempt:
+                    currentSnapshotRef.current?.backgroundWork?.find((job) => job.kind === "story")?.attempt ?? 0,
+                }),
+                actionId: storyActionRef.current.id,
+              })
+            : undefined,
+        });
+        read.publishMutation(next);
+        if (forceStory) storyActionRef.current = null;
+        return next;
+      } catch {
+        // The village keeps whatever news it had and the tab keeps drawing it.
+        // Deterministic reconciliation is committed before optional narration;
+        // a later creative attempt can retry without replaying required state.
+        return null;
+      } finally {
+        clearTimeout(notice);
+        setCatchingUp(false);
+        reconcilingRef.current = false;
+      }
+    },
+    [beginSnapshotRead, currentSnapshotRef, reconcilingRef, setCatchingUp, storyActionRef],
+  );
 }
 
 /**
@@ -77,9 +129,9 @@ export function useWriteVillageEvent(ports: {
   readonly setWriteUpNote: React.Dispatch<React.SetStateAction<string>>;
   readonly snapshot: import("../../shared/contracts/village").VillageSnapshot;
 }) {
-  return useCallback(async () => {
-    const { reconcile, setWriteUpNote, snapshot } = ports;
+  const { reconcile, setWriteUpNote, snapshot } = ports;
 
+  return useCallback(async () => {
     const newest = snapshot?.happenings[0]?.id ?? "";
     setWriteUpNote("Writing...");
     const next = await reconcile(true);
@@ -96,7 +148,7 @@ export function useWriteVillageEvent(ports: {
           ? "No new happening was added. Other village records may have changed during catch-up."
           : "A new visual event was added. See Events.",
     );
-  }, [ports.snapshot, ports.reconcile]);
+  }, [snapshot?.happenings, setWriteUpNote, reconcile]);
 }
 
 /**
@@ -110,21 +162,23 @@ export function useWriteVillageEvent(ports: {
  */
 export function useLoadVillageSnapshot(ports: {
   readonly setError: React.Dispatch<React.SetStateAction<string>>;
-  readonly setSnapshot: React.Dispatch<React.SetStateAction<import("../../shared/contracts/village").VillageSnapshot>>;
+  readonly beginSnapshotRead: () => SnapshotRead;
 }) {
-  return useCallback(async (options: { signal?: AbortSignal; quiet?: boolean } = {}) => {
-    const { setError, setSnapshot } = ports;
+  const { setError, beginSnapshotRead } = ports;
 
-    try {
-      const next = await request<VillageSnapshot>("", { signal: options.signal });
-      setSnapshot(next);
-      setError("");
-    } catch (cause) {
-      if (options.signal?.aborted || options.quiet) return;
-      setSnapshot(null);
-      setError(messageFrom(cause, "Could not read the village."));
-    }
-  }, []);
+  return useCallback(
+    async (options: { signal?: AbortSignal; quiet?: boolean } = {}) => {
+      const read = beginSnapshotRead();
+      try {
+        const next = await request<VillageSnapshot>("", { signal: options.signal });
+        if (!options.signal?.aborted && read.publish(next)) setError("");
+      } catch (cause) {
+        if (options.signal?.aborted || options.quiet || !read.publish(null)) return;
+        setError(messageFrom(cause, "Could not read the village."));
+      }
+    },
+    [beginSnapshotRead, setError],
+  );
 }
 
 export function useVillagePresence(ports: {
@@ -132,28 +186,31 @@ export function useVillagePresence(ports: {
   readonly loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   readonly presenceSession: React.RefObject<string>;
   readonly reconcile: (forceStory?: boolean) => Promise<import("../../shared/contracts/village").VillageSnapshot>;
-  readonly setSnapshot: React.Dispatch<React.SetStateAction<import("../../shared/contracts/village").VillageSnapshot>>;
+  readonly beginSnapshotRead: () => SnapshotRead;
   readonly snapshot: import("../../shared/contracts/village").VillageSnapshot;
 }) {
-  useEffect(() => {
-    const { element, loadSnapshot, presenceSession, reconcile, setSnapshot, snapshot } = ports;
+  const { element, loadSnapshot, presenceSession, reconcile, beginSnapshotRead, snapshot } = ports;
 
+  useEffect(() => {
     if (!snapshot?.isFounded) return;
     presenceSession.current ||= createVillagesClientId();
+    let stopped = false;
     let heartbeatSequence = 0;
     const heartbeat = async () => {
+      if (stopped) return;
       const sequence = ++heartbeatSequence;
+      const read = beginSnapshotRead();
       const visible = document.visibilityState === "visible" && element.checkVisibility({ checkVisibilityCSS: true });
       try {
         const presence = await request<{ snapshot?: VillageSnapshot }>("/background/presence", {
           method: "POST",
           body: JSON.stringify({ sessionId: presenceSession.current, visible }),
         });
-        if (visible && sequence === heartbeatSequence) {
-          if (presence.snapshot) setSnapshot(presence.snapshot);
+        if (!stopped && visible && sequence === heartbeatSequence && read.isCurrent()) {
+          if (presence.snapshot) read.publish(presence.snapshot);
           else {
             await reconcile();
-            await loadSnapshot({ quiet: true });
+            if (!stopped && sequence === heartbeatSequence) await loadSnapshot({ quiet: true });
           }
         }
       } catch {
@@ -167,6 +224,7 @@ export function useVillagePresence(ports: {
     const observer = new IntersectionObserver(changed);
     observer.observe(element);
     return () => {
+      stopped = true;
       observer.disconnect();
       heartbeatSequence++;
       clearInterval(timer);
@@ -176,22 +234,22 @@ export function useVillagePresence(ports: {
         body: JSON.stringify({ sessionId: presenceSession.current, visible: false }),
       }).catch(() => {});
     };
-  }, [ports.snapshot?.isFounded, ports.reconcile, ports.loadSnapshot, ports.element]);
+  }, [snapshot?.isFounded, reconcile, loadSnapshot, element, presenceSession, beginSnapshotRead]);
 }
 
 export function usePendingWorkPolling(ports: {
   readonly backgroundPending: boolean;
   readonly loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
 }) {
-  useEffect(() => {
-    const { backgroundPending, loadSnapshot } = ports;
+  const { backgroundPending, loadSnapshot } = ports;
 
+  useEffect(() => {
     if (!backgroundPending) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void loadSnapshot({ quiet: true });
     }, 5_000);
     return () => clearInterval(timer);
-  }, [ports.backgroundPending, ports.loadSnapshot]);
+  }, [backgroundPending, loadSnapshot]);
 }
 
 /*
@@ -217,14 +275,14 @@ export function useVillageTransitions(ports: {
   readonly snapshot: import("../../shared/contracts/village").VillageSnapshot;
   readonly transitionRef: React.RefObject<string>;
 }) {
-  useEffect(() => {
-    const { reconcile, snapshot, transitionRef } = ports;
+  const { reconcile, snapshot, transitionRef } = ports;
 
+  useEffect(() => {
     const transition = snapshot?.village.nextTransitionAt ?? "";
     if (transition.length === 0 || transition === transitionRef.current) return;
     transitionRef.current = transition;
     if (snapshot?.isFounded) void reconcile();
-  }, [ports.snapshot, ports.reconcile]);
+  }, [snapshot, reconcile, transitionRef]);
 }
 
 export function useLoadPersonas(ports: {
@@ -232,24 +290,27 @@ export function useLoadPersonas(ports: {
   readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setPersonas: React.Dispatch<React.SetStateAction<import("../../shared/contracts/village").PersonaEntry[]>>;
 }) {
-  return useCallback(async (signal?: AbortSignal, selectActive = true) => {
-    const { setError, setPersonaDraft, setPersonas } = ports;
+  const { setError, setPersonaDraft, setPersonas } = ports;
 
-    try {
-      const response = await request<PersonaResponse>("/personas", { signal });
-      setPersonas(response.personas);
-      if (selectActive)
-        setPersonaDraft((current) => current || response.personas.find((persona) => persona.isActive)?.id || "");
-    } catch (cause) {
-      if (signal?.aborted) return;
-      // A failed read settles on "none" rather than staying unsettled forever:
-      // the picker then offers the fields the player can still type into, and
-      // the message says what went wrong. A spinner that never resolves would
-      // hide the way out along with the problem.
-      setPersonas([]);
-      setError(messageFrom(cause, "Could not read your Personas."));
-    }
-  }, []);
+  return useCallback(
+    async (signal?: AbortSignal, selectActive = true) => {
+      try {
+        const response = await request<PersonaResponse>("/personas", { signal });
+        setPersonas(response.personas);
+        if (selectActive)
+          setPersonaDraft((current) => current || response.personas.find((persona) => persona.isActive)?.id || "");
+      } catch (cause) {
+        if (signal?.aborted) return;
+        // A failed read settles on "none" rather than staying unsettled forever:
+        // the picker then offers the fields the player can still type into, and
+        // the message says what went wrong. A spinner that never resolves would
+        // hide the way out along with the problem.
+        setPersonas([]);
+        setError(messageFrom(cause, "Could not read your Personas."));
+      }
+    },
+    [setError, setPersonaDraft, setPersonas],
+  );
 }
 
 export function useLoadLorebooks(ports: {
@@ -258,32 +319,35 @@ export function useLoadLorebooks(ports: {
   >;
   readonly setLorebooksError: React.Dispatch<React.SetStateAction<string>>;
 }) {
-  return useCallback(async (signal?: AbortSignal) => {
-    const { setLorebooks, setLorebooksError } = ports;
+  const { setLorebooks, setLorebooksError } = ports;
 
-    try {
-      const response = await request<{ books: VillageLorebookOption[] }>("/lorebooks", { signal });
-      setLorebooks(response.books);
-      setLorebooksError("");
-    } catch (cause) {
-      if (signal?.aborted) return;
-      setLorebooksError(
-        messageFrom(cause, "Could not read Engine lorebooks. Selected books will be skipped until available."),
-      );
-    }
-  }, []);
+  return useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const response = await request<{ books: VillageLorebookOption[] }>("/lorebooks", { signal });
+        setLorebooks(response.books);
+        setLorebooksError("");
+      } catch (cause) {
+        if (signal?.aborted) return;
+        setLorebooksError(
+          messageFrom(cause, "Could not read Engine lorebooks. Selected books will be skipped until available."),
+        );
+      }
+    },
+    [setLorebooks, setLorebooksError],
+  );
 }
 
 export function useInitialVillageLoad(ports: {
   readonly loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
 }) {
-  useEffect(() => {
-    const { loadSnapshot } = ports;
+  const { loadSnapshot } = ports;
 
+  useEffect(() => {
     const controller = new AbortController();
     void loadSnapshot({ signal: controller.signal });
     return () => controller.abort();
-  }, [ports.loadSnapshot]);
+  }, [loadSnapshot]);
 }
 
 /*
@@ -304,9 +368,9 @@ export function useVillagePolling(ports: {
   readonly loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   readonly reconcilingRef: React.RefObject<boolean>;
 }) {
-  useEffect(() => {
-    const { loadSnapshot, reconcilingRef } = ports;
+  const { loadSnapshot, reconcilingRef } = ports;
 
+  useEffect(() => {
     const onVisible = () => {
       if (!document.hidden) void loadSnapshot({ quiet: true });
     };
@@ -319,5 +383,5 @@ export function useVillagePolling(ports: {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [ports.loadSnapshot]);
+  }, [loadSnapshot, reconcilingRef]);
 }

@@ -15,13 +15,12 @@ import {
 } from "./ScenePanel.js";
 import { isLocalRoomCompletion } from "./villages-room-reading";
 import { useSceneEntryLifetime } from "./entry-lifetime.js";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useCallback, useState } from "react";
 
 export function useSceneChangesPolling(ports: {
   dismissedRoomEventIdsRef: React.RefObject<Set<string>>;
   receiveRoomRecordEvents: (events: readonly import("../../../shared/contracts/village.js").RoomRecordEvent[]) => void;
   room: import("../../../shared/contracts/village.js").SceneView;
-  roomChangeStatus: { pending: number; failed: number; rejected: number };
   setRoomChangeStatus: React.Dispatch<React.SetStateAction<{ pending: number; failed: number; rejected: number }>>;
   setRoomNotices: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village.js").RoomRecordEvent[]>
@@ -32,7 +31,6 @@ export function useSceneChangesPolling(ports: {
     dismissedRoomEventIdsRef,
     receiveRoomRecordEvents,
     room,
-    roomChangeStatus,
     setRoomChangeStatus,
     setRoomNotices,
     setRoomUnresolvedChanges,
@@ -50,7 +48,7 @@ export function useSceneChangesPolling(ports: {
           changes: { notices: RoomRecordEvent[] }[];
           notices: RoomRecordEvent[];
           dismissedNoticeIds: string[];
-          processingSummary: typeof roomChangeStatus;
+          processingSummary: { pending: number; failed: number; rejected: number };
           nextCursor: string;
           hasMore: boolean;
           unresolved: SceneChangeIssue[];
@@ -75,7 +73,15 @@ export function useSceneChangesPolling(ports: {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [room?.id, room?.memoryMode, receiveRoomRecordEvents]);
+  }, [
+    room?.id,
+    room?.memoryMode,
+    receiveRoomRecordEvents,
+    setRoomChangeStatus,
+    setRoomUnresolvedChanges,
+    setRoomNotices,
+    dismissedRoomEventIdsRef,
+  ]);
 }
 
 export function useSceneSelectionReset(ports: {
@@ -168,7 +174,24 @@ export function useSceneSelectionReset(ports: {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [room?.id, room?.status, screen, loadSnapshot]);
+  }, [
+    room?.id,
+    room?.status,
+    screen,
+    loadSnapshot,
+    observedRoomIdRef,
+    setRoomContactBoundary,
+    setRoomMoveZoneId,
+    setRoomTargetId,
+    roomMoveOperationIdRef,
+    roomCompletionRef,
+    setRoom,
+    setRoomOpen,
+    setRoomNotices,
+    seenRoomEventIdsRef,
+    setLastSceneEnding,
+    setScreen,
+  ]);
 }
 
 export function useSceneOpeningWarning(ports: {
@@ -180,7 +203,7 @@ export function useSceneOpeningWarning(ports: {
   useEffect(() => {
     if (roomGreetingError && (roomGreetingError.sessionId !== room?.id || room?.status !== "opening"))
       setRoomGreetingError(null);
-  }, [room?.id, room?.status, roomGreetingError]);
+  }, [room?.id, room?.status, roomGreetingError, setRoomGreetingError]);
 }
 
 export function useSceneOperationPolling(ports: {
@@ -215,7 +238,7 @@ export function useSceneOperationPolling(ports: {
       window.removeEventListener("focus", poll);
       document.removeEventListener("visibilitychange", poll);
     };
-  }, [room?.id, room?.operation?.id, room?.operation?.status, roomBusy]);
+  }, [room?.id, room?.operation?.id, room?.operation?.status, roomBusy, setRoom, setRoomEnded, setRoomError]);
 }
 
 export function useSceneInterruptedSubmission(ports: {
@@ -293,6 +316,15 @@ export function useSceneInterruptedSubmission(ports: {
     room?.operation?.status,
     room?.operation?.error,
     room?.submissions,
+    restoredSceneDraftRef,
+    composerEditVersionRef,
+    setRoomDraft,
+    setRoomMode,
+    setRoomMoveZoneId,
+    roomMoveOperationIdRef,
+    setRoomTargetId,
+    setRoomContactKind,
+    setRoomContactBoundary,
   ]);
 }
 
@@ -336,7 +368,9 @@ export function useActiveSceneRestoration(ports: {
   });
   const [status, setStatus] = useState<"checking" | "ready" | "error">("checking");
   const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
+  // A restoration attempt starts only on mount or explicit retry. Its captured
+  // selection still retires through the entry lifetime, including after handoff.
+  const restore = useEffectEvent((attempt: number) => {
     const controller = new AbortController();
     let claim: ReturnType<typeof lifetime.begin> = null;
     void request<{ session: SceneView | null; debugDiscardEnabled: boolean }>("/rooms/active", {
@@ -400,14 +434,13 @@ export function useActiveSceneRestoration(ports: {
       controller.abort();
       if (claim) lifetime.cancel(claim);
     };
-  }, [attempt]);
-  return {
-    status,
-    retry: () => {
-      setStatus("checking");
-      setAttempt((current) => current + 1);
-    },
-  };
+  });
+  useEffect(() => restore(attempt), [attempt]);
+  const retry = useCallback(() => {
+    setStatus("checking");
+    setAttempt((current) => current + 1);
+  }, []);
+  return { status, retry };
 }
 
 export function useSceneArchive(ports: {
@@ -457,5 +490,15 @@ export function useSceneArchive(ports: {
         if (!controller.signal.aborted) setArchiveError(messageFrom(cause, "Scenes could not be read."));
       });
     return () => controller.abort();
-  }, [archiveVenueId, archiveVillagerId, archiveOffset, archiveVersion, menuPage, snapshot?.isFounded]);
+  }, [
+    archiveVenueId,
+    archiveVillagerId,
+    archiveOffset,
+    archiveVersion,
+    menuPage,
+    snapshot?.isFounded,
+    setVenueVisits,
+    setArchiveTotal,
+    setArchiveError,
+  ]);
 }

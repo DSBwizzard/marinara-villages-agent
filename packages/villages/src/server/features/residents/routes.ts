@@ -16,7 +16,6 @@ import { retireResidentWish } from "./wishes/wish-lifecycle.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerRelationshipRoutes(engine: FastifyInstance) {
-  const app = engine;
   engine.get("/relationships", async (_request, reply) => {
     try {
       return await readRelationshipsView();

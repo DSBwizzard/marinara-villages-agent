@@ -53,7 +53,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (plan.lint.length)
       jobs.push([
         "lint",
-        ["node_modules/eslint/bin/eslint.js", "--cache", "--cache-location", ".build-tmp/eslint-cache", ...plan.lint],
+        [
+          "node_modules/eslint/bin/eslint.js",
+          "--max-warnings=0",
+          "--cache",
+          "--cache-location",
+          ".build-tmp/eslint-cache",
+          ...plan.lint,
+        ],
       ]);
     if (plan.types)
       jobs.push([

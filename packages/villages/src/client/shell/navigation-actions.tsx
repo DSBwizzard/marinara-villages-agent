@@ -48,6 +48,19 @@ export function useScenesOpenMenu(ports: {
       setMenuPage(tab);
       setScreen("menu");
     },
-    [loadCatalog, loadLorebooks, loadPersonas, loadProgressDebug, menuPage, screen, openSettings],
+    [
+      setFocusedRequestId,
+      setSiteProjectId,
+      setSettingsError,
+      loadCatalog,
+      loadPersonas,
+      loadLorebooks,
+      loadProgressDebug,
+      screen,
+      menuPage,
+      openSettings,
+      setMenuPage,
+      setScreen,
+    ],
   );
 }
