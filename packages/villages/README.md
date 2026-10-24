@@ -41,6 +41,8 @@ Private descriptions, contents, pictures and unseen attendance stay server-side 
 
 ## Scenes
 
+UI terminology distinguishes an **Action** (what a player or resident does or attempts), a **World change** (a confirmed persistent consequence), a **Scene change** (a change within the current Scene, including movement or attendance), and **Resident activity** (background social activity, routines and housing decisions). **Event** is reserved for a future product feature; technical event names and saved schemas keep their existing meanings.
+
 A Scene continues within one Venue across Zone movement. At its start, Villages captures attendance, positions, activities, connections, physical conditions, permissions, authority, time and writing context. Background schedules, renovations, access changes, memories and relationships cannot rewrite that moment or expose unseen occupants. Witnessed developments within the Scene build on its captured context; a new Scene uses current village state.
 
 Every Zone holds at most four villagers; the player does not use a villager slot. A Venue can hold more across separate Zones. Movement checks every destination, including offscreen Zones. A blocked group movement preserves positions. Forced relocation uses available permitted spaces, then home or another Venue's Exterior. A villager leaving the Venue leaves this Scene without loading the destination cast.

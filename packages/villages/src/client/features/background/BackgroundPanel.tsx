@@ -21,7 +21,7 @@ export function BackgroundWorkPanel({
     rows.map((job) => (
       <div key={job.id} className={ELEMENT_TAG + "-notice-row"}>
         <div className={ELEMENT_TAG + "-field"}>
-          <strong>{job.label}</strong>
+          <strong>{job.kind === "resident-planning" ? "Resident activity" : job.label}</strong>
           <span>
             {job.status}: {job.completedSteps} reusable steps, {job.requests} requests,{" "}
             {job.tokens === null ? "token usage unavailable" : job.tokens + " reported tokens"}

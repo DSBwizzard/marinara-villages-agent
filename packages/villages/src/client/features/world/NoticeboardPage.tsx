@@ -47,7 +47,7 @@ export function renderNoticeboardPage(ports: NoticeboardPagePorts) {
           type="text"
           value={noticeDraft}
           maxLength={snapshot.settings.maxNoticeLength}
-          placeholder="Pin up a rumour, an event, a rule…"
+          placeholder="Write a notice…"
           aria-label="New noticeboard note"
           onChange={(event) => setNoticeDraft(event.target.value)}
           onKeyDown={(event) => {

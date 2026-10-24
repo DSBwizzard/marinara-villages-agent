@@ -81,7 +81,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   for (const [kind, handler] of ports.handlers) registerBackgroundHandler(kind, handler);
   registerBackgroundHandler("story", {
     generate: async () => {
-      throw new Obsolete("The Events generator is retired.");
+      throw new Obsolete("The former feed generator is retired.");
     },
     valid: () => false,
     apply: () => {},
@@ -422,7 +422,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           return previous;
         }
         if (work.expectedAttempt !== undefined && work.expectedAttempt !== (previous?.attempt ?? 0))
-          throw conflict("Background work changed. Refresh before requesting more resident planning.");
+          throw conflict("Background work changed. Refresh before requesting more resident activity.");
         if (work.kind === "resident-planning" && running.has(id) && previous) return previous;
         if (
           work.automaticDate &&
@@ -984,7 +984,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     const foundPrior = await readJob(id);
     if (foundPrior?.kind === "story") {
       await retireStory(id);
-      throw conflict("The Events generator is retired. This work cannot be retried.");
+      throw conflict("The former feed generator is retired. This work cannot be retried.");
     }
     const savedPrior = foundPrior && !running.has(id) ? await adoptLateResponses(id, foundPrior) : foundPrior;
     let recovered: { result: unknown } | undefined;
@@ -1075,7 +1075,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   async function retireStory(id: string): Promise<void> {
     await changeJob(id, (job) => {
       if (!job || job.kind !== "story" || job.status === "obsolete") return job;
-      return { ...job, status: "obsolete", error: "The Events generator is retired.", replacement: undefined };
+      return { ...job, status: "obsolete", error: "The former feed generator is retired.", replacement: undefined };
     });
   }
   async function recoverBackgroundWork(): Promise<void> {

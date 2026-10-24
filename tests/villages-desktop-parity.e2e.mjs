@@ -497,7 +497,7 @@ try {
       );
     else assert.deepEqual(replyPositions, castPositions, "a new speaker does not rearrange the four cast slots");
     await expect(page.getByRole("button", { name: "Compose" })).toHaveCount(0);
-    const noticeTrigger = page.getByRole("button", { name: "1 village notice" });
+    const noticeTrigger = page.getByRole("button", { name: "1 World change" });
     if ((await noticeTrigger.getAttribute("aria-expanded")) === "false") await noticeTrigger.click();
     const memoryTrigger = page.getByRole("button", { name: "View memory: The village remembered this exchange." });
     await memoryTrigger.click();

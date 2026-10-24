@@ -116,7 +116,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       seed: village.seed,
       revision: dateKey,
       finite: false,
-      label: activePlan ? "Resident encounter" : "Resident planning",
+      label: "Resident activity",
       automaticDate: dateKey,
       input: {
         context,
@@ -158,7 +158,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         ...failure,
         cause: failure?.cause ?? "invalid_json",
         stage: "resident-planning",
-        message: failure?.message ?? "Resident planning returned no usable JSON. Retry unfinished work explicitly.",
+        message: failure?.message ?? "Resident activity returned no usable result. Retry unfinished work explicitly.",
         responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? 3000, payload),
       });
     let proposal;
@@ -168,7 +168,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       throw new WorkFailureError({
         cause: "missing_result",
         stage: "resident-planning",
-        message: "Resident planning returned incomplete choices. Retry unfinished work explicitly.",
+        message: "Resident activity returned incomplete choices. Retry unfinished work explicitly.",
         responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? 3000, payload),
       });
     }

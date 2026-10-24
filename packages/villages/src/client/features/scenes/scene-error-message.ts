@@ -124,7 +124,7 @@ export function sceneErrorMessage(original: string): string {
     ],
     [
       /another speaker's project statement|disclosure sources|citation|unwitnessed|witness|invalid source|source reference|incompatible source|conflicting source|different (?:source|exchange)|exact current narration source/iu,
-      "The game could not confirm this update from what the residents saw or heard.",
+      "The game could not confirm this world change from what the residents saw or heard.",
     ],
     [
       /disclosure source exceeds its saved text limit/iu,
@@ -136,11 +136,11 @@ export function sceneErrorMessage(original: string): string {
     ],
     [
       /memory.*(?:missing|obsolete|changed)/iu,
-      "A memory needed to check this update is no longer available or has changed.",
+      "A memory needed to check this world change is no longer available or has changed.",
     ],
     [
       /proposal.*(?:unsupported|unresolved)|System (?:rejected|could not (?:verify|determine))/iu,
-      "The game could not confirm that the conversation supports this update.",
+      "The game could not confirm that the conversation supports this world change.",
     ],
     [
       /verification failed during the model request|model (?:request failed|returned no answer)|provider/iu,
@@ -156,10 +156,10 @@ export function sceneErrorMessage(original: string): string {
     ],
     [
       /storage|could not (?:commit|be applied)|usage accounting/iu,
-      "The game could not save this update. Check the saved state before trying again.",
+      "The game could not save this world change. Check the saved state before trying again.",
     ],
-    [/Invalid changes cursor/iu, "The saved update list has changed. Refresh the Scene to load it again."],
-    [/No saved (?:live )?exchange/iu, "The saved conversation needed to check this update could not be found."],
+    [/Invalid changes cursor/iu, "The saved World change list has changed. Refresh the Scene to load it again."],
+    [/No saved (?:live )?exchange/iu, "The saved conversation needed to check this world change could not be found."],
     [
       /old action admission/iu,
       "This saved action uses a format this version of the game cannot resume. Its history is still saved.",
@@ -185,7 +185,7 @@ export function sceneErrorMessage(original: string): string {
     /no request was made/iu.test(message) ? "No AI request was sent." : "",
     /no outcome was applied/iu.test(message) ? "No changes from this step were applied." : "",
     /wasn[’']t saved.*conversation.*transcript/iu.test(message)
-      ? "This update wasn’t saved; the conversation is still in the transcript."
+      ? "This world change wasn’t saved; the conversation is still in the transcript."
       : "",
   ]
     .filter(Boolean)

@@ -157,7 +157,7 @@ export function readResidentPlanningProposal(
     (payload.social !== null && (typeof payload.social !== "object" || Array.isArray(payload.social))) ||
     (payload.routineIdea !== null && (typeof payload.routineIdea !== "object" || Array.isArray(payload.routineIdea)))
   )
-    throw new Error("Resident planning returned incomplete choices. Retry unfinished work explicitly.");
+    throw new Error("Resident activity returned incomplete choices. Retry unfinished work explicitly.");
   const housingRequests: ResidentPlanningProposal["housingRequests"] = [];
   const row = payload.housingRequests[0] as Record<string, unknown> | undefined;
   if (row && typeof row === "object") {

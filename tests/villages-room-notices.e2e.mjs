@@ -144,8 +144,8 @@ async function mount(tab) {
 try {
   await mount(page);
   const composer = page.getByRole("textbox", { name: "Message at The Park" });
-  const tray = page.getByRole("button", { name: /village notice/ });
-  const stack = page.locator("[aria-label='Scene changes']");
+  const tray = page.getByRole("button", { name: /World changes?/ });
+  const stack = page.locator("[aria-label='World changes']");
   await composer.waitFor();
   await composer.focus();
   await expect(page.getByRole("button", { name: /^\d+ Scene errors?$/ })).toHaveCount(0);
@@ -207,11 +207,11 @@ try {
   await expect(stack).toContainText(fulfilled.text);
   const second = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await mount(second);
-  await expect(second.locator("[aria-label='Scene changes']")).toContainText(fulfilled.text);
+  await expect(second.locator("[aria-label='World changes']")).toContainText(fulfilled.text);
   await page.getByRole("button", { name: "Dismiss " + fulfilled.text }).click();
   await expect.poll(() => dismissed.has(fulfilled.id)).toBe(true);
   await refresh(second);
-  await expect(second.locator("[aria-label='Scene changes']")).not.toContainText(fulfilled.text);
+  await expect(second.locator("[aria-label='World changes']")).not.toContainText(fulfilled.text);
   await second.close();
   assert.equal(interpretations, 0, "Wish display, polling, refresh and dismissal add no interpretation requests");
   assert.equal(closingReviews, 0);
@@ -224,8 +224,10 @@ try {
   const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
   await chip.click();
   const status = page.getByRole("region", { name: "Scene errors" });
-  await status.locator("summary").filter({ hasText: "memories update failed" }).click();
-  await expect(status).toContainText("The game could not confirm this update from what the residents saw or heard.");
+  await status.locator("summary").filter({ hasText: "World change failed · memories" }).click();
+  await expect(status).toContainText(
+    "The game could not confirm this world change from what the residents saw or heard.",
+  );
   await expect(status.getByRole("button", { name: "Retry memories" })).toBeVisible();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
@@ -241,7 +243,7 @@ try {
   await refresh();
   await expect(chip).toBeVisible();
   if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
-  await status.locator("summary").filter({ hasText: "projects update failed" }).click();
+  await status.locator("summary").filter({ hasText: "World change failed · projects" }).click();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/project-recovery-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
