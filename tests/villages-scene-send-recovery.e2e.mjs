@@ -355,7 +355,7 @@ try {
         const panel = await openSceneErrors(page);
         await expect(panel).toContainText("Reply connection interrupted");
         await expect(panel).toContainText(
-          "The game could not confirm this update from what the residents saw or heard.",
+          "The game could not confirm this world change from what the residents saw or heard.",
         );
         const canvas = page.locator(`.${tag}-chat`);
         const screen = page.locator(`.${tag}-room-screen`);
