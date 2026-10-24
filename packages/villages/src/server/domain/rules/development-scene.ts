@@ -113,7 +113,7 @@ export function applyDevelopmentScene(
         const name =
           state.villagers.find((v) => v.characterId === change.characterId)?.cardSnapshot.name ?? change.characterId;
         const home = state.venues.find((v) => v.id === p.targetVenueId)?.name ?? p.targetVenueId;
-        p.known = { at: appliedAt, text: `${name}: move to ${home} â€” ${p.status}.`, status: p.status };
+        p.known = { at: appliedAt, text: `${name}: move to ${home} : ${p.status}.`, status: p.status };
       } else {
         if (p.status === "arranged")
           state.residences = state.residences.filter(
