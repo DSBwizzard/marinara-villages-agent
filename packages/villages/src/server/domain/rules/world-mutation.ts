@@ -1,3 +1,4 @@
+import { housingSignature } from "./development-housing.js";
 import { refreshProjectAgreements } from "./project-lifecycle-rules.js";
 import { reconcileOpening } from "./opening-project.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
@@ -42,6 +43,14 @@ export function normalizeVillageMutation(
       receipt.noticeSequence = ++state.noticeSequence;
       receipt.committedAt = sources.now().toISOString();
     }
+  const knownHousing = state.development
+    ? Object.fromEntries(
+        state.venues.flatMap((venue) => {
+          const fact = state.development?.housing?.[venue.id];
+          return fact?.signature === housingSignature(venue) ? [[venue.id, fact.availableAt]] : [];
+        }),
+      )
+    : undefined;
   for (const venue of state.venues) {
     synchronizeVenueZones(venue, previousVenues.get(venue.id));
     if (!previousVenues.has(venue.id) && state.venues.some((entry) => entry.access)) initializeVenueAccess(venue);
@@ -78,6 +87,14 @@ export function normalizeVillageMutation(
         sourceLineIds: [],
       });
     }
+  }
+  if (state.development) {
+    state.development.housing = Object.fromEntries(
+      state.venues.map((venue) => [
+        venue.id,
+        { signature: housingSignature(venue), availableAt: knownHousing?.[venue.id] ?? sources.now().toISOString() },
+      ]),
+    );
   }
   refreshProjectAgreements(state);
   pruneWishActivities(state, sources.now());

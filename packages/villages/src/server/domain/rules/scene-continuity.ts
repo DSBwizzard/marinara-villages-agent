@@ -68,6 +68,7 @@ export const sceneContinuityFields = [
   "villagers",
   "venues",
   "residences",
+  "development",
   "chronicle",
   "recollections",
   "relationshipContext",
@@ -87,6 +88,7 @@ export type SceneContinuity = {
 
 /** Exact after-values retained atomically with an accepted effect. Server-only. */
 export type SceneEffectFacts = {
+  development?: { characterId: string; resident: import("../models/development-model.js").ResidentDevelopment };
   memories?: VillageChronicleEntry[];
   recollections?: VillageRecollection[];
   wish?: { actorId: string; wishId: string; value: VillageWish | null; knowledge: KnownWish | null };
@@ -155,7 +157,11 @@ function mergeRows<T extends { id: string }>(base: T[], updates: T[]): T[] {
 export function sceneContinuityView(current: VillageState, scene: VenueScene): VillageState {
   const context = scene.continuity;
   if (!context || context.seed !== current.seed || scene.villageSeed !== current.seed) return current;
-  const view = { ...current, ...structuredClone(context.facts) };
+  const view = {
+    ...current,
+    ...structuredClone(context.facts),
+    development: structuredClone(context.facts.development),
+  };
   // Artwork is a presentation setting, not a later fictional event.
   for (const resident of view.villagers) {
     const live = current.villagers.find((row) => row.characterId === resident.characterId);
@@ -177,6 +183,8 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene): V
         continue;
       const facts = receipt.sceneFacts;
       if (!facts) continue;
+      if (facts.development && view.development)
+        view.development.residents[facts.development.characterId] = structuredClone(facts.development.resident);
       if (facts.memories) view.chronicle = mergeRows(view.chronicle, facts.memories);
       if (facts.recollections) view.recollections = mergeRows(view.recollections, facts.recollections);
       if (facts.wish) {

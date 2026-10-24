@@ -8,6 +8,7 @@ import { activationScope } from "../engine/activation-scope.js";
 export function publicSceneRoutes(
   engine: FastifyInstance,
   guard?: (method: string, path: string, body: unknown) => Promise<string | null>,
+  present?: (request: Parameters<VillageRouteHandler>[0], result: unknown) => Promise<unknown>,
 ): FastifyInstance {
   const owner = activationScope();
   const surface = Object.create(engine) as FastifyInstance;
@@ -15,11 +16,12 @@ export function publicSceneRoutes(
     const register = engine[method].bind(engine);
     const wrap = (handler: VillageRouteHandler, path: string): VillageRouteHandler => {
       const wrapped: VillageRouteHandler = async (request, reply) => {
-        const result = await withVillageClockWork(async () => {
+        let result = await withVillageClockWork(async () => {
           const blocked = await guard?.(method, path, request.body);
           if (blocked) return reply.code(409).send({ error: blocked });
           return handler(request, reply);
         });
+        if (present) result = await present(request, result);
         if (result && typeof result === "object") {
           const payload = result as Record<string, unknown>;
           for (const key of ["session", "visit"]) {

@@ -239,6 +239,7 @@ async function main() {
   let narrationPrompt = "",
     systemPrompt = "";
   let narrativeActions: unknown;
+  let developmentReply: unknown;
   let behavior: "valid" | "wrong-hash" | "length" | "missing-domain" | "needs-context" | "project-authority" = "valid";
   let lastPacket: any;
   let openingSignal: unknown = null;
@@ -387,6 +388,7 @@ async function main() {
           },
         });
       }
+      if (developmentReply !== undefined) Object.assign(result, { developmentChanges: developmentReply });
       Object.assign(result, { openingContext: { proposalFingerprint: "model-forgery" } });
       if (behavior === "missing-domain") delete (result as Record<string, unknown>).memoryChanges;
       return {
@@ -396,6 +398,35 @@ async function main() {
     },
   } as unknown as SemanticPorts;
   const service = createSemanticService(ports);
+  const developmentScene = {
+    ...scene,
+    operation: { input: { developmentVersion: 1, semanticPipelineVersion: 3 } },
+  } as typeof scene;
+  for (const invalid of [undefined, {}, [{ kind: "consent" }]]) {
+    checkpoints.clear();
+    developmentReply = invalid;
+    const before = calls.length;
+    await assert.rejects(service.exchange(developmentScene, "", [], null), /development interpretation is incomplete/);
+    assert.equal(calls.length, before + 1, "An invalid development reply never buys an automatic repair.");
+    assert.equal(rejected.at(-1).options.preserveWriting, true);
+    assert.equal(
+      [...checkpoints.keys()].some((key) => /^semantic-v2:exchange:[a-f0-9]{64}$/.test(key)),
+      false,
+      "An incomplete development reply must not become a successful parsed checkpoint.",
+    );
+  }
+  developmentReply = [];
+  const beforeDevelopment = calls.length;
+  const quietDevelopment = await service.exchange(developmentScene, "", [], null);
+  assert.deepEqual(quietDevelopment.effects.developmentChanges, []);
+  await service.exchange(developmentScene, "", [], null);
+  assert.equal(calls.length, beforeDevelopment + 1, "The accepted empty review replays without another request.");
+  assert.match(systemPrompt, /Return \{sourceHash,developmentChanges:\[\],/);
+  developmentReply = undefined;
+  checkpoints.clear();
+  calls.length = 0;
+  outputRequests.length = 0;
+  loreReads = 0;
   const intent = await service.intent(scene, "We can discuss it.");
   assert.equal(intent.status, "resolved");
   const result = await service.exchange(scene, "We can discuss it.", [], intent);
@@ -944,6 +975,75 @@ async function main() {
   assert.deepEqual(calls, ["narration", "exchange"], "Current writer checks input and reply with one System request");
   assert.equal(combined.semanticProvenance?.pipelineVersion, 3);
   assert.equal(combined.semanticProvenance?.authority?.physical, false);
+  // Shape-valid proposals still need final routed speech evidence, without losing paid writing.
+  {
+    const originalDevelopment = state.development;
+    state.development = {
+      enabled: true,
+      residents: { ghost: { revision: 1, pursuits: [{ id: "private-plan", status: "considering" }] } },
+    } as any;
+    const input = {
+      semanticPipelineVersion: 3,
+      developmentVersion: 1,
+      writingContractVersion: 3,
+      writingCapabilities: {
+        management: false,
+        movement: false,
+        residences: false,
+        residenceDecision: false,
+        editApproval: false,
+      },
+    };
+    const witnessScene = { ...combinedScene, operation: { input } } as typeof scene;
+    const witnessPorts = {
+      ...ports,
+      rejectVenueCompletion: async (_detail: unknown, options: any) => {
+        assert.equal(options.preserveWriting, true);
+        for (const key of options.stages) checkpoints.delete(key);
+      },
+    } as unknown as SemanticPorts;
+    const witnessWriter = createSceneWriting({
+      ...writerPorts,
+      venueOperationInput: () => input,
+      semantic: createSemanticService(witnessPorts),
+    });
+    checkpoints.clear();
+    calls.length = 0;
+    developmentReply = [
+      {
+        pursuitId: "private-plan",
+        characterId: "ghost",
+        expectedRevision: 1,
+        kind: "disclose",
+        actorId: "ghost",
+        citations: [{ segment: 0, quote: "The room is quiet." }],
+      },
+    ];
+    await assert.rejects(
+      witnessWriter.generate(witnessScene, "Witness recovery", "chat", "", null),
+      /exact witnessed speech/,
+    );
+    assert.deepEqual(calls, ["narration", "exchange"]);
+    assert.equal(
+      [...checkpoints.keys()].some((key) => /^semantic-v2:exchange:[a-f0-9]{64}$/.test(key)),
+      false,
+    );
+    assert.equal(
+      [...checkpoints.keys()].some((key) => key.startsWith("writing-completion:")),
+      true,
+    );
+    developmentReply = [];
+    const recovered = await witnessWriter.generate(witnessScene, "Witness recovery", "chat", "", null);
+    assert.deepEqual(recovered.developmentChanges, []);
+    assert.deepEqual(
+      calls,
+      ["narration", "exchange", "exchange"],
+      "Explicit interpretation recovery preserves Narration.",
+    );
+    state.development = originalDevelopment;
+    developmentReply = undefined;
+    checkpoints.clear();
+  }
   // Invalid Project metadata must retain the exact bounded rejection reason.
   {
     const projectWorld = structuredClone(state);

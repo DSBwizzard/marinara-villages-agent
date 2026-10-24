@@ -1193,6 +1193,7 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  development?: import("./development-model.js").DevelopmentState;
   opening?: import("../rules/opening-project.js").OpeningRecord;
   semanticRequestReceipts?: Record<string, string>;
   semanticContinuations?: Record<string, import("./exchange-model.js").ExchangeDomain[]>;

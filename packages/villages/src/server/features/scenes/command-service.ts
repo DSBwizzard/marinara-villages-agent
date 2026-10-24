@@ -1,3 +1,5 @@
+import { bindDevelopmentChanges, applyDevelopmentScene } from "../../domain/rules/development-scene.js";
+import { observeHousing } from "../../domain/rules/resident-development.js";
 import { shape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
 import { openingPresence } from "../../domain/rules/opening-presence.js";
@@ -1026,8 +1028,8 @@ export function createSceneCommands({
     const existing = await activeVenueSession();
     if (!existing) await rollActiveAgendas(villageNow());
     const live = await readVillageState();
-    const village = existing ? sceneContinuityView(live, existing) : live,
-      place = village.venues.find((entry) => entry.id === placeId);
+    let village = existing ? sceneContinuityView(live, existing) : live;
+    const place = village.venues.find((entry) => entry.id === placeId);
     if (!place) throw notFound("That place is not in this village.");
     const classes = venueClasses(place),
       spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
@@ -1104,6 +1106,8 @@ export function createSceneCommands({
         return refreshZoneParticipants(prior);
       }
     }
+    if (village.development)
+      village = await mutateVillageState((state) => observeHousing(state, villageNow().toISOString()));
     const sceneAttendance = captureSceneAttendance(village, placeId, villageNow());
     if (gathering)
       sceneAttendance.occupants = village.villagers
@@ -1299,7 +1303,12 @@ export function createSceneCommands({
                 castLimitVersion: 1,
                 playerAgencyVersion: 1,
                 ...(admission.semanticVersion === 2
-                  ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3, residentActionsVersion: 2 }
+                  ? {
+                      semanticBudget: SEMANTIC_OPERATION_BUDGET,
+                      semanticPipelineVersion: 3,
+                      residentActionsVersion: 2,
+                      ...((await readVillageState()).development?.enabled ? { developmentVersion: 1 } : {}),
+                    }
                   : {}),
                 writingCapabilities: sceneWritingCapabilities(await readVillageState(), admission),
               };
@@ -1437,6 +1446,7 @@ export function createSceneCommands({
                 projectInterpretationVersion: 1 as const,
                 invitationSignal: reply.invitationSignal ?? undefined,
                 editApprovalSignal: reply.editApprovalSignal ?? undefined,
+                developmentChanges: bindDevelopmentChanges(reply.developmentChanges, savedLineIds),
                 residenceSignal: reply.residenceSignal ?? undefined,
                 renovationSignal: reply.renovationSignal ?? undefined,
                 venueRequestSignal: reply.venueRequestSignal ?? undefined,
@@ -1879,6 +1889,17 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         : sceneWritingCapabilities(await readVillageState(), scene)
       : undefined;
     const payload = {
+      ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.developmentVersion === 1
+          ? { developmentVersion: 1 }
+          : {}
+        : prior
+          ? prior.semanticProvenance?.developmentVersion === 1
+            ? { developmentVersion: 1 }
+            : {}
+          : (await readVillageState()).development?.enabled
+            ? { developmentVersion: 1 }
+            : {}),
       ...(scene.operation?.id === input.submissionId
         ? scene.operation.input.residentMovementReviewVersion === 1
           ? { residentMovementReviewVersion: 1 }
@@ -2743,6 +2764,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
               actionReplyDone: true,
             }
           : {}),
+        developmentChanges: bindDevelopmentChanges(reply.developmentChanges, replyLineIds),
         ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
         ...(reply.renovationSignal ? { renovationSignal: reply.renovationSignal } : {}),
         ...(reply.venueRequestSignal
@@ -3284,6 +3306,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       )
         await applyResidenceEditApproval(session.placeId, signal.proposalId, signal.residentId, signal.approved);
     }
+    if (submission.developmentChanges?.length)
+      await mutateVillageState((state) =>
+        applyDevelopmentScene(state, session, submission, villageNow().toISOString()),
+      );
     if (submission.residenceSignal) {
       const signal = submission.residenceSignal;
       if (signal.kind === "request") {

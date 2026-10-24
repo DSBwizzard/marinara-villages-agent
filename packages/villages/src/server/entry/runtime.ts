@@ -300,6 +300,8 @@ import { createVillageSnapshot } from "../features/world/snapshot-service.js";
 import { captureMissingVillagerCardColors } from "../adapters/engine/catalog.js";
 import { privatePreparationRooms } from "../jobs/private-space-preparation.js";
 import { configureWorldCoordination } from "../features/world/village.js";
+import { createDevelopment } from "../features/world/development-service.js";
+import { configureDevelopment, reconcileDevelopment } from "../features/world/development.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
 import { configureVenueMailbox, venueMailbox } from "../features/venues/venue-mailbox.js";
 import { createVenueMailbox } from "../features/venues/venue-mailbox-service.js";
@@ -1059,7 +1061,19 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseCoordinator = configureVenueCoordinator(
     createVenueCoordinator({ operations, villagesDocuments, villagesLogger, runtimeDebug, readInterpretationSettings }),
   );
+  const development = createDevelopment({
+    readVillageState,
+    mutateVillageState,
+    backgroundJobSnapshot,
+    retryBackgroundJob,
+    queueBackgroundJob,
+    villagesLanguageModels,
+    villagesConnectionIdFor,
+    completeWithRoom,
+  });
+  const releaseDevelopment = configureDevelopment(development);
   const worldCoordination = createWorldCoordination({
+    reconcileDevelopment,
     processProjectWishOutbox,
     readScene: readSession,
     readVillageState,
@@ -1104,6 +1118,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
         ["story", bindActivationService(worldCoordination.storyBackgroundHandler)],
+        ["development", bindActivationService(development.handler)],
       ],
     }),
   );
@@ -1146,6 +1161,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSettings();
     releaseFoundingSetup();
     releaseWorldCoordination();
+    releaseDevelopment();
     releaseFounding();
     releaseBackground();
     releaseUsagePreview();

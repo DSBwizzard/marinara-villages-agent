@@ -170,7 +170,9 @@ export function useLoadVillageSnapshot(ports: {
     async (options: { signal?: AbortSignal; quiet?: boolean } = {}) => {
       const read = beginSnapshotRead();
       try {
-        const next = await request<VillageSnapshot>("", { signal: options.signal });
+        const next = await request<VillageSnapshot>("", {
+          signal: options.signal,
+        });
         if (!options.signal?.aborted && read.publish(next)) setError("");
       } catch (cause) {
         if (options.signal?.aborted || options.quiet || !read.publish(null)) return;

@@ -14,7 +14,7 @@ export type ExchangeEffectReceipt = {
   id: string;
   sceneId: string;
   submissionId: string;
-  domain: "wishes" | "memories" | "physical";
+  domain: "wishes" | "memories" | "physical" | "development";
   physicalOutcome?: import("./world.js").VillageVenueEvent;
   /** Immutable private writing context from this exact effect, never live authority. */
   sceneFacts?: import("../rules/scene-continuity.js").SceneEffectFacts;

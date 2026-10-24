@@ -1,3 +1,4 @@
+import { developmentSceneContext } from "./development-knowledge.js";
 import { openingSemanticContext } from "./opening-context.js";
 import { createHash } from "node:crypto";
 import { asRecord } from "./coerce.js";
@@ -77,6 +78,7 @@ export function semanticContext(
           },
         }
       : {}),
+    ...(scene.operation?.input.developmentVersion === 1 ? { development: developmentSceneContext(state, actors) } : {}),
     opening: openingSemanticContext(state, scene),
     worldSeed: state.seed,
     setting: state.setting,

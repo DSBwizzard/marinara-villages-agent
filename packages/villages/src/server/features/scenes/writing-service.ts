@@ -1,3 +1,4 @@
+import { readDevelopmentSceneChanges } from "../../domain/rules/development-scene.js";
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
 import {
   IncompleteOpeningPitch,
@@ -345,6 +346,7 @@ export function createSceneWriting({
               .map((venue) => `${venue.name} (${venue.id})`)
               .join(", ") || "none"
           }.`,
+          `Private resident intentions (captured for this Scene; motives and reasons belong only to this resident. Each consent decision is shared only between its signer and mover): ${JSON.stringify(village.development?.residents[person.characterId]?.pursuits ?? [])}. The resident can explain or reconsider them through conversation; do not assume the player knows.`,
           `Private current desires of ${card.name}: ${resident.agenda?.wishes.map((wish) => `[${wish.id}] ${wish.wish}`).join("; ") || "none"}. These can inform a relevant choice; they require no gesture, hint, mention, or player errand.`,
         ]
           .filter(Boolean)
@@ -1163,6 +1165,7 @@ export function createSceneWriting({
     if (semanticResult) {
       // Ignore all narrator effect nominations, including omitted System sections.
       for (const key of [
+        "developmentChanges",
         "memoryChanges",
         "relationshipChanges",
         "wishChanges",
@@ -1544,6 +1547,10 @@ export function createSceneWriting({
         semanticPlayerMoves: playerMoves,
         physicalContext,
         movementIntent,
+        developmentChanges:
+          semanticResult && session.operation?.input.developmentVersion === 1
+            ? readDevelopmentSceneChanges(semanticResult.effects.developmentChanges, village, parsed.lines)
+            : [],
         residenceSignal:
           (semanticResult || mode === "chat" || mode === "ask") &&
           requestedVenueId &&
@@ -1647,6 +1654,7 @@ export function createSceneWriting({
           ? ({
               version: 2 as const,
               turnPolicyVersion: 1 as const,
+              ...(venueOperationInput()?.developmentVersion === 1 ? { developmentVersion: 1 as const } : {}),
               sourceHash: semanticResult.sourceHash,
               ...(venueOperationInput()?.semanticPipelineVersion === 3 ? { pipelineVersion: 3 as const } : {}),
               ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))

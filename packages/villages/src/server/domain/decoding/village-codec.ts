@@ -1,3 +1,4 @@
+import { readDevelopment } from "../rules/development-codec.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readProjectPlan } from "../rules/project-completion.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
@@ -2018,6 +2019,7 @@ export function coerceVillageState(value: unknown): VillageState {
       return { mode: "forever" as const, value: 0 };
     })(),
     residences: coerceResidences(raw.residences),
+    development: readDevelopment(raw.development),
     // Left empty rather than stamped with "now": a record that predates the
     // setup flow should open the wizard, not claim it has been set up.
     opening: readOpening(raw.opening),

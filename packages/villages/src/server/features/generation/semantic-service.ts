@@ -1,3 +1,5 @@
+import { readDevelopmentSceneProposals } from "../../domain/rules/development-scene.js";
+import { DEVELOPMENT_SCENE_INSTRUCTION } from "../../domain/rules/development-knowledge.js";
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
 import {
@@ -388,6 +390,7 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(movementReview
           ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
           : {}),
+        ...(scene.operation?.input.developmentVersion === 1 ? { developmentVersion: 1 } : {}),
         residentActionsOmitted,
         evidence,
         prepared,
@@ -410,6 +413,7 @@ export function createSemanticService(ports: SemanticPorts) {
           ? "Also return immediateResidentMoves:[], required even when empty. Independently identify EVERY immediate request in the original player input for residents to cross into a recorded Zone, regardless of the draft response or their willingness. residentRequestLocalIds lists ALL residents physically with the player before this reply, including passive residents absent from context.actors. context.actors is the selected reply cast, never the complete set of possible addressees. Resolve group references from the original input, these local IDs and established context before considering the draft. For example, when four residents are here and two others are already in the Studio, 'Can the four of you join those two in the Studio now?' requests the four local residents, not the selected four-person reply cast. Polite Can/Could/Would questions asking for movement now are immediate requests, not hypothetical merely because of modal wording. Rows are {characterIds:[exact resident IDs for the COMPLETE requested group],zoneId,source:zero-based intent.timeline index}. Keep every requested resident even if some refuse, stay, or only a smaller group crosses in the draft. Include requests within mixed speech/actions. Do not nominate future appointments, conditional/hypothetical travel, quoted examples or private thoughts. For these recorded-Zone requests, unresolved actor or destination identity remains unresolved intent; never invent a Zone or silently choose a smaller group. Ordinary movement toward fictional spaces does not itself require a recorded Zone nomination. These are request nominations, never completed moves or authority. "
           : "") +
         "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash," +
+        (scene.operation?.input.developmentVersion === 1 ? "developmentChanges:[]," : "") +
         (movementReview ? "immediateResidentMoves:[{characterIds:[residentIds],zoneId,source}]," : "") +
         (combined
           ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
@@ -445,7 +449,8 @@ export function createSemanticService(ports: SemanticPorts) {
         " Memory subjectCharacterIds and knownByCharacterIds contain resident IDs only, never player. Never use an opening proposal, its name, or a newly spoken desire as a Wish ID. If there is no matching supplied Wish ID, return no Wish proposal. Use numeric indexes matching evidence draft:N for current memory evidence/relationship lineIds/Wish evidence. Consolidate memory facts sharing kind, category, subject IDs, knower IDs and evidence IDs into one row; never repeat a unit. Do not emit systemVerification fields. Every knower must witness ALL support and meaning-bearing context. Temporary seating/company may be passing, never automatically trust. " +
         'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist. Relationship changes additionally use contact:boolean for substantive actual shared contact; private opinion changes alone are not contact.' +
         (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
-        " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words.",
+        " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
+        (scene.operation?.input.developmentVersion === 1 ? DEVELOPMENT_SCENE_INSTRUCTION : ""),
       (raw, hash, savedInput): SemanticExchange => {
         const interpretedIntent = combined
           ? readIntent(asRecord(raw.intent), hash, savedInput, state, scene)
@@ -545,7 +550,7 @@ export function createSemanticService(ports: SemanticPorts) {
           if (opening.gathering) {
             if (!Array.isArray(raw.gatheringContributions))
               throw badGateway(
-                "The gathering check did not identify the founders’ ideas. The draft is preserved. Retry the check.",
+                "The gathering check did not identify the foundersâ€™ ideas. The draft is preserved. Retry the check.",
               );
             const contributions = raw.gatheringContributions.map(asRecord);
             const contributors = new Set<string>();
@@ -560,7 +565,7 @@ export function createSemanticService(ports: SemanticPorts) {
                 !openingGatheringQuoteMatches(savedInput.evidence, residentId, quote)
               )
                 throw badGateway(
-                  "The gathering check could not match a founder’s idea to their spoken dialogue. The draft is preserved. Retry the check.",
+                  "The gathering check could not match a founderâ€™s idea to their spoken dialogue. The draft is preserved. Retry the check.",
                 );
               contributors.add(residentId);
             }
@@ -587,6 +592,8 @@ export function createSemanticService(ports: SemanticPorts) {
           (asRecord(raw.action).happened !== true || !Number.isInteger(asRecord(raw.action).segment))
         )
           throw badGateway("System physical outcome lacks a completed, cited action.");
+        if (savedInput.developmentVersion === 1)
+          effects.developmentChanges = readDevelopmentSceneProposals(raw.developmentChanges);
         const immediate = semanticImmediate(raw.events, lines);
         if (
           savedInput.context.opening?.requiredPitch &&
