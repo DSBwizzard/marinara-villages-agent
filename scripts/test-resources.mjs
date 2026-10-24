@@ -26,6 +26,8 @@ export const isolatedTests = new Set([
   "tests/villages-attention-sources.regression.ts",
   "tests/villages-attention.regression.ts",
   "tests/villages-clock-recovery.regression.ts",
+  "tests/villages-time-advance.regression.ts",
+  "tests/villages-time-advance.e2e.mjs",
   "tests/villages-interpretation.regression.ts",
   "tests/villages-project-interpretation.regression.ts",
   "tests/villages-wish-interpretation.regression.ts",

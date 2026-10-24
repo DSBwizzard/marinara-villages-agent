@@ -100,10 +100,10 @@ export function createLiveScenes({
   /** Only a deliberate client action updates this server-owned clock. */
   async function touchVenueSession(id: string): Promise<VenueScene> {
     const session = await requireLiveVenueSession(id);
-    if (Date.now() - Date.parse(session.lastActivityAt) < ACTIVITY_WRITE_MS) return session;
+    if (villageNow().getTime() - Date.parse(session.lastActivityAt) < ACTIVITY_WRITE_MS) return session;
     return changeSession(id, (state) => {
       if (state.status === "closed") throw conflict("That Scene has already ended.");
-      if (Date.now() - Date.parse(state.lastActivityAt) >= ACTIVITY_WRITE_MS)
+      if (villageNow().getTime() - Date.parse(state.lastActivityAt) >= ACTIVITY_WRITE_MS)
         state.lastActivityAt = villageNow().toISOString();
     });
   }

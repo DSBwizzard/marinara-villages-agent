@@ -1,5 +1,6 @@
 import { inspectDevelopment, setDevelopment, reconcileDevelopment } from "./development.js";
-import { resolveVillageClock } from "../../adapters/time/clock-gate.js";
+import { observeVillageClock, resolveVillageClock } from "../../adapters/time/clock-gate.js";
+import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import { buildVillageCatalog } from "../residents/resident-cards.js";
 import { addNotice, removeNoticeAt } from "../settings/village-settings.js";
 import { fail } from "../../adapters/http/route-support.js";
@@ -34,6 +35,22 @@ export function registerSnapshotCatalogRoutes(engine: FastifyInstance) {
 }
 export function registerWorldMaintenanceRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.get("/clock", async (_request, reply) => {
+    try {
+      return await observeVillageClock();
+    } catch (error) {
+      return fail(reply, error, "reading Village time");
+    }
+  });
+  // Development control: remove this route and its UI before admitting active playtesters.
+  app.post<{ Body: VillageTimeAdvance }>("/clock/advance", async (request, reply) => {
+    try {
+      if (!request.body || typeof request.body !== "object") throw badRequest("Choose a time advance.");
+      return await reconcileVillage({ advanceTime: request.body });
+    } catch (error) {
+      return fail(reply, error, "advancing Village time");
+    }
+  });
   app.get("/development", async (_request, reply) => {
     try {
       return await inspectDevelopment();

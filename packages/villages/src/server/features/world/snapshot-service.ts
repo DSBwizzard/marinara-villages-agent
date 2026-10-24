@@ -41,18 +41,16 @@ export function createVillageSnapshot({
   privatePreparationRooms,
 }: VillageSnapshotPorts) {
   /** The village as the tab draws it: live library labels and adopted card colors. */
-  async function buildVillageSnapshot(
-    now: Date = villageNow(),
-    observeCurrentHousing = false,
-  ): Promise<VillageSnapshot> {
+  async function buildVillageSnapshot(at?: Date, observeCurrentHousing = false): Promise<VillageSnapshot> {
     let village = await readVillageState();
     if (!village.visitMemoryBackfilled && (village.setupAt || village.foundedAt)) {
       village = await readVillageState();
     }
     const clock = await observeVillageClock();
+    let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     if (clock?.paused) now = villageNow();
     else if (clock) now = new ZonedDate(now, clock.timeZone);
-    if (!clock?.paused && (await rollActiveAgendas(now, village))) village = await readVillageState();
+    if (!clock?.paused && (await rollActiveAgendas(now, village, clock?.revision))) village = await readVillageState();
     const residentIds = village.villagers.map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));
@@ -159,7 +157,7 @@ export function createVillageSnapshot({
         destination,
       );
     });
-    return {
+    const snapshot: VillageSnapshot = {
       status: "ready",
       clock,
       progressEngineVersion: village.progressEngineVersion,
@@ -225,6 +223,7 @@ export function createVillageSnapshot({
         player,
         residenceAccess,
         residenceAccess ? sceneAccessContext(residenceAccess, village) : undefined,
+        now,
       ),
       ...(residenceAccess && capturedVenue
         ? {
@@ -235,6 +234,7 @@ export function createVillageSnapshot({
                 player,
                 residenceAccess,
                 sceneAccessContext(residenceAccess, sceneWorld),
+                now,
               ).venues.find((venue) => venue.id === capturedVenue.id)!,
             },
           }
@@ -272,6 +272,9 @@ export function createVillageSnapshot({
         : {}),
       backgroundWork: await backgroundWorkSummaries(),
     };
+    if (clock && (await observeVillageClock())?.revision !== clock.revision)
+      return buildVillageSnapshot(undefined, observeCurrentHousing);
+    return snapshot;
   }
 
   return { buildVillageSnapshot };

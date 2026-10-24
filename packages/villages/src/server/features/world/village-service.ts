@@ -1,5 +1,11 @@
 import { calendarReplay } from "../../domain/rules/clock-recovery.js";
-import { assertVillageClockWrite, villageNow } from "../../adapters/time/clock-gate.js";
+import {
+  advanceVillageClock,
+  assertVillageClockWrite,
+  villageNow,
+  villageTimeAdvanceSettled,
+} from "../../adapters/time/clock-gate.js";
+import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type {
   VillageChronicleEntry,
@@ -98,10 +104,23 @@ export function createWorldCoordination({
    * Required local state is committed before optional narration is requested, so
    * an unavailable model can never stop time, schedules or wishes.
    */
-  async function reconcileVillage(options: { now?: Date } = {}): Promise<VillageSnapshot> {
+  let reconciliation: Promise<unknown> = Promise.resolve();
+  function reconcileVillage(options: { now?: Date; advanceTime?: VillageTimeAdvance } = {}): Promise<VillageSnapshot> {
+    const result = reconciliation.then(async () => {
+      try {
+        return await reconcileAt(options);
+      } finally {
+        if (options.advanceTime) villageTimeAdvanceSettled();
+      }
+    });
+    reconciliation = result.catch(() => {});
+    return result;
+  }
+  async function reconcileAt(options: { now?: Date; advanceTime?: VillageTimeAdvance }): Promise<VillageSnapshot> {
     await assertVillageClockWrite();
-    const now = options.now ?? villageNow();
+    if (options.advanceTime) await advanceVillageClock(options.advanceTime);
     let recorded = await readVillageState();
+    const now = options.now ?? villageNow();
     if (!isVillageFounded(recorded)) return buildVillageSnapshot(now);
     if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready")
       return buildVillageSnapshot(now);

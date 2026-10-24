@@ -32,7 +32,10 @@ export function captureSceneAttendance(village: VillageState, placeId: string, n
       const staged = openingPresence(village, villager.characterId);
       const zone =
         resolveVenueZone(venue, position.zoneId ?? "") ??
-        chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village);
+        chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
+          at: now,
+          relationships: village.relationshipContext,
+        });
       return [
         {
           characterId: villager.characterId,

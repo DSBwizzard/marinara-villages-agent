@@ -43,18 +43,19 @@ export function VillagerMemoriesPanel({
   onRefresh,
   onForget,
   characterId,
+  now = Date.now(),
 }: {
   library: MemoryLibrary | null;
   busy: boolean;
   onRefresh: () => void;
   onForget: (kind: "durable" | "recollections", id: string) => void;
   characterId: string;
+  now?: number;
 }) {
   const [kind, setKind] = useState<"all" | "passing" | "durable">("all");
   const [query, setQuery] = useState("");
   const [evidence, setEvidence] = useState<{ visit: SceneView; lineIds: string[] } | null>(null);
   const [evidenceError, setEvidenceError] = useState("");
-  const now = Date.now();
   const matches = (text: string, people: readonly MemoryPerson[]) =>
     (!query.trim() ||
       `${text} ${people.map((person) => person.name).join(" ")}`.toLowerCase().includes(query.trim().toLowerCase())) &&
@@ -302,17 +303,13 @@ const WISH_DEATH_DAY = new Intl.DateTimeFormat(undefined, { day: "numeric", mont
  * that cannot be read never expires — the safe direction the server chose,
  * repeated rather than guessed at with a date nobody wrote.
  *
- * ponytail: the age comes off the device clock at the moment the row is drawn.
- * That is the same clock as the village's own for exactly as long as the village
- * derives its time from real time — the ceiling `useRealClock` names — and the
- * line is refreshed by the tab's own read of the agendas rather than by a timer
- * of its own.
+ * The caller supplies authoritative Village time, including development advances.
  */
-export function wishLifetimeLabel(addedAt: string, expiresAt: string): string {
+export function wishLifetimeLabel(addedAt: string, expiresAt: string, now = Date.now()): string {
   const parts: string[] = [];
   const born = Date.parse(addedAt);
   if (Number.isFinite(born)) {
-    const days = Math.floor((Date.now() - born) / 86_400_000);
+    const days = Math.floor((now - born) / 86_400_000);
     parts.push(days <= 0 ? "written today" : days === 1 ? "written yesterday" : `written ${days} days ago`);
   }
   // A wish without a readable deadline has no set expiry.

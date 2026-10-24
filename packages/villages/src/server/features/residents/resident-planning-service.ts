@@ -263,7 +263,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       }
       if (proposal.routineIdea) {
         const resident = state.villagers.find((r) => r.characterId === proposal.routineIdea.characterId);
-        if (resident?.agenda) addRoutineIdea(resident.agenda, proposal.routineIdea, resident, state);
+        if (resident?.agenda) addRoutineIdea(resident.agenda, proposal.routineIdea, resident, state, villageNow());
       }
       for (const request of proposal.housingRequests) {
         if (!opportunity.actorIds.includes(request.characterId)) continue;

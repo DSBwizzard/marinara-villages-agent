@@ -146,7 +146,7 @@ export function createResidences(ports: ResidencePorts) {
       if (venueAssignedCount(nextVenue) + reserved >= venueCapacity(nextVenue))
         throw conflict("This Residence has no available bed.");
       assertResidencePrivateDestination(state, nextVenue, characterId, residence.proposedPrivateZoneId);
-      const now = Date.now();
+      const now = villageNow().getTime();
       if (venueResidentIds(nextVenue).some((id) => id !== characterId)) {
         residence.villagerDecision = "approved";
         queueSharedMoveConsent(state, residence, new Date(now));

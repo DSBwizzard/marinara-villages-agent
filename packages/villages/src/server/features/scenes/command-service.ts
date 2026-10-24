@@ -1024,7 +1024,7 @@ export function createSceneCommands({
     if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
       throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another Zone.");
     const existing = await activeVenueSession();
-    if (!existing) await rollActiveAgendas(villageNow());
+    if (!existing) await rollActiveAgendas();
     const live = await readVillageState();
     let village = existing ? sceneContinuityView(live, existing) : live;
     const place = village.venues.find((entry) => entry.id === placeId);
@@ -2197,7 +2197,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       )
     )
       throw badRequest("That villager is no longer in this conversation.");
-    await rollActiveAgendas(villageNow());
+    await rollActiveAgendas();
     const village = await readVillageState();
     const verdict: VenueSubmission["verdict"] = null;
     const wishId = "",

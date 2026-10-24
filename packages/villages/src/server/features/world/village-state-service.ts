@@ -61,7 +61,8 @@ export function createVillageStateService(repository: VillageRepository, worldRe
         reconcileRelationships(state.relationshipContext, state, villageNow().getTime());
       }
       normalizeVillageMutation(state, relationshipSeed, mutate, {
-        now: villageNow,
+        // A reset can replace the clock inside this mutation. Stamp the resulting world's time.
+        now: () => villageNow(state.clock?.advanceMs ?? 0),
         seed: () => Math.random().toString(36).slice(2, 10).padEnd(8, "0"),
       });
 

@@ -9,6 +9,7 @@ import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsP
 import { renderMenuIndexPage } from "../features/settings/MenuIndexPage.js";
 import type { MenuScreenController } from "./menu-contracts.js";
 import { VillagesRuntimeDebug } from "../features/settings/RuntimeDebug.js";
+import { VillageTimeControl } from "../features/settings/TimeControl.js";
 import { renderVillageSettingsPage } from "../features/settings/VillageSettingsPage.js";
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
@@ -382,6 +383,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
           <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
             {backgroundPanel}
             {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
+            {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
             {menuPage === "noticeboard" && snapshot
               ? renderNoticeboardPage({
                   addNotice,
