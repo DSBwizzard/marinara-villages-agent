@@ -268,7 +268,6 @@ export function createWishProgress(ports: WishProgressPorts) {
               evidence: [],
               receipts: [receipt],
               transcript: [],
-              happenings: [],
               memory: [],
               worldState: [],
             };
@@ -625,7 +624,6 @@ export function createWishProgress(ports: WishProgressPorts) {
         receipts,
         currentReceiptIds: newReceipts.map((receipt) => receipt.id),
         transcript: [],
-        happenings: [],
         memory: [],
         worldState: [],
       };

@@ -25,9 +25,7 @@ const snapshot = {
   projects: [],
   venueRequests: [],
   residences: [],
-  happenings: [],
   villagers: [],
-  recap: null,
   settings: {
     venues: [],
     foundingReason: "",

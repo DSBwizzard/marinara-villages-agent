@@ -10,9 +10,6 @@ export async function resetVillage(...args: Parameters<WorldCoordination["resetV
 export async function reconcileVillage(...args: Parameters<WorldCoordination["reconcileVillage"]>) {
   return binding.get().reconcileVillage(...args);
 }
-export async function runVillageReaction(...args: Parameters<WorldCoordination["runVillageReaction"]>) {
-  return binding.get().runVillageReaction(...args);
-}
 export async function buildVillageStory(...args: Parameters<WorldCoordination["buildVillageStory"]>) {
   return binding.get().buildVillageStory(...args);
 }

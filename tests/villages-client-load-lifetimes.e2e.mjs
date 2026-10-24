@@ -38,7 +38,11 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   format: "iife",
   jsx: "automatic",
 });
-const seed = { isFounded: true, village: { name: "initial" }, backgroundWork: [{ kind: "story", attempt: 3 }] };
+const seed = {
+  isFounded: true,
+  village: { name: "initial" },
+  backgroundWork: [{ kind: "resident-planning", attempt: 3 }],
+};
 const browser = await chromium.launch({ headless: true });
 async function mount({ strict = false, width = 1280, presence = false, wanted = "" } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });

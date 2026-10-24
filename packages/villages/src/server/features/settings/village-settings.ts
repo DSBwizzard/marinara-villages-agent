@@ -14,8 +14,8 @@ export function setVillagePromptKnowledge(...args: Parameters<VillageSettings["s
 export function setVillageLoreSettings(...args: Parameters<VillageSettings["setVillageLoreSettings"]>) {
   return villageSettings().setVillageLoreSettings(...args);
 }
-export function setVillageStoryPace(...args: Parameters<VillageSettings["setVillageStoryPace"]>) {
-  return villageSettings().setVillageStoryPace(...args);
+export function setVillageBackgroundPace(...args: Parameters<VillageSettings["setVillageBackgroundPace"]>) {
+  return villageSettings().setVillageBackgroundPace(...args);
 }
 export function setVillageSpriteCardFlipEnabled(
   ...args: Parameters<VillageSettings["setVillageSpriteCardFlipEnabled"]>

@@ -91,7 +91,7 @@ const raw = {
   version: 3,
   seed: "owned-test",
   setting: "Quiet valley",
-  storyPace: "off",
+  backgroundPace: "off",
   selectedLorebookIds: [],
   venues: [],
   villagers: [
@@ -561,7 +561,7 @@ async function main() {
     assert.ok(agendaBlocksFor((await readVillageState()).villagers[0]!.agenda!, false, next).length);
     await mutateVillageState((value) => {
       value.villagers[0]!.agenda = null;
-      value.storyPace = "off";
+      value.backgroundPace = "off";
       value.setupAt = today.toISOString();
     });
     await reconcileVillage({ now: today });

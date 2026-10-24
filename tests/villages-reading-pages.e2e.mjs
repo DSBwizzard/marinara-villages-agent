@@ -135,7 +135,7 @@ try {
       );
     }
     await expect(tray).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByLabel("Village events")).toBeVisible();
+    await expect(page.getByLabel("Scene changes")).toBeVisible();
     events.push({ id: "memory", kind: "memory", text: "Mara remembered the exchange." });
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(tray).toHaveAccessibleName("2 village notices");
@@ -163,7 +163,7 @@ try {
     });
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(tray).toHaveAccessibleName("3 village notices");
-    await expect(page.getByLabel("Village events")).toBeVisible();
+    await expect(page.getByLabel("Scene changes")).toBeVisible();
     // Exercise navigation independently of the mobile dialogue overlay's pointer layout.
     await page.getByRole("button", { name: /View .*Inspect Mara's wish/ }).evaluate((button) => button.click());
     await expect(page.getByRole("region", { name: "Mara profile", exact: true })).toBeVisible();

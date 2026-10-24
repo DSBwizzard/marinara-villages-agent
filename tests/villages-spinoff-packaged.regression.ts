@@ -21,7 +21,7 @@ Object.assign(village, {
   seed: "packaged-spinoff",
   foundedAt: at,
   setupAt: at,
-  storyPace: "off",
+  backgroundPace: "off",
   visitMemoryBackfilled: true,
   timeZone: "America/Los_Angeles",
   playerPersonaId: "persona",
@@ -246,7 +246,7 @@ try {
   const forced = await app.inject({
     method: "POST",
     url: "/api/villages/reconcile",
-    payload: { forceStory: true, actionId: "forced", expectedAttempt: 0 },
+    payload: {},
   });
   assert.equal(forced.statusCode, 409, "read-only browsing cannot request another Village story event");
   const presence = await app.inject({

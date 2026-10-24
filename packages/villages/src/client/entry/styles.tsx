@@ -2285,63 +2285,6 @@ const VILLAGES_STYLES = `
   background: color-mix(in srgb, var(--popover) 92%, transparent);
   padding: .3125rem .5rem;
 }
-/*
-  The village's news, behind a button in the shared bar above the map.
-
-  It used to be a column of the homepage: a permanent gutter down one side of
-  the map, holding a list that is usually short and often empty. A column that is
-  always there is a column the map always pays for, and on a phone held sideways
-  there is no width to pay it with — the map would have been fitted to whatever
-  the news left of the tab, which is a strange thing for reading the news to do.
-
-  So the news is a disclosure instead. The button says the feed is there and the
-  panel unrolls beneath it, over the picture: it costs the map nothing while it
-  is shut and covers a corner of it while it is open. What the rail said is still
-  said; it is said on request.
-
-  A details element rather than a button and a box of state, because the
-  open-and-shut flag, the keyboard behaviour and the expanded-or-collapsed
-  announcement are all the element's own and none of them can drift out of step
-  with the panel. What it does not do by itself is shut when the player presses
-  somewhere else, which is the one thing the component adds: a panel that can
-  only be dismissed by finding the button again sits over the game while the game
-  is being played.
-
-  Hung below its own button rather than centred on the map, so the panel opens
-  where the button is. Both of its limits are shares of the tab rather than
-  lengths, so a small tab gets a panel that fits and scrolls instead of one
-  taller or wider than the screen it is on.
-*/
-.${ELEMENT_TAG}-news { position: relative; }
-.${ELEMENT_TAG}-news-toggle { display: inline-flex; align-items: center; gap: .3125rem; list-style: none; }
-.${ELEMENT_TAG}-news-toggle svg { display: block; flex: 0 0 auto; width: 1rem; height: 1rem; }
-/* The browser's own disclosure triangle: a character that cannot be sized,
-   coloured or placed with the rest of the button. The button is the affordance;
-   a marker on top of it is a second one saying the same thing. */
-.${ELEMENT_TAG}-news-toggle::-webkit-details-marker { display: none; }
-.${ELEMENT_TAG}-news-toggle::marker { content: ""; }
-.${ELEMENT_TAG}-news[open] > .${ELEMENT_TAG}-news-toggle { border-color: var(--primary); color: var(--primary); }
-.${ELEMENT_TAG}-news-panel {
-  position: absolute; top: calc(100% + .375rem); right: 0; z-index: 4;
-  box-sizing: border-box; width: min(20rem, 72cqw);
-  max-height: min(24rem, 60cqh);
-  overflow-y: auto;
-  display: flex; flex-direction: column; gap: .375rem;
-  border: 1px solid var(--border); border-radius: .625rem;
-  background: var(--popover);
-  padding: .5rem .625rem;
-  box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .28);
-}
-.${ELEMENT_TAG}-news-title {
-  margin: 0; font-size: .6875rem; font-weight: 600;
-  text-transform: uppercase; letter-spacing: .04em;
-  color: var(--muted-foreground);
-}
-.${ELEMENT_TAG}-news-list { margin: 0; padding: 0; list-style: none; display: grid; gap: .375rem; }
-.${ELEMENT_TAG}-news-item { font-size: .75rem; line-height: 1.5; color: var(--muted-foreground); }
-.${ELEMENT_TAG}-news-empty {
-  margin: 0; font-size: .75rem; line-height: 1.5; color: var(--muted-foreground);
-}
 .${ELEMENT_TAG}-mapbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: .375rem;
   border: 1px solid var(--border); border-radius: .75rem;
@@ -3356,14 +3299,10 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-home-bar .${ELEMENT_TAG}-button { min-height: 2.5rem; }
 .${ELEMENT_TAG}-mobile-datetime { display: inline-flex; align-items: center; gap: .2rem; min-width: 0; border: 1px solid #d6ba7c; border-radius: .65rem; background: #718eb6; color: #172238; padding: .2rem .3rem; font-size: .95rem; white-space: nowrap; }
 .${ELEMENT_TAG}-mobile-clock { display: flex; flex-direction: column; line-height: 1.15; font-variant-numeric: tabular-nums; font-size: clamp(.58rem, 2.5cqw, .75rem); }
-.${ELEMENT_TAG}-mobile-board-button, .${ELEMENT_TAG}-mobile-menu-button, .${ELEMENT_TAG}-home-bar .${ELEMENT_TAG}-news-toggle { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; min-width: 2.5rem; min-height: 2.5rem; padding: .15rem; }
+.${ELEMENT_TAG}-mobile-board-button, .${ELEMENT_TAG}-mobile-menu-button { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; min-width: 2.5rem; min-height: 2.5rem; padding: .15rem; }
 .${ELEMENT_TAG}-mobile-board-button { border: 3px solid #5c381d; border-radius: .3rem; background: repeating-linear-gradient(90deg, #ad7540 0 9px, #9a6636 9px 11px); color: #f6e3b6; box-shadow: inset 0 0 0 2px #c5925a, 0 2px 4px #0007; font-size: 1.4rem; cursor: pointer; }
 .${ELEMENT_TAG}-mobile-board-button:disabled { opacity: .55; }
 .${ELEMENT_TAG}-mobile-menu-button { font-size: 1.5rem; line-height: 1; }
-.${ELEMENT_TAG}-home-bar .${ELEMENT_TAG}-news-toggle { position: relative; }
-.${ELEMENT_TAG}-home-bar .${ELEMENT_TAG}-news-toggle svg { width: 1.3rem; height: 1.3rem; }
-.${ELEMENT_TAG}-news-nyi { position: absolute; right: -.15rem; bottom: -.3rem; border-radius: .2rem; background: var(--popover); color: var(--foreground); padding: 0 .1rem; font-size: .55rem; font-weight: 700; }
-.${ELEMENT_TAG}-home-bar .${ELEMENT_TAG}-news-panel { width: min(19rem, 80cqw); max-height: 60cqh; }
 .${ELEMENT_TAG}-home-full[data-mobile="false"] .${ELEMENT_TAG}-mobile-datetime { font-size: 1rem; padding: .25rem .45rem; }
 .${ELEMENT_TAG}-home-full[data-mobile="false"] .${ELEMENT_TAG}-mobile-clock { font-size: .75rem; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-holder { z-index: 2; }
@@ -3629,8 +3568,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-menu-welcome h2 { margin: 0; font-size: clamp(1.4rem, 3cqw, 2.2rem); }
 .${ELEMENT_TAG}-menu-welcome p { max-width: 40rem; margin: 0; color: var(--muted-foreground); line-height: 1.6; }
 .${ELEMENT_TAG}-menu-quick-links { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .4rem; }
-.${ELEMENT_TAG}-menu-debug-action { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-bottom: 1rem; }
-.${ELEMENT_TAG}-menu-debug-action .${ELEMENT_TAG}-status { margin: 0; flex: 1 1 15rem; }
 @container (max-width: 48rem) {
   .${ELEMENT_TAG}-root.${ELEMENT_TAG}-sectioned-menu { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
   .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav {

@@ -52,7 +52,7 @@ function fixture(seeded = true) {
     setting: "A disused station",
     setupAt: stamp,
     foundedAt: stamp,
-    storyPace: "off",
+    backgroundPace: "off",
     townMapImage: "data:image/png;base64,preserved-map",
     townMapImageSetAt: stamp,
     foundingPreparation: { status: "pending", completedIds: [], currentId: "", error: "", venueDetailsSeeded: seeded },

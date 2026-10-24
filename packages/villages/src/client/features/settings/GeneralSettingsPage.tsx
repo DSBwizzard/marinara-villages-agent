@@ -1,6 +1,5 @@
-import type { VillageSettings, VillageStoryPace } from "../../../shared/contracts/village.js";
+import type { VillageSettings, VillageBackgroundPace } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { storyPaceSummary } from "../../shared/presentation.js";
 import type { GeneralSettingsPagePorts } from "./page-contracts.js";
 import { AgentConnections } from "./AgentConnections.js";
 
@@ -11,7 +10,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
     resetArmed,
     saveCharacterSpeechColors,
     saveSendOnEnter,
-    saveStoryPace,
+    saveBackgroundPace,
     saveVisitRetention,
     setResetArmed,
     settingsError,
@@ -68,28 +67,21 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
 
       {snapshot ? (
         <div className={`${ELEMENT_TAG}-field`}>
-          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-story-pace`}>
-            Background events and wishes
+          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-background-pace`}>
+            Resident activity and Wishes
           </label>
-          <p className={`${ELEMENT_TAG}-empty`}>
-            Controls automatic Events, resident housing proposals from those events, and new wishes. Off pauses these.
-            Time, schedules, approved moves, construction, and existing wish expiry continue. Scenes and other
-            generation features use their own controls. All enabled levels allow at most one new wish per resident per
-            day and two active wishes; quiet days can have none.
-          </p>
           <select
-            id={`${ELEMENT_TAG}-story-pace`}
-            value={snapshot.settings.storyPace}
+            id={`${ELEMENT_TAG}-background-pace`}
+            value={snapshot.settings.backgroundPace}
             disabled={busy}
-            onChange={(event) => void saveStoryPace(event.target.value as VillageStoryPace)}
+            onChange={(event) => void saveBackgroundPace(event.target.value as VillageBackgroundPace)}
           >
-            {snapshot.settings.storyPaces.map((pace) => (
+            {snapshot.settings.backgroundPaces.map((pace) => (
               <option key={pace} value={pace}>
                 {pace.charAt(0).toUpperCase() + pace.slice(1)}
               </option>
             ))}
           </select>
-          <span className={`${ELEMENT_TAG}-hint`}>{storyPaceSummary(snapshot.settings.storyPace)}</span>
         </div>
       ) : null}
 

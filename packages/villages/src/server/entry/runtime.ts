@@ -1,3 +1,4 @@
+import { createResidentPlanning } from "../features/residents/resident-planning-service.js";
 import { backgroundJobSnapshot, backgroundLegacyFounding, retireLegacyFounding } from "../jobs/background-work.js";
 import { readFoundingResidentContext, adoptFoundingRoutine } from "../features/residents/resident-agendas.js";
 import { queueFoundingWish } from "../features/residents/wishes/wish-lifecycle.js";
@@ -136,7 +137,6 @@ import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive } from "../features/scenes/archive.js";
 import { processSavedProgressSubmission } from "../features/scenes/progress.js";
 import { removeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
-import { relationshipWritingPrompt } from "../domain/rules/relationship-presentation.js";
 import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
 import { configureFoundingSetup } from "../features/founding/founding-setup.js";
 import { readTownMapSubmission } from "../features/media/town-map-review.js";
@@ -151,8 +151,6 @@ import {
   proposeVillage,
   proposePublicVenueNames,
   draftVillageVenueDescriptions,
-  proposeHappenings,
-  proposeReaction,
 } from "../features/founding/village-bootstrap.js";
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
 import { configureTownMapReview } from "../features/media/town-map-review.js";
@@ -1072,7 +1070,18 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const releaseDevelopment = configureDevelopment(development);
+  const residentPlanning = createResidentPlanning({
+    readVillageState,
+    mutateVillageState,
+    readEffectiveVillagerCard,
+    queueBackgroundJob,
+    backgroundJobSnapshot,
+    villagesLanguageModels,
+    villagesConnectionIdFor,
+    completeWithRoom,
+  });
   const worldCoordination = createWorldCoordination({
+    reconcileResidentPlanning: residentPlanning.reconcile,
     reconcileDevelopment,
     processProjectWishOutbox,
     readScene: readSession,
@@ -1081,19 +1090,14 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     buildVillageSnapshot,
     villagesLogger,
     listVillagerCards,
-    readEffectiveVillagerCard,
     outsideVenueOperation: operations.outsideVenueOperation,
     completeVillageResidence,
     retryResidencePrivateSpaceAdaptation,
     backfillAgendas,
     refreshVillagerRemaps,
-    queueBackgroundJob,
     preparePrivateSpaces,
-    proposeHappenings,
-    proposeReaction,
     reconcileProjectLifecycles,
     rollActiveAgendas,
-    relationshipWritingPrompt,
     expireResidentWishes,
     reconcileWishLifecycle,
     respondDueVenueMail,
@@ -1117,7 +1121,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["mail", venueMailbox().mailBackgroundHandler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
-        ["story", bindActivationService(worldCoordination.storyBackgroundHandler)],
+        ["resident-planning", bindActivationService(residentPlanning.handler)],
         ["development", bindActivationService(development.handler)],
       ],
     }),

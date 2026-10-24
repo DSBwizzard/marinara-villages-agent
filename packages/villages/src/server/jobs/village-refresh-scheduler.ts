@@ -26,13 +26,13 @@ function localMinuteDeadline(now: Date, minute: number): number {
 }
 
 /**
- * Find the next schedule, atmosphere, wish, or planned-event deadline. The
+ * Find the next schedule, atmosphere, Wish or move deadline. The
  * calculation is exact to the stored minute and never replays every minute in
  * between.
  */
 export function villageSchedulerDelayMs(
   now: Date,
-  village?: Pick<VillageState, "villagers" | "scheduledEvents" | "residences" | "venueMail" | "development">,
+  village?: Pick<VillageState, "villagers" | "residences" | "venueMail" | "development">,
 ): number {
   if (!Number.isFinite(now.getTime())) return REFRESH_MAX_DELAY_MS;
   const deadlines = [nextClockChangeAt(now).getTime()];
@@ -45,10 +45,6 @@ export function villageSchedulerDelayMs(
       const expiry = Date.parse(wish.expiresAt);
       if (Number.isFinite(expiry) && expiry > now.getTime()) deadlines.push(expiry);
     }
-  }
-  for (const event of village?.scheduledEvents ?? []) {
-    const occursAt = Date.parse(event.occursAt);
-    if (Number.isFinite(occursAt) && occursAt > now.getTime()) deadlines.push(occursAt);
   }
   for (const residence of village?.residences ?? []) {
     if (residence.status !== "moving") continue;

@@ -112,7 +112,6 @@ export function useScenesState(isFounded?: boolean) {
    * ordinary answer here is not a failure: a forced creative pass can genuinely
    * have nothing to add, and that reads as a mistake if it is shown in red.
    */
-  const [writeUpNote, setWriteUpNote] = useState("");
   return {
     sceneReading,
     venueVisits,
@@ -182,8 +181,6 @@ export function useScenesState(isFounded?: boolean) {
     setRoomGreetingNotice,
     roomEnded,
     setRoomEnded,
-    writeUpNote,
-    setWriteUpNote,
   };
 }
 

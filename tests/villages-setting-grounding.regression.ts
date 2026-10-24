@@ -17,7 +17,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
-import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
@@ -144,7 +144,7 @@ async function main() {
       const dialogue = await currentScenePrompt(state, card, "chat", "Why are we here?");
       assert.ok(dialogue.includes(setting));
       assert.ok(dialogue.includes(VILLAGE_SHARED_SETTING_RULE));
-      const events = buildTickMessages({
+      const events = buildResidentPlanningMessages({
         descriptionVersion: 1,
         village: name,
         setting: current,
@@ -296,15 +296,11 @@ async function main() {
       lastSimulatedAt: farm.setupAt,
       forced: false,
     };
-    const legacyStory = buildTickMessages(storyContext)
+    const legacyStory = buildResidentPlanningMessages(storyContext)
       .map((row) => row.content)
       .join("\\n");
-    assert.equal(
-      legacyStory.includes(savedFarm.setting),
-      false,
-      "unversioned frozen story prompts retain their old bounded context",
-    );
-    const currentStory = buildTickMessages({ ...storyContext, descriptionVersion: 1 })
+    assert.equal(legacyStory.includes(savedFarm.setting), true, "resident planning keeps the complete setting");
+    const currentStory = buildResidentPlanningMessages({ ...storyContext, descriptionVersion: 1 })
       .map((row) => row.content)
       .join("\\n");
     assert.ok(currentStory.includes(savedFarm.setting), "new story jobs carry the complete description");

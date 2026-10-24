@@ -1,6 +1,6 @@
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueEvent } from "../models/world.js";
 import { badGateway, conflict } from "./errors.js";
-import { boundText, MAX_HAPPENING_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
+import { boundText, MAX_PHYSICAL_NARRATION_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
 import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 
 /** Recent feed entries remain compatible; confirmed new effects survive feed trimming in the existing receipt store. */
@@ -50,7 +50,7 @@ export function readVenueSceneChange(
   const raw = value as Record<string, unknown>;
   if (raw.happened !== true) return null;
   const read = (key: string) => (typeof raw[key] === "string" ? (raw[key] as string) : "");
-  const narration = boundText(raw.narration, MAX_HAPPENING_LENGTH);
+  const narration = boundText(raw.narration, MAX_PHYSICAL_NARRATION_LENGTH);
   const conditionBefore = read("conditionBefore");
   const conditionAfter = read("conditionAfter");
   const featureId = read("featureId");

@@ -6,8 +6,6 @@ import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
@@ -15,7 +13,7 @@ async function main() {
   const clientSource = clientImplementation();
   assert.match(routesSource, /"\/reconcile"/u);
   assert.doesNotMatch(routesSource, /"\/tick"/u);
-  assert.match(clientSource, /request<VillageSnapshot>\("\/reconcile"/u);
+  assert.match(clientSource, /"\/background\/presence"/u);
   const { configureVillagesRuntime } = await import(moduleUrl("packages/villages/src/server/entry/runtime.ts"));
   const {
     startBackgroundWork,
@@ -41,15 +39,13 @@ async function main() {
   const { clearVillagerAgenda } = await import(
     moduleUrl("packages/villages/src/server/features/residents/resident-agendas.ts")
   );
-  const { setVillageStoryPace } = await import(
-    moduleUrl("packages/villages/src/server/features/settings/village-settings.ts")
-  );
   const { updateVillageVenue } = await import(moduleUrl("packages/villages/src/server/features/venues/services.ts"));
   const { rollActiveAgendas } = await import("../packages/villages/src/server/features/residents/resident-agendas.ts");
   const { workingAgendaWeek } = await import(moduleUrl("packages/villages/src/server/domain/rules/agenda-week.ts"));
   const { renderHomesBlock } = await import(moduleUrl("packages/villages/src/server/domain/rules/prompt-preset.ts"));
-  const { REFRESH_MAX_DELAY_MS, REFRESH_MIN_DELAY_MS, startVillageRefreshScheduler, villageSchedulerDelayMs } =
-    await import(moduleUrl("packages/villages/src/server/jobs/village-refresh-scheduler.ts"));
+  const { REFRESH_MAX_DELAY_MS, REFRESH_MIN_DELAY_MS, villageSchedulerDelayMs } = await import(
+    moduleUrl("packages/villages/src/server/jobs/village-refresh-scheduler.ts")
+  );
 
   const at = (hour: number, minute: number, second = 0) => new Date(2026, 8, 22, hour, minute, second, 0);
   const before = deriveVillageMoment({ foundedAt: "2026-09-01T00:00:00.000Z", seed: "fixture", now: at(11, 59) });
@@ -122,13 +118,13 @@ async function main() {
       },
     ],
   });
-  assert.equal(migrated.storyPace, "quiet");
+  assert.equal(migrated.backgroundPace, "quiet");
   assert.ok(Date.parse(migrated.simulatedThrough) > 0);
-  assert.equal(migrated.happenings[0]?.timePrecision, "phase");
+  assert.equal(Object.hasOwn(migrated, "happenings"), false);
   assert.equal(migrated.villagers[0]?.agenda?.day[0]?.startMinute, 300);
-  assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: [] }).storyPace, "off");
+  assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: [] }).backgroundPace, "off");
   assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: ["morning", "evening"] }).storyPace,
+    coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: ["morning", "evening"] }).backgroundPace,
     "balanced",
   );
 
@@ -162,10 +158,6 @@ async function main() {
     },
   };
   let modelCalls = 0;
-  let failModel = false;
-  let invalidProposal = false;
-  let storyGate: (() => void) | null = null;
-  let delayStory = false;
   let agendaMode = false;
   let failWednesday = false;
   const agendaRequests: string[] = [];
@@ -197,7 +189,7 @@ async function main() {
           fitContext(messages: any[], options: any) {
             return { messages, maxTokens: options?.maxTokens };
           },
-          async chatComplete(messages: any[]) {
+          async chatComplete(_messages: any[]) {
             modelCalls += 1;
             if (agendaMode) {
               agendaRequests.push("Write routine profile.");
@@ -221,39 +213,7 @@ async function main() {
                 finishReason: "stop",
               };
             }
-            if (delayStory)
-              await new Promise<void>((resolve) => {
-                storyGate = resolve;
-              });
-            if (failModel) throw new Error("model unavailable");
-            const prompt = String(messages[0]?.content ?? "");
-            assert.ok(prompt.includes("This feed has no effect on the village or its residents."));
-            assert.ok(!prompt.includes('"memory":[') && !prompt.includes('"featureEdits":['));
-            const offered = prompt.match(/(opportunity-\d+) \((\w+); actors ([^;]*); venue ([^;]+);/u);
-            const actorIds = invalidProposal
-              ? ["nonexistent-actor"]
-              : offered?.[3]?.length
-                ? offered[3].split(",")
-                : [];
-            return {
-              content: JSON.stringify({
-                happenings: offered
-                  ? [
-                      {
-                        opportunityId: offered[1],
-                        kind: offered[2],
-                        actorIds,
-                        venueId: invalidProposal ? "nonexistent-venue" : offered[4] === "none" ? "" : offered[4],
-                        narration: `Happening ${modelCalls}.`,
-                      },
-                    ]
-                  : [],
-                // The prose feed may propose side effects, but Events is visual only.
-                memory: [{ text: "A visual event tried to become shared memory.", who: [], private: false }],
-                notices: [{ author: "Narrator", text: "A visual event tried to pin a notice." }],
-              }),
-              finishReason: "stop",
-            };
+            throw new Error("Unexpected planning request in a deterministic catch-up fixture");
           },
         };
       },
@@ -275,7 +235,7 @@ async function main() {
       state.setupAt = start.toISOString();
       state.foundedAt = start.toISOString();
       state.seed = "continuous-fixture";
-      state.storyPace = "off";
+      state.backgroundPace = "off";
       state.simulatedThrough = start.toISOString();
       state.lastKnownTimeZone = "Etc/Old";
       state.villagers = [
@@ -339,8 +299,7 @@ async function main() {
     await mutateVillageState((state) => {
       state.villagers = [];
     });
-    assert.ok(quiet.recap, "a long return receives a layered recap");
-    assert.ok((quiet.recap?.summaries.length ?? 0) <= 6);
+    assert.equal(Object.hasOwn(quiet, "recap"), false);
 
     const backward = new Date("2026-09-22T11:15:00.000Z");
     const projected = await reconcileVillage({ now: backward });
@@ -350,138 +309,6 @@ async function main() {
       "a backward clock never rewinds committed state",
     );
     assert.equal(projected.village.localTime, `${String(backward.getHours()).padStart(2, "0")}:15`);
-
-    await setVillageStoryPace("balanced");
-    await mutateVillageState((state) => {
-      state.lastCreativeDate = "";
-      state.simulatedThrough = start.toISOString();
-    });
-    const callsBefore = modelCalls;
-    const queuedCreative = await reconcileVillage({ now: later });
-    await settleBackgroundWork();
-    const creative = await reconcileVillage({ now: later });
-    assert.ok(queuedCreative.recap);
-    assert.equal(modelCalls, callsBefore + 1, "one planning call covers the active local day");
-    assert.equal(creative.happenings[0]?.occurredAt, later.toISOString());
-    assert.equal(creative.happenings[0]?.timePrecision, "exact");
-    assert.ok(creative.happenings[0]?.sourceOpportunityId);
-    assert.equal((await readVillageState()).chronicle.length, 0, "visual Events write no memories");
-    assert.equal((await readVillageState()).noticeboard.length, 0, "visual Events pin no notices");
-    assert.equal((await readVillageState()).venues[0]?.state.condition, "", "visual Events do not edit places");
-    assert.ok(queuedCreative.recap, "a month-long return uses the same single planning call and returns a recap");
-    await reconcileVillage({ now: new Date(later.getTime() + 10 * 60_000) });
-    assert.equal(modelCalls, callsBefore + 1, "repeated reconciliation on one local day is idempotent");
-
-    // Completed ledger payloads may be pruned; the Village date remains a durable spending floor.
-    for (const [key, record] of documentsByKey)
-      if (record.kind === "background-work" && (record.data as any).kind === "story") documentsByKey.delete(key);
-    const storyDateBeforeRollback = (await readVillageState()).lastCreativeDate;
-    const callsBeforeRollback = modelCalls;
-    const olderDay = new Date(later.getTime() - 2 * 24 * 60 * 60_000);
-    await reconcileVillage({ now: olderDay });
-    await settleBackgroundWork();
-    assert.equal(modelCalls, callsBeforeRollback, "clock rollback cannot reopen an older day after ledger pruning");
-    const rollbackAttempt = (await backgroundWorkSummaries()).find((job) => job.kind === "story")?.attempt ?? 0;
-    await reconcileVillage({
-      now: olderDay,
-      forceStory: true,
-      actionId: "manual-rollback-story",
-      expectedAttempt: rollbackAttempt,
-    });
-    await settleBackgroundWork();
-    assert.equal(modelCalls, callsBeforeRollback + 1, "Write now remains a deliberate action on an earlier date");
-    await reconcileVillage({ now: new Date(later.getTime() + 60 * 60_000) });
-    await settleBackgroundWork();
-    assert.equal(
-      modelCalls,
-      callsBeforeRollback + 1,
-      "returning to an already-written day cannot authorize another request",
-    );
-    assert.equal(
-      (await readVillageState()).lastCreativeDate,
-      storyDateBeforeRollback,
-      "manual work cannot lower the spending floor",
-    );
-
-    failModel = true;
-    const tomorrow = new Date("2026-09-23T13:00:00.000Z");
-    await reconcileVillage({ now: tomorrow });
-    await settleBackgroundWork();
-    assert.equal(
-      (await readVillageState()).simulatedThrough,
-      tomorrow.toISOString(),
-      "model failure still advances time",
-    );
-    assert.notEqual((await readVillageState()).lastCreativeDate, "2026-09-23", "a failed story remains retryable");
-    failModel = false;
-    await reconcileVillage({ now: tomorrow });
-    await settleBackgroundWork();
-    assert.notEqual((await readVillageState()).lastCreativeDate, "2026-09-23", "ordinary ticks do not retry failures");
-    const failed = (await backgroundWorkSummaries()).find((job) => job.kind === "story")!;
-    await retryBackgroundJob(failed.id, failed.attempt, "deliberate-story-retry");
-    await settleBackgroundWork();
-    assert.equal((await readVillageState()).lastCreativeDate, "2026-09-23");
-
-    invalidProposal = true;
-    const invalidDay = new Date("2026-09-24T13:00:00.000Z");
-    const happeningsBeforeInvalid = (await readVillageState()).happenings.length;
-    await reconcileVillage({ now: invalidDay });
-    await settleBackgroundWork();
-    assert.equal(
-      (await readVillageState()).happenings.length,
-      happeningsBeforeInvalid,
-      "a proposal with impossible actors and venues is discarded without affecting valid state",
-    );
-    invalidProposal = false;
-
-    const concurrentDay = new Date("2026-09-25T13:00:00.000Z");
-    const happeningsBeforeConcurrent = (await readVillageState()).happenings.length;
-    const beforeCalls = modelCalls;
-    delayStory = true;
-    await Promise.all([reconcileVillage({ now: concurrentDay }), reconcileVillage({ now: concurrentDay })]);
-    for (let i = 0; i < 100 && !storyGate; i++) await sleep(1);
-    assert.ok(storyGate, "real story provider request is held open");
-    assert.equal(modelCalls, beforeCalls + 1, "browser and timer overlap dispatch only one paid story request");
-    await reconcileVillage({ now: concurrentDay });
-    assert.equal(modelCalls, beforeCalls + 1);
-    delayStory = false;
-    storyGate!();
-    await settleBackgroundWork();
-    const afterConcurrent = await readVillageState();
-    assert.equal(
-      afterConcurrent.happenings.length,
-      happeningsBeforeConcurrent + 1,
-      "concurrent reconciliation cannot commit the same opportunity twice",
-    );
-    assert.equal(new Set(afterConcurrent.happenings.map((entry) => entry.id)).size, afterConcurrent.happenings.length);
-
-    await villageBackgroundPresence("visible-story-fixture", false);
-    const beforeReturn = modelCalls;
-    await reconcileVillage({ now: new Date("2026-09-26T13:00:00.000Z") });
-    await settleBackgroundWork();
-    await reconcileVillage({ now: new Date("2026-09-29T13:00:00.000Z") });
-    await settleBackgroundWork();
-    await villageBackgroundPresence("visible-story-fixture", true);
-    await settleBackgroundWork();
-    assert.equal(modelCalls, beforeReturn + 1, "returning replaces missed-day work with only the current story");
-
-    await villageBackgroundPresence("visible-story-fixture", false);
-    const beforeOff = modelCalls;
-    await reconcileVillage({ now: new Date("2026-09-30T13:00:00.000Z") });
-    await settleBackgroundWork();
-    assert.equal(modelCalls, beforeOff, "a pending automatic story waits for visible presence");
-    await mutateVillageState((state) => {
-      state.storyPace = "off";
-    });
-    await villageBackgroundPresence("visible-story-fixture", true);
-    await settleBackgroundWork();
-    assert.equal(modelCalls, beforeOff, "Story pace Off prevents the pending automatic request");
-    const stop = startVillageRefreshScheduler({ delayMs: () => 5 });
-    await sleep(30);
-    stop();
-    const cursorAfterWake = Date.parse((await readVillageState()).simulatedThrough);
-    assert.ok(cursorAfterWake >= tomorrow.getTime(), "the live timer uses the same durable reconciliation cursor");
-    stop();
 
     // A restart or first read after local midnight commits the queued week once.
     await mutateVillageState((state) => {

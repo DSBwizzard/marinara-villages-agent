@@ -28,7 +28,7 @@ await runCase("village-clock-recovery", async () => {
     setupAt: new Date(wall).toISOString(),
     foundedAt: new Date(wall).toISOString(),
     timeZone: "America/Los_Angeles",
-    storyPace: "off",
+    backgroundPace: "off",
     visitMemoryBackfilled: true,
   });
   seed.clock = {

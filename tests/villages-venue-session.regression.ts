@@ -41,7 +41,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/player-background.js";
 import { requestProjectMailbox as requestProjectMailboxRaw } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   venueReplyIntegrity,
@@ -683,10 +683,10 @@ const release = configureVillagesRuntime({
                 finishReason: "stop",
               };
             }
-            if (system.includes("Write a brief visual Events update")) {
+            if (system.includes("Review optional resident choices")) {
               assert.match(system, /In Villages, a Village is a shared place/u);
               lastEventsSystem = system;
-              assert.match(system, /Do not give them a new turn in an Event/u);
+              assert.match(system, /Never invent their participation or consent/u);
               return {
                 content: fixtureJson({
                   happenings: [
@@ -698,6 +698,9 @@ const release = configureVillagesRuntime({
                       narration: "Bob tends the place.",
                     },
                   ],
+                  social: null,
+                  routineIdea: null,
+                  housingRequests: [],
                   memory: [],
                   notices: [],
                   featureEdits: featureProposal ? [featureProposal] : [],
@@ -1624,19 +1627,6 @@ async function main() {
     assert.equal((await listVenueVisits({ placeId: "empty" })).length, 1);
     await mutateVillageState((state) => {
       const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now });
-      state.happenings.unshift({
-        id: "legacy-visual-only",
-        kind: "weather",
-        actorIds: [],
-        venueId: "park",
-        dayIndex: moment.dayIndex,
-        clock: moment.dayPhase,
-        occurredAt: moment.instant,
-        timePrecision: "exact",
-        sourceOpportunityId: "old",
-        narration: "LEGACY_EVENT_POISON drip",
-        text: "LEGACY_EVENT_POISON drip",
-      });
       state.chronicle.unshift({
         id: "legacy-tick-memory",
         kind: "tick",
@@ -1672,10 +1662,6 @@ async function main() {
       lastVenueSystem,
       /LEGACY_EVENT_POISON/u,
       "legacy visual Events, tick memories, and resident notices cannot ground a scene",
-    );
-    assert.ok(
-      (await readVillageState()).happenings.some((entry) => entry.id === "legacy-visual-only"),
-      "the old visual entry remains readable without affecting the scene",
     );
     assert.equal((await readVillageWriting()).writingGuidance, "");
     assert.equal((await readVillageWriting()).writingGuidanceMaxLength, WRITING_GUIDANCE_MAX_LENGTH);
@@ -2305,7 +2291,7 @@ async function main() {
       for (const trace of state.venues.find((place) => place.id === "park")?.state.traces ?? []) {
         trace.createdAt = new Date(Date.now() - 120_000).toISOString();
       }
-      state.storyPace = "off";
+      state.backgroundPace = "off";
     });
     await reconcileVillage({ now: new Date() });
     const discovered = await readVillageState();
@@ -2644,7 +2630,7 @@ async function main() {
       park.state.traces?.find((trace) => trace.kind === "scene-note")?.text,
       "The tables stand beside the wall.",
     );
-    const beforeClaims = (await readVillageState()).happenings.length;
+    const beforeClaims = (await readVillageState()).venueEvents.length;
     await sendVenueTurn({
       sessionId: group.id,
       message: "I tell Bob I moved the tables",
@@ -2660,7 +2646,7 @@ async function main() {
       submissionId: "chat-impossible",
     });
     assert.equal(
-      (await readVillageState()).happenings.length,
+      (await readVillageState()).venueEvents.length,
       beforeClaims,
       "speech about a deed and an impossible attempt create no physical events",
     );
@@ -2966,7 +2952,7 @@ async function main() {
     featureProposal = { who: "bob", venueId: "park", featureId: unlockedFeatureId, text: "Bob repainted the wall" };
     for (const playerBackground of [DEFAULT_PLAYER_BACKGROUND, "", null]) {
       const roleContext = { ...featureContext(), playerBackground, playerPersonaName: "Robin" };
-      await proposeHappenings(roleContext as any);
+      await proposeResidentChoices(roleContext as any);
       if (playerBackground)
         assert.ok(
           lastEventsSystem.includes(renderPlayerBackgroundContext(roleContext)),
@@ -2974,8 +2960,8 @@ async function main() {
         );
       else assert.equal(lastEventsSystem.includes("Player's place in the village:"), false);
     }
-    const visualProposal = await proposeHappenings(featureContext() as any);
-    assert.equal(visualProposal.happenings.length, 1);
+    const visualProposal = await proposeResidentChoices(featureContext() as any);
+    assert.equal(Object.hasOwn(visualProposal, "happenings"), false);
     assert.equal(Object.hasOwn(visualProposal, "featureEdits"), false, "visual Events cannot edit venue features");
     assert.equal(Object.hasOwn(visualProposal, "memory"), false, "visual Events cannot create memory");
     creativeActorIds = ["tina"];

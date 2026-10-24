@@ -128,11 +128,13 @@ Signatures may be names, initials, symbols or doodles chosen from the saved char
 
 ## Background work and recovery
 
-Time, construction, approved moves, expiry and schedule rollover advance locally. Recurring enrichment runs while Villages is visible and pauses before its next request after the player leaves. Finite work already requested by the player can finish while away. Returning does not generate stories for every missed day.
+Time, construction, approved moves, expiry and schedule rollover advance locally. Recurring enrichment runs while Villages is visible and pauses before its next request after the player leaves. Finite work already requested by the player can finish while away. Returning does not replay resident planning for every missed day.
 
 While visible, Villages renews its background-work lease every 30 seconds and uses that response as its shared refresh. Faster status reads run only for unfinished work in the relevant visible view. Settled Scenes, profiles, signatures and closed diagnostics have no dedicated refresh timer. Scene changes are scoped to their originating Scene; delayed results also trigger retrieval through the shared refresh. Returning retrieves saved results without repeating generation.
 
-**Background events and wishes → Off** pauses automatic Events, housing proposals and new Wishes. It does not stop time, schedules, construction, approved moves or existing Wish expiry.
+**Resident activity and Wishes → Off** pauses automatic social planning, routine suggestions, housing proposals and new Wishes. It does not stop time, schedules, construction, approved moves or existing Wish expiry.
+
+Resident planning uses a bounded daily allowance, independent of physical changes and memory records. A quiet result is valid. Accepted encounters keep private, witnessed evidence; routine suggestions affect future choices, and housing proposals remain pending decisions.
 
 Background work reports saved stages, progress and provider-reported usage; missing usage stays unavailable. Configuration or authentication failures pause shared connection admission. Timeouts, transport failures and invalid responses fail their task without automatic retry. Deliberate retries reuse valid saved results before requesting replacements.
 
@@ -147,6 +149,8 @@ System and Narration connections serve their configured roles. Optional **Use De
 **Send on Enter** defaults Off. Enter inserts a newline; enabling the setting sends with Enter, while Shift+Enter inserts a newline and IME composition does not send.
 
 **DEBUG Settings → Verbose runtime logging** exposes prompts, replies and private conversation context in the server terminal. It defaults Off and is separate from destructive debug controls.
+
+The former Events feed, prose generator and Force Village Update action are removed. Existing worlds retain their background pace, daily spending floor, memories, physical receipts and accepted social work. Old prose jobs retain private diagnostic evidence and cannot generate, apply or retry; unused scheduled-event records are no longer gameplay state.
 
 Saved operations keep the contracts under which they were admitted. Prompt changes do not authorize reinterpreting settled history, regenerating purchased responses or replacing existing progress. Feature-specific compatibility limits above do not authorize future saved-data loss.
 

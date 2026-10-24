@@ -117,7 +117,6 @@ const context: WishInterpretationContext = {
   wishes: [{ id: "physical", wish: "Have Pat give me a cupcake", tell: "", intensity: 1, addedAt: at, expiresAt: "" }],
   claim: "I gave you a cupcake.",
   transcript: [],
-  happenings: [],
   memory: [],
   worldState: [],
   receipts: [],

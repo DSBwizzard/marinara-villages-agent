@@ -87,19 +87,9 @@ export function registerWorldMaintenanceRoutes(engine: FastifyInstance) {
     "/reconcile",
     async (request, reply) => {
       try {
-        const forced = request.body?.forceStory === true;
-        if (
-          forced &&
-          (typeof request.body?.actionId !== "string" ||
-            !/^[a-zA-Z0-9-]{1,100}$/.test(request.body.actionId) ||
-            !Number.isInteger(request.body.expectedAttempt))
-        )
-          throw badRequest("Refresh before requesting a village event.");
-        return await reconcileVillage({
-          forceStory: forced,
-          actionId: request.body?.actionId as string,
-          expectedAttempt: request.body?.expectedAttempt as number,
-        });
+        if (request.body?.forceStory === true)
+          throw badRequest("Force Village Update has been removed. Refresh the Village.");
+        return await reconcileVillage();
       } catch (error) {
         return fail(reply, error, "writing down what has been happening");
       }

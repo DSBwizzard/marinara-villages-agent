@@ -87,7 +87,7 @@ export function createVenueMailbox({
     const text = boundText(quote, MAX_VENUE_NOTE_LENGTH).trim();
     if (text.length < 8) throw badRequest("The villager must actually suggest an improvement.");
     await mutateVillageState((state) => {
-      if (sourceKey && state.processedOpportunityIds.includes(sourceKey)) return;
+      if (sourceKey && state.processedActionIds.includes(sourceKey)) return;
       const venue = state.venues.find((entry) => entry.id === venueId);
       if (!venue || ![...venueResidentIds(venue), ...(venue.workerIds ?? [])].includes(characterId))
         throw badRequest("A current resident or worker must suggest the change.");
@@ -118,7 +118,7 @@ export function createVenueMailbox({
           error: "",
         } satisfies VillageVenueMail,
       ].slice(-256);
-      if (sourceKey) state.processedOpportunityIds = [...state.processedOpportunityIds, sourceKey].slice(-256);
+      if (sourceKey) state.processedActionIds = [...state.processedActionIds, sourceKey].slice(-256);
     });
   }
 

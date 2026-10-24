@@ -1,7 +1,6 @@
 import type { PersonaResponse, VillageLorebookOption, VillageSnapshot } from "../../shared/contracts/village.js";
 import { useVisibleInterval } from "./activity.js";
 import { messageFrom, request } from "./api.js";
-import { SHOW_CATCHING_UP_AFTER_MS } from "./presentation.js";
 import { createVillagesClientId } from "./request-id.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -62,94 +61,6 @@ export function useSnapshotReference(ports: {
   useEffect(() => {
     currentSnapshotRef.current = snapshot;
   }, [currentSnapshotRef, snapshot]);
-}
-
-export function useReconcileVillage(ports: {
-  readonly currentSnapshotRef: React.RefObject<import("../../shared/contracts/village").VillageSnapshot>;
-  readonly reconcilingRef: React.RefObject<boolean>;
-  readonly setCatchingUp: React.Dispatch<React.SetStateAction<boolean>>;
-  readonly beginSnapshotRead: () => SnapshotRead;
-  readonly storyActionRef: React.RefObject<{ id: string; expectedAttempt: number }>;
-}) {
-  const { currentSnapshotRef, reconcilingRef, setCatchingUp, beginSnapshotRead, storyActionRef } = ports;
-
-  return useCallback(
-    async (forceStory = false): Promise<VillageSnapshot | null> => {
-      if (reconcilingRef.current) return null;
-      reconcilingRef.current = true;
-      const read = beginSnapshotRead();
-      const notice = setTimeout(() => setCatchingUp(true), SHOW_CATCHING_UP_AFTER_MS);
-      try {
-        const next = await request<VillageSnapshot>("/reconcile", {
-          method: "POST",
-          body: forceStory
-            ? JSON.stringify({
-                forceStory: true,
-                ...(storyActionRef.current ??= {
-                  id: createVillagesClientId(),
-                  expectedAttempt:
-                    currentSnapshotRef.current?.backgroundWork?.find((job) => job.kind === "story")?.attempt ?? 0,
-                }),
-                actionId: storyActionRef.current.id,
-              })
-            : undefined,
-        });
-        read.publishMutation(next);
-        if (forceStory) storyActionRef.current = null;
-        return next;
-      } catch {
-        // The village keeps whatever news it had and the tab keeps drawing it.
-        // Deterministic reconciliation is committed before optional narration;
-        // a later creative attempt can retry without replaying required state.
-        return null;
-      } finally {
-        clearTimeout(notice);
-        setCatchingUp(false);
-        reconcilingRef.current = false;
-      }
-    },
-    [beginSnapshotRead, currentSnapshotRef, reconcilingRef, setCatchingUp, storyActionRef],
-  );
-}
-
-/**
- * Ask for one creative village event right now, whatever Background events and wishes says.
- *
- * This debug action spends at most one model call and bypasses the daily pace
- * gate. The event must still fit a fact-backed opportunity and pass the same
- * validation as an automatic creative event.
- *
- * It reports what actually happened rather than that it finished. A forced
- * creative pass over already-covered facts may have nothing to add —
- * the window is deduped against, so it can only write what is genuinely new —
- * and a button that always said "done" would leave the player wondering
- * whether the feature was broken or the village was simply quiet.
- */
-export function useWriteVillageEvent(ports: {
-  readonly reconcile: (forceStory?: boolean) => Promise<import("../../shared/contracts/village").VillageSnapshot>;
-  readonly setWriteUpNote: React.Dispatch<React.SetStateAction<string>>;
-  readonly snapshot: import("../../shared/contracts/village").VillageSnapshot;
-}) {
-  const { reconcile, setWriteUpNote, snapshot } = ports;
-
-  return useCallback(async () => {
-    const newest = snapshot?.happenings[0]?.id ?? "";
-    setWriteUpNote("Writing...");
-    const next = await reconcile(true);
-    if (!next) {
-      setWriteUpNote(
-        "The update request failed. Check the village again before retrying; time catch-up may already have run.",
-      );
-      return;
-    }
-    setWriteUpNote(
-      next.backgroundWork?.some((job) => job.kind === "story" && ["queued", "running", "paused"].includes(job.status))
-        ? "The event is queued. See Background work for progress."
-        : (next.happenings[0]?.id ?? "") === newest
-          ? "No new happening was added. Other village records may have changed during catch-up."
-          : "A new visual event was added. See Events.",
-    );
-  }, [snapshot?.happenings, setWriteUpNote, reconcile]);
 }
 
 /** Read once or refresh shared pending work without clearing a good snapshot on a quiet failure. */

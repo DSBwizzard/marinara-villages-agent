@@ -674,7 +674,7 @@ async function foundingConnectionOwnership() {
         seed: "equal-founding-seed",
         name: label,
         setting: "Quiet harbor",
-        storyPace: "off",
+        backgroundPace: "off",
         setupAt: new Date().toISOString(),
         foundedAt: new Date().toISOString(),
         selectedLorebookIds: ["visual"],

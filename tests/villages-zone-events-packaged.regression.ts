@@ -35,7 +35,7 @@ Object.assign(world, {
   seed: "packaged-zone-events",
   foundedAt: now,
   setupAt: now,
-  storyPace: "off",
+  backgroundPace: "off",
   visitMemoryBackfilled: true,
   timeZone: "America/Los_Angeles",
   playerPersonaId: "persona",

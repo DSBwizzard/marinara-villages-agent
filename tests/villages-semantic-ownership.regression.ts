@@ -1,3 +1,4 @@
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { lifecycle } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
   initialOpening,
@@ -129,9 +130,7 @@ async function main() {
     );
   }
 
-  // Enforce JSON-mode compatibility using actual Events and offscreen review prompts.
-  const { createVillageBootstrap } =
-    await import("../packages/villages/src/server/features/founding/village-bootstrap-service.js");
+  // Enforce JSON-mode compatibility using actual resident planning and offscreen review prompts.
   const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const eventMoment = deriveVillageMoment({
     foundedAt: "2026-10-16T00:00:00.000Z",
@@ -155,7 +154,7 @@ async function main() {
     maxOutputTokens: 4096,
     fitContext: (messages: unknown, options: any) => ({ messages, ...options, trimmed: false }),
   };
-  const events = createVillageBootstrap({
+  const events = createResidentPlanning({
     villagesLanguageModels: () => ({ resolveForRequest: async () => fakeSystem }),
     villagesConnectionIdFor: async () => "system",
     backgroundCalls: { getStore: () => undefined },
@@ -187,27 +186,32 @@ async function main() {
                   },
                 ],
                 housingRequests: [],
+                routineIdea: null,
                 social: { encounter: { lines: spokenLines } },
               },
         ),
       };
     },
   } as any);
-  const eventResult = await events.proposeHappenings({
-    semanticVersion: 2,
-    village: "Test",
-    setting: "A quiet village",
-    moment: eventMoment,
-    residents: [],
-    recent: [],
-    venues: [],
-    opportunities: [opportunity],
-    lastSimulatedAt: eventMoment.instant,
-    forced: false,
-    social: { candidates: [], relationships: [] },
+  const eventResult = await events.handler.generate({
+    context: {
+      version: 1,
+      worldFacts: [],
+      pendingHousingCharacterIds: [],
+      village: "Test",
+      setting: "A quiet village",
+      moment: eventMoment,
+      residents: [],
+      recent: [],
+      venues: [],
+      opportunity,
+      lastSimulatedAt: eventMoment.instant,
+      forced: false,
+      social: { candidates: [], relationships: [] },
+    },
   } as any);
   assert.deepEqual(jsonCalls, ["events", "review"]);
-  assert.equal(eventResult.happenings.length, 1);
+  assert.equal(Object.hasOwn(eventResult, "happenings"), false);
   assert.equal((eventResult.social?.encounter as any).semanticVersion, 2);
   assert.deepEqual((eventResult.social?.encounter as any).lines, spokenLines);
 
