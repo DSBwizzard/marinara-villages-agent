@@ -3,7 +3,7 @@ import type { useVillageController } from "./useVillageController.js";
 import { ELEMENT_TAG as P } from "../shared/constants.js";
 
 export function OpeningReminder({ controller }: { controller: ReturnType<typeof useVillageController> }) {
-  const { snapshot, room, screen, roomBusy, sceneRestoration } = controller;
+  const { snapshot, room, screen, roomBusy, sceneRestoration, placingProjectId } = controller;
   const opening = snapshot?.opening;
   const attempted = useRef("");
   const [dismissed, dismiss] = useState("");
@@ -18,6 +18,7 @@ export function OpeningReminder({ controller }: { controller: ReturnType<typeof 
       snapshot?.foundingPreparation?.status !== "ready" ||
       sceneRestoration.status !== "ready" ||
       screen !== "home" ||
+      placingProjectId ||
       roomBusy ||
       (room && room.status !== "closed")
     )
@@ -27,9 +28,10 @@ export function OpeningReminder({ controller }: { controller: ReturnType<typeof 
     if (!venue) return;
     attempted.current = opening.id;
     void controller.openRoom(venue, "community");
-  }, [controller, opening, snapshot, sceneRestoration.status, screen, roomBusy, room]);
+  }, [controller, opening, snapshot, sceneRestoration.status, screen, roomBusy, room, placingProjectId]);
   if (
     !opening?.action ||
+    placingProjectId ||
     dismissed === key ||
     !["room", "home"].includes(screen) ||
     snapshot?.foundingPreparation?.status !== "ready"
