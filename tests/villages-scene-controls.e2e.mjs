@@ -182,34 +182,6 @@ try {
       await expect(page.getByRole("switch", { name: "Use Decisions" })).toBeVisible();
       const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
       await expect(decisionSwitch).toBeEnabled();
-      if (count === 1) {
-        await page.clock.install();
-        const idle = async () => {
-          await page.clock.fastForward(10_000);
-          // Allow dispatched requests to reach the fixture after advancing past the former polling interval.
-          await page.waitForTimeout(100);
-        };
-        await idle();
-        assert.deepEqual(interpretationReads, { settings: 1, diagnostics: 0 }, "closed checks do no background reads");
-        await page.getByRole("button", { name: "0 checks", exact: true }).click();
-        const checksPanel = page.getByRole("region", { name: "Interpretation checks" });
-        await expect(checksPanel).toBeVisible();
-        await expect.poll(() => interpretationReads.diagnostics).toBe(1);
-        await idle();
-        assert.deepEqual(interpretationReads, { settings: 1, diagnostics: 1 }, "open checks do not poll");
-        if (process.env.VILLAGES_VISUAL_OUTPUT)
-          await page.screenshot({
-            path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `scene-checks-${width}x${height}.png`),
-          });
-        await checksPanel.getByRole("button", { name: "Close interpretation checks", exact: true }).click();
-        await idle();
-        assert.deepEqual(interpretationReads, { settings: 1, diagnostics: 1 });
-        await page.getByRole("button", { name: "0 checks", exact: true }).click();
-        await expect(checksPanel).toBeVisible();
-        await expect.poll(() => interpretationReads.diagnostics).toBe(2);
-        await page.keyboard.press("Escape");
-        await expect(checksPanel).toHaveCount(0);
-      }
       await decisionSwitch.click();
       await expect(page.getByRole("button", { name: "1 Scene error", exact: true })).toBeVisible();
       await expect(page.getByText("The switch could not be saved.", { exact: false })).toHaveCount(0);
@@ -369,6 +341,44 @@ try {
         }, height);
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
         await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+      }
+      if (count === 1) {
+        // Advance timers after the keyboard/animation checks, which use the real browser clock.
+        await page.getByRole("button", { name: "Venue actions" }).click();
+        await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
+        await expect(decisionSwitch).toBeEnabled();
+        const settingsReads = interpretationReads.settings;
+        await page.clock.install();
+        const idle = async () => {
+          await page.clock.fastForward(10_000);
+          // Allow dispatched requests to reach the fixture after advancing past the former polling interval.
+          await page.waitForTimeout(100);
+        };
+        await idle();
+        assert.deepEqual(
+          interpretationReads,
+          { settings: settingsReads, diagnostics: 0 },
+          "closed checks do no background reads",
+        );
+        await page.getByRole("button", { name: "0 checks", exact: true }).click();
+        const checksPanel = page.getByRole("region", { name: "Interpretation checks" });
+        await expect(checksPanel).toBeVisible();
+        await expect.poll(() => interpretationReads.diagnostics).toBe(1);
+        await idle();
+        assert.deepEqual(interpretationReads, { settings: settingsReads, diagnostics: 1 }, "open checks do not poll");
+        if (process.env.VILLAGES_VISUAL_OUTPUT)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `scene-checks-${width}x${height}.png`),
+          });
+        await checksPanel.getByRole("button", { name: "Close interpretation checks", exact: true }).click();
+        await idle();
+        assert.deepEqual(interpretationReads, { settings: settingsReads, diagnostics: 1 });
+        await page.getByRole("button", { name: "0 checks", exact: true }).click();
+        await expect(checksPanel).toBeVisible();
+        await expect.poll(() => interpretationReads.diagnostics).toBe(2);
+        await page.keyboard.press("Escape");
+        await expect(checksPanel).toHaveCount(0);
+        await page.getByRole("button", { name: "Close Scene settings" }).click();
       }
       if (process.env.VILLAGES_VISUAL_OUTPUT && count === 1)
         await page.screenshot({
