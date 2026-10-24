@@ -1,4 +1,3 @@
-import { DevelopmentControls } from "./DevelopmentControls.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { useEffect, useState } from "react";
@@ -60,7 +59,6 @@ export function VillagesRuntimeDebug() {
           {error}
         </p>
       ) : null}
-      <DevelopmentControls />
     </section>
   );
 }

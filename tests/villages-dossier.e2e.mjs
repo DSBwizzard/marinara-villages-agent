@@ -306,7 +306,10 @@ try {
     await expect(selector.getByText("No villagers match your search.")).toBeVisible();
     await selector.getByRole("searchbox").fill("");
     await selector.getByRole("button", { name: "Open Mara profile" }).click();
-    const development = page.getByText("Mara: move to Mill : stalled.", { exact: false });
+    await page.getByRole("button", { name: "Pursuits", exact: true }).click();
+    const development = page
+      .getByRole("region", { name: "Known pursuits", exact: true })
+      .getByText("Mara: move to Mill : stalled.", { exact: false });
     await expect(development).toBeVisible();
     await development.scrollIntoViewIfNeeded();
     assert.equal(
@@ -316,7 +319,7 @@ try {
         return hit === element || element.contains(hit);
       }),
       true,
-      "Known developments must be readable without the portrait covering them.",
+      "Known pursuits must be readable without the portrait covering them.",
     );
 
     assert.deepEqual(

@@ -17,7 +17,22 @@ const pursuit = z.object({
   startedAt: time,
   updatedAt: time,
   consents: z.record(id, z.object({ decision, at: time, source: id })),
-  known: z.object({ at: time, text, status }).optional(),
+  known: z
+    .object({
+      at: time,
+      text,
+      status,
+      title: text.optional(),
+      facts: z
+        .array(z.object({ at: time, text, sceneId: id, lineIds: z.array(id).max(6) }))
+        .max(12)
+        .optional(),
+      agreements: z
+        .array(z.object({ characterId: id, name: text, decision, at: time }))
+        .max(100)
+        .optional(),
+    })
+    .optional(),
 });
 const saved = z.object({
   version: z.literal(1),

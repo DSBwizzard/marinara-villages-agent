@@ -1,6 +1,6 @@
 # Resident development prototype
 
-Resident development is an opt-in experiment in **Settings → DEBUG Settings → Resident development**. It currently supports one kind of pursuit: moving into an existing home.
+Pursuits are larger ongoing desires, separate from Wishes. Open **People → a villager → Pursuits** above the notebook beside Manage and Close. The existing six paper tabs are unchanged. This opt-in experiment currently supports moving into an existing home.
 
 ## How it works
 
@@ -15,9 +15,11 @@ Large Projects remain player-started. This prototype cannot make a resident leav
 
 ## What to inspect
 
-The private development inspector shows each resident's current intentions, last review reason, next review time and recent accepted/rejected decisions. Effective time says when something happened; saved time says when catch-up committed it. A move cannot be backdated across housing the player has already seen.
+The normal Pursuits page shows only what the player last heard: the intention, its known stage, quoted conversation history and any directly witnessed agreement. An empty page means nothing has been shared, not that the resident has no private intentions. Older snapshots retain their saved summary without inventing a conversation history or copying current private consent. Private later reviews never refresh these records.
 
-Existing Background work shows request progress, failures, usage and explicit retry. Failed or interrupted reviews remain held even if other housing changes. **Review due intentions** can deliberately reconsider stale inputs. Reopening the game does not purchase automatic repairs.
+**Inspect** adds the selected villager's private intentions, last review reason, next eligible review and decision history. Private data is requested only while Inspect is open. Village controls here enable Pursuits or explicitly review due pursuits; Refresh is read-only. Effective time says when something happened; saved time says when catch-up committed it. A move cannot be backdated across housing the player has already seen.
+
+Existing Background work shows request progress, failures, usage and explicit retry. Failed or interrupted reviews remain held even if other housing changes. **Review village pursuits** can deliberately reconsider stale inputs. Reopening the game does not purchase automatic repairs.
 
 ## Small extension points
 

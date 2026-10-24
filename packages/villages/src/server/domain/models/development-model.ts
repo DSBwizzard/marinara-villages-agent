@@ -1,8 +1,9 @@
-export type DevelopmentDecision = "agree" | "refuse" | "conditional";
+import type { KnownPursuitSnapshot, PursuitDecision, PursuitStatus } from "../../../shared/contracts/pursuits.js";
+export type DevelopmentDecision = PursuitDecision;
 export type Pursuit = {
   id: string;
   kind: "move";
-  status: "considering" | "stalled" | "arranged" | "completed" | "ended";
+  status: PursuitStatus;
   sourceVenueId: string;
   targetVenueId: string;
   privateZoneId: string;
@@ -11,7 +12,7 @@ export type Pursuit = {
   updatedAt: string;
   consents: Record<string, { decision: DevelopmentDecision; at: string; source: string }>;
   /** A historical disclosure, never silently refreshed from private progress. */
-  known?: { at: string; text: string; status: Pursuit["status"] };
+  known?: KnownPursuitSnapshot;
 };
 export type ResidentDevelopment = {
   revision: number;

@@ -1,4 +1,5 @@
 import { backgroundRevision } from "./background-revision.js";
+import { recordWitnessedPursuits } from "./development-knowledge.js";
 import { sceneEvidencePerception } from "./scene-evidence-perception.js";
 import { z } from "zod";
 import type { DevelopmentSceneChange } from "../models/development-model.js";
@@ -73,6 +74,13 @@ export function applyDevelopmentScene(
 ): void {
   if (scene.villageSeed !== state.seed || submission.semanticProvenance?.developmentVersion !== 1) return;
   const changedActors = new Set<string>();
+  const witnessed: SavedDevelopmentChange[] = [];
+  // Disclosing and ending an intention in one exchange still establishes a heard fact.
+  const initiallyOpen = new Set(
+    Object.entries(state.development?.residents ?? {}).flatMap(([characterId, resident]) =>
+      resident.pursuits.filter(activePursuit).map((p) => `${characterId}\u0000${p.id}`),
+    ),
+  );
   for (const change of submission.developmentChanges ?? []) {
     const id =
       "development-scene:" +
@@ -82,7 +90,12 @@ export function applyDevelopmentScene(
     const p = r?.pursuits.find((p) => p.id === change.pursuitId);
     const lines = change.lineIds.map((id) => scene.lines.find((line) => line.id === id));
     let reason = "";
-    if (!r || !p || !activePursuit(p) || r.revision !== change.expectedRevision)
+    if (
+      !r ||
+      !p ||
+      (!activePursuit(p) && !(change.kind === "disclose" && initiallyOpen.has(`${change.characterId}\u0000${p.id}`))) ||
+      r.revision !== change.expectedRevision
+    )
       reason = "The intention changed since this conversation was captured.";
     else if (
       lines.length !== change.citations.length ||
@@ -109,12 +122,7 @@ export function applyDevelopmentScene(
       else p.consents[change.actorId] = { decision: change.decision, at: appliedAt, source: id };
     }
     if (!reason && r && p) {
-      if (change.kind === "disclose") {
-        const name =
-          state.villagers.find((v) => v.characterId === change.characterId)?.cardSnapshot.name ?? change.characterId;
-        const home = state.venues.find((v) => v.id === p.targetVenueId)?.name ?? p.targetVenueId;
-        p.known = { at: appliedAt, text: `${name}: move to ${home} : ${p.status}.`, status: p.status };
-      } else {
+      if (change.kind !== "disclose") {
         if (p.status === "arranged")
           state.residences = state.residences.filter(
             (move) => move.characterId !== change.characterId || move.status !== "moving",
@@ -132,6 +140,9 @@ export function applyDevelopmentScene(
           .join(" ")
           .slice(0, 600);
       }
+      // A witnessed disclosure establishes knowledge. Later speech can update it only when
+      // the player actually heard that decision, never by copying private consent or reasons.
+      if (lines.every((line) => sceneEvidencePerception(line!).playerPerception === "full")) witnessed.push(change);
       // Changes in this atomic exchange share one revision; a later exchange invalidates stale proposals.
     }
     state.exchangeReceipts[id] = {
@@ -149,11 +160,15 @@ export function applyDevelopmentScene(
         : { sceneFacts: { development: { characterId: change.characterId, resident: structuredClone(r) } } }),
     };
   }
+  recordWitnessedPursuits(state, scene, witnessed, appliedAt);
   for (const characterId of changedActors) {
     const r = state.development!.residents[characterId]!;
     r.revision++;
     r.nextReviewAt = appliedAt;
     r.reason = "A witnessed conversation changed this intention.";
+  }
+  for (const characterId of new Set([...changedActors, ...witnessed.map((change) => change.characterId)])) {
+    const r = state.development!.residents[characterId]!;
     for (const receipt of Object.values(state.exchangeReceipts))
       if (
         receipt.sceneId === scene.id &&

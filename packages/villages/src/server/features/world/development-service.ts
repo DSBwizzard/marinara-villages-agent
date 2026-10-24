@@ -44,6 +44,18 @@ export function createDevelopment(ports: DevelopmentPorts) {
         characterId: r.characterId,
         name: r.cardSnapshot.name,
         ...state.development?.residents[r.characterId],
+        pursuits: (state.development?.residents[r.characterId]?.pursuits ?? []).map((p) => ({
+          ...p,
+          title: `Move to ${state.venues.find((v) => v.id === p.targetVenueId)?.name ?? p.targetVenueId}`,
+          agreements: Object.entries(p.consents).map(([characterId, consent]) => ({
+            characterId,
+            name:
+              characterId === "player"
+                ? "You"
+                : (state.villagers.find((v) => v.characterId === characterId)?.cardSnapshot.name ?? characterId),
+            ...consent,
+          })),
+        })),
       })),
       log: state.development?.log.slice(-30).reverse() ?? [],
     };

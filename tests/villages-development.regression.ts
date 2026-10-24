@@ -34,6 +34,85 @@ import { venueResidentIds } from "../packages/villages/src/server/domain/rules/v
 
 const home = (state: ReturnType<typeof developmentFixture>, id = "a") =>
   state.venues.find((v) => venueResidentIds(v).includes(id))?.id;
+function shareWithConsent(
+  order: "disclose-first" | "consent-first",
+  destination = "Bram's home",
+  spoken = "I want to move to Bram's home.",
+  ending = false,
+) {
+  const state = developmentFixture(),
+    at = elapsed(1.25),
+    input = developmentReview(state, at)!;
+  applyDevelopmentReview(state, input, moveProposal(at, "refuse"), at);
+  state.venues[1]!.name = destination;
+  const r = state.development!.residents.a!,
+    p = r.pursuits[0]!;
+  const lines = [
+    { id: "disclosure", kind: "dialogue", speakerId: "a", content: spoken, heardBy: ["a", "b"] },
+    { id: "consent", kind: "dialogue", speakerId: "b", content: "I agree to share with Ada.", heardBy: ["a", "b"] },
+  ];
+  const changes = [
+    {
+      pursuitId: p.id,
+      characterId: "a",
+      actorId: "a",
+      expectedRevision: r.revision,
+      kind: "disclose",
+      citations: [{ segment: 0, quote: spoken }],
+      lineIds: ["disclosure"],
+    },
+    {
+      pursuitId: p.id,
+      characterId: "a",
+      actorId: "b",
+      expectedRevision: r.revision,
+      kind: "consent",
+      decision: "agree",
+      citations: [{ segment: 1, quote: lines[1]!.content }],
+      lineIds: ["consent"],
+    },
+  ];
+  const scene = { id: "same-scene", villageSeed: state.seed, lines, submissions: [] } as unknown as VenueScene;
+  if (ending) {
+    Object.assign(changes[1]!, {
+      actorId: "a",
+      kind: "end",
+      decision: undefined,
+      citations: [{ segment: 1, quote: "I have decided against this move." }],
+    });
+    lines[1]!.speakerId = "a";
+    lines[1]!.content = "I have decided against this move.";
+  }
+  const submission = {
+    id: "same-turn",
+    semanticProvenance: { version: 2, developmentVersion: 1 },
+    developmentChanges: order === "consent-first" ? [...changes].reverse() : changes,
+  } as unknown as VenueSubmission;
+  applyDevelopmentScene(state, scene, submission, elapsed(1.3));
+  return p.known!;
+}
+{
+  const known = shareWithConsent("disclose-first");
+  assert.deepEqual(
+    shareWithConsent("consent-first"),
+    known,
+    "Same heard speech has the same journal history regardless of model row order.",
+  );
+  assert.equal(known.agreements![0]!.decision, "agree");
+  const ended = shareWithConsent("disclose-first", "Bram's home", "I had wanted to move to Bram's home.", true);
+  assert.equal(ended.status, "ended");
+  assert.deepEqual(
+    shareWithConsent("consent-first", "Bram's home", "I had wanted to move to Bram's home.", true),
+    ended,
+    "A heard disclosure and ending have the same result in either proposal order.",
+  );
+  assert.equal(known.title, "Move to Bram's home");
+  assert.equal(
+    shareWithConsent("disclose-first", "Inn", "I would like company at dinner.").title,
+    "Move",
+    "A word fragment cannot reveal a private destination.",
+  );
+}
 function apply(days: number, decision: "agree" | "refuse" | "conditional" = "agree") {
   const state = developmentFixture(),
     at = elapsed(days),
@@ -190,6 +269,27 @@ for (const decision of ["refuse", "conditional"] as const) {
   scene.submissions = [submission];
   applyDevelopmentScene(state, scene, submission, elapsed(1.3));
   assert.equal(knownDevelopment(state, "a").length, 1);
+  assert.equal(
+    knownDevelopment(state, "a")[0]!.title,
+    "Move",
+    "A broad disclosure does not reveal an unspoken private destination.",
+  );
+  assert.equal(
+    knownDevelopment(state, "a")[0]!.status,
+    "considering",
+    "A disclosure does not copy an unspoken private milestone.",
+  );
+  assert.deepEqual(
+    knownDevelopment(state, "a")[0]!.agreements,
+    [],
+    "Private stored consents are not automatically shared.",
+  );
+  assert.equal(knownDevelopment(state, "a")[0]!.facts![0]!.text, "I am considering moving in with Bram");
+  assert.deepEqual(
+    readDevelopment(JSON.parse(JSON.stringify(state.development))),
+    state.development,
+    "Witnessed pursuit history survives save/reload.",
+  );
   const known = knownDevelopment(state, "a")[0]!.text;
   r.pursuits[0]!.reason = "A later private change.";
   assert.equal(
@@ -214,6 +314,65 @@ for (const decision of ["refuse", "conditional"] as const) {
     before,
     "Resuming a historical Scene never observes current housing.",
   );
+}
+
+{
+  const { state } = apply(1.25, "refuse");
+  const r = state.development!.residents.a!;
+  const pursuit = r.pursuits[0]!;
+  pursuit.known = { at: elapsed(1.2), text: "Ada: move to Bram's home : stalled.", status: "stalled" };
+  assert.equal(
+    knownDevelopment(state, "a")[0]!.title,
+    "Move to Bram's home",
+    "Old summaries retain their frozen destination.",
+  );
+  const old = structuredClone(pursuit.known);
+  const consent = (hidden: boolean, id: string, kind: "consent" | "wait" = "consent") => {
+    const speakerId = kind === "wait" ? "a" : "b";
+    const content = kind === "wait" ? "I will put this move on hold." : "I agree to share my home with Ada.";
+    const scene = {
+      id,
+      villageSeed: state.seed,
+      lines: [{ id: "line", kind: "dialogue", speakerId, content, heardBy: ["a", "b"], contactHidden: hidden }],
+      submissions: [],
+    } as unknown as VenueScene;
+    const submission = {
+      id: "turn",
+      semanticProvenance: { version: 2, developmentVersion: 1 },
+      developmentChanges: [
+        {
+          pursuitId: pursuit.id,
+          characterId: "a",
+          actorId: speakerId,
+          expectedRevision: r.revision,
+          kind,
+          ...(kind === "consent" ? { decision: "agree" } : {}),
+          citations: [{ segment: 0, quote: content }],
+          lineIds: ["line"],
+        },
+      ],
+    } as VenueSubmission;
+    applyDevelopmentScene(state, scene, submission, elapsed(1.4));
+    return { scene, submission };
+  };
+  consent(true, "unheard-consent");
+  assert.deepEqual(pursuit.known, old, "A resident's private agreement never changes player knowledge.");
+  const visible = consent(false, "heard-consent");
+  assert.equal(pursuit.known!.agreements![0]!.name, "Bram");
+  assert.equal(pursuit.known!.agreements![0]!.decision, "agree");
+  const facts = pursuit.known!.facts!.length;
+  applyDevelopmentScene(state, visible.scene, visible.submission, elapsed(4));
+  assert.equal(pursuit.known!.facts!.length, facts, "Replaying saved speech does not duplicate journal history.");
+  consent(false, "heard-wait", "wait");
+  assert.equal(pursuit.known!.status, "stalled", "A witnessed wait updates the known stage.");
+  state.venues[1]!.name = "Secret renamed home";
+  assert.equal(
+    knownDevelopment(state, "a")[0]!.title,
+    "Move to Bram's home",
+    "Live private names do not overwrite the saved title.",
+  );
+  assert.equal(JSON.stringify(knownDevelopment(state, "a")).includes("Secret renamed home"), false);
+  assert.deepEqual(readDevelopment(JSON.parse(JSON.stringify(state.development))), state.development);
 }
 
 {
