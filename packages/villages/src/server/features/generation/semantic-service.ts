@@ -1,3 +1,4 @@
+import { readDevelopmentSceneProposals } from "../../domain/rules/development-scene.js";
 import { DEVELOPMENT_SCENE_INSTRUCTION } from "../../domain/rules/development-knowledge.js";
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
@@ -413,6 +414,7 @@ export function createSemanticService(ports: SemanticPorts) {
           ? "Also return immediateResidentMoves:[], required even when empty. Independently identify EVERY immediate request in the original player input for residents to cross into a recorded Zone, regardless of the draft response or their willingness. residentRequestLocalIds lists ALL residents physically with the player before this reply, including passive residents absent from context.actors. context.actors is the selected reply cast, never the complete set of possible addressees. Resolve group references from the original input, these local IDs and established context before considering the draft. For example, when four residents are here and two others are already in the Studio, 'Can the four of you join those two in the Studio now?' requests the four local residents, not the selected four-person reply cast. Polite Can/Could/Would questions asking for movement now are immediate requests, not hypothetical merely because of modal wording. Rows are {characterIds:[exact resident IDs for the COMPLETE requested group],zoneId,source:zero-based intent.timeline index}. Keep every requested resident even if some refuse, stay, or only a smaller group crosses in the draft. Include requests within mixed speech/actions. Do not nominate future appointments, conditional/hypothetical travel, quoted examples or private thoughts. For these recorded-Zone requests, unresolved actor or destination identity remains unresolved intent; never invent a Zone or silently choose a smaller group. Ordinary movement toward fictional spaces does not itself require a recorded Zone nomination. These are request nominations, never completed moves or authority. "
           : "") +
         "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash," +
+        (scene.operation?.input.developmentVersion === 1 ? "developmentChanges:[]," : "") +
         (movementReview ? "immediateResidentMoves:[{characterIds:[residentIds],zoneId,source}]," : "") +
         (combined
           ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
@@ -590,7 +592,8 @@ export function createSemanticService(ports: SemanticPorts) {
           (asRecord(raw.action).happened !== true || !Number.isInteger(asRecord(raw.action).segment))
         )
           throw badGateway("System physical outcome lacks a completed, cited action.");
-        if (savedInput.developmentVersion === 1) effects.developmentChanges = raw.developmentChanges;
+        if (savedInput.developmentVersion === 1)
+          effects.developmentChanges = readDevelopmentSceneProposals(raw.developmentChanges);
         const immediate = semanticImmediate(raw.events, lines);
         if (
           savedInput.context.opening?.requiredPitch &&

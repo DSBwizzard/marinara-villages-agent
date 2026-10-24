@@ -21,16 +21,20 @@ const row = z
   })
   .strict();
 export type SavedDevelopmentChange = DevelopmentSceneChange & { lineIds: string[] };
+export function readDevelopmentSceneProposals(raw: unknown): DevelopmentSceneChange[] {
+  const parsed = z.array(row).max(6).safeParse(raw);
+  if (!parsed.success)
+    throw badGateway("The resident development interpretation is incomplete. The draft is retained.");
+  return parsed.data;
+}
 export function readDevelopmentSceneChanges(
   raw: unknown,
   state: VillageState,
   lines: VenueReplyLine[],
 ): DevelopmentSceneChange[] {
-  const parsed = z.array(row).max(6).safeParse(raw);
-  if (!parsed.success)
-    throw badGateway("The resident development interpretation is incomplete. The draft is retained.");
+  const changes = readDevelopmentSceneProposals(raw);
   const seen = new Set<string>();
-  for (const change of parsed.data) {
+  for (const change of changes) {
     const resident = state.development?.residents[change.characterId];
     const pursuit = resident?.pursuits.find((p) => p.id === change.pursuitId);
     const key = [change.pursuitId, change.kind, change.actorId].join(":");
@@ -55,7 +59,7 @@ export function readDevelopmentSceneChanges(
         throw badGateway("A resident development change lacks exact witnessed speech.");
     }
   }
-  return parsed.data;
+  return changes;
 }
 export function bindDevelopmentChanges(changes: DevelopmentSceneChange[], lineIds: string[]): SavedDevelopmentChange[] {
   return changes.map((change) => ({ ...change, lineIds: change.citations.map((c) => lineIds[c.segment]!) }));
