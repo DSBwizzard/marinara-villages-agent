@@ -95,6 +95,14 @@ try {
       "A post-save failure retries the original duration, revision and action identity.",
     );
     assert.equal(clock.advanceMs, 3.5 * 86_400_000 + 1.25 * 3_600_000);
+    await panel.getByRole("spinbutton", { name: "Time amount", exact: true }).fill("1.1");
+    await advance.click();
+    await expect(panel.getByRole("status")).toContainText("Time advanced");
+    assert.equal(
+      actions.at(-1).milliseconds,
+      3_960_000,
+      "Decimal hours round to milliseconds instead of failing on binary floating-point residue.",
+    );
     for (const control of [advance, panel.getByRole("spinbutton"), panel.getByRole("combobox")]) {
       const box = await control.boundingBox();
       assert.ok(box && box.x >= 0 && box.x + box.width <= width, "Time controls fit the viewport.");

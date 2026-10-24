@@ -535,6 +535,14 @@
     },
     {
       "method": "get",
+      "path": "/clock"
+    },
+    {
+      "method": "post",
+      "path": "/clock/advance"
+    },
+    {
+      "method": "get",
       "path": "/development"
     },
     {

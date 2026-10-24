@@ -40,7 +40,7 @@ export function VillageTimeControl({
     return () => controller.abort();
   }, []);
   async function advance() {
-    const milliseconds = Number(amount) * units[unit];
+    const milliseconds = Math.round(Number(amount) * units[unit]);
     if (!clock?.worldId || !Number.isSafeInteger(milliseconds) || milliseconds <= 0) {
       setError("Choose a positive duration.");
       return;
@@ -98,6 +98,7 @@ export function VillageTimeControl({
         <label>
           Amount{" "}
           <input
+            autoComplete="off"
             aria-label="Time amount"
             type="number"
             min="0"
@@ -109,6 +110,7 @@ export function VillageTimeControl({
           />
         </label>
         <select
+          autoComplete="off"
           aria-label="Time unit"
           value={unit}
           disabled={busy}
