@@ -36,15 +36,13 @@ const snapshot = {
   projects: [],
   venueRequests: [],
   residences: [],
-  happenings: [],
   villagers: [],
-  recap: null,
   settings: {
     venues: [],
     visitRetention: { mode: "forever", value: 0 },
     townMapImageSetAt: "",
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
-    storyPaces: [],
+    backgroundPaces: [],
     macros: [],
   },
 };
@@ -147,7 +145,7 @@ try {
   await mount(page);
   const composer = page.getByRole("textbox", { name: "Message at The Park" });
   const tray = page.getByRole("button", { name: /village notice/ });
-  const stack = page.locator("[aria-label='Village events']");
+  const stack = page.locator("[aria-label='Scene changes']");
   await composer.waitFor();
   await composer.focus();
   await expect(page.getByRole("button", { name: /^\d+ Scene errors?$/ })).toHaveCount(0);
@@ -209,11 +207,11 @@ try {
   await expect(stack).toContainText(fulfilled.text);
   const second = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await mount(second);
-  await expect(second.locator("[aria-label='Village events']")).toContainText(fulfilled.text);
+  await expect(second.locator("[aria-label='Scene changes']")).toContainText(fulfilled.text);
   await page.getByRole("button", { name: "Dismiss " + fulfilled.text }).click();
   await expect.poll(() => dismissed.has(fulfilled.id)).toBe(true);
   await refresh(second);
-  await expect(second.locator("[aria-label='Village events']")).not.toContainText(fulfilled.text);
+  await expect(second.locator("[aria-label='Scene changes']")).not.toContainText(fulfilled.text);
   await second.close();
   assert.equal(interpretations, 0, "Wish display, polling, refresh and dismissal add no interpretation requests");
   assert.equal(closingReviews, 0);

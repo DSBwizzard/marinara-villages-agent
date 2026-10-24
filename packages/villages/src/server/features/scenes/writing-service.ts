@@ -596,7 +596,7 @@ export function createSceneWriting({
             )
             .map((trace) => `${trace.id}: ${trace.text}`)
             .join("; ") || "none"
-        }. Items: ${place?.state.furniture.join("; ") || "none"}. Public facts: ${place?.state.publicFacts.join("; ") ?? ""}. Current state outranks older scene lines and happenings.`,
+        }. Items: ${place?.state.furniture.join("; ") || "none"}. Public facts: ${place?.state.publicFacts.join("; ") ?? ""}. Current state outranks older scene lines.`,
         "Approved room description: " + (place?.description || "none"),
         place?.constructionStatus === "worksite"
           ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
@@ -609,7 +609,7 @@ export function createSceneWriting({
         venueFoundingBackground(village),
         `A Venue is the place; Zones are its separate spaces. A Scene continues across Zone movement. Local residents: ${session.activeIds.join(", ")}. ${session.contactGeneration?.zoneEvents ? "Other candidate residents remain in their captured Zones; they are not onstage." : "Only server-listed residents occupy this Zone."} Attendance, activities and time were captured at Scene start. Witnessed developments establish what is happening now. Background agendas cannot move anyone in this Scene. Only evidenced movement changes positions. A resident may leave after a clear spoken departure; do not force departure because real time passed.`,
         session.continuity
-          ? "Continue the captured Scene moment. Real time between replies does not pass in this roleplay: do not explain an absence, age a conversation, wait for the player, or import later Village events. Only events established within this Scene advance its action. Ending returns the player to the current Village without inventing what they did during the gap. Never advance the Village into the future."
+          ? "Continue the captured Scene moment. Real time between replies does not pass in this roleplay: do not explain an absence, age a conversation, wait for the player, or import later Scene changes. Only events established within this Scene advance its action. Ending returns the player to the current Village without inventing what they did during the gap. Never advance the Village into the future."
           : "",
         session.contactGeneration?.zoneEvents
           ? "Write only player-observable narration and reachable speech/sounds. Offstage residents remain offstage. Use their captured positions and individual witnessed histories; do not reveal silent occupants or causes of silence."

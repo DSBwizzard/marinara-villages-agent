@@ -35,7 +35,7 @@ function world(name: string) {
     wishSystemVersion: 3,
     setupAt: stamp,
     foundedAt: stamp,
-    storyPace: "off",
+    backgroundPace: "off",
     villagers: [],
     venues: [
       {

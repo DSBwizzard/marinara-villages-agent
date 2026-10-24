@@ -85,42 +85,13 @@ type VillageNotice = {
   text: string;
 };
 
-/**
- * One thing the village did, as the narrator wrote it down.
- *
- * Filed against the village's own clock rather than a wall-clock stamp, so the
- * day and the part of the day are what the entry is keyed on. `clock` is always
- * one of the four parts of a day.
- */
-export type VillageHappening = {
-  socialOutcome?: { id: string; changes: string[] };
-  id: string;
-  kind: string;
-  actorIds: string[];
-  venueId: string;
-  dayIndex: number;
-  clock: string;
-  occurredAt: string;
-  timePrecision: "exact" | "phase";
-  sourceOpportunityId: string;
-  narration: string;
-  text: string;
-};
-
-export type VillageStoryPace = "off" | "quiet" | "balanced" | "lively";
-
-export type VillageRecap = {
-  from: string;
-  through: string;
-  details: VillageHappening[];
-  summaries: string[];
-  pendingDecisionCount: number;
-};
+export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
 
 export type BackgroundWork = {
   id: string;
   kind:
-    | "story"
+    | "story" // Retired saved job identity; no generation or retry.
+    | "resident-planning"
     | "development"
     | "agenda"
     | "translation"
@@ -200,8 +171,6 @@ export type VillageSnapshot = {
     decisions: { characterId: string; accepted: boolean; reply: string }[];
     error: string;
   }>;
-  /** What the village has been doing, newest first. Empty until it does something. */
-  happenings: VillageHappening[];
   villagers: VillageVillagerView[];
   relationshipStartingPending?: boolean;
   /**
@@ -233,7 +202,6 @@ export type VillageSnapshot = {
     modelName?: string;
   } | null;
   settings: VillageSettings;
-  recap: VillageRecap | null;
 };
 
 export type VenueRequest = {
@@ -575,8 +543,8 @@ export type VillageSettings = {
   defaultPromptKnowledge: string;
   promptBoxMaxLength: number;
   macros: readonly PresetMacro[];
-  storyPace: VillageStoryPace;
-  storyPaces: readonly VillageStoryPace[];
+  backgroundPace: VillageBackgroundPace;
+  backgroundPaces: readonly VillageBackgroundPace[];
   /** How long the village's own name may be, as the founding wizard asks for it. */
   villageNameMaxLength: number;
   /** The Persona the village is linked to, or "" for none. */

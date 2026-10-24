@@ -14,7 +14,7 @@ import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';
 import {useVenueScreenCommands} from './packages/villages/src/client/features/venues/screen-commands.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
 import {VenueAccessPanel} from './packages/villages/src/client/features/venues/villages-venue-access.js';
-import {useSaveStoryPace} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveBackgroundPace} from './packages/villages/src/client/features/settings/actions.js';
 function Harness(){
 const [snapshot,rawSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('A / venue'),[venuePage,setVenuePage]=useState(window.page),[venueZoneKey,setVenueZoneKey]=useState(window.initialZone);
 const [busy,rawBusy]=useState(false),[settingsError,rawSettingsError]=useState(''),[venueEditBusy,rawEditBusy]=useState(false),[venueEditError,rawEditError]=useState(''),[venueEditNotice,rawNotice]=useState(''),
@@ -23,7 +23,7 @@ const setSnapshot=useCallback(v=>{window.calls.snapshot++;rawSnapshot(v)},[]),se
 setVenueEditBusy=useCallback(v=>{window.calls.editBusy++;rawEditBusy(v)},[]),setVenueEditError=useCallback(v=>{window.calls.editError++;rawEditError(v)},[]),setVenueEditNotice=useCallback(v=>{window.calls.notice++;rawNotice(v)},[]),
 setVenueEditDraft=useCallback(v=>{window.calls.draft++;rawDraft(v)},[]),setVenueProposalDraft=useCallback(v=>{window.calls.proposal++;rawProposal(v)},[]),setPlaceProblem=useCallback(v=>{window.calls.problem++;rawProblem(v)},[]);
 const ports={snapshot,screen,venueId,venuePage,venueZoneKey,venueEditDraft,venueProposalDraft,setSnapshot,setBusy,setSettingsError,setVenueEditBusy,setVenueEditError,setVenueEditNotice,setVenueEditDraft,setVenueProposalDraft,setPlaceProblem};
-const commands=useVenueScreenCommands(ports),pace=useSaveStoryPace(ports),place=snapshot.settings.venues.find(v=>v.id===venueId);
+const commands=useVenueScreenCommands(ports),pace=useSaveBackgroundPace(ports),place=snapshot.settings.venues.find(v=>v.id===venueId);
 const actions={name:()=>commands.saveVenueName(place,venueEditDraft.name),image:()=>commands.saveVenueImageContext(place,{useAssignedVillagerContext:false,useVisualLore:true}),details:()=>commands.saveVenueDetails(place,venueEditDraft,window.occupied,place.classes),
 shared:()=>commands.proposeRoomEdit(place,venueEditDraft,place.classes,'shared'),private:()=>commands.proposeRoomEdit(place,venueEditDraft,place.classes,'private','mara'),
 player:()=>commands.requestPlayerMove(place.id,' private / target '),access:()=>commands.changeVenueAccess(place.id,window.accessCommand),retry:()=>commands.retryPrivateSpacePreparation(),

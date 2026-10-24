@@ -8,7 +8,6 @@ import type { MobileMapView } from "./villages-mobile-map.js";
 export type ExplorationScreenController = {
   readonly openPlace: (place: VillageVenue) => void;
   readonly busy: boolean;
-  readonly catchingUp: boolean;
   readonly closeExploration: () => void;
   readonly error: string;
   readonly explorationOrigin: React.RefObject<HTMLElement | null>;

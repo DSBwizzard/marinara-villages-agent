@@ -9,7 +9,7 @@ import {
   setVillageSetting,
   setVillageWorldName,
   setVillageSpriteCardFlipEnabled,
-  setVillageStoryPace,
+  setVillageBackgroundPace,
 } from "./village-settings.js";
 import { decisionAdapterStatus } from "../../adapters/engine/decisions-adapter.js";
 import { listVillageLorebooks } from "../../adapters/engine/lorebooks.js";
@@ -183,7 +183,8 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       townMapImage?: unknown;
       townMapView?: unknown;
       homeBuildingNames?: unknown;
-      storyPace?: unknown;
+      backgroundPace?: unknown;
+      storyPace?: unknown; // Compatibility with an already-open older client.
       characterSpeechColors?: unknown;
       sendOnEnter?: unknown;
       spriteCardFlipEnabled?: unknown;
@@ -217,7 +218,8 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       }
       if (body.worldName !== undefined) snapshot = await setVillageWorldName(body.worldName);
       if (body.setting !== undefined) snapshot = await setVillageSetting(body.setting);
-      if (body.storyPace !== undefined) snapshot = await setVillageStoryPace(body.storyPace);
+      if (body.backgroundPace !== undefined || body.storyPace !== undefined)
+        snapshot = await setVillageBackgroundPace(body.backgroundPace ?? body.storyPace);
       if (body.sendOnEnter !== undefined) snapshot = await setVillageSendOnEnter(body.sendOnEnter);
       if (body.spriteCardFlipEnabled !== undefined)
         snapshot = await setVillageSpriteCardFlipEnabled(body.spriteCardFlipEnabled);

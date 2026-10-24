@@ -1,3 +1,4 @@
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { lifecycle } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
   initialOpening,
@@ -129,9 +130,7 @@ async function main() {
     );
   }
 
-  // Enforce JSON-mode compatibility using actual Events and offscreen review prompts.
-  const { createVillageBootstrap } =
-    await import("../packages/villages/src/server/features/founding/village-bootstrap-service.js");
+  // Enforce JSON-mode compatibility using actual resident planning and offscreen review prompts.
   const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const eventMoment = deriveVillageMoment({
     foundedAt: "2026-10-16T00:00:00.000Z",
@@ -155,12 +154,9 @@ async function main() {
     maxOutputTokens: 4096,
     fitContext: (messages: unknown, options: any) => ({ messages, ...options, trimmed: false }),
   };
-  const events = createVillageBootstrap({
+  const planning = createResidentPlanning({
     villagesLanguageModels: () => ({ resolveForRequest: async () => fakeSystem }),
     villagesConnectionIdFor: async () => "system",
-    backgroundCalls: { getStore: () => undefined },
-    villagesDebugAgentsEnabled: () => false,
-    villagesLogger: () => ({ debugOverride: () => {} }),
     completeWithRoom: async (_model: unknown, messages: any[], _tokens: number, options: any) => {
       assert.equal(options.responseFormat?.type, "json_object");
       assert(
@@ -168,7 +164,7 @@ async function main() {
         "Strict provider rejects JSON mode without application-authored JSON instruction",
       );
       const review = messages[0].content.startsWith("Independently interpret");
-      jsonCalls.push(review ? "review" : "events");
+      jsonCalls.push(review ? "review" : "planning");
       if (review)
         assert.deepEqual(JSON.parse(messages[1].content).lines, spokenLines, "Review preserves supplied speech");
       return {
@@ -187,29 +183,34 @@ async function main() {
                   },
                 ],
                 housingRequests: [],
+                routineIdea: null,
                 social: { encounter: { lines: spokenLines } },
               },
         ),
       };
     },
   } as any);
-  const eventResult = await events.proposeHappenings({
-    semanticVersion: 2,
-    village: "Test",
-    setting: "A quiet village",
-    moment: eventMoment,
-    residents: [],
-    recent: [],
-    venues: [],
-    opportunities: [opportunity],
-    lastSimulatedAt: eventMoment.instant,
-    forced: false,
-    social: { candidates: [], relationships: [] },
+  const choices = await planning.handler.generate({
+    context: {
+      version: 1,
+      worldFacts: [],
+      pendingHousingCharacterIds: [],
+      village: "Test",
+      setting: "A quiet village",
+      moment: eventMoment,
+      residents: [],
+      recent: [],
+      venues: [],
+      opportunity,
+      lastSimulatedAt: eventMoment.instant,
+      forced: false,
+      social: { candidates: [], relationships: [] },
+    },
   } as any);
-  assert.deepEqual(jsonCalls, ["events", "review"]);
-  assert.equal(eventResult.happenings.length, 1);
-  assert.equal((eventResult.social?.encounter as any).semanticVersion, 2);
-  assert.deepEqual((eventResult.social?.encounter as any).lines, spokenLines);
+  assert.deepEqual(jsonCalls, ["planning", "review"]);
+  assert.equal(Object.hasOwn(choices, "happenings"), false);
+  assert.equal((choices.social?.encounter as any).semanticVersion, 2);
+  assert.deepEqual((choices.social?.encounter as any).lines, spokenLines);
 
   const state = defaultVillageState();
   state.seed = "synthetic-semantic";

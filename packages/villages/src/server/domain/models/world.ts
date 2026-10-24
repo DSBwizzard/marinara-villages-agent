@@ -778,7 +778,7 @@ export type VillageVenueReference = {
   detail: string;
 };
 
-/** A public physical event attached to a venue, not a replacement location. */
+/** A committed physical change and its evidence, attached to a Venue. */
 export type VillageVenueEvent = {
   id: string;
   venueId: string;
@@ -882,33 +882,6 @@ export type VillageNotice = {
 };
 
 /**
- * One thing the village did, as the narrator wrote it down.
- *
- * Keyed on the village's own derived clock rather than a wall-clock stamp. A
- * stored timestamp would be the one fact in the record able to disagree with
- * `village-clock.ts` — a happening filed at 09:30 that the clock reads as
- * "afternoon" — so what is kept is which part of which day it belongs to.
- */
-export type VillageHappening = {
-  id: string;
-  kind: string;
-  actorIds: string[];
-  venueId: string;
-  /** Whole days since the village was founded, matching `VillageMoment.dayIndex`. */
-  dayIndex: number;
-  /** Part of the day: one of `VILLAGE_CLOCKS`. */
-  clock: string;
-  /** Exact instant when it occurred. This is the temporal source of truth. */
-  occurredAt: string;
-  /** `exact` for new events; `phase` for records migrated from the old four-window clock. */
-  timePrecision: "exact" | "phase";
-  /** Stable creative opportunity that produced it, or empty for direct/player events. */
-  sourceOpportunityId: string;
-  narration: string;
-  text: string;
-};
-
-/**
  * Someone the village's memory is about.
  *
  * Name AND id, unlike every other name the village holds, because the two do
@@ -965,27 +938,7 @@ export type VillageRecollection = {
   lastReinforcedAt: string;
 };
 
-/**
- * One thing the village remembers.
- *
- * This is the durable story, kept BESIDE `VillageHappening` rather than instead
- * of it: the happenings window is what the map draws and what the prompt calls
- * "lately", and it is trimmed forever at `MAX_HAPPENINGS`. The chronicle is
- * what the village keeps, distilled, attributed and scoped, and it is not
- * trimmed in ordinary play.
- *
- * Two fields describe when it happened and they are NOT interchangeable:
- *
- *   * `dayIndex` and `clock` are the real answer, in the same units the derived
- *     clock speaks, and every piece of logic reads these and only these.
- *   * `at` is a wall-clock stamp kept for ONE reason — showing a player roughly
- *     what time of day something happened in the debug tab. It is DISPLAY ONLY.
- *     Nothing may read it: not the clock, not an age calculation, not a prompt
- *     block. It exists to be a string a person can look at, and the moment
- *     anything derives from it the record gains a second, disagreeable source
- *     of truth about time, which is exactly what `village-clock.ts` exists to
- *     avoid.
- */
+/** Retained, attributed knowledge. Exact occurredAt is authoritative; legacy phase fields support display. */
 export type VillageChronicleEntry = {
   id: string;
   /** Whole days since the village was founded, matching `VillageMoment.dayIndex`. */
@@ -1020,16 +973,16 @@ export type VillageChronicleEntry = {
   text: string;
 };
 
-export type VillageStoryPace = "off" | "quiet" | "balanced" | "lively";
+export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
 
-export type VillageOpportunity = {
-  zoneId?: string;
+export type ResidentPlanningOpportunity = {
   id: string;
-  kind: "encounter" | "wish" | "weather" | "routine" | "project";
+  kind: "encounter" | "routine";
   startsAt: string;
   endsAt: string;
   actorIds: string[];
   venueId: string;
+  zoneId?: string;
   facts: string[];
 };
 
@@ -1137,24 +1090,6 @@ export type VillagePendingDecision = {
   requestQuote?: string;
   source?: "chat" | "background";
   sourceKey?: string;
-};
-
-export type VillageScheduledEvent = {
-  id: string;
-  opportunityId: string;
-  occursAt: string;
-  kind: string;
-  actorIds: string[];
-  venueId: string;
-  narration: string;
-};
-
-export type VillageRecap = {
-  from: string;
-  through: string;
-  details: VillageHappening[];
-  summaries: string[];
-  pendingDecisionCount: number;
 };
 
 /**
@@ -1265,7 +1200,7 @@ export type VillageState = {
   venues: VillageVenue[];
   /** Stable building kinds have labels the player can adapt to the village's world. */
   homeBuildingNames: Record<HomeBuildingKind, string>;
-  /** Public venue events retain the venue snapshot even if the venue is later deleted. */
+  /** Physical-change receipts retain the Venue name even after deletion. */
   venueEvents: VillageVenueEvent[];
   /** Exact completed visit transcript retention. Missing older settings mean forever. */
   visitRetention: { mode: "forever" | "count" | "days"; value: number };
@@ -1316,17 +1251,11 @@ export type VillageState = {
   /** Pinned by the player and by the villagers, oldest first. Empty at founding. */
   noticeboard: VillageNotice[];
   /**
-   * Legacy prose Events, newest first. The map displays them for the player,
-   * but they do not enter resident prompts or change village state. Future
-   * structured Events can give explicit, validated effects across days.
-   */
-  happenings: VillageHappening[];
-  /**
    * What the village REMEMBERS, newest first. Durable, attributed history;
-   * unlike the visual Events feed above, these entries can inform residents.
+   * these entries can inform eligible residents.
    *
    * A chronicle entry is distilled, attributed to people, and scoped to the
-   * whole village or to specific residents. Visual Events age out separately.
+   * whole village or to specific residents.
    */
   chronicle: VillageChronicleEntry[];
   /** Active, expiring conversational continuity. Exact transcripts live in the Scene archive. */
@@ -1340,13 +1269,12 @@ export type VillageState = {
   /** Calendar authority selected once at founding. */
   timeZone: string;
   clock: import("../../../shared/contracts/clock.js").VillageClockRecord | null;
-  /** Optional model-shaped story frequency; deterministic life always advances. */
-  storyPace: VillageStoryPace;
-  /** Last local calendar day on which a creative planning call committed. */
-  lastCreativeDate: string;
-  processedOpportunityIds: string[];
-  opportunities: VillageOpportunity[];
-  scheduledEvents: VillageScheduledEvent[];
+  /** Optional resident planning and Wish pace; deterministic life always advances. */
+  backgroundPace: VillageBackgroundPace;
+  /** Last local calendar day on which resident planning committed. */
+  lastPlanningDate: string;
+  planningUsage: { dateKey: string; count: number };
+  processedActionIds: string[];
   relationships: VillageRelationship[];
   projects: VillageProject[];
   /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
@@ -1741,7 +1669,6 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   /** Newest last, so the board reads the way a board fills up. */
   noticeboard: VillageNotice[];
   /** Newest first, so the window on the map opens on what just happened. */
-  happenings: VillageHappening[];
   villagers: VillageVillagerView[];
   /**
    * True once the village has been founded, which is what tells the tab to draw
@@ -1751,7 +1678,6 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
    */
   isFounded: boolean;
   settings: VillageSettingsView;
-  recap: VillageRecap | null;
 }>;
 
 /**

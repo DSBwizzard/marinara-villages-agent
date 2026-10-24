@@ -16,8 +16,6 @@ export type VillageWishClaimContext = {
   claim: string;
   /** The live conversation, so a promise made inside it is visible AS a promise. */
   transcript: readonly VillageChatMessage[];
-  /** Verified venue action receipts, separate from visual-only Events prose. */
-  happenings: readonly { text: string }[];
   /** Current validated venue state, which outranks older descriptions. */
   worldState?: readonly string[];
   /** What this villager already remembers, so a settled thing is already known. */

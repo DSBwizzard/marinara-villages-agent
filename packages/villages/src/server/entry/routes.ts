@@ -65,7 +65,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
     // Rebuild from the exact state atomically marked as delivered; this also covers mutation and visible polling responses.
     const delivered = {
       ...(await buildVillageSnapshot(undefined, true)),
-      ...(snapshot.recap ? { recap: snapshot.recap } : {}),
     };
     return snapshot === value ? delivered : { ...value, snapshot: delivered };
   });

@@ -273,7 +273,7 @@ export function useRemoveVenue(ports: {
         const affected = dependencies.residentCharacterIds.length + dependencies.pendingResidenceCharacterIds.length;
         const note =
           affected || dependencies.workerCharacterIds.length || dependencies.remapCount || dependencies.eventCount
-            ? `This place is referenced by ${affected} pending moves, ${dependencies.workerCharacterIds.length} workers, ${dependencies.remapCount} schedule moves, and ${dependencies.eventCount} events. Delete it?`
+            ? `This place is referenced by ${affected} pending moves, ${dependencies.workerCharacterIds.length} workers, ${dependencies.remapCount} schedule moves, and ${dependencies.eventCount} recorded changes. Delete it?`
             : `Delete ${existing.name}?`;
         if (!window.confirm(note) || !lifetime.owns(claim)) return;
         const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(id)}`, {

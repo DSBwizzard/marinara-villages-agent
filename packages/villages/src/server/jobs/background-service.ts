@@ -79,6 +79,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     apply: () => {},
   });
   for (const [kind, handler] of ports.handlers) registerBackgroundHandler(kind, handler);
+  registerBackgroundHandler("story", {
+    generate: async () => {
+      throw new Obsolete("The Events generator is retired.");
+    },
+    valid: () => false,
+    apply: () => {},
+  });
   let owner = randomUUID();
   let stopped = false;
   let recoveryReady: Promise<void> = Promise.resolve();
@@ -415,8 +422,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           return previous;
         }
         if (work.expectedAttempt !== undefined && work.expectedAttempt !== (previous?.attempt ?? 0))
-          throw conflict("Background work changed. Refresh before requesting another event.");
-        if (work.kind === "story" && running.has(id) && previous) return previous;
+          throw conflict("Background work changed. Refresh before requesting more resident planning.");
+        if (work.kind === "resident-planning" && running.has(id) && previous) return previous;
         if (
           work.automaticDate &&
           previous?.seed === work.seed &&
@@ -454,6 +461,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         error: "Legacy schedule translation and detailed Agenda generation are retired.",
         replacement: undefined,
       }));
+      return;
+    }
+    if (job?.kind === "story") {
+      await retireStory(id);
       return;
     }
     if (!job || stopped || ["failed", "interrupted", "completed", "obsolete"].includes(job.status)) return;
@@ -971,6 +982,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     // A newer validator may understand a previously rejected, purchased reply.
     // Recovery is pure and deliberate; an invalid reply still uses the normal retry path.
     const foundPrior = await readJob(id);
+    if (foundPrior?.kind === "story") {
+      await retireStory(id);
+      throw conflict("The Events generator is retired. This work cannot be retried.");
+    }
     const savedPrior = foundPrior && !running.has(id) ? await adoptLateResponses(id, foundPrior) : foundPrior;
     let recovered: { result: unknown } | undefined;
     if (
@@ -1057,6 +1072,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     });
     launch(id);
   }
+  async function retireStory(id: string): Promise<void> {
+    await changeJob(id, (job) => {
+      if (!job || job.kind !== "story" || job.status === "obsolete") return job;
+      return { ...job, status: "obsolete", error: "The Events generator is retired.", replacement: undefined };
+    });
+  }
   async function recoverBackgroundWork(): Promise<void> {
     if (stopped) return;
     const recoveryOwner = owner;
@@ -1069,6 +1090,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     for (const record of records) {
       if (stopped || owner !== recoveryOwner) return;
       const job = await adoptLateResponses(record.id, record.data as Job);
+      if (job.kind === "story") {
+        await retireStory(record.id);
+        continue;
+      }
       if (job.kind === "translation" && !["completed", "obsolete"].includes(job.status)) {
         await changeJob(record.id, (current) => ({
           ...current!,
@@ -1212,6 +1237,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           : job?.kind === "mail"
             ? !state.venueMail.some((mail) => mail.id === job.subjectId)
             : job?.kind !== "development" &&
+              job?.kind !== "resident-planning" &&
               job?.kind !== "story" &&
               job?.kind !== "starting-ties" &&
               !state.villagers.some((resident) => resident.characterId === job?.subjectId);
@@ -1229,12 +1255,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                 : job?.kind === "mail"
                   ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
                   : job?.kind !== "development" &&
+                    job?.kind !== "resident-planning" &&
                     job?.kind !== "story" &&
                     !state.villagers.some((resident) => resident.characterId === job?.subjectId);
             if (subjectGone || job?.seed !== state.seed) discardedReceipts.push(record.id);
           }
         continue;
       }
+      if (job.kind === "story") continue; // Hide retired work after the existing retention/reset cleanup.
       summaries.push({
         id: record.id,
         kind: job.kind,

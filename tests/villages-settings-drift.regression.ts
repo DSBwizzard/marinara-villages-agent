@@ -143,8 +143,8 @@ const publicFields = [
   "setupMinVillagerCount",
   "setupPlaceCount",
   "spriteCardFlipEnabled",
-  "storyPace",
-  "storyPaces",
+  "backgroundPace",
+  "backgroundPaces",
   "townMapCanvasHeight",
   "townMapCanvasWidth",
   "townMapExpectedHeight",
@@ -235,7 +235,7 @@ try {
   const updated = await request("PATCH", {
     worldName: "Harbor",
     sendOnEnter: false,
-    storyPace: "quiet",
+    backgroundPace: "quiet",
     sceneryArtStyle: "Watercolor",
     sceneryStyleProfileId: "watercolor",
     automaticZonePictures: false,
@@ -244,7 +244,7 @@ try {
   });
   assert.equal(updated.worldName, "Harbor");
   assert.equal(updated.sendOnEnter, false);
-  assert.equal(updated.storyPace, "quiet");
+  assert.equal(updated.backgroundPace, "quiet");
   assert.equal(updated.sceneryArtStyle, "Watercolor");
   assert.equal(updated.sceneryStyleProfileId, "watercolor");
   assert.equal(updated.automaticZonePictures, false);

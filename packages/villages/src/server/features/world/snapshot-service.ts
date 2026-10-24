@@ -17,7 +17,6 @@ import {
   villageMomentView,
   villageSettings,
 } from "../../domain/rules/world-snapshot.js";
-import { relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
 
 export type VillageSnapshotPorts = {
   readVillageState: typeof import("./village-store.js").readVillageState;
@@ -216,26 +215,6 @@ export function createVillageSnapshot({
       residences: village.residences,
       venueMail: village.venueMail,
       noticeboard: village.noticeboard,
-      happenings: village.happenings.map((entry) => {
-        const encounter = village.relationshipContext?.socialEncounters.find(
-          (row) => row.id === entry.sourceOpportunityId + ":social",
-        );
-        return encounter
-          ? {
-              ...entry,
-              socialOutcome: {
-                id: encounter.id,
-                changes: relationshipChangeNotices(
-                  Object.values(village.relationshipContext!.receipts).filter(
-                    (receipt) => receipt.sourceId === encounter.id && receipt.before !== receipt.after,
-                  ),
-                  village.relationshipContext!,
-                  village,
-                ).map((notice) => notice.text),
-              },
-            }
-          : entry;
-      }),
       villagers,
       relationshipStartingPending: village.villagers.some(
         (person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId),
@@ -291,7 +270,6 @@ export function createVillageSnapshot({
             },
           }
         : {}),
-      recap: null,
       backgroundWork: await backgroundWorkSummaries(),
     };
   }

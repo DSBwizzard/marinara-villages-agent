@@ -8,7 +8,6 @@ export function menuCategory(page: MenuPage): "index" | "general" | "village" | 
 
 export const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   index: "Menu",
-  events: "Events",
   villagers: "Villagers",
   noticeboard: "Noticeboard",
   venueRequests: "Venue Requests",
@@ -18,9 +17,6 @@ export const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   chatlogs: "Scenes",
   progress: "Progress",
 };
-
-export const FORCE_VILLAGE_UPDATE_NOTICE =
-  "Testing action: runs normal time catch-up, then bypasses Background events and wishes for one visual Events update. It can spend a model call, but its prose cannot change memories, wishes, notices, venues, or resident behavior.";
 
 /** An unfinished Scene owns navigation, including opening/closing and failed entry. */
 export function sceneNavigationScreen<T extends string>(requested: T, locked: boolean): T | "room" {

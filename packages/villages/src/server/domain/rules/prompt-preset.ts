@@ -5,7 +5,6 @@ import type {
   VillageChatMode,
   VillageChronicleEntry,
   VillageDayBlock,
-  VillageHappening,
   VillageNotice,
   VillagePlaceView,
   VillageTownMapView,
@@ -67,17 +66,11 @@ export const MAX_NOTICE_LENGTH = 280;
  * than a field anyone is expected to reach.
  */
 export const MAX_NOTICE_AUTHOR_LENGTH = 60;
-/**
- * How many happenings the village remembers, and how much of that reaches a
- * prompt. The window on the map is the record; the prompt only needs enough to
- * keep a villager current, and a villager quoting last week is worse than one
- * who simply does not know.
- */
-export const MAX_HAPPENINGS = 40;
-/** How long one happening may be, and how many one write may add. */
-export const MAX_HAPPENING_LENGTH = 320;
-export const MAX_HAPPENINGS_PER_WRITE = 3;
-/** Visual venue Events remain a short feed. Stored memories have no entry cap. */
+
+/** Maximum narration length for a committed physical change. */
+export const MAX_PHYSICAL_NARRATION_LENGTH = 320;
+
+/** Recent physical changes; exchange receipts retain durable proof. */
 export const MAX_VENUE_EVENTS = 200;
 /** Compatibility alias for older package tests; no longer a chronicle limit. */
 export const MAX_CHRONICLE = MAX_VENUE_EVENTS;
@@ -628,7 +621,6 @@ export const VILLAGES_DEFAULT_KNOWLEDGE = [
   "{{roster}}",
   "{{present}}",
   "{{noticeboard}}",
-  "{{happenings}}",
   "{{memory}}",
   "{{lore}}",
 ].join("\n");
@@ -692,11 +684,6 @@ export const VILLAGE_PRESET_MACROS: readonly VillagePresetMacro[] = [
     token: "{{noticeboard}}",
     label: "Noticeboard",
     help: "The notes pinned up here, and who wrote each one. Renders nothing when the board is empty.",
-  },
-  {
-    token: "{{happenings}}",
-    label: "What has been happening",
-    help: "What the village has been doing lately, most recent last. Renders nothing before anything has happened.",
   },
   {
     token: "{{memory}}",
@@ -831,35 +818,6 @@ function chronologicalLine(
 }
 
 /**
- * The rules about a happening, said the same way to every writer that can add one.
- *
- * Three calls can now put something into the live window: the narrator writing a
- * part of the day, the end of a conversation, and the small call that writes down
- * what the village saw of something the player just did. A window is only
- * readable if the same kind of thing is allowed into it from each of them, so the
- * lines all three share are kept here rather than retyped beside each caller —
- * where a later edit to one of them would quietly make the window mean two
- * different things depending on which writer happened to fill it.
- *
- * What is deliberately NOT here is the count and the framing, because those
- * genuinely differ: the narrator is covering a stretch of time and the other two
- * are covering one thing that has just happened in front of somebody.
- */
-export const HAPPENING_RULES = {
-  shape: `- One happening is one or two short sentences, under ${MAX_HAPPENING_LENGTH} characters, in the past tense, as a thing that has already happened.`,
-  ordinary:
-    "- Small and ordinary: a delivery, a broken latch, a spill, a lost animal, a shouted argument across the square, a roof that wants mending. Not a plot, and not an adventure.",
-  people:
-    "- Small and ordinary still means somebody's: an event happens TO whoever the briefing above puts in the middle of it, in the middle of whatever their day already has them doing at that hour. Somebody is only ever somewhere their day puts them, and is only ever free for what the hour leaves them free for. The best happening is one that arises out of what somebody here is actually doing today — the mill jamming while the grain is ground, a cart losing a wheel on the road back from the fields. Nobody's day is ever interrupted to make room for an event.",
-  harm: "- Do not kill, maim or seriously harm anyone. Do not decide what the player or a villager FEELS about what happened — say what happened and leave the meaning to them.",
-  strangers: "- No strangers arriving with news of the wider world, no disasters, and nobody leaving for good.",
-  setting: "- Stay inside the description of the village. Do not add trains, airports or technology it does not imply.",
-  names: "- Do not name a real town, country, company, person or existing fictional setting.",
-  noWish:
-    "- Never write a happening whose whole content is somebody wishing for something, asking for something, or being given it. Do not advance a wish, and do not settle one — nothing here is ever finished.",
-} as const;
-
-/**
  * What this villager REMEMBERS, as opposed to what merely happened lately.
  *
  * The list arrives already scoped by the caller — a villager is handed the
@@ -868,8 +826,7 @@ export const HAPPENING_RULES = {
  * can be read, because it needs the speaker's id; the rendering here is pure
  * and takes what it is given.
  *
- * Oldest first, like the happenings block, so the two read as one history with
- * the same shape rather than as a feed and a list.
+ * Entries render oldest first for chronological context.
  */
 export function renderMemoryBlock(
   entries: readonly VillageChronicleEntry[],
@@ -1333,7 +1290,6 @@ export function buildPromptValues(input: {
    */
   agenda: VillageAgenda | null;
   noticeboard: readonly VillageNotice[];
-  happenings: readonly VillageHappening[];
   /**
    * The memories this villager is allowed to have. Already scoped and resolved
    * by the caller — see `memoryForVillager` — because deciding WHO may know a
@@ -1383,7 +1339,7 @@ export function buildPromptValues(input: {
     // Resident-authored notices came from the legacy Events writer. They can
     // remain visible on the board, but only player-pinned notes are prompt data.
     noticeboard: renderNoticeboardBlock(input.noticeboard.filter((notice) => !notice.author)),
-    happenings: "",
+    happenings: "", // Compatibility: authored legacy macros remain empty.
     memory: renderMemoryBlock(input.memory, stamp),
     lore: renderLoreBlock(input.lore),
   };
@@ -1508,23 +1464,4 @@ export function coerceWish(entry: unknown, id: string, at: string): VillageWish 
 export function trimChronicle(entries: readonly VillageChronicleEntry[], _max: number): VillageChronicleEntry[] {
   // Prompt selection is bounded; stored memories are not evicted by a prompt budget.
   return [...entries];
-}
-
-/**
- * Put freshly written happenings on top of the window.
- *
- * The window is newest first and trimmed from the tail, which is the one thing
- * the record and the panel agree on. Shared rather than written out at each call
- * site so the narrator's batch and the news an action writes cannot end up
- * disagreeing about which end of the list the recent one is.
- *
- * The batch keeps its own order, so the last line the writer wrote is the newest
- * entry — which is the order it wrote them in, and the only order two
- * independent writes can agree on.
- */
-export function prependHappenings(
-  existing: readonly VillageHappening[],
-  fresh: readonly VillageHappening[],
-): VillageHappening[] {
-  return [...fresh, ...existing].slice(0, MAX_HAPPENINGS);
 }

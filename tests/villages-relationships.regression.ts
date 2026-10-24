@@ -376,7 +376,7 @@ raw.seed = "relationship-regression";
 raw.foundedAt = stamp;
 raw.setupAt = stamp;
 raw.visitMemoryBackfilled = true;
-raw.storyPace = "lively";
+raw.backgroundPace = "lively";
 const home = venue("home", ["residence"]),
   park = venue("park", ["community"]),
   shop = venue("shop", ["workplace"]);
@@ -959,7 +959,7 @@ const absent = new Date(morning.getTime() + day);
 reconcileSocialPlans(socialVillage, absent);
 assert.equal(socialState.socialPlans[0]!.status, "cancelled");
 assert.equal(socialState.receipts[plan.id], undefined, "missed plans do not reward relationships");
-socialVillage.storyPace = "off";
+socialVillage.backgroundPace = "off";
 assert.equal(socialPlanCandidates(socialVillage, morning).length, 0);
 
 async function main() {
@@ -1068,7 +1068,7 @@ async function main() {
     1,
     "Invalid background row leaves valid siblings committed",
   );
-  await processSocialOutbox({ ...village, storyPace: "off", socialOutbox: [{ ...entry, id: "off" }] });
+  await processSocialOutbox({ ...village, backgroundPace: "off", socialOutbox: [{ ...entry, id: "off" }] });
   assert.equal((await readRelationshipState(village.seed)).socialEncounters.length, 1);
   await processSocialOutbox({
     ...village,

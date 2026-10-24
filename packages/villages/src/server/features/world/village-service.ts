@@ -1,52 +1,30 @@
-import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { calendarReplay } from "../../domain/rules/clock-recovery.js";
 import { assertVillageClockWrite, villageNow } from "../../adapters/time/clock-gate.js";
-import type { Handler } from "../../domain/models/background-model.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type {
   VillageChronicleEntry,
   VillageChronicleEntryView,
-  VillageOpportunity,
-  VillageResidence,
   VillageSnapshot,
   VillageVenue,
 } from "../../domain/models/world.js";
-import { openingPresence } from "../../domain/rules/opening-presence.js";
-import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
-import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
-import {
-  boundText,
-  MAX_CHRONICLE_LENGTH,
-  MAX_HAPPENINGS,
-  prependHappenings,
-  villageCurrentSetting,
-} from "../../domain/rules/prompt-preset.js";
-import type { NativeRoutine } from "../../domain/rules/schedule-rules.js";
-import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
-import { venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment, villageDateLabel } from "../../domain/rules/village-clock.js";
-import { readPlayerIdentity, villagerPlaceView } from "../../domain/rules/village-projections.js";
+import { villagerPlaceView } from "../../domain/rules/village-projections.js";
 import { wishExpired } from "../../domain/rules/wish-definition.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { sceneWishProtected, sceneWishProtectionFinished } from "../../domain/rules/scene-wish-protection.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
-import { buildReturnRecap, creativeOpportunity, localDateKey, storyAllowance } from "../../domain/rules/world-story.js";
-import type { VillageTickContext } from "../../domain/rules/village-bootstrap-rules.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
-import type { listVillagerCards, readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
+import type { listVillagerCards } from "../../adapters/engine/catalog.js";
 import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
 import type { completeVillageResidence, retryResidencePrivateSpaceAdaptation } from "../venues/residences.js";
 import type { backfillAgendas, refreshVillagerRemaps } from "../residents/resident-agendas.js";
-import type { queueBackgroundJob } from "../../jobs/background-work.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
-import type { proposeHappenings, proposeReaction } from "../founding/village-bootstrap.js";
 import type { reconcileProjectLifecycles } from "../../domain/rules/project-lifecycle-rules.js";
 import type { rollActiveAgendas } from "../residents/resident-agendas.js";
-import type { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
 import type { expireResidentWishes } from "../../domain/rules/wish-lifecycle-rules.js";
 import type { reconcileWishLifecycle } from "../residents/wishes/wish-lifecycle.js";
 import type { respondDueVenueMail } from "../venues/venue-mailbox.js";
@@ -55,6 +33,7 @@ import type { readVillageState, mutateVillageState } from "./village-store.js";
 
 export interface WorldCoordinationPorts {
   reconcileDevelopment?: (now: Date) => Promise<void>;
+  reconcileResidentPlanning?: (now: Date) => Promise<void>;
   processProjectWishOutbox?: typeof import("../residents/wishes/wish-progress.js").processProjectWishOutbox;
   readScene?: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof readVillageState;
@@ -62,19 +41,14 @@ export interface WorldCoordinationPorts {
   buildVillageSnapshot: typeof buildVillageSnapshot;
   villagesLogger: typeof villagesLogger;
   listVillagerCards: typeof listVillagerCards;
-  readEffectiveVillagerCard: typeof readEffectiveVillagerCard;
   outsideVenueOperation: typeof outsideVenueOperation;
   completeVillageResidence: typeof completeVillageResidence;
   retryResidencePrivateSpaceAdaptation: typeof retryResidencePrivateSpaceAdaptation;
   backfillAgendas: typeof backfillAgendas;
   refreshVillagerRemaps: typeof refreshVillagerRemaps;
-  queueBackgroundJob: typeof queueBackgroundJob;
   preparePrivateSpaces: typeof preparePrivateSpaces;
-  proposeHappenings: typeof proposeHappenings;
-  proposeReaction: typeof proposeReaction;
   reconcileProjectLifecycles: typeof reconcileProjectLifecycles;
   rollActiveAgendas: typeof rollActiveAgendas;
-  relationshipWritingPrompt: typeof relationshipWritingPrompt;
   expireResidentWishes: typeof expireResidentWishes;
   reconcileWishLifecycle: typeof reconcileWishLifecycle;
   respondDueVenueMail: typeof respondDueVenueMail;
@@ -83,6 +57,7 @@ export interface WorldCoordinationPorts {
 /** Owns world advancement and history connections. Construction never reads, writes or dispatches work. */
 export function createWorldCoordination({
   reconcileDevelopment,
+  reconcileResidentPlanning,
   processProjectWishOutbox,
   readScene,
   readVillageState,
@@ -90,19 +65,14 @@ export function createWorldCoordination({
   buildVillageSnapshot,
   villagesLogger,
   listVillagerCards,
-  readEffectiveVillagerCard,
   outsideVenueOperation,
   completeVillageResidence,
   retryResidencePrivateSpaceAdaptation,
   backfillAgendas,
   refreshVillagerRemaps,
-  queueBackgroundJob,
   preparePrivateSpaces,
-  proposeHappenings,
-  proposeReaction,
   reconcileProjectLifecycles,
   rollActiveAgendas,
-  relationshipWritingPrompt,
   expireResidentWishes,
   reconcileWishLifecycle,
   respondDueVenueMail,
@@ -128,11 +98,8 @@ export function createWorldCoordination({
    * Required local state is committed before optional narration is requested, so
    * an unavailable model can never stop time, schedules or wishes.
    */
-  async function reconcileVillage(
-    options: { forceStory?: boolean; now?: Date; actionId?: string; expectedAttempt?: number } = {},
-  ): Promise<VillageSnapshot> {
+  async function reconcileVillage(options: { now?: Date } = {}): Promise<VillageSnapshot> {
     await assertVillageClockWrite();
-    const forced = options.forceStory === true;
     const now = options.now ?? villageNow();
     let recorded = await readVillageState();
     if (!isVillageFounded(recorded)) return buildVillageSnapshot(now);
@@ -182,14 +149,9 @@ export function createWorldCoordination({
       timeZone: recorded.timeZone || undefined,
       now,
     });
-    const previousThrough = recorded.simulatedThrough || recorded.foundedAt || moment.instant;
-    const previousMs = Date.parse(previousThrough);
     const currentMs = Date.parse(moment.instant);
-    const elapsedMs =
-      Number.isFinite(previousMs) && Number.isFinite(currentMs) ? Math.max(0, currentMs - previousMs) : 0;
-
     // These are deterministic reconciliation rules. They run for both the live
-    // timer and restart catch-up, irrespective of story pace.
+    // timer and restart catch-up, irrespective of background pace.
     await mutateVillageState((state) => {
       for (const resident of state.villagers) {
         const expired =
@@ -278,311 +240,8 @@ export function createWorldCoordination({
     const withAgendas = await backfillAgendas(await readVillageState(), now);
     await refreshVillagerRemaps(withAgendas, now);
     await reconcileWishLifecycle(now);
-    const village = await readVillageState();
-    const dateKey = localDateKey(now);
-    const remainingSocialEvents =
-      storyAllowance(village.storyPace, village.seed, dateKey) -
-      village.happenings.filter(
-        (entry) =>
-          localDateKey(
-            new ZonedDate(
-              entry.occurredAt,
-              now instanceof ZonedDate ? now.zone : Intl.DateTimeFormat().resolvedOptions().timeZone,
-            ),
-          ) === dateKey,
-      ).length;
-    const activeSocialPlan =
-      !forced && village.storyPace !== "off" && remainingSocialEvents > 0
-        ? village.relationshipContext?.socialPlans.find(
-            (plan) =>
-              plan.status === "planned" &&
-              plan.kind === "meeting" &&
-              plan.dateKey === dateKey &&
-              plan.startMinute <= moment.minuteOfDay &&
-              plan.endMinute > moment.minuteOfDay,
-          )
-        : undefined;
-    const shouldCreateStory =
-      forced || (village.storyPace !== "off" && (village.lastCreativeDate < dateKey || !!activeSocialPlan));
-    if (!shouldCreateStory) {
-      const snapshot = await buildVillageSnapshot(now);
-      return { ...snapshot, recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs) };
-    }
-
-    const routines = new Map<string, NativeRoutine>();
-    const opportunity: VillageOpportunity | null = activeSocialPlan
-      ? {
-          id: activeSocialPlan.id + ":encounter",
-          kind: "encounter",
-          startsAt: now.toISOString(),
-          endsAt: now.toISOString(),
-          actorIds: activeSocialPlan.actorIds,
-          venueId: activeSocialPlan.venueId,
-          zoneId: activeSocialPlan.zoneId,
-          facts: [activeSocialPlan.activity, "An accepted free-time plan is happening now."],
-        }
-      : creativeOpportunity(village, routines, moment, previousThrough);
-    if (!opportunity) {
-      const snapshot = await buildVillageSnapshot(now);
-      return { ...snapshot, recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs) };
-    }
-    await mutateVillageState((state) => {
-      if (state.processedOpportunityIds.includes(opportunity.id)) return;
-      const withoutDuplicate = state.opportunities.filter((entry) => entry.id !== opportunity.id);
-      state.opportunities = [...withoutDuplicate, opportunity].slice(-256);
-    });
-    const context: VillageTickContext = {
-      descriptionVersion: 1,
-      playerAgencyVersion: 1,
-      semanticVersion: 2,
-      village: village.name,
-      playerBackground: village.playerBackground,
-      playerPersonaName: village.playerPersonaName,
-      setting: villageCurrentSetting(village),
-      worldFacts: village.worldFacts,
-      moment,
-      residents: village.villagers.map((villager) => {
-        const card = readEffectiveVillagerCard(villager);
-        return {
-          characterId: villager.characterId,
-          name: card.name,
-          summary: card.summary,
-          profile: venueCardProfile(card, readPlayerIdentity(village).name),
-          // What they are doing, said the way it happens here. A miss answers with
-          // the village's own default rather than with the Engine's sentence,
-          // which is the leak this whole file exists to close: see
-          // `VILLAGE_UNTRANSLATED_ACTIVITY`.
-          doing:
-            openingPresence(village, villager.characterId)?.activity ??
-            agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false)?.activity ??
-            "",
-          agenda: villager.agenda,
-        };
-      }),
-      recent: village.happenings.map((entry) => entry.text),
-      venues: village.venues,
-      pendingHousingCharacterIds: [
-        ...village.residences.filter((entry) => entry.status !== "current").map((entry) => entry.characterId),
-      ],
-      social:
-        !forced && village.storyPace !== "off"
-          ? {
-              candidates:
-                !activeSocialPlan && storyAllowance(village.storyPace, village.seed, dateKey) > 1
-                  ? socialPlanCandidates(village, now)
-                  : [],
-              relationships: opportunity.actorIds.map((actorId) => relationshipWritingPrompt(village, actorId)),
-            }
-          : undefined,
-      opportunities: [opportunity],
-      lastSimulatedAt: previousThrough,
-      forced,
-    };
-    await queueBackgroundJob({
-      kind: "story",
-      subjectId: activeSocialPlan ? "social:" + activeSocialPlan.id : "village",
-      seed: village.seed,
-      revision: forced ? "manual:" + (options.actionId ?? opportunity.id) : dateKey,
-      finite: forced,
-      label: forced ? "Requested village event" : "Today's village story",
-      automaticDate: forced ? undefined : dateKey,
-      expectedAttempt: forced ? options.expectedAttempt : undefined,
-      input: {
-        context,
-        forced,
-        socialPlanId: activeSocialPlan?.id,
-        socialPlan: activeSocialPlan,
-        dateKey,
-        opportunity,
-        moment,
-        now: now.toISOString(),
-        actorIncarnations: Object.fromEntries(
-          opportunity.actorIds.map((id) => [
-            id,
-            village.villagers.find((resident) => resident.characterId === id)?.cardSnapshot.capturedAt,
-          ]),
-        ),
-      },
-    });
-    const reconciled = await readVillageState();
-    const snapshot = await buildVillageSnapshot(now);
-    return { ...snapshot, recap: buildReturnRecap(reconciled, previousThrough, moment.instant, elapsedMs) };
-  }
-
-  const storyBackgroundHandler: Handler = {
-    generate: (input) => proposeHappenings(input.context),
-    valid: (state, input) =>
-      input.context.setting === villageCurrentSetting(state) &&
-      input.opportunity.actorIds.every((id: string) =>
-        state.villagers.some(
-          (resident) => resident.characterId === id && resident.cardSnapshot.capturedAt === input.actorIncarnations[id],
-        ),
-      ) &&
-      (!input.opportunity.venueId || state.venues.some((venue) => venue.id === input.opportunity.venueId)) &&
-      (input.forced ||
-        (state.storyPace !== "off" &&
-          (state.lastCreativeDate < input.dateKey ||
-            (input.socialPlanId && socialContinuationValid(state, input.socialPlanId, input.socialPlan))) &&
-          localDateKey(
-            new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
-          ) <= input.dateKey)),
-    apply(state, input, proposal) {
-      const { forced, dateKey, opportunity } = input;
-      const now = new ZonedDate(input.now, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-
-      if (!forced && (state.storyPace === "off" || (!input.socialPlanId && state.lastCreativeDate >= dateKey))) return;
-      const dailyAllowance = storyAllowance(state.storyPace, state.seed, dateKey);
-      const used = state.happenings.filter(
-        (entry) =>
-          localDateKey(
-            new ZonedDate(entry.occurredAt, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
-          ) === dateKey,
-      ).length;
-      const offeredPlan = input.context.social?.candidates.some((plan) => plan.id === proposal.social?.planId);
-      const allowance = forced
-        ? 3
-        : input.socialPlanId
-          ? Math.max(0, dailyAllowance - used)
-          : Math.max(1, dailyAllowance - (offeredPlan ? 1 : 0));
-      if (!allowance) return;
-      const opportunityId = opportunity.id;
-      if (state.processedOpportunityIds.includes(opportunityId)) return;
-      const happenings = proposal.happenings.slice(0, allowance);
-      state.happenings = [...happenings, ...state.happenings].slice(0, MAX_HAPPENINGS);
-      if (!forced && proposal.social && input.context.social) {
-        const id = opportunity.id + ":social";
-        state.socialOutbox ??= [];
-        if (!state.socialOutbox.some((entry) => entry.id === id))
-          state.socialOutbox.push({
-            id,
-            seed: state.seed,
-            at: input.now,
-            opportunity,
-            candidates: input.context.social.candidates,
-            proposal: proposal.social,
-            requiredPlanId: input.socialPlanId,
-          });
-      }
-      if (proposal.routineIdea) {
-        const resident = state.villagers.find((entry) => entry.characterId === proposal.routineIdea.characterId);
-        if (resident?.agenda) addRoutineIdea(resident.agenda, proposal.routineIdea, resident, state);
-      }
-      for (const request of proposal.housingRequests) {
-        if (!opportunity.actorIds.includes(request.characterId)) continue;
-        const resident = state.villagers.find((entry) => entry.characterId === request.characterId);
-        const venue = state.venues.find((entry) => entry.id === request.venueId);
-        if (!resident || !venue) continue;
-        if (state.residences.some((entry) => entry.characterId === request.characterId && entry.status !== "current"))
-          continue;
-        if (request.kind === "move") {
-          if (venue.occupancy.playerHome || venue.occupancy.residentCharacterId) continue;
-          if (
-            state.residences.some(
-              (entry) =>
-                entry.proposedVenueId === venue.id && (entry.status === "pending" || entry.status === "moving"),
-            )
-          )
-            continue;
-          const currentVenueId =
-            state.venues.find((entry) => entry.occupancy.residentCharacterId === request.characterId)?.id ?? "";
-          const next: VillageResidence = {
-            proposedPrivateZoneId: "",
-            venueId: currentVenueId,
-            characterId: request.characterId,
-            status: "pending",
-            proposedVenueId: venue.id,
-            requestedAt: now.toISOString(),
-            requestedBy: "villager",
-            villagerDecision: "pending",
-          };
-          const index = state.residences.findIndex((entry) => entry.characterId === request.characterId);
-          if (index < 0) state.residences.push(next);
-          else state.residences[index] = next;
-        }
-      }
-      // Prose Events update the feed only; structured commands own durable effects.
-      if (state.lastCreativeDate < dateKey) state.lastCreativeDate = dateKey;
-      if (!state.processedOpportunityIds.includes(opportunityId)) {
-        state.processedOpportunityIds = [...state.processedOpportunityIds, opportunityId].slice(-256);
-      }
-    },
-  };
-
-  /**
-   * Write down what the rest of the village saw of something the player just did.
-   *
-   * This is the answer to the only complaint the world panel cannot otherwise
-   * answer. A settled wish is filed as a private memory, a conversation is filed
-   * as a memory, and a memory is invisible: the record is read in the story tab
-   * and nowhere else, and the window the player actually watches only moves when
-   * the narrator writes a part of day. So the player does something definite, the
-   * villager they did it for knows, and the square carries on as though nothing
-   * happened until the clock turns over — which is the one thing that makes a
-   * village feel like it is not paying attention.
-   *
-   * `deed` is the village's own past-tense line about what happened, and the
-   * caller is responsible for it never being the player's raw claim. That is where
-   * the safety of the whole route lies: by the time anything is written here, some
-   * other call has already decided that the thing actually happened.
-   *
-   * It writes NOTHING on its own initiative. An empty list, a failure, a reply with
-   * no JSON, a village with nobody else in it — all of them mean the window keeps
-   * exactly what it had. Nothing here may cost the player the thing they did, so a
-   * caller that catches this has already done the right thing.
-   *
-   * ponytail: one extra model call per settled wish. It is the only way to put an
-   * action in the panel the player watches without also letting a model invent
-   * something, because the narrator is the only other writer and it runs on a
-   * clock. The upgrade path, if the cost ever matters, is to ride it on the verdict
-   * call the way the end of a conversation rides on its own closing call — the
-   * judge would then have to write prose, which is exactly why it was left alone.
-   */
-  async function runVillageReaction(params: {
-    villagerName: string;
-    playerName: string;
-    /** What happened, in the village's own words and in the past tense. */
-    deed: string;
-    signal?: AbortSignal;
-  }): Promise<void> {
-    const deed = boundText(params.deed, MAX_CHRONICLE_LENGTH);
-    if (deed.length === 0) return;
-    const village = await readVillageState();
-    const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: villageNow() });
-    const { happenings } = await proposeReaction(
-      {
-        village: village.name,
-        setting: villageCurrentSetting(village),
-        moment,
-        playerName: params.playerName,
-        villagerName: params.villagerName,
-        deed,
-        recent: village.happenings.map((entry) => entry.text),
-      },
-      { signal: params.signal },
-    );
-    if (happenings.length === 0) return;
-    await mutateVillageState((state) => {
-      // A reset or new founding within this activation retires the old world's
-      // response. Check the authoritative identity on every save attempt.
-      if (state.seed !== village.seed || state.setupAt !== village.setupAt || state.foundedAt !== village.foundedAt)
-        return;
-      // Deduped against the window as it stands rather than the copy read before
-      // the call, because a narrator batch can land while the model is thinking
-      // and the same line reaching the window twice reads as a village repeating
-      // itself.
-      const seen = new Set(state.happenings.map((entry) => entry.text.trim().toLowerCase()));
-      const fresh = happenings.filter((entry) => {
-        const key = entry.text.trim().toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      if (fresh.length === 0) return;
-      state.happenings = prependHappenings(state.happenings, fresh);
-      // Direct reactions do not move `simulatedThrough`: that cursor belongs to
-      // reconciliation, while this records one player-triggered fact at its exact
-      // occurrence time.
-    });
+    await reconcileResidentPlanning?.(now);
+    return buildVillageSnapshot(now);
   }
 
   /**
@@ -687,12 +346,10 @@ export function createWorldCoordination({
   return {
     resetVillage,
     reconcileVillage,
-    runVillageReaction,
     buildVillageStory,
     buildVillageMemories,
     removeChronicleEntry,
     removeVillageRecollection,
-    storyBackgroundHandler,
   };
 }
 export type WorldCoordination = ReturnType<typeof createWorldCoordination>;

@@ -11,7 +11,7 @@ import {
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
-import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   previewVillagerRefresh,
@@ -179,7 +179,7 @@ async function run() {
         );
       } else assert.match(outsidePrompt, /do not describe them entering an interior/);
     }
-    const background = buildTickMessages({
+    const background = buildResidentPlanningMessages({
       village: "Camp",
       setting: "Clearing",
       moment: deriveVillageMoment({ foundedAt: stamp, seed: state.seed, now: new Date(stamp) }),

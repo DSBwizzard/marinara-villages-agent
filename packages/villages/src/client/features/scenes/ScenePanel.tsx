@@ -1077,7 +1077,7 @@ export function RoomPanel({
               ✦ {notices.length}
             </button>
             {noticesOpen ? (
-              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
+              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Scene changes">
                 {notices.map((notice) => (
                   <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
                     <span aria-hidden="true">{roomNoticeIcon(notice.kind)}</span>

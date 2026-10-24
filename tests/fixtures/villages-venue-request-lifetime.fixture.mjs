@@ -14,13 +14,13 @@ export async function createVenueRequestHarness(browser) {
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useVenueRequestCommands} from './packages/villages/src/client/features/venues/request-commands.js';
 import {renderVenueRequestsPage} from './packages/villages/src/client/features/venues/VenueRequestsPage.js';
-import {useSaveStoryPace} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveBackgroundPace} from './packages/villages/src/client/features/settings/actions.js';
 function Harness(){
  const [snapshot,rawSnapshot]=useState(window.seed),[busy,rawBusy]=useState(false),[error,rawError]=useState(''),[edits,rawEdits]=useState(window.overrides);
  const setSnapshot=useCallback(v=>{window.calls.snapshot++;rawSnapshot(v)},[]),setBusy=useCallback(v=>{window.calls.busy++;rawBusy(v)},[]),
  setSettingsError=useCallback(v=>{window.calls.error++;rawError(v)},[]),setRequestEdits=useCallback(v=>{window.calls.edits++;rawEdits(v)},[]);
  const ports={snapshot,setSnapshot,setBusy,setSettingsError,setRequestEdits,requestEdits:edits};
- const commands=useVenueRequestCommands(ports),pace=useSaveStoryPace(ports);
+ const commands=useVenueRequestCommands(ports),pace=useSaveBackgroundPace(ports);
  const launch=fn=>{const promise=fn();window.pending.push(Promise.resolve(promise));return window.pending.length-1};
  const actions={description:()=>commands.generateRequestDescription(window.entry,edits[window.entry.id]??snapshot.venueRequests[0].venueDraft),
  complete:()=>commands.completeResidenceMove({characterId:'resident / A'}),
