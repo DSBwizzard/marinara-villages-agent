@@ -102,9 +102,8 @@ export function useSceneChangesPolling(ports: {
         cursor = answer.nextCursor ?? cursor;
         cursorRef.current.cursor = cursor;
         retries = 0;
-        const active =
-          answer.activeRequest?.status === "running" ||
-          answer.backgroundChecks?.some((job) => ["queued", "running"].includes(job.status));
+        // The operation/recovery monitor owns a running turn. This loop owns only its asynchronous Wish checks.
+        const active = answer.backgroundChecks?.some((job) => ["queued", "running"].includes(job.status));
         if (answer.hasMore) timer = setTimeout(() => void poll(), 25);
         else if (active) {
           wasActive = true;

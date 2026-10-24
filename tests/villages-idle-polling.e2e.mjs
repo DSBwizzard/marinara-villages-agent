@@ -91,11 +91,11 @@ try {
   assert.equal(reads.snapshot, 0, "presence replaces duplicate idle snapshot reads");
 
   // Pending bookkeeping without a running owner is recoverable state, not a polling lease.
-  feed = { ...feed, processingSummary: { pending: 1, failed: 0, rejected: 0 } };
+  feed = { ...feed, activeRequest: { status: "running" }, processingSummary: { pending: 1, failed: 0, rejected: 0 } };
   await page.evaluate(() => window.h.room((room) => ({ ...room, sceneRevision: 2 })));
   await expect.poll(() => reads.feed).toBe(2);
   await page.clock.runFor(30_000);
-  assert.equal(reads.feed, 2);
+  assert.equal(reads.feed, 2, "turn recovery owns operation monitoring; the feed does not duplicate it");
 
   // An actual asynchronous job owns monitoring, including a final settling read.
   feed = { ...feed, backgroundChecks: [{ status: "running" }] };
