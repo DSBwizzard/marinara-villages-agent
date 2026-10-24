@@ -1,3 +1,4 @@
+import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readProjectPlan } from "../rules/project-completion.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { readOpening } from "../rules/opening-project.js";
@@ -774,7 +775,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? raw.constructionStatus
         : undefined,
     name,
-    form: boundText(raw.form, MAX_VENUE_NOTE_LENGTH),
+    form: boundText(raw.form, MAX_PHYSICAL_DESIGN_LENGTH),
     classes,
     layoutVersion: explicitLayout ? 1 : undefined,
     spaces,

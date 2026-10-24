@@ -1,3 +1,4 @@
+import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import { refreshProjectAgreements } from "../../domain/rules/project-lifecycle-rules.js";
 import type { InterpretationCheck, InterpretationEvidence } from "../../domain/models/interpretation-check-model.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
@@ -172,7 +173,7 @@ export function createProjectChecks({
               actorId: actor,
               kind,
               title: project.title,
-              description: flow.change?.detail ?? project.venueDraft?.description ?? "",
+              description: projectPhysicalDesign(project),
               venueId: project.venueId,
               playerId: "player",
               playerName: village.playerPersonaName,

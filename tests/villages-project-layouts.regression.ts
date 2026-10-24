@@ -71,6 +71,38 @@ assert.equal(coerceVillageState(saved).venues[0].zones!.length, 7, "Entrance is 
 saved.venues[0].zones!.push({ ...saved.venues[0].zones![1], id: "seventh" });
 assert.throws(() => coerceVillageState(saved), /six Zones/);
 await assert.rejects(f.service.saveProjectPlan(id, f.body(id, { ...plan, capacity: 5 })), /one to four/);
+const distinct = fixture(),
+  distinctId = await distinct.newProject();
+const physicalDesign = "A timber hall with sheltered work tables, wide windows and a shared gathering space. "
+  .repeat(30)
+  .slice(0, 2000)
+  .trim();
+const entranceAppearance = "A narrow gate beside the old oak.";
+await distinct.service.saveProjectPlan(
+  distinctId,
+  distinct.body(distinctId, {
+    ...plan,
+    form: physicalDesign,
+    exteriorDescription: entranceAppearance,
+  }),
+);
+assert.equal(distinct.get(distinctId).plan!.form, physicalDesign, "saving retains the full Physical design");
+await distinct.agree(distinctId);
+await distinct.service.startProjectConstruction(distinctId, distinct.body(distinctId));
+let built = distinct.state().venues.find((venue) => venue.id === distinct.get(distinctId).venueId)!;
+assert.equal(built.description, entranceAppearance);
+assert.equal(
+  built.zones![0].description,
+  entranceAppearance,
+  "the worksite Entrance never inherits the overall design",
+);
+assert.equal(built.form, physicalDesign);
+await distinct.service.debugCompleteProjectConstruction(distinctId, distinct.body(distinctId));
+built = coerceVillageState(distinct.state()).venues.find((venue) => venue.id === built.id)!;
+assert.equal(built.form, physicalDesign, "completion and reload retain the full Physical design");
+assert.equal(built.description, entranceAppearance);
+assert.equal(built.zones![0].description, entranceAppearance);
+assert.equal(parsePlace({ ...founding, form: physicalDesign }, true).form, physicalDesign);
 console.log(
   "Six non-Entrance Zones across founding, new Venue plans, Renovations and current saves; direct capacity limits passed.",
 );

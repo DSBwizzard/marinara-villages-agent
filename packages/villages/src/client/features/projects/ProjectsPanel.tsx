@@ -1,3 +1,4 @@
+import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { useId, useState } from "react";
 import { OpeningProjects } from "./OpeningProjects.js";
 import { ProjectZones } from "./ProjectZones.js";
@@ -130,7 +131,7 @@ export function ProjectsPanel({
         ]
       : [{ id: "exterior", name: "Entrance", kind: "exterior", connectedTo: [] as string[] }, ...draft.zones]
     : [];
-  const intended = flow?.change?.detail ?? project?.venueDraft?.description ?? "";
+  const intended = project?.kind === "new-venue" ? (venue?.form ?? "") : draft.detail;
   const count =
     project?.kind === "new-venue"
       ? (venue?.spaces?.length ?? 0) + (venue?.privateSpaces?.length ?? 0)
@@ -267,14 +268,14 @@ export function ProjectsPanel({
                     />
                   </label>
                   <label>
-                    Physical result
+                    Physical design
                     <textarea
-                      aria-label="Physical result"
+                      aria-label="Physical design"
                       autoComplete="off"
                       value={c.description}
                       required
                       rows={3}
-                      maxLength={2000}
+                      maxLength={MAX_PHYSICAL_DESIGN_LENGTH}
                       onChange={(event) => c.setDescription(event.target.value)}
                     />
                   </label>
@@ -346,6 +347,7 @@ export function ProjectsPanel({
                   <ProjectDrawing image={venue?.presentation.image} caption={project.title} />
                   <section className="vp-panel">
                     <h3>Project overview</h3>
+                    <span className="vp-label">Physical design</span>
                     <p>{intended}</p>
                     <Facts
                       rows={[
@@ -361,7 +363,7 @@ export function ProjectsPanel({
               ) : null}
               {tab === "Design" && venue ? (
                 <div className="vp-columns">
-                  <ProjectDrawing image={venue.presentation.image} caption={venue.form || project.title} />
+                  <ProjectDrawing image={venue.presentation.image} caption={project.title} />
                   <section className="vp-panel">
                     <h3>Design specification</h3>
                     {editable ? (
@@ -377,17 +379,6 @@ export function ProjectsPanel({
                                 onChange={(event) => workspace.field("title")(event.target.value)}
                               />
                             </label>
-                            <label>
-                              Physical result
-                              <textarea
-                                aria-label="Physical result"
-                                autoComplete="off"
-                                rows={3}
-                                value={draft.detail}
-                                maxLength={2000}
-                                onChange={(event) => workspace.field("detail")(event.target.value)}
-                              />
-                            </label>
                           </>
                         ) : null}
                         <span className="vp-label">Classes · up to two</span>
@@ -395,17 +386,21 @@ export function ProjectsPanel({
                           value={venue.classes ?? []}
                           onChange={(classes) => patchVenue({ ...venue, classes })}
                         />
-                        {project.kind === "new-venue" ? (
-                          <label>
-                            Physical form
-                            <input
-                              autoComplete="off"
-                              value={venue.form ?? ""}
-                              maxLength={240}
-                              onChange={(event) => patchVenue({ ...venue, form: event.target.value })}
-                            />
-                          </label>
-                        ) : null}
+                        <label>
+                          Physical design
+                          <textarea
+                            autoComplete="off"
+                            aria-label="Physical design"
+                            rows={4}
+                            maxLength={MAX_PHYSICAL_DESIGN_LENGTH}
+                            value={intended}
+                            onChange={(event) =>
+                              project.kind === "new-venue"
+                                ? patchVenue({ ...venue, form: event.target.value })
+                                : workspace.field("detail")(event.target.value)
+                            }
+                          />
+                        </label>
                         {venue.classes?.includes("residence") ? (
                           <label className="vp-capacity">
                             Residence capacity
@@ -429,7 +424,7 @@ export function ProjectsPanel({
                                 aria-label="Entrance"
                                 autoComplete="off"
                                 rows={2}
-                                maxLength={2000}
+                                maxLength={1000}
                                 value={venue.description}
                                 onChange={(event) => patchVenue({ ...venue, description: event.target.value })}
                               />
@@ -442,7 +437,7 @@ export function ProjectsPanel({
                       <Facts
                         rows={[
                           ["Classes", (venue.classes ?? []).map(titleCase).join(" · ")],
-                          ["Physical form", venue.form || intended],
+                          ["Physical design", intended],
                           [
                             "Residence capacity",
                             venue.classes?.includes("residence") ? String(draft.capacity) : "Not applicable",

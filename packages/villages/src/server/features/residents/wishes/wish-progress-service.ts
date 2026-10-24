@@ -1,3 +1,4 @@
+import { projectPhysicalDesign } from "../../../../shared/helpers/project-design.js";
 import type { Handler } from "../../../domain/models/background-model.js";
 import { captureSceneWishEffect } from "../../../domain/rules/scene-continuity.js";
 import type { readEffectiveVillagerCard } from "../../../adapters/engine/catalog.js";
@@ -207,8 +208,7 @@ export function createWishProgress(ports: WishProgressPorts) {
       const project = state.projects.find((project) => project.id === event.projectId && project.status === "complete");
       if (project) {
         const routingWords = (
-          `${project.title} ${project.venueDraft?.description ?? ""}`.toLocaleLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ??
-          []
+          `${project.title} ${projectPhysicalDesign(project)}`.toLocaleLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []
         ).filter(
           (word) =>
             ![

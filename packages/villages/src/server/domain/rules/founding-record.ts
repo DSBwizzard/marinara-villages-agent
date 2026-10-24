@@ -1,3 +1,4 @@
+import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueImage } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest, conflict } from "./errors.js";
@@ -11,7 +12,6 @@ import {
   MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_IMAGE_URL_LENGTH,
   MAX_VENUE_NAME_LENGTH,
-  MAX_VENUE_NOTE_LENGTH,
   SETUP_MAX_VILLAGER_COUNT,
   SETUP_MIN_VILLAGER_COUNT,
 } from "./prompt-preset.js";
@@ -142,7 +142,7 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
     throw badRequest(`A place name can be at most ${MAX_VENUE_NAME_LENGTH} characters.`);
   }
   const description = typeof record.description === "string" ? record.description.trim() : "";
-  const form = boundText(record.form, MAX_VENUE_NOTE_LENGTH).trim();
+  const form = boundText(record.form, MAX_PHYSICAL_DESIGN_LENGTH).trim();
   if (founding && !form) throw badRequest("Describe what each venue actually is in Form before founding.");
   if (founding && !description) throw badRequest("Describe the exterior of each venue before founding.");
   const classes: VillageVenueClass[] = validVenueClasses(record.classes)

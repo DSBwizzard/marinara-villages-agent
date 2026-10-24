@@ -1,3 +1,4 @@
+import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { venueDesignHash } from "./project-structure.js";
 import type { VillageState, VillageProject, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { asRecord } from "./coerce.js";
@@ -102,10 +103,10 @@ export function completeProject(state: VillageState, project: VillageProject, at
 }
 export function readProjectPlan(value: unknown, venue: VillageVenue): NonNullable<VillageProject["plan"]> {
   const row = asRecord(value);
-  const form = boundText(row.form, 240).trim();
+  const form = boundText(row.form, MAX_PHYSICAL_DESIGN_LENGTH).trim();
   const exteriorDescription = boundText(row.exteriorDescription, MAX_VENUE_DESCRIPTION_LENGTH).trim();
   if (!form || !exteriorDescription || row.layoutVersion !== 1)
-    throw badRequest("Define the physical form, layout and Exterior before work starts.");
+    throw badRequest("Define the Physical design, layout and Entrance before work starts.");
   const capacity = Number(row.capacity ?? 1);
   if (!Number.isInteger(capacity) || capacity < 1 || capacity > 4)
     throw badRequest("Residence capacity must be from one to four.");

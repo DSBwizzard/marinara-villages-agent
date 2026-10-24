@@ -1,3 +1,4 @@
+import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import type { VillageState } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { renovationTerms } from "./project-terms.js";
@@ -38,7 +39,7 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
           title: project.title,
           description: project.lifecycle?.change
             ? renovationTerms(project.lifecycle.change)
-            : project.venueDraft?.description,
+            : projectPhysicalDesign(project),
           design: project.plan,
           leadId: project.lifecycle?.builderId,
           affectedIds: project.lifecycle?.affectedIds,

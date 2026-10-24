@@ -91,7 +91,7 @@ try {
       await page.getByRole("button", { name: /Canvas Tent/ }).click();
       const editor = page.locator("main article");
       await page.getByRole("tab", { name: "Design", exact: true }).click();
-      await editor.getByLabel("Physical form", { exact: true }).fill("A tent, or a mat beneath a tree");
+      await editor.getByLabel("Physical design", { exact: true }).fill("A tent, or a mat beneath a tree");
       await editor.getByLabel("Entrance", { exact: true }).fill("A sheltered patch beneath a tree.");
       await page.getByRole("tab", { name: "Zones", exact: true }).click();
       if (layout === "common" || layout === "both") {

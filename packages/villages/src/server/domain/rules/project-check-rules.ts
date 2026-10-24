@@ -1,3 +1,4 @@
+import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import { validDecisionEvidence } from "./decision-candidates.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { VenueScene } from "../models/scene-model.js";
@@ -41,7 +42,7 @@ export function projectExchangeRelevant(
     projectReferenceWords(project.title).some((word) => words.has(word))
   )
     return true;
-  const detail = project.lifecycle?.change?.detail ?? project.venueDraft?.description ?? "";
+  const detail = projectPhysicalDesign(project);
   if (projectReferenceWords(detail).filter((word) => words.has(word)).length >= 2) return true;
   const prior = scene.submissions.at(-1);
   const contexts = (prior?.projectContexts ?? []).filter(

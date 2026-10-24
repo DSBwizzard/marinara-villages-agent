@@ -1,16 +1,17 @@
+import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import type { VillageSnapshot, VillageVenue, VenueClass } from "../../../shared/contracts/village.js";
 import { useEffect, useRef, useState } from "react";
 import { request, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useProjectWorkspaces } from "./useProjectWorkspaces.js";
 
-function draftVenue(name: string, classes: VenueClass[], description: string): VillageVenue {
+function draftVenue(name: string, classes: VenueClass[], physicalDesign: string): VillageVenue {
   return {
     id: "draft",
     name,
     classes,
-    form: "",
-    description,
+    form: physicalDesign,
+    description: "",
     category: "",
     layoutVersion: 1,
     layout: "exterior",
@@ -53,7 +54,7 @@ export function useProjectsController({
   const initial =
     project?.kind === "new-venue"
       ? {
-          ...draftVenue(project.title, project.venueDraft?.classes ?? ["other"], project.venueDraft?.description ?? ""),
+          ...draftVenue(project.title, project.venueDraft?.classes ?? ["other"], projectPhysicalDesign(project)),
           ...(project.plan
             ? {
                 form: project.plan.form,

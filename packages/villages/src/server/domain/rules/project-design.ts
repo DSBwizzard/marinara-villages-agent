@@ -96,7 +96,7 @@ export function validateRenovationDesign(state: VillageState, venue: VillageVenu
 export function plannedVenue(project: VillageProject): VillageVenue {
   const draft = project.venueDraft!;
   const entrance = {
-    ...defaultVenueSpace(draft.classes[0] ?? "other", draft.description),
+    ...defaultVenueSpace(draft.classes[0] ?? "other", project.plan?.exteriorDescription ?? ""),
     id: "exterior",
     name: "Entrance",
     kind: "exterior" as const,
@@ -110,8 +110,8 @@ export function plannedVenue(project: VillageProject): VillageVenue {
     residenceCapacity: project.plan?.capacity ?? 1,
     buildProjectId: project.id,
     constructionStatus: "worksite",
-    form: "",
-    description: draft.description,
+    form: project.plan?.form ?? draft.description,
+    description: project.plan?.exteriorDescription ?? "",
     category: "",
     layoutVersion: 1,
     zones: [entrance],

@@ -1,3 +1,4 @@
+import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import { readOpeningRenovation, openingRenovationDraft } from "./opening-renovation.js";
 import { createHash } from "node:crypto";
 import { physicalVenueEvents } from "./venue-scene-state.js";
@@ -299,7 +300,7 @@ export function openingSceneDirection(state: VillageState, scene: VenueScene, in
   const project = state.projects.find((entry) => entry.id === opening.projectId);
   if (project?.status === "complete" && project.venueId === scene.placeId && true) {
     const chosen = opening.proposals.find((entry) => entry.residentId === project.requesterCharacterId);
-    return `OPENING FIRST USE: Intended use: ${chosen?.firstUse ?? project.venueDraft?.description}. Continue ordinary play; never perform the player's actions for them. ${includeSignals ? 'Only if this current player exchange and visible response actually depict that use, return openingSignal:{kind:"first-use",residentId:"",quote:"exact response quote depicting use",playerQuote:"exact current player words participating in that use"}.' : "Let actual player participation and visible responses establish the use."} Greetings, entering, promises and descriptions of possible use do not count. No invented physical effects.`;
+    return `OPENING FIRST USE: Intended use: ${chosen?.firstUse ?? projectPhysicalDesign(project)}. Continue ordinary play; never perform the player's actions for them. ${includeSignals ? 'Only if this current player exchange and visible response actually depict that use, return openingSignal:{kind:"first-use",residentId:"",quote:"exact response quote depicting use",playerQuote:"exact current player words participating in that use"}.' : "Let actual player participation and visible responses establish the use."} Greetings, entering, promises and descriptions of possible use do not count. No invented physical effects.`;
   }
   return "";
 }

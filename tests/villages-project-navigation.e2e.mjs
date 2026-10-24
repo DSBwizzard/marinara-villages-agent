@@ -19,6 +19,7 @@ try {
         project.title = body.name;
         project.venueDraft.name = body.name;
         project.venueDraft.classes = body.classes;
+        project.venueDraft.description = body.description;
         project.plan = null;
         project.lifecycle.builderId = "";
         project.lifecycle.candidates = [];
@@ -81,7 +82,7 @@ try {
       return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
     });
     assert(selectedContrast >= 4.5, "a hovered selected tab retains readable contrast");
-    await page.getByLabel("Physical form", { exact: true }).fill("An edited pavilion");
+    await page.getByLabel("Physical design", { exact: true }).fill("An edited pavilion");
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
     // Keyboard navigation changes tabs, never the design or server.
     await page.getByRole("tab", { name: "Design", exact: true }).press("ArrowRight");
@@ -104,21 +105,24 @@ try {
     await expect(
       page.getByRole("group", { name: "Classes", exact: true }).getByRole("button", { name: "Community", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await page.getByLabel("Physical result", { exact: true }).fill("A revised workshop");
+    await page.getByLabel("Physical design", { exact: true }).fill("A revised workshop");
     await back();
     await select(/Canvas Tent/);
     await page.getByRole("tab", { name: "Design", exact: true }).click();
-    await expect(page.getByLabel("Physical form", { exact: true })).toHaveValue("An edited pavilion");
+    await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("An edited pavilion");
     await page.getByRole("button", { name: "Save design", exact: true }).click();
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeEnabled();
     assert.equal(f.calls.length, 1, "editing, saving and navigation never start work");
     assert.equal(f.calls[0].body.expectedRevision, 1);
     assert.equal(f.calls[0].body.spaces[0].purpose, "Painting");
     await screenshot("design");
+    await page.getByRole("tab", { name: "Overview", exact: true }).click();
+    await expect(page.getByRole("tabpanel")).toContainText("An edited pavilion");
+    await expect(page.getByRole("tabpanel")).not.toContainText("A shared art pavilion.");
     await page.getByRole("button", { name: "Start · 24 hours", exact: true }).click();
     await expect(page.locator("time")).toHaveAttribute("datetime", "2026-10-24T12:00:00Z");
     await page.getByRole("tab", { name: "Design", exact: true }).click();
-    await expect(page.getByLabel("Physical form", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Physical design", { exact: true })).toHaveCount(0);
     await page.getByRole("tab", { name: "Progress", exact: true }).click();
     await page.getByRole("button", { name: "Cancel Project", exact: true }).click();
     await back();
@@ -128,7 +132,7 @@ try {
         .getByRole("button", { name: /Canvas Tent.*Cancelled/ }),
     ).toBeVisible();
     await select(/Workshop/);
-    await expect(page.getByLabel("Physical result", { exact: true })).toHaveValue("A revised workshop");
+    await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A revised workshop");
     await page.getByRole("button", { name: "Save design", exact: true }).click();
     assert.deepEqual(
       f.calls.at(-1).body.classes,
@@ -148,7 +152,7 @@ try {
     await back();
     await page.getByRole("button", { name: "New Venue", exact: true }).click();
     await page.getByLabel("Name", { exact: true }).fill("New Garden");
-    await page.getByLabel("Physical result", { exact: true }).fill("A shared garden.");
+    await page.getByLabel("Physical design", { exact: true }).fill("A shared garden.");
     await page
       .getByRole("group", { name: "Classes", exact: true })
       .getByRole("button", { name: "Workplace", exact: true })
@@ -157,6 +161,33 @@ try {
     await expect(page.getByRole("heading", { name: "New Garden", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
     assert.deepEqual(f.calls.find((call) => call.path === "/projects").body.classes, ["community", "workplace"]);
+    await page.getByRole("tab", { name: "Design", exact: true }).click();
+    await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A shared garden.");
+    await expect(page.getByLabel("Entrance", { exact: true })).toHaveValue("");
+    const longDesign = "A shared garden with sheltered work tables, winding paths and open planting beds. ".repeat(24);
+    await page.getByLabel("Physical design", { exact: true }).fill(longDesign);
+    await expect(page.getByLabel("Entrance", { exact: true })).toHaveValue("");
+    await page.getByLabel("Entrance", { exact: true }).fill("A narrow gate beside the old oak.");
+    await page.getByRole("tab", { name: "Zones", exact: true }).click();
+    await expect(page.getByLabel("Entrance", { exact: true })).toHaveValue("A narrow gate beside the old oak.");
+    await page.getByRole("tab", { name: "Overview", exact: true }).click();
+    await expect(page.getByRole("tabpanel")).toContainText(longDesign.trim());
+    await page.getByRole("button", { name: "Save design", exact: true }).click();
+    await expect.poll(() => f.calls.at(-1)?.path).toBe("/projects/created/plan");
+    assert.equal(f.calls.at(-1).body.form, longDesign);
+    assert.equal(f.calls.at(-1).body.exteriorDescription, "A narrow gate beside the old oak.");
+    const reopened = await openProjectPage(browser, width, structuredClone(f.snapshot));
+    await reopened.page
+      .getByRole("navigation", { name: "Projects", exact: true })
+      .getByRole("button", { name: /New Garden/ })
+      .click();
+    await expect(reopened.page.getByRole("tabpanel")).toContainText(longDesign.trim());
+    await reopened.page.getByRole("tab", { name: "Design", exact: true }).click();
+    await expect(reopened.page.getByLabel("Physical design", { exact: true })).toHaveValue(longDesign);
+    await expect(reopened.page.getByLabel("Entrance", { exact: true })).toHaveValue(
+      "A narrow gate beside the old oak.",
+    );
+    await reopened.page.close();
     await page.close();
 
     // Six-Zone admission and private specifications are authored through the same selected-space editor.
@@ -223,16 +254,16 @@ try {
       .getByRole("button", { name: /Canvas Tent/ })
       .click();
     await changed.page.getByRole("tab", { name: "Design", exact: true }).click();
-    await changed.page.getByLabel("Physical form", { exact: true }).fill("Local edit");
+    await changed.page.getByLabel("Physical design", { exact: true }).fill("Local edit");
     changed.snapshot.projects[0].plan.form = "A design saved elsewhere";
     changed.snapshot.projects[0].lifecycle.revision++;
     await changed.update();
     await expect(changed.page.getByRole("button", { name: "Save design", exact: true })).toBeDisabled();
-    await expect(changed.page.getByLabel("Physical form", { exact: true })).toHaveValue("Local edit");
+    await expect(changed.page.getByLabel("Physical design", { exact: true })).toHaveValue("Local edit");
     await changed.page.getByRole("button", { name: "Discard edits", exact: true }).click();
-    await expect(changed.page.getByLabel("Physical form", { exact: true })).toHaveValue("A design saved elsewhere");
+    await expect(changed.page.getByLabel("Physical design", { exact: true })).toHaveValue("A design saved elsewhere");
     assert.equal(changed.calls.length, 0, "a stale local draft cannot overwrite a newer revision");
-    await changed.page.getByLabel("Physical form", { exact: true }).fill("Another local edit");
+    await changed.page.getByLabel("Physical design", { exact: true }).fill("Another local edit");
     changed.snapshot.projects[0].status = changed.snapshot.projects[0].lifecycle.phase = "paused";
     changed.snapshot.projects[0].lifecycle.workOrder = {
       remainingMs: 60000,
@@ -244,7 +275,7 @@ try {
     await expect(changed.page.getByRole("button", { name: "Resume", exact: true })).toBeDisabled();
     await changed.page.getByRole("button", { name: "Discard edits", exact: true }).click();
     await expect(changed.page.getByRole("button", { name: "Resume", exact: true })).toBeEnabled();
-    await expect(changed.page.getByLabel("Physical form", { exact: true })).toHaveCount(0);
+    await expect(changed.page.getByLabel("Physical design", { exact: true })).toHaveCount(0);
     await changed.page.close();
   }
   console.log(

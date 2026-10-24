@@ -93,7 +93,7 @@ Ongoing Wishes have a daily generation allowance, at least 24 hours between atte
 
 Projects create new Venues or directly renovate their Classes, residence capacity and Zones. Planning records the intended physical result, location, willing resident lead and necessary agreements. Consent and volunteering can arrive in any order, including the same conversation. Gifts and objects are narrative and have no Project effects.
 
-The Project portfolio uses a blueprint board with a Project index and freely selectable Overview, Design, Zones, People, Site and Progress tabs. Design edits persist while switching Projects or tabs. Classes and willing leads use direct choices; Zones are edited one at a time. Save and Start remain separate actions. A design changed elsewhere requires reloading the current design before stale local edits can be submitted.
+The Project portfolio uses a blueprint board with a Project index and freely selectable Overview, Design, Zones, People, Site and Progress tabs. A single Physical design field in Design also supplies Overview; Entrance appearance is authored independently. Design edits persist while switching Projects or tabs. Classes and willing leads use direct choices; Zones are edited one at a time. Save and Start remain separate actions. A design changed elsewhere requires reloading the current design before stale local edits can be submitted.
 
 Only the player's **Start** begins work. It atomically checks the saved design revision, willing lead, agreements and capacity, then creates the worksite. Drafts reserve nothing. Two Projects may be active in any mix, with distinct leads and one per Venue/site. Paused work counts toward both limits.
 
