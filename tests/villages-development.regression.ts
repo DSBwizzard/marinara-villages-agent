@@ -1,3 +1,5 @@
+import { normalizeVillageMutation } from "../packages/villages/src/server/domain/rules/world-mutation.js";
+import { housingAvailableAt } from "../packages/villages/src/server/domain/rules/development-housing.js";
 import assert from "node:assert/strict";
 import { developmentFixture, elapsed, START, moveProposal } from "./fixtures/villages-development.fixture.js";
 import {
@@ -339,6 +341,28 @@ for (const decision of ["refuse", "conditional"] as const) {
     state.development,
     "Maximum valid provider IDs cannot make the saved world unreadable.",
   );
+}
+
+{
+  const state = developmentFixture();
+  normalizeVillageMutation(state, state.seed, () => {}, {
+    now: () => new Date(elapsed(0)),
+    seed: () => "normalization",
+  });
+  const input = developmentReview(state, elapsed(14))!;
+  normalizeVillageMutation(
+    state,
+    state.seed,
+    (state) => applyDevelopmentReview(state, input, moveProposal(elapsed(14)), elapsed(14)),
+    { now: () => new Date(elapsed(14)), seed: () => "normalization" },
+  );
+  assert.equal(home(state), "home-b");
+  assert.equal(
+    housingAvailableAt(state, elapsed(14))["home-b"],
+    new Date(Date.parse(elapsed(2)) + 3000).toISOString(),
+    "Normalizing occupancy/access must preserve the accepted historical availability floor.",
+  );
+  assert.deepEqual(readDevelopment(JSON.parse(JSON.stringify(state.development))), state.development);
 }
 assert.throws(() => readDevelopmentProposal({ version: 1, steps: [], reviews: [] }), /invalid review/);
 assert.throws(() => readDevelopment({ version: 2 }), /invalid/);

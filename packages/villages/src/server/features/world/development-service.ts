@@ -78,7 +78,11 @@ export function createDevelopment(ports: DevelopmentPorts) {
       ["failed", "interrupted", "paused"].includes(previous.status) &&
       state.backgroundReceipts[slotId] === previous.id
     ) {
-      await ports.retryBackgroundJob(slotId, previous.attempt, "development-ack-" + previous.id);
+      await ports.retryBackgroundJob(
+        slotId,
+        previous.attempt,
+        "development-ack-" + backgroundRevision([previous.id, previous.attempt]),
+      );
       return;
     }
     if (previous?.seed === state.seed && previous.status !== "completed") {
@@ -106,7 +110,8 @@ export function createDevelopment(ports: DevelopmentPorts) {
           (m) => m.scope === "village" || (m.knownByCharacterIds ?? m.actors.map((a) => a.id)).includes(r.characterId),
         )
         .filter((m) => !m.supersededBy)
-        .slice(-8)
+        .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt))
+        .slice(0, 8)
         .map((m) => ({ id: m.id, text: m.text, at: m.occurredAt })),
     }));
     const homes = state.venues

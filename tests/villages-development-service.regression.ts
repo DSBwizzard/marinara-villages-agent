@@ -1,3 +1,4 @@
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import assert from "node:assert/strict";
 import { developmentFixture, elapsed, moveProposal } from "./fixtures/villages-development.fixture.js";
 import {
@@ -10,7 +11,8 @@ const queued: any[] = [];
 let previous: any = null,
   calls = 0,
   trim = false,
-  bad = false;
+  bad = false,
+  retries = 0;
 const ports: DevelopmentPorts = {
   async readVillageState() {
     return structuredClone(state);
@@ -24,8 +26,9 @@ const ports: DevelopmentPorts = {
   async backgroundJobSnapshot() {
     return previous;
   },
-  async retryBackgroundJob() {
-    calls++;
+  async retryBackgroundJob(id) {
+    assert.match(id, /^villages-background-[a-f0-9]{64}$/);
+    retries++;
   },
   async queueBackgroundJob(job) {
     queued.push(job);
@@ -86,6 +89,41 @@ bad = true;
 await assert.rejects(service.handler.generate(input), /invalid review/);
 assert.equal(calls, 2, "Invalid output is rejected without automatic paid repair.");
 assert.ok(queued[1].input.context.residents.every((r: any) => Array.isArray(r.pursuits)));
+
+const slotId = "villages-background-" + backgroundRevision(["development", "village"]);
+state.backgroundReceipts[slotId] = previous.id;
+previous.status = "failed";
+await service.reconcileDevelopment(new Date(elapsed(8)));
+previous.attempt++;
+await service.reconcileDevelopment(new Date(elapsed(8)));
+assert.equal(retries, 2, "Successive failed acknowledgements remain recoverable from the committed receipt.");
+assert.equal(calls, 2, "Receipt acknowledgements never dispatch a provider request.");
+delete state.backgroundReceipts[slotId];
+previous = { ...previous, status: "completed" };
+state.chronicle = Array.from(
+  { length: 12 },
+  (_, index) =>
+    ({
+      id: `memory-${index}`,
+      text: index === 0 ? "Ada promised the player to discuss any move first." : "An older fact.",
+      occurredAt: elapsed(3 - index / 10),
+      scope: "private",
+      actors: [{ id: "a", name: "Ada" }],
+      knownByCharacterIds: ["a"],
+      kind: "chat",
+      dayIndex: 0,
+      clock: "",
+      timePrecision: "exact",
+    }) as any,
+);
+await service.reconcileDevelopment(new Date(elapsed(8)));
+assert.ok(
+  queued
+    .at(-1)
+    .input.context.residents.find((resident: any) => resident.characterId === "a")
+    .memories.some((memory: any) => memory.id === "memory-0"),
+  "The most recent player commitment survives a larger memory history.",
+);
 console.log(
   "Resident development service: bounded generation, durable failure holds, explicit recovery and essential context passed.",
 );
