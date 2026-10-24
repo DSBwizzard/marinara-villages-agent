@@ -201,7 +201,7 @@ try {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `scene-checks-${width}x${height}.png`),
           });
-        await checksPanel.getByRole("button", { name: "Close", exact: true }).click();
+        await checksPanel.getByRole("button", { name: "Close interpretation checks", exact: true }).click();
         await idle();
         assert.deepEqual(interpretationReads, { settings: 1, diagnostics: 1 });
         await page.getByRole("button", { name: "0 checks", exact: true }).click();
