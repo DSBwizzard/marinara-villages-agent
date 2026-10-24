@@ -1,3 +1,4 @@
+import { backgroundRevision } from "./background-revision.js";
 import { sceneEvidencePerception } from "./scene-evidence-perception.js";
 import { z } from "zod";
 import type { DevelopmentSceneChange } from "../models/development-model.js";
@@ -69,7 +70,9 @@ export function applyDevelopmentScene(
   if (scene.villageSeed !== state.seed || submission.semanticProvenance?.developmentVersion !== 1) return;
   const changedActors = new Set<string>();
   for (const change of submission.developmentChanges ?? []) {
-    const id = `development-scene:${scene.id}:${submission.id}:${change.pursuitId}:${change.kind}:${change.actorId}`;
+    const id =
+      "development-scene:" +
+      backgroundRevision([scene.id, submission.id, change.characterId, change.pursuitId, change.kind, change.actorId]);
     if (state.exchangeReceipts[id]) continue;
     const r = state.development?.residents[change.characterId];
     const p = r?.pursuits.find((p) => p.id === change.pursuitId);

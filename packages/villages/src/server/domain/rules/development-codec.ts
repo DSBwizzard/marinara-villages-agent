@@ -34,6 +34,7 @@ const saved = z.object({
       pursuits: z.array(pursuit).max(24),
     }),
   ),
+  housing: z.record(id, z.object({ signature: z.string(), availableAt: time })).optional(),
   observations: z.record(id, z.object({ at: time, signature: z.string() })),
   log: z.array(z.object({ id, at: time, effectiveAt: time, actorId: id, outcome: text, reason: text })).max(100),
 });

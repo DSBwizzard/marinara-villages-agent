@@ -1,3 +1,4 @@
+import { housingSignature } from "./development-housing.js";
 import { moveConsentingActors } from "./development-consent.js";
 import type { VillageState } from "../models/world.js";
 import { badRequest, conflict } from "./errors.js";
@@ -30,6 +31,8 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
   )
     throw conflict("The move needs agreement from the current household and controllers.");
   assertResidencePrivateDestination(state, destination, characterId, residence.proposedPrivateZoneId);
+  const beforeHousing = Object.fromEntries(state.venues.map((v) => [v.id, housingSignature(v)]));
+  const completionAt = residence.completesAt;
   const old = state.venues.find((venue) => venueResidentIds(venue).includes(characterId));
   destination.layoutVersion = 1;
   destination.zones ??= venueZones(destination);
@@ -109,5 +112,15 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
   residence.status = "current";
   residence.completesAt = "";
   keepAgendaPlaces(state);
+  if (state.development) {
+    state.development.housing ??= {};
+    for (const home of [old, destination])
+      if (home) {
+        const known = state.development.housing[home.id];
+        const at =
+          known?.signature === beforeHousing[home.id] && !force && completionAt ? completionAt : now.toISOString();
+        state.development.housing[home.id] = { signature: housingSignature(home), availableAt: at };
+      }
+  }
   return true;
 }

@@ -1,3 +1,4 @@
+import { recordHousingAvailability } from "../../domain/rules/development-housing.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { DevelopmentReview } from "../../domain/models/development-model.js";
 import {
@@ -30,7 +31,7 @@ Return ONLY {version:1,steps:[],reviews:[{characterId,nextReviewHours:24..168,re
 One review for each offered resident, at most six chronological steps TOTAL. Existing pursuits come first. Quiet periods and no intention are valid. No daily replay or forced progress. Consider character motives, existing memories, others' independent wishes, available homes, consent and plausible opportunities to speak. Knowledge belongs only to the named knowers; no omniscient residents.
 Each step: {id:unique,pursuitId,characterId,kind:"intend|consent|wait|end|move",at:ISO,reason,dependsOn:[earlier accepted step IDs],targetVenueId?,privateZoneId?,actorId?,decision?:"agree|refuse|conditional"}.
 Use stable existing pursuit IDs. For a new intend use a new pursuitId, exact targetVenueId and optional vacant privateZoneId. An intention is consideration, NOT consent. Each consent is the named resident's own new decision, shared with the mover. Never generate player consent. Respect actual conditions; unresolved conditions are conditional, never agree. Previously refused/conditional consent stays unresolved unless that person truly changes their mind for a supported reason. Do not resolve their position merely because the mover wants it.
-Steps must fall on/after that resident's nextReviewAt and reviewedThrough and no later than through. Decisions follow their causes. Move requires unconditional consent from ALL supplied consentingActors, including mover, household, property and room controllers; existing player consent must come from saved conversation evidence. Start takes 24 real hours; code completes when due. Move is the terminal step for that resident in this batch: never invent life after occupancy. If no consent/opportunity exists, wait, reconsider or end. At most one active move per resident and two substantial pursuits overall. Never start Projects, construct homes, displace occupants, grant access, create objects, leave the Village or alter Wishes. Reasons are short plain language. nextReviewHours is a delay after through; relevant future conversations may trigger an earlier review.`;
+Intending or arranging a home must be on/after its availableFrom; present vacancy never proves past vacancy. Steps must fall on/after that resident's nextReviewAt and reviewedThrough and no later than through. Decisions follow their causes. Move requires unconditional consent from ALL supplied consentingActors, including mover, household, property and room controllers; existing player consent must come from saved conversation evidence. Start takes 24 real hours; code completes when due. Move is the terminal step for that resident in this batch: never invent life after occupancy. If no consent/opportunity exists, wait, reconsider or end. At most one active move per resident and two substantial pursuits overall. Never start Projects, construct homes, displace occupants, grant access, create objects, leave the Village or alter Wishes. Reasons are short plain language. nextReviewHours is a delay after through; relevant future conversations may trigger an earlier review.`;
 export function createDevelopment(ports: DevelopmentPorts) {
   async function inspectDevelopment() {
     const state = await ports.readVillageState();
@@ -71,13 +72,23 @@ export function createDevelopment(ports: DevelopmentPorts) {
       state = await ports.readVillageState();
     }
     const previous = await ports.backgroundJobSnapshot("development", "village");
+    const slotId = "villages-background-" + backgroundRevision(["development", "village"]);
+    if (
+      previous?.seed === state.seed &&
+      ["failed", "interrupted", "paused"].includes(previous.status) &&
+      state.backgroundReceipts[slotId] === previous.id
+    ) {
+      await ports.retryBackgroundJob(slotId, previous.attempt, "development-ack-" + previous.id);
+      return;
+    }
     if (previous?.seed === state.seed && previous.status !== "completed") {
       if (!actionId || ["queued", "running", "paused"].includes(previous.status)) return;
       if (previous.input && developmentReviewValid(state, (previous.input as { review: DevelopmentReview }).review)) {
-        await ports.retryBackgroundJob(previous.id, previous.attempt, actionId);
+        await ports.retryBackgroundJob(slotId, previous.attempt, actionId);
         return;
       }
     }
+    state = await ports.mutateVillageState((state) => recordHousingAvailability(state, now.toISOString()));
     const review = developmentReview(state, now.toISOString());
     if (!review) return;
     const residents = state.villagers.map((r) => ({
@@ -105,6 +116,7 @@ export function createDevelopment(ports: DevelopmentPorts) {
         name: v.name,
         form: v.form,
         capacity: v.residenceCapacity,
+        availableFrom: review.housingAvailableAt[v.id],
         residentIds: venueResidentIds(v),
         playerHome: v.occupancy.playerHome,
         zones: venueZones(v)

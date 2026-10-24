@@ -87,7 +87,7 @@ for (const decision of ["refuse", "conditional"] as const) {
   const { state } = apply(4, decision);
   assert.equal(home(state), "home-a");
   assert.equal(state.development!.residents.a!.pursuits[0]!.status, "stalled");
-  assert.match(state.development!.log.find((r) => r.id.endsWith(":arrange"))!.reason, /has not agreed/);
+  assert.match(state.development!.log.find((r) => r.outcome === "Rejected")!.reason, /has not agreed/);
 }
 {
   const state = developmentFixture(),
@@ -197,7 +197,7 @@ for (const decision of ["refuse", "conditional"] as const) {
   );
   assert.equal(
     sceneContinuityView(state, scene).development!.residents.a!.pursuits[0]!.reason,
-    "Bram needs his privacy.",
+    "Ada wants company nearer her workshop.",
     "The captured Scene sees its exact receipt, not later private state.",
   );
   const receipts = Object.keys(state.exchangeReceipts).length;
@@ -309,6 +309,35 @@ for (const decision of ["refuse", "conditional"] as const) {
     sceneContinuityView(state, scene).development,
     undefined,
     "A Scene from before activation cannot import later private intentions.",
+  );
+}
+
+{
+  const state = developmentFixture();
+  state.venues[1]!.residenceCapacity = 3;
+  const input = developmentReview(state, elapsed(14))!;
+  applyDevelopmentReview(state, input, moveProposal(elapsed(14)), elapsed(14));
+  assert.equal(
+    home(state),
+    "home-a",
+    "Present availability cannot establish that a changed bed was available earlier.",
+  );
+}
+{
+  const state = developmentFixture(),
+    input = developmentReview(state, elapsed(4))!,
+    proposal = moveProposal(elapsed(4));
+  const names = new Map(proposal.steps.map((step, index) => [step.id, String(index).repeat(240)]));
+  for (const step of proposal.steps) {
+    step.id = names.get(step.id)!;
+    step.pursuitId = "p".repeat(240);
+    step.dependsOn = step.dependsOn.map((id) => names.get(id)!);
+  }
+  applyDevelopmentReview(state, input, readDevelopmentProposal(proposal), elapsed(4));
+  assert.deepEqual(
+    readDevelopment(JSON.parse(JSON.stringify(state.development))),
+    state.development,
+    "Maximum valid provider IDs cannot make the saved world unreadable.",
   );
 }
 assert.throws(() => readDevelopmentProposal({ version: 1, steps: [], reviews: [] }), /invalid review/);

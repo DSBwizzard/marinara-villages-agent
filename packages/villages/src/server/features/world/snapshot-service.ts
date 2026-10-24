@@ -53,12 +53,6 @@ export function createVillageSnapshot({
     if (clock?.paused) now = villageNow();
     else if (clock) now = new ZonedDate(now, clock.timeZone);
     if (!clock?.paused && (await rollActiveAgendas(now, village))) village = await readVillageState();
-    const minuteOfDay = deriveVillageMoment({
-      foundedAt: village.foundedAt,
-      seed: village.seed,
-      timeZone: village.timeZone || undefined,
-      now,
-    }).minuteOfDay;
     const residentIds = village.villagers.map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));
@@ -80,7 +74,16 @@ export function createVillageSnapshot({
       village = await readVillageState();
     }
     if (observeCurrentHousing && !clock?.paused)
-      village = await mutateVillageState((state) => observeHousing(state, now.toISOString()));
+      village = await mutateVillageState((state) => {
+        now = villageNow();
+        observeHousing(state, now.toISOString());
+      });
+    const minuteOfDay = deriveVillageMoment({
+      foundedAt: village.foundedAt,
+      seed: village.seed,
+      timeZone: village.timeZone || undefined,
+      now,
+    }).minuteOfDay;
     const player = readPlayerIdentity(village);
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();

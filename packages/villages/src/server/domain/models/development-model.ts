@@ -26,6 +26,7 @@ export type DevelopmentState = {
   activatedAt: string;
   generation: number;
   residents: Record<string, ResidentDevelopment>;
+  housing?: Record<string, { signature: string; availableAt: string }>;
   observations: Record<string, { at: string; signature: string }>;
   log: { id: string; at: string; effectiveAt: string; actorId: string; outcome: string; reason: string }[];
 };
@@ -36,6 +37,7 @@ export type DevelopmentReview = {
   generation: number;
   through: string;
   housingRevision: string;
+  housingAvailableAt: Record<string, string>;
   residentIds: string[];
   residents: Record<string, ResidentDevelopment>;
 };

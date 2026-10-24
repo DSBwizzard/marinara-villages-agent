@@ -1,3 +1,4 @@
+import { recordHousingAvailability, housingAvailableAt } from "./development-housing.js";
 import { moveConsentingActors } from "./development-consent.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import type {
@@ -35,6 +36,7 @@ export function initializeDevelopment(state: VillageState, enabled: boolean, at:
       log: [],
     };
   const d = state.development;
+  recordHousingAvailability(state, at);
   if (d.enabled === enabled) return;
   d.enabled = enabled;
   d.generation++;
@@ -91,6 +93,7 @@ export function developmentReview(state: VillageState, at: string): DevelopmentR
     generation: d.generation,
     through: at,
     housingRevision: developmentHousingRevision(state),
+    housingAvailableAt: housingAvailableAt(state, at),
     residentIds: due,
     residents: Object.fromEntries(due.map((id) => [id, structuredClone(d.residents[id]!)])),
   };
@@ -178,7 +181,7 @@ export function finishDevelopmentMove(state: VillageState, characterId: string, 
       ...Object.keys(p.consents),
     ]);
     log(d, {
-      id: `${p.id}:completed`,
+      id: "completed:" + backgroundRevision([characterId, p.id]),
       at: appliedAt,
       effectiveAt,
       actorId: characterId,
@@ -227,6 +230,8 @@ function applyStep(state: VillageState, input: DevelopmentReview, step: Developm
       updatedAt: step.at,
       consents: {},
     };
+    if (Date.parse(step.at) < Date.parse(input.housingAvailableAt[p.targetVenueId] ?? input.through))
+      throw conflict("The home was not established as available at that time.");
     assertMove(state, step.characterId, p);
     resident.pursuits = [
       ...resident.pursuits.filter(activePursuit),
@@ -260,6 +265,8 @@ function applyStep(state: VillageState, input: DevelopmentReview, step: Developm
     } else if (step.kind === "wait") p.status = "stalled";
     else if (step.kind === "end") p.status = "ended";
     else if (step.kind === "move") {
+      if (Date.parse(step.at) < Date.parse(input.housingAvailableAt[p.targetVenueId] ?? input.through))
+        throw conflict("The home was not established as available at that time.");
       const target = assertMove(state, step.characterId, p);
       if (
         !moveConsentingActors(target, p.privateZoneId, step.characterId).every(
@@ -293,7 +300,7 @@ function applyStep(state: VillageState, input: DevelopmentReview, step: Developm
         finishDevelopmentMove(state, step.characterId, appliedAt);
       }
     }
-    p.reason = step.reason;
+    if (step.kind === "wait" || step.kind === "end") p.reason = step.reason;
     if (p.status !== "completed") p.updatedAt = step.at;
   }
   log(d, {
@@ -350,7 +357,14 @@ export function applyDevelopmentReview(
           input,
           {
             ...step,
-            id: `${input.generation}:${step.characterId}:${input.residents[step.characterId]!.revision}:${step.id}`,
+            id:
+              "decision:" +
+              backgroundRevision([
+                input.generation,
+                step.characterId,
+                input.residents[step.characterId]!.revision,
+                step.id,
+              ]),
           },
           appliedAt,
         );
@@ -363,7 +377,7 @@ export function applyDevelopmentReview(
     }
     if (reason)
       log(state.development!, {
-        id: `rejected:${input.generation}:${step.characterId}:${resident?.revision}:${step.id}`,
+        id: "rejected:" + backgroundRevision([input.generation, step.characterId, resident?.revision, step.id]),
         at: appliedAt,
         effectiveAt: step.at,
         actorId: step.characterId,
@@ -382,7 +396,9 @@ export function applyDevelopmentReview(
     r.nextReviewAt = iso(Date.parse(through) + review.nextReviewHours * DEVELOPMENT_HOUR_MS);
     r.reason = review.reason;
     log(state.development!, {
-      id: `review:${review.characterId}:${input.residents[review.characterId]!.revision}`,
+      id:
+        "review:" +
+        backgroundRevision([input.generation, review.characterId, input.residents[review.characterId]!.revision]),
       at: appliedAt,
       effectiveAt: input.through,
       actorId: review.characterId,
