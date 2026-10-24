@@ -1,4 +1,5 @@
 import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
+import { villageNow } from "../adapters/time/clock-gate.js";
 import { semanticBlocker } from "../domain/rules/semantic-continuity.js";
 import type { VenueScene } from "../domain/models/scene-model.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
@@ -681,7 +682,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         }
         operation.timing = { attemptId: operation.attemptId, startedAt: runStartedAt, stages: [] };
         data.operation = operation;
-        if (!options.replay && data.status !== "closed") data.lastActivityAt = new Date().toISOString();
+        if (!options.replay && data.status !== "closed") data.lastActivityAt = villageNow().toISOString();
       });
       const current: Context = {
         sessionId,

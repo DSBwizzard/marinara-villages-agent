@@ -184,8 +184,10 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
             let savedMemory: VillageChronicleEntry | undefined;
             if (kind === "passing") {
               const expiry = new Date(Date.parse(at) + 24 * 60 * 60 * 1000).toISOString();
-              if (Date.parse(expiry) > Date.now()) {
-                state.recollections = state.recollections.filter((entry) => Date.parse(entry.expiresAt) > Date.now());
+              if (Date.parse(expiry) > villageNow().getTime()) {
+                state.recollections = state.recollections.filter(
+                  (entry) => Date.parse(entry.expiresAt) > villageNow().getTime(),
+                );
                 const repeated = state.recollections.find(
                   (entry) =>
                     entry.text.toLowerCase() === text.toLowerCase() &&
@@ -485,7 +487,7 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         receipt.committedAt = villageNow().toISOString();
         receipt.noticeSequence = ++state.noticeSequence;
       }
-      captureRelationshipKnowledge(state, authority);
+      captureRelationshipKnowledge(state, authority, villageNow());
     });
     return {
       status:

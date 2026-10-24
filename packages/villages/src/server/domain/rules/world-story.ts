@@ -1,4 +1,5 @@
 import { openingPresence } from "./opening-presence.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageOpportunity, VillageRecap, VillageState, VillageStoryPace } from "../models/world.js";
 import { isHousePlace } from "./prompt-preset.js";
 import type { NativeRoutine } from "./schedule-rules.js";
@@ -29,7 +30,13 @@ export function creativeOpportunity(
   };
   const currentPlaces = new Map<string, string[]>();
   for (const villager of village.villagers) {
-    const place = villagerPlaceView(village, villager, routines.get(villager.characterId) ?? null, moment.minuteOfDay);
+    const place = villagerPlaceView(
+      village,
+      villager,
+      routines.get(villager.characterId) ?? null,
+      moment.minuteOfDay,
+      new ZonedDate(moment.instant, moment.timeZone),
+    );
     if (!place) continue;
     const destinationKey = JSON.stringify([place.id, place.zoneId ?? "exterior"]);
     currentPlaces.set(destinationKey, [...(currentPlaces.get(destinationKey) ?? []), villager.characterId]);

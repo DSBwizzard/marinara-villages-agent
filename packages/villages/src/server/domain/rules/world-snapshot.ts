@@ -155,6 +155,7 @@ export function villageSettings(
     zoneId?: string;
   } | null,
   accessContext?: import("../../domain/rules/venue-access.js").AccessContext,
+  now = new Date(),
 ): VillageSettingsView {
   return {
     visitRetention: village.visitRetention,
@@ -200,7 +201,7 @@ export function villageSettings(
     townMapNegativePrompt: DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
     settingMaxLength: MAX_SETTING_LENGTH,
     venues: village.venues.map((venue) => {
-      const previewAt = accessContext?.at ?? new Date();
+      const previewAt = now;
       const context =
         residenceAccess?.placeId === venue.id
           ? accessContext

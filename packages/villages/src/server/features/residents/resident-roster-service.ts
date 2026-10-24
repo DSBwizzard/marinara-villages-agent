@@ -108,7 +108,7 @@ export function createResidentRoster({
             capturedAt: addedAt,
           },
           addedAt,
-          agenda: unwrittenVillageAgenda(state.venues, card.name),
+          agenda: unwrittenVillageAgenda(state.venues, card.name, villageNow()),
           completedWishes: [],
           ingestSchedule: false,
           scheduleInfluence: influenceSettings(null),

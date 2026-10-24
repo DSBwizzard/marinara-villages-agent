@@ -33,14 +33,14 @@ export function createRelationships(ports: RelationshipPorts) {
     let current = village.relationshipContext;
     if (!current) return { profiles: [], starting: { pending: false, spoilers: false, summaries: [] } };
     const preview = structuredClone(current);
-    captureRelationshipKnowledge(preview, village);
+    captureRelationshipKnowledge(preview, village, villageNow());
     if (
       JSON.stringify(preview.knowledge) !== JSON.stringify(current.knowledge) ||
       JSON.stringify(preview.edges) !== JSON.stringify(current.edges)
     ) {
       current = await mutateRelationships(village.seed, (state) => {
-        reconcileRelationships(state, village);
-        captureRelationshipKnowledge(state, village);
+        reconcileRelationships(state, village, villageNow().getTime());
+        captureRelationshipKnowledge(state, village, villageNow());
       });
     }
     const pendingIds = village.villagers
@@ -168,7 +168,7 @@ export function createRelationships(ports: RelationshipPorts) {
           (state.edges[playerKey] ??= neutralRelationship(fromId, "player")).knowledgeBlockedUntilContact = true;
         }
       } else throw badRequest("Unknown relationship creator action.");
-      reconcileRelationships(state, village);
+      reconcileRelationships(state, village, villageNow().getTime());
     });
     return readRelationshipsView();
   }
