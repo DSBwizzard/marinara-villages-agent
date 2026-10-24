@@ -596,7 +596,7 @@ export function createSceneWriting({
             )
             .map((trace) => `${trace.id}: ${trace.text}`)
             .join("; ") || "none"
-        }. Items: ${place?.state.furniture.join("; ") || "none"}. Public facts: ${place?.state.publicFacts.join("; ") ?? ""}. Current state outranks older scene lines and happenings.`,
+        }. Items: ${place?.state.furniture.join("; ") || "none"}. Public facts: ${place?.state.publicFacts.join("; ") ?? ""}. Current state outranks older scene lines.`,
         "Approved room description: " + (place?.description || "none"),
         place?.constructionStatus === "worksite"
           ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."

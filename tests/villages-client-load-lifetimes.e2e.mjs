@@ -11,20 +11,18 @@ const bundle = await build({
     contents: `
 import { StrictMode, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { useVillageSnapshot, useLoadVillageSnapshot, useReconcileVillage, useVillagePresence, useSnapshotReference } from './packages/villages/src/client/shared/data-controller.js';
+import { useVillageSnapshot, useLoadVillageSnapshot, useVillagePresence } from './packages/villages/src/client/shared/data-controller.js';
 import { useResidentPortraits } from './packages/villages/src/client/features/residents/workflow-controller.js';
 function Harness() {
- const owner = useVillageSnapshot(window.seed), [error,setError] = useState(''), [catching,setCatchingUp] = useState(false);
+ const owner = useVillageSnapshot(window.seed), [error,setError] = useState('');
  const [wanted,setWanted] = useState(window.wanted), [portraits,setPortraits] = useState({}), [,redraw] = useState(0);
- const portraitsAsked = useRef(new Set()), currentSnapshotRef = useRef(owner.snapshot), reconcilingRef = useRef(false), storyActionRef = useRef(null), presenceSession = useRef('');
- useSnapshotReference({currentSnapshotRef,snapshot:owner.snapshot});
+ const portraitsAsked = useRef(new Set()), presenceSession = useRef('');
  const load = useLoadVillageSnapshot({setError,beginSnapshotRead:owner.beginSnapshotRead});
- const reconcile = useReconcileVillage({currentSnapshotRef,reconcilingRef,setCatchingUp,storyActionRef,beginSnapshotRead:owner.beginSnapshotRead});
  useVillagePresence({visible:document.visibilityState==='visible',presenceSession,beginSnapshotRead:owner.beginSnapshotRead,snapshot:window.presence?owner.snapshot:null});
  useResidentPortraits({portraitWanted:wanted,portraitsAsked,setPortraits});
  const launch = work => {window.pending.push(work());return window.pending.length-1};
- window.h = {load:options=>launch(()=>load(options||{})),abortLoad:()=>{window.abortRead=new AbortController();return launch(()=>load({signal:window.abortRead.signal}))},cancel:()=>window.abortRead.abort(),reconcile:force=>launch(()=>reconcile(force)),publish:owner.setSnapshot,error:setError,wanted:setWanted,redraw:()=>redraw(n=>n+1)};
- return <pre id="state">{JSON.stringify({snapshot:owner.snapshot,error,catching,portraits,wanted})}</pre>;
+ window.h = {load:options=>launch(()=>load(options||{})),abortLoad:()=>{window.abortRead=new AbortController();return launch(()=>load({signal:window.abortRead.signal}))},cancel:()=>window.abortRead.abort(),publish:owner.setSnapshot,error:setError,wanted:setWanted,redraw:()=>redraw(n=>n+1)};
+ return <pre id="state">{JSON.stringify({snapshot:owner.snapshot,error,portraits,wanted})}</pre>;
 }
 window.pending=[];
 const root=createRoot(document.getElementById('root'));
@@ -162,62 +160,6 @@ try {
       }
       await f.finish();
     }
-    for (const firstResponse of ["read", "mutation"]) {
-      const f = await mount({ strict });
-      const command = await f.launch("reconcile");
-      await expect.poll(() => f.requests.length).toBe(1);
-      const read = await f.launch("load");
-      await expect.poll(() => f.requests.length).toBe(2);
-      const completeRead = async () => {
-        await f.reply(f.requests[1], { ...seed, village: { name: "before commit" } });
-        await f.settle(read);
-      };
-      const completeMutation = async () => {
-        await f.reply(f.requests[0], { ...seed, village: { name: "committed" } });
-        await f.settle(command);
-      };
-      if (firstResponse === "read") {
-        await completeRead();
-        await completeMutation();
-      } else {
-        await completeMutation();
-        await completeRead();
-      }
-      assert.equal(
-        (await f.state()).snapshot.village.name,
-        "committed",
-        "Reconciliation retires reads begun before its commit, in either response order",
-      );
-      await f.finish();
-    }
-    const reconcile = await mount({ strict });
-    const old = await reconcile.launch("reconcile");
-    await expect.poll(() => reconcile.requests.length).toBe(1);
-    await reconcile.page.evaluate(() =>
-      window.h.publish({ ...window.seed, isFounded: false, village: { name: "reset" } }),
-    );
-    await reconcile.reply(reconcile.requests[0], { ...seed, village: { name: "old reconciliation" } });
-    await reconcile.settle(old);
-    assert.equal((await reconcile.state()).snapshot.isFounded, false);
-    assert.equal(reconcile.requests.length, 1);
-    await reconcile.finish();
-
-    const retry = await mount({ strict });
-    const first = await retry.launch("reconcile", true);
-    await expect.poll(() => retry.requests.length).toBe(1);
-    await retry.reply(retry.requests[0], { error: "lost connection" }, 503);
-    await retry.settle(first);
-    const second = await retry.launch("reconcile", true);
-    await expect.poll(() => retry.requests.length).toBe(2);
-    assert.equal(
-      retry.requests[0].body.actionId,
-      retry.requests[1].body.actionId,
-      "Explicit retry retains the original spending identity",
-    );
-    assert.equal(retry.requests[1].body.expectedAttempt, 3);
-    await retry.reply(retry.requests[1], seed);
-    await retry.settle(second);
-    await retry.finish();
   }
   for (const mode of ["invisible", "failed", "no-snapshot"]) {
     const f = await mount();
@@ -304,5 +246,5 @@ try {
   await browser.close();
 }
 console.log(
-  "Client loads: snapshot read/save/reset/disposal ordering, reconciliation identity, retired presence, and portrait cancellation/cache passed (mounted hooks, synthetic HTTP, desktop/phone and StrictMode).",
+  "Client loads: snapshot read/save/reset/disposal ordering, retired presence, and portrait cancellation/cache passed (mounted hooks, synthetic HTTP, desktop/phone and StrictMode).",
 );

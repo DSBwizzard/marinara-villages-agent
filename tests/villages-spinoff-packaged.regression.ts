@@ -246,9 +246,9 @@ try {
   const forced = await app.inject({
     method: "POST",
     url: "/api/villages/reconcile",
-    payload: {},
+    payload: { forceStory: true, actionId: "forced", expectedAttempt: 0 },
   });
-  assert.equal(forced.statusCode, 409, "read-only browsing cannot request another Village story event");
+  assert.equal(forced.statusCode, 409, "read-only browsing blocks the retired force action");
   const presence = await app.inject({
     method: "POST",
     url: "/api/villages/background/presence",
