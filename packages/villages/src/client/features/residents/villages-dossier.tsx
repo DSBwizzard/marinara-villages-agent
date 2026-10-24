@@ -355,7 +355,19 @@ export function VillagerDossier({
               </Sheet>
             ) : (
               <>
-                {section === "overview" ? null : section === "relationships" ? (
+                {section === "overview" ? (
+                  profile?.knownDevelopment?.length ? (
+                    <Sheet title="Known developments">
+                      {profile.knownDevelopment.map((row) => (
+                        <p key={row.id}>
+                          {row.text}
+                          <br />
+                          <small>Last heard {new Date(row.at).toLocaleString()}</small>
+                        </p>
+                      ))}
+                    </Sheet>
+                  ) : null
+                ) : section === "relationships" ? (
                   <VillagesRelationships
                     request={request}
                     prefix={P}

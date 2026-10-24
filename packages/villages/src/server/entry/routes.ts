@@ -1,3 +1,5 @@
+import { buildVillageSnapshot } from "../features/world/snapshot.js";
+import { readVillageState } from "../features/world/village-store.js";
 import { publicSceneRoutes } from "../adapters/http/public-scene-routes.js";
 import { registerBackgroundRoutes } from "../features/background/routes.js";
 import { registerFoundingRoutes } from "../features/founding/routes.js";
@@ -53,7 +55,20 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return "Your spinoff is still pending. You can browse Villages, but finish or discard it before changing Village state.";
     return null;
   };
-  const surface = publicSceneRoutes(engine, guard);
+  const surface = publicSceneRoutes(engine, guard, async (request, result) => {
+    if (request.headers?.["x-villages-housing-view"] !== "current" || !result || typeof result !== "object")
+      return result;
+    const value = result as Record<string, unknown>;
+    const snapshot = Array.isArray(value.villagers) && value.settings ? value : asRecord(value.snapshot);
+    if (!Array.isArray(snapshot.villagers) || !snapshot.settings || !(await readVillageState()).development)
+      return result;
+    // Rebuild from the exact state atomically marked as delivered; this also covers mutation and visible polling responses.
+    const delivered = {
+      ...(await buildVillageSnapshot(undefined, true)),
+      ...(snapshot.recap ? { recap: snapshot.recap } : {}),
+    };
+    return snapshot === value ? delivered : { ...value, snapshot: delivered };
+  });
   registerInterpretationRoutes(surface);
   registerRelationshipRoutes(surface);
   registerSpriteManagerRoutes(surface);

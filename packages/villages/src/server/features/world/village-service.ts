@@ -54,6 +54,7 @@ import type { buildVillageSnapshot } from "./snapshot.js";
 import type { readVillageState, mutateVillageState } from "./village-store.js";
 
 export interface WorldCoordinationPorts {
+  reconcileDevelopment?: (now: Date) => Promise<void>;
   processProjectWishOutbox?: typeof import("../residents/wishes/wish-progress.js").processProjectWishOutbox;
   readScene?: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof readVillageState;
@@ -81,6 +82,7 @@ export interface WorldCoordinationPorts {
 
 /** Owns world advancement and history connections. Construction never reads, writes or dispatches work. */
 export function createWorldCoordination({
+  reconcileDevelopment,
   processProjectWishOutbox,
   readScene,
   readVillageState,
@@ -263,6 +265,7 @@ export function createWorldCoordination({
 
     if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
     // Discover optional paid work only after deterministic advancement has committed.
+    await reconcileDevelopment?.(now);
     await respondDueVenueMail(now);
     // Initial space preparation retains the founding generation path; begin it only after local advancement.
     outsideVenueOperation(() => {

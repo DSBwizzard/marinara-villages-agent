@@ -15,6 +15,7 @@ export type RelationshipProfile = {
   routine: string[];
   interests: string;
   wishes: string[];
+  knownDevelopment?: { id: string; at: string; text: string; status: string }[];
   knownWishes?: import("./villages-wish-journal.js").KnownWish[];
   ties: { toId: string; name: string; warmth: number; trust: number; reasons: string[] }[];
   learned: { text: string; kind: string; at: string }[];

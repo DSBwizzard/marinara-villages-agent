@@ -123,6 +123,7 @@ export function quietContactReply(text: string, localIds: string[]) {
     projectSpeech: [],
     sceneChange: null,
     movementIntent: null as MovementIntent | null,
+    developmentChanges: [] as import("../models/development-model.js").DevelopmentSceneChange[],
     residenceSignal: null,
     renovationSignal: null,
     venueRequestSignal: null,

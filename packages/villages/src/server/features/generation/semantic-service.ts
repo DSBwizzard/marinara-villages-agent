@@ -1,3 +1,4 @@
+import { DEVELOPMENT_SCENE_INSTRUCTION } from "../../domain/rules/development-knowledge.js";
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
 import {
@@ -388,6 +389,7 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(movementReview
           ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
           : {}),
+        ...(scene.operation?.input.developmentVersion === 1 ? { developmentVersion: 1 } : {}),
         residentActionsOmitted,
         evidence,
         prepared,
@@ -395,9 +397,10 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
-      (residentActionsOmitted
-        ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
-        : "") +
+      (scene.operation?.input.developmentVersion === 1 ? DEVELOPMENT_SCENE_INSTRUCTION : "") +
+        (residentActionsOmitted
+          ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
+          : "") +
         (residentActions
           ? (actionContractV2
               ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
@@ -545,7 +548,7 @@ export function createSemanticService(ports: SemanticPorts) {
           if (opening.gathering) {
             if (!Array.isArray(raw.gatheringContributions))
               throw badGateway(
-                "The gathering check did not identify the founders’ ideas. The draft is preserved. Retry the check.",
+                "The gathering check did not identify the foundersâ€™ ideas. The draft is preserved. Retry the check.",
               );
             const contributions = raw.gatheringContributions.map(asRecord);
             const contributors = new Set<string>();
@@ -560,7 +563,7 @@ export function createSemanticService(ports: SemanticPorts) {
                 !openingGatheringQuoteMatches(savedInput.evidence, residentId, quote)
               )
                 throw badGateway(
-                  "The gathering check could not match a founder’s idea to their spoken dialogue. The draft is preserved. Retry the check.",
+                  "The gathering check could not match a founderâ€™s idea to their spoken dialogue. The draft is preserved. Retry the check.",
                 );
               contributors.add(residentId);
             }
@@ -587,6 +590,7 @@ export function createSemanticService(ports: SemanticPorts) {
           (asRecord(raw.action).happened !== true || !Number.isInteger(asRecord(raw.action).segment))
         )
           throw badGateway("System physical outcome lacks a completed, cited action.");
+        if (savedInput.developmentVersion === 1) effects.developmentChanges = raw.developmentChanges;
         const immediate = semanticImmediate(raw.events, lines);
         if (
           savedInput.context.opening?.requiredPitch &&

@@ -360,6 +360,15 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;
+    if (
+      job.kind === "development" &&
+      job.requests > 0 &&
+      state.seed === job.seed &&
+      !handlers.get(job.kind)!.valid(state, job.input)
+    )
+      throw conflict(
+        "Resident development changed while the review was running. Its response is retained; review again deliberately.",
+      );
     if (superseded.has(job.id) || state.seed !== job.seed || !handlers.get(job.kind)!.valid(state, job.input))
       throw new Obsolete("This work is no longer needed.");
   }
@@ -392,6 +401,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       ) {
         await retainFoundingJob(previous);
       }
+      if (
+        work.kind === "development" &&
+        work.retryActionId &&
+        previous &&
+        previous.status !== "completed" &&
+        previous.id !== jobId(work)
+      )
+        await retainFoundingJob(previous);
       await changeJob(id, (previous) => {
         if (previous?.id === jobId(work)) {
           if (work.finite && !previous.finite) previous.finite = true;
@@ -1194,7 +1211,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             !state.villagers.some((resident) => asWishCheckActors(job).includes(resident.characterId))
           : job?.kind === "mail"
             ? !state.venueMail.some((mail) => mail.id === job.subjectId)
-            : job?.kind !== "story" &&
+            : job?.kind !== "development" &&
+              job?.kind !== "story" &&
               job?.kind !== "starting-ties" &&
               !state.villagers.some((resident) => resident.characterId === job?.subjectId);
       if (
@@ -1210,7 +1228,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                 ? !state.villagers.some((resident) => asWishCheckActors(job).includes(resident.characterId))
                 : job?.kind === "mail"
                   ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
-                  : job?.kind !== "story" &&
+                  : job?.kind !== "development" &&
+                    job?.kind !== "story" &&
                     !state.villagers.some((resident) => resident.characterId === job?.subjectId);
             if (subjectGone || job?.seed !== state.seed) discardedReceipts.push(record.id);
           }

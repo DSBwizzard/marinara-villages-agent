@@ -1,3 +1,4 @@
+import { ELEMENT_TAG } from "./constants.js";
 import { API_PATH } from "./constants.js";
 import { normalizeVillageSnapshot } from "./villages-snapshot-normalization";
 
@@ -30,6 +31,14 @@ const ADMIN_SECRET_STORAGE_KEY = "marinara_admin_secret";
  */
 function villagesRequestHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers);
+  if (
+    typeof document !== "undefined" &&
+    document.visibilityState === "visible" &&
+    [...document.querySelectorAll<HTMLElement>(ELEMENT_TAG + '[data-housing-view="current"]')].some((element) =>
+      element.checkVisibility({ checkVisibilityCSS: true }),
+    )
+  )
+    headers.set("X-Villages-Housing-View", "current");
   try {
     const secret = window.localStorage.getItem(ADMIN_SECRET_STORAGE_KEY)?.trim();
     if (secret) headers.set("X-Admin-Secret", secret);

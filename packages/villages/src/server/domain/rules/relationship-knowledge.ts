@@ -1,3 +1,4 @@
+import { knownDevelopment } from "./development-knowledge.js";
 import type { RelationshipKnowledge, RelationshipState, StartingTie } from "../models/relationship-types.js";
 import type { VillageState } from "../models/world.js";
 import { agendaBlocksFor } from "./agenda-week.js";
@@ -19,6 +20,7 @@ export type RelationshipProfile = {
   routine: string[];
   interests: string;
   wishes: string[];
+  knownDevelopment: ReturnType<typeof import("./development-knowledge.js").knownDevelopment>;
   knownWishes: import("../../domain/rules/wish-journal.js").KnownWish[];
   ties: { toId: string; name: string; warmth: number; trust: number; reasons: string[] }[];
   learned: { text: string; kind: string; at: string }[];
@@ -96,6 +98,7 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
       routine: known?.routine ?? [],
       interests: known?.interests ?? "",
       wishes: (village.wishKnowledge[resident.characterId] ?? []).map((entry) => entry.text),
+      knownDevelopment: knownDevelopment(village, resident.characterId),
       knownWishes: (village.wishKnowledge[resident.characterId] ?? []).map((entry) => {
         const active = resident.agenda?.wishes.some((wish) => wish.id === entry.wishId);
         const fulfilled = resident.wishLifecycle?.needs.some(

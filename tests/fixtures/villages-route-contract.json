@@ -534,6 +534,18 @@
       "path": "/residences/private-space/retry"
     },
     {
+      "method": "get",
+      "path": "/development"
+    },
+    {
+      "method": "patch",
+      "path": "/development"
+    },
+    {
+      "method": "post",
+      "path": "/development/review"
+    },
+    {
       "method": "post",
       "path": "/clock/recover"
     },

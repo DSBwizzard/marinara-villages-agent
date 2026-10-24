@@ -356,6 +356,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     if (requestedScreen !== screen) setScreen(screen);
   }, [requestedScreen, screen]);
 
+  useLayoutEffect(() => {
+    element.dataset.housingView = ["home", "venue", "person"].includes(screen) ? "current" : "none";
+    return () => {
+      delete element.dataset.housingView;
+    };
+  }, [element, screen]);
   useSceneViewport(element, screen === "room");
   const {
     focusedProjectId,

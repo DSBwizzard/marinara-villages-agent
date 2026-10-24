@@ -485,6 +485,13 @@ export function coerceSession(value: unknown): VenueScene {
               ...(row.action ? { action: row.action as VenueActionResult } : {}),
               ...(row.actionReplyDone === true ? { actionReplyDone: true } : {}),
               ...(row.sceneChange ? { sceneChange: row.sceneChange as VenueSceneChange } : {}),
+              ...(Array.isArray(row.developmentChanges)
+                ? {
+                    developmentChanges: structuredClone(
+                      row.developmentChanges,
+                    ) as VenueSubmission["developmentChanges"],
+                  }
+                : {}),
               ...(row.residenceSignal
                 ? { residenceSignal: row.residenceSignal as VenueSubmission["residenceSignal"] }
                 : {}),

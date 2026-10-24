@@ -7,6 +7,7 @@ export type BackgroundKind =
   | "schedule-influence"
   | "starting-ties"
   | "story"
+  | "development"
   | "agenda"
   | "translation"
   | "wish"

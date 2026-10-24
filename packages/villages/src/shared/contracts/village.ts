@@ -121,6 +121,7 @@ export type BackgroundWork = {
   id: string;
   kind:
     | "story"
+    | "development"
     | "agenda"
     | "translation"
     | "wish"

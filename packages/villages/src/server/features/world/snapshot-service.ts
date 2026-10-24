@@ -1,3 +1,4 @@
+import { observeHousing } from "../../domain/rules/resident-development.js";
 import { foundingCompletedIds } from "../../domain/rules/founding-tasks.js";
 import { openingView } from "../../domain/rules/opening-project.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -40,7 +41,10 @@ export function createVillageSnapshot({
   privatePreparationRooms,
 }: VillageSnapshotPorts) {
   /** The village as the tab draws it: live library labels and adopted card colors. */
-  async function buildVillageSnapshot(now: Date = villageNow()): Promise<VillageSnapshot> {
+  async function buildVillageSnapshot(
+    now: Date = villageNow(),
+    observeCurrentHousing = false,
+  ): Promise<VillageSnapshot> {
     let village = await readVillageState();
     if (!village.visitMemoryBackfilled && (village.setupAt || village.foundedAt)) {
       village = await readVillageState();
@@ -75,6 +79,8 @@ export function createVillageSnapshot({
       });
       village = await readVillageState();
     }
+    if (observeCurrentHousing && !clock?.paused)
+      village = await mutateVillageState((state) => observeHousing(state, now.toISOString()));
     const player = readPlayerIdentity(village);
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();
