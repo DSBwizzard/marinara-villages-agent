@@ -74,6 +74,7 @@ export function VenueLayoutFields({
   onReveal?(area: "common" | "private", layout: VenueLayout): void;
 }) {
   const add = (personal: boolean) => {
+    if ((venue.spaces?.length ?? 0) + (venue.privateSpaces?.length ?? 0) >= 6) return;
     const role = venue.classes?.[0] ?? "other";
     const area = {
       ...personalSpaceDraft(),
@@ -194,6 +195,7 @@ export function BaseZoneFields({
   onChange(zones: import("../../../shared/contracts/village.js").VillageZoneDraft[]): void;
 }) {
   const add = (personal: boolean) => {
+    if (zones.length >= 6) return;
     const role = venue.classes?.[0] ?? "other";
     const zone = {
       ...personalSpaceDraft(),
@@ -218,14 +220,10 @@ export function BaseZoneFields({
   };
   return (
     <section>
-      <p>Change the base layout through this Renovation. Further zones belong to Upgrades. Capacity is separate.</p>
+      <p>{zones.length}/6 Zones</p>
       <SpaceConnections
         editableIds={zones.map((zone) => zone.id)}
-        spaces={[
-          { id: "exterior", name: "Exterior", kind: "exterior" as const, connectedTo: [] },
-          ...zones,
-          ...(venue.zones?.filter((zone) => zone.upgradeId) ?? []),
-        ]}
+        spaces={[{ id: "exterior", name: "Exterior", kind: "exterior" as const, connectedTo: [] }, ...zones]}
         onChange={(rows) =>
           onChange(rows.filter((zone) => zones.some((draft) => draft.id === zone.id)) as typeof zones)
         }

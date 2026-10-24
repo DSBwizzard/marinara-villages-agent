@@ -81,7 +81,7 @@ async function main() {
     presentation: { image: null, x: 0.5, y: 0.5 },
     occupancy: { playerHome: false, residentCharacterId: null as string | null, homeKind: null as string | null },
     capabilities: [],
-    state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
   });
   const cardSnapshot = (id: string, name: string) => ({
     id,
@@ -1340,6 +1340,7 @@ async function main() {
   // because the failure happens on a tick nobody is watching.
   const store = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
   const refusals = store.coerceVillageState({
+    version: 3,
     wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",
     villagers: [
@@ -1362,6 +1363,7 @@ async function main() {
   assert.equal(refusals.villagers[0]!.remap, null, "beside the null that says no translation was written");
 
   const partial = store.coerceVillageState({
+    version: 3,
     wishSystemVersion: 3,
     villagers: [
       {
@@ -1417,6 +1419,7 @@ async function main() {
   );
   assert.deepEqual(
     store.coerceVillageState({
+      version: 3,
       wishSystemVersion: 3,
       villagers: [{ characterId: "a", cardSnapshot: cardSnapshot("a", "A"), addedAt: "", agenda: null, remap: null }],
     }).villagers[0]!.remapFailure,
@@ -1546,6 +1549,7 @@ async function main() {
   // second earlier and would silently re-age every wish in the village on every
   // restart.
   const stored = store.coerceVillageState({
+    version: 3,
     wishSystemVersion: 3,
     villagers: [
       {

@@ -175,14 +175,6 @@ export type VillageSnapshot = {
   noticeboard: VillageNotice[];
   venueRequests: VenueRequest[];
   projects: BuildProject[];
-  upgradeRequests: {
-    id: string;
-    venueId?: string;
-    requesterCharacterId?: string;
-    requesterName?: string;
-    detail: string;
-    proposedHomeKind?: string;
-  }[];
   residences: {
     characterId: string;
     venueId: string;
@@ -205,8 +197,6 @@ export type VillageSnapshot = {
     affectedIds: string[];
     decisions: { characterId: string; accepted: boolean; reply: string }[];
     error: string;
-    improvementSlot?: number;
-    improvement?: NonNullable<VillageVenue["improvements"]>[number] | null;
   }>;
   /** What the village has been doing, newest first. Empty until it does something. */
   happenings: VillageHappening[];
@@ -255,7 +245,23 @@ export type VenueRequest = {
 };
 
 export type BuildProject = {
+  id: string;
+  kind: "new-venue" | "renovation";
+  title: string;
+  venueId: string;
+  updatedAt: string;
+  requesterCharacterId?: string;
+  participantIds?: string[];
+  status: "planning" | "working" | "paused" | "complete" | "cancelled";
+  progress: number;
+  venueDraft?: {
+    name: string;
+    description: string;
+    classes: VenueClass[];
+    position?: { x: number | null; y: number | null };
+  };
   plan?: {
+    capacity: number;
     form: string;
     venueType: string;
     exteriorDescription: string;
@@ -266,87 +272,17 @@ export type BuildProject = {
     privateSpaces: NonNullable<VillageVenue["zones"]>;
     exteriorImage: VillageVenueImage | null;
   };
-
-  opening?: {
-    version: 1;
-    established: boolean;
-    provenance: string;
-    work: string;
-    firstUse: string;
-    durationMs: number;
-  };
-  id: string;
-  requesterCharacterId?: string;
-  participantIds?: string[];
-  updatedAt: string;
-  kind: "new-venue" | "renovation";
-  title: string;
-  venueId: string;
-  status: "draft" | "active" | "building" | "blocked" | "finishing" | "complete" | "abandoned";
-  progress: number;
-  venueDraft?: {
-    name: string;
-    description: string;
-    classes: VenueClass[];
-    position?: { x: number | null; y: number | null };
-  };
+  opening?: { established: boolean; provenance: string; work: string; firstUse: string };
   lifecycle?: {
-    phase:
-      "concept" | "approval" | "builder" | "requirements" | "materials" | "construction" | "finishing" | "complete";
+    phase: BuildProject["status"];
+    revision: number;
     targetVenueId: string;
-    change: {
-      classes?: VenueClass[];
-      capacity?: number;
-      baseZones?: VillageZoneDraft[];
-      slot?: number;
-      improvement?: NonNullable<VillageVenue["improvements"]>[number] | null;
-      detail: string;
-    } | null;
+    change: { classes?: VenueClass[]; capacity?: number; zones?: VillageZoneDraft[]; detail: string } | null;
     affectedIds: string[];
     approvals: { residentId: string; source: "conversation" | "mailbox" }[];
     candidates: { residentId: string }[];
-    deliveries?: {
-      requirementId: string;
-      residentId: string;
-      sourceId: string;
-      revision: number;
-      evidenceId: string;
-      agreedAt: string;
-      startsAt: string;
-      completesAt: string;
-      completedAt: string;
-      blockedReason: string;
-    }[];
     builderId: string;
-    requirements: {
-      id: string;
-      category: "structure" | "equipment" | "finish";
-      title: string;
-      needed: boolean;
-      carriedAt: string;
-      deliveredAt: string;
-    }[];
-    requirementsEvidenceId: string;
-    requirementsAcceptedAt: string;
-    recordedItems: { venueId: string; zoneId?: string; itemName: string }[];
-    sources: {
-      requirementId: string;
-      kind: "existing-item" | "resident-offer" | "held-supply";
-      venueId: string;
-      itemName: string;
-      supplierId: string;
-      evidenceId: string;
-      at: string;
-      acquiredAt: string;
-    }[];
-    heldSupplies: {
-      id: string;
-      itemName: string;
-      acquiredAt: string;
-      deliveredAt: string;
-      assignedRequirementId: string;
-    }[];
-    workOrder: { startsAt: string; completesAt: string; pausedAt: string } | null;
+    workOrder: { startsAt: string; completesAt: string; pausedAt: string; remainingMs: number } | null;
     blockedReason: string;
     completedAt: string;
   };
@@ -469,14 +405,12 @@ export type VillageVenue = {
   name: string;
   form?: string;
   classes?: Array<"residence" | "workplace" | "community" | "other">;
-  baseClasses?: Array<"residence" | "workplace" | "community" | "other">;
   zones?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
       name: string;
       relationshipAccess?: boolean;
       kind: "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
       closed?: boolean;
-      upgradeId?: string;
       ownerId?: string;
       purpose?: string;
       access?: import("../helpers/venue-access.js").ZoneAccessPolicy;
@@ -549,28 +483,6 @@ export type VillageVenue = {
   playerSeenShared?: boolean;
   playerSeenPublic?: boolean;
   playerSeenPrivateIds?: string[];
-  improvements?: Array<{
-    id: string;
-    title: string;
-    description: string;
-    spaceId: string | null;
-    classContribution?: "residence" | "workplace" | "community" | "other";
-    zones?: Array<{
-      connectedTo?: string[];
-      id?: string;
-      name: string;
-      kind: "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
-      ownerId?: string;
-      purpose?: string;
-      access?: import("../helpers/venue-access.js").ZoneAccessPolicy;
-      accessView?: import("../helpers/venue-access.js").ZoneAccessView;
-      controllerIds?: string[];
-      description: string;
-      venueClass: "residence" | "workplace" | "community" | "other";
-    }>;
-    extraBeds: number;
-    approvedAt: string;
-  } | null>;
   description: string;
   category: string;
   presentation: {
@@ -587,7 +499,6 @@ export type VillageVenue = {
   workerIds?: string[];
   state: {
     condition: string;
-    upgrades: string[];
     furniture: string[];
     publicFacts: string[];
     features?: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];

@@ -95,7 +95,7 @@ export type VenueSubmission = {
   semanticPlayerMoves?: import("../rules/semantic-timeline.js").SemanticPlayerMove[];
   physicalContext?: { zoneId: string; witnessIds: string[]; segment: number };
   residenceSignal?: { kind: "request" | "decision"; characterId: string; venueId: string; approved?: boolean };
-  upgradeSignal?: { characterId: string; venueId: string; quote: string };
+  renovationSignal?: { characterId: string; venueId: string; quote: string };
   venueRequestSignal?: {
     characterId: string;
     name: string;

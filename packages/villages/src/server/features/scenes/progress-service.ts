@@ -23,7 +23,6 @@ export interface SceneProgressPorts {
   recordSpokenInvitation: SceneReplayEffects["recordSpokenInvitation"];
   createLiveEvidenceContext: typeof import("../../domain/rules/live-exchange.js").createLiveEvidenceContext;
   applyVenueTurnChange: SceneReplayEffects["applyVenueTurnChange"];
-  applyProjectPickup: typeof import("../projects/project-checks.js").applyProjectPickup;
   processWishExchange: typeof import("../residents/wishes/wish-progress.js").processWishExchange;
   processLiveMemories: typeof import("../residents/live-memory.js").processLiveMemories;
   processLiveRelationships: typeof import("../residents/live-memory.js").processLiveRelationships;
@@ -46,7 +45,6 @@ export function createSceneProgress({
   recordSpokenInvitation,
   createLiveEvidenceContext,
   applyVenueTurnChange,
-  applyProjectPickup,
   processWishExchange,
   processLiveMemories,
   processLiveRelationships,
@@ -209,7 +207,6 @@ export function createSceneProgress({
           status: "rejected" as const,
           reason: "The physical outcome no longer meets current state restrictions",
         };
-      if (turn.physicalOutcomeVersion && turn.action?.happened) await applyProjectPickup(scene.id, turn.id);
       checkFailure("projects");
       await processSavedProgressSubmission(scene.id, turn.id);
       const current = await readVillageState();

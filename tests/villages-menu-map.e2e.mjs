@@ -21,7 +21,7 @@ const home = {
   presentation: { image: null, x: 0.2, y: 0.3 },
   occupancy: { playerHome: false, residentCharacterId: "mara", homeKind: null },
   residentIds: ["mara"],
-  state: { condition: "standing", upgrades: [], furniture: [], publicFacts: [], updatedAt: now },
+  state: { condition: "standing", furniture: [], publicFacts: [], updatedAt: now },
 };
 const worksite = {
   id: "worksite",
@@ -34,7 +34,7 @@ const worksite = {
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   constructionStatus: "worksite",
   buildProjectId: "project-1",
-  state: { condition: "standing", upgrades: [], furniture: [], publicFacts: [], updatedAt: now },
+  state: { condition: "standing", furniture: [], publicFacts: [], updatedAt: now },
 };
 
 try {
@@ -91,7 +91,6 @@ try {
       noticeboard: [{ id: "note-1", text: "Market today", author: "Mara", at: now }],
       venueRequests: [],
       projects: [],
-      upgradeRequests: [],
       residences: [],
       happenings: [],
       villagers: [],

@@ -53,7 +53,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   )
     throw conflict("This saved Scene has an unsupported or invalid captured context. Its history is preserved.");
   // This is an already-captured projection, not an old world to migrate.
-  const decoded = coerceVillageState({ ...facts, wishSystemVersion: WISH_SYSTEM_VERSION });
+  const decoded = coerceVillageState({ ...facts, version: 3, wishSystemVersion: WISH_SYSTEM_VERSION });
   if (facts.relationshipContext)
     decoded.relationshipContext = coerceRelationshipState(raw.seed, facts.relationshipContext);
   return {
@@ -488,7 +488,9 @@ export function coerceSession(value: unknown): VenueScene {
               ...(row.residenceSignal
                 ? { residenceSignal: row.residenceSignal as VenueSubmission["residenceSignal"] }
                 : {}),
-              ...(row.upgradeSignal ? { upgradeSignal: row.upgradeSignal as VenueSubmission["upgradeSignal"] } : {}),
+              ...(row.renovationSignal
+                ? { renovationSignal: row.renovationSignal as VenueSubmission["renovationSignal"] }
+                : {}),
               ...(row.venueRequestSignal
                 ? { venueRequestSignal: row.venueRequestSignal as VenueSubmission["venueRequestSignal"] }
                 : {}),

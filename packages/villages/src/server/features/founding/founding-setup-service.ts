@@ -256,7 +256,7 @@ export function createFoundingSetup({
         privateSpaces: prior?.privateSpaces ?? place.privateSpaces,
         playerSeenPrivateIds: prior?.playerSeenPrivateIds,
         imageContext: prior?.imageContext ?? place.imageContext,
-        improvements: prior?.improvements ?? [null, null],
+
         capabilities: prior?.capabilities ?? place.capabilities,
         workerIds: prior?.workerIds ?? [],
         playerSeenPublic: prior?.playerSeenPublic,
@@ -326,7 +326,6 @@ export function createFoundingSetup({
       state.selectedLorebookIds = selectedLorebookIds;
       state.loreTokenBudget = loreTokenBudget;
       if (founding) {
-        state.venueCapacityPolicy = "sixteen-total-v1";
         state.townMapImage = townMap.image;
         state.townMapCanvasWidth = townMap.size?.width ?? TOWN_MAP_EXPECTED_WIDTH;
         state.townMapCanvasHeight = townMap.size?.height ?? TOWN_MAP_EXPECTED_HEIGHT;

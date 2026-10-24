@@ -97,7 +97,7 @@ world.venues = [
     improvements: [null, null],
     residenceCapacity: 1,
     capabilities: [],
-    state: { condition: "standing", furniture: [], upgrades: [], publicFacts: [], updatedAt: "" },
+    state: { condition: "standing", furniture: [], publicFacts: [], updatedAt: "" },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     presentation: { image: null, x: 0, y: 0 },
     zones: layout,

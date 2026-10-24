@@ -1,3 +1,4 @@
+import { lifecycle } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import assert from "node:assert/strict";
 import { routeInterpretationChecks } from "../packages/villages/src/server/domain/rules/interpretation-routing.js";
 import type { InterpretationCheck } from "../packages/villages/src/server/domain/models/interpretation-check-model.js";
@@ -71,11 +72,6 @@ for (const text of [
   "We need a better finish.",
 ])
   assert.equal(select(check("project", text), projectRow).checks.length, 1);
-assert.equal(
-  select({ ...check("project"), facts: { actorId: "a", projectId: "p", kind: "requirements" } }, projectRow).checks
-    .length,
-  1,
-);
 assert.equal(select(check("project"), projectRow, { ...context, projectActors: ["a"] }).checks.length, 1);
 for (const residents of [1, 4, 8]) {
   const checks = Array.from({ length: residents }, (_, i) => ({
@@ -152,12 +148,9 @@ async function integration() {
         id: "p",
         kind: "new-venue",
         title: "Garden",
-        status: "draft",
-        lifecycle: { version: 2, phase: "builder", affectedIds: [], requirements: [] },
+        status: "planning",
+        lifecycle: lifecycle(),
       },
-    ] as any;
-    state.progressTasks = [
-      { definition: { owner: { kind: "project", id: "p" }, revision: 1 }, transitions: [], resolvedAt: "" },
     ] as any;
     const scene: any = {
       id: "scene",

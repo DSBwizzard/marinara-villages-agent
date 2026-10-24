@@ -31,7 +31,7 @@ function place(id: string, residentCharacterId: string | null = null): VillageVe
     presentation: { image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId, homeKind: residentCharacterId ? "cottage" : null },
     capabilities: [],
-    state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
   } as VillageVenue;
 }
 
@@ -203,6 +203,7 @@ const overnight = scheduleInformedWeek(
 assert.equal(overnight.Monday?.at(-1)?.activity, "Keeping watch");
 assert.equal(overnight.Tuesday?.[0]?.endMinute, 360, "an overnight source continues into the next day");
 const recovered = coerceVillageState({
+  version: 3,
   wishSystemVersion: 3,
   villagers: [
     {

@@ -1,4 +1,3 @@
-import { calendarDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageRemap, VillageVenue } from "../models/world.js";
 import { lookupRemap, remapBlockKey } from "./native-remap.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
@@ -253,61 +252,5 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
       ];
     });
   }
-  const work = agenda.projectWork ?? agenda.projectDelivery;
-  if (!work) return ordinary;
-  const dayStart = calendarDate(at, at.getFullYear(), at.getMonth(), at.getDate()).getTime();
-  const dayEnd = calendarDate(at, at.getFullYear(), at.getMonth(), at.getDate() + 1).getTime();
-  const start = Math.max(dayStart, Date.parse(work.startsAt));
-  const end = Math.min(dayEnd, Date.parse(work.endsAt));
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return ordinary;
-  const localStart = at instanceof ZonedDate ? new ZonedDate(start, at.zone) : new Date(start),
-    localEnd = at instanceof ZonedDate ? new ZonedDate(end, at.zone) : new Date(end);
-  const from = start === dayStart ? 0 : localStart.getHours() * 60 + localStart.getMinutes();
-  const through = end === dayEnd ? 1440 : localEnd.getHours() * 60 + localEnd.getMinutes();
-  const remaining = ordinary.flatMap((entry) => {
-    if (entry.endMinute <= from || entry.startMinute >= through) return [entry];
-    return [
-      ...(entry.startMinute < from ? [{ ...entry, endMinute: from }] : []),
-      ...(entry.endMinute > through ? [{ ...entry, startMinute: through }] : []),
-    ];
-  });
-  const essential = ordinary
-    .filter((entry) =>
-      agenda.routineProfile?.semanticVersion === 2
-        ? entry.essential === true || !!entry.commitmentId || entry.flexible === false
-        : /\b(?:sleep|rest|meal|breakfast|lunch|dinner|eat|wash|bathe)\b/iu.test(entry.activity),
-    )
-    .map((entry) => ({
-      ...entry,
-      startMinute: Math.max(from, entry.startMinute),
-      endMinute: Math.min(through, entry.endMinute),
-    }))
-    .filter((entry) => entry.endMinute > entry.startMinute)
-    .sort((left, right) => left.startMinute - right.startMinute);
-  const workBlocks: VillageAgendaBlock[] = [];
-  let cursor = from;
-  for (const breakBlock of essential) {
-    if (breakBlock.startMinute > cursor)
-      workBlocks.push({
-        startMinute: cursor,
-        endMinute: breakBlock.startMinute,
-        venueId: work.venueId,
-        zoneId: work.zoneId ?? "exterior",
-        activity:
-          "activity" in work && typeof work.activity === "string" ? work.activity : "Work on the agreed Project",
-        commitmentId: work.projectId,
-      });
-    workBlocks.push(breakBlock);
-    cursor = Math.max(cursor, breakBlock.endMinute);
-  }
-  if (cursor < through)
-    workBlocks.push({
-      startMinute: cursor,
-      endMinute: through,
-      venueId: work.venueId,
-      zoneId: work.zoneId ?? "exterior",
-      activity: "activity" in work && typeof work.activity === "string" ? work.activity : "Work on the agreed Project",
-      commitmentId: work.projectId,
-    });
-  return [...remaining, ...workBlocks].sort((left, right) => left.startMinute - right.startMinute);
+  return ordinary;
 }

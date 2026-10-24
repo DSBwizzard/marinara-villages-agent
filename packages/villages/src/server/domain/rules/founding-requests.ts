@@ -2,7 +2,7 @@ import { openingRenovationChoices } from "./opening-renovation.js";
 import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
 export const OPENING_IDEA_FORMAT_VERSION = 2;
-export const OPENING_PROPOSAL_INSTRUCTIONS = `Prepare this resident's own substantial Project idea grounded in identity, founding history, setting, lore and existing places. Produce a distinct new playable Venue without duplicating a supplied Venue. A place may already exist in lore: preserve its history and working condition. situation is the broad concern/interest they can mention without pitching the solution. provenance gives supporting setting facts. work describes substantial construction, conversion or installation fitting twelve real hours. Small furnishings, shelves, decoration and coordination alone do not qualify as Projects. Never invent defects, lost access, ownership, supplies, promises or consent to justify work. Use available finite resources and preserve the need for a willing Builder. firstUse describes an observable intended use, never a prescribed event. Preserve nonhuman identities. All fields must suit a public pitch without secrets, private motives or undisclosed personal history. This unspoken idea is separate from a Wish or commitment.`;
+export const OPENING_PROPOSAL_INSTRUCTIONS = `Prepare this resident's own substantial Project idea grounded in identity, founding history, setting, lore and existing places. Produce a distinct new playable Venue without duplicating a supplied Venue. A place may already exist in lore: preserve its history and working condition. situation is the broad concern/interest they can mention without pitching the solution. provenance gives supporting setting facts. work describes substantial construction, conversion or installation fitting 24 elapsed real hours. Small furnishings, shelves, decoration and coordination alone do not qualify as Projects. Never invent defects, lost access, ownership, supplies, promises or consent to justify work. A willing resident lead and necessary consent are required; supplies and objects have no mechanical effect. firstUse describes an observable intended use, never a prescribed event. Preserve nonhuman identities. All fields must suit a public pitch without secrets, private motives or undisclosed personal history. This unspoken idea is separate from a Wish or commitment.`;
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import type { CompactFoundingContext } from "./compact-founding-rules.js";
@@ -64,9 +64,7 @@ export function foundingRequestMessages(
         .map((zone) => ({ id: zone.id, name: zone.name })),
     })),
     lore: context.lore,
-    ...(context.openingVersion === 2 && task === "opening"
-      ? { renovationTargets: openingRenovationChoices(context.venues) }
-      : {}),
+    ...(task === "opening" ? { renovationTargets: openingRenovationChoices(context.venues) } : {}),
     ...(task === "wish"
       ? {
           active: context.activeWishes,
@@ -95,30 +93,15 @@ export function foundingRequestMessages(
             ? ROUTINE_INGREDIENT_INSTRUCTIONS
             : ROUTINE_INSTRUCTIONS
           : task === "opening"
-            ? "Return JSON only: {openingProposal:{" +
-              (context.openingVersion === 2
-                ? 'kind:"new-venue|renovation",renovation?:{venueId:string,spaceId:string,slot:0|1,title:string,description:string},'
-                : "") +
-              'name:string,description:string,situation:string,venueClass:"workplace|community|other",established:boolean,provenance:string,work:string,firstUse:string}}. All text fields are nonempty strings, never arrays. name is at most 100 characters; description, provenance and work at most 1000 each; situation and firstUse at most 500 each. ' +
-              (context.openingVersion === 2
-                ? "kind and renovation belong inside openingProposal, never beside it. Choose exactly one kind. For renovation include its target; for new-venue omit renovation. "
-                : "") +
-              (context.openingVersion === 2
-                ? OPENING_PROPOSAL_INSTRUCTIONS.replace(
-                    "Produce a distinct new playable Venue without duplicating a supplied Venue.",
-                    "Return kind:new-venue or kind:renovation. A new-venue is a distinct playable place without duplicating a supplied Venue. A renovation adds one substantial physical improvement in an empty Upgrade slot at one supplied renovationTargets entry. For renovation also return renovation:{venueId,spaceId,slot,title,description}; copy the exact target IDs and slot. Preserve all existing Zones, occupants, Classes, capacity, ownership and access; add no beds or permissions. Do not invent defects or claim to restore the whole Venue. Choose whichever kind fits this person and the setting; no quota requires either kind.",
-                  )
-                : OPENING_PROPOSAL_INSTRUCTIONS)
+            ? 'Return JSON only: {openingProposal:{kind:"new-venue|renovation",renovation?:{venueId:string,spaceId:string,title:string,description:string},name:string,description:string,situation:string,venueClass:"workplace|community|other",established:boolean,provenance:string,work:string,firstUse:string}}. All text fields are nonempty strings, never arrays. name is at most 100 characters; description, provenance and work at most 1000 each; situation and firstUse at most 500 each. kind and renovation belong inside openingProposal. Choose one kind. For renovation copy an exact supplied venueId and spaceId, and describe a physical change to that public Zone; for new-venue omit renovation. Preserve occupants, ownership and access. Approval creates a planning draft; only the player starts work. Every Project takes 24 elapsed real hours. ' +
+              OPENING_PROPOSAL_INSTRUCTIONS
             : WISH_INSTRUCTIONS) +
         "\n" +
         RESIDENT_CONTINUITY_RULE +
         influence +
         description +
         "\n" +
-        renderPlayerBackgroundContext(
-          context,
-          (task === "opening" && context.openingVersion !== 2) || context.playerAgencyVersion !== 1,
-        ),
+        renderPlayerBackgroundContext(context, context.playerAgencyVersion !== 1),
     },
     { role: "user", content: JSON.stringify(data) },
   ];

@@ -70,24 +70,6 @@ export function wishSlots(resident: VillageVillager, state: VillageState, now: D
       return result;
     });
     for (const block of opportunities) {
-      const from = calendarDate(
-        date,
-        date.getFullYear(),
-        date.getMonth(),
-        date.getDate(),
-        0,
-        block.startMinute,
-      ).getTime();
-      const through = calendarDate(
-        date,
-        date.getFullYear(),
-        date.getMonth(),
-        date.getDate(),
-        0,
-        block.endMinute,
-      ).getTime();
-      const work = agenda.projectWork;
-      if (work && Date.parse(work.startsAt) < through && Date.parse(work.endsAt) > from) continue;
       if (
         [...(agenda.wishActivities ?? []), ...(agenda.socialActivities ?? [])].some(
           (entry) =>

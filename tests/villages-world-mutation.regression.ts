@@ -61,7 +61,7 @@ function venue(index: number): VillageVenue {
     presentation: { image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    state: { condition: "standing", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+    state: { condition: "standing", furniture: [], publicFacts: [], updatedAt: "" },
   };
 }
 const oversizedSave = {

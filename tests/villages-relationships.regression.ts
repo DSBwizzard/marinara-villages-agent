@@ -319,7 +319,6 @@ function venue(id: string, classes: VillageVenue["classes"]): VillageVenue {
     state: {
       condition: "standing",
       furniture: [],
-      upgrades: [],
       publicFacts: [],
       features: [],
       traces: [],
@@ -956,19 +955,6 @@ const inaccessible = structuredClone(socialVillage);
 inaccessible.venues.find((place) => place.id === plan.venueId)!.constructionStatus = "worksite";
 assert.equal(socialPlanValid(inaccessible, plan, morning), false, "social plans respect construction");
 assert.equal(socialPlanValid(socialVillage, { ...plan, actorIds: ["Rosa", "player"] }, morning), false);
-const committed = structuredClone(socialVillage);
-const starts = new Date(morning);
-starts.setHours(Math.floor(plan.startMinute / 60), plan.startMinute % 60);
-const ends = new Date(morning);
-ends.setHours(Math.floor(plan.endMinute / 60), plan.endMinute % 60);
-committed.villagers[0]!.agenda!.projectWork = {
-  projectId: "accepted",
-  venueId: "park",
-  zoneId: "community",
-  startsAt: starts.toISOString(),
-  endsAt: ends.toISOString(),
-};
-assert.equal(socialPlanValid(committed, plan, morning), false, "accepted work overrides flexible free time");
 const absent = new Date(morning.getTime() + day);
 reconcileSocialPlans(socialVillage, absent);
 assert.equal(socialState.socialPlans[0]!.status, "cancelled");

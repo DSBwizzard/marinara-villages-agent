@@ -164,7 +164,7 @@ export function normalizeSparseSceneReply(raw: Record<string, unknown>): Record<
     "invitation",
     "residenceRequest",
     "residenceDecision",
-    "upgradeRequest",
+    "renovationRequest",
     "venueRequest",
     "editApproval",
     "sceneEnded",

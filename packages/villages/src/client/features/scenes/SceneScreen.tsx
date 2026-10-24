@@ -450,9 +450,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                   {entry.error ? <p className={`${ELEMENT_TAG}-hint`}>Reply delayed: {entry.error}</p> : null}
                 </article>
               ))}
-              {(snapshot.venueMail?.length ?? 0) === 0 &&
-              snapshot.venueRequests.length === 0 &&
-              snapshot.upgradeRequests.length === 0 ? (
+              {(snapshot.venueMail?.length ?? 0) === 0 && snapshot.venueRequests.length === 0 ? (
                 <p className={`${ELEMENT_TAG}-empty`}>No Venue mail yet.</p>
               ) : null}
               {snapshot.venueRequests.map((entry) => (
@@ -465,22 +463,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                       .map((venueClass) => venueClass[0].toUpperCase() + venueClass.slice(1))
                       .join(" / ")}
                   </p>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    onClick={() => {
-                      setMailboxOpen(false);
-                      openMenu("venueRequests");
-                    }}
-                  >
-                    Review request
-                  </button>
-                </article>
-              ))}
-              {snapshot.upgradeRequests.map((entry) => (
-                <article className={`${ELEMENT_TAG}-mailbox-item`} key={entry.id}>
-                  <strong>{entry.requesterName} suggests a home change</strong>
-                  <p>{entry.detail}</p>
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-button`}

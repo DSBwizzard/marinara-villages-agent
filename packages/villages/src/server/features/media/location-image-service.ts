@@ -134,7 +134,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       { ...village, setting: "", worldFacts: [], venues: [] },
       {
         ...venue,
-        state: { ...venue.state, furniture: [], publicFacts: [], upgrades: [] },
+        state: { ...venue.state, furniture: [], publicFacts: [] },
         exteriorState: venue.exteriorState ? { ...venue.exteriorState, items: [], publicFacts: [] } : undefined,
       },
       moment,

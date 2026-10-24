@@ -90,7 +90,7 @@ function fixture(): VillageVenue {
     occupancy: { playerHome: false, residentCharacterId: "jim", homeKind: null },
     capabilities: [],
     presentation: { image: null, x: 0.4, y: 0.4 },
-    state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: stamp },
+    state: { condition: "", furniture: [], publicFacts: [], updatedAt: stamp },
     zones: [
       { ...zone("exterior"), kind: "exterior", seen: true },
       zone("living"),

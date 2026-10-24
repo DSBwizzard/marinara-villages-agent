@@ -75,6 +75,7 @@ const stateSchema = z.object({
   ),
   visitDenials: z.array(z.object({ zoneId: id, visitorId: id, sceneId: id, issuerId: id })).default([]),
   receipts: z.record(
+    z.string(),
     z.object({
       fingerprint: z.string(),
       revision: z.number().int(),

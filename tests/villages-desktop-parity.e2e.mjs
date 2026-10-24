@@ -40,7 +40,7 @@ const place = (id, x, y) => ({
   capabilities: [],
   presentation: { image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id }, x, y },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-  state: { condition: "sound", upgrades: [], furniture: [], publicFacts: [], updatedAt: now },
+  state: { condition: "sound", furniture: [], publicFacts: [], updatedAt: now },
 });
 const snapshot = {
   status: "ready",
@@ -65,7 +65,6 @@ const snapshot = {
   noticeboard: [{ id: "note-1", text: "Market today", author: "Mara", at: now }],
   venueRequests: [],
   projects: [],
-  upgradeRequests: [],
   residences: [],
   happenings: [],
   villagers: residents,
@@ -421,8 +420,8 @@ try {
     await expect(composer).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
+    await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
+    await page.getByRole("button", { name: /^Close/ }).click();
     await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();

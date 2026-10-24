@@ -1,5 +1,4 @@
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
-import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
 import {
   IncompleteOpeningPitch,
   IncompleteOpeningGathering,
@@ -596,12 +595,7 @@ export function createSceneWriting({
             .map((trace) => `${trace.id}: ${trace.text}`)
             .join("; ") || "none"
         }. Items: ${place?.state.furniture.join("; ") || "none"}. Public facts: ${place?.state.publicFacts.join("; ") ?? ""}. Current state outranks older scene lines and happenings.`,
-        `Approved room description: ${place?.description || "none"}. Structural Upgrades in this zone: ${
-          place?.improvements
-            ?.filter(Boolean)
-            .map((upgrade) => upgrade!.title + ": " + upgrade!.description)
-            .join("; ") || "none"
-        }.`,
+        "Approved room description: " + (place?.description || "none"),
         place?.constructionStatus === "worksite"
           ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
           : "",
@@ -1179,7 +1173,7 @@ export function createSceneWriting({
         "invitation",
         "residenceRequest",
         "residenceDecision",
-        "upgradeRequest",
+        "renovationRequest",
         "venueRequest",
         "editApproval",
         "departures",
@@ -1326,7 +1320,7 @@ export function createSceneWriting({
       };
       const request = heardSignal(raw?.residenceRequest);
       const decision = heardSignal(raw?.residenceDecision);
-      const upgrade = heardSignal(raw?.upgradeRequest);
+      const renovation = heardSignal(raw?.renovationRequest);
       const venueRequest = heardSignal(raw?.venueRequest);
       const invitation = heardSignal(raw?.invitation);
       const editApproval = heardSignal(raw?.editApproval);
@@ -1450,12 +1444,6 @@ export function createSceneWriting({
             physicalContext && storedPlace ? venueInZone(storedPlace, physicalContext.zoneId) : place,
             physicalContext?.witnessIds ?? session.activeIds,
             village.villagers.map((person) => person.characterId),
-            availableProjectSupplyTransfers(
-              village,
-              session.placeId,
-              physicalContext?.zoneId ?? session.zoneId,
-              physicalContext?.witnessIds ?? session.activeIds,
-            ),
           );
       } catch (cause) {
         if (!semanticResult) await rejectVenueCompletion();
@@ -1525,9 +1513,6 @@ export function createSceneWriting({
             : undefined) as import("../../domain/models/scene-model.js").VenueSubmission["openingContext"],
         openingSignal: readOpeningSignal(raw?.openingSignal),
         projectContexts,
-        ...(semanticResult?.effects.projectOfferReview
-          ? { projectOfferReview: semanticResult.effects.projectOfferReview }
-          : {}),
         contactIntent:
           !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")
             ? readContactIntent(raw?.contactIntent, message)
@@ -1574,11 +1559,11 @@ export function createSceneWriting({
                   approved: decision!.entry.approved === true,
                 }
               : null,
-        upgradeSignal:
+        renovationSignal:
           (semanticResult || mode === "chat" || mode === "ask") &&
-          upgrade &&
-          (place?.residentIds?.includes(upgrade.speakerId) || place?.workerIds?.includes(upgrade.speakerId))
-            ? { characterId: upgrade.speakerId, venueId: place.id, quote: asTrimmedString(upgrade.entry.quote) }
+          renovation &&
+          (place?.residentIds?.includes(renovation.speakerId) || place?.workerIds?.includes(renovation.speakerId))
+            ? { characterId: renovation.speakerId, venueId: place.id, quote: asTrimmedString(renovation.entry.quote) }
             : null,
         venueRequestSignal:
           (semanticResult || mode === "chat" || mode === "ask") &&

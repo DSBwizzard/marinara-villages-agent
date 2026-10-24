@@ -22,7 +22,7 @@ export function OpeningProjects({
     selected.available !== false &&
     opening.residentIds.includes(selected.residentId) &&
     !opening.declinedIds.includes(selected.residentId);
-  const ready = opening.stage === "conversations" && opening.residentIds.every((id) => opening.heardIds.includes(id));
+  const ready = opening.stage === "conversations";
   return (
     <section className={`${P}-opening-projects`} aria-label="Opening proposals">
       <div className={`${P}-project-head`}>
@@ -32,7 +32,7 @@ export function OpeningProjects({
           className={`${P}-button`}
           disabled={busy}
           onClick={() => {
-            if (window.confirm("End the opening and unlock Projects?")) void decide("skip");
+            if (window.confirm("Skip opening guidance?")) void decide("skip");
           }}
         >
           Skip opening
@@ -73,11 +73,11 @@ export function OpeningProjects({
           {selected ? (
             <>
               <h3>{selected.name}</h3>
-              <p>{selected.kind === "renovation" ? "Improvement" : "New Venue"}</p>
+              <p>{selected.kind === "renovation" ? "Renovation" : "New Venue"}</p>
               <p>{selected.description}</p>
               <p>{selected.work}</p>
               <p>
-                <strong>Work</strong> · 12 hours
+                <strong>Work</strong> · 24 hours
               </p>
               <div className={`${P}-opening-actions`}>
                 <button
@@ -119,14 +119,5 @@ export const openingProjectsStyles = `
 .${P}-opening-list button{text-align:left;min-height:44px;overflow-wrap:anywhere}
 .${P}-opening-list [aria-pressed=true]{outline:2px solid var(--primary)}
 .${P}-opening-actions{display:flex;flex-wrap:wrap;gap:.5rem}
-.${P}-project-records{display:grid;gap:.5rem;min-width:0}
-.${P}-project-records button{text-align:left;min-height:44px}
-.${P}-project-record-workspace{display:grid;grid-template-columns:minmax(12rem,16rem) minmax(0,1fr);gap:1rem;align-items:start}
-.${P}-project-record-detail{min-width:0}
-.${P}-project-record-workspace .${P}-project-layout{grid-template-columns:minmax(0,1fr)}
-.${P}-project-record-workspace .${P}-project-rail{display:flex;flex-wrap:wrap}
-.${P}-project-record-workspace .${P}-project-step{padding:.4rem .6rem;font-size:.8rem}
-.${P}-project-record-workspace[hidden]{display:none}
-.${P}-project-screen[data-mobile=true] .${P}-project-rail{display:none}
-@media(max-width:700px){.${P}-opening-workspace,.${P}-project-record-workspace{grid-template-columns:minmax(0,1fr)}.${P}-opening-workspace[data-selected=false]>article{display:none}.${P}-opening-workspace[data-selected=true]>nav{display:none}.${P}-opening-back{display:inline-flex}.${P}-project-record-workspace[data-selected=true]>.${P}-project-records{display:none}}
+@media(max-width:700px){.${P}-opening-workspace{grid-template-columns:minmax(0,1fr)}.${P}-opening-workspace[data-selected=false]>article{display:none}.${P}-opening-workspace[data-selected=true]>nav{display:none}.${P}-opening-back{display:inline-flex}}
 `;

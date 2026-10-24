@@ -95,7 +95,6 @@ export function coerceProposal(payload: Record<string, unknown>): { venues: Vill
       capabilities: [],
       state: {
         condition: "",
-        upgrades: [],
         furniture: [],
         publicFacts: [],
         updatedAt: "",

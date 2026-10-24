@@ -1,11 +1,7 @@
-import { availableProjectSupplyTransfers } from "../../domain/rules/project-supply-transfer.js";
+import { shape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
 import { openingPresence } from "../../domain/rules/opening-presence.js";
-import {
-  openingActive,
-  ordinaryProjectsLocked,
-  gatheringDialogueComplete,
-} from "../../domain/rules/opening-project.js";
+import { openingActive, gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
 import { completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
 import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
 import { acousticFragment, bindAcousticPlan } from "../../domain/rules/scene-acoustics.js";
@@ -363,7 +359,7 @@ export function createSceneCommands({
       let messages: CapabilityLanguageModelMessage[] = [
         {
           role: "system",
-          content: `Interpret ONLY the supplied saved exchange for ${domain}. Do not rewrite narration, change physical state, or invent evidence. ${domain === "wishes" ? WISH_PROPOSAL_INSTRUCTION : domain === "projects" ? 'Return projectSpeech:[{projectId,revision,kind:"approval|builder|requirements|offer|delivery",requirementId?:exact supply ID,speakerId,citations:[{lineId,quote}],checklist:[]}]. Reassess the original proposals against the FULL saved dialogue, including explicit denials and conditions. An offer means a finite contribution of the actual materials in a supplied requirement; willingness to sand, drill or hold a plank is labor, never an offer of sandpaper, oil, tools or a whole material bundle. A jug does not satisfy finishing materials. Missing any required component or explicitly denying it cannot establish that complete supply. Omit unsupported or uncertain rows; projectSpeech:[] is a valid negative result. Cite exact saved lineIds and full relevant speaker speech, preserving conditions/negation. Offers and delivery commitments require the exact supplied requirementId; other kinds do not. A delivery requires this resident explicitly agreeing to collect and deliver the named supply from its recorded source; it never performs the transfer. Only supplied Project contexts/revisions are eligible. A promise is never a completed handoff; do not propose physical effects.' : domain === "relationships" ? 'Return relationshipChanges:{changes:[],permissions:[],disclosures:[]}. Changes use fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:[],disclosed:boolean. Trust needs demonstrated reliability or confidence/boundary interaction. Permissions require explicit unconditional standing authority; disclosures require actual heard speech. No rewards for mere co-location.' : 'Return memoryChanges:[{kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:[],memoryIds:[]}]. Every knower must witness every citation. Verify facts against supplied evidence; a speaker denial establishes only an attributed belief/statement, never historical absence. Partial history proves no absence. Preserve qualifications and distinguish promises from deeds. Durable entries need stable facts; reinforce/supersede cite supplied matching durable memoryIds. Unsupported factual memories must be omitted.'} Use exact saved evidence IDs, not numeric indexes. Return JSON only.`,
+          content: `Interpret ONLY the supplied saved exchange for ${domain}. Do not rewrite narration, change physical state, or invent evidence. ${domain === "wishes" ? WISH_PROPOSAL_INSTRUCTION : domain === "projects" ? 'Return projectSpeech:[{projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{lineId,quote}]}]. Judge only supplied Projects and revisions against the full saved exchange. Distinguish unconditional consent and personal commitment to lead from capability, conditional willingness and refusal. One exchange can support approval and volunteering. Cite exact current saved speaker words. No speech starts or completes construction. Omit unsupported rows.' : domain === "relationships" ? 'Return relationshipChanges:{changes:[],permissions:[],disclosures:[]}. Changes use fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:[],disclosed:boolean. Trust needs demonstrated reliability or confidence/boundary interaction. Permissions require explicit unconditional standing authority; disclosures require actual heard speech. No rewards for mere co-location.' : 'Return memoryChanges:[{kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:[],memoryIds:[]}]. Every knower must witness every citation. Verify facts against supplied evidence; a speaker denial establishes only an attributed belief/statement, never historical absence. Partial history proves no absence. Preserve qualifications and distinguish promises from deeds. Durable entries need stable facts; reinforce/supersede cite supplied matching durable memoryIds. Unsupported factual memories must be omitted.'} Use exact saved evidence IDs, not numeric indexes. Return JSON only.`,
         },
         {
           role: "user",
@@ -379,11 +375,6 @@ export function createSceneCommands({
                   projects: (turn.projectContexts ?? []).map((context) => ({
                     ...context,
                     title: village.projects.find((project) => project.id === context.projectId)?.title,
-                    supplies:
-                      village.projects
-                        .find((project) => project.id === context.projectId)
-                        ?.lifecycle?.requirements.filter((item) => item.needed)
-                        .map((item) => ({ id: item.id, title: item.title })) ?? [],
                   })),
                   originalProposals: turn.projectSpeech ?? [],
                 }
@@ -417,7 +408,7 @@ export function createSceneCommands({
       ];
       if (turn.semanticProvenance?.version === 2)
         messages[0].content +=
-          ' This is a v2 System-owned event. Interpret paraphrases and contextual short answers without phrase tests. Wish check/progress rows require criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} for the ORIGINAL goal. Relationship changes require contact:boolean for actual substantive shared contact. Project kinds also include offer/handoff with exact requirementId; a handoff requires an actual completed local transfer from a supplied existing source. No model-authored provenance or verification flags.';
+          ' This is a v2 System-owned event. Interpret paraphrases and contextual short answers without phrase tests. Wish check/progress rows require criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} for the ORIGINAL goal. Relationship changes require contact:boolean for actual substantive shared contact. No model-authored provenance or verification flags.';
       const output = turn.semanticProvenance?.version === 2 ? 2400 : VENUE_REPLY_MAX_TOKENS;
       const request = await venueCheckpoint("change-interpretation:input", async () => ({
         messages,
@@ -1038,8 +1029,6 @@ export function createSceneCommands({
     const village = existing ? sceneContinuityView(live, existing) : live,
       place = village.venues.find((entry) => entry.id === placeId);
     if (!place) throw notFound("That place is not in this village.");
-    if (!existing && village.opening?.stage === "gathering" && placeId !== village.opening.communityVenueId)
-      throw conflict("Begin at the Community gathering, or skip the opening in Projects.");
     const classes = venueClasses(place),
       spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
     if (!classes.includes(spaceClass) && !requestedZoneId) throw badRequest("That Venue has no such space.");
@@ -1437,18 +1426,7 @@ export function createSceneCommands({
             : {}),
           liveProposals: bindLiveProposals(reply, "", savedLineIds),
           effectFailures: reply.effectFailures,
-          ...(asRecord(reply).projectOfferReview
-            ? {
-                interpretationHistory: [
-                  {
-                    at,
-                    domain: "projects" as const,
-                    source: "System offer availability review",
-                    proposals: asRecord(reply).projectOfferReview,
-                  },
-                ],
-              }
-            : {}),
+
           speechCapture: reply.speechCapture,
           accessEvents: savedAccessEvents(reply.roomInterpretation),
           ...(reply.residentActionReceipt ? { residentActionReceipt: reply.residentActionReceipt } : {}),
@@ -1460,7 +1438,7 @@ export function createSceneCommands({
                 invitationSignal: reply.invitationSignal ?? undefined,
                 editApprovalSignal: reply.editApprovalSignal ?? undefined,
                 residenceSignal: reply.residenceSignal ?? undefined,
-                upgradeSignal: reply.upgradeSignal ?? undefined,
+                renovationSignal: reply.renovationSignal ?? undefined,
                 venueRequestSignal: reply.venueRequestSignal ?? undefined,
               }
             : {}),
@@ -2734,18 +2712,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         openingSignal: reply.openingSignal,
         projectContexts: reply.projectContexts,
         projectInterpretationVersion: 1 as const,
-        ...(asRecord(reply).projectOfferReview
-          ? {
-              interpretationHistory: [
-                {
-                  at,
-                  domain: "projects" as const,
-                  source: "System offer availability review",
-                  proposals: asRecord(reply).projectOfferReview,
-                },
-              ],
-            }
-          : {}),
+
         projectSpeech: reply.projectSpeech.map((proposal) => ({
           ...proposal,
           citations: proposal.citations.map((citation) => ({
@@ -2777,7 +2744,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
             }
           : {}),
         ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
-        ...(reply.upgradeSignal ? { upgradeSignal: reply.upgradeSignal } : {}),
+        ...(reply.renovationSignal ? { renovationSignal: reply.renovationSignal } : {}),
         ...(reply.venueRequestSignal
           ? {
               venueRequestSignal: {
@@ -3283,7 +3250,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   }
 
   async function applyVenueRequests(session: VenueScene, submission: VenueSubmission): Promise<void> {
-    if (submission.venueRequestSignal && !ordinaryProjectsLocked(await readVillageState())) {
+    if (submission.venueRequestSignal) {
       const signal = submission.venueRequestSignal;
       const spoken = session.lines.find(
         (line) =>
@@ -3342,17 +3309,17 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         }
       }
     }
-    if (submission.upgradeSignal) {
+    if (submission.renovationSignal) {
       try {
         await recordVillagerVenueImprovement(
-          submission.upgradeSignal.characterId,
-          submission.upgradeSignal.venueId,
-          submission.upgradeSignal.quote,
-          `venue-upgrade:${submission.id}`,
+          submission.renovationSignal.characterId,
+          submission.renovationSignal.venueId,
+          submission.renovationSignal.quote,
+          `venue-renovation:${submission.id}`,
         );
       } catch (error) {
         if (submission.semanticProvenance?.version === 2) throw error;
-        villagesLogger().warn("[villages] upgrade request was no longer valid: %s", String(error));
+        villagesLogger().warn("[villages] Renovation request was no longer valid: %s", String(error));
       }
     }
   }
@@ -3470,12 +3437,15 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     if (allowProjectRecovery) await recoverProjectMetadata(scene, turn);
     const currentScene = await readSession(scene.id);
     const currentTurn = currentScene.submissions.find((row) => row.id === turn.id);
+    const physicalReceipt = (await readVillageState()).exchangeReceipts["venue-chat:" + scene.id + ":" + turn.id];
+    const physicalRejected = physicalReceipt?.domain === "physical" && physicalReceipt.status === "rejected";
     if (turn.semanticPlayerMoves?.length && currentScene.zoneId !== turn.semanticPlayerMoves.at(-1)!.zoneId)
       throw conflict("The saved movement needs recovery before the turn can be displayed.");
     if (
       (turn.projectSpeech?.length || turn.action?.happened) &&
       currentTurn?.processing?.domains.projects.status !== "applied" &&
-      !(currentTurn && projectMetadataRejected(currentTurn))
+      !(currentTurn && projectMetadataRejected(currentTurn)) &&
+      !physicalRejected
     )
       throw conflict("The saved immediate outcome needs recovery.");
     if (semanticAuthorityDomain(turn, "relationships")) {
@@ -3503,7 +3473,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       throw conflict("The saved physical outcome is missing its typed action.");
     if (turn.action?.happened) {
       const state = await readVillageState();
-      if (!state.exchangeReceipts[`venue-chat:${scene.id}:${turn.id}`]?.physicalOutcome?.actionReceipt?.happened)
+      if (
+        !physicalRejected &&
+        !state.exchangeReceipts[`venue-chat:${scene.id}:${turn.id}`]?.physicalOutcome?.actionReceipt?.happened
+      )
         throw conflict("The saved physical outcome could not commit. Recover the saved request.");
     }
     await changeSession(scene.id, (saved) => {
@@ -3521,8 +3494,42 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     const id = `venue-chat:${session.id}:${submission.id}`;
     await mutateVillageState((state) => {
       if (session.villageSeed && state.seed !== session.villageSeed) return;
-      if (state.venueEvents.some((event) => event.id === id) || state.exchangeReceipts[id]?.physicalOutcome) return;
-      if (state.venues.some((venue) => venue.id === session.placeId && venue.constructionStatus === "worksite")) return;
+      if (
+        state.venueEvents.some((event) => event.id === id) ||
+        state.exchangeReceipts[id]?.physicalOutcome ||
+        state.exchangeReceipts[id]?.status === "rejected"
+      )
+        return;
+      const worksite = state.venues.some(
+        (venue) => venue.id === session.placeId && venue.constructionStatus === "worksite",
+      );
+      const cancelled = state.projects.some(
+        (project) =>
+          project.kind === "new-venue" && project.venueId === session.placeId && project.status === "cancelled",
+      );
+      const rejectPhysical = (reason: string) => {
+        const at = submission.at || villageNow().toISOString();
+        state.exchangeReceipts[id] = {
+          id,
+          sceneId: session.id,
+          submissionId: submission.id,
+          domain: "physical",
+          at,
+          committedAt: at,
+          status: "rejected",
+          reason,
+          evidenceIds: submission.replyLineIds ?? [],
+          notice: { id, kind: "project", text: reason },
+        };
+      };
+      if (worksite || cancelled) {
+        rejectPhysical(
+          cancelled
+            ? "Project cancelled; this Scene outcome was not applied."
+            : "Physical changes are unavailable at this unfinished worksite.",
+        );
+        return;
+      }
       if (
         submission.semanticProvenance?.version !== 2 &&
         area === "shared" &&
@@ -3533,6 +3540,17 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, zoneId ?? "");
       const capturedVenue = session.continuity?.facts.venues.find((venue) => venue.id === session.placeId);
       const capturedZone = capturedVenue && resolveVenueZone(capturedVenue, zoneId ?? "");
+      if (
+        capturedVenue &&
+        (capturedVenue.constructionStatus === "worksite" ||
+          !controlledVenue ||
+          !controlledZone ||
+          !capturedZone ||
+          JSON.stringify(projectZoneShape(controlledZone)) !== JSON.stringify(projectZoneShape(capturedZone)))
+      ) {
+        rejectPhysical("The Venue structure changed; this captured Scene outcome was not applied.");
+        return;
+      }
       if (controlledVenue && controlledZone && capturedVenue && capturedZone) {
         const authority = (venue: VillageVenue, zone: NonNullable<typeof controlledZone>) =>
           JSON.stringify({
@@ -3544,10 +3562,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
             residents: zone.venueClass === "residence" ? [...venueResidentIds(venue)].sort() : [],
             workers: zone.kind === "staff" ? [...(venue.workerIds ?? [])].sort() : [],
           });
-        if (authority(controlledVenue, controlledZone) !== authority(capturedVenue, capturedZone))
-          throw conflict(
-            "Authority over this Zone changed. The Scene is preserved; this effect cannot change the current Village.",
-          );
+        if (authority(controlledVenue, controlledZone) !== authority(capturedVenue, capturedZone)) {
+          rejectPhysical("Authority over this Zone changed; this captured Scene outcome was not applied.");
+          return;
+        }
       }
       if (
         submission.semanticProvenance?.version !== 2 &&
@@ -3566,7 +3584,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         })(),
         witnesses,
         state.villagers.map((person) => person.characterId),
-        availableProjectSupplyTransfers(state, session.placeId, zoneId, witnesses),
       );
       if (!change) return;
       const at = submission.at || villageNow().toISOString();
@@ -3695,17 +3712,14 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       if (!flow || !proofs.length) continue;
       const lineIds = new Set(proofs.map((proof) => proof.lineId));
       const id = `project:${project.id}:${submission.id}`;
-      const checklist = lineIds.has(flow.requirementsEvidenceId);
-      const builder = flow.candidates.find((entry) => lineIds.has(entry.evidenceId));
+      const builder = flow.candidates.find((entry) => proofs.some((proof) => proof.speakerId === entry.residentId));
       const name =
         session.participants.find((person) => person.characterId === builder?.residentId)?.name ?? "A villager";
-      const text = checklist
-        ? `The builder's checklist for ${project.title} is ready to review.`
-        : builder
-          ? `${name} agreed to build ${project.title}.`
-          : flow.approvals.some((entry) => lineIds.has(entry.evidenceId))
-            ? `Approval for ${project.title} was confirmed.`
-            : `Supply progress for ${project.title} was updated.`;
+      const text = builder
+        ? `${name} agreed to build ${project.title}.`
+        : flow.approvals.some((entry) => lineIds.has(entry.evidenceId))
+          ? `Approval for ${project.title} was confirmed.`
+          : `The commitment for ${project.title} was updated.`;
       events.push({ id, kind: "project", text });
     }
     const request = submission.residenceSignal;
@@ -3714,12 +3728,12 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         session.participants.find((person) => person.characterId === request.characterId)?.name ?? "A villager";
       events.push({ id: `venue-move:${submission.id}`, kind: "request", text: `${name} asked to move.` });
     }
-    if (submission.upgradeSignal && village.processedOpportunityIds.includes(`venue-upgrade:${submission.id}`)) {
+    if (submission.renovationSignal && village.processedOpportunityIds.includes(`venue-renovation:${submission.id}`)) {
       const name =
-        session.participants.find((person) => person.characterId === submission.upgradeSignal!.characterId)?.name ??
+        session.participants.find((person) => person.characterId === submission.renovationSignal!.characterId)?.name ??
         "A villager";
       events.push({
-        id: `venue-upgrade:${submission.id}`,
+        id: `venue-renovation:${submission.id}`,
         kind: "request",
         text: `${name} suggested a Venue improvement.`,
       });

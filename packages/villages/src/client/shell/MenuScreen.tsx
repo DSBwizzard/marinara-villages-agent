@@ -27,7 +27,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     debugDiscardEnabled,
     decideVenueRequest,
     generateRequestDescription,
-    decideHomeUpgrade,
     completeResidenceMove,
     decideResidenceMove,
     deleteArchivedVisits,
@@ -140,6 +139,28 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     writeUpNote,
   } = controller;
 
+  if (screen === "menu" && menuPage === "projects" && snapshot) {
+    return (
+      <div className={ELEMENT_TAG + "-root " + ELEMENT_TAG + "-project-root"} data-page="projects" data-mobile={mobile}>
+        {renderProjectsPage({
+          debugDiscardEnabled,
+          projectsController,
+          openMenu,
+          openVenue: openPlace,
+          goHome,
+          mobile,
+          room,
+          setFocusedProjectId,
+          setPlacingProjectId,
+          setScreen,
+          setSiteProjectId,
+          siteProjectId,
+          snapshot,
+        })}
+      </div>
+    );
+  }
+
   // ── The dedicated menu screen ──────────────────────────────────────────────
   // The map is the homepage and carries no villager controls at all, so
   // everything you can change lives here behind one button that was already on
@@ -199,7 +220,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("venueRequests")}
               >
-                {`Venue Requests (${(snapshot?.venueRequests?.length ?? 0) + (snapshot?.upgradeRequests?.length ?? 0) + (snapshot?.residences?.filter((entry) => entry.status === "pending" && entry.requestedBy === "villager").length ?? 0)})`}
+                {`Venue Requests (${(snapshot?.venueRequests?.length ?? 0) + (snapshot?.residences?.filter((entry) => entry.status === "pending" && entry.requestedBy === "villager").length ?? 0)})`}
               </button>
               <button
                 type="button"
@@ -396,23 +417,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                 })
               : null}
 
-            {menuPage === "projects" && snapshot
-              ? renderProjectsPage({
-                  debugDiscardEnabled,
-                  projectsController,
-                  openMenu,
-                  openVenue: openPlace,
-                  goHome,
-                  mobile,
-                  room,
-                  setFocusedProjectId,
-                  setPlacingProjectId,
-                  setScreen,
-                  setSiteProjectId,
-                  siteProjectId,
-                  snapshot,
-                })
-              : null}
             {menuPage === "venueRequests" && snapshot
               ? renderVenueRequestsPage({
                   housingVenueId,
@@ -421,7 +425,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                   busy: busy,
                   decideVenueRequest,
                   generateRequestDescription,
-                  decideHomeUpgrade,
                   completeResidenceMove,
                   decideResidenceMove,
                   nameOfCharacter,

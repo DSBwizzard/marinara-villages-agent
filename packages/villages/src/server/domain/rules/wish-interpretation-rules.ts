@@ -22,13 +22,11 @@ export function wishReceiptRecords(state: VillageState, actorId: string, scene?:
     }),
     ...state.projects.flatMap((project) => {
       const flow = project.lifecycle;
-      const task = state.progressTasks.find((item) => item.definition.owner.id === project.id);
-      if (project.status !== "complete" || flow?.phase !== "complete" || !flow.completedAt || !task?.resolvedAt)
-        return [];
+      if (project.status !== "complete" || flow?.phase !== "complete" || !flow.completedAt) return [];
       const venue = state.venues.find((item) => item.id === project.venueId);
       if (!venue || venue.constructionStatus === "worksite") return [];
       const text = `Verified completed Project: ${project.title}, at ${venue.name}; builder: ${flow.builderId}.`;
-      const completedAt = task?.resolvedAt || project.updatedAt;
+      const completedAt = flow.completedAt;
       return [
         {
           id: `completed-project:${project.id}:${completedAt}`,

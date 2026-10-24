@@ -1,3 +1,4 @@
+import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import type { AccessCommand } from "../../../shared/helpers/venue-access.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -17,7 +18,7 @@ function editorDraftKey(draft: VillageVenue, classes: readonly VenueClass[]) {
   ]);
 }
 function proposalDraftKey(draft: NonNullable<VenuesState["venueProposalDraft"]>) {
-  return JSON.stringify([draft.classes, draft.capacity, draft.slot, draft.title, draft.description, draft.extraBeds]);
+  return JSON.stringify([draft.classes, draft.capacity, draft.title, draft.description]);
 }
 
 /** Always mounted by the shell; the Venue screen supplies explicit current inputs. */
@@ -397,18 +398,9 @@ export function useVenueScreenCommands(ports: {
       const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(place.id)}/proposals`, {
         method: "POST",
         body: JSON.stringify({
+          requestId: createVillagesClientId(),
           classes: venueProposalDraft.classes,
           capacity: venueProposalDraft.capacity,
-          ...(venueProposalDraft.title.trim()
-            ? {
-                slot: venueProposalDraft.slot,
-                improvement: {
-                  title: venueProposalDraft.title,
-                  description: venueProposalDraft.description,
-                  extraBeds: venueProposalDraft.extraBeds,
-                },
-              }
-            : {}),
           title: venueProposalDraft.title || `Change ${place.name}`,
           detail: venueProposalDraft.description || `Change Venue Classes or capacity at ${place.name}.`,
         }),

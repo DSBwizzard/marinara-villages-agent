@@ -1,3 +1,4 @@
+import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import { readOpeningRenovation, openingRenovationDraft } from "./opening-renovation.js";
 import { createHash } from "node:crypto";
 import { physicalVenueEvents } from "./venue-scene-state.js";
@@ -45,8 +46,7 @@ export class IncompleteOpeningGathering extends VillagesRequestError {
 export type OpeningSignal = { kind: "pitch" | "first-use"; residentId: string; quote: string; playerQuote: string };
 export type OpeningRecord = {
   id: string;
-  version: 1 | 2;
-  ordinaryProjectsUnlocked?: boolean;
+  version: 2;
   stage: OpeningView["stage"];
   communityVenueId: string;
   gatheringSceneId: string;
@@ -59,7 +59,6 @@ export type OpeningRecord = {
   firstUseEvidence?: { sceneId: string; submissionId: string; lineId: string };
 };
 
-export const OPENING_WORK_MS = 12 * 60 * 60_000;
 export function gatheringDialogueComplete(scene: VenueScene): boolean {
   return (
     scene.submissions.some((turn) => turn.id === "greeting" && turn.openingContext?.gatheringComplete === true) &&
@@ -70,17 +69,11 @@ export function gatheringDialogueComplete(scene: VenueScene): boolean {
 export function openingActive(state: Pick<VillageState, "opening">): boolean {
   return !!state.opening && !["complete", "ended"].includes(state.opening.stage);
 }
-export function ordinaryProjectsLocked(state: Pick<VillageState, "opening">): boolean {
-  return openingActive(state) && !state.opening?.ordinaryProjectsUnlocked;
-}
-export function requireOrdinaryProjects(state: VillageState): void {
-  if (ordinaryProjectsLocked(state)) throw conflict("Finish or skip the opening before starting another Project.");
-}
 export function initialOpening(
   residentIds: string[],
   communityVenueId: string,
   id: string,
-  version: 1 | 2 = 1,
+  version: 2 = 2,
 ): OpeningRecord {
   return {
     id,
@@ -157,8 +150,7 @@ export function readOpening(value: unknown): OpeningRecord | undefined {
   if (value == null) return undefined;
   const row = asRecord(value);
   const stages = ["gathering", "conversations", "project", "first-use", "complete", "ended"];
-  if ((row.version !== 1 && row.version !== 2) || !stages.includes(String(row.stage)))
-    throw conflict("This opening record is unsupported.");
+  if (row.version !== 2 || !stages.includes(String(row.stage))) throw conflict("This opening record is unsupported.");
   const residentIds = [...new Set(asStringArray(row.residentIds))].slice(0, 3);
   const proposals = Array.isArray(row.proposals)
     ? row.proposals.map((entry) => readOpeningProposal(entry, asTrimmedString(asRecord(entry).residentId)))
@@ -180,8 +172,7 @@ export function readOpening(value: unknown): OpeningRecord | undefined {
   const evidence = asRecord(row.firstUseEvidence);
   return {
     id: asTrimmedString(row.id),
-    version: row.version as 1 | 2,
-    ...(row.ordinaryProjectsUnlocked === true ? { ordinaryProjectsUnlocked: true } : {}),
+    version: row.version as 2,
     stage: row.stage as OpeningRecord["stage"],
     communityVenueId: asTrimmedString(row.communityVenueId),
     gatheringSceneId: asTrimmedString(row.gatheringSceneId),
@@ -212,9 +203,11 @@ export function reconcileOpening(state: VillageState): void {
     opening.outcome = "No proposals remain";
   }
   const project = state.projects.find((entry) => entry.id === opening.projectId);
-  if (project?.lifecycle?.workOrder?.startsAt || project?.status === "complete")
-    opening.ordinaryProjectsUnlocked = true;
   if (project?.status === "complete") opening.stage = "first-use";
+  if (project?.status === "cancelled") {
+    opening.stage = "ended";
+    opening.outcome = "Project cancelled";
+  }
 }
 
 export function openingView(state: VillageState): OpeningView | undefined {
@@ -230,14 +223,11 @@ export function openingView(state: VillageState): OpeningView | undefined {
   const pending = residentIds.find((id) => !heardIds.includes(id));
   const name = state.villagers.find((resident) => resident.characterId === pending)?.cardSnapshot.name;
   const phases: Record<string, string> = {
-    concept: "Choose a site",
-    approval: "Ask affected villagers",
-    builder: "Find a willing builder",
-    requirements: "Agree on the plan",
-    materials: "Prepare supplies",
-    construction: "Work underway",
-    finishing: project?.kind === "renovation" ? "Finish the improvement" : "Open the Venue",
+    planning: "Choose the design, agreements and lead",
+    working: "Work underway",
+    paused: "Review paused work",
     complete: "Experience its first use",
+    cancelled: "Project cancelled",
   };
   const action =
     opening.stage === "gathering"
@@ -254,7 +244,6 @@ export function openingView(state: VillageState): OpeningView | undefined {
   return {
     id: opening.id,
     version: opening.version,
-    ordinaryProjectsUnlocked: !!opening.ordinaryProjectsUnlocked,
     stage: opening.stage,
     communityVenueId: opening.communityVenueId,
     gatheringSceneId: opening.gatheringSceneId,
@@ -283,11 +272,22 @@ export function openingView(state: VillageState): OpeningView | undefined {
 }
 
 /** Only the current resident's idea is supplied to an individual Scene. */
-export function openingSceneDirection(state: VillageState, scene: VenueScene, legacySignals = true): string {
+export function openingSceneDirection(state: VillageState, scene: VenueScene, includeSignals = true): string {
   const opening = state.opening;
   if (!opening || !openingActive(state)) return "";
   if (opening.stage === "gathering" && scene.id === opening.gatheringSceneId)
-    return `OPENING GATHERING: This is the starting Community gathering, not necessarily an arrival or first meeting. Respect authored histories. Prepared public interests${opening.version === 2 ? " and ideas" : " (not commitments or full pitches)"}: ${JSON.stringify(opening.proposals.map(({ residentId, situation, name, description }) => ({ residentId, situation, ...(opening.version === 2 ? { name, description } : {}) })))}. Let each resident contribute a distinct broad concern or interest grounded in their own life. Do not invent player words, agreement, ceremonies or past achievements. Do not force a Project choice here. ${opening.version === 2 ? "Complete this short conversation in this response, giving every present founder their own spoken interest and idea. With one founder, they may address the player without inventing an answer or reaction. End at a natural pause. No player input is required." : "The player can converse and leave normally."}`;
+    return (
+      "OPENING GATHERING: Respect authored histories. Prepared public interests and ideas: " +
+      JSON.stringify(
+        opening.proposals.map(({ residentId, situation, name, description }) => ({
+          residentId,
+          situation,
+          name,
+          description,
+        })),
+      ) +
+      ". Give every present founder their distinct spoken interest and idea in this short response, then end at a natural pause. Never invent player words or commitments. The player can leave or pursue ordinary Projects at any time."
+    );
   const proposal = opening.proposals.find(
     (entry) => scene.activeIds.length === 1 && entry.residentId === scene.activeIds[0],
   );
@@ -296,17 +296,11 @@ export function openingSceneDirection(state: VillageState, scene: VenueScene, le
     proposal &&
     !opening.reveals.some((proof) => proof.residentId === proposal.residentId)
   )
-    return `OPENING PITCH (private preparation, not established speech or consent): ${JSON.stringify(proposal)}. In this individual conversation, let this resident naturally pitch their own idea in their own voice, in a conversation appropriate to their established relationship with the player. ${scene.openingIntroductionResidentId ? "Deliver the complete pitch in this opening response, before the player has to say or do anything." : ""} Explain its name, purpose and actual work aloud; do not disclose private motives or secrets. Use the proposed name when pitching it. Preserve their personality and ability to disagree. Pitching does not volunteer them as builder. Do not make player commitments. ${legacySignals ? `When their spoken dialogue actually explains this proposal, return openingSignal:{kind:"pitch",residentId:"${proposal.residentId}",quote:"exact substantial quote from their dialogue",playerQuote:""}.` : ""} Do not also return venueRequest for this pitch.`;
+    return `OPENING PITCH (private preparation, not established speech or consent): ${JSON.stringify(proposal)}. In this individual conversation, let this resident naturally pitch their own idea in their own voice, in a conversation appropriate to their established relationship with the player. ${scene.openingIntroductionResidentId ? "Deliver the complete pitch in this opening response, before the player has to say or do anything." : ""} Explain its name, purpose and actual work aloud; do not disclose private motives or secrets. Use the proposed name when pitching it. Preserve their personality and ability to disagree. Pitching does not volunteer them as builder. Do not make player commitments. ${includeSignals ? `When their spoken dialogue actually explains this proposal, return openingSignal:{kind:"pitch",residentId:"${proposal.residentId}",quote:"exact substantial quote from their dialogue",playerQuote:""}.` : ""} Do not also return venueRequest for this pitch.`;
   const project = state.projects.find((entry) => entry.id === opening.projectId);
-  if (
-    project?.status === "complete" &&
-    project.venueId === scene.placeId &&
-    (project.kind !== "renovation" ||
-      !project.lifecycle?.change?.improvement?.spaceId ||
-      project.lifecycle.change.improvement.spaceId === scene.zoneId)
-  ) {
+  if (project?.status === "complete" && project.venueId === scene.placeId && true) {
     const chosen = opening.proposals.find((entry) => entry.residentId === project.requesterCharacterId);
-    return `OPENING FIRST USE: Intended use: ${chosen?.firstUse ?? project.venueDraft?.description}. Continue ordinary play; never perform the player's actions for them. ${legacySignals ? 'Only if this current player exchange and visible response actually depict that use, return openingSignal:{kind:"first-use",residentId:"",quote:"exact response quote depicting use",playerQuote:"exact current player words participating in that use"}.' : "Let actual player participation and visible responses establish the use."} Greetings, entering, promises and descriptions of possible use do not count. No invented physical effects.`;
+    return `OPENING FIRST USE: Intended use: ${chosen?.firstUse ?? projectPhysicalDesign(project)}. Continue ordinary play; never perform the player's actions for them. ${includeSignals ? 'Only if this current player exchange and visible response actually depict that use, return openingSignal:{kind:"first-use",residentId:"",quote:"exact response quote depicting use",playerQuote:"exact current player words participating in that use"}.' : "Let actual player participation and visible responses establish the use."} Greetings, entering, promises and descriptions of possible use do not count. No invented physical effects.`;
   }
   return "";
 }
@@ -327,8 +321,6 @@ export function applyOpeningExchange(state: VillageState, scene: VenueScene, tur
   const opening = state.opening;
   if (!opening || !openingActive(state) || scene.villageSeed !== state.seed || turn.movement) return;
   reconcileOpening(state);
-  if (opening.version === 1 && opening.stage === "gathering" && scene.id === opening.gatheringSceneId && scene.endedAt)
-    opening.stage = "conversations";
   const signal = turn.openingSignal;
   if (!signal || turn.openingContext?.stage !== opening.stage || turn.openingContext.projectId !== opening.projectId)
     return;
@@ -346,22 +338,20 @@ export function applyOpeningExchange(state: VillageState, scene: VenueScene, tur
   if (
     signal.kind === "pitch" &&
     opening.stage === "conversations" &&
-    (opening.version === 1 || (scene.openingIntroductionResidentId === signal.residentId && turn.id === "greeting")) &&
+    scene.openingIntroductionResidentId === signal.residentId &&
+    turn.id === "greeting" &&
     turn.activeIdsAtTurn?.length === 1 &&
     turn.activeIdsAtTurn[0] === signal.residentId &&
     line.speakerId === signal.residentId &&
     line.kind === "dialogue" &&
-    (Object.hasOwn(turn.openingContext, "proposalFingerprint") ||
-      (opening.version === 1 && signal.quote.length >= 24)) &&
+    Object.hasOwn(turn.openingContext, "proposalFingerprint") &&
     opening.proposals.some(
       (entry) =>
         entry.residentId === signal.residentId &&
-        (Object.hasOwn(turn.openingContext, "proposalFingerprint")
-          ? turn.semanticProvenance?.version === 2 &&
-            turn.semanticProvenance.pipelineVersion === 3 &&
-            /^[a-f0-9]{64}$/u.test(turn.semanticProvenance.sourceHash) &&
-            turn.openingContext.proposalFingerprint === openingProposalFingerprint(entry)
-          : signal.quote.toLocaleLowerCase().includes(entry.name.toLocaleLowerCase())),
+        turn.semanticProvenance?.version === 2 &&
+        turn.semanticProvenance.pipelineVersion === 3 &&
+        /^[a-f0-9]{64}$/u.test(turn.semanticProvenance.sourceHash) &&
+        turn.openingContext!.proposalFingerprint === openingProposalFingerprint(entry),
     ) &&
     state.villagers.some((entry) => entry.characterId === signal.residentId) &&
     !opening.reveals.some((entry) => entry.residentId === signal.residentId)
@@ -392,12 +382,7 @@ export function applyOpeningExchange(state: VillageState, scene: VenueScene, tur
     turn.message.includes(signal.playerQuote) &&
     state.projects.some(
       (entry) =>
-        entry.id === opening.projectId &&
-        entry.status === "complete" &&
-        entry.venueId === scene.placeId &&
-        (entry.kind !== "renovation" ||
-          !entry.lifecycle?.change?.improvement?.spaceId ||
-          entry.lifecycle.change.improvement.spaceId === scene.zoneId),
+        entry.id === opening.projectId && entry.status === "complete" && entry.venueId === scene.placeId && true,
     )
   ) {
     opening.firstUseEvidence = { sceneId: scene.id, submissionId: turn.id, lineId: line.id };

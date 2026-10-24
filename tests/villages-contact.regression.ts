@@ -53,7 +53,6 @@ function venue(id: string, classes: VillageVenue["classes"] = ["community"]): Vi
     state: {
       condition: "standing",
       furniture: [],
-      upgrades: [],
       publicFacts: [],
       features: [],
       traces: [],

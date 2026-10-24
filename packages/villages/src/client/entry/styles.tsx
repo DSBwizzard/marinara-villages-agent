@@ -3377,26 +3377,15 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin[data-kind="person"] { max-width: 7rem; }
 .${ELEMENT_TAG}-stage[data-mobile="true"][data-mobile-gesturing="true"] .${ELEMENT_TAG}-pin-photo-card { transition: none; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-doors { z-index: 8; transform: translateX(-50%); min-width: min(10rem, 70cqw); }
-.${ELEMENT_TAG}-project-screen { display: grid; gap: 1.25rem; min-height: 0; color: #eef2ff; }
 .${ELEMENT_TAG}-project-head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: .25rem .25rem .5rem; }
 .${ELEMENT_TAG}-project-head h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); margin: .25rem 0; color: #f6f4ff; }
 .${ELEMENT_TAG}-project-head p { margin: 0; color: #adbee8; }
-.${ELEMENT_TAG}-project-eyebrow { color: #b8adff; font-size: .72rem; font-weight: 800; letter-spacing: .12em; }
-.${ELEMENT_TAG}-project-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .${ELEMENT_TAG}-project-slot, .${ELEMENT_TAG}-project-card { border: 1px solid #3f59ab; border-radius: 1rem; background: linear-gradient(145deg, #182b62, #101d44); box-shadow: 0 1rem 2rem #070e2b44; color: #f1f3ff; }
 .${ELEMENT_TAG}-project-slot { display: grid; gap: .6rem; min-height: 11rem; text-align: left; padding: 1.3rem; cursor: pointer; }
 .${ELEMENT_TAG}-project-slot:hover, .${ELEMENT_TAG}-project-slot:focus-visible { border-color: #a78bfa; box-shadow: 0 0 0 2px #8d6cf6; }
 .${ELEMENT_TAG}-project-slot span { color: #aa9eff; font-size: .78rem; font-weight: 800; letter-spacing: .1em; }
 .${ELEMENT_TAG}-project-slot strong { font-size: 1.3rem; }
 .${ELEMENT_TAG}-project-slot small { color: #b8c6eb; }
-.${ELEMENT_TAG}-project-create { grid-column: 1 / -1; }
-.${ELEMENT_TAG}-project-layout { display: grid; grid-template-columns: minmax(10rem, 13rem) minmax(19rem, 1fr); gap: 1rem; align-items: start; min-height: 0; }
-.${ELEMENT_TAG}-project-rail { display: grid; gap: .6rem; }
-.${ELEMENT_TAG}-project-step { display: flex; align-items: center; gap: .7rem; color: #8da2d4; padding: .7rem; border-radius: .7rem; }
-.${ELEMENT_TAG}-project-step b { display: grid; place-items: center; flex: 0 0 2.3rem; height: 2.3rem; border: 1px solid #6480cd; border-radius: 50%; }
-.${ELEMENT_TAG}-project-step[data-state="active"] { color: white; background: linear-gradient(110deg, #344af1, #192c69); }
-.${ELEMENT_TAG}-project-step[data-state="active"] b { background: #8b4cf4; border-color: #8b4cf4; }
-.${ELEMENT_TAG}-project-step[data-state="done"] { color: #b8d6ff; }
 .${ELEMENT_TAG}-project-card { display: grid; gap: .85rem; padding: 1.25rem; }
 .${ELEMENT_TAG}-project-card h3, .${ELEMENT_TAG}-project-card h4 { margin: 0; }
 .${ELEMENT_TAG}-project-card p { margin: .1rem 0; line-height: 1.45; color: #c7d4f6; }
@@ -3404,23 +3393,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-project-card input:not([type="file"]), .${ELEMENT_TAG}-project-card select, .${ELEMENT_TAG}-project-card textarea { width: 100%; box-sizing: border-box; border: 1px solid #5470bf; border-radius: .55rem; background: #172b60; color: #f4f6ff; padding: .7rem; font: inherit; }
 .${ELEMENT_TAG}-project-card textarea { min-height: 7rem; resize: vertical; }
 .${ELEMENT_TAG}-project-card > .${ELEMENT_TAG}-button { background: linear-gradient(100deg, #3656f6, #9448ef); color: white; min-height: 2.75rem; }
-.${ELEMENT_TAG}-project-material { display: grid; gap: .35rem; border: 1px solid #425ba1; border-radius: .65rem; padding: .7rem; }
-.${ELEMENT_TAG}-project-material span { color: #b6c5ea; }
-.${ELEMENT_TAG}-project-finish-visit { display: grid; gap: 1rem; max-width: 62rem; margin: 0 auto; padding: 1.25rem; border: 1px solid #536cc0; border-radius: 1rem; background: #142657; color: #f4f6ff; }
-.${ELEMENT_TAG}-project-finish-visit header { display: grid; gap: .5rem; }
-.${ELEMENT_TAG}-project-finish-visit h2, .${ELEMENT_TAG}-project-finish-visit p { margin: 0; }
-.${ELEMENT_TAG}-project-finish-visit label { display: grid; gap: .4rem; }
-.${ELEMENT_TAG}-project-finish-visit input:not([type="file"]):not([type="checkbox"]), .${ELEMENT_TAG}-project-finish-visit select, .${ELEMENT_TAG}-project-finish-visit textarea { width: 100%; box-sizing: border-box; border: 1px solid #5470bf; border-radius: .55rem; background: #172b60; color: #f4f6ff; padding: .7rem; font: inherit; }
-.${ELEMENT_TAG}-project-finish-visit textarea { min-height: 7rem; }
-.${ELEMENT_TAG}-project-finish-visit fieldset { display: grid; gap: .6rem; min-width: 0; border: 1px solid #5470bf; border-radius: .55rem; padding: .8rem; }
-.${ELEMENT_TAG}-project-finish-visit button:not(.${ELEMENT_TAG}-button) { border: 1px solid #5470bf; border-radius: .55rem; background: #172b60; color: #f4f6ff; padding: .6rem; font: inherit; cursor: pointer; min-height: 44px; }
-.${ELEMENT_TAG}-project-finish-visit button:disabled { opacity: .5; cursor: default; }
-.${ELEMENT_TAG}-project-finish-visit label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: .5rem; }
-.${ELEMENT_TAG}-project-material > div { display: grid; gap: .4rem; }
-.${ELEMENT_TAG}-project-image { display: grid; gap: .5rem; border-top: 1px solid #425ba1; padding-top: .8rem; }
-.${ELEMENT_TAG}-project-image img { max-width: min(100%, 20rem); aspect-ratio: 3 / 2; object-fit: cover; border-radius: .5rem; }
-.${ELEMENT_TAG}-project-footer { display: flex; justify-content: flex-start; border-top: 1px solid #425ba1; padding-top: .8rem; }
-@media (max-width: 700px) { .${ELEMENT_TAG}-project-slots, .${ELEMENT_TAG}-project-layout { grid-template-columns: 1fr; } .${ELEMENT_TAG}-project-rail { display: flex; overflow-x: auto; } .${ELEMENT_TAG}-project-step { flex: 0 0 9rem; } }
 .${ELEMENT_TAG}-mobile-map-preview { display: block; max-width: min(100%, 22rem); max-height: 13rem; object-fit: contain; border: 2px solid var(--border); }
 .${ELEMENT_TAG}-setup-map-viewport:has(> .${ELEMENT_TAG}-stage[data-mobile="true"]) { height: min(55cqh, 30rem); overflow: hidden; }
 .${ELEMENT_TAG}-setup-map-viewport > .${ELEMENT_TAG}-stage[data-mobile="true"] { width: 100% !important; height: 100% !important; aspect-ratio: auto !important; }

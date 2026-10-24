@@ -1,17 +1,29 @@
-import type {
-  VillageSnapshot,
-  VillageVenue,
-  VillageVenueImage,
-  VenueClass,
-} from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
-import { readFileAsDataUrl } from "../../shared/presentation.js";
-import { venueHasCommon } from "../founding/villages-founding-editor";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
+import type { VillageSnapshot, VillageVenue, VenueClass } from "../../../shared/contracts/village.js";
+import { useEffect, useRef, useState } from "react";
+import { request, messageFrom } from "../../shared/api.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
+import { useProjectWorkspaces } from "./useProjectWorkspaces.js";
 
-import { useProjectImageKey, useProjectWorkspaces } from "./useProjectWorkspaces.js";
-
-/** Owns Project drafts and commands; the panel owns rendering and DOM focus. */
+function draftVenue(name: string, classes: VenueClass[], physicalDesign: string): VillageVenue {
+  return {
+    id: "draft",
+    name,
+    classes,
+    form: physicalDesign,
+    description: "",
+    category: "",
+    layoutVersion: 1,
+    layout: "exterior",
+    presentation: { image: null, x: null, y: null },
+    occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+    capabilities: [],
+    residenceCapacity: 1,
+    spaces: [],
+    privateSpaces: [],
+    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
+  };
+}
 export function useProjectsController({
   snapshot,
   onSnapshot,
@@ -19,496 +31,167 @@ export function useProjectsController({
   focusProjectRequest,
 }: {
   snapshot: VillageSnapshot | null;
-  onSnapshot: (next: VillageSnapshot) => void;
+  onSnapshot(next: VillageSnapshot): void;
   focusProjectId: string;
   focusProjectRequest: number;
 }) {
-  const [selectedId, setSelectedId] = useState(focusProjectId);
-  const latestSnapshot = useRef(snapshot);
-  useLayoutEffect(() => {
-    latestSnapshot.current = snapshot;
-  }, [snapshot]);
-  const [draftType, setDraftType] = useState<"new-venue" | "renovation" | "">("");
-  const selection = useRef({ selectedId, draftType });
-  useLayoutEffect(() => {
-    selection.current = { selectedId, draftType };
-  }, [selectedId, draftType]);
-  const [name, setName] = useState("");
-  const [venueClass, setVenueClass] = useState<VenueClass>("community");
-  const [description, setDescription] = useState("");
-  const [venueId, setVenueId] = useState("");
-  const [changeKind, setChangeKind] = useState<"class" | "capacity" | "layout" | "upgrade" | "remove-upgrade">(
-    "upgrade",
-  );
-  const [baseZoneDrafts, setBaseZoneDrafts] = useState<
-    import("../../../shared/contracts/village.js").VillageZoneDraft[]
-  >([]);
-  const [baseClasses, setBaseClasses] = useState<VenueClass[]>(["community"]);
-  const [upgradeTarget, setUpgradeTarget] = useState("");
-  const [capacity, setCapacity] = useState(2);
-  const [slot, setSlot] = useState(0);
-  const [extraBeds, setExtraBeds] = useState(0);
-  const [upgradeMode, setUpgradeMode] = useState<"replace" | "modify">("replace");
-  const [upgradeClass, setUpgradeClass] = useState<VenueClass | "">("");
-  const [upgradeZones, setUpgradeZones] = useState<
-    NonNullable<NonNullable<VillageVenue["improvements"]>[number]>["zones"]
-  >([]);
+  const [selectedId, setSelectedId] = useState(focusProjectId),
+    [draftType, setDraftType] = useState<"new-venue" | "renovation" | "">("");
+  const [name, setName] = useState(""),
+    [description, setDescription] = useState(""),
+    [classes, setClasses] = useState<VenueClass[]>(["community"]),
+    [venueId, setVenueId] = useState("");
+  const selected = useRef(selectedId);
+  selected.current = selectedId;
   useEffect(() => {
-    if (snapshot?.isFounded !== false) return;
-    setSelectedId("");
-    setDraftType("");
-    setName("");
-    setVenueClass("community");
-    setDescription("");
-    setVenueId("");
-    setChangeKind("upgrade");
-    setBaseZoneDrafts([]);
-    setBaseClasses(["community"]);
-    setUpgradeTarget("");
-    setCapacity(2);
-    setSlot(0);
-    setExtraBeds(0);
-    setUpgradeMode("replace");
-    setUpgradeClass("");
-    setUpgradeZones([]);
-  }, [snapshot?.isFounded]);
-  const workspace = useProjectWorkspaces(selectedId ? `project:${selectedId}` : `draft:${draftType}`, snapshot);
-  const {
-    form,
-    openingVenueType,
-    openingSpaces,
-    exterior,
-    interior,
-    exteriorImage,
-    interiorImage,
-    zoneImages,
-    imagePreview,
-    finishingVisit,
-    openingLayout,
-    openingCommonClass,
-    openingPrivateSpaces,
-    openingPersonality,
-    openingLore,
-    busy,
-    error,
-  } = workspace.draft;
-  const setForm = workspace.field("form");
-  const setOpeningVenueType = workspace.field("openingVenueType");
-  const setOpeningSpaces = workspace.field("openingSpaces");
-  const setExterior = workspace.field("exterior");
-  const setInterior = workspace.field("interior");
-  const setExteriorImage = workspace.field("exteriorImage");
-  const setInteriorImage = workspace.field("interiorImage");
-  const setZoneImages = workspace.field("zoneImages");
-  const setImagePreview = workspace.field("imagePreview");
-  const setFinishingVisit = workspace.field("finishingVisit");
-  const setOpeningLayout = workspace.field("openingLayout");
-  const setOpeningCommonClass = workspace.field("openingCommonClass");
-  const setOpeningPrivateSpaces = workspace.field("openingPrivateSpaces");
-  const setOpeningPersonality = workspace.field("openingPersonality");
-  const setOpeningLore = workspace.field("openingLore");
-  const setError = workspace.field("error");
-  useEffect(() => {
-    if (focusProjectId) setSelectedId(focusProjectId);
+    if (focusProjectId) {
+      setSelectedId(focusProjectId);
+      setDraftType("");
+    }
   }, [focusProjectId, focusProjectRequest]);
-  const active = (snapshot?.projects ?? []).filter(
-    (entry) => (entry.kind === "new-venue" || entry.kind === "renovation") && entry.lifecycle?.phase !== "complete",
+  const project = snapshot?.projects.find((project) => project.id === selectedId);
+  const target = snapshot?.settings.venues.find((venue) => venue.id === (project?.venueId || venueId));
+  const initial =
+    project?.kind === "new-venue"
+      ? {
+          ...draftVenue(project.title, project.venueDraft?.classes ?? ["other"], projectPhysicalDesign(project)),
+          ...(project.plan
+            ? {
+                form: project.plan.form,
+                venueType: project.plan.venueType,
+                description: project.plan.exteriorDescription,
+                layout: project.plan.layout,
+                spaces: project.plan.spaces,
+                privateSpaces: project.plan.privateSpaces.map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" })),
+                presentation: { image: project.plan.exteriorImage, x: null, y: null },
+                residenceCapacity: project.plan.capacity,
+              }
+            : {}),
+        }
+      : target
+        ? { ...target, classes: project?.lifecycle?.change?.classes ?? target.classes }
+        : null;
+  const workspace = useProjectWorkspaces(
+    project ? "project:" + project.id : "draft:" + draftType + ":" + venueId,
+    {
+      revision: project?.lifecycle?.revision,
+      venue: initial,
+      title: project?.title ?? name,
+      detail: project?.lifecycle?.change?.detail ?? description,
+      zones: project?.lifecycle?.change?.zones ?? target?.zones?.filter((zone) => zone.kind !== "exterior") ?? [],
+      capacity: project?.lifecycle?.change?.capacity ?? initial?.residenceCapacity ?? 1,
+    },
+    String(snapshot?.isFounded ?? ""),
   );
-  const project = snapshot?.projects.find((entry) => entry.id === selectedId) ?? null;
-  const flow = project?.lifecycle;
-  const target = snapshot?.settings.venues.find((entry) => entry.id === project?.venueId);
-  const selectedVenue = snapshot?.settings.venues.find((entry) => entry.id === venueId);
-  const openingVenue: VillageVenue | null = target
-    ? {
-        ...target,
-        layoutVersion: 1,
-        layout: openingLayout,
-        form,
-        venueType: openingVenueType,
-        description: exterior,
-        spaces:
-          openingLayout === "common" || openingLayout === "both"
-            ? openingSpaces.map((zone, index) =>
-                index === 0
-                  ? {
-                      ...zone,
-                      venueClass: openingCommonClass || zone.venueClass,
-                      description: interior,
-                      image: interiorImage,
-                    }
-                  : zone,
-              )
-            : [],
-        privateSpaces: openingPrivateSpaces,
-      }
-    : null;
-  const patchOpeningLayout = (venue: VillageVenue) => {
-    setOpeningLayout(venue.layout);
-    setOpeningSpaces(venue.spaces ?? []);
-    setOpeningVenueType(venue.venueType ?? "");
-    setOpeningPrivateSpaces(venue.privateSpaces ?? []);
-    if (venue.spaces?.[0]) {
-      setOpeningCommonClass(venue.spaces[0].venueClass);
-      setInterior(venue.spaces[0].description);
-    }
-  };
-
-  const selectedUpgrade = JSON.stringify(selectedVenue?.improvements?.[slot] ?? null);
-  useEffect(() => {
-    const upgrade = JSON.parse(selectedUpgrade) as NonNullable<VillageVenue["improvements"]>[number];
-    if (upgradeMode === "modify" && upgrade) {
-      setName(upgrade.title);
-      setDescription(upgrade.description);
-      setExtraBeds(upgrade.extraBeds);
-      setUpgradeTarget(upgrade.spaceId ?? "");
-      setUpgradeClass(upgrade.classContribution ?? "");
-      setUpgradeZones(upgrade.zones ?? []);
-    } else {
-      setUpgradeClass("");
-      setUpgradeTarget("");
-      setUpgradeZones([]);
-    }
-  }, [selectedVenue?.id, selectedUpgrade, slot, upgradeMode]);
-  const selectedBaseZones = JSON.stringify(
-    selectedVenue?.zones?.filter((zone) => !zone.upgradeId && zone.kind !== "exterior") ?? [],
-  );
-  useEffect(() => {
-    setBaseZoneDrafts(JSON.parse(selectedBaseZones));
-  }, [selectedBaseZones]);
-  const selectedBaseClasses = JSON.stringify(selectedVenue?.baseClasses ?? selectedVenue?.classes ?? ["community"]);
-  useEffect(() => {
-    setBaseClasses(JSON.parse(selectedBaseClasses) as VenueClass[]);
-  }, [selectedVenue?.id, selectedBaseClasses]);
-  const run = async (path: string, body: unknown = {}) => {
+  const run = async (path: string, body: Record<string, unknown>) => {
     const attempt = workspace.begin();
     if (!attempt) return null;
+    const fingerprint = JSON.stringify([path, body]),
+      requestId = workspace.requests.current.get(fingerprint) ?? createVillagesClientId();
+    workspace.requests.current.set(fingerprint, requestId);
     try {
-      const next = await request<VillageSnapshot>(path, { method: "POST", body: JSON.stringify(body) });
+      const next = await request<VillageSnapshot>(path, {
+        method: "POST",
+        body: JSON.stringify({ ...body, requestId }),
+      });
       if (!attempt.current()) return null;
+      workspace.requests.current.delete(fingerprint);
       onSnapshot(next);
       return next;
-    } catch (cause) {
-      if (attempt.current()) setError(messageFrom(cause, "The Project could not be updated."));
+    } catch (error) {
+      if (attempt.current()) workspace.field("error")(messageFrom(error, "The Project could not be updated."));
       return null;
     } finally {
       attempt.finish();
     }
   };
-  const action = (step: string, body: unknown = {}) =>
-    project && run(`/projects/${encodeURIComponent(project.id)}/${step}`, body);
+  const action = (step: string, body: Record<string, unknown> = {}) =>
+    project
+      ? run("/projects/" + encodeURIComponent(project.id) + "/" + step, {
+          expectedRevision: project.lifecycle?.revision,
+          ...body,
+        })
+      : Promise.resolve(null);
   const create = async () => {
-    const body =
+    const next = await run(
+      draftType === "new-venue" ? "/projects" : "/projects/renovations/" + encodeURIComponent(venueId),
       draftType === "new-venue"
-        ? { name, venueClass, description }
+        ? { name, description, classes }
         : {
             title: name,
             detail: description,
-            ...(changeKind === "class" && selectedVenue ? { classes: baseClasses } : {}),
-            ...(changeKind === "capacity" ? { capacity } : {}),
-            ...(changeKind === "layout" ? { baseZones: baseZoneDrafts } : {}),
-            ...(changeKind === "upgrade"
-              ? {
-                  slot,
-                  improvement: {
-                    id: upgradeMode === "modify" ? selectedVenue?.improvements?.[slot]?.id : undefined,
-                    title: name,
-                    description,
-                    extraBeds,
-                    spaceId: upgradeTarget || null,
-                    classContribution: upgradeClass || undefined,
-                    zones: upgradeZones,
-                  },
-                }
-              : {}),
-            ...(changeKind === "remove-upgrade" ? { slot, improvement: null } : {}),
-          };
-    const next = await run(
-      draftType === "new-venue" ? "/projects" : `/projects/renovations/${encodeURIComponent(venueId)}`,
-      body,
-    );
-    const created = next?.projects.find((entry) => entry.kind === draftType && entry.lifecycle?.phase !== "complete");
-    if (created && selection.current.selectedId === selectedId && selection.current.draftType === draftType) {
-      setSelectedId(created.id);
-      setDraftType("");
-    }
-  };
-  const openingImageKey = JSON.stringify([
-    project?.id,
-    openingVenue
-      ? {
-          venueType: openingVenue.venueType,
-          form: openingVenue.form,
-          description: openingVenue.description,
-          spaces: openingVenue.spaces?.map(({ access: _access, accessView: _view, ...physical }) => physical),
-          privateSpaces: openingVenue.privateSpaces?.map(
-            ({ access: _access, accessView: _view, ...physical }) => physical,
-          ),
-        }
-      : null,
-    openingLore,
-    openingPersonality,
-    snapshot?.settings.setting,
-    snapshot?.settings.worldFacts,
-    snapshot?.settings.sceneryArtStyle,
-    snapshot?.settings.sceneryStyleProfileId,
-  ]);
-  const imageContextKey = JSON.stringify([
-    snapshot?.settings.setting,
-    snapshot?.settings.worldFacts,
-    snapshot?.settings.sceneryArtStyle,
-    snapshot?.settings.sceneryStyleProfileId,
-  ]);
-  const imageInputsCurrent = useProjectImageKey(workspace.imageKeys, workspace.key, openingImageKey, imageContextKey);
-  const generateImage = async (area: "exterior" | "interior") => {
-    const expectedKey = openingImageKey;
-    if (!project || !snapshot) return;
-    const attempt = workspace.begin();
-    if (!attempt) return null;
-    try {
-      const image = await request<VillageVenueImage>("/setup/venue-image/generate", {
-        method: "POST",
-        body: JSON.stringify({
-          venue: {
-            id: target?.id || project.venueId || project.id,
-            name: project.title,
-            venueType: openingVenueType,
-            form: form || project.title,
-            description: exterior || project.venueDraft?.description || target?.description,
-            spaceDescription: interior || target?.spaces?.[0]?.description || exterior,
-            layout: project.kind === "new-venue" ? openingLayout : undefined,
-            areas: openingVenue
-              ? [...(openingVenue.spaces ?? []), ...(openingVenue.privateSpaces ?? [])].map((area) => ({
-                  role: area.venueClass,
-                  name: area.name,
-                  purpose: area.purpose,
-                }))
-              : [],
-            venueClass: project.venueDraft?.classes?.[0] ?? target?.classes?.[0] ?? "other",
+            classes: workspace.draft.venue?.classes,
+            capacity: workspace.draft.capacity,
+            zones: workspace.draft.zones,
           },
-          area,
-          villageName: snapshot.village.name,
-          setting: snapshot?.settings.setting,
-          worldFacts: snapshot?.settings.worldFacts,
-          selectedLorebookIds: snapshot?.settings.selectedLorebookIds,
-          sceneryArtStyle: snapshot?.settings.sceneryArtStyle,
-          sceneryStyleProfileId: snapshot?.settings.sceneryStyleProfileId,
-          useVisualLore: openingLore,
-          useAssignedVillagerContext: openingPersonality,
-        }),
-      });
-      if (!attempt.current()) return;
-      if (!imageInputsCurrent()) {
-        setError("The Venue changed while the image was being prepared. Generate a fresh image.");
-        return;
+    );
+    if (next && selected.current === selectedId) {
+      const created = next.projects.find((project) => !snapshot?.projects.some((old) => old.id === project.id));
+      if (created) {
+        setSelectedId(created.id);
+        setDraftType("");
       }
-      setImagePreview({ area, image, key: expectedKey });
-    } catch (cause) {
-      if (attempt.current()) setError(messageFrom(cause, "The Venue image could not be generated."));
-    } finally {
-      attempt.finish();
     }
   };
-  const uploadImage = async (area: "exterior" | "interior", file?: File) => {
-    const expectedKey = openingImageKey;
-    if (!file || !project || !snapshot) return;
-    const attempt = workspace.begin();
-    if (!attempt) return null;
-    try {
-      const image = await request<VillageVenueImage>("/setup/venue-image", {
-        method: "PUT",
-        body: JSON.stringify({ name: project.title, image: await readFileAsDataUrl(file) }),
-      });
-      if (!attempt.current()) return;
-      if (!imageInputsCurrent()) {
-        setError("The Venue changed while the image was being prepared. Generate a fresh image.");
-        return;
-      }
-      setImagePreview({ area, image, key: expectedKey });
-    } catch (cause) {
-      if (attempt.current()) setError(messageFrom(cause, "The Venue image could not be uploaded."));
-    } finally {
-      attempt.finish();
-    }
+  const save = async () => {
+    const draft = workspace.draft,
+      venue = draft.venue;
+    if (!project || !venue) return Promise.resolve(null);
+    const next = await (project.kind === "new-venue"
+      ? action("plan", {
+          expectedRevision: draft.revision,
+          classes: venue.classes,
+          form: venue.form,
+          venueType: venue.venueType,
+          exteriorDescription: venue.description,
+          exteriorImage: venue.presentation.image,
+          layoutVersion: 1,
+          layout: venue.layout,
+          spaces: venue.spaces ?? [],
+          privateSpaces: venue.privateSpaces ?? [],
+          capacity: draft.capacity,
+        })
+      : action("revise", {
+          expectedRevision: draft.revision,
+          title: draft.title,
+          detail: draft.detail,
+          classes: venue.classes,
+          capacity: draft.capacity,
+          zones: draft.zones,
+        }));
+    if (next) workspace.field("dirty")(false);
+    return next;
   };
-  const phase = flow?.phase;
-  const revisionKey = `${project?.id}:${project?.updatedAt}`;
-  const revision = project?.lifecycle?.change
-    ? workspace.draft.revision?.sourceKey === revisionKey
-      ? workspace.draft.revision
-      : {
-          sourceKey: revisionKey,
-          editing: false,
-          title: project.title,
-          change: structuredClone(project.lifecycle.change),
-        }
-    : null;
-  function patchRevision<K extends "editing" | "title" | "change">(field: K, value: NonNullable<typeof revision>[K]) {
-    const currentProject = latestSnapshot.current?.projects.find((entry) => entry.id === project?.id);
-    if (!revision || `${currentProject?.id}:${currentProject?.updatedAt}` !== revisionKey) return;
-    workspace.field("revision")((previous) => ({
-      ...(previous?.sourceKey === revisionKey ? previous : revision),
-      [field]: value,
-    }));
-  }
-  const revisionEditor = revision
-    ? {
-        draft: revision,
-        setEditing: (editing: boolean) => patchRevision("editing", editing),
-        setTitle: (title: string) => patchRevision("title", title),
-        setChange: (change: typeof revision.change) => patchRevision("change", change),
-        save: (body: unknown) => run(`/projects/${encodeURIComponent(project.id)}/revise`, body),
-      }
-    : null;
-
-  const uploadZoneImage = async (zone: { id?: string; name: string }, file?: File) => {
-    if (!file) return;
-    const attempt = workspace.begin();
-    if (!attempt) return;
-    try {
-      const image = await request<VillageVenueImage>("/setup/venue-image", {
-        method: "PUT",
-        body: JSON.stringify({ name: zone.name, image: await readFileAsDataUrl(file) }),
-      });
-      if (!attempt.current()) return;
-      setZoneImages((current) => ({ ...current, [zone.id!]: image }));
-    } catch (cause) {
-      if (attempt.current()) setError(messageFrom(cause, "The zone image could not be uploaded."));
-    } finally {
-      attempt.finish();
-    }
-  };
-  const openVenue = async () => {
-    const next = await action(project.kind === "new-venue" && phase !== "finishing" ? "plan" : "open", {
-      form,
-      venueType: openingVenueType,
-      exteriorDescription: exterior,
-      exteriorImage,
-      ...(project.kind === "new-venue" && openingVenue && venueHasCommon(openingVenue)
-        ? { interiorDescription: interior, interiorImage }
-        : {}),
-      zoneImages,
-      layoutVersion: 1,
-      layout: openingLayout,
-      spaces: openingVenue?.spaces ?? [],
-      privateSpaces: openingPrivateSpaces,
-      imageContext: { useAssignedVillagerContext: openingPersonality, useVisualLore: openingLore },
-    });
-    if (next) setFinishingVisit(false);
-  };
-
   return {
+    selectedId,
+    setSelectedId,
+    draftType,
+    setDraftType,
+    name,
+    setName,
+    description,
+    setDescription,
+    classes,
+    setClasses,
+    venueId,
+    setVenueId,
+    project,
+    target,
+    workspace,
+    action,
+    create,
+    save,
     openingAction: async (action: "accept" | "decline" | "skip", residentId?: string) => {
       const next = await run("/projects/opening", { action, residentId, openingId: snapshot?.opening?.id });
       if (next?.opening?.projectId) setSelectedId(next.opening.projectId);
       return next;
     },
     startRenovation: (venue: VillageVenue) => {
-      if (
-        snapshot?.opening &&
-        !snapshot.opening.ordinaryProjectsUnlocked &&
-        !["complete", "ended"].includes(snapshot.opening.stage)
-      )
-        return false;
-      const existing = active.find((entry) => entry.kind === "renovation");
-      if (existing) {
-        setSelectedId(existing.id);
-        return true;
-      }
-      if (
-        draftType === "renovation" &&
-        venueId &&
-        venueId !== venue.id &&
-        !window.confirm("Replace the current renovation draft with a plan for this Venue?")
-      )
-        return false;
-      if (venueId !== venue.id) {
-        setName("");
-        setDescription("");
-        setChangeKind("upgrade");
-        setCapacity(venue.residenceCapacity ?? 1);
-        setSlot(0);
-        setExtraBeds(0);
-        setUpgradeMode("replace");
-        setUpgradeClass("");
-        setUpgradeTarget("");
-        setUpgradeZones([]);
-      }
       setSelectedId("");
       setDraftType("renovation");
       setVenueId(venue.id);
       return true;
     },
-    setSelectedId,
-    draftType,
-    setDraftType,
-    name,
-    setName,
-    venueClass,
-    setVenueClass,
-    description,
-    setDescription,
-    venueId,
-    setVenueId,
-    changeKind,
-    setChangeKind,
-    baseZoneDrafts,
-    setBaseZoneDrafts,
-    baseClasses,
-    setBaseClasses,
-    upgradeTarget,
-    setUpgradeTarget,
-    capacity,
-    setCapacity,
-    slot,
-    setSlot,
-    extraBeds,
-    setExtraBeds,
-    upgradeMode,
-    setUpgradeMode,
-    upgradeClass,
-    setUpgradeClass,
-    upgradeZones,
-    setUpgradeZones,
-    form,
-    setForm,
-    openingVenueType,
-    setOpeningVenueType,
-    exterior,
-    setExterior,
-    interior,
-    exteriorImage,
-    setExteriorImage,
-    interiorImage,
-    setInteriorImage,
-    zoneImages,
-    imagePreview,
-    setImagePreview,
-    finishingVisit,
-    setFinishingVisit,
-    openingLayout,
-    openingPersonality,
-    setOpeningPersonality,
-    openingLore,
-    setOpeningLore,
-    busy: busy,
-    error,
-    active,
-    project,
-    flow,
-    target,
-    selectedVenue,
-    openingVenue,
-    patchOpeningLayout,
-    action,
-    create,
-    openingImageKey,
-    generateImage,
-    uploadImage,
-    phase,
-    uploadZoneImage,
-    openVenue,
-    revisionEditor,
   };
 }
-
 export type ProjectsController = ReturnType<typeof useProjectsController>;

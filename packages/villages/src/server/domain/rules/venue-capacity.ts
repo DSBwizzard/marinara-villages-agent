@@ -1,15 +1,11 @@
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { conflict } from "./errors.js";
-import { isHousePlace, MAX_PLACES, MAX_VENUES } from "./prompt-preset.js";
 
-export type VenueCapacityPolicy = "sixteen-total-v1" | "legacy-v1";
-export function villageVenueLimit(state: Pick<VillageState, "venueCapacityPolicy">): number {
-  return state.venueCapacityPolicy === "sixteen-total-v1" ? 16 : MAX_PLACES;
+export function villageVenueLimit(_state?: unknown): number {
+  return 16;
 }
 function nonResidential(venue: Pick<VillageVenue, "classes" | "occupancy">): boolean {
-  return venue.classes?.length
-    ? venue.classes.some((kind) => kind !== "residence")
-    : !isHousePlace(venue as VillageVenue);
+  return venue.classes?.length ? venue.classes.some((kind) => kind !== "residence") : true;
 }
 /** Count each existing Venue or outstanding creation exactly once, including worksites. */
 export function villageVenueUsage(state: VillageState, venues = state.venues, exceptProjectId = "") {
@@ -17,8 +13,7 @@ export function villageVenueUsage(state: VillageState, venues = state.venues, ex
     (project) =>
       project.id !== exceptProjectId &&
       project.kind === "new-venue" &&
-      project.status !== "complete" &&
-      project.status !== "abandoned" &&
+      ["working", "paused"].includes(project.status) &&
       !venues.some((venue) => venue.id === project.venueId || venue.buildProjectId === project.id),
   );
   return {
@@ -39,10 +34,6 @@ export function assertVillageVenueCapacity(state: VillageState, venues = state.v
       "The Village has no room for another Venue (maximum " +
         limit +
         " total, including living Venues and reserved worksites).",
-    );
-  if (state.venueCapacityPolicy === "legacy-v1" && usage.nonResidential > MAX_VENUES)
-    throw conflict(
-      "The Village has no room for another non-residential Venue (maximum 24, including reserved worksites).",
     );
 }
 export function assertCanAddVillageVenue(

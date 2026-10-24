@@ -280,7 +280,6 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           }
         }
       }
-      await salvageOpeningIdeas(await readVillageState());
       // Opening ideas are independent of Routine/Wish parsing and commit one resident at a time.
       let openingError = "";
       if (!targeted && !connectionBlocked) {
@@ -412,51 +411,6 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
     }
     return job ? { ...job, compatibilitySourceRevision: foundingTaskRevision(state, id, "routine") } : null;
   }
-  async function salvageOpeningIdeas(
-    state: Awaited<ReturnType<typeof readVillageState>>,
-    legacy: (readonly [string, Awaited<ReturnType<typeof compatibleLegacy>>])[] = [],
-  ) {
-    const seed = state.seed;
-    for (const row of state.villagers) {
-      const id = row.characterId;
-      if (
-        !state.opening?.residentIds.includes(id) ||
-        state.opening.proposals.some((proposal) => proposal.residentId === id)
-      )
-        continue;
-      const candidates = [
-        await backgroundJobSnapshot("agenda", id),
-        legacy.find(([residentId]) => residentId === id)?.[1],
-      ];
-      for (const job of candidates) {
-        if (!job || job.seed !== state.seed || !(job.input as any)?.context?.openingProposal) continue;
-        if (!proposalSourceCompatible(job, state, id)) continue;
-        const capturedRevision = foundingTaskRevision(state, id, "routine");
-        const saved = job.steps.find(
-          (step) =>
-            ["owned-routine-profile", "founding-routine-v1"].includes(step.key ?? "") && step.status === "completed",
-        )?.response;
-        if (!saved || ["length", "max_tokens"].includes(saved.finishReason ?? "")) continue;
-        try {
-          const proposal = readOpeningProposal(extractModelJsonObject(saved)?.openingProposal, id);
-          await mutateVillageState((live) => {
-            if (
-              live.seed === seed &&
-              live.opening?.id === state.opening?.id &&
-              live.opening?.stage === "gathering" &&
-              foundingTaskRevision(live, id, "routine") === capturedRevision &&
-              proposalSourceCompatible(job, live, id) &&
-              !live.opening.proposals.some((entry) => entry.residentId === id)
-            )
-              live.opening.proposals.push(proposal);
-          });
-          break;
-        } catch {
-          /* Invalid ideas never discard a valid saved Routine. */
-        }
-      }
-    }
-  }
   async function initializeTasks(seed: string) {
     const state = await readVillageState();
     if (state.seed !== seed) return;
@@ -504,7 +458,6 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           };
         }
     });
-    await salvageOpeningIdeas(state, legacy);
     // Salvage routine independently of any invalid legacy Wish, without provider work.
     for (const [id, old] of legacy) {
       if (

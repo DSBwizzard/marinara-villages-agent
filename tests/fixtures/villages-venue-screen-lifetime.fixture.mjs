@@ -13,7 +13,6 @@ export async function createVenueScreenHarness(browser) {
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useVenueScreenCommands} from './packages/villages/src/client/features/venues/screen-commands.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
-import {VenueZoneEditor} from './packages/villages/src/client/features/venues/VenuePanels.js';
 import {VenueAccessPanel} from './packages/villages/src/client/features/venues/villages-venue-access.js';
 import {useSaveStoryPace} from './packages/villages/src/client/features/settings/actions.js';
 function Harness(){
@@ -49,7 +48,7 @@ moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePriva
 placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
 venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>
 {place && editorZone && venuePage==='view' ? <details><summary>Access options</summary><VenueAccessPanel key={JSON.stringify([place.id,editorZone.id,place.accessView.revision])} venue={place} zoneId={editorZone.id} people={[{id:'player',name:'Player'},{id:'mara',name:'Mara'}]} isFounded={snapshot.isFounded} onCommand={command=>ui.changeVenueAccess(place.id,command)} /></details> : null}
-{place && editorZone && venuePage!=='view' ? <section aria-label="Isolated Zone editor command contract"><VenueZoneEditor key={place.id+editorZone.id} zone={{...editorZone,key:editorZone.id,zoneId:editorZone.id,label:editorZone.name,area:'public',spaceClass:'community',ownerId:'',locked:false,canEnter:true,accessLabel:'Open to you'}} isFounded={snapshot.isFounded} onSave={body=>ui.saveVenueZone(place.id,editorZone.id,body)} /></section> : null}</>;
+</>;
 }
 window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};window.confirms=[];window.confirm=message=>{window.confirms.push(message);window.confirmHook?.();return window.confirmAnswer};
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
@@ -136,10 +135,8 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     const proposal = {
       classes: ["residence", "community"],
       capacity: 2,
-      slot: 1,
       title: " Improvement ",
       description: " Raw proposed detail ",
-      extraBeds: 1,
     };
     const accessCommand = {
       action: "zone-policy",
@@ -268,10 +265,9 @@ export async function verifyVenueScreenLifetimes(browser) {
     zone: f.zoneBody,
     residence: { characterId: "resident / A", venueId: "target / B", privateZoneId: " private / target " },
     proposal: {
+      requestId: f.requests[0].body?.requestId,
       classes: f.proposal.classes,
       capacity: 2,
-      slot: 1,
-      improvement: { title: f.proposal.title, description: f.proposal.description, extraBeds: 1 },
       title: f.proposal.title,
       detail: f.proposal.description,
     },
@@ -308,7 +304,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.page.getByRole("button", { name: "Save zone name", exact: true }).click();
         await expect.poll(() => f.requests.length).toBe(2);
         await f.reply(0);
-        await expect(f.page.getByRole("button", { name: "Saving�", exact: true })).toBeDisabled();
+        await expect(f.page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
         await f.reply(1);
         await expect(f.page.getByRole("button", { name: "Save zone name", exact: true })).toBeEnabled();
         await f.finish();
@@ -500,37 +496,6 @@ export async function verifyVenueScreenLifetimes(browser) {
         assert.deepEqual(await f.read(), before);
         await f.finish();
       }
-      // Real Zone child retains newer raw input and does not acknowledge it as saved.
-      {
-        const f = await mount(strict, width);
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        assert.deepEqual(f.requests[0].body.state.features, f.seed.settings.venues[0].zones[0].state.features);
-        await f.page.getByRole("textbox", { name: "Appearance", exact: true }).fill(" Newer raw Zone ");
-        await f.reply(0);
-        await f.settle(0);
-        await expect(f.page.getByRole("textbox", { name: "Appearance", exact: true })).toHaveValue(" Newer raw Zone ");
-        await expect(f.page.getByText("Zone saved.", { exact: true })).toHaveCount(0);
-        await expect(f.page.getByRole("button", { name: "Save zone details", exact: true })).toBeEnabled();
-        await f.finish();
-      }
-      for (const fail of [false, true]) {
-        const f = await mount(strict, width);
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        await f.page.evaluate(() => window.h.jump({ id: "B / venue" }));
-        await expect(f.page.getByRole("textbox", { name: "Zone name", exact: true })).toHaveValue("B Zone");
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(2);
-        await f.reply(0, { fail });
-        await f.settle(0);
-        await expect(f.page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
-        await expect(f.page.getByText("Zone saved.", { exact: true })).toHaveCount(0);
-        await f.reply(1);
-        await f.settle(1);
-        await expect(f.page.getByText("Zone saved.", { exact: true })).toBeVisible();
-        await f.finish();
-      }
       for (const retirement of ["venue", "revision"])
         for (const fail of [false, true]) {
           const f = await mount(strict, width, { page: "view" });
@@ -560,18 +525,6 @@ export async function verifyVenueScreenLifetimes(browser) {
           await f.finish();
         }
       {
-        const f = await mount(strict, width);
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        await f.reply(0, { fail: true });
-        await f.settle(0);
-        await expect(
-          f.page.getByText("The zone could not be saved. See the message above.", { exact: true }),
-        ).toBeVisible();
-        await expect(f.page.getByRole("button", { name: "Save zone details", exact: true })).toBeEnabled();
-        await f.finish();
-      }
-      {
         const f = await mount(strict, width, { page: "view" });
         await openAccess(f);
         await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
@@ -582,7 +535,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         await expect(f.page.getByRole("button", { name: "Save Zone policy", exact: true })).toBeEnabled();
         await f.finish();
       }
-      for (const child of ["zone", "access"])
+      for (const child of ["access"])
         for (const fail of [false, true]) {
           const f = await mount(strict, width, { page: child === "access" ? "view" : "edit" });
           if (child === "access") await openAccess(f);
@@ -626,18 +579,8 @@ export async function verifyVenueScreenLifetimes(browser) {
         await expect(f.page.getByRole("button", { name: "Save Zone policy", exact: true })).toBeEnabled();
         await f.finish();
       }
-      {
-        const f = await mount(strict, width, { zone: "exterior" });
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        assert.equal(f.requests[0].path, "/api/villages" + paths.zone);
-        await f.reply(0);
-        await f.settle(0);
-        await expect(f.page.getByText("Zone saved.", { exact: true })).toBeVisible();
-        await f.finish();
-      }
     }
   console.log(
-    "Venue/Zone lifetimes: name-only saves, admission, replacement requests, draft acknowledgement, confirmations, ABA/reset/hydration/disposal and isolated legacy Zone/Access contracts passed (mounted client, synthetic HTTP, single-width state-only StrictMode harness).",
+    "Venue/Zone lifetimes: name-only saves, admission, replacement requests, draft acknowledgement, confirmations, ABA/reset/hydration/disposal and current Zone name/Access contracts passed (mounted client, synthetic HTTP, single-width state-only StrictMode harness).",
   );
 }

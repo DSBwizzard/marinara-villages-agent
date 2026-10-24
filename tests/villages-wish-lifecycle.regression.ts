@@ -109,6 +109,7 @@ async function archiveConnectionOwnership() {
       gate = deferred(),
       at = new Date().toISOString();
     const state = coerceVillageState({
+      version: 3,
       seed: "equal-archive-seed",
       timeZone: "UTC",
       clock: { revision: 1, trustedAt: at, recovery: null, replayUntilDate: "", shiftTotalMs: 0 },
@@ -625,6 +626,7 @@ function seed(count = 1): VillageState {
   neutralWordingResult = true;
   optionalIdea = false;
   const state = coerceVillageState({
+    version: 3,
     wishSystemVersion: 3,
     seed: "wish-test",
     name: "Willow",
@@ -1440,14 +1442,6 @@ async function run() {
     );
     activity.baseRevision = routineRevision(person.agenda!);
     person.agenda!.wishActivities = [];
-    person.agenda!.projectWork = {
-      projectId: "project",
-      venueId: "site",
-      startsAt: new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, slot.startMinute).toISOString(),
-      endsAt: new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, slot.endMinute).toISOString(),
-    };
-    assert.equal(canApplyWishActivity(activity, person, state, now), false, "construction keeps its reserved time");
-    delete person.agenda!.projectWork;
     person.agenda!.week!.Monday![0]!.activity = "A revised ordinary routine";
     assert.equal(
       canApplyWishActivity(activity, person, state, now),

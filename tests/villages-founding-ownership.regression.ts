@@ -1,8 +1,5 @@
-import { createResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
-import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
-import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
-import { villageFoundingSetting, remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   foundingSlot,
@@ -45,6 +42,7 @@ async function until(ready: () => boolean) {
 function fixture(name: string) {
   const stamp = new Date().toISOString();
   let state = coerceVillageState({
+    version: 3,
     seed: "same-seed",
     name,
     setting: name,
@@ -284,90 +282,6 @@ async function pendingSnapshotResumes() {
   assert.equal(f.state().foundingPreparation?.status, "ready");
   assert.deepEqual(f.calls, ["first", "second"]);
 }
-async function legacyOpeningRecovery(invalidRoutine = false, staleSource = false) {
-  const f = fixture("legacy-opening"),
-    state = f.state();
-  state.foundingPreparation!.venueDetailsSeeded = true;
-  state.villagers = state.villagers.slice(0, 1);
-  const id = state.villagers[0].characterId;
-  state.opening = initialOpening([id], "same-venue", "legacy-opening");
-  const context = {
-    village: state.name,
-    setting: villageFoundingSetting(state),
-    home: "",
-    card: readEffectiveVillagerCard(state.villagers[0]),
-    characterId: id,
-    venues: remapVenues(state.venues),
-    openingProposal: true,
-    activeWishes: [],
-    completedWishes: [],
-    schedule: null,
-    lore: [],
-  };
-  const proposal = {
-    name: "Sky Terrace",
-    description: "A shared place for watching the sky",
-    situation: "Shared evening observations",
-    venueClass: "community",
-    established: false,
-    provenance: "Open sky",
-    work: "Arrange observation times",
-    firstUse: "Watch the sky together",
-  };
-  const payload = {
-    routine: "Quiet reading and conversation",
-    palette: Array.from({ length: 6 }, (_, index) => ({ activity: "Reading chapter " + index, venue: 0 })),
-    days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
-    rhythm: [],
-    openingProposal: proposal,
-  };
-  if (invalidRoutine) payload.days = [];
-  let retired = 0;
-  f.ports.backgroundLegacyFounding = async () =>
-    ({
-      seed: state.seed,
-      revision: agendaRevision(state, id),
-      status: "interrupted",
-      input: { context },
-      steps: [
-        {
-          key: "owned-routine-profile",
-          status: "completed",
-          response: { content: JSON.stringify(payload), finishReason: "stop" },
-        },
-      ],
-    }) as any;
-  f.ports.retireLegacyFounding = async () => {
-    retired++;
-  };
-  f.ports.adoptFoundingRoutine = (live, residentId, agenda, revision) => {
-    live.villagers.find((row) => row.characterId === residentId)!.agenda = agenda;
-    completeFoundingTask(live, residentId, "routine", revision);
-  };
-  if (staleSource) {
-    state.setting = "Changed setting";
-    f.ports.backgroundJobSnapshot = async () =>
-      ({ ...(await f.ports.backgroundLegacyFounding(id, state.seed, "")) }) as any;
-  }
-  const service = createFoundingPreparation(f.ports);
-  f.gate.resolve();
-  await service.prepareFoundedVillage();
-  if (staleSource) {
-    assert.equal(f.state().opening!.proposals.length, 0, "stale direct and legacy receipts cannot contribute an idea");
-    assert.equal(f.state().foundingPreparation?.status, "failed");
-    return;
-  }
-  assert.equal(f.state().foundingPreparation?.status, "ready");
-  assert.equal(
-    f.state().opening?.proposals[0].name,
-    proposal.name,
-    "Saved legacy proposal is adopted independently of Routine application",
-  );
-  assert.deepEqual(f.calls, invalidRoutine ? [id] : [], "Valid saved ideas survive an independently invalid Routine");
-  assert.equal(retired, invalidRoutine ? 0 : 1);
-  await service.prepareFoundedVillage();
-  assert.equal(f.state().opening?.proposals.length, 1, "Replay preserves the single saved proposal");
-}
 async function partialOpeningCount() {
   const f = fixture("partial-opening");
   f.state().foundingPreparation!.venueDetailsSeeded = true;
@@ -482,129 +396,12 @@ async function changedOpeningSource(worldFacts = false) {
   assert.equal(keys.length, 2);
   assert.notEqual(keys[0], keys[1], "current-source retry retains the old paid receipt under its original key");
 }
-async function lateBundledIdeas() {
-  for (const invalidRoutine of [false, true]) {
-    const f = fixture("late-bundle");
-    f.state().opening = initialOpening(["first"], "same-venue", "late-bundle");
-    const originalQueue = f.ports.queueVillagerAgenda;
-    let late: any = null;
-    const previousSnapshot = f.ports.backgroundJobSnapshot;
-    f.ports.backgroundJobSnapshot = async (kind, id) =>
-      kind === "agenda" && id === "first" && late ? structuredClone(late) : previousSnapshot(kind, id);
-    f.ports.queueVillagerAgenda = async (id, finite) => {
-      await originalQueue(id, finite);
-      if (id !== "first") return;
-      late = {
-        seed: f.state().seed,
-        revision: agendaRevision(f.state(), id),
-        input: {
-          context: {
-            openingProposal: true,
-            card: readEffectiveVillagerCard(f.state().villagers[0]),
-            venues: remapVenues(f.state().venues),
-            sourceRevision: foundingTaskRevision(f.state(), id, "routine"),
-          },
-        },
-        steps: [
-          {
-            key: "founding-routine-v1",
-            status: "completed",
-            response: {
-              finishReason: "stop",
-              content: JSON.stringify({
-                days: invalidRoutine ? [] : [[0]],
-                openingProposal: {
-                  name: "Late terrace",
-                  description: "An evening meeting place",
-                  venueClass: "community",
-                  established: false,
-                  provenance: "The open sky",
-                  work: "Arrange a meeting",
-                  firstUse: "Meet together",
-                },
-              }),
-            },
-          },
-        ],
-      };
-    };
-    f.ports.proposeOpeningIdea = async () => {
-      throw Error("An already-paid idea must not be regenerated");
-    };
-    f.gate.resolve();
-    await createFoundingPreparation(f.ports).prepareFoundedVillage();
-    assert.equal(
-      f.state().opening!.proposals[0]?.name,
-      "Late terrace",
-      "bundled output arriving after initial salvage is retained before separate generation",
-    );
-    assert.equal(f.state().foundingPreparation!.status, "ready");
-  }
-  // A parsed legacy result retains its idea until the real agenda handler has applied it.
-  for (const invalidIdea of [false, true]) {
-    const f = fixture("result-bundle"),
-      state = f.state(),
-      id = "first";
-    state.opening = initialOpening([id], "same-venue", "result-bundle");
-    const context: any = {
-      openingProposal: true,
-      characterId: id,
-      card: readEffectiveVillagerCard(state.villagers[0]),
-      village: state.name,
-      setting: villageFoundingSetting(state),
-      home: "",
-      venues: remapVenues(state.venues),
-      lore: [],
-      activeWishes: [],
-      completedWishes: [],
-      schedule: null,
-      sourceRevision: foundingTaskRevision(state, id, "routine"),
-    };
-    const result = parseCompactFoundingCompletion(
-      {
-        finishReason: "stop",
-        content: JSON.stringify({
-          routine: "Reading and conversation",
-          palette: Array.from({ length: 6 }, (_, i) => ({ activity: "Reading chapter " + i, venue: 0 })),
-          days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
-          rhythm: [],
-          openingProposal: invalidIdea
-            ? {}
-            : {
-                name: "Result terrace",
-                description: "An evening meeting place",
-                venueClass: "community",
-                established: false,
-                provenance: "The open sky",
-                work: "Arrange a meeting",
-                firstUse: "Meet together",
-              },
-        }),
-      },
-      context,
-    );
-    const handler = createResidentAgendas({ registerInitialWish: () => {} } as any).agendaBackgroundHandler;
-    const input: any = { context, characterId: id, revision: agendaRevision(state, id) };
-    handler.apply(state, input, result);
-    assert.equal(state.opening.proposals.length, invalidIdea ? 0 : 1);
-    assert.equal(
-      state.villagers[0].agenda!.personalizationPending,
-      false,
-      "invalid bundled idea cannot discard a valid parsed Routine",
-    );
-    handler.apply(state, input, result);
-    assert.equal(state.opening.proposals.length, invalidIdea ? 0 : 1, "replay cannot duplicate the idea");
-  }
-}
+
 async function main() {
-  await lateBundledIdeas();
   await changedOpeningSource();
   await changedOpeningSource(true);
   await independentOpeningIdeas();
   await partialOpeningCount();
-  await legacyOpeningRecovery();
-  await legacyOpeningRecovery(true);
-  await legacyOpeningRecovery(false, true);
   await independentFounding();
   await scopedAndDefaultDispatch();
   await pendingSnapshotResumes();

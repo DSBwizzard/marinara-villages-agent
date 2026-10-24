@@ -6,7 +6,7 @@ export type ProjectsPagePorts = {
   readonly debugDiscardEnabled: boolean;
   readonly projectsController: ProjectsController;
   readonly goHome: () => void;
-  readonly openMenu?: (page: "villagers") => void;
+  readonly openMenu?: (page: "villagers" | "index") => void;
   readonly openVenue?: (venue: VillageSnapshot["settings"]["venues"][number]) => void;
   readonly mobile: boolean;
   readonly room: SceneView | null;

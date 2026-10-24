@@ -423,14 +423,6 @@
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/delegate"
-    },
-    {
-      "method": "post",
-      "path": "/projects/:projectId/cancel-delivery"
-    },
-    {
-      "method": "post",
       "path": "/projects/:projectId/plan"
     },
     {
@@ -447,23 +439,19 @@
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/requirements"
-    },
-    {
-      "method": "post",
-      "path": "/projects/:projectId/deliver"
-    },
-    {
-      "method": "post",
       "path": "/projects/:projectId/start"
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/debug-complete"
+      "path": "/projects/:projectId/resume"
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/open"
+      "path": "/projects/:projectId/cancel"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/debug-complete"
     },
     {
       "method": "post",
@@ -476,14 +464,6 @@
     {
       "method": "post",
       "path": "/projects/:projectId/record"
-    },
-    {
-      "method": "post",
-      "path": "/projects/:projectId/existing-source"
-    },
-    {
-      "method": "post",
-      "path": "/projects/:projectId/reallocate-held"
     },
     {
       "method": "get",
@@ -504,14 +484,6 @@
     {
       "method": "post",
       "path": "/venue-requests/:requestId/deny"
-    },
-    {
-      "method": "post",
-      "path": "/venue-upgrades/:requestId/approve"
-    },
-    {
-      "method": "post",
-      "path": "/venue-upgrades/:requestId/deny"
     },
     {
       "method": "put",

@@ -1,193 +1,10 @@
-import { projectSourceClaimKey } from "./project-supply-transfer.js";
+import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import { validDecisionEvidence } from "./decision-candidates.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
-import { asRecord, asTrimmedString } from "./coerce.js";
+import { asRecord } from "./coerce.js";
 import type { ProjectSpeechProposal } from "./project-interpretation.js";
-import { recordProjectProgress } from "./project-progress.js";
-import { physicalVenueEvents } from "./venue-scene-state.js";
-
-export function pickupRevision(state: VillageState, projectId: string) {
-  return state.progressTasks.find(
-    (item) => item.definition.owner.kind === "project" && item.definition.owner.id === projectId,
-  )?.definition.revision;
-}
-
-/** Apply a semantic allocation only against an existing inventory-debited receipt. */
-export function applyRecordedProjectPickup(
-  state: VillageState,
-  eventId: string,
-  projectId: string,
-  requirementId: string,
-  revision: number,
-  submissionId: string,
-) {
-  const event = physicalVenueEvents(state).find((item) => item.id === eventId),
-    receipt = event?.actionReceipt;
-  const project = state.projects.find((item) => item.id === projectId),
-    flow = project?.lifecycle;
-  const requirement = flow?.requirements.find((item) => item.id === requirementId && item.needed);
-  if (
-    !event ||
-    !project ||
-    !flow ||
-    !requirement ||
-    requirement.carriedAt ||
-    flow.phase !== "materials" ||
-    pickupRevision(state, project.id) !== revision ||
-    !receipt?.happened ||
-    receipt.submissionId !== submissionId ||
-    receipt.transferTo !== "player" ||
-    receipt.itemTransfer?.recipientId !== "player" ||
-    receipt.removeItem !== receipt.itemTransfer.itemName ||
-    !receipt.removeItem ||
-    !Number.isFinite(Date.parse(event.at)) ||
-    state.projectSourceClaims.some((claim) => claim.sourceId === event.id)
-  )
-    return false;
-  {
-    const source = flow.sources.find((item) => item.requirementId === requirementId);
-    const task = state.progressTasks.find(
-      (item) => item.definition.owner.kind === "project" && item.definition.owner.id === project.id,
-    );
-    // Selected finite physical stock is already debited by Act. No second debit or invented supplier handoff.
-    if (
-      !source ||
-      !task ||
-      task.definition.phases[task.phaseIndex]?.id !== "materials" ||
-      !task.receipts.some(
-        (receipt) =>
-          receipt.requirementId === `source:${requirementId}` && receipt.evidence.sourceId === source.evidenceId,
-      ) ||
-      source.kind !== "existing-item" ||
-      source.acquiredAt ||
-      source.venueId !== event.venueId ||
-      (source.zoneId && source.zoneId !== event.zoneId) ||
-      source.itemName !== receipt.removeItem ||
-      !Number.isFinite(Date.parse(source.at)) ||
-      Date.parse(event.at) < Date.parse(source.at) ||
-      !flow.recordedItems.some(
-        (item) =>
-          item.venueId === source.venueId &&
-          item.itemName === source.itemName &&
-          (!source.zoneId || item.zoneId === source.zoneId),
-      )
-    )
-      return false;
-    source.acquiredAt = event.at;
-    requirement.carriedAt = event.at;
-    recordProjectProgress(state, project, `acquired:${requirementId}`, {
-      id: `pickup:${event.id}`,
-      kind: "project-handoff",
-      at: event.at,
-      sourceId: event.id,
-      lineId: event.id,
-      speakerId: "player",
-      venueId: event.venueId,
-      zoneId: event.zoneId,
-      excerpt: `Verified pickup of ${source.itemName}`,
-    });
-  }
-  state.projectSourceClaims.push({ key: `acquired-transfer:${event.id}`, projectId, sourceId: event.id, submissionId });
-  flow.evidenceIds = [...new Set([...flow.evidenceIds, event.id])];
-  project.updatedAt = event.at;
-  return true;
-}
-
-/** Allocate only a committed, finite resident-source transfer. Semantic speech never supplies this proof. */
-export function applyRecordedProjectSupplyTransfer(
-  state: VillageState,
-  eventId: string,
-  submissionId: string,
-): boolean {
-  const event = physicalVenueEvents(state).find((event) => event.id === eventId),
-    receipt = event?.actionReceipt,
-    transfer = receipt?.projectSupplyTransfer;
-  if (
-    !event ||
-    !receipt?.happened ||
-    receipt.submissionId !== submissionId ||
-    !transfer ||
-    !receipt.witnessIds?.includes(transfer.supplierId) ||
-    !Number.isFinite(Date.parse(event.at))
-  )
-    return false;
-  const project = state.projects.find((project) => project.id === transfer.projectId),
-    flow = project?.lifecycle,
-    task = state.progressTasks.find(
-      (task) => task.definition.owner.kind === "project" && task.definition.owner.id === transfer.projectId,
-    ),
-    requirement = flow?.requirements.find((row) => row.id === transfer.requirementId && row.needed),
-    source = flow?.sources.find(
-      (row) => row.requirementId === transfer.requirementId && row.evidenceId === transfer.sourceId,
-    );
-  if (
-    project &&
-    task &&
-    requirement &&
-    source &&
-    task.definition.revision === transfer.revision &&
-    source.acquiredAt === event.at &&
-    requirement.carriedAt === event.at &&
-    task.receipts.some(
-      (row) =>
-        row.definitionRevision === transfer.revision &&
-        row.requirementId === "acquired:" + requirement.id &&
-        row.evidence.sourceId === event.id,
-    )
-  )
-    return true;
-  if (
-    !project ||
-    !flow ||
-    flow.phase !== "materials" ||
-    project.status === "abandoned" ||
-    !task ||
-    task.resolvedAt ||
-    task.definition.revision !== transfer.revision ||
-    task.definition.phases[task.phaseIndex]?.id !== "materials" ||
-    !requirement ||
-    requirement.carriedAt ||
-    requirement.deliveredAt ||
-    !source ||
-    source.kind !== "resident-offer" ||
-    source.acquiredAt ||
-    source.supplierId !== transfer.supplierId ||
-    source.venueId !== event.venueId ||
-    (source.zoneId && source.zoneId !== event.zoneId) ||
-    !Number.isFinite(Date.parse(source.at)) ||
-    Date.parse(event.at) < Date.parse(source.at) ||
-    !task.receipts.some(
-      (row) => row.requirementId === "source:" + requirement.id && row.evidence.sourceId === source.evidenceId,
-    ) ||
-    !state.projectSourceClaims.some(
-      (claim) =>
-        claim.key === projectSourceClaimKey(source.venueId, source.supplierId, source.itemName) &&
-        claim.projectId === project.id &&
-        claim.sourceId === source.evidenceId &&
-        claim.submissionId === submissionId,
-    )
-  )
-    return false;
-  source.acquiredAt = event.at;
-  requirement.carriedAt = event.at;
-  recordProjectProgress(state, project, "acquired:" + requirement.id, {
-    id: "handoff:" + event.id,
-    kind: "project-handoff",
-    at: event.at,
-    sourceId: event.id,
-    lineId: event.id,
-    speakerId: transfer.supplierId,
-    venueId: event.venueId,
-    zoneId: event.zoneId,
-    excerpt: "Verified handoff of " + source.itemName,
-  });
-  flow.evidenceIds = [...new Set([...flow.evidenceIds, event.id])];
-  project.updatedAt = event.at;
-  return true;
-}
-
 const projectReferenceWords = (text: string) =>
   [
     ...new Set(
@@ -225,15 +42,8 @@ export function projectExchangeRelevant(
     projectReferenceWords(project.title).some((word) => words.has(word))
   )
     return true;
-  const detail = project.lifecycle?.change?.detail ?? project.venueDraft?.description ?? "";
+  const detail = projectPhysicalDesign(project);
   if (projectReferenceWords(detail).filter((word) => words.has(word)).length >= 2) return true;
-  if (
-    project.lifecycle?.phase === "requirements" &&
-    project.lifecycle.builderId === actor &&
-    (/^what\b[^?]*\b(?:need|require|materials|requirements)\b/iu.test(message.trim()) ||
-      /\b(?:checklist|requirements|structure|equipment|finish)\b/iu.test(speech))
-  )
-    return true;
   const prior = scene.submissions.at(-1);
   const contexts = (prior?.projectContexts ?? []).filter(
     (context) => context.revision === revision && context.phase === project.lifecycle?.phase,
@@ -241,7 +51,7 @@ export function projectExchangeRelevant(
   const bound = contexts.some((context) => context.projectId === project.id);
   const continuation =
     !message.trim() ||
-    /^(?:and |what (?:else|about|materials|requirements)|anything else|go on|tell me more|continue|yes|no|okay|sure)|\b(?:build|construct|renovate|approve|checklist|requirements|structure|equipment|finish(?:ing)?)\b/iu.test(
+    /^(?:and |what (?:else|about)|anything else|go on|tell me more|continue|yes|no|okay|sure)|\b(?:build|construct|renovate|approve|lead)\b/iu.test(
       message,
     );
   const question = /[?]|\b(?:can|could|would|will|what|which|do|shall)\b/iu.test(prior?.message ?? "");
@@ -249,80 +59,29 @@ export function projectExchangeRelevant(
   const identified = projectReferenceWords(project.title).some((word) => priorWords.has(word));
   return bound && continuation && (contexts.length === 1 || (question && identified));
 }
+
 export function projectProposals(batch: InterpretationBatch): ProjectSpeechProposal[] {
   return batch.results.flatMap((result, index) => {
     const check = batch.checks[index],
       facts = asRecord(check.facts);
-    if (!validDecisionEvidence(check, result)) return [];
+    if (!validDecisionEvidence(check, result) || !["approve", "commit", "withdraw"].includes(result.outcome)) return [];
     const kind = facts.kind as ProjectSpeechProposal["kind"];
-    if (!["approve", "commit", "requirements"].includes(result.outcome)) return [];
-    const conflicting = batch.results.some(
-      (other, otherIndex) =>
-        otherIndex !== index &&
-        ["approve", "commit"].includes(other.outcome) &&
-        asRecord(batch.checks[otherIndex].facts).actorId === facts.actorId &&
-        asRecord(batch.checks[otherIndex].facts).kind === kind,
+    const conflict = batch.results.some(
+      (other, i) =>
+        i !== index &&
+        other.outcome === result.outcome &&
+        asRecord(batch.checks[i].facts).actorId === facts.actorId &&
+        asRecord(batch.checks[i].facts).kind === kind &&
+        asRecord(batch.checks[i].facts).projectId !== facts.projectId,
     );
-    if (conflicting) {
-      batch.traces[index].applied = "Unresolved: multiple Project targets require clarification";
+    if (conflict) {
+      batch.traces[index].applied = "Unresolved: clarify which Project";
       return [];
     }
-    const details = asRecord(result.details);
-    const allowed = check.evidence.filter(
-      (line) =>
-        line.current || (Array.isArray(facts.requirementCitationIds) && facts.requirementCitationIds.includes(line.id)),
-    );
-    const citations =
-      kind === "requirements" && Array.isArray(details.citations)
-        ? details.citations.slice(0, 12).map((value) => {
-            const row = asRecord(value),
-              line = allowed.find((item) => item.id === row.evidenceId);
-            return { lineId: line?.id ?? "", quote: asTrimmedString(row.quote) };
-          })
-        : check.evidence
-            .filter((line) => line.current && line.speakerId === facts.actorId && result.evidenceIds.includes(line.id))
-            .map((line) => ({ lineId: line.id, quote: line.content }));
-    if (
-      !citations.length ||
-      !citations[0].lineId.startsWith("draft:") ||
-      citations.some((citation) => {
-        const line = allowed.find((item) => item.id === citation.lineId);
-        return !line || line.speakerId !== facts.actorId || !citation.quote || !line.content.includes(citation.quote);
-      })
-    ) {
-      batch.traces[index].applied = "Rejected: Project interpretation has no exact current speaker evidence";
-      return [];
-    }
-    const checklist =
-      kind === "requirements" && Array.isArray(details.checklist)
-        ? details.checklist.map((value) => {
-            const row = asRecord(value);
-            return {
-              category: row.category as "structure" | "equipment" | "finish",
-              title: asTrimmedString(row.title),
-              needed: row.needed as boolean,
-              citation: Number(row.citation),
-            };
-          })
-        : [];
-    if (
-      kind === "requirements" &&
-      (checklist.length !== 3 ||
-        new Set(checklist.map((item) => item.category)).size !== 3 ||
-        checklist.some(
-          (item) =>
-            !["structure", "equipment", "finish"].includes(item.category) ||
-            typeof item.needed !== "boolean" ||
-            !item.title ||
-            item.title.length > 100 ||
-            !Number.isInteger(item.citation) ||
-            !citations[item.citation],
-        ))
-    ) {
-      batch.traces[index].applied = "Unresolved: incomplete or uncited checklist";
-      return [];
-    }
-    batch.traces[index].applied = "Project proposal awaiting saved-state validation";
+    const citations = check.evidence
+      .filter((line) => line.current && line.speakerId === facts.actorId && result.evidenceIds.includes(line.id))
+      .map((line) => ({ lineId: line.id.startsWith("draft:") ? line.id.slice(6) : line.id, quote: line.content }));
+    if (!citations.length) return [];
     return [
       {
         version: 1 as const,
@@ -331,11 +90,7 @@ export function projectProposals(batch: InterpretationBatch): ProjectSpeechPropo
         phase: String(facts.phase),
         kind,
         speakerId: String(facts.actorId),
-        citations: citations.map((item) => ({
-          ...item,
-          lineId: item.lineId.startsWith("draft:") ? item.lineId.slice(6) : item.lineId,
-        })),
-        checklist,
+        citations,
         contextual: {
           version: 1 as const,
           source: result.source,

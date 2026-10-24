@@ -45,6 +45,7 @@ const sourceSnapshots = new Map<string, any>();
 function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
   const state = coerceVillageState({
+    version: 3,
     wishSystemVersion: 3,
     seed: "station-fields",
     name: "Station Fields",

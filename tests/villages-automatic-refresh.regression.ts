@@ -35,9 +35,6 @@ async function main() {
   const { projectHomeLines } = await import(
     moduleUrl("packages/villages/src/server/domain/rules/village-projections.ts")
   );
-  const { requestVillageHomeUpgrade, decideVillageHomeUpgrade } = await import(
-    moduleUrl("packages/villages/src/server/features/venues/venue-requests.ts")
-  );
   const { proposeVillageResidence, decideVillageResidence, completeVillageResidence } = await import(
     moduleUrl("packages/villages/src/server/features/venues/residences.ts")
   );
@@ -105,6 +102,7 @@ async function main() {
   assert.equal(villageSchedulerDelayMs(new Date("bad")), REFRESH_MAX_DELAY_MS);
 
   const migrated = coerceVillageState({
+    version: 3,
     wishSystemVersion: 3,
     foundedAt: "2026-09-01T07:00:00.000Z",
     lastHappeningKey: "2:morning",
@@ -128,9 +126,9 @@ async function main() {
   assert.ok(Date.parse(migrated.simulatedThrough) > 0);
   assert.equal(migrated.happenings[0]?.timePrecision, "phase");
   assert.equal(migrated.villagers[0]?.agenda?.day[0]?.startMinute, 300);
-  assert.equal(coerceVillageState({ wishSystemVersion: 3, refreshClocks: [] }).storyPace, "off");
+  assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: [] }).storyPace, "off");
   assert.equal(
-    coerceVillageState({ wishSystemVersion: 3, refreshClocks: ["morning", "evening"] }).storyPace,
+    coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: ["morning", "evening"] }).storyPace,
     "balanced",
   );
 
@@ -317,7 +315,7 @@ async function main() {
           presentation: { image: null, x: null, y: null },
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
           capabilities: [],
-          state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+          state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
         },
       ];
     });
@@ -611,14 +609,6 @@ async function main() {
     await assert.rejects(
       () => updateVillageVenue("rosa-home", { presentation: { x: 0.8, y: 0.8 } }),
       /only name and description/u,
-    );
-    await requestVillageHomeUpgrade("housing-resident", "rosa-home");
-    const upgrade = (await readVillageState()).pendingDecisions.find((entry) => entry.kind === "venue-upgrade")!;
-    await decideVillageHomeUpgrade(upgrade.id, true);
-    assert.equal((await readVillageState()).venues[0]!.occupancy.homeKind, "small-home");
-    assert.equal(
-      (await readVillageState()).projects.find((entry) => entry.kind === "renovation")?.lifecycle?.change?.homeKind,
-      "medium-home",
     );
     await proposeVillageResidence("housing-resident", "empty-venue");
     await decideVillageResidence("housing-resident", false, "villager");

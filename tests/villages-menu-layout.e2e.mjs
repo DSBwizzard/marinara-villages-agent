@@ -30,7 +30,6 @@ const snapshot = {
   noticeboard: [],
   venueRequests: [],
   projects: [],
-  upgradeRequests: [],
   residences: [],
   venueMail: [],
   happenings: [],
@@ -203,6 +202,22 @@ try {
     }
     for (const [name, key] of pages) {
       await nav.getByRole("button", { name }).click();
+      if (key === "projects") {
+        const portfolio = page.getByRole("main", { name: "Project portfolio" });
+        await expect(portfolio).toBeVisible();
+        await expect(nav).toHaveCount(0);
+        await expect(portfolio.getByRole("button", { name: "New Venue", exact: true })).toBeEnabled();
+        await expect(portfolio.getByRole("button", { name: "Renovation", exact: true })).toBeEnabled();
+        const box = await portfolio.boundingBox();
+        assert.ok(box && box.x >= 0 && box.x + box.width <= width, "the dedicated portfolio fits the viewport");
+        if (process.env.VILLAGES_MENU_SCREENSHOTS)
+          await page.screenshot({
+            path: join(process.env.VILLAGES_MENU_SCREENSHOTS, "menu-projects-" + width + "-" + height + ".png"),
+          });
+        await portfolio.getByRole("button", { name: /^Close/ }).click();
+        await expect(root).toHaveAttribute("data-page", "index");
+        continue;
+      }
       await expect(root).toHaveAttribute("data-page", key);
       await expect(main).toBeVisible();
       if (key === "village") {
@@ -227,6 +242,10 @@ try {
         await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");
         progressFails = true;
         await nav.getByRole("button", { name: /^Projects \(/ }).click();
+        await page
+          .getByRole("main", { name: "Project portfolio" })
+          .getByRole("button", { name: /^Close/ })
+          .click();
         await nav.getByRole("button", { name: /^DEBUG: Progress$/ }).click();
         await expect(main.getByText("Engine version: loading", { exact: true })).toBeVisible();
         await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");

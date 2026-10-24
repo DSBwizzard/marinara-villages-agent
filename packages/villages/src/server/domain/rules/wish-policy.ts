@@ -34,7 +34,6 @@ export function wishRevision(resident: VillageVillager, state: VillageState): st
         resident.agenda?.week,
         resident.agenda?.scheduleWeek,
         resident.agenda?.activeDay,
-        resident.agenda?.projectWork,
         resident.ingestSchedule,
         resident.wishLifecycle?.needs,
         [

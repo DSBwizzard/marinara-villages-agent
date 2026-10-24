@@ -35,7 +35,7 @@ export function creativeOpportunity(
     currentPlaces.set(destinationKey, [...(currentPlaces.get(destinationKey) ?? []), villager.characterId]);
   }
   const overlap = [...currentPlaces.entries()].find(([, actorIds]) => actorIds.length >= 2);
-  const activeProject = village.projects.find((project) => project.status === "active");
+  const activeProject = village.projects.find((project) => project.status === "working");
   const wishing = village.villagers.find((villager) => (villager.agenda?.wishes.length ?? 0) > 0);
   const publicVenue = village.venues.find((venue) => !isHousePlace(venue));
   const firstResident = village.villagers[0];

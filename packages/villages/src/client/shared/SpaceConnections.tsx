@@ -44,12 +44,6 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
     <fieldset className="villages-space-connections">
       <legend>Connections between spaces</legend>
 
-      {editableIds ? (
-        <p>
-          Only connections involving the spaces edited in this project can change here. Use a separate layout or Upgrade
-          Renovation for other passages.
-        </p>
-      ) : null}
       <ul>
         {pairs.map(([a, b]) => (
           <li key={a + ":" + b}>

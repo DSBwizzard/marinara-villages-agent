@@ -33,7 +33,7 @@
     "tsx": "4.23.12",
     "typescript": "5.9.3",
     "typescript-eslint": "8.67.0",
-    "zod": "3.25.76"
+    "zod": "4.6.7"
   },
   "scripts": {
     "check:changed": "node scripts/check-changed.mjs",

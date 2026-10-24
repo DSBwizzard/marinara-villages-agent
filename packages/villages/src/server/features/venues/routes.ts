@@ -8,7 +8,7 @@ import {
 import { fail, readPlaceId, readVenueId } from "../../adapters/http/route-support.js";
 import { retryPrivateSpaces } from "../../jobs/private-space-preparation.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
-import { decideVillageHomeUpgrade, decideVillageVenueRequest } from "./venue-requests.js";
+import { decideVillageVenueRequest } from "./venue-requests.js";
 import { proposeResidenceSpaceEdit, updateVillageZone } from "./zone-edits.js";
 import {
   changeVenueAccess,
@@ -79,20 +79,6 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
       return await decideVillageVenueRequest(readVenueId(request.params.requestId), false, null);
     } catch (error) {
       return fail(reply, error, "denying a venue request");
-    }
-  });
-  app.post<{ Params: { requestId: string } }>("/venue-upgrades/:requestId/approve", async (request, reply) => {
-    try {
-      return await decideVillageHomeUpgrade(readVenueId(request.params.requestId), true);
-    } catch (error) {
-      return fail(reply, error, "approving a home upgrade");
-    }
-  });
-  app.post<{ Params: { requestId: string } }>("/venue-upgrades/:requestId/deny", async (request, reply) => {
-    try {
-      return await decideVillageHomeUpgrade(readVenueId(request.params.requestId), false);
-    } catch (error) {
-      return fail(reply, error, "denying a home upgrade");
     }
   });
   app.put<{ Params: { venueId: string }; Body: unknown }>("/locations/venue/:venueId", async (request, reply) => {
@@ -172,7 +158,7 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
   );
   app.post<{
     Params: { mailId: string };
-    Body: { approved?: unknown; title?: unknown; description?: unknown; extraBeds?: unknown; slot?: unknown };
+    Body: { approved?: unknown; title?: unknown; description?: unknown };
   }>("/venue-mail/:mailId/decision", async (request, reply) => {
     try {
       await decideVillagerVenueImprovement(

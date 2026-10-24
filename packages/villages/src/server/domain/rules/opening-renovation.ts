@@ -13,22 +13,19 @@ export function readOpeningRenovation(value: unknown): Renovation {
     if (!value || value.length > max) throw conflict("The improvement needs a valid target and description.");
     return value;
   };
-  if (row.slot !== 0 && row.slot !== 1) throw conflict("Choose an empty Upgrade slot.");
   return {
     venueId: text("venueId", 200),
     spaceId: text("spaceId", 200),
-    slot: row.slot,
     title: text("title", 100),
     description: text("description", 1000),
     ...(asTrimmedString(row.sourceFingerprint) ? { sourceFingerprint: asTrimmedString(row.sourceFingerprint) } : {}),
   };
 }
 
-function target(venues: readonly VillageVenue[], terms: Pick<Renovation, "venueId" | "spaceId" | "slot">) {
+function target(venues: readonly VillageVenue[], terms: Pick<Renovation, "venueId" | "spaceId">) {
   const venue = venues.find((entry) => entry.id === terms.venueId && entry.constructionStatus !== "worksite");
-  const space =
-    venue && venueZones(venue).find((zone) => zone.id === terms.spaceId && ["exterior", "public"].includes(zone.kind));
-  if (!venue || !space || venue.improvements?.[terms.slot]) throw conflict("This improvement is no longer available.");
+  const space = venue && venueZones(venue).find((zone) => zone.id === terms.spaceId && zone.kind === "public");
+  if (!venue || !space) throw conflict("This improvement is no longer available.");
   return { venue, space };
 }
 export function openingRenovationFingerprint(venues: readonly VillageVenue[], terms: Renovation): string {
@@ -38,7 +35,7 @@ export function openingRenovationFingerprint(venues: readonly VillageVenue[], te
       JSON.stringify([
         venue.id,
         venue.name,
-        venue.baseClasses ?? venue.classes,
+        venue.classes,
         venue.occupancy,
         venue.residentIds,
         venue.workerIds,
@@ -50,7 +47,6 @@ export function openingRenovationFingerprint(venues: readonly VillageVenue[], te
         space.description,
         space.state.condition,
         space.state.features,
-        terms.slot,
       ]),
     )
     .digest("hex");
@@ -58,16 +54,13 @@ export function openingRenovationFingerprint(venues: readonly VillageVenue[], te
 export function openingRenovationChoices(venues: readonly VillageVenue[]) {
   return venues.flatMap((venue) => {
     if (venue.constructionStatus === "worksite") return [];
-    const slot = [0, 1].find((index) => !venue.improvements?.[index]);
-    if (slot === undefined) return [];
     return venueZones(venue)
-      .filter((space) => ["exterior", "public"].includes(space.kind))
+      .filter((space) => space.kind === "public")
       .map((space) => ({
         venueId: venue.id,
         venue: venue.name,
         spaceId: space.id,
         space: space.name,
-        slot,
       }));
   });
 }
@@ -88,7 +81,10 @@ export function openingRenovationDraft(proposal: OpeningProposal, venues: readon
   return {
     title: proposal.name,
     detail: proposal.description,
-    slot: terms.slot,
-    improvement: { title: terms.title, description: terms.description, spaceId: terms.spaceId, extraBeds: 0 },
+    zones: venueZones(venues.find((venue) => venue.id === terms.venueId)!)
+      .filter((zone) => zone.kind !== "exterior")
+      .map((zone) =>
+        zone.id === terms.spaceId ? { ...zone, name: terms.title, description: terms.description } : zone,
+      ),
   };
 }

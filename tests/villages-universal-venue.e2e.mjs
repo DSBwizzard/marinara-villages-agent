@@ -268,10 +268,14 @@ try {
       body: { name: "Renamed warehouse" },
     });
     await profile.getByRole("button", { name: "Plan a renovation →", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Describe the Renovation", exact: true })).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
+    await expect(page.getByRole("heading", { name: "Renovation", exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByRole("group", { name: "Venue", exact: true })
+        .getByRole("button", { name: "Renamed warehouse", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     assert.equal(writes.length, beforeName + 1, "planning does not submit a Project");
-    await page.getByRole("button", { name: "Back to menu", exact: true }).click();
+    await page.getByRole("button", { name: /^Close/, exact: false }).click();
     await page.getByRole("button", { name: "Back to the village", exact: true }).click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
     await page

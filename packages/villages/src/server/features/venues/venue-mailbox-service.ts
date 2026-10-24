@@ -6,7 +6,7 @@ import type { VillageVenueMail } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
-import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NOTE_LENGTH } from "../../domain/rules/prompt-preset.js";
+import { boundText, MAX_VENUE_NOTE_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import type { queueBackgroundJob } from "../../jobs/background-work.js";
@@ -98,8 +98,6 @@ export function createVenueMailbox({
         )
       )
         throw conflict("A Venue decision is already in progress here.");
-      const slot = (venue.improvements ?? [null, null]).findIndex((entry) => entry === null);
-      const chosenSlot = slot >= 0 ? slot : 0;
       const id = randomVillageSeed();
       const at = villageNow();
       state.venueMail = [
@@ -118,15 +116,6 @@ export function createVenueMailbox({
           affectedIds: [],
           decisions: [],
           error: "",
-          improvementSlot: chosenSlot,
-          improvement: {
-            id: randomVillageSeed(),
-            title: text.slice(0, 80),
-            description: text,
-            spaceId: null,
-            extraBeds: 0,
-            approvedAt: "",
-          },
         } satisfies VillageVenueMail,
       ].slice(-256);
       if (sourceKey) state.processedOpportunityIds = [...state.processedOpportunityIds, sourceKey].slice(-256);
@@ -139,35 +128,21 @@ export function createVenueMailbox({
       const mail = state.venueMail.find(
         (entry) => entry.id === mailId && entry.kind === "villager-change" && entry.status === "pending-player",
       );
-      if (!mail || !mail.improvement) throw notFound("That improvement request is no longer pending.");
+      if (!mail) throw notFound("That improvement request is no longer pending.");
       if (!approved) {
         mail.status = "declined";
         mail.resolvedAt = villageNow().toISOString();
         return;
       }
-      const title =
-        row.title === undefined ? mail.improvement.title : boundText(row.title, MAX_VENUE_NOTE_LENGTH).trim();
-      const description =
-        row.description === undefined
-          ? mail.improvement.description
-          : boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-      const extraBeds = row.extraBeds === undefined ? mail.improvement.extraBeds : Number(row.extraBeds);
-      const slot = row.slot === undefined ? mail.improvementSlot : Number(row.slot);
-      if (
-        !title ||
-        !description ||
-        !Number.isInteger(extraBeds) ||
-        extraBeds < 0 ||
-        extraBeds > 3 ||
-        (slot !== 0 && slot !== 1)
-      )
-        throw badRequest("Review the improvement title, description, slot, and bed effect.");
-      draftRenovationProject(state, mail.venueId, {
-        title,
-        detail: description,
-        slot,
-        improvement: { title, description, extraBeds, spaceId: mail.improvement.spaceId },
-      });
+      draftRenovationProject(
+        state,
+        mail.venueId,
+        {
+          title: boundText(row.title ?? mail.title, 100),
+          detail: boundText(row.description ?? mail.detail, 2000),
+        },
+        "mail:" + mail.id,
+      );
       mail.status = "approved";
       mail.resolvedAt = villageNow().toISOString();
     });
@@ -277,7 +252,12 @@ export function createVenueMailbox({
             (entry) => entry.id === input.due.counterofferRequestId && entry.status === "countered",
           )
         : input.due.kind === "project-approval"
-          ? state.projects.some((entry) => entry.id === input.due.projectId && entry.lifecycle?.phase === "approval")
+          ? state.projects.some(
+              (entry) =>
+                entry.id === input.due.projectId &&
+                ["planning", "paused"].includes(entry.status) &&
+                entry.lifecycle?.revision === input.due.projectRevision,
+            )
           : state.venues.some((venue) => venue.id === input.due.venueId)) &&
       state.venueMail.some(
         (entry) =>

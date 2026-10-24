@@ -64,7 +64,7 @@ export function useSuggestPlaces(ports: {
           presentation: { image: null, x: null, y: null },
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
           capabilities: [],
-          state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+          state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
         })),
       );
     } catch (cause) {

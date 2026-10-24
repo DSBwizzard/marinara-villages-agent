@@ -19,14 +19,7 @@ export const ZONE_KINDS: readonly VillageZoneKind[] = [
   "restricted",
 ];
 export function effectiveVenueClasses(venue: VillageVenue): VillageVenueClass[] {
-  return [
-    ...new Set([
-      ...(venue.baseClasses ?? venue.classes ?? ["other"]),
-      ...(venue.improvements ?? []).flatMap((upgrade) =>
-        upgrade?.classContribution ? [upgrade.classContribution] : [],
-      ),
-    ]),
-  ];
+  return venue.classes ?? ["other"];
 }
 /** Legacy fields remain write adapters; zones are the saved scene identities. */
 export function legacyVenueZones(venue: VillageVenue): VillageVenueZone[] {
@@ -44,7 +37,7 @@ export function legacyVenueZones(venue: VillageVenue): VillageVenueZone[] {
     ...venueSpaces({
       ...venue,
       presentation: venue.presentation ?? { image: null, x: null, y: null },
-      state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "", ...venue.state },
+      state: { condition: "", furniture: [], publicFacts: [], updatedAt: "", ...venue.state },
     }).map((space) => ({
       ...space,
       name: "Common Space",
@@ -90,7 +83,6 @@ export function legacyZoneId(venue: VillageVenue, area: string, spaceClass?: Vil
   return (
     venueZones(venue).find(
       (zone) =>
-        !zone.upgradeId &&
         zone.kind !== "exterior" &&
         ["public", "shared-residence"].includes(zone.kind) &&
         zone.venueClass === spaceClass,
@@ -150,21 +142,10 @@ export function zoneClosed(
     if (
       project.kind !== "renovation" ||
       project.venueId !== venue.id ||
-      !["construction", "finishing"].includes(project.lifecycle?.phase ?? "")
+      !["working", "paused"].includes(project.lifecycle?.phase ?? "")
     )
       return false;
-    const change = project.lifecycle?.change;
-    const upgrade = change?.slot !== undefined ? venue.improvements?.[change.slot] : null;
-    return !!(
-      (change?.baseZones && !zone.upgradeId) ||
-      (upgrade && zone.upgradeId === upgrade.id) ||
-      change?.improvement?.spaceId === zone.id ||
-      (change?.improvement?.spaceId === zone.venueClass && !zone.upgradeId) ||
-      upgrade?.spaceId === zone.id ||
-      (change?.homeKind !== undefined && zone.venueClass === "residence") ||
-      (change?.capacity !== undefined && zone.venueClass === "residence") ||
-      (change?.classes && !change.classes.includes(zone.venueClass) && !zone.upgradeId)
-    );
+    return project.lifecycle?.changedZoneIds.includes(zone.id) ?? false;
   });
 }
 export function chooseAgendaZone(
@@ -227,14 +208,6 @@ export function venueInZone(venue: VillageVenue, zoneId: string): VillageVenue {
   if (!zone) throw conflict("That zone is no longer here.");
   return {
     ...venue,
-    improvements: venue.improvements?.map((upgrade) =>
-      upgrade &&
-      (upgrade.spaceId === zone.id ||
-        upgrade.id === zone.upgradeId ||
-        (upgrade.spaceId === zone.venueClass && !zone.upgradeId))
-        ? upgrade
-        : null,
-    ),
     description: zone.description,
     presentation: { ...venue.presentation, image: zone.image },
     state: {
@@ -324,7 +297,6 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
       preparation: { status: "pending", error: "" },
       controllerIds: [],
       ownerId: undefined,
-      upgradeId: undefined,
       initialImageAttemptedAt: "",
       adaptationPending: false,
       adaptationSourceArchiveAt: "",
@@ -366,7 +338,6 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
     }
   }
   venue.zones = zones;
-  venue.baseClasses ??= [...(venue.classes ?? ["other"])];
   venue.classes = effectiveVenueClasses(venue);
   const exterior = zones.find((zone) => zone.kind === "exterior");
   if (exterior) {
@@ -374,7 +345,7 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
     venue.presentation.image = exterior.image;
     venue.description = exterior.description;
   }
-  venue.spaces = zones.filter((zone) => !zone.upgradeId && ["public", "shared-residence"].includes(zone.kind));
+  venue.spaces = zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
   venue.privateSpaces = zones
     .filter((zone) => zone.kind === "private-residence")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));

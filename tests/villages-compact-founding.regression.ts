@@ -114,7 +114,7 @@ async function openingIdeaShapes() {
     work: "Coordinate a planting day.",
     firstUse: "Visitors enjoy the planting.",
   };
-  const renovation = { venueId: "hall", spaceId: "exterior", slot: 0, title: "Garden", description: "Low shrubs." };
+  const renovation = { venueId: "hall", spaceId: "garden", title: "Garden", description: "Low shrubs." };
   let answer: unknown;
   let calls = 0;
   const requestKeys: string[] = [];
@@ -144,7 +144,17 @@ async function openingIdeaShapes() {
         classes: ["community"],
         occupancy: {},
         state: { condition: "Open", publicFacts: [] },
-        zones: [{ id: "exterior", name: "Entrance", kind: "exterior", state: { condition: "Paved", features: [] } }],
+        zones: [
+          { id: "exterior", name: "Entrance", kind: "exterior", state: { condition: "", features: [] } },
+          {
+            id: "garden",
+            name: "Garden",
+            kind: "public",
+            venueClass: "community",
+            description: "A garden.",
+            state: { condition: "Paved", features: [] },
+          },
+        ],
       },
     ],
   } as any;

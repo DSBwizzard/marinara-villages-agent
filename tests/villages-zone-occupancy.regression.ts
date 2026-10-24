@@ -55,6 +55,7 @@ function fixture(count: number) {
     ownerId,
   });
   const state = coerceVillageState({
+    version: 3,
     seed: "capacity",
     foundedAt: stamp,
     setupAt: stamp,
@@ -118,14 +119,12 @@ for (let count = 1; count <= 12; count++) {
   for (const crowded of [false, true]) {
     if (crowded)
       for (const person of state.villagers) {
-        // Project work is the final agenda overlay; it must not bypass capacity.
-        person.agenda!.projectWork = {
-          projectId: "work",
-          venueId: "hall",
-          zoneId: "a",
-          startsAt: stamp,
-          endsAt: "2026-10-23T12:00:00Z",
-        };
+        // Ordinary dated plans cannot bypass the four-person Zone limit.
+        for (const day of Object.keys(person.agenda!.week!))
+          person.agenda!.week![day as keyof NonNullable<typeof person.agenda>["week"]] = [
+            { startMinute: 0, endMinute: 1440, venueId: "hall", zoneId: "a", activity: "Meeting", flexible: true },
+          ];
+        person.agenda!.activeDay = null;
       }
     const positions = [...villagePresence(state, 720, at).values()];
     assert.equal(positions.length, count);
@@ -440,25 +439,22 @@ assert.throws(
       return state;
     },
   } as any);
-  await assert.rejects(
-    () =>
-      service.sceneReplayEffects().applyVenueTurnChange(saved, {
-        id: "red",
-        at: stamp,
-        areaAtTurn: "public",
-        zoneIdAtTurn: "a",
-        activeIdsAtTurn: ids,
-        semanticProvenance: { version: 2 },
-        sceneChange: {
-          narration: "Painted red.",
-          conditionBefore: "blue motorcycle",
-          conditionAfter: "red motorcycle",
-        },
-      } as any),
-    /Authority over this Zone changed/,
-  );
+  await service.sceneReplayEffects().applyVenueTurnChange(saved, {
+    id: "red",
+    at: stamp,
+    areaAtTurn: "public",
+    zoneIdAtTurn: "a",
+    activeIdsAtTurn: ids,
+    semanticProvenance: { version: 2 },
+    sceneChange: {
+      narration: "Painted red.",
+      conditionBefore: "blue motorcycle",
+      conditionAfter: "red motorcycle",
+    },
+  } as any);
   assert.equal(resolveVenueZone(state.venues[0], "a")!.state.condition, "blue motorcycle");
-  assert.equal(state.exchangeReceipts["venue-chat:ownership-fence:red"], undefined);
+  assert.equal(state.exchangeReceipts["venue-chat:ownership-fence:red"].status, "rejected");
+  assert.match(state.exchangeReceipts["venue-chat:ownership-fence:red"].reason!, /changed/);
 }
 
 // Village polling and Scene navigation survive background removal of the captured current Zone.

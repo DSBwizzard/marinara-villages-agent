@@ -1,3 +1,8 @@
+import { projectDesignKey, approvalScope } from "../packages/villages/src/server/domain/rules/project-terms.js";
+import {
+  finishConstruction,
+  projectFor,
+} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
   completeVillageResidence,
   proposeVillageResidence,
@@ -23,11 +28,11 @@ import {
 } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import {
   draftRenovationProject,
-  createRenovationProject,
-  createNewVenueProject,
-  placeNewVenueProject,
-  openFinishedProject,
+  createRenovationProject as createRenovationProjectRaw,
+  createNewVenueProject as createNewVenueProjectRaw,
+  placeNewVenueProject as placeNewVenueProjectRaw,
   saveProjectPlan,
+  startProjectConstruction,
 } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import {
   assertResidencePrivateDestination,
@@ -83,7 +88,7 @@ function place(layout: string, role = "residence", owner = "a"): VillageVenue {
   const zones = readBaseVenueLayout(source, [role as "residence"], owner, () => null);
   const parsed = { ...parsePlace(source, false), zones };
   initializeVenueAccess(parsed);
-  return coerceVillageState({ wishSystemVersion: 3, venues: [parsed] }).venues[0]!;
+  return coerceVillageState({ version: 3, wishSystemVersion: 3, venues: [parsed] }).venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
   for (const role of ["residence", "workplace", "community", "other"]) {
@@ -91,7 +96,7 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     const expected =
       1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both");
     assert.equal(venue.zones!.length, expected, `${role} ${layout} creates only selected Zones`);
-    let saved = coerceVillageState({ wishSystemVersion: 3, venues: [venue] });
+    let saved = coerceVillageState({ version: 3, wishSystemVersion: 3, venues: [venue] });
     for (let pass = 0; pass < 3; pass++) {
       const before = structuredClone(saved);
       saved = coerceVillageState(saved);
@@ -141,12 +146,14 @@ assert.equal(
 );
 assert.equal(canOccupyZone(vacant, vacant.zones![1]!, "a"), false);
 const initial = defaultVillageState();
+initial.foundedAt = initial.setupAt = new Date().toISOString();
 initial.venues = [privateOnly, place("exterior", "residence", "b"), vacant];
 initial.venues[0]!.zones![1]!.description = "A secret journal and old furnishings.";
 initial.venues[0]!.zones![1]!.state.items = ["Personal hammock"];
 initial.venues[0]!.zones![1]!.state.condition = "Fixed hammock hooks remain anchored to the beams.";
 initial.venues[0]!.zones![1]!.state.publicFacts = ["A personal secret"];
 initial.villagers = coerceVillageState({
+  version: 3,
   wishSystemVersion: 3,
   villagers: [
     {
@@ -179,7 +186,7 @@ assertResidencePrivateDestination(state, vacant, "b", "personal");
 assert.throws(() => assertResidencePrivateDestination(state, privateOnly, "b", "personal"), /no longer vacant/);
 const legacy = structuredClone(privateOnly);
 delete legacy.layoutVersion;
-const preserved = coerceVillageState({ wishSystemVersion: 3, venues: [legacy] }).venues[0]!;
+const preserved = coerceVillageState({ version: 3, wishSystemVersion: 3, venues: [legacy] }).venues[0]!;
 assert.equal(preserved.zones!.find((zone) => zone.id === "personal")!.description, privateOnly.zones![1]!.description);
 const records = new Map<string, any>();
 records.set("villages-village", { id: "villages-village", kind: "village", data: state, revision: 1 });
@@ -215,17 +222,53 @@ const release = configureVillagesRuntime({
     },
   },
 } as Parameters<typeof configureVillagesRuntime>[0]);
-async function finish(id: string, body: unknown = {}) {
-  if ((await readVillageState()).projects.find((project) => project.id === id)!.kind === "new-venue")
-    await saveProjectPlan(id, body);
-  await mutateVillageState((state) => {
-    const project = state.projects.find((project) => project.id === id)!;
-    project.lifecycle!.phase = "finishing";
-    const task = state.progressTasks.find((task) => task.definition.owner.id === id)!;
-    task.phaseIndex = task.definition.phases.findIndex((phase) => phase.id === "finishing");
-    project.status = "finishing";
+async function createRenovationProject(venueId: string, value: any) {
+  return createRenovationProjectRaw(venueId, { ...value, requestId: crypto.randomUUID() });
+}
+async function createNewVenueProject(value: any) {
+  return createNewVenueProjectRaw({ ...value, requestId: crypto.randomUUID() });
+}
+async function placeNewVenueProject(id: string, value: any) {
+  const project = (await readVillageState()).projects.find((project) => project.id === id)!;
+  return placeNewVenueProjectRaw(id, {
+    ...value,
+    requestId: crypto.randomUUID(),
+    expectedRevision: project.lifecycle!.revision,
   });
-  await openFinishedProject(id, body);
+}
+async function finish(id: string, body: any = {}) {
+  let project = (await readVillageState()).projects.find((project) => project.id === id)!;
+  if (project.kind === "new-venue")
+    await saveProjectPlan(id, {
+      ...body,
+      requestId: crypto.randomUUID(),
+      expectedRevision: project.lifecycle!.revision,
+    });
+  await mutateVillageState((state) => {
+    const project = state.projects.find((project) => project.id === id)!,
+      flow = project.lifecycle!;
+    flow.candidates.push({
+      residentId: "a",
+      evidenceId: "fixture-lead",
+      scope: projectDesignKey(project),
+      at: new Date().toISOString(),
+    });
+    flow.builderId = "a";
+    if (flow.change) {
+      const venue = state.venues.find((venue) => venue.id === project.venueId)!;
+      flow.approvals = flow.affectedIds.map((residentId) => ({
+        residentId,
+        source: "conversation",
+        evidenceId: "fixture-consent",
+        scope: approvalScope(venue, flow.change!, residentId, flow.changedZoneIds),
+        at: new Date().toISOString(),
+      }));
+    }
+  });
+  project = (await readVillageState()).projects.find((project) => project.id === id)!;
+  await startProjectConstruction(id, { requestId: crypto.randomUUID(), expectedRevision: project.lifecycle!.revision });
+  await mutateVillageState((state) => finishConstruction(state, projectFor(state, id), new Date().toISOString()));
+  assert.equal((await readVillageState()).projects.find((project) => project.id === id)!.status, "complete");
 }
 async function main() {
   try {
@@ -274,7 +317,7 @@ async function main() {
     await createRenovationProject(outside.id, {
       title: "Add shelter",
       detail: "A communal shelter",
-      baseZones: [
+      zones: [
         {
           id: "common:shelter",
           connectedTo: ["exterior"],
@@ -289,14 +332,13 @@ async function main() {
     project = current.projects.find(
       (project) => project.kind === "renovation" && project.lifecycle?.phase !== "complete",
     )!;
-    await assert.rejects(finish(project.id, { baseZones: [] }), /Reviewed structural terms/);
     await finish(project.id);
     current = await readVillageState();
     assert.equal(current.venues.find((venue) => venue.id === outside.id)!.zones!.length, 2);
     await createRenovationProject(outside.id, {
       title: "Remove shelter",
       detail: "Return to open-air camping",
-      baseZones: [],
+      zones: [],
     });
     current = await readVillageState();
     project = current.projects.find(
@@ -316,10 +358,10 @@ async function main() {
     target.zones![1]!.description = "Unseen personal secret";
     const proposal = draftRenovationProject(proposalState, target.id, {
       detail: "Improve structure",
-      baseZones: target.zones!.filter((zone) => zone.kind !== "exterior").map((zone) => ({ ...zone, description: "" })),
+      zones: target.zones!.filter((zone) => zone.kind !== "exterior").map((zone) => ({ ...zone, description: "" })),
     });
-    assert.equal(proposal.lifecycle!.change!.baseZones![0]!.description, "");
-    assert.equal(proposal.lifecycle!.change!.baseZones![0]!.preserveDescription, true);
+    assert.equal(proposal.lifecycle!.change!.zones![0]!.description, "");
+    assert.equal(proposal.lifecycle!.change!.zones![0]!.preserveDescription, true);
     assert.equal(
       villageSettings(proposalState, { name: "Player", personaAvailable: false } as never, null).venues.find(
         (venue) => venue.id === target.id,
@@ -329,7 +371,7 @@ async function main() {
     await createRenovationProject(outside.id, {
       title: "Base sleeping nook",
       detail: "Add an assigned residential Private Space",
-      baseZones: [
+      zones: [
         {
           id: "private:nook",
           connectedTo: ["exterior"],
@@ -353,10 +395,19 @@ async function main() {
         .ownerId,
       "a",
     );
+    await assert.rejects(
+      createRenovationProject(outside.id, { title: "Occupied nook", detail: "Remove the occupied room", zones: [] }),
+      /Move residents/,
+    );
+    // Simulate the completed departure already covered by the move assertions above.
+    await mutateVillageState((record) => {
+      delete record.venues.find((venue) => venue.id === outside.id)!.zones!.find((zone) => zone.id === "private:nook")!
+        .ownerId;
+    });
     await createRenovationProject(outside.id, {
       title: "Remove nook",
       detail: "Restore exterior-only residence",
-      baseZones: [],
+      zones: [],
     });
     current = await readVillageState();
     project = current.projects.find(
@@ -370,26 +421,20 @@ async function main() {
         .find((venue) => venue.id === outside.id)!
         .archivedZones!.some((entry) => entry.zone.id === "private:nook"),
     );
-    // Upgrade zones can add more physical rooms without adding residential slots.
     await createRenovationProject(outside.id, {
       title: "Extra tent chamber",
       detail: "Add a vacant Private Space",
-      slot: 0,
-      improvement: {
-        title: "Side tent",
-        description: "A separate canvas chamber",
-        extraBeds: 0,
-        zones: [
-          {
-            name: "Vacant chamber",
-            connectedTo: ["exterior"],
-            description: "",
-            purpose: "Sleeping chamber",
-            kind: "private-residence",
-            venueClass: "residence",
-          },
-        ],
-      },
+      zones: [
+        {
+          id: "chamber",
+          name: "Vacant chamber",
+          connectedTo: ["exterior"],
+          description: "",
+          purpose: "Sleeping chamber",
+          kind: "private-residence",
+          venueClass: "residence",
+        },
+      ],
     });
     current = await readVillageState();
     project = current.projects.find(
@@ -399,7 +444,6 @@ async function main() {
     current = await readVillageState();
     const expanded = current.venues.find((venue) => venue.id === outside.id)!;
     const chamber = expanded.zones!.find((zone) => zone.kind === "private-residence")!;
-    assert.ok(chamber.upgradeId);
     assert.equal(chamber.ownerId, undefined);
     assert.equal(chamber.preparation?.status, "pending");
     assert.equal(venueCapacity(expanded), 2);
@@ -445,12 +489,11 @@ async function main() {
       current.venues.find((venue) => venue.id === outside.id)!.zones!.find((zone) => zone.id === chamber.id)!.ownerId,
       undefined,
     );
-    // Removing an Upgrade archives its vacant room rather than resurrecting it on load.
+    // Removing a vacant room archives the current room.
     await createRenovationProject(outside.id, {
       title: "Remove chamber",
       detail: "Remove the side tent",
-      slot: 0,
-      improvement: null,
+      zones: [],
     });
     current = await readVillageState();
     project = current.projects.find(
@@ -488,7 +531,7 @@ async function main() {
           exteriorDescription: opening.description,
           interiorDescription: "An invented interior",
         }),
-        /Define the physical form, layout/,
+        /Define the Physical design, layout and Entrance/,
       );
       await finish(project.id, {
         ...opening,
@@ -498,6 +541,7 @@ async function main() {
         interiorImage: null,
       });
       current = await readVillageState();
+      project = current.projects.find((entry) => entry.id === project.id)!;
       destination = current.venues.find((venue) => venue.id === project.venueId)!;
       assert.equal(
         destination.zones!.length,

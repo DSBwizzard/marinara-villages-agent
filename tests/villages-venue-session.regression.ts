@@ -39,7 +39,7 @@ import {
   renderPlayerBackgroundContext,
   renderPlayerBackgroundWritingContext,
 } from "../packages/villages/src/server/domain/rules/player-background.js";
-import { requestProjectMailbox } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { requestProjectMailbox as requestProjectMailboxRaw } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
@@ -50,7 +50,7 @@ import {
 import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
 import {
   decideVillagerVenueImprovement,
-  proposeVenueChange,
+  proposeVenueChange as proposeVenueChangeRaw,
   queueVenueCounteroffer,
   recordVillagerVenueImprovement,
   respondDueVenueMail,
@@ -1358,7 +1358,7 @@ const venue = (id: string) => ({
   presentation: { image: null, x: 0.5, y: 0.5 },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   capabilities: [],
-  state: { condition: "quiet", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+  state: { condition: "quiet", furniture: [], publicFacts: [], updatedAt: "" },
 });
 const card = (id: string) => ({
   id,
@@ -1694,15 +1694,19 @@ async function main() {
       /Alternate narration and speakers|Every player speech turn needs spoken dialogue/u,
     );
     assert.equal(defaultVillageState().sendOnEnter, false);
-    assert.equal(coerceVillageState({ wishSystemVersion: 3 }).sendOnEnter, false);
-    assert.equal(coerceVillageState({ wishSystemVersion: 3, sendOnEnter: "true" }).sendOnEnter, false);
+    assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3 }).sendOnEnter, false);
+    assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, sendOnEnter: "true" }).sendOnEnter, false);
     assert.equal((await setVillageSendOnEnter(true)).settings.sendOnEnter, true);
     assert.equal((await readVillageState()).sendOnEnter, true);
     assert.equal((await setVillageSendOnEnter(false)).settings.sendOnEnter, false);
     await assert.rejects(() => setVillageSendOnEnter("true"), /must be on or off/u);
-    assert.deepEqual(coerceVillageState({ wishSystemVersion: 3 }).narrationStyle, defaultVillageState().narrationStyle);
+    assert.deepEqual(
+      coerceVillageState({ version: 3, wishSystemVersion: 3 }).narrationStyle,
+      defaultVillageState().narrationStyle,
+    );
     assert.deepEqual(
       coerceVillageState({
+        version: 3,
         wishSystemVersion: 3,
         narrationStyle: {
           tense: "past",
@@ -3137,7 +3141,7 @@ async function main() {
       detail: "Add a shared table.",
     });
     const firstRenovation = (await readVillageState()).projects.find((entry) => entry.kind === "renovation")!;
-    assert.equal(firstRenovation.lifecycle?.phase, "approval");
+    assert.equal(firstRenovation.lifecycle?.phase, "planning");
     await requestProjectMailbox(firstRenovation.id);
     let mail = (await readVillageState()).venueMail.at(-1)!;
     assert.equal(mail.status, "awaiting-villagers");
@@ -3156,7 +3160,7 @@ async function main() {
     );
     assert.equal(
       (await readVillageState()).projects.find((entry) => entry.id === firstRenovation.id)?.lifecycle?.phase,
-      "builder",
+      "planning",
     );
     assert.deepEqual(
       (await readVillageState()).venues[0]!.classes,
@@ -3183,14 +3187,22 @@ async function main() {
     assert.equal(acceptedCounteroffer.venueMail.at(-1)?.status, "approved");
     assert.equal(
       acceptedCounteroffer.projects.find((entry) => entry.venueDraft?.name === "Hydro Station")?.status,
-      "draft",
+      "planning",
     );
     assert.equal(
       acceptedCounteroffer.venues.some((venue) => venue.name === "Hydro Station"),
       false,
     );
     mailboxAccept = false;
-    await proposeVenueChange("park", { capacity: 2, title: "Make more room", detail: "Add another cot." });
+    await proposeVenueChange("park", {
+      capacity: 2,
+      title: "Make more room",
+      detail: "A larger work room.",
+      zones: (await readVillageState()).venues[0]!.zones!.filter((zone) => zone.kind !== "exterior").map((zone) => ({
+        ...zone,
+        description: "A larger work room.",
+      })),
+    });
     const secondRenovation = (await readVillageState()).projects.find((entry) => entry.kind === "renovation")!;
     await requestProjectMailbox(secondRenovation.id);
     await mutateVillageState((state) => {
@@ -3208,7 +3220,6 @@ async function main() {
     assert.equal(mail.status, "pending-player");
     await decideVillagerVenueImprovement(mail.id, true, {});
     assert.equal((await readVillageState()).venueMail.at(-1)!.status, "approved");
-    assert.equal((await readVillageState()).venues[0]!.improvements?.[0], null);
     assert.match(
       (await readVillageState()).projects.find((entry) => entry.kind === "renovation")?.lifecycle?.change?.detail ?? "",
       /sturdy workbench/u,
@@ -3449,6 +3460,7 @@ async function main() {
     const homeForMigration = persistedForMigration.venues.find((place) => place.id === "home")!;
     const roomForMigration = homeForMigration.privateSpaces!.find((space) => space.ownerId === "bob")!;
     const migrated = coerceVillageState({
+      version: 3,
       wishSystemVersion: 3,
       ...persistedForMigration,
       venues: persistedForMigration.venues.map((place) =>
@@ -3721,3 +3733,14 @@ async function main() {
 }
 
 void main();
+
+async function proposeVenueChange(venueId: string, value: any) {
+  return proposeVenueChangeRaw(venueId, { ...value, requestId: crypto.randomUUID() });
+}
+async function requestProjectMailbox(id: string) {
+  const project = (await readVillageState()).projects.find((project) => project.id === id)!;
+  return requestProjectMailboxRaw(id, {
+    requestId: crypto.randomUUID(),
+    expectedRevision: project.lifecycle!.revision,
+  });
+}

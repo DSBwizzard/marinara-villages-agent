@@ -5,7 +5,6 @@ export type OpeningProposal = {
   renovation?: {
     venueId: string;
     spaceId: string;
-    slot: 0 | 1;
     title: string;
     description: string;
     sourceFingerprint?: string;
@@ -23,8 +22,7 @@ export type OpeningProposal = {
 
 export type OpeningView = {
   id: string;
-  version: 1 | 2;
-  ordinaryProjectsUnlocked?: boolean;
+  version: 2;
   stage: "gathering" | "conversations" | "project" | "first-use" | "complete" | "ended";
   communityVenueId: string;
   gatheringSceneId: string;

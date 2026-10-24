@@ -1,3 +1,4 @@
+import { lifecycle } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
   initialOpening,
   openingSceneDirection,
@@ -950,30 +951,22 @@ async function main() {
       {
         id: "diagnostic-project",
         title: "Shared shelf",
-        status: "active",
-        lifecycle: { phase: "requirements", builderId: "host", affectedIds: [], requirements: [], sources: [] },
+        status: "planning",
+        lifecycle: lifecycle(),
       },
-    ] as any;
-    projectWorld.progressTasks = [
-      { definition: { owner: { kind: "project", id: "diagnostic-project" }, revision: 1 } },
     ] as any;
     const projectScene = {
       ...combinedScene,
       activeIds: ["host"],
       participants: [{ characterId: "host", name: "Host", doing: "Planning" }],
     } as typeof combinedScene;
-    const speech = "We need timber, a clamp, and oil.";
+    const speech = "I will lead the work on the shared shelf.";
     const validProject = {
       projectId: "diagnostic-project",
       revision: 1,
-      kind: "requirements",
+      kind: "builder",
       speakerId: "host",
       citations: [{ segment: 0, quote: speech }],
-      checklist: [
-        { category: "structure", title: "timber", needed: true, citation: 0 },
-        { category: "equipment", title: "clamp", needed: true, citation: 0 },
-        { category: "finish", title: "oil", needed: true, citation: 0 },
-      ],
     };
     const cases = [
       {
@@ -987,18 +980,6 @@ async function main() {
           row.revision = 2;
         },
         error: /stale revision/u,
-      },
-      {
-        change: (row: typeof validProject) => {
-          row.checklist[0].title = "x".repeat(101);
-        },
-        error: /1.100 characters/u,
-      },
-      {
-        change: (row: typeof validProject) => {
-          row.checklist.pop();
-        },
-        error: /all three checklist categories/u,
       },
       {
         change: (row: typeof validProject) => {
@@ -1651,8 +1632,6 @@ async function main() {
     ),
   );
   assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
-  assert(systemPrompt.includes("never labor, willingness to sand or drill"));
-  assert(systemPrompt.includes('"I can sand; I do not have linseed oil" cannot offer the finishing bundle'));
   const rootExchangeExample = systemPrompt.slice(
     systemPrompt.indexOf("Return {sourceHash"),
     systemPrompt.indexOf("Return exactly one JSON object."),
@@ -1662,39 +1641,6 @@ async function main() {
     "The required V2 review belongs in the complete root response example even with no proposed access actions",
   );
   assert(systemPrompt.includes("residentActionReview is required even when residentActions is empty"));
-  assert(
-    systemPrompt.includes(
-      "Every projectSpeech citation must be dialogue spoken by that row's speakerId; never cite narration or player speech",
-    ),
-    "A saved supply offer repeatedly cited narration as the resident commitment",
-  );
-  assert(
-    systemPrompt.includes("For offer and handoff, requirementId is required"),
-    "The live source offer omitted its mandatory supply target under the old optional-field schema",
-  );
-  assert(
-    systemPrompt.includes("An offer alone sets projects:true and physical:false"),
-    "Project metadata authority is independent of a completed physical action",
-  );
-
-  assert(
-    systemPrompt.includes(
-      'checklist:[{category:"structure|equipment|finish",title:"1-100 characters",needed:boolean,citation:0}]',
-    ),
-    "System must receive the checklist item schema required by Project validation",
-  );
-  assert(
-    systemPrompt.includes(
-      "For requirements, include exactly three checklist entries, one each for structure, equipment and finish",
-    ),
-    "An empty requirements checklist interrupted a live opening planning conversation",
-  );
-  assert(
-    systemPrompt.includes("citation is a zero-based index into this row's citations array, not an evidence segment"),
-    "Checklist references must bind to the declared speech citations",
-  );
-  assert(systemPrompt.includes("If the saved speech cannot support all three categories, omit the requirements row"));
-
   assert(
     systemPrompt.includes("Return {sourceHash,intent:{"),
     "The combined response example must contain required intent inside the single exchange object",
@@ -1723,11 +1669,7 @@ async function main() {
   assert(narrationPrompt.includes("within the player's already occupied public Zone do not change access"));
   assert(systemPrompt.includes("within the player's already occupied public Zone do not change access"));
   assert(systemPrompt.includes("Inspect each context.actors entry's wishes independently using actor.id and wish.id."));
-  assert(
-    systemPrompt.includes(
-      "Opening proposals are not Projects: report their pitch only in openingSignal, never projectSpeech.",
-    ),
-  );
+  assert(systemPrompt.includes("Opening pitches are reported in openingSignal, not projectSpeech."));
   assert(
     systemPrompt.includes(
       "Memory subjectCharacterIds and knownByCharacterIds contain resident IDs only, never player.",
@@ -2102,123 +2044,6 @@ async function main() {
       );
     }
   }
-  // Optional supply sources fail closed within the existing System response, never by losing valid chat.
-  for (const availability of [
-    undefined,
-    { materials: "partial", certainty: "uncertain", contribution: "materials" },
-    { materials: "complete", certainty: "uncertain", contribution: "materials" },
-    { materials: "none", certainty: "confirmed", contribution: "labor" },
-    { materials: "complete", certainty: "confirmed", contribution: "materials" },
-  ]) {
-    const local = new Map<string, any>();
-    let completions = 0;
-    const proposal = {
-      projectId: "rail",
-      revision: 2,
-      kind: "offer",
-      requirementId: "structure",
-      speakerId: "supplier",
-      citations: [{ segment: 0, quote: "I might have a plank, but I cannot promise the brackets." }],
-      checklist: [],
-      availability,
-    };
-    if (
-      availability?.materials === "complete" &&
-      availability.certainty === "confirmed" &&
-      availability.contribution === "materials"
-    )
-      proposal.citations[0].quote = "I have the complete plank, brackets, bolts and lip here, ready for you.";
-    const originalProposal = structuredClone(proposal);
-    const offerService = createSemanticService({
-      ...ports,
-      readVillageState: async () => defaultVillageState(),
-      venueSavedCheckpoint: (key) => local.get(key),
-      venueCheckpoint: async (key, work) => {
-        if (local.has(key)) return structuredClone(local.get(key));
-        const value = await work();
-        local.set(key, structuredClone(value));
-        return value;
-      },
-      completeWithRoom: async (_model, messages) => {
-        completions++;
-        const packet = JSON.parse(messages[1].content);
-        return {
-          finishReason: "stop",
-          content: JSON.stringify({
-            sourceHash: packet.sourceHash,
-            consistent: true,
-            authority: { physical: false, projects: true, access: false, standing: false },
-            action: null,
-            memoryChanges: [],
-            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-            wishChanges: [],
-            projectSpeech: [proposal],
-            access: [],
-            events: { moves: [], departures: [], contactEnd: [] },
-          }),
-        };
-      },
-    });
-    const offerScene = { ...scene, id: "offer-qualification", operation: undefined };
-    const lines = [
-      {
-        kind: "dialogue",
-        speakerId: "supplier",
-        content: proposal.citations[0].quote,
-        heardBy: ["supplier"],
-        role: "assistant",
-      },
-    ] as any;
-    const accepted =
-      availability?.materials === "complete" &&
-      availability.certainty === "confirmed" &&
-      availability.contribution === "materials";
-    const result = await offerService.exchange(offerScene, "Could you supply the complete kit?", lines, null);
-    assert.equal((result.effects.projectSpeech as any[]).length, accepted ? 1 : 0);
-    assert.equal(result.authority.projects, accepted);
-    assert.equal(result.authority.physical, false);
-    assert.equal((result.effects.projectOfferReview as any).reviews[0].accepted, accepted);
-    assert.deepEqual(
-      (result.effects.projectOfferReview as any).reviews[0].proposal,
-      JSON.parse(JSON.stringify(originalProposal)),
-      "Original proposed metadata remains in the review audit",
-    );
-    assert.deepEqual(proposal, originalProposal);
-    await offerService.exchange(offerScene, "Could you supply the complete kit?", lines, null);
-    assert.equal(
-      completions,
-      1,
-      "Classification uses the existing single System call and replays without another judge",
-    );
-    if (accepted) {
-      for (const quote of [
-        "I might help sand tomorrow, but I have the complete boards, bolts, brackets and lip here for you now.",
-        "I cannot promise labor, but the complete plank, brackets, bolts and lip are available now.",
-      ]) {
-        proposal.citations[0].quote = quote;
-        const confirmed = await offerService.exchange(offerScene, quote, [{ ...lines[0], content: quote }], null);
-        assert.equal(
-          (confirmed.effects.projectSpeech as any[]).length,
-          1,
-          "Unrelated labor uncertainty does not veto confirmed material availability",
-        );
-      }
-      proposal.citations[0].quote = originalProposal.citations[0].quote;
-    }
-    // A saved old input retains its original schema, even under new code.
-    const inputKey = [...local.keys()].find((key) => key.endsWith(":input"))!;
-    const oldPacket = local.get(inputKey);
-    delete oldPacket.input.offerAvailabilityVersion;
-    const completedKey = inputKey.slice(0, -6);
-    local.delete(completedKey);
-    const oldResult = await offerService.exchange(offerScene, "Could you supply the complete kit?", lines, null);
-    assert.equal(
-      (oldResult.effects.projectSpeech as any[]).length,
-      1,
-      "Frozen older interpretation is never rewritten by this fresh-admission policy",
-    );
-    assert.equal(oldResult.effects.projectOfferReview, undefined);
-  }
   // Named remote speakers must not replace the local group when resolving "the four of you".
   {
     const requestState = defaultVillageState();
@@ -2303,7 +2128,7 @@ async function main() {
     assert.equal(calls, 1, "The existing System exchange resolves the whole group without another judge");
   }
   console.log(
-    "System ownership: connection routing, independent extraction, replay, failure isolation, evidence identity, privacy and legacy compatibility passed; fake providers only.",
+    "System ownership: connection routing, independent extraction, replay, failure isolation, evidence identity, privacy and checkpoint recovery passed; fake providers only.",
   );
 }
 void main();

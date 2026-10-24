@@ -2124,8 +2124,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setVenuesDraft,
   });
 
-  const { generateRequestDescription, decideHomeUpgrade, completeResidenceMove, decideResidenceMove } =
-    useVenueRequestCommands({ snapshot, setBusy, setSettingsError, setSnapshot, setRequestEdits });
+  const { generateRequestDescription, completeResidenceMove, decideResidenceMove } = useVenueRequestCommands({
+    snapshot,
+    setBusy,
+    setSettingsError,
+    setSnapshot,
+    setRequestEdits,
+  });
 
   const venueScreenCommands = useVenueScreenCommands({
     snapshot,
@@ -2289,7 +2294,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     debugDiscardEnabled,
     decideVenueRequest,
     generateRequestDescription,
-    decideHomeUpgrade,
     completeResidenceMove,
     decideResidenceMove,
     deleteArchivedVisits,
