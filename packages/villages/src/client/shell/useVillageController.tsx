@@ -350,19 +350,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person"
   >("home");
 
-  const screen = sceneNavigationScreen(requestedScreen, !!room && room.status !== "closed");
-  useLayoutEffect(() => {
-    // Returning from a menu must not leave a map request waiting behind the Scene.
-    if (requestedScreen !== screen) setScreen(screen);
-  }, [requestedScreen, screen]);
-
-  useLayoutEffect(() => {
-    element.dataset.housingView = ["home", "venue", "person"].includes(screen) ? "current" : "none";
-    return () => {
-      delete element.dataset.housingView;
-    };
-  }, [element, screen]);
-  useSceneViewport(element, screen === "room");
   const {
     focusedProjectId,
     projectFocusRequest,
@@ -374,6 +361,19 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     siteProjectId,
     setSiteProjectId,
   } = useProjectsState();
+  const screen = sceneNavigationScreen(requestedScreen, !!room && room.status !== "closed", !!placingProjectId);
+  useLayoutEffect(() => {
+    // Ordinary exploration requests must not wait behind the Scene; Project placement is an editor.
+    if (requestedScreen !== screen) setScreen(screen);
+  }, [requestedScreen, screen]);
+
+  useLayoutEffect(() => {
+    element.dataset.housingView = ["home", "venue", "person"].includes(screen) ? "current" : "none";
+    return () => {
+      delete element.dataset.housingView;
+    };
+  }, [element, screen]);
+  useSceneViewport(element, screen === "room");
   const projectsController = useProjectsController({
     snapshot,
     onSnapshot: setSnapshot,

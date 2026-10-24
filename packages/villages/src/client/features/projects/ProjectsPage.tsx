@@ -31,7 +31,6 @@ export function renderProjectsPage(ports: ProjectsPagePorts) {
         goHome();
       }}
       onPlaceOnMap={(projectId) => {
-        if (room && room.status !== "closed") return;
         setFocusedProjectId(projectId);
         setPlacingProjectId(projectId);
         goHome();

@@ -79,7 +79,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         ...pin,
         text: place?.name ?? pin.text,
         selected: pin.id === openPlaceId,
-        onSelect: place && !busy ? () => openPlace(place) : undefined,
+        onSelect: place && !busy && !placingProjectId ? () => openPlace(place) : undefined,
       };
     });
   const navigation = (
@@ -113,14 +113,24 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         </span>
         {!mobile && !placingProjectId ? navigation : null}
         <span className={`${ELEMENT_TAG}-home-bar-actions`}>
-          <NoticesButton
-            count={snapshot?.noticeboard.length ?? 0}
-            disabled={!snapshot || busy}
-            onSelect={() => openMenu("noticeboard")}
-          />
+          {!placingProjectId ? (
+            <NoticesButton
+              count={snapshot?.noticeboard.length ?? 0}
+              disabled={!snapshot || busy}
+              onSelect={() => openMenu("noticeboard")}
+            />
+          ) : null}
           {!mobile ? <FullscreenToggle /> : null}
           {placingProjectId ? (
-            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setPlacingProjectId("")}>
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button`}
+              disabled={busy}
+              onClick={() => {
+                setPlacingProjectId("");
+                openMenu("projects");
+              }}
+            >
               Cancel placement
             </button>
           ) : null}
@@ -164,11 +174,11 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
             src={townMapImage || null}
             alt={`A map of ${snapshot?.village.name ?? "the village"}.`}
             pins={pins}
-            placing={!!placingProjectId}
+            placing={!!placingProjectId && !busy}
             view={savedTownMapView}
             shape={savedTownMapShape}
             onPlace={(x, y) => {
-              if (!placingProjectId) return;
+              if (!placingProjectId || busy) return;
               const projectId = placingProjectId;
               setBusy(true);
               setError("");
