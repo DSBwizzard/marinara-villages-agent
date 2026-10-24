@@ -99,7 +99,11 @@ export function PursuitsPanel({
             {known.length > 1 ? (
               <label>
                 Choose a Pursuit{" "}
-                <select value={selected.id} onChange={(event) => setSelectedId(event.currentTarget.value)}>
+                <select
+                  autoComplete="off"
+                  value={selected.id}
+                  onChange={(event) => setSelectedId(event.currentTarget.value)}
+                >
                   {known.map((row) => (
                     <option key={row.id} value={row.id}>
                       {row.title ?? "Move"} · {statuses[row.status]}
@@ -263,6 +267,7 @@ function PursuitInspection({ characterId, request }: { characterId: string; requ
             <summary>Village controls</summary>
             <label>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={view.enabled}
                 disabled={busy}
