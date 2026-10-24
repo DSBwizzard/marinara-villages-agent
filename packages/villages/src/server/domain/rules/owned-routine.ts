@@ -4,6 +4,7 @@ import type { NativeWeekSchedule } from "./schedule-rules.js";
 import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { semanticHash } from "./semantic-contract.js";
 import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 
 export const INFLUENCE_CATEGORIES = [
   "rhythm",
@@ -165,6 +166,7 @@ export function deriveInfluence(
   schedule: NativeWeekSchedule | null,
   resident: VillageVillager,
   state: VillageState,
+  now = new Date(),
 ): InfluenceSnapshot {
   const settings = influenceSettings(resident.scheduleInfluence, resident.ingestSchedule === true);
   const profile = resident.agenda?.routineProfile;
@@ -251,7 +253,7 @@ export function deriveInfluence(
         if (
           venueZones(venue).some(
             (zone) =>
-              canOccupyZone(venue, zone, resident.characterId, { relationships: state.relationshipContext }) &&
+              canOccupyZone(venue, zone, resident.characterId, { at: now, relationships: state.relationshipContext }) &&
               !zoneClosed(state, venue, zone),
           ) &&
           venue.constructionStatus !== "worksite"
@@ -610,7 +612,7 @@ export function validateRoutineDay(
     const venue = state.venues.find((item) => item.id === block.venueId);
     const accessContext = {
       relationships: state.relationshipContext,
-      at: new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, block.startMinute),
+      at: calendarAt(date, dayKey(date), block.startMinute),
     };
     const zone =
       venue &&
@@ -641,6 +643,7 @@ export function addRoutineIdea(
   value: unknown,
   resident: VillageVillager,
   state: VillageState,
+  now = new Date(),
 ): boolean {
   const row = record(value),
     profile = agenda.routineProfile;
@@ -663,7 +666,7 @@ export function addRoutineIdea(
     parts: [1, 2, 3],
   };
   if (candidate.venueId) {
-    const checked = validateRoutineDay([{ ...candidate, startMinute: 0, endMinute: 90 }], resident, state)[0]!;
+    const checked = validateRoutineDay([{ ...candidate, startMinute: 0, endMinute: 90 }], resident, state, now)[0]!;
     if (checked.venueId !== candidate.venueId) return false;
   }
   if (profile.activities.some((item) => item.activity.toLowerCase() === candidate.activity.toLowerCase())) return false;

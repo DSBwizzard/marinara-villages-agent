@@ -348,8 +348,10 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
                   zones: venueZones(venue)
                     .filter(
                       (zone) =>
-                        canOccupyZone(venue, zone, characterId, { relationships: state.relationshipContext }) &&
-                        !zoneClosed(state, venue, zone),
+                        canOccupyZone(venue, zone, characterId, {
+                          at: villageNow(),
+                          relationships: state.relationshipContext,
+                        }) && !zoneClosed(state, venue, zone),
                     )
                     .map((zone) => ({ id: zone.id, kind: zone.kind })),
                 })),
@@ -464,7 +466,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       const owner = state.villagers.find((entry) => entry.characterId === input.characterId)!;
       const founding = input.foundingContract === 1;
       if (!founding && !result.resetRefill && owner.agenda && result.routineIdea)
-        addRoutineIdea(owner.agenda, result.routineIdea, owner, state);
+        addRoutineIdea(owner.agenda, result.routineIdea, owner, state, villageNow());
       const committedAt = (readWishAttemptClock(input.id) ?? (() => villageNow()))();
       const attempt = structuredClone(result);
       // A deliberate retry consumes the current allowance, even when its paid proposal was saved on an earlier day.

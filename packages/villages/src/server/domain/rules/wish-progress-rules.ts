@@ -261,11 +261,12 @@ export function applyPreparedWishVerdict(
   state: VillageState,
   input: WishCheckInput,
   verdict: PreparedWishVerdict,
+  now = Date.now(),
 ): void {
   const id = effectId(input.sceneId, input.submissionId, input.proposal);
   if (semanticContinued(state, input.sceneId, input.submissionId, "wishes")) return;
   if (state.exchangeReceipts[id] || state.seed !== input.seed) return;
-  const wish = currentWish(state, input.proposal, Date.now(), input.sceneId);
+  const wish = currentWish(state, input.proposal, now, input.sceneId);
   if (verdict.decision) {
     const { check, result } = verdict.decision;
     const facts = asRecord(check.facts);

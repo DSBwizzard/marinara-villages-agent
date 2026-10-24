@@ -5,8 +5,14 @@ import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { asRecord } from "./coerce.js";
 import { parseRelationshipProposals, substantiveContact } from "./relationship-review.js";
 import { canEnter } from "./social-rules.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
-export function readEncounter(value: unknown, entry: SocialOutboxEntry, village: VillageState): SocialEncounter | null {
+export function readEncounter(
+  value: unknown,
+  entry: SocialOutboxEntry,
+  village: VillageState,
+  now = new Date(),
+): SocialEncounter | null {
   const raw = asRecord(value),
     actors = entry.opportunity.actorIds;
   if (
@@ -21,11 +27,10 @@ export function readEncounter(value: unknown, entry: SocialOutboxEntry, village:
     return null;
   const venue = village.venues.find((place) => place.id === entry.opportunity.venueId),
     zoneId = entry.opportunity.zoneId ?? "exterior";
-  if (!venue || !actors.every((actorId) => canEnter(village, venue.id, zoneId, actorId, new Date(entry.at))))
-    return null;
-  const at = new Date(entry.at),
+  const at = village.timeZone ? new ZonedDate(entry.at, village.timeZone) : new Date(entry.at),
     minute = at.getHours() * 60 + at.getMinutes();
-  if (agendaDateKey(at) !== agendaDateKey(new Date()) || Date.now() - at.getTime() > 15 * 60_000) return null;
+  if (!venue || !actors.every((actorId) => canEnter(village, venue.id, zoneId, actorId, at))) return null;
+  if (agendaDateKey(at) !== agendaDateKey(now) || now.getTime() - at.getTime() > 15 * 60_000) return null;
   if (
     !actors.every((actorId) => {
       const person = village.villagers.find((resident) => resident.characterId === actorId);

@@ -1,4 +1,5 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { SocialEncounter } from "../../domain/models/relationship-types.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
@@ -31,31 +32,33 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
       if (entry.seed !== village.seed) continue;
       const settled = await mutateRelationships(village.seed, (state) => {
         const current = { ...village, relationshipContext: state };
-        reconcileRelationships(state, current);
-        reconcileSocialPlans(current);
-        projectSocialActivities(current);
+        const now = villageNow();
+        reconcileRelationships(state, current, now.getTime());
+        reconcileSocialPlans(current, now);
+        projectSocialActivities(current, now);
         if (state.applied[entry.id]) return;
         const plan = entry.candidates.find((candidate) => candidate.id === entry.proposal.planId);
         if (
           plan &&
           !state.applied[`social-plan-date:${plan.dateKey}`] &&
           current.storyPace !== "off" &&
-          socialPlanValid(current, plan)
+          socialPlanValid(current, plan, now)
         ) {
           state.socialPlans.push(plan);
           state.applied[`social-plan-date:${plan.dateKey}`] = true;
         }
         let encounter: SocialEncounter | null = null;
         try {
-          if (!entry.requiredPlanId || socialContinuationValid(current, entry.requiredPlanId, undefined))
-            encounter = readEncounter(entry.proposal.encounter, entry, current);
+          if (!entry.requiredPlanId || socialContinuationValid(current, entry.requiredPlanId, undefined, now))
+            encounter = readEncounter(entry.proposal.encounter, entry, current, now);
         } catch {
           /* Reject invalid interpretation locally, without a paid repair. */
         }
         if (encounter && current.storyPace !== "off") {
           applyRelationshipReview(state, encounter.review, current, encounter.id, encounter.at, villageNow().getTime());
           state.socialEncounters = [...state.socialEncounters, encounter].slice(-64);
-          const minute = new Date(encounter.at).getHours() * 60 + new Date(encounter.at).getMinutes();
+          const at = current.timeZone ? new ZonedDate(encounter.at, current.timeZone) : new Date(encounter.at);
+          const minute = at.getHours() * 60 + at.getMinutes();
           for (const plan of state.socialPlans)
             if (
               plan.status === "planned" &&

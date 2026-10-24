@@ -60,6 +60,8 @@ A resident continuing a doorway conversation may approach, stay inside or declin
 
 Navigation retains an unfinished Scene, composer draft and reading position. Refresh restores it even after days away. Real time between replies does not pass within the roleplay: a morning conversation remains that morning conversation. The wider Village continues on real time. Conclude rejoins its current date, schedules and availability without inventing player activities during the gap; Scenes cannot advance the Village into the future.
 
+During development, **DEBUG Settings → Advance Village time** advances this instance by a custom elapsed duration across all Village mechanics, using normal absence catch-up. Enabled background work may use models. The saved advance survives restart; active Scenes keep their captured moment. This temporary control will be removed before active playtesters join. See [Village time](../../docs/village-clock-recovery.md).
+
 ## Writing and saved changes
 
 Scenes use complete captured character cards and authored post-history instructions. Writing Settings control person, tense, rating and additional prose guidance; they cannot replace character identity, permissions or verified outcomes. Optional context is reduced before essential identity or Scene evidence; essential context that cannot fit stops the request.
