@@ -194,7 +194,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 }
 
 function VillageScreen({ controller }: { controller: ReturnType<typeof ControllerFactory> }) {
-  const { screen, personProfile, menuPage, room, sceneRestoration } = controller;
+  const { screen, personProfile, menuPage, room, sceneRestoration, placingProjectId } = controller;
 
   if (!room && sceneRestoration.status !== "ready")
     return (
@@ -216,7 +216,9 @@ function VillageScreen({ controller }: { controller: ReturnType<typeof Controlle
         <div key="retained-scene" hidden={screen !== "room"} style={{ height: "100%" }}>
           <SceneScreen controller={controller} />
         </div>
-        {screen === "venue" ? (
+        {screen === "home" && placingProjectId ? (
+          <ExplorationScreen controller={controller} />
+        ) : screen === "venue" ? (
           <VenueScreen controller={controller} />
         ) : screen === "menu" ? (
           menuPage === "villagers" ? (
