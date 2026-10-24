@@ -3,10 +3,7 @@ import {
   buildResidentPlanningMessages as buildMessages,
   type ResidentPlanningContext,
 } from "../../packages/villages/src/server/domain/rules/resident-planning.js";
-import {
-  readVillageState,
-  mutateVillageState,
-} from "../../packages/villages/src/server/features/world/village-store.js";
+import { readVillageState } from "../../packages/villages/src/server/features/world/village-store.js";
 import { readEffectiveVillagerCard } from "../../packages/villages/src/server/adapters/engine/catalog.js";
 import { queueBackgroundJob, backgroundJobSnapshot } from "../../packages/villages/src/server/jobs/background-work.js";
 import { villagesLanguageModels } from "../../packages/villages/src/server/adapters/models/language-models.js";
@@ -35,7 +32,6 @@ export function buildResidentPlanningMessages(input: any) {
 export function proposeResidentChoices(input: any) {
   return createResidentPlanning({
     readVillageState,
-    mutateVillageState,
     readEffectiveVillagerCard,
     queueBackgroundJob,
     backgroundJobSnapshot,

@@ -154,12 +154,9 @@ async function main() {
     maxOutputTokens: 4096,
     fitContext: (messages: unknown, options: any) => ({ messages, ...options, trimmed: false }),
   };
-  const events = createResidentPlanning({
+  const planning = createResidentPlanning({
     villagesLanguageModels: () => ({ resolveForRequest: async () => fakeSystem }),
     villagesConnectionIdFor: async () => "system",
-    backgroundCalls: { getStore: () => undefined },
-    villagesDebugAgentsEnabled: () => false,
-    villagesLogger: () => ({ debugOverride: () => {} }),
     completeWithRoom: async (_model: unknown, messages: any[], _tokens: number, options: any) => {
       assert.equal(options.responseFormat?.type, "json_object");
       assert(
@@ -167,7 +164,7 @@ async function main() {
         "Strict provider rejects JSON mode without application-authored JSON instruction",
       );
       const review = messages[0].content.startsWith("Independently interpret");
-      jsonCalls.push(review ? "review" : "events");
+      jsonCalls.push(review ? "review" : "planning");
       if (review)
         assert.deepEqual(JSON.parse(messages[1].content).lines, spokenLines, "Review preserves supplied speech");
       return {
@@ -193,7 +190,7 @@ async function main() {
       };
     },
   } as any);
-  const eventResult = await events.handler.generate({
+  const choices = await planning.handler.generate({
     context: {
       version: 1,
       worldFacts: [],
@@ -210,10 +207,10 @@ async function main() {
       social: { candidates: [], relationships: [] },
     },
   } as any);
-  assert.deepEqual(jsonCalls, ["events", "review"]);
-  assert.equal(Object.hasOwn(eventResult, "happenings"), false);
-  assert.equal((eventResult.social?.encounter as any).semanticVersion, 2);
-  assert.deepEqual((eventResult.social?.encounter as any).lines, spokenLines);
+  assert.deepEqual(jsonCalls, ["planning", "review"]);
+  assert.equal(Object.hasOwn(choices, "happenings"), false);
+  assert.equal((choices.social?.encounter as any).semanticVersion, 2);
+  assert.deepEqual((choices.social?.encounter as any).lines, spokenLines);
 
   const state = defaultVillageState();
   state.seed = "synthetic-semantic";

@@ -1072,7 +1072,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseDevelopment = configureDevelopment(development);
   const residentPlanning = createResidentPlanning({
     readVillageState,
-    mutateVillageState,
     readEffectiveVillagerCard,
     queueBackgroundJob,
     backgroundJobSnapshot,

@@ -70,10 +70,6 @@ function fixture() {
   };
   const service = createResidentPlanning({
     readVillageState: async () => state,
-    mutateVillageState: async (edit) => {
-      edit(state);
-      return state;
-    },
     readEffectiveVillagerCard,
     queueBackgroundJob: async (input) => {
       queued.push(input);

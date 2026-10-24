@@ -25,7 +25,6 @@ import { villageNow } from "../../adapters/time/clock-gate.js";
 
 export type ResidentPlanningPorts = {
   readVillageState: typeof import("../world/village-store.js").readVillageState;
-  mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   readEffectiveVillagerCard: typeof import("../../adapters/engine/catalog.js").readEffectiveVillagerCard;
   queueBackgroundJob: typeof import("../../jobs/background-work.js").queueBackgroundJob;
   backgroundJobSnapshot: typeof import("../../jobs/background-work.js").backgroundJobSnapshot;
