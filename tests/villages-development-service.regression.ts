@@ -50,6 +50,11 @@ const ports: DevelopmentPorts = {
   },
   async completeWithRoom(_model, _messages, maxTokens, options) {
     calls++;
+    assert.match(
+      String(_messages.find((message) => message.role === "system")?.content),
+      /\bjson\b/i,
+      "DeepSeek JSON mode requires JSON to be named explicitly in the prompt.",
+    );
     assert.ok(maxTokens <= 4096);
     assert.equal(options.retryEmpty, false);
     return { content: bad ? "{}" : JSON.stringify(moveProposal(elapsed(4))) } as any;

@@ -27,7 +27,7 @@ export type DevelopmentPorts = {
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
 };
 export const DEVELOPMENT_INSTRUCTION = `Review resident development over the supplied elapsed interval. You choose fictional decisions; code alone authorizes effects.
-Return ONLY {version:1,steps:[],reviews:[{characterId,nextReviewHours:24..168,reason}]}.
+Return one JSON object ONLY: {version:1,steps:[],reviews:[{characterId,nextReviewHours:24..168,reason}]}.
 One review for each offered resident, at most six chronological steps TOTAL. Existing pursuits come first. Quiet periods and no intention are valid. No daily replay or forced progress. Consider character motives, existing memories, others' independent wishes, available homes, consent and plausible opportunities to speak. Knowledge belongs only to the named knowers; no omniscient residents.
 Each step: {id:unique,pursuitId,characterId,kind:"intend|consent|wait|end|move",at:ISO,reason,dependsOn:[earlier accepted step IDs],targetVenueId?,privateZoneId?,actorId?,decision?:"agree|refuse|conditional"}.
 Use stable existing pursuit IDs. For a new intend use a new pursuitId, exact targetVenueId and optional vacant privateZoneId. An intention is consideration, NOT consent. Each consent is the named resident's own new decision, shared with the mover. Never generate player consent. Respect actual conditions; unresolved conditions are conditional, never agree. Previously refused/conditional consent stays unresolved unless that person truly changes their mind for a supported reason. Do not resolve their position merely because the mover wants it.
