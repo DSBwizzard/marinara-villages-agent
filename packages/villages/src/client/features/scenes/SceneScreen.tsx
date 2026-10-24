@@ -32,7 +32,9 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   const sceneVenues =
     controller.snapshot?.sceneVenue && controller.snapshot.sceneVenue.sceneId === sceneId
       ? [controller.snapshot.sceneVenue.venue]
-      : (controller.snapshot?.settings.venues ?? []);
+      : controller.room?.capturedContext
+        ? []
+        : (controller.snapshot?.settings.venues ?? []);
   const reportSettingsError = useCallback(
     (id: string, title: string, message: string) => {
       if (!sceneId) return;
@@ -252,7 +254,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           ruling={roomRuling}
           open={roomOpen}
           ended={roomEnded}
-          playerName={playerDisplayName(snapshot)}
+          playerName={room.playerName ?? playerDisplayName(snapshot)}
           playerPortrait={personaPortrait ?? undefined}
           portraits={portraits}
           sprites={Object.fromEntries(

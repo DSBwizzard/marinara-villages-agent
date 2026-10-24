@@ -56,12 +56,17 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   const decoded = coerceVillageState({ ...facts, version: 3, wishSystemVersion: WISH_SYSTEM_VERSION });
   if (facts.relationshipContext)
     decoded.relationshipContext = coerceRelationshipState(raw.seed, facts.relationshipContext);
+  const captured = Object.fromEntries(
+    sceneContinuityFields.map((key) => [key, decoded[key]]),
+  ) as SceneContinuity["facts"];
+  // Older captures did not store opening context. Preserve their existing recovery path.
+  if (!Object.hasOwn(facts, "opening")) delete captured.opening;
   return {
     version: 1,
     seed: raw.seed,
     capturedAt: raw.capturedAt,
     receiptIds: [...raw.receiptIds] as string[],
-    facts: Object.fromEntries(sceneContinuityFields.map((key) => [key, decoded[key]])) as SceneContinuity["facts"],
+    facts: captured,
   };
 }
 export function coerceVenueRecollection(value: unknown): VenueRecollection | null {

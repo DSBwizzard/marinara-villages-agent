@@ -1,3 +1,4 @@
+import { useVisibleInterval } from "../../shared/activity.js";
 import type { VillageVillagerView } from "../../../shared/contracts/village.js";
 import { useCallback, useEffect } from "react";
 
@@ -28,6 +29,7 @@ export function useResidentInspection(ports: {
 }
 
 export function useResidentAgendaPolling(ports: {
+  visible: boolean;
   agendas: import("../../../shared/contracts/village.js").VillagerAgendaView[];
   loadAgendas: (signal?: AbortSignal) => Promise<void>;
   personProfile: import("./villages-dossier.js").DossierNavigation;
@@ -35,25 +37,17 @@ export function useResidentAgendaPolling(ports: {
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
 }) {
   const { agendas, loadAgendas, personProfile, profileInspection, screen } = ports;
-  useEffect(() => {
-    if (screen !== "person" || !profileInspection || !["wishes", "agenda", "venues"].includes(profileInspection))
-      return;
-    if (
-      !agendas?.some(
-        (villager) =>
-          villager.characterId === personProfile?.actorId &&
-          villager.agenda?.personalizationPending &&
-          !villager.agenda.personalizationFailure,
-      )
-    )
-      return;
-    const controller = new AbortController();
-    const timer = window.setInterval(() => void loadAgendas(controller.signal), 5_000);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [agendas, loadAgendas, profileInspection, personProfile, screen]);
+  const pending =
+    screen === "person" &&
+    !!profileInspection &&
+    ["wishes", "agenda", "venues"].includes(profileInspection) &&
+    agendas?.some(
+      (villager) =>
+        villager.characterId === personProfile?.actorId &&
+        villager.agenda?.personalizationPending &&
+        !villager.agenda.personalizationFailure,
+    );
+  useVisibleInterval((signal) => loadAgendas(signal), pending ? 5_000 : null, ports.visible);
 }
 
 export function useResidentsStandingAt(ports: {

@@ -42,15 +42,12 @@ export function semanticContext(
   accessTopology = false,
   presentation = state,
 ) {
-  const authority = state;
   state = presentation;
   const actors = scene.contactGeneration?.actorIds ?? [
     ...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])]),
   ];
   const venue = state.venues.find((row) => row.id === scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
-  // Audit remains in saved state; fresh compact packets need current authority, not past command fingerprints.
-  const liveVenue = authority.venues.find((row) => row.id === scene.placeId);
   const { receipts: _receipts, changes: _changes, ...accessRules } = venue?.access ?? {};
   const memories = selectPromptMemories(state.chronicle, actors, query, 1800);
   const audience = (row: VillageState["chronicle"][number]) =>
@@ -166,17 +163,17 @@ export function semanticContext(
         }))
       : [],
 
-    projects: projectSpeechPrompt(authority, projectSpeechContexts(authority, actors, "", query, scene.placeId)),
+    projects: projectSpeechPrompt(state, projectSpeechContexts(state, actors, "", query, scene.placeId)),
     requests: {
-      venues: authority.venues.map((row) => ({
+      venues: state.venues.map((row) => ({
         id: row.id,
         name: row.name,
         classes: row.classes,
         occupancy: row.occupancy,
         constructionStatus: row.constructionStatus,
       })),
-      residences: authority.residences.filter((row) => row.status === "pending"),
-      edits: liveVenue?.editProposals?.filter((row) => !row.declined),
+      residences: state.residences.filter((row) => row.status === "pending"),
+      edits: venue?.editProposals?.filter((row) => !row.declined),
     },
   };
 }

@@ -35,6 +35,16 @@ export function sceneRelationshipView(
     edge.close = relationshipThreshold(edge.warmth, edge.trust, edge.close, "close");
     view.receipts[receipt.id] = { ...receipt, at: scene.continuity.capturedAt };
   }
+  for (const [key, edge] of Object.entries(view.edges)) {
+    const contactKey = `${scene.id}:contact:${key}`;
+    if (edge.toId === "player" && current.applied[contactKey]) {
+      edge.playerContactAt = scene.continuity.capturedAt;
+      edge.knowledgeBlockedUntilContact = false;
+      view.applied[contactKey] = true;
+    }
+  }
+  for (const disclosure of Object.values(current.disclosures))
+    if (disclosure.sourceId === scene.id) view.disclosures[disclosure.id] = structuredClone(disclosure);
   return view;
 }
 export const permissionKey = (controllerId: string, visitorId: string, venueId: string, zoneId: string): string =>

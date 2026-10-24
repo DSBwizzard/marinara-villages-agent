@@ -11,7 +11,8 @@ import type { KnownWish } from "./wish-journal.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
 import { venueZones, resolveVenueZone, legacyZoneId } from "./venue-zones.js";
 import { sceneWishProtected } from "./scene-wish-protection.js";
-import { sceneRelationshipView } from "./relationship-rules.js";
+import { captureRelationshipKnowledge } from "./relationship-knowledge.js";
+import { relationshipKey, sceneRelationshipView } from "./relationship-rules.js";
 import { wishExpired } from "./wish-definition.js";
 import { contactNeighbors, contactPosition } from "./venue-contact.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
@@ -75,6 +76,7 @@ export const sceneContinuityFields = [
   "wishKnowledge",
   "venueEvents",
   "projects",
+  "opening",
   "promptKnowledge",
 ] as const satisfies readonly (keyof VillageState)[];
 
@@ -170,6 +172,17 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene): V
       resident.spriteManager = structuredClone(live.spriteManager);
     }
   }
+  // Opening progression is fiction too; only this Scene's saved proofs can advance it.
+  if (view.opening && current.opening?.id === view.opening.id) {
+    for (const proof of current.opening.reveals)
+      if (proof.sceneId === scene.id && !view.opening.reveals.some((row) => row.residentId === proof.residentId))
+        view.opening.reveals.push(structuredClone(proof));
+    if (current.opening.firstUseEvidence?.sceneId === scene.id) {
+      view.opening.firstUseEvidence = structuredClone(current.opening.firstUseEvidence);
+      view.opening.stage = "complete";
+      view.opening.outcome = "First use";
+    }
+  }
   const baselineReceipts = new Set(context.receiptIds);
   // Transcript order is stable across retries and delayed effect completion.
   for (const turn of scene.submissions) {
@@ -204,6 +217,16 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene): V
   }
 
   view.relationshipContext = sceneRelationshipView(current.relationshipContext, scene);
+  if (view.relationshipContext) {
+    const contacted = view.villagers
+      .filter(
+        (resident) =>
+          view.relationshipContext!.applied[`${scene.id}:contact:${relationshipKey(resident.characterId, "player")}`],
+      )
+      .map((resident) => resident.characterId);
+    if (contacted.length)
+      captureRelationshipKnowledge(view.relationshipContext, view, new Date(context.capturedAt), contacted);
+  }
 
   // Replay only already-committed physical receipts, in transcript order.
   // This edits a disposable presentation copy, never consumes live stock.

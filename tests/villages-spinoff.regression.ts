@@ -1,3 +1,4 @@
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createSpinoffs, type SpinoffPorts } from "../packages/villages/src/server/features/scenes/spinoff-service.js";
@@ -28,7 +29,14 @@ function fixture() {
   village.villagers = [
     {
       characterId: "buster",
-      cardSnapshot: { id: "buster", name: "Buster", description: "Village grocer" },
+      cardSnapshot: {
+        id: "buster",
+        name: "Buster",
+        description: "Village grocer",
+        capturedAt: stamp,
+        revision: 1,
+        sourceStatus: "available",
+      },
       agenda: {
         wishes: [{ secret: "NEVER EXPORT" }],
         day: [{ startMinute: 1080, endMinute: 1200, activity: "PRIVATE AGENDA", venueId: "hidden" }],
@@ -255,6 +263,31 @@ function fixture() {
     },
   };
 }
+
+const frozen = fixture();
+await frozen.repository.changeSession("source", (scene) => {
+  scene.continuity = captureSceneContinuity(frozen.village(), scene, Date.parse(stamp));
+});
+frozen.changeVillage((world) => {
+  world.setting = "FUTURE SETTING";
+  world.worldFacts = ["FUTURE FACT"];
+  world.playerPersonaName = "FUTURE PLAYER";
+  world.villagers[0]!.cardSnapshot.description = "FUTURE DESCRIPTION";
+});
+await frozen.start();
+const frozenContext = (await frozen.repository.readSession("source")).spinoff!.context;
+assert(!frozenContext.includes("FUTURE"), "spinoffs export the source Scene snapshot");
+assert(frozenContext.includes("Village grocer"));
+
+const personaChange = fixture();
+await personaChange.repository.changeSession("source", (scene) => {
+  scene.continuity = captureSceneContinuity(personaChange.village(), scene, Date.parse(stamp));
+});
+personaChange.changeVillage((world) => {
+  world.playerPersonaId = "different-persona";
+});
+await assert.rejects(personaChange.start(), /Persona changed.*new Scene/);
+assert.equal(personaChange.calls(), 0, "mismatched Persona does not start generation");
 
 const roundtrip = fixture();
 assert.equal(

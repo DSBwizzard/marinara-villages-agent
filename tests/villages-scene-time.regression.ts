@@ -254,6 +254,11 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
   state.chronicle = [memory("old", "Ada likes the morning market")];
   scene.continuity = captureSceneContinuity(state, scene, start);
   const privateSnapshot = structuredClone(scene.continuity);
+  state.playerPersonaName = "Future player identity";
+  state.venues[0]!.name = "Future venue name";
+  state.venues[0]!.occupancy.residentCharacterId = "a";
+  state.residences.push({ id: "future-move", characterId: "a", status: "pending", proposedVenueId: "square" } as any);
+  state.venues[0]!.editProposals = [{ id: "future-edit", declined: false }] as any;
   state.chronicle.unshift(memory("later", "Ada opened a new shop during the three days"));
   state.villagers[0]!.agenda!.wishes = [];
   state.relationshipContext!.edges[relationshipKey("a", "player")]!.warmth = -20;
@@ -263,6 +268,11 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
   assert(packet.memories.some((row) => row.id === "old"));
   assert(!packet.memories.some((row) => row.id === "later"));
   assert.equal(packet.actors[0]!.wishes[0]!.id, "ride");
+  assert.equal(packet.requests.residences.length, 0, "background housing is outside the Scene snapshot");
+  assert.equal(packet.requests.venues[0]!.name, "Square");
+  assert.equal(packet.requests.venues[0]!.occupancy.residentCharacterId, null);
+  assert(!packet.requests.edits?.length, "background edit requests cannot enter dialogue context");
+  assert.notEqual((publicSceneResponse(scene) as any).playerName, "Future player identity");
   assert.equal(packet.time!.capturedAt, at);
   assert.equal(
     sceneContinuityView(state, scene).relationshipContext!.edges[relationshipKey("a", "player")]!.warmth,
@@ -449,6 +459,99 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
   const receipts = structuredClone(state.exchangeReceipts);
   await service.processLiveMemories(scene, "memory");
   assert.deepEqual(state.exchangeReceipts, receipts, "recovery reuses the exact accepted context");
+}
+
+{
+  const { state, scene } = fixture();
+  scene.continuity = captureSceneContinuity(state, scene, start);
+  const rel = state.relationshipContext!;
+  rel.edges[relationshipKey("a", "player")] = {
+    ...neutralRelationship("a", "player"),
+    warmth: 90,
+    trust: 90,
+    close: true,
+  };
+  rel.knowledge.a = { fromId: "a", at, closeAt: at, routine: [], interests: "FUTURE", wishes: [], ties: [] };
+  assert.equal(
+    sceneContinuityView(state, scene).relationshipContext!.knowledge.a,
+    undefined,
+    "later global closeness cannot grant Scene knowledge",
+  );
+  for (const [id, dimension, before, after] of [
+    ["warm", "warmth", 25, 90],
+    ["trust", "trust", 0, 90],
+  ] as const)
+    rel.receipts[id] = {
+      id,
+      sceneId: scene.id,
+      sourceId: scene.id,
+      fromId: "a",
+      toId: "player",
+      dimension,
+      before,
+      after,
+      reason: "Shared here",
+      at,
+      lineIds: [],
+    };
+  rel.applied[`${scene.id}:contact:${relationshipKey("a", "player")}`] = true;
+  rel.disclosures.own = {
+    id: "own",
+    sourceId: scene.id,
+    fromId: "a",
+    toId: "player",
+    text: "Said here",
+    kind: "preference",
+    at,
+    lineIds: [],
+  };
+  rel.disclosures.future = { ...rel.disclosures.own, id: "future", sourceId: "elsewhere", text: "FUTURE" };
+  const known = sceneContinuityView(state, scene).relationshipContext!;
+  assert(known.knowledge.a!.closeAt, "accepted contact can establish close knowledge within the Scene");
+  assert(known.knowledge.a!.interests.includes("Said here"));
+  assert(!JSON.stringify(known.knowledge).includes("FUTURE"));
+  assert.equal(known.disclosures.future, undefined);
+}
+
+{
+  const { state, scene } = fixture();
+  state.opening = {
+    id: "opening",
+    version: 2,
+    stage: "project",
+    projectId: "opening-project",
+    reveals: [],
+    residentIds: ["a"],
+    proposals: [],
+    declinedIds: [],
+    outcome: "",
+    communityVenueId: "square",
+    gatheringSceneId: "gathering",
+  };
+  scene.continuity = captureSceneContinuity(state, scene, start);
+  state.opening.stage = "first-use";
+  assert.equal(
+    semanticContext(scene, state, "hello", false, false, sceneContinuityView(state, scene)).opening!.stage,
+    "project",
+    "background completion cannot advance an old Scene's opening context",
+  );
+  const legacy = JSON.parse(JSON.stringify(scene));
+  delete legacy.continuity.facts.opening;
+  const restoredLegacy = coerceSession(legacy);
+  assert(!Object.hasOwn(restoredLegacy.continuity!.facts, "opening"));
+  assert.equal(
+    sceneContinuityView(state, restoredLegacy).opening!.id,
+    "opening",
+    "older saved greeting recovery retains available opening guidance",
+  );
+  state.opening.reveals.push({
+    residentId: "a",
+    sceneId: scene.id,
+    submissionId: "pitch",
+    lineId: "spoken",
+    quote: "Our idea",
+  });
+  assert.equal(sceneContinuityView(state, scene).opening!.reveals.length, 1, "own spoken pitch remains established");
 }
 
 console.log("PASS persistent Scene time, exact context, expiry holds, restart safety, live authority and privacy");
