@@ -6,13 +6,114 @@ const { readBaseVenueLayout, validateLayoutZones } = await tsImport(
 );
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { openProjectPage, currentProject, projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
+import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 const output = process.env.VILLAGES_VISUAL_OUTPUT;
 if (output) await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
+async function checkMapPlacement(width, activeScene = false) {
+  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 700 });
+  await mockEngineLookups(page);
+  const snapshot = projectSnapshot();
+  delete snapshot.projects[0].venueDraft.position;
+  const placements = [];
+  let session = activeScene
+    ? {
+        id: "project-scene",
+        version: 1,
+        sceneRevision: 0,
+        placeId: "mill",
+        placeName: "The Mill",
+        zoneId: "exterior",
+        area: "public",
+        status: "active",
+        activeIds: [],
+        participants: [],
+        lines: [],
+        submissions: [],
+        startedAt: snapshot.village.instant,
+        lastActivityAt: snapshot.village.instant,
+        endedAt: "",
+      }
+    : null;
+  await page.route("**/api/villages**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    let value = snapshot;
+    if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+    else if (path.endsWith("/rooms/end")) {
+      session = { ...session, status: "closed", endedAt: snapshot.village.instant };
+      value = { session, recordEvents: [] };
+    } else if (path.endsWith("/town-map")) value = { image: mapImage };
+    else if (path.endsWith("/projects/canvas/place")) {
+      const body = route.request().postDataJSON();
+      placements.push(body);
+      assert.equal(body.expectedRevision, snapshot.projects[0].lifecycle.revision);
+      assert(body.requestId);
+      snapshot.projects[0].venueDraft.position = { x: body.x, y: body.y };
+      snapshot.projects[0].lifecycle.revision++;
+    }
+    await fulfill(route, { json: value });
+  });
+  await page.route("http://project-placement.test/", (route) =>
+    fulfill(route, {
+      contentType: "text/html",
+      body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+    }),
+  );
+  await page.goto("http://project-placement.test/");
+  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  const openSite = async () => {
+    const projects = page.getByRole("navigation", { name: "Projects", exact: true });
+    if (await projects.isVisible()) await projects.getByRole("button", { name: /Canvas Tent/ }).click();
+    await page.getByRole("tab", { name: "Site", exact: true }).click();
+  };
+  if (activeScene) {
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
+    await openSite();
+    await expect(page.getByRole("button", { name: "Choose map position", exact: true })).toBeDisabled();
+    await expect(page.getByRole("tabpanel")).toContainText("End the Scene to choose a map position.");
+    if (output)
+      await page.screenshot({ path: resolve(output, "projects-scene-placement-" + width + ".png"), fullPage: true });
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Message at The Mill", exact: true })).toBeVisible();
+    assert.equal(placements.length, 0, "returning to a Scene does not place the Project or end the Scene");
+    assert.equal(session.status, "active");
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Return to map", exact: true }).click();
+  }
+  await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
+  await page.getByRole("button", { name: /^Projects \(/ }).click();
+  await openSite();
+  await page.getByRole("button", { name: "Choose map position", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Cancel placement", exact: true })).toBeVisible();
+  const canvas = page.getByRole("group", { name: "Map navigation" });
+  await expect(canvas).toHaveAttribute("data-placing", "true");
+  const art = canvas.locator("img").first();
+  await expect(art).toHaveJSProperty("naturalWidth", 1500);
+  await expect(page.locator(".marinara-capability-villages-stage")).toHaveAttribute("data-picture-width", /[1-9]/);
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  const box = await canvas.boundingBox();
+  const point = { x: box.x + box.width * 0.2, y: box.y + box.height * 0.75 };
+  if (width < 700) await page.touchscreen.tap(point.x, point.y);
+  else await page.mouse.click(point.x, point.y);
+  await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
+  assert.equal(placements.length, 1, "a map click or tap places the Project exactly once");
+  assert(placements[0].x >= 0.03 && placements[0].x <= 0.97);
+  assert(placements[0].y >= 0.03 && placements[0].y <= 0.97);
+  await page.getByRole("tab", { name: "Site", exact: true }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("Marked on the village map");
+  await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeEnabled();
+  if (output) await page.screenshot({ path: resolve(output, "projects-placed-" + width + ".png"), fullPage: true });
+  await page.close();
+}
 try {
   for (const width of [1280, 390]) {
+    await checkMapPlacement(width);
+    await checkMapPlacement(width, true);
     const f = await openProjectPage(browser, width, undefined, async (path, body, snapshot) => {
       if (path === "/projects") {
         const project = currentProject("created");
@@ -84,6 +185,10 @@ try {
     assert(selectedContrast >= 4.5, "a hovered selected tab retains readable contrast");
     await page.getByLabel("Physical design", { exact: true }).fill("An edited pavilion");
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
+    await page.getByRole("tab", { name: "Site", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeDisabled();
+    await expect(page.getByRole("tabpanel")).toContainText("Save design to choose a map position.");
+    await page.getByRole("tab", { name: "Design", exact: true }).click();
     // Keyboard navigation changes tabs, never the design or server.
     await page.getByRole("tab", { name: "Design", exact: true }).press("ArrowRight");
     await expect(page.getByRole("tab", { name: "Zones", exact: true })).toBeFocused();

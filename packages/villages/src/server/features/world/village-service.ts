@@ -1,6 +1,12 @@
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { calendarReplay } from "../../domain/rules/clock-recovery.js";
-import { assertVillageClockWrite, villageNow } from "../../adapters/time/clock-gate.js";
+import {
+  advanceVillageClock,
+  assertVillageClockWrite,
+  villageNow,
+  villageTimeAdvanceSettled,
+} from "../../adapters/time/clock-gate.js";
+import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type {
@@ -128,13 +134,38 @@ export function createWorldCoordination({
    * Required local state is committed before optional narration is requested, so
    * an unavailable model can never stop time, schedules or wishes.
    */
-  async function reconcileVillage(
-    options: { forceStory?: boolean; now?: Date; actionId?: string; expectedAttempt?: number } = {},
+  let reconciliation: Promise<unknown> = Promise.resolve();
+  function reconcileVillage(
+    options: {
+      forceStory?: boolean;
+      now?: Date;
+      actionId?: string;
+      expectedAttempt?: number;
+      advanceTime?: VillageTimeAdvance;
+    } = {},
   ): Promise<VillageSnapshot> {
+    const result = reconciliation.then(async () => {
+      try {
+        return await reconcileAt(options);
+      } finally {
+        if (options.advanceTime) villageTimeAdvanceSettled();
+      }
+    });
+    reconciliation = result.catch(() => {});
+    return result;
+  }
+  async function reconcileAt(options: {
+    forceStory?: boolean;
+    now?: Date;
+    actionId?: string;
+    expectedAttempt?: number;
+    advanceTime?: VillageTimeAdvance;
+  }): Promise<VillageSnapshot> {
     await assertVillageClockWrite();
     const forced = options.forceStory === true;
-    const now = options.now ?? villageNow();
+    if (options.advanceTime) await advanceVillageClock(options.advanceTime);
     let recorded = await readVillageState();
+    const now = options.now ?? villageNow();
     if (!isVillageFounded(recorded)) return buildVillageSnapshot(now);
     if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready")
       return buildVillageSnapshot(now);
@@ -422,7 +453,8 @@ export function createWorldCoordination({
       (input.forced ||
         (state.storyPace !== "off" &&
           (state.lastCreativeDate < input.dateKey ||
-            (input.socialPlanId && socialContinuationValid(state, input.socialPlanId, input.socialPlan))) &&
+            (input.socialPlanId &&
+              socialContinuationValid(state, input.socialPlanId, input.socialPlan, villageNow()))) &&
           localDateKey(
             new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
           ) <= input.dateKey)),
@@ -465,7 +497,7 @@ export function createWorldCoordination({
       }
       if (proposal.routineIdea) {
         const resident = state.villagers.find((entry) => entry.characterId === proposal.routineIdea.characterId);
-        if (resident?.agenda) addRoutineIdea(resident.agenda, proposal.routineIdea, resident, state);
+        if (resident?.agenda) addRoutineIdea(resident.agenda, proposal.routineIdea, resident, state, villageNow());
       }
       for (const request of proposal.housingRequests) {
         if (!opportunity.actorIds.includes(request.characterId)) continue;

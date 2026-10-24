@@ -193,7 +193,7 @@ export function ResidentsScreen({
                                       date it was always going to vanish on is
                                       written down beside it. */}
                         <p className={`${ELEMENT_TAG}-wish-meta`}>
-                          {`${wish.intensity === 1 ? "Faint" : wish.intensity === 3 ? "Strong" : "Present"} · ${wishLifetimeLabel(wish.addedAt ?? "", wish.expiresAt ?? "")}`}
+                          {`${wish.intensity === 1 ? "Faint" : wish.intensity === 3 ? "Strong" : "Present"} · ${wishLifetimeLabel(wish.addedAt ?? "", wish.expiresAt ?? "", Date.parse(snapshot?.village?.instant ?? "") || Date.now())}`}
                         </p>
                       </li>
                     ))}
@@ -468,6 +468,7 @@ export function ResidentsScreen({
                 <VillagerMemoriesPanel
                   key={personProfile.actorId}
                   characterId={personProfile.actorId}
+                  now={Date.parse(snapshot?.village?.instant ?? "") || Date.now()}
                   library={memoryLibrary}
                   busy={busy}
                   onRefresh={() => {

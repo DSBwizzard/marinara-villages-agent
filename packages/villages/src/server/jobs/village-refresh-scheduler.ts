@@ -1,5 +1,5 @@
 import { copyDate } from "../../shared/helpers/zoned-date.js";
-import { villageNow } from "../adapters/time/clock-gate.js";
+import { onVillageClockAdvance, villageNow } from "../adapters/time/clock-gate.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import type { VillageState } from "../domain/models/world.js";
 import { agendaBlocksFor } from "../domain/rules/agenda-week.js";
@@ -78,6 +78,7 @@ export function startVillageRefreshScheduler(
   let stopped = false;
   let running = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let armRevision = 0;
 
   const arm = (delay: number) => {
     if (stopped) return;
@@ -90,12 +91,16 @@ export function startVillageRefreshScheduler(
 
   const armNext = async () => {
     if (stopped) return;
+    const revision = ++armRevision;
+    if (timer) clearTimeout(timer);
+    timer = null;
     try {
       const village = await readVillageState();
+      if (stopped || revision !== armRevision) return;
       arm(delayMs(villageNow(), village));
     } catch (error) {
       villagesLogger().warn("[villages] could not read the next village deadline: %s", String(error));
-      arm(REFRESH_MAX_DELAY_MS);
+      if (!stopped && revision === armRevision) arm(REFRESH_MAX_DELAY_MS);
     }
   };
 
@@ -113,11 +118,15 @@ export function startVillageRefreshScheduler(
     await armNext();
   };
 
+  const unsubscribe = onVillageClockAdvance(() => {
+    void armNext();
+  });
   void armNext();
   villagesLogger().debug("[villages] Continuous village reconciliation started");
 
   return () => {
     stopped = true;
+    unsubscribe();
     if (timer) clearTimeout(timer);
     timer = null;
   };
