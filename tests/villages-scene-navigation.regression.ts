@@ -9,4 +9,8 @@ for (const requested of ["room", "menu", "venue", "person"]) {
   assert.equal(sceneNavigationScreen(requested, true), requested);
   assert.equal(sceneNavigationScreen(requested, false), requested);
 }
+assert.equal(sceneNavigationScreen("home", true, true), "home");
+for (const requested of ["setup", "resume", "preparing"]) {
+  assert.equal(sceneNavigationScreen(requested, true, true), "room");
+}
 console.log("Scene menus remain available; exploration stays fenced");

@@ -18,7 +18,8 @@ async function checkMapPlacement(width, activeScene = false) {
   const snapshot = projectSnapshot();
   delete snapshot.projects[0].venueDraft.position;
   const placements = [];
-  let session = activeScene
+  let heldPlacement;
+  const session = activeScene
     ? {
         id: "project-scene",
         version: 1,
@@ -37,14 +38,33 @@ async function checkMapPlacement(width, activeScene = false) {
         endedAt: "",
       }
     : null;
+  if (session) {
+    snapshot.foundingPreparation = { status: "ready" };
+    snapshot.sceneVenue = { sceneId: session.id, venue: structuredClone(snapshot.settings.venues[0]) };
+    snapshot.sceneVenue.venue.zones[1].name = "Captured workshop";
+    snapshot.opening = {
+      id: "opening",
+      version: 2,
+      stage: "project",
+      projectId: "canvas",
+      communityVenueId: "mill",
+      residentIds: ["mara"],
+      heardIds: ["mara"],
+      declinedIds: [],
+      gatheringSceneId: "",
+      action: "Choose the design, agreements and lead",
+      outcome: "",
+      proposals: [],
+    };
+  }
+  const originalSession = structuredClone(session);
+  const originalVenue = structuredClone(snapshot.sceneVenue);
   await page.route("**/api/villages**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    assert(!(route.request().method() !== "GET" && /\/rooms(?:\/|$)/.test(path)), "placement never mutates the Scene");
     let value = snapshot;
     if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
-    else if (path.endsWith("/rooms/end")) {
-      session = { ...session, status: "closed", endedAt: snapshot.village.instant };
-      value = { session, recordEvents: [] };
-    } else if (path.endsWith("/town-map")) value = { image: mapImage };
+    else if (path.endsWith("/town-map")) value = { image: mapImage };
     else if (path.endsWith("/projects/canvas/place")) {
       const body = route.request().postDataJSON();
       placements.push(body);
@@ -52,6 +72,11 @@ async function checkMapPlacement(width, activeScene = false) {
       assert(body.requestId);
       snapshot.projects[0].venueDraft.position = { x: body.x, y: body.y };
       snapshot.projects[0].lifecycle.revision++;
+      snapshot.settings.venues[0].zones[1].name = "Changed live workshop";
+      if (activeScene) {
+        heldPlacement = route;
+        return;
+      }
     }
     await fulfill(route, { json: value });
   });
@@ -64,42 +89,65 @@ async function checkMapPlacement(width, activeScene = false) {
   await page.goto("http://project-placement.test/");
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   const openSite = async () => {
+    await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
     const projects = page.getByRole("navigation", { name: "Projects", exact: true });
     if (await projects.isVisible()) await projects.getByRole("button", { name: /Canvas Tent/ }).click();
     await page.getByRole("tab", { name: "Site", exact: true }).click();
   };
   if (activeScene) {
+    await expect(
+      page.getByRole("button", { name: "Choose the design, agreements and lead", exact: true }),
+    ).toBeVisible();
+    const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
+    await composer.fill("An unsent Scene draft.");
+    await composer.evaluate((node) => {
+      window.retainedComposer = node;
+    });
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
-    await openSite();
-    await expect(page.getByRole("button", { name: "Choose map position", exact: true })).toBeDisabled();
-    await expect(page.getByRole("tabpanel")).toContainText("End the Scene to choose a map position.");
-    if (output)
-      await page.screenshot({ path: resolve(output, "projects-scene-placement-" + width + ".png"), fullPage: true });
-    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Message at The Mill", exact: true })).toBeVisible();
-    assert.equal(placements.length, 0, "returning to a Scene does not place the Project or end the Scene");
-    assert.equal(session.status, "active");
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Return to map", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
+    await page.getByRole("button", { name: /^Projects \(/ }).click();
   }
-  await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
-  await page.getByRole("button", { name: /^Projects \(/ }).click();
   await openSite();
   await page.getByRole("button", { name: "Choose map position", exact: true }).click();
   await expect(page.getByRole("button", { name: "Cancel placement", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel placement", exact: true }).click();
+  await openSite();
+  assert.equal(placements.length, 0, "cancelling returns to the Project without saving a position");
+  if (activeScene) {
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Message at The Mill", exact: true })).toHaveValue(
+      "An unsent Scene draft.",
+    );
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
+    await openSite();
+  }
+  await page.getByRole("button", { name: "Choose map position", exact: true }).click();
   const canvas = page.getByRole("group", { name: "Map navigation" });
   await expect(canvas).toHaveAttribute("data-placing", "true");
+  await expect(page.getByRole("button", { name: "Choose the design, agreements and lead", exact: true })).toHaveCount(
+    0,
+  );
   const art = canvas.locator("img").first();
   await expect(art).toHaveJSProperty("naturalWidth", 1500);
   await expect(page.locator(".marinara-capability-villages-stage")).toHaveAttribute("data-picture-width", /[1-9]/);
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await expect(page.locator('.marinara-capability-villages-stage [data-kind="person"]')).toHaveCount(0);
+  if (output)
+    await page.screenshot({ path: resolve(output, "projects-map-placement-" + width + ".png"), fullPage: true });
   const box = await canvas.boundingBox();
   const point = { x: box.x + box.width * 0.2, y: box.y + box.height * 0.75 };
   if (width < 700) await page.touchscreen.tap(point.x, point.y);
   else await page.mouse.click(point.x, point.y);
+  if (activeScene) {
+    await expect.poll(() => !!heldPlacement).toBe(true);
+    await expect(page.getByRole("button", { name: "Cancel placement", exact: true })).toBeDisabled();
+    await page.mouse.click(point.x, point.y);
+    assert.equal(placements.length, 1, "a pending placement cannot admit a second map click");
+    await fulfill(heldPlacement, { json: snapshot });
+  }
   await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
   assert.equal(placements.length, 1, "a map click or tap places the Project exactly once");
   assert(placements[0].x >= 0.03 && placements[0].x <= 0.97);
@@ -108,6 +156,19 @@ async function checkMapPlacement(width, activeScene = false) {
   await expect(page.getByRole("tabpanel")).toContainText("Marked on the village map");
   await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeEnabled();
   if (output) await page.screenshot({ path: resolve(output, "projects-placed-" + width + ".png"), fullPage: true });
+  if (activeScene) {
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
+    await expect(composer).toHaveValue("An unsent Scene draft.");
+    assert(await composer.evaluate((node) => node === window.retainedComposer), "the original Scene stays mounted");
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
+    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Move to Zone" }).locator('option[value="work"]')).toHaveText(
+      "Captured workshop",
+    );
+  }
+  assert.deepEqual(session, originalSession, "placement and cancellation preserve the Scene's captured state");
+  assert.deepEqual(snapshot.sceneVenue, originalVenue);
   await page.close();
 }
 try {

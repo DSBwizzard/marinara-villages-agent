@@ -19,7 +19,12 @@ export const MENU_PAGE_TITLES: Record<MenuPage, string> = {
 };
 
 /** An unfinished Scene owns navigation, including opening/closing and failed entry. */
-export function sceneNavigationScreen<T extends string>(requested: T, locked: boolean): T | "room" {
+export function sceneNavigationScreen<T extends string>(
+  requested: T,
+  locked: boolean,
+  placingProject = false,
+): T | "room" {
+  if (requested === "home" && placingProject) return requested;
   if (!locked || ["room", "menu", "venue", "person"].includes(requested)) return requested;
   return "room";
 }
