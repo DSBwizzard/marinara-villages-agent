@@ -531,7 +531,7 @@ async function main() {
           exteriorDescription: opening.description,
           interiorDescription: "An invented interior",
         }),
-        /Define the physical form, layout/,
+        /Define the Physical design, layout and Entrance/,
       );
       await finish(project.id, {
         ...opening,
