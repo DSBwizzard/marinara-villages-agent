@@ -1,10 +1,31 @@
 import assert from "node:assert/strict";
 import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
 import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { developmentFixture, elapsed, moveProposal } from "./fixtures/villages-development.fixture.js";
+import {
+  applyDevelopmentReview,
+  developmentReview,
+  knownDevelopment,
+} from "../packages/villages/src/server/domain/rules/resident-development.js";
+import { applyDevelopmentScene } from "../packages/villages/src/server/domain/rules/development-scene.js";
+import { completeResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { sceneAccessState } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
+import {
+  evaluateZoneAccess,
+  initializeVenueAccess,
+  settleStandingAccess,
+} from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-const village = defaultVillageState();
+const village = developmentFixture();
 village.seed = "publication";
+applyDevelopmentReview(village, developmentReview(village, elapsed(1.25))!, moveProposal(elapsed(1.25)), elapsed(1.25));
+const pursuit = village.development!.residents.a!.pursuits[0]!;
+assert.equal(pursuit.status, "arranged");
 let scene = coerceSession({
   id: "scene",
   villageSeed: village.seed,
@@ -17,11 +38,52 @@ let scene = coerceSession({
       semanticProvenance: {
         version: 2,
         sourceHash: "meaning",
-        authority: { social: false, physical: false, access: false, projects: false, standing: false },
+        developmentVersion: 1,
+        authority: { social: true, physical: false, access: false, projects: false, standing: false },
       },
     },
   ],
 });
+scene.lines = [
+  { id: "disclose", speakerId: "a", kind: "dialogue", content: "I want to move to Bram's home.", heardBy: ["a", "b"] },
+  { id: "refuse", speakerId: "b", kind: "dialogue", content: "I no longer agree to this move.", heardBy: ["a", "b"] },
+] as any;
+const turn = scene.submissions[0]!;
+turn.developmentChanges = [
+  {
+    pursuitId: pursuit.id,
+    characterId: "a",
+    expectedRevision: village.development!.residents.a!.revision,
+    kind: "disclose",
+    actorId: "a",
+    citations: [{ segment: 0, quote: scene.lines[0]!.content }],
+    lineIds: ["disclose"],
+  },
+  {
+    pursuitId: pursuit.id,
+    characterId: "a",
+    expectedRevision: village.development!.residents.a!.revision,
+    kind: "consent",
+    actorId: "b",
+    decision: "refuse",
+    citations: [{ segment: 1, quote: scene.lines[1]!.content }],
+    lineIds: ["refuse"],
+  },
+];
+turn.processing = createExchangeProcessing({
+  seed: village.seed,
+  sceneId: scene.id,
+  submissionId: turn.id,
+  order: 0,
+  lineIds: [],
+  actionReceiptIds: [],
+});
+for (const domain of Object.values(turn.processing.domains)) domain.status = "applied";
+turn.processing.domains.relationships.status = "failed";
+applyDevelopmentScene(village, scene, turn, elapsed(1.3));
+assert.equal(pursuit.consents.b!.decision, "refuse", "Private authority settles before publication");
+assert.equal(pursuit.status, "stalled");
+assert.deepEqual(knownDevelopment(village, "a"), [], "A held source cannot disclose Pursuits through the notebook");
 let failScene = true,
   failWorld = false,
   worldWrites = 0;
@@ -53,14 +115,21 @@ const commands = createSceneCommands({
     return readSession();
   },
 } as any);
+await commands.finishSemanticScene(scene.id);
+assert(!scene.submissions[0]!.semanticReady, "A social hold keeps the mixed source unpublished");
+assert.equal(village.socialPublications?.["scene:source"], undefined);
+scene.submissions[0]!.processing!.domains.relationships.status = "applied";
 await assert.rejects(() => commands.finishSemanticScene(scene.id), /Scene acknowledgement failed/);
 assert.equal(village.socialPublications?.["scene:source"], undefined);
 assert.equal(worldWrites, 0);
 assert(!scene.submissions[0]!.semanticReady, "Failed transcript publication cannot reveal notebook knowledge");
+assert.deepEqual(knownDevelopment(village, "a"), []);
 failWorld = true;
 await assert.rejects(() => commands.finishSemanticScene(scene.id), /World publication write failed/);
 assert.equal(scene.submissions[0]!.semanticReady, true);
 assert.equal(village.socialPublications?.["scene:source"], undefined);
+assert.deepEqual(knownDevelopment(village, "a"), [], "Lost publication acknowledgement keeps Pursuits private");
+assert.throws(() => completeResidenceMove(village, "a", false, new Date(elapsed(4))), /not moving/);
 const changes = createSceneChanges({
   readSession,
   readVillageSnapshot: read,
@@ -77,7 +146,159 @@ assert.equal(
   true,
   "Explicit replay repairs a lost knowledge acknowledgement after the source is ready",
 );
+assert.equal(knownDevelopment(village, "a")[0]!.agreements![0]!.decision, "refuse");
+assert.equal(knownDevelopment(village, "a")[0]!.status, "stalled");
 const after = worldWrites;
 await changes.replaySceneChanges(scene.id);
 assert.equal(worldWrites, after, "Published source replay is a read-only no-op");
+{
+  let world = developmentFixture(),
+    social = defaultRelationshipState(world.seed);
+  const home = world.venues[1]!;
+  home.zones = venueZones(home);
+  initializeVenueAccess(home);
+  const zone = home.zones.find((z) => z.kind === "shared-residence")!;
+  let current = coerceSession({
+    id: "standing-scene",
+    villageSeed: world.seed,
+    placeId: home.id,
+    zoneId: "exterior",
+    status: "active",
+    startedAt: elapsed(1),
+    lines: [],
+    submissions: [],
+  });
+  current.continuity = captureSceneContinuity(
+    { ...world, relationshipContext: social },
+    current,
+    Date.parse(elapsed(1)),
+  );
+  let failCaptured = true;
+  const readWorld = async () => ({ ...structuredClone(world), relationshipContext: structuredClone(social) });
+  const mutateWorld = async (fn: any) => {
+    const next = structuredClone(world);
+    fn(next);
+    world = next;
+    return readWorld();
+  };
+  const savedScene = async () => structuredClone(current);
+  const live = createLiveMemory({
+    readVillageState: readWorld,
+    readVillageAuthority: readWorld,
+    mutateVillageState: mutateWorld,
+    mutateRelationships: async (_seed: string, fn: any) => {
+      const next = structuredClone(social);
+      await fn(next);
+      social = next;
+      return structuredClone(social);
+    },
+  } as any);
+  const sourceCommands = createSceneCommands({
+    readSession: savedScene,
+    readVillageState: readWorld,
+    mutateVillageState: mutateWorld,
+    changeSession: async (_id: string, fn: any) => {
+      const next = structuredClone(current);
+      fn(next);
+      if (failCaptured && next.continuity?.facts.venues[1]!.access!.permissions.length) {
+        failCaptured = false;
+        throw Error("Captured permission acknowledgement failed");
+      }
+      current = next;
+      return savedScene();
+    },
+  } as any);
+  const capturedAllowed = () => {
+    const captured = sceneAccessState({ ...world, relationshipContext: social }, current).venues[1]!;
+    return evaluateZoneAccess(
+      captured,
+      captured.zones!.find((z) => z.id === zone.id)!,
+      "player",
+      { sceneId: current.id, at: new Date(elapsed(1)) },
+    ).allowed;
+  };
+  assert.equal(capturedAllowed(), false);
+  for (const action of ["grant", "revoke"] as const) {
+    const id = action,
+      lineId = action + "-words";
+    current.lines.push({
+      id: lineId,
+      role: "assistant",
+      speakerId: "b",
+      kind: "dialogue",
+      content:
+        action === "grant" ? "You may enter my shared room whenever you like." : "I withdraw that standing permission.",
+      heardBy: ["b"],
+      at: elapsed(1),
+    } as any);
+    const source: any = {
+      id,
+      at: elapsed(1),
+      semanticProvenance: {
+        version: 2,
+        sourceHash: id,
+        authority: { social: true, standing: true, physical: false, projects: false, access: false },
+      },
+      liveProposals: {
+        version: 1,
+        memoryChanges: [],
+        earlierLineIds: [],
+        memoryVersions: {},
+        playerLineId: "",
+        replyLineIds: [lineId],
+        relationshipChanges: {
+          changes: [],
+          disclosures: [],
+          permissions: [
+            { controllerId: "b", visitorId: "player", venueId: home.id, zoneId: zone.id, action, lineIds: [lineId] },
+          ],
+        },
+      },
+    };
+    source.processing = createExchangeProcessing({
+      seed: world.seed,
+      sceneId: current.id,
+      submissionId: id,
+      order: current.submissions.length,
+      lineIds: [lineId],
+      actionReceiptIds: [],
+    });
+    current.submissions.push(source);
+    const outcome = await live.processLiveRelationships(current, id);
+    Object.assign(source.processing.domains.relationships, outcome);
+    if (action === "grant") {
+      await assert.rejects(
+        () => sourceCommands.finishSemanticScene(current.id),
+        /Captured permission acknowledgement failed/,
+      );
+      assert.equal(capturedAllowed(), false);
+    }
+    await sourceCommands.finishSemanticScene(current.id);
+    assert.equal(capturedAllowed(), action === "grant", JSON.stringify(current.continuity!.facts.venues[1]!.access));
+    const saved = JSON.stringify(current.continuity!.facts.venues[1]!.access);
+    await sourceCommands.finishSemanticScene(current.id);
+    assert.equal(
+      JSON.stringify(current.continuity!.facts.venues[1]!.access),
+      saved,
+      "Captured grant/revoke recovery is idempotent",
+    );
+    if (action === "grant") {
+      settleStandingAccess(
+        world.venues[1]!,
+        {
+          id: "offscreen-revoke",
+          controllerId: "b",
+          visitorId: "player",
+          zoneId: zone.id,
+          action: "revoke",
+          lineIds: ["other-scene"],
+        },
+        elapsed(2),
+        ["player", "a", "b", "c"],
+      );
+      assert.equal(evaluateZoneAccess(world.venues[1]!, zone, "player").allowed, false);
+      assert.equal(capturedAllowed(), true, "Unrelated later access changes cannot rewrite the active Scene");
+    }
+  }
+}
 console.log("Social publication: failed transcript ack, lost knowledge ack and explicit local replay passed.");

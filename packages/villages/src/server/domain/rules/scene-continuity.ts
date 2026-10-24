@@ -89,6 +89,7 @@ export type SceneContinuity = {
 
 /** Exact after-values retained atomically with an accepted effect. Server-only. */
 export type SceneEffectFacts = {
+  standingPermissions?: import("../models/relationship-types.js").RelationshipReview["permissions"];
   development?: { characterId: string; resident: import("../models/development-model.js").ResidentDevelopment };
   memories?: VillageChronicleEntry[];
   recollections?: VillageRecollection[];

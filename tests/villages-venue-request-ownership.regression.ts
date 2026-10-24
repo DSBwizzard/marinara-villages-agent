@@ -31,7 +31,8 @@ function deferred() {
 }
 function fixture(name: string) {
   const state = coerceVillageState({
-    version: 3, socialContractVersion: 2,
+    version: 3,
+    socialContractVersion: 2,
     name,
     setupAt: stamp,
     foundedAt: stamp,

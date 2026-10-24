@@ -28,7 +28,8 @@ function waitForDispatch(entered: Promise<void>, work: Promise<void>) {
 function world(name: string) {
   const stamp = new Date().toISOString();
   return coerceVillageState({
-    version: 3, socialContractVersion: 2,
+    version: 3,
+    socialContractVersion: 2,
     seed: "same-seed",
     name,
     setting: name,

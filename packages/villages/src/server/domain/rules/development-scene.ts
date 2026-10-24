@@ -160,6 +160,14 @@ export function applyDevelopmentScene(
         : { sceneFacts: { development: { characterId: change.characterId, resident: structuredClone(r) } } }),
     };
   }
+  const hidden =
+    submission.semanticProvenance?.version === 2 && !state.socialPublications?.[scene.id + ":" + submission.id];
+  const knownBefore = new Map(
+    witnessed.map((change) => {
+      const p = state.development!.residents[change.characterId]!.pursuits.find((p) => p.id === change.pursuitId)!;
+      return [p, structuredClone(p.known)] as const;
+    }),
+  );
   recordWitnessedPursuits(state, scene, witnessed, appliedAt);
   for (const characterId of changedActors) {
     const r = state.development!.residents[characterId]!;
@@ -177,4 +185,10 @@ export function applyDevelopmentScene(
       )
         receipt.sceneFacts.development.resident = structuredClone(r);
   }
+  // Private consent settles now. Player knowledge waits for publication of its exact source.
+  if (hidden)
+    for (const [p, known] of knownBefore) {
+      if (known) p.known = known;
+      else delete p.known;
+    }
 }

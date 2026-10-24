@@ -39,7 +39,8 @@ export async function currentScenePrompt(
     capturedAt: "2026-10-07T12:00:00.000Z",
   };
   const world = coerceVillageState({
-    version: 3, socialContractVersion: 2,
+    version: 3,
+    socialContractVersion: 2,
     ...state,
     villagers: state.villagers.some((resident) => resident.characterId === card.id)
       ? state.villagers.map((resident) =>

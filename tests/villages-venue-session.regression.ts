@@ -1702,7 +1702,11 @@ async function main() {
     );
     assert.equal(defaultVillageState().sendOnEnter, false);
     assert.equal(coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3 }).sendOnEnter, false);
-    assert.equal(coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, sendOnEnter: "true" }).sendOnEnter, false);
+    assert.equal(
+      coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, sendOnEnter: "true" })
+        .sendOnEnter,
+      false,
+    );
     assert.equal((await setVillageSendOnEnter(true)).settings.sendOnEnter, true);
     assert.equal((await readVillageState()).sendOnEnter, true);
     assert.equal((await setVillageSendOnEnter(false)).settings.sendOnEnter, false);
@@ -1713,7 +1717,8 @@ async function main() {
     );
     assert.deepEqual(
       coerceVillageState({
-        version: 3, socialContractVersion: 2,
+        version: 3,
+        socialContractVersion: 2,
         wishSystemVersion: 3,
         narrationStyle: {
           tense: "past",
@@ -3467,7 +3472,8 @@ async function main() {
     const homeForMigration = persistedForMigration.venues.find((place) => place.id === "home")!;
     const roomForMigration = homeForMigration.privateSpaces!.find((space) => space.ownerId === "bob")!;
     const migrated = coerceVillageState({
-      version: 3, socialContractVersion: 2,
+      version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       ...persistedForMigration,
       venues: persistedForMigration.venues.map((place) =>

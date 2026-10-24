@@ -24,12 +24,8 @@ export function sceneRelationshipView(
   for (const receipt of Object.values(current.receipts)) {
     if (receipt.sceneId !== scene.id || view.receipts[receipt.id]) continue;
     const key = relationshipKey(receipt.fromId, receipt.toId);
-    const edge = (view.edges[key] ??= neutralRelationship(receipt.fromId, receipt.toId));
-    edge[receipt.dimension] = relationshipScore(edge[receipt.dimension] + receipt.after - receipt.before);
-    edge.familiarity = Math.max(1, edge.familiarity);
-    edge.friend = relationshipThreshold(edge.warmth, edge.trust, edge.friend, "friend");
-    edge.close = relationshipThreshold(edge.warmth, edge.trust, edge.close, "close");
-    view.receipts[receipt.id] = { ...receipt, at: scene.continuity.capturedAt };
+    view.edges[key] = structuredClone(receipt.sceneAfter);
+    view.receipts[receipt.id] = structuredClone(receipt);
   }
   return view;
 }

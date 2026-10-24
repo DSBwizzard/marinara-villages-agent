@@ -16,6 +16,7 @@ import { createRelationshipSocial } from "../packages/villages/src/server/featur
 import { respondSocialInvitation } from "../packages/villages/src/server/domain/rules/social-mail.js";
 import { WorkFailureError, metadataFailure } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import type { SocialOutboxEntry } from "../packages/villages/src/server/domain/models/social-outbox-model.js";
 const village = coerceVillageState({
   ...defaultVillageState(),
@@ -45,6 +46,8 @@ for (const person of village.villagers) {
     flexible: true,
   };
   person.agenda.activeDay!.blocks = [block];
+  person.agenda.activeDay!.dateKey = agendaDateKey(sourceDate);
+  person.agenda.activeDay!.weekday = sourceDate.toLocaleDateString("en-US", { weekday: "long" });
   person.agenda.day = [block];
   person.agenda.week[person.agenda.activeDay!.weekday] = [block];
 }
@@ -67,6 +70,7 @@ const entry: SocialOutboxEntry = {
     villagers: village.villagers,
     venues: village.venues,
     residences: village.residences,
+    projects: village.projects,
     timeZone: village.timeZone,
   }),
   relationshipSnapshot: structuredClone(social),
@@ -100,6 +104,21 @@ const entry: SocialOutboxEntry = {
 assert(
   readEncounter(entry.proposal.encounter, entry, village),
   "Source admission uses village time even after its day has passed",
+);
+const renovated = structuredClone(village);
+renovated.projects = [
+  { kind: "renovation", venueId: "cafe", lifecycle: { phase: "working", changedZoneIds: [zone.id] } },
+] as any;
+assert(
+  readEncounter(entry.proposal.encounter, entry, renovated),
+  "Later construction cannot rewrite an admitted encounter",
+);
+const originallyClosed = structuredClone(entry);
+originallyClosed.admitted!.projects = renovated.projects;
+assert.equal(
+  readEncounter(entry.proposal.encounter, originallyClosed, village),
+  null,
+  "A closed Zone cannot be admitted retroactively",
 );
 village.socialOutbox = [structuredClone(entry)];
 let queued: any,

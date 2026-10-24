@@ -1,4 +1,5 @@
 import { bindDevelopmentChanges, applyDevelopmentScene } from "../../domain/rules/development-scene.js";
+import { publishDevelopmentKnowledge } from "../../domain/rules/development-knowledge.js";
 import { observeHousing } from "../../domain/rules/resident-development.js";
 import { shape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
@@ -80,6 +81,7 @@ import {
   evaluateZoneAccess,
   managesAccess,
   readAccessCommand,
+  settleStandingAccess,
 } from "../../domain/rules/venue-access.js";
 import {
   contactCanEnter,
@@ -3474,11 +3476,48 @@ Keep dialogue attributed to the target. The server conveys it through the messen
 
   async function settleSemanticAuthority(scene: VenueScene, turn: VenueSubmission, allowProjectRecovery = true) {
     if (turn.semanticProvenance?.version !== 2) return;
-    if (turn.semanticReady) {
-      await mutateVillageState((state) => {
+    const retainStandingAccess = async () => {
+      const authority = await readVillageState();
+      const receipts = Object.values(authority.exchangeReceipts).filter(
+        (receipt) =>
+          receipt.sceneId === scene.id &&
+          receipt.submissionId === turn.id &&
+          receipt.status === "applied" &&
+          receipt.sceneFacts?.standingPermissions?.length,
+      );
+      if (!receipts.length) return;
+      await changeSceneVenues(scene, (view) => {
+        for (const receipt of receipts)
+          for (const permission of receipt.sceneFacts!.standingPermissions!) {
+            const liveVenue = authority.venues.find((v) => v.id === permission.venueId);
+            const capturedVenue = view.venues.find((v) => v.id === permission.venueId);
+            if (
+              !liveVenue?.access?.receipts[permission.id] ||
+              liveVenue.access.receipts[permission.id]?.outcome === "rejected" ||
+              !capturedVenue?.access
+            )
+              throw conflict("The saved standing permission needs recovery.");
+            settleStandingAccess(capturedVenue, permission, receipt.at, [
+              "player",
+              ...view.villagers.map((v) => v.characterId),
+            ]);
+            if (
+              !capturedVenue.access.receipts[permission.id] ||
+              capturedVenue.access.receipts[permission.id]?.outcome === "rejected"
+            )
+              throw conflict("The captured standing permission needs recovery.");
+          }
+      });
+    };
+    const publish = () =>
+      mutateVillageState((state) => {
         if (state.seed !== scene.villageSeed) throw conflict("Village identity changed during source publication.");
+        publishDevelopmentKnowledge(state, scene.id, turn.id);
         (state.socialPublications ??= {})[scene.id + ":" + turn.id] = true;
       });
+    if (turn.semanticReady) {
+      await retainStandingAccess();
+      await publish();
       return;
     }
     if (allowProjectRecovery) await recoverProjectMetadata(scene, turn);
@@ -3526,14 +3565,12 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       )
         throw conflict("The saved physical outcome could not commit. Recover the saved request.");
     }
+    await retainStandingAccess();
     await changeSession(scene.id, (saved) => {
       const entry = saved.submissions.find((row) => row.id === turn.id);
       if (entry?.semanticProvenance?.sourceHash === turn.semanticProvenance?.sourceHash) entry.semanticReady = true;
     });
-    await mutateVillageState((state) => {
-      if (state.seed !== scene.villageSeed) throw conflict("Village identity changed during source publication.");
-      (state.socialPublications ??= {})[scene.id + ":" + turn.id] = true;
-    });
+    await publish();
   }
   async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmission): Promise<void> {
     if (!submission.sceneChange) return;

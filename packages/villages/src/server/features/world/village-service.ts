@@ -413,6 +413,7 @@ export function createWorldCoordination({
           villagers: village.villagers,
           venues: village.venues,
           residences: village.residences,
+          projects: village.projects,
           timeZone: village.timeZone,
         }),
         forced,

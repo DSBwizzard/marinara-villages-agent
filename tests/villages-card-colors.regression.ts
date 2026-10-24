@@ -40,7 +40,8 @@ const legacy = {
 } satisfies VillageVillagerCardSnapshot;
 const migrated = captureMissingVillagerCardColors(legacy, card);
 const recovered = coerceVillageState({
-  version: 3, socialContractVersion: 2,
+  version: 3,
+  socialContractVersion: 2,
   wishSystemVersion: 3,
   villagers: [{ characterId: "resident", cardSnapshot: legacy, addedAt: legacy.capturedAt }],
 });

@@ -2,7 +2,6 @@
 
 The opt-in [resident development prototype](../../docs/resident-development.md) tests elapsed-time intentions and independent moves into existing homes.
 
-
 A text-first shared-life sim for Marinara Engine. A Village can be any shared place: a settlement, station, workplace, or other setting. Your linked Persona lives alongside characters from your library.
 
 Villages requires Engine 2.5.0 or later, before 4.0.0. Install the package and restart Engine to open its tab in Home.

@@ -429,6 +429,17 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           ]);
           if (!venue.access.receipts[permission.id] || venue.access.receipts[permission.id]?.outcome === "rejected")
             throw new Error("Standing permission needs recovery before this source can be published.");
+          authority.exchangeReceipts[permission.id] ??= {
+            id: permission.id,
+            sceneId: scene.id,
+            submissionId: turn.id,
+            domain: "relationships",
+            at: turn.at,
+            evidenceIds: permission.lineIds,
+            status: "applied",
+            reason: "Witnessed standing permission.",
+            sceneFacts: { standingPermissions: [structuredClone(permission)] },
+          };
         }
       }
     });

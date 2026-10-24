@@ -1,7 +1,7 @@
 import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { useCallback, useState, useRef } from "react";
 import { OCCUPANCY_UNAVAILABLE_MESSAGE } from "../../../shared/contracts/scene-turn-outcome.js";
-import type { RoomOperation, VillageSnapshot } from "../../../shared/contracts/village.js";
+import type { RoomOperation } from "../../../shared/contracts/village.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";

@@ -39,7 +39,6 @@ import {
   defaultRelationshipState,
   relationshipFor,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
 
 async function liveConnectionOwnership() {
   function deferred() {

@@ -109,7 +109,8 @@ async function archiveConnectionOwnership() {
       gate = deferred(),
       at = new Date().toISOString();
     const state = coerceVillageState({
-      version: 3, socialContractVersion: 2,
+      version: 3,
+      socialContractVersion: 2,
       seed: "equal-archive-seed",
       timeZone: "UTC",
       clock: { revision: 1, trustedAt: at, recovery: null, replayUntilDate: "", shiftTotalMs: 0 },
@@ -626,7 +627,8 @@ function seed(count = 1): VillageState {
   neutralWordingResult = true;
   optionalIdea = false;
   const state = coerceVillageState({
-    version: 3, socialContractVersion: 2,
+    version: 3,
+    socialContractVersion: 2,
     wishSystemVersion: 3,
     seed: "wish-test",
     name: "Willow",

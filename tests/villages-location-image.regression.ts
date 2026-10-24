@@ -199,7 +199,8 @@ async function main() {
   const exteriorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
-      version: 3, socialContractVersion: 2,
+      version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
     }).venues[0]!,
@@ -212,7 +213,8 @@ async function main() {
   const interiorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
-      version: 3, socialContractVersion: 2,
+      version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "grain", description: "A timbered room" }],
     }).venues[0]!,
@@ -236,7 +238,8 @@ async function main() {
     buildLocationPrompt(
       village,
       coerceVillageState({
-        version: 3, socialContractVersion: 2,
+        version: 3,
+        socialContractVersion: 2,
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "" }],
       }).venues[0]!,
@@ -248,14 +251,16 @@ async function main() {
   );
   const factual = buildLocationPrompt(
     coerceVillageState({
-      version: 3, socialContractVersion: 2,
+      version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       setting,
       foundingDetails: "Built beside the ridge",
       venues: [{ id: "square", name: "market square", form: "trade" }],
     }),
     coerceVillageState({
-      version: 3, socialContractVersion: 2,
+      version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       venues: [
         {
@@ -293,7 +298,8 @@ async function main() {
   const occupiedExterior = buildLocationPrompt(
     village,
     coerceVillageState({
-      version: 3, socialContractVersion: 2,
+      version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       venues: [
         {
@@ -319,7 +325,8 @@ async function main() {
     buildLocationPrompt(
       village,
       coerceVillageState({
-        version: 3, socialContractVersion: 2,
+        version: 3,
+        socialContractVersion: 2,
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "   " }],
       }).venues[0]!,
@@ -329,9 +336,18 @@ async function main() {
     "a place with no note does not get a dangling dash",
   );
   const chatty = buildLocationPrompt(
-    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, setting: "y".repeat(MAX_SETTING_LENGTH + 200) }),
-    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, venues: [{ id: "mill", name: "the mill pond", form: "" }] })
-      .venues[0]!,
+    coerceVillageState({
+      version: 3,
+      socialContractVersion: 2,
+      wishSystemVersion: 3,
+      setting: "y".repeat(MAX_SETTING_LENGTH + 200),
+    }),
+    coerceVillageState({
+      version: 3,
+      socialContractVersion: 2,
+      wishSystemVersion: 3,
+      venues: [{ id: "mill", name: "the mill pond", form: "" }],
+    }).venues[0]!,
     moment,
   );
   assert.ok(chatty.includes("y".repeat(MAX_SETTING_LENGTH)), "the full authored description survives assembly");
@@ -348,7 +364,8 @@ async function main() {
   const picture = { ref: "global-gallery:abc123", url: "/api/global-gallery/file/abc123.png", id: "abc123" };
   const venuesWith = (image: unknown) =>
     coerceVillageState({
-      version: 3, socialContractVersion: 2,
+      version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", presentation: { image } }],
     }).venues;
@@ -392,8 +409,12 @@ async function main() {
   assert.ok(MAX_VENUE_IMAGE_ID_LENGTH > 0 && MAX_VENUE_IMAGE_URL_LENGTH > 0);
   // A place with no name is still not a place, picture or no picture.
   assert.deepEqual(
-    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, venues: [{ name: "  ", presentation: { image: picture } }] })
-      .venues,
+    coerceVillageState({
+      version: 3,
+      socialContractVersion: 2,
+      wishSystemVersion: 3,
+      venues: [{ name: "  ", presentation: { image: picture } }],
+    }).venues,
     [],
   );
 
@@ -1438,7 +1459,8 @@ async function mediaConnectionOwnership() {
         gate = deferred();
       let held = false;
       const state = coerceVillageState({
-        version: 3, socialContractVersion: 2,
+        version: 3,
+        socialContractVersion: 2,
         wishSystemVersion: 3,
         seed: "equal-media-seed",
         timeZone: "UTC",
