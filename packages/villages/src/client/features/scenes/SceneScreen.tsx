@@ -32,7 +32,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   const sceneVenues =
     controller.snapshot?.sceneVenue && controller.snapshot.sceneVenue.sceneId === sceneId
       ? [controller.snapshot.sceneVenue.venue]
-      : controller.room?.snapshotCaptured
+      : controller.room?.capturedContext
         ? []
         : (controller.snapshot?.settings.venues ?? []);
   const reportSettingsError = useCallback(

@@ -98,7 +98,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             processingSummary: sceneProcessingSummary(row as VenueScene),
             ...(row.continuity
               ? {
-                  snapshotCaptured: true,
+                  capturedContext: true,
                   playerName:
                     asRecord(asRecord(row.continuity).facts).playerPersonaName ||
                     asRecord(asRecord(row.continuity).facts).playerName ||

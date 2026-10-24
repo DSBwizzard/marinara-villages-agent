@@ -3318,12 +3318,37 @@ async function main() {
       (await readVillageState()).venues.find((place) => place.id === "home")?.description,
       "A quiet exterior.",
     );
+    // Requests authored outside a Scene are available to the next captured Scene.
+    const revisitHome = async (privateRoom = false) => {
+      await endVenueSession(outside.id);
+      outside = await enterVenue("home", "residence");
+      outside = await greetVenue(outside.id);
+      await sendVenueTurn({
+        sessionId: outside.id,
+        message: "Please let me in",
+        mode: "chat",
+        targetId: "",
+        submissionId: "revisit-home",
+      });
+      await moveVenueZone(outside.id, "residence");
+      if (privateRoom) {
+        await sendVenueTurn({
+          sessionId: outside.id,
+          message: "Please enter Bob's private space",
+          mode: "chat",
+          targetId: "",
+          submissionId: "revisit-private",
+        });
+        await moveVenueZone(outside.id, "private:bob");
+      }
+    };
     const proposed = await proposeResidenceSpaceEdit("home", {
       target: "shared",
       description: "A warm Common Space.",
       state: { condition: "warm", items: ["cup"] },
     });
     assert.equal(proposed.settings.venues.find((place) => place.id === "home")?.editProposals?.length, 1);
+    await revisitHome();
     await assert.rejects(() => updateVillageVenue("home", { form: "A quiet home." }), /only name and description/u);
     await sendVenueTurn({
       sessionId: outside.id,
@@ -3418,6 +3443,7 @@ async function main() {
       1,
       "changing an image does not add a second room proposal",
     );
+    await revisitHome(true);
     await sendVenueTurn({
       sessionId: outside.id,
       message: "Bob approves the edit",

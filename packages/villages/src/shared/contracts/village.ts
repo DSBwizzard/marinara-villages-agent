@@ -856,7 +856,7 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
-  snapshotCaptured?: true;
+  capturedContext?: true;
   playerName?: string;
   /** An existing handoff needs return/recovery controls; private context stays server-side. */
   spinoffPending?: boolean;

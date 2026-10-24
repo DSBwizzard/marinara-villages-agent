@@ -20,7 +20,7 @@ function Harness() {
  useSnapshotReference({currentSnapshotRef,snapshot:owner.snapshot});
  const load = useLoadVillageSnapshot({setError,beginSnapshotRead:owner.beginSnapshotRead});
  const reconcile = useReconcileVillage({currentSnapshotRef,reconcilingRef,setCatchingUp,storyActionRef,beginSnapshotRead:owner.beginSnapshotRead});
- useVillagePresence({element:document.getElementById('root'),loadSnapshot:load,reconcile,presenceSession,beginSnapshotRead:owner.beginSnapshotRead,snapshot:window.presence?owner.snapshot:null});
+ useVillagePresence({visible:document.visibilityState==='visible',presenceSession,beginSnapshotRead:owner.beginSnapshotRead,snapshot:window.presence?owner.snapshot:null});
  useResidentPortraits({portraitWanted:wanted,portraitsAsked,setPortraits});
  const launch = work => {window.pending.push(work());return window.pending.length-1};
  window.h = {load:options=>launch(()=>load(options||{})),abortLoad:()=>{window.abortRead=new AbortController();return launch(()=>load({signal:window.abortRead.signal}))},cancel:()=>window.abortRead.abort(),reconcile:force=>launch(()=>reconcile(force)),publish:owner.setSnapshot,error:setError,wanted:setWanted,redraw:()=>redraw(n=>n+1)};
@@ -225,12 +225,18 @@ try {
       window.presence = true;
       window.h.redraw();
     }, mode);
-    await expect.poll(() => f.requests.some((r) => r.path.endsWith("/presence"))).toBe(true);
-    if (mode !== "invisible") {
+    if (mode === "invisible") {
+      await f.page.evaluate(() => new Promise(requestAnimationFrame));
+      assert(!f.requests.some((r) => r.path.endsWith("/presence")), "hidden capabilities do not start a lease");
+    } else {
+      await expect.poll(() => f.requests.some((r) => r.path.endsWith("/presence"))).toBe(true);
       for (const r of f.requests.filter((r) => r.path.endsWith("/presence")))
         await f.reply(r, mode === "failed" ? { error: "presence failed" } : {}, mode === "failed" ? 503 : 200);
-      if (mode === "no-snapshot")
-        await expect.poll(() => f.requests.some((r) => r.path.endsWith("/reconcile"))).toBe(true);
+      await f.page.evaluate(() => new Promise(requestAnimationFrame));
+      assert(
+        !f.requests.some((r) => r.path.endsWith("/reconcile")),
+        "an empty presence response does not start duplicate reconciliation",
+      );
     }
     await f.reply(f.requests[0], { ...seed, village: { name: "valid read" } });
     await f.settle(read);
@@ -241,7 +247,7 @@ try {
     );
     await f.finish();
   }
-  for (const mode of ["newer-read", "reset-fallback"]) {
+  for (const mode of ["newer-read", "reset-presence"]) {
     const f = await mount({ presence: true });
     await expect.poll(() => f.requests.filter((r) => r.path.endsWith("/presence")).length).toBeGreaterThan(0);
     if (mode === "newer-read") {
@@ -257,17 +263,16 @@ try {
       await f.page.evaluate(() => new Promise(requestAnimationFrame));
       assert.equal((await f.state()).snapshot.village.name, "new read");
     } else {
-      for (const r of f.requests.filter((r) => r.path.endsWith("/presence"))) await f.reply(r, {});
-      await expect.poll(() => f.requests.some((r) => r.path.endsWith("/reconcile"))).toBe(true);
       await f.page.evaluate(() => window.h.publish({ ...window.seed, isFounded: false, village: { name: "reset" } }));
       await expect.poll(() => f.requests.some((r) => r.body?.visible === false)).toBe(true);
-      for (const r of f.requests.filter((r) => r.path.endsWith("/reconcile"))) await f.reply(r, seed);
+      for (const r of f.requests.filter((r) => r.path.endsWith("/presence") && r.body?.visible))
+        await f.reply(r, { snapshot: seed });
       await f.page.evaluate(() => new Promise(requestAnimationFrame));
       assert.equal((await f.state()).snapshot.isFounded, false);
       assert.equal(
         f.requests.filter((r) => r.path === "/api/villages").length,
         0,
-        "Retired presence does not launch its fallback read",
+        "Retired presence cannot publish or launch an extra read",
       );
     }
     await f.finish();

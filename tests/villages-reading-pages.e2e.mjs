@@ -137,6 +137,7 @@ try {
     await expect(tray).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByLabel("Village events")).toBeVisible();
     events.push({ id: "memory", kind: "memory", text: "Mara remembered the exchange." });
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(tray).toHaveAccessibleName("2 village notices");
     await expect(tray).toHaveAttribute("aria-expanded", "true");
     await tray.click();
@@ -160,6 +161,7 @@ try {
       detail: { text: "Wish update" },
       wishUpdate: { actorId: "mara", wishId: "swim" },
     });
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(tray).toHaveAccessibleName("3 village notices");
     await expect(page.getByLabel("Village events")).toBeVisible();
     // Exercise navigation independently of the mobile dialogue overlay's pointer layout.
