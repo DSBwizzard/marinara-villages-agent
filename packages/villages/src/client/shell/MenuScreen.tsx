@@ -1,6 +1,5 @@
 import { ELEMENT_TAG } from "../shared/constants.js";
-import { FORCE_VILLAGE_UPDATE_NOTICE, MENU_PAGE_TITLES } from "./navigation.js";
-import { renderEventsPage } from "../features/background/EventsPage.js";
+import { MENU_PAGE_TITLES } from "./navigation.js";
 import { renderProgressDebugPage } from "../features/background/ProgressDebugPage.js";
 import { renderProjectsPage } from "../features/projects/ProjectsPage.js";
 import { renderSceneArchivePage } from "../features/scenes/SceneArchivePage.js";
@@ -24,7 +23,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     archiveVillagerId,
     backgroundPanel,
     busy,
-    catchingUp,
     debugDiscardEnabled,
     decideVenueRequest,
     generateRequestDescription,
@@ -78,7 +76,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     saveScenerySettings,
     saveSendOnEnter,
     saveSettings,
-    saveStoryPace,
+    saveBackgroundPace,
     saveTownMap,
     saveVenue,
     saveVisitRetention,
@@ -136,8 +134,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     venueVisits,
     venuesDraft,
     visualLoreDefault,
-    writeItUpNow,
-    writeUpNote,
   } = controller;
 
   if (screen === "menu" && menuPage === "projects" && snapshot) {
@@ -287,8 +283,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
 
         {menuPage === "index" ? (
           renderMenuIndexPage({ backgroundPanel, busy, openMenu, snapshot })
-        ) : menuPage === "events" && snapshot ? (
-          renderEventsPage({ mobile, snapshot })
         ) : !snapshot && menuPage !== "general" ? (
           <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
             {error ? "The village could not be loaded. Return to the village and try again." : "Loading village menu…"}
@@ -300,7 +294,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             resetArmed,
             saveCharacterSpeechColors,
             saveSendOnEnter,
-            saveStoryPace,
+            saveBackgroundPace,
             saveVisitRetention,
             setResetArmed,
             settingsError,
@@ -390,24 +384,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             {backgroundPanel}
             {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
             {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
-            {menuSection === "debug" ? (
-              <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-debug-action`}>
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={!snapshot || busy || catchingUp}
-                  onClick={() => void writeItUpNow()}
-                >
-                  Force Village Update
-                </button>
-                <p className={`${ELEMENT_TAG}-status`}>{FORCE_VILLAGE_UPDATE_NOTICE}</p>
-                {writeUpNote ? (
-                  <p className={`${ELEMENT_TAG}-status`} role="status">
-                    {writeUpNote}
-                  </p>
-                ) : null}
-              </section>
-            ) : null}
             {menuPage === "noticeboard" && snapshot
               ? renderNoticeboardPage({
                   addNotice,

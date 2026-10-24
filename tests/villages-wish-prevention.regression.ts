@@ -128,7 +128,6 @@ async function main() {
     claim: "Check witnessed agreement",
     receipts: [],
     transcript: [],
-    happenings: [],
     memory: [],
     worldState: [],
     wishes: [

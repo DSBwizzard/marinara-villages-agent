@@ -365,7 +365,7 @@ async function archiveConnectionOwnership() {
         owned.records.get("villages-village").data.projectWishOutbox = [
           { projectId: "equal-event", at: at.toISOString() },
         ];
-        if (mode === "reservation") owned.records.get("villages-village").data.storyPace = "off";
+        if (mode === "reservation") owned.records.get("villages-village").data.backgroundPace = "off";
       }
       if (stage === "ack") a.conflictVillage();
       const invoke = () =>
@@ -391,7 +391,7 @@ async function archiveConnectionOwnership() {
             assert.equal(owned.records.get(pageId).data.entries[0].correctedAt, at.toISOString());
             assert.equal(saved.villagers[0].agenda.wishes[0].id, "equal-wish");
           } else if (mode === "outbox") assert.deepEqual(saved.projectWishOutbox, []);
-          else assert.equal(saved.storyPace, "off");
+          else assert.equal(saved.backgroundPace, "off");
           if (owned === a && stage === "ack")
             assert.equal(saved.name, "A concurrent name", "retry retains the winning Village image");
           const writes = owned.writes.length;
@@ -632,7 +632,7 @@ function seed(count = 1): VillageState {
     name: "Willow",
     setting: "A quiet village",
     foundedAt: new Date(now.getTime() - 10 * WISH_DAY_MS).toISOString(),
-    storyPace: "balanced",
+    backgroundPace: "balanced",
     villagers: Array.from({ length: count }, (_, index) => {
       const id = `r${index}`;
       return {
@@ -809,7 +809,7 @@ async function run() {
     // Version-two saves reset once and reserve finite replacements for every prepared resident.
     const previous = seed(6);
     previous.wishSystemVersion = 2;
-    previous.storyPace = "off";
+    previous.backgroundPace = "off";
     for (const resident of previous.villagers) resident.agenda!.wishes = [freshWish("old-" + resident.characterId)];
     const savedWeeks = previous.villagers.map((resident) => resident.agenda!.week);
     put(previous);
@@ -858,7 +858,7 @@ async function run() {
     await reconcileWishLifecycle(now, false, () => now);
     assert.equal(modelCalls.length, 6, "no repeated refill");
     await mutateVillageState((live) => {
-      live.storyPace = "balanced";
+      live.backgroundPace = "balanced";
     });
     assert.equal((await reserveWishAttempts(new Date(now.getTime() + WISH_DAY_MS - 1))).length, 0);
 
@@ -1465,7 +1465,7 @@ async function run() {
     );
 
     state = seed();
-    state.storyPace = "off";
+    state.backgroundPace = "off";
     const expired = freshWish("expired");
     expired.expiresAt = new Date(now.getTime() - 1).toISOString();
     state.villagers[0]!.agenda!.wishes = [expired];

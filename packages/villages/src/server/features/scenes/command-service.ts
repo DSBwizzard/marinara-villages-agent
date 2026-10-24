@@ -65,7 +65,6 @@ import {
   projectSpeechContexts,
   validateProjectSpeech,
 } from "../../domain/rules/project-interpretation.js";
-import { prependHappenings } from "../../domain/rules/prompt-preset.js";
 import { relationshipZoneController } from "../../domain/rules/relationship-rules.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
@@ -110,7 +109,6 @@ import {
   zoneClosed,
   zoneControllerIds,
 } from "../../domain/rules/venue-zones.js";
-import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { knownWish } from "../../domain/rules/wish-journal.js";
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
@@ -3626,22 +3624,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         !!session.continuity,
       );
       const venue = state.venues.find((place) => place.id === session.placeId)!;
-      const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date(at) });
-      state.happenings = prependHappenings(state.happenings, [
-        {
-          id,
-          kind: "player-action",
-          actorIds: [],
-          venueId: session.placeId,
-          dayIndex: moment.dayIndex,
-          clock: moment.dayPhase,
-          occurredAt: at,
-          timePrecision: "exact",
-          sourceOpportunityId: "",
-          narration: change.narration,
-          text: change.narration,
-        },
-      ]);
       state.venueEvents = [
         {
           id,
@@ -3756,12 +3738,12 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       events.push({ id, kind: "project", text });
     }
     const request = submission.residenceSignal;
-    if (request?.kind === "request" && village.processedOpportunityIds.includes(`venue-move:${submission.id}`)) {
+    if (request?.kind === "request" && village.processedActionIds.includes(`venue-move:${submission.id}`)) {
       const name =
         session.participants.find((person) => person.characterId === request.characterId)?.name ?? "A villager";
       events.push({ id: `venue-move:${submission.id}`, kind: "request", text: `${name} asked to move.` });
     }
-    if (submission.renovationSignal && village.processedOpportunityIds.includes(`venue-renovation:${submission.id}`)) {
+    if (submission.renovationSignal && village.processedActionIds.includes(`venue-renovation:${submission.id}`)) {
       const name =
         session.participants.find((person) => person.characterId === submission.renovationSignal!.characterId)?.name ??
         "A villager";

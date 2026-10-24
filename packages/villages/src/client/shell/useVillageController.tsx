@@ -162,7 +162,7 @@ import {
   useSaveSendOnEnter,
   useSaveSettings,
   useSaveSpriteCardFlip,
-  useSaveStoryPace,
+  useSaveBackgroundPace,
   useSaveVisitRetention,
 } from "../features/settings/actions.js";
 import { useSettingsState } from "../features/settings/useSettingsState.js";
@@ -185,10 +185,8 @@ import {
   useLoadPersonas,
   useLoadVillageSnapshot,
   usePendingWorkPolling,
-  useReconcileVillage,
   useSnapshotReference,
   useVillagePresence,
-  useWriteVillageEvent,
   useVillageSnapshot,
 } from "../shared/data-controller.js";
 import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
@@ -328,8 +326,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomGreetingNotice,
     roomEnded,
     setRoomEnded,
-    writeUpNote,
-    setWriteUpNote,
   } = useScenesState(snapshot?.isFounded);
 
   // The menu is its own screen. The homepage never carries the villager
@@ -985,52 +981,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomNotices,
   });
 
-  /** Stops a second village write-up starting while one is already running. */
-  const reconcilingRef = useRef(false);
-
-  /**
-   * True while a write-up the tab has asked for is still running.
-   *
-   * Only ever set after `SHOW_CATCHING_UP_AFTER_MS`, so a quick reconciliation
-   * never flickers it. Opening a village that has been
-   * unread for hours is the case it exists for: the tab is asking the village
-   * to write about all of that time, which takes a while, and a player looking
-   * at an unchanged map deserves to know it is being worked on rather than
-   * broken.
-   */
-  const [catchingUp, setCatchingUp] = useState(false);
-
   useKnowledgeCaret({ knowledgeDraft, knowledgeRef, pendingCaretRef });
 
-  // Explicit debug reconciliation uses the same authority and publication order as presence.
   const currentSnapshotRef = useRef(snapshot);
 
   useSnapshotReference({ currentSnapshotRef, snapshot });
-
-  const storyActionRef = useRef<{ id: string; expectedAttempt: number } | null>(null);
-
-  const reconcile = useReconcileVillage({
-    currentSnapshotRef,
-    reconcilingRef,
-    setCatchingUp,
-    beginSnapshotRead,
-    storyActionRef,
-  });
-
-  /**
-   * Ask for one creative village event right now, whatever Background events and wishes says.
-   *
-   * This debug action spends at most one model call and bypasses the daily pace
-   * gate. The event must still fit a fact-backed opportunity and pass the same
-   * validation as an automatic creative event.
-   *
-   * It reports what actually happened rather than that it finished. A forced
-   * creative pass over already-covered facts may have nothing to add —
-   * the window is deduped against, so it can only write what is genuinely new —
-   * and a button that always said "done" would leave the player wondering
-   * whether the feature was broken or the village was simply quiet.
-   */
-  const writeItUpNow = useWriteVillageEvent({ reconcile, setWriteUpNote, snapshot });
 
   const loadSnapshot = useLoadVillageSnapshot({ setError, beginSnapshotRead });
 
@@ -1579,7 +1534,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSpriteFlipSaving,
   });
 
-  const saveStoryPace = useSaveStoryPace({ setBusy, setSettingsError, setSnapshot, snapshot });
+  const saveBackgroundPace = useSaveBackgroundPace({ setBusy, setSettingsError, setSnapshot, snapshot });
 
   const saveSendOnEnter = useSaveSendOnEnter({ setBusy, setSettingsError, setSnapshot, snapshot });
 
@@ -2240,7 +2195,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     backgroundPanel,
     busy,
     catalog,
-    catchingUp,
 
     closeExploration,
     closeRoom,
@@ -2384,7 +2338,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     saveSendOnEnter,
     saveSettings,
     saveSpriteCardFlip,
-    saveStoryPace,
+    saveBackgroundPace,
     saveTownMap,
     saveVenue,
     saveVisitRetention,
@@ -2595,7 +2549,5 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venuesDraft,
     visibleCatalog,
     visualLoreDefault,
-    writeItUpNow,
-    writeUpNote,
   };
 }

@@ -51,7 +51,7 @@ import type { useSaveScenerySettings } from "../features/settings/actions.js";
 
 import type { useSaveSettings } from "../features/settings/actions.js";
 
-import type { useSaveStoryPace } from "../features/settings/actions.js";
+import type { useSaveBackgroundPace } from "../features/settings/actions.js";
 
 import type { useSaveTownMap } from "../features/exploration/actions.js";
 
@@ -66,8 +66,6 @@ import type { useStartMapReplacement } from "../features/exploration/actions.js"
 import type { useFoundingStartOver } from "../features/founding/setup-controller.js";
 
 import type { useSuggestPlaces } from "../features/founding/actions.js";
-
-import type { useWriteVillageEvent } from "../shared/data-controller.js";
 
 import type { ProjectsController } from "../features/projects/useProjectsController.js";
 
@@ -85,7 +83,6 @@ export type MenuScreenController = {
   readonly archiveVillagerId: ScenesState["archiveVillagerId"];
   readonly backgroundPanel: React.JSX.Element;
   readonly busy: boolean;
-  readonly catchingUp: boolean;
   readonly debugDiscardEnabled: ScenesState["debugDiscardEnabled"];
   readonly decideVenueRequest: ReturnType<typeof useDecideVenueRequest>;
   readonly generateRequestDescription: VenueRequestsPagePorts["generateRequestDescription"];
@@ -137,7 +134,7 @@ export type MenuScreenController = {
   readonly saveSendOnEnter: ReturnType<typeof useSaveSendOnEnter>;
   readonly saveScenerySettings: ReturnType<typeof useSaveScenerySettings>;
   readonly saveSettings: ReturnType<typeof useSaveSettings>;
-  readonly saveStoryPace: ReturnType<typeof useSaveStoryPace>;
+  readonly saveBackgroundPace: ReturnType<typeof useSaveBackgroundPace>;
   readonly saveTownMap: ReturnType<typeof useSaveTownMap>;
   readonly saveVenue: ReturnType<typeof useSaveVenue>;
   readonly saveVisitRetention: ReturnType<typeof useSaveVisitRetention>;
@@ -199,6 +196,4 @@ export type MenuScreenController = {
   readonly venueVisits: ScenesState["venueVisits"];
   readonly venuesDraft: VenuesState["venuesDraft"];
   readonly visualLoreDefault: FoundingState["visualLoreDefault"];
-  readonly writeItUpNow: ReturnType<typeof useWriteVillageEvent>;
-  readonly writeUpNote: ScenesState["writeUpNote"];
 };

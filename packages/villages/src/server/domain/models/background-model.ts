@@ -6,7 +6,8 @@ import type { VillageState } from "./world.js";
 export type BackgroundKind =
   | "schedule-influence"
   | "starting-ties"
-  | "story"
+  | "story" // Read-only compatibility for retired prose jobs.
+  | "resident-planning"
   | "development"
   | "agenda"
   | "translation"

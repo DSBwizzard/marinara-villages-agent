@@ -11,7 +11,7 @@ async function main() {
     name: "Test",
     setting: "Test",
     wishSystemVersion: 3,
-    storyPace: "off",
+    backgroundPace: "off",
     villagers: [],
     venues: [
       {

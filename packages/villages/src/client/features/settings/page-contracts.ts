@@ -4,7 +4,7 @@ import type {
   VillageLorebookOption,
   VillageSettings,
   VillageSnapshot,
-  VillageStoryPace,
+  VillageBackgroundPace,
   VillageVenue,
 } from "../../../shared/contracts/village.js";
 import type { MapFrameShape, MapZoomRange, MenuPage } from "../../shared/types.js";
@@ -18,7 +18,7 @@ export type GeneralSettingsPagePorts = {
   readonly resetArmed: boolean;
   readonly saveCharacterSpeechColors: (characterSpeechColors: boolean) => Promise<void>;
   readonly saveSendOnEnter: (sendOnEnter: boolean) => Promise<void>;
-  readonly saveStoryPace: (storyPace: VillageStoryPace) => Promise<void>;
+  readonly saveBackgroundPace: (backgroundPace: VillageBackgroundPace) => Promise<void>;
   readonly saveVisitRetention: (visitRetention: VillageSettings["visitRetention"]) => Promise<void>;
   readonly setResetArmed: React.Dispatch<React.SetStateAction<boolean>>;
   readonly settingsError: string;

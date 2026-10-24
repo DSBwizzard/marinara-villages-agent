@@ -84,14 +84,12 @@ const snapshot = {
   venueRequests: [],
   projects: [],
   residences: [],
-  happenings: [],
   villagers: residents,
-  recap: null,
   settings: {
     promptKnowledge: "",
     defaultPromptKnowledge: "",
     promptBoxMaxLength: 1000,
-    storyPace: "normal",
+    backgroundPace: "normal",
     venues: [place("mill", 0.04, 0.08), place("harbour", 0.96, 0.92), place("market", 0.5, 0.5)],
     homeBuildingNames: {},
     homeBuildings: [],
@@ -115,7 +113,7 @@ const snapshot = {
     townMapExpectedWidth: 1500,
     townMapExpectedHeight: 1000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
-    storyPaces: [],
+    backgroundPaces: [],
     macros: [],
   },
 };
@@ -175,7 +173,6 @@ try {
       ...resident,
       place: index === 3 ? null : { id: "market", name: "Village Market" },
     }));
-    fixture.happenings = [{ id: "event-1", text: "The market opened this morning.", at: now }];
     let servedImage = mapImage;
     let session = null;
     await page.route("**/api/characters/summaries", (route) =>

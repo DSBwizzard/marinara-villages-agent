@@ -458,7 +458,6 @@ async function main() {
       currentReceiptIds: [result.id],
       knowledge,
       transcript: [],
-      happenings: [],
       memory: [],
     };
     const batch = await interpretWishBatch([context], "second", "swam");

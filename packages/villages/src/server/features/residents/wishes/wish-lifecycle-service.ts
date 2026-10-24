@@ -455,7 +455,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
           ownsFoundingTask(state, input.characterId, "wish", input.revision, input.id)
         );
       return (
-        (state.storyPace !== "off" || resident?.wishLifecycle?.attempt?.resetRefill === true) &&
+        (state.backgroundPace !== "off" || resident?.wishLifecycle?.attempt?.resetRefill === true) &&
         !!resident?.agenda &&
         resident.cardSnapshot.capturedAt === input.capturedAt &&
         resident.wishLifecycle?.attempt?.id === input.id &&
@@ -480,7 +480,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         attempt.accepted &&
         attempt.candidate &&
         owner.agenda!.wishes.length < MAX_ACTIVE &&
-        (state.storyPace !== "off" || attempt.resetRefill === true || founding) &&
+        (state.backgroundPace !== "off" || attempt.resetRefill === true || founding) &&
         attempt.dateKey === agendaDateKey(committedAt)
       ) {
         rememberWishNeed(owner, attempt.candidate, attempt.matchedNeedId);
@@ -571,7 +571,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       !job ||
       job.id !== id ||
       job.stage === "done" ||
-      (state.storyPace === "off" && !job.resetRefill)
+      (state.backgroundPace === "off" && !job.resetRefill)
     )
       return;
     const existingStatus = await backgroundStatus("wish", characterId, id);
@@ -675,7 +675,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         if (job?.resetRefill && job.stage !== "done" && !blocked.has(resident.characterId))
           work.push({ characterId: resident.characterId, id: job.id });
       }
-      if (state.storyPace === "off") return;
+      if (state.backgroundPace === "off") return;
       // A clock rollback must not reopen an earlier phase for ordinary automatic work.
       if (state.villagers.some((resident) => Date.parse(resident.wishLifecycle?.attempt?.at ?? "") > now.getTime()))
         return;

@@ -37,7 +37,7 @@ export function relationshipWritingPrompt(village: VillageState, fromId: string)
     );
   return [
     "Relationship context for this character's own perspective:",
-    "Where no Village history is recorded, use the card's usual approach to people. Missing history establishes neither distrust nor intimacy. Authored relationships still belong to the character; do not invent shared Village events.",
+    "Where no Village history is recorded, use the card's usual approach to people. Missing history establishes neither distrust nor intimacy. Authored relationships still belong to the character; do not invent shared Scene changes.",
     ...ties,
     ...experiences,
     ...encounters,

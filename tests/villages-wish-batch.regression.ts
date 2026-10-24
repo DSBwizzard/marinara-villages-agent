@@ -51,7 +51,6 @@ async function main() {
       { id: actorId, speakerId: actorId, name: actorId, content: "Saturday works for me.", at, current: true },
     ],
     transcript: [],
-    happenings: [],
     memory: [],
     worldState: [],
   }));

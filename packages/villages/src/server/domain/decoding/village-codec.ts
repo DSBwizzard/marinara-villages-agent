@@ -1,3 +1,5 @@
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { localDateKey } from "../rules/resident-planning.js";
 import { readDevelopment } from "../rules/development-codec.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readProjectPlan } from "../rules/project-completion.js";
@@ -21,9 +23,7 @@ import type {
   VillageChronicleActor,
   VillageChronicleEntry,
   VillageCompletedWish,
-  VillageHappening,
   VillageNotice,
-  VillageOpportunity,
   VillagePendingDecision,
   VillageProject,
   VillageRecollection,
@@ -32,9 +32,8 @@ import type {
   VillageRemapFailure,
   VillageRemapMove,
   VillageResidence,
-  VillageScheduledEvent,
   VillageState,
-  VillageStoryPace,
+  VillageBackgroundPace,
   VillageTownMapView,
   VillageVenue,
   VillageVenueClass,
@@ -79,8 +78,7 @@ import {
   LEGACY_TOWN_MAP_HEIGHT,
   LEGACY_TOWN_MAP_WIDTH,
   MAX_CHRONICLE_LENGTH,
-  MAX_HAPPENING_LENGTH,
-  MAX_HAPPENINGS,
+  MAX_PHYSICAL_NARRATION_LENGTH,
   MAX_NOTICE_AUTHOR_LENGTH,
   MAX_NOTICE_LENGTH,
   MAX_NOTICEBOARD_NOTES,
@@ -189,13 +187,7 @@ export function defaultVillageState(): VillageState {
     // nobody has said anything yet — shipping a few notices to make the panel
     // look occupied would be the village inventing its own history.
     noticeboard: [],
-    // Nothing has happened yet either, for the same reason: the founding is not
-    // an event, it is the moment the record began.
-    happenings: [],
-    // And nothing is remembered yet. The chronicle fills in as the village is
-    // written up, one batch at a time, from the same call that writes the
-    // happenings — a village shipped with a few memories to make the panel look
-    // occupied would be inventing a past it never had.
+    // Memories begin with witnessed experiences and explicit domain outcomes.
     chronicle: [],
     recollections: [],
     sceneWishProtections: {},
@@ -204,11 +196,10 @@ export function defaultVillageState(): VillageState {
     lastKnownTimeZone: "",
     timeZone: "",
     clock: null,
-    storyPace: "balanced",
-    lastCreativeDate: "",
-    processedOpportunityIds: [],
-    opportunities: [],
-    scheduledEvents: [],
+    backgroundPace: "balanced",
+    lastPlanningDate: "",
+    planningUsage: { dateKey: "", count: 0 },
+    processedActionIds: [],
     relationships: [],
     projects: [],
     progressTasks: [],
@@ -1208,7 +1199,7 @@ function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
           actionReceipt: {
             submissionId: asTrimmedString(receipt.submissionId),
             happened: receipt.happened === true,
-            narration: boundText(receipt.narration, MAX_HAPPENING_LENGTH),
+            narration: boundText(receipt.narration, MAX_PHYSICAL_NARRATION_LENGTH),
             ...Object.fromEntries(
               [
                 "conditionBefore",
@@ -1332,39 +1323,6 @@ function legacyOccurrence(
     0,
   );
   return { occurredAt: migrated.toISOString(), timePrecision: "phase" };
-}
-function coerceHappening(value: unknown, foundedAt: string): VillageHappening | null {
-  const raw = asRecord(value);
-  const text = boundText(raw.narration, MAX_HAPPENING_LENGTH) || boundText(raw.text, MAX_HAPPENING_LENGTH);
-  if (text.length === 0) return null;
-  const dayIndex =
-    typeof raw.dayIndex === "number" && Number.isFinite(raw.dayIndex) && raw.dayIndex >= 0
-      ? Math.floor(raw.dayIndex)
-      : 0;
-  const clock = asTrimmedString(raw.clock);
-  const occurrence = legacyOccurrence(foundedAt, dayIndex, clock, raw.occurredAt ?? raw.at);
-  return {
-    id: asTrimmedString(raw.id) || randomVillageSeed(),
-    kind: boundText(raw.kind, 40) || "observation",
-    actorIds: asStringArray(raw.actorIds)
-      .map((actor) => actor.trim())
-      .filter(Boolean)
-      .slice(0, 8),
-    venueId: asTrimmedString(raw.venueId),
-    dayIndex,
-    clock: villageClockIndex(clock) >= 0 ? clock : "",
-    ...occurrence,
-    sourceOpportunityId: asTrimmedString(raw.sourceOpportunityId),
-    narration: boundText(raw.narration, MAX_HAPPENING_LENGTH) || text,
-    text,
-  };
-}
-function coerceHappenings(value: unknown, foundedAt: string): VillageHappening[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => coerceHappening(entry, foundedAt))
-    .filter((entry): entry is VillageHappening => entry !== null)
-    .slice(0, MAX_HAPPENINGS);
 }
 function coerceChronicleActor(value: unknown): VillageChronicleActor | null {
   if (typeof value === "string") {
@@ -1548,12 +1506,12 @@ export function coerceTownMapView(value: unknown): VillageTownMapView {
     zoom: asZoom(raw.zoom) ?? DEFAULT_TOWN_MAP_VIEW.zoom,
   };
 }
-const STORY_PACES: readonly VillageStoryPace[] = ["off", "quiet", "balanced", "lively"];
+const BACKGROUND_PACES: readonly VillageBackgroundPace[] = ["off", "quiet", "balanced", "lively"];
 const MAX_SIMULATION_RECORDS = 256;
-function coerceStoryPace(raw: Record<string, unknown>): VillageStoryPace {
-  if (typeof raw.storyPace === "string" && STORY_PACES.includes(raw.storyPace as VillageStoryPace)) {
-    return raw.storyPace as VillageStoryPace;
-  }
+function coerceBackgroundPace(raw: Record<string, unknown>): VillageBackgroundPace {
+  const pace = raw.backgroundPace ?? raw.storyPace;
+  if (typeof pace === "string" && BACKGROUND_PACES.includes(pace as VillageBackgroundPace))
+    return pace as VillageBackgroundPace;
   const clocks = coerceRefreshClocks(raw.refreshClocks);
   if (raw.backgroundRefreshesEnabled === false || clocks.length === 0) return "off";
   return clocks.length === 1 ? "quiet" : "balanced";
@@ -1568,62 +1526,22 @@ function legacySimulatedThrough(foundedAt: string, key: unknown): string {
   at.setMinutes(window.endMinute);
   return at.toISOString();
 }
-function coerceOpportunities(value: unknown): VillageOpportunity[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const raw = asRecord(entry);
-      const id = asTrimmedString(raw.id);
-      const startsAt = asIsoString(raw.startsAt);
-      const endsAt = asIsoString(raw.endsAt);
-      const kinds = ["encounter", "wish", "weather", "routine", "project"] as const;
-      if (!id || !startsAt || !endsAt || !kinds.includes(raw.kind as (typeof kinds)[number])) return [];
-      return [
-        {
-          id,
-          kind: raw.kind as VillageOpportunity["kind"],
-          startsAt,
-          endsAt,
-          actorIds: asStringArray(raw.actorIds)
-            .map((id) => id.trim())
-            .filter(Boolean)
-            .slice(0, 8),
-          venueId: asTrimmedString(raw.venueId),
-          zoneId: asTrimmedString(raw.zoneId) || undefined,
-          facts: asStringArray(raw.facts)
-            .map((fact) => boundText(fact, MAX_HAPPENING_LENGTH))
-            .filter(Boolean)
-            .slice(0, 8),
-        },
-      ];
-    })
-    .slice(-MAX_SIMULATION_RECORDS);
-}
-function coerceScheduledEvents(value: unknown): VillageScheduledEvent[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const raw = asRecord(entry);
-      const id = asTrimmedString(raw.id);
-      const opportunityId = asTrimmedString(raw.opportunityId);
-      const occursAt = asIsoString(raw.occursAt);
-      if (!id || !opportunityId || !occursAt) return [];
-      return [
-        {
-          id,
-          opportunityId,
-          occursAt,
-          kind: boundText(raw.kind, 40),
-          actorIds: asStringArray(raw.actorIds)
-            .map((actor) => actor.trim())
-            .filter(Boolean)
-            .slice(0, 8),
-          venueId: asTrimmedString(raw.venueId),
-          narration: boundText(raw.narration, MAX_HAPPENING_LENGTH),
-        },
-      ];
-    })
-    .slice(-MAX_SIMULATION_RECORDS);
+/** Preserve the spent daily allowance when removing the legacy visual feed. */
+function coercePlanningUsage(raw: Record<string, unknown>): VillageState["planningUsage"] {
+  const usage = asRecord(raw.planningUsage),
+    dateKey = boundText(usage.dateKey ?? raw.lastPlanningDate ?? raw.lastCreativeDate, 10);
+  if (raw.planningUsage && typeof usage.count === "number" && Number.isSafeInteger(usage.count) && usage.count >= 0)
+    return { dateKey, count: usage.count };
+  const timeZone = validTimeZone(raw.timeZone)
+    ? raw.timeZone
+    : validTimeZone(raw.lastKnownTimeZone)
+      ? raw.lastKnownTimeZone
+      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const count = (Array.isArray(raw.happenings) ? raw.happenings : []).filter((row) => {
+    const at = asIsoString(asRecord(row).occurredAt);
+    return !!at && localDateKey(new ZonedDate(at, timeZone)) === dateKey;
+  }).length;
+  return { dateKey, count: dateKey ? Math.max(1, count) : 0 };
 }
 function coerceRelationships(value: unknown): VillageRelationship[] {
   if (!Array.isArray(value)) return [];
@@ -2082,7 +2000,6 @@ export function coerceVillageState(value: unknown): VillageState {
     foundedAt,
     seed: asTrimmedString(raw.seed),
     noticeboard: coerceNotices(raw.noticeboard),
-    happenings: coerceHappenings(raw.happenings, foundedAt),
     chronicle: coerceChronicle(raw.chronicle, foundedAt),
     recollections: coerceRecollections(raw.recollections),
     correctedWishMemoryIds: [...new Set(asStringArray(raw.correctedWishMemoryIds).filter(Boolean))],
@@ -2090,14 +2007,13 @@ export function coerceVillageState(value: unknown): VillageState {
     lastKnownTimeZone: boundText(raw.lastKnownTimeZone, 100),
     timeZone: validTimeZone(raw.timeZone) ? raw.timeZone : "",
     clock: decodeVillageClock(raw.clock),
-    storyPace: coerceStoryPace(raw),
-    lastCreativeDate: boundText(raw.lastCreativeDate, 10),
-    processedOpportunityIds: asStringArray(raw.processedOpportunityIds)
+    backgroundPace: coerceBackgroundPace(raw),
+    lastPlanningDate: boundText(raw.lastPlanningDate ?? raw.lastCreativeDate, 10),
+    planningUsage: coercePlanningUsage(raw),
+    processedActionIds: asStringArray(raw.processedActionIds ?? raw.processedOpportunityIds)
       .map((id) => id.trim())
       .filter(Boolean)
       .slice(-MAX_SIMULATION_RECORDS),
-    opportunities: coerceOpportunities(raw.opportunities),
-    scheduledEvents: coerceScheduledEvents(raw.scheduledEvents),
     relationships: coerceRelationships(raw.relationships),
     ...(raw.semanticRequestReceipts
       ? {

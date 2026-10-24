@@ -18,9 +18,9 @@ import { queueVillageVenueRequest } from "../packages/villages/src/server/featur
 import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
-  readHousingRequests,
-  type VillageTickContext,
-} from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+  readResidentPlanningProposal,
+  type ResidentPlanningContext,
+} from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
 import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
@@ -93,6 +93,8 @@ assert.equal(
   null,
   "a room participant cannot file another villager's request as their own",
 );
+const readHousingRequests = (value: unknown, context: ResidentPlanningContext) =>
+  readResidentPlanningProposal({ social: null, routineIdea: null, housingRequests: value }, context).housingRequests;
 const housingContext = {
   residents: [{ characterId: "rosa", name: "Rosa" }],
   venues: [
@@ -108,9 +110,9 @@ const housingContext = {
       occupancy: { playerHome: false, residentCharacterId: "someone-else", homeKind: "small-home" },
     },
   ],
-  opportunities: [{ actorIds: ["rosa"] }],
+  opportunity: { actorIds: ["rosa"] },
   pendingHousingCharacterIds: [],
-} as unknown as VillageTickContext;
+} as unknown as ResidentPlanningContext;
 assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], housingContext), [
   { characterId: "rosa", kind: "move", venueId: "open" },
 ]);

@@ -2,25 +2,15 @@ import type {
   SceneView,
   StoryEntry,
   VillageBuildingOption,
-  VillageHappening,
   VillagerAgendaView,
-  VillageRecap,
   VillageSnapshot,
-  VillageStoryPace,
   VillageVenue,
 } from "../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "./constants.js";
 import type { EngineConnectionRow, VillageConnectionOption, VillagesStyledNode } from "./types.js";
 import { isHouse, venueClassesFor, venueSpaceFor } from "./venue.js";
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
-import {
-  type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useState } from "react";
 
 /**
  * A stamp as a wall-clock time, or nothing when there is not one to read.
@@ -230,13 +220,6 @@ function drawVillagesStyled(node: VillagesStyledNode, at: string) {
  * one caller reads it back to the player as a statement about what will happen,
  * and `"Morning, Evening"` reads like two unrelated things.
  */
-export function storyPaceSummary(pace: VillageStoryPace): string {
-  if (pace === "off")
-    return "Automatic Events and new wishes are paused. Existing wishes can still be fulfilled or expire.";
-  if (pace === "quiet") return "Usually one optional village story is written on an active day.";
-  if (pace === "lively") return "Up to three optional village stories may be written on an active day.";
-  return "Usually one to three optional village stories are written on an active day, averaging two.";
-}
 
 /**
  * Whether a place is a house, which is the one question the whole place list
@@ -299,7 +282,6 @@ const CLOCK_TIME = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute:
  * carries every error. The rare tick that has a part of the day to catch up on
  * takes seconds, and that is the one worth saying something about.
  */
-export const SHOW_CATCHING_UP_AFTER_MS = 700;
 
 function clockLabel(now: Date, timeZone?: string): string {
   if (timeZone) {
@@ -470,154 +452,6 @@ export function FullscreenToggle() {
         )}
       </svg>
     </button>
-  );
-}
-
-/**
- * Visual-only Events prose, behind the button in the map's own top corner.
- * Until structured Events land, this feed never grounds narration, wishes,
- * memories, notices, or venue state. Its old entries remain readable here.
- *
- * The news used to be a column of the homepage: a gutter down one side of the
- * map, held open whether or not there was anything to put in it, and paid for by
- * the map on every screen. On a phone held sideways there is no width to hold it
- * open with, and a map fitted to whatever the news left of the tab is a strange
- * price for reading the news. So it is a disclosure: the button says the feed is
- * there and the panel unrolls beneath it, over the picture.
- *
- * A details element rather than a button and a box of state, because being open
- * or shut, the Enter and Space keys, and the expanded-or-collapsed announcement
- * are all the element's own and cannot drift out of step with the panel. The one
- * thing it does not do by itself is close when the player presses somewhere
- * else, which is what the component adds: a panel that can only be dismissed by
- * finding the button again would sit over the map for the whole game.
- *
- * What it says is what the column said. Deliberately not the noticeboard, which
- * is the other half of the same idea: the board is what the villagers say TO
- * each other, in their own handwriting, and most of it is a request; this is what
- * HAPPENED to the place, in the narrator's voice, and none of it is aimed at
- * anybody. A village with a full board and a quiet feed is getting on with
- * things.
- *
- * ponytail: it lists every happening the server keeps and scrolls, rather than
- * folding them by day or paging them. Forty short lines is a scroll, not a
- * problem; the day it is one is the day to group them.
- */
-export function VillageEvents({
-  happenings,
-  recap,
-  mobile = false,
-  inline = false,
-}: {
-  happenings: readonly VillageHappening[];
-  recap: VillageRecap | null;
-  mobile?: boolean;
-  inline?: boolean;
-}) {
-  const detailsRef = useRef<HTMLDetailsElement | null>(null);
-  // Whether the panel is open is the element's own business, so this mirrors it
-  // rather than owning it: two answers to one question are two answers that can
-  // disagree, and the dismissal below has to know when there is something to
-  // dismiss.
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const node = detailsRef.current;
-    if (!node) return;
-    const sync = () => setOpen(node.open);
-    node.addEventListener("toggle", sync);
-    return () => node.removeEventListener("toggle", sync);
-  }, []);
-
-  // A pointerdown on the summary is inside the element, so it does not dismiss
-  // it; a keydown on Enter while the summary has focus is; anything outside is.
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: Event) => {
-      if (!(event.target instanceof Node) || detailsRef.current?.contains(event.target)) return;
-      detailsRef.current?.removeAttribute("open");
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", outside);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", outside);
-    };
-  }, [open]);
-
-  const content = (
-    <div className={`${ELEMENT_TAG}-news-panel`}>
-      <h2 className={`${ELEMENT_TAG}-news-title`}>Events</h2>
-      {recap ? (
-        <div>
-          <strong>While you were away</strong>
-          {recap.details.length > 0 ? (
-            <ul className={`${ELEMENT_TAG}-news-list`}>
-              {recap.details.map((entry) => (
-                <li key={`recap-${entry.id}`} className={`${ELEMENT_TAG}-news-item`}>
-                  {entry.text}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {recap.summaries.map((summary) => (
-            <p key={summary} className={`${ELEMENT_TAG}-news-empty`}>
-              {summary}
-            </p>
-          ))}
-          {recap.pendingDecisionCount > 0 ? (
-            <p className={`${ELEMENT_TAG}-news-empty`}>
-              {recap.pendingDecisionCount} pending{" "}
-              {recap.pendingDecisionCount === 1 ? "decision needs" : "decisions need"} your attention.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {happenings.length === 0 ? (
-        <p className={`${ELEMENT_TAG}-news-empty`}>No events to show yet.</p>
-      ) : (
-        <ul className={`${ELEMENT_TAG}-news-list`}>
-          {happenings.map((entry) => (
-            <li key={entry.id} className={`${ELEMENT_TAG}-news-item`}>
-              {entry.text}
-              {entry.socialOutcome ? (
-                <details>
-                  <summary>Social encounter recorded</summary>
-                  <p>This interaction was recorded separately from its visual description.</p>
-                  {entry.socialOutcome.changes.map((text) => (
-                    <p key={text}>{text}</p>
-                  ))}
-                </details>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-  if (inline) return content;
-
-  return (
-    <details ref={detailsRef} className={`${ELEMENT_TAG}-news`}>
-      <summary className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-news-toggle`} aria-label="Events (NYI)">
-        {/* A page and its lines: the news keeps happening, and the button says
-            where it is rather than how much of it there is. */}
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          focusable="false"
-        >
-          <path d="M4 5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-          <path d="M8 8h7M8 12h7M8 16h4" />
-        </svg>
-        {!mobile ? "Events" : null}
-        <span className={`${ELEMENT_TAG}-news-nyi`}>NYI</span>
-      </summary>
-      {content}
-    </details>
   );
 }
 

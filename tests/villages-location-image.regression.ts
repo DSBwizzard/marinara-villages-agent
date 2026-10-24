@@ -1447,7 +1447,7 @@ async function mediaConnectionOwnership() {
         setting: "Quiet harbor",
         setupAt: new Date().toISOString(),
         foundedAt: new Date().toISOString(),
-        storyPace: "off",
+        backgroundPace: "off",
         selectedLorebookIds: ["visual"],
         useVisualLoreByDefault: true,
         venues: [

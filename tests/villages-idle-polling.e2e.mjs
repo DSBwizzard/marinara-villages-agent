@@ -162,13 +162,15 @@ try {
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.locator("#state")).toContainText('"id":"focus-recovered"');
 
-  signature = { status: "running", attempt: 1 };
+  signature = { status: "running", attempt: 1, available: true };
   const beforeSignature = reads.signature;
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect.poll(() => reads.signature).toBe(beforeSignature + 1);
-  signature = { status: "saved", attempt: 1 };
+  await expect(page.getByRole("button", { name: "Generating signature…", exact: true })).toBeVisible();
+  signature = { status: "saved", attempt: 1, available: true };
   await page.clock.runFor(2100);
   await expect.poll(() => reads.signature).toBe(beforeSignature + 2);
+  await expect(page.getByRole("button", { name: "Generate signature", exact: true })).toBeVisible();
   await page.clock.runFor(30_000);
   assert.equal(reads.signature, beforeSignature + 2, "signature completion stops its status checks");
   await page.close();

@@ -61,7 +61,7 @@ async function main() {
     wishLifetimeDays,
   } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
   const { agendaAt, agendaDayPlan } = await import("../packages/villages/src/server/domain/rules/agenda-plan.js");
-  const { buildTickMessages } = await import("../packages/villages/src/server/domain/rules/village-bootstrap-rules.js");
+  const { buildResidentPlanningMessages } = await import("./fixtures/resident-planning.fixture.js");
   const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const { coerceRemap: readStoredRemap } =
     await import("../packages/villages/src/server/domain/decoding/village-codec.js");
@@ -1188,8 +1188,11 @@ async function main() {
     !currentSceneDoing.includes("To prepare for the day"),
     "current Scene recurring activity omits routine reasons",
   );
-  function eventsPrompt(doing: string, agenda: Parameters<typeof buildTickMessages>[0]["residents"][number]["agenda"]) {
-    return buildTickMessages({
+  function eventsPrompt(
+    doing: string,
+    agenda: Parameters<typeof buildResidentPlanningMessages>[0]["residents"][number]["agenda"],
+  ) {
+    return buildResidentPlanningMessages({
       village: "Apiary",
       setting: "A quiet village",
       moment: deriveVillageMoment({ foundedAt: now.toISOString(), seed: "schedule-fixture", now }),

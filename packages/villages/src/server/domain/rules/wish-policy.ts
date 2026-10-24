@@ -60,7 +60,7 @@ export function wishRevision(resident: VillageVillager, state: VillageState): st
         state.setting,
         state.worldName,
         resident.admission,
-        state.storyPace,
+        state.backgroundPace,
         state.wishSystemVersion,
       ]),
     )

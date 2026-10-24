@@ -164,7 +164,7 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
 {
   const { state, scene, resident, wish } = fixture();
   state.setupAt = state.foundedAt;
-  state.storyPace = "off";
+  state.backgroundPace = "off";
   protectSceneWishes(state, scene, start);
   let readFailure: "unknown" | "missing" | "" = "";
   const world = createWorldCoordination({

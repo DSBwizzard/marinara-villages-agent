@@ -480,13 +480,13 @@ export function RoomPanel({
     if (change.status === "pending") continue;
     errorItems.push({
       id: change.submissionId + ":" + change.domain,
-      title: change.domain + (change.status === "rejected" ? " update not saved" : " update failed"),
-      message: change.reason ?? "Update could not be saved.",
+      title: "World change" + (change.status === "rejected" ? " not saved" : " failed") + " · " + change.domain,
+      message: change.reason ?? "World change could not be saved.",
       fields: [
         { label: "Scene", value: room.placeName },
         { label: "Scene ID", value: room.id },
         { label: "Message ID", value: change.submissionId },
-        { label: "World update", value: change.domain },
+        { label: "World change", value: change.domain },
         { label: "Result", value: change.status === "rejected" ? "Not saved" : "Needs attention" },
         ...(change.at ? [{ label: "Time", value: new Date(change.at).toLocaleString() }] : []),
       ],
@@ -533,9 +533,9 @@ export function RoomPanel({
   )
     errorItems.push({
       id: "other-world-updates",
-      title: "Other world updates need attention",
+      title: "Other World changes need attention",
       message:
-        "Some proposed world changes weren’t saved or could not be processed. See this Scene’s saved diagnostics for the remaining results.",
+        "Some proposed world changes weren’t saved or could not be processed. See World change diagnostics for details.",
       fields: [
         { label: "Failed", value: String(changeStatus.failed) },
         { label: "Not saved", value: String(changeStatus.rejected) },
@@ -1018,10 +1018,6 @@ export function RoomPanel({
                 ×
               </button>
             </div>
-            <p className={ELEMENT_TAG + "-hint"} role="status">
-              Changes and Wish updates are saved during replies. Ending the Scene does not run another review. See saved
-              changes below for pending or failed work.
-            </p>
             <div className={`${ELEMENT_TAG}-scene-modal-errors`}>
               <SceneErrorChip items={errorItems} open={errorsOpen} onOpen={setErrorsOpen} />
             </div>
@@ -1072,12 +1068,12 @@ export function RoomPanel({
                 setInformationOpen(false);
               }}
               aria-expanded={noticesOpen}
-              aria-label={`${notices.length} village ${notices.length === 1 ? "notice" : "notices"}`}
+              aria-label={`${notices.length} ${notices.length === 1 ? "World change" : "World changes"}`}
             >
               ✦ {notices.length}
             </button>
             {noticesOpen ? (
-              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
+              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="World changes">
                 {notices.map((notice) => (
                   <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
                     <span aria-hidden="true">{roomNoticeIcon(notice.kind)}</span>

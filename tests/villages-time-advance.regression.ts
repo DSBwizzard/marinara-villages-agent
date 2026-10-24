@@ -37,7 +37,7 @@ const start = Date.parse("2026-10-24T12:00:00Z");
 async function fixture() {
   const state = developmentFixture();
   state.simulatedThrough = new Date(start).toISOString();
-  state.storyPace = "off";
+  state.backgroundPace = "off";
   initializeDevelopment(state, false, state.simulatedThrough);
   initializeDevelopment(state, true, state.simulatedThrough);
   const projects = projectFixture();

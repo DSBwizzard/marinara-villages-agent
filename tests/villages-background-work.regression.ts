@@ -1,4 +1,4 @@
-import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
 import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
@@ -155,9 +155,9 @@ registerBackgroundHandler("translation", {
     state.setting = "translated-" + result.moves.length;
   },
 });
-registerBackgroundHandler("story", {
+registerBackgroundHandler("resident-planning", {
   async generate(input) {
-    const opening = await completeWithRoom(model as any, buildTickMessages(input.context), 100, {
+    const opening = await completeWithRoom(model as any, buildResidentPlanningMessages(input.context), 100, {
       temperature: 0,
       debugMode: false,
     });
@@ -281,7 +281,7 @@ async function main() {
     failStep = "story-followup";
     failure = "503 Service Unavailable";
     await queueBackgroundJob({
-      kind: "story",
+      kind: "resident-planning",
       subjectId: "saved-story",
       seed: "fixture",
       revision: "legacy-story",
@@ -292,11 +292,7 @@ async function main() {
     await settleBackgroundWork();
     const story = await summary("saved-story");
     assert.equal(calls.length, 2);
-    assert.equal(
-      calls[0].includes(frozenStory.setting),
-      false,
-      "the pre-upgrade story context uses its original bounded description",
-    );
+    assert.equal(calls[0].includes(frozenStory.setting), true, "planning keeps complete authored context");
     stop();
     stop = startBackgroundWork({ now: () => now });
     await settleBackgroundWork();

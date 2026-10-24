@@ -1,10 +1,4 @@
-import type { ProgressDebugView, VillageSnapshot } from "../../../shared/contracts/village.js";
-
-/** Inputs consumed by renderEventsPage; assembled by the shell. */
-export type EventsPagePorts = {
-  readonly mobile: boolean;
-  readonly snapshot: VillageSnapshot;
-};
+import type { ProgressDebugView } from "../../../shared/contracts/village.js";
 
 /** Inputs consumed by renderProgressDebugPage; assembled by the shell. */
 export type ProgressDebugPagePorts = {

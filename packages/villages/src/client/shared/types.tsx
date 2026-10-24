@@ -313,14 +313,6 @@ export type RoomStep = {
  * Pages reachable from the village menu and the map's Noticeboard shortcut.
  */
 type MenuTab =
-  | "events"
-  | "villagers"
-  | "noticeboard"
-  | "venueRequests"
-  | "projects"
-  | "village"
-  | "general"
-  | "chatlogs"
-  | "progress";
+  "villagers" | "noticeboard" | "venueRequests" | "projects" | "village" | "general" | "chatlogs" | "progress";
 
 export type MenuPage = "index" | MenuTab;

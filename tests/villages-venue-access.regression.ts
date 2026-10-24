@@ -1260,7 +1260,7 @@ async function main() {
         },
       ];
     }
-    socialWorld.storyPace = "balanced" as any;
+    socialWorld.backgroundPace = "balanced" as any;
     socialWorld.socialOutbox = [
       {
         id: "offscreen-grant",

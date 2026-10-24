@@ -14,7 +14,7 @@ export async function verifySettingsRequestLifetimes(browser) {
       contents: `
 import {createRoot} from 'react-dom/client';import {StrictMode,useState} from 'react';
 import {useSettingsState} from './packages/villages/src/client/features/settings/useSettingsState.js';
-import {useSaveSettings,useSaveScenerySettings,useSaveSpriteCardFlip,useSaveStoryPace,useSaveSendOnEnter,useSaveCharacterSpeechColors,useSaveVisitRetention,useAddNotice,useRemoveNotice} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveSettings,useSaveScenerySettings,useSaveSpriteCardFlip,useSaveBackgroundPace,useSaveSendOnEnter,useSaveCharacterSpeechColors,useSaveVisitRetention,useAddNotice,useRemoveNotice} from './packages/villages/src/client/features/settings/actions.js';
 function Harness(){
  const settings=useSettingsState(),[snapshot,setSnapshot]=useState(window.seed),[busy,setBusy]=useState(false),
  [flipDraft,setSpriteFlipDraft]=useState(null),[flipError,setSpriteFlipError]=useState(''),[flipSaving,setSpriteFlipSaving]=useState(false),
@@ -22,7 +22,7 @@ function Harness(){
  [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[sceneryStyleProfileId]=useState(null),[personalizeHomes,setPersonalizeHomes]=useState(false),[visualLoreDefault,setVisualLoreDefault]=useState(true);
  const ports={...settings,snapshot,setSnapshot,setBusy,setSpriteFlipDraft,setSpriteFlipError,setSpriteFlipSaving,setArchiveVersion,noticeDraft,setNoticeDraft,
   sceneryStyle,sceneryStyleProfileId,personalizeHomes,visualLoreDefault,acceptSavedSettings:()=>{window.acks++}};
- const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),flip=useSaveSpriteCardFlip(ports),pace=useSaveStoryPace(ports),enter=useSaveSendOnEnter(ports),colors=useSaveCharacterSpeechColors(ports),retention=useSaveVisitRetention(ports),add=useAddNotice(ports),remove=useRemoveNotice(ports);
+ const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),flip=useSaveSpriteCardFlip(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports),colors=useSaveCharacterSpeechColors(ports),retention=useSaveVisitRetention(ports),add=useAddNotice(ports),remove=useRemoveNotice(ports);
  const commands={save,scenery,flip:()=>flip(window.flipValue??true),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>colors(false),retention:()=>retention({mode:'count',value:20}),add,remove:()=>remove(0)};
  const launch=work=>{window.pending.push(work());return window.pending.length-1},run=kind=>launch(commands[kind]);
  window.h={run,twice:kind=>{run(kind);run(kind)},cross:()=>{run('pace');run('enter')},crossScenery:reverse=>{run(reverse?'pace':'scenery');run(reverse?'scenery':'pace')},independent:()=>{run('flip');run('pace')},
@@ -110,7 +110,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       useVisualLoreByDefault: true,
     },
     flip: { spriteCardFlipEnabled: true },
-    pace: { storyPace: "quiet" },
+    pace: { backgroundPace: "quiet" },
     enter: { sendOnEnter: true },
     colors: { characterSpeechColors: false },
     retention: { visitRetention: { mode: "count", value: 20 } },
@@ -193,7 +193,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       const cross = await mount(strict, width);
       await cross.page.evaluate(() => window.h.cross());
       await expect.poll(() => cross.requests.length).toBe(1);
-      assert.deepEqual(cross.requests[0].body, { storyPace: "quiet" });
+      assert.deepEqual(cross.requests[0].body, { backgroundPace: "quiet" });
       assert.equal((await cross.state()).enter, false, "refused Enter must not apply optimism");
       await cross.respond(0);
       await cross.page.evaluate(() => Promise.all(window.pending));

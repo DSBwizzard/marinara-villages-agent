@@ -13,13 +13,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "foundingPreparationSnapshot",
     "assertFoundedVillageReady",
   ],
-  "founding/village-bootstrap.ts": [
-    "draftVillageVenueDescriptions",
-    "proposeVillage",
-    "proposePublicVenueNames",
-    "proposeHappenings",
-    "proposeReaction",
-  ],
+  "founding/village-bootstrap.ts": ["draftVillageVenueDescriptions", "proposeVillage", "proposePublicVenueNames"],
   "generation/interpretation-diagnostics.ts": [
     "readInterpretationDiagnostics",
     "writeInterpretationDiagnostics",
@@ -116,7 +110,7 @@ export const serverFeatureInterfaces = Object.freeze({
   "settings/village-settings.ts": [
     "setVillagePromptKnowledge",
     "setVillageLoreSettings",
-    "setVillageStoryPace",
+    "setVillageBackgroundPace",
     "setVillageSpriteCardFlipEnabled",
     "setVillageSendOnEnter",
     "setVillageCharacterSpeechColors",
@@ -166,7 +160,6 @@ export const serverFeatureInterfaces = Object.freeze({
   "world/village.ts": [
     "resetVillage",
     "reconcileVillage",
-    "runVillageReaction",
     "buildVillageStory",
     "buildVillageMemories",
     "removeChronicleEntry",

@@ -11,7 +11,6 @@ import { useState } from "react";
 export function ExplorationScreen({ controller }: { controller: ExplorationScreenController }) {
   const {
     busy,
-    catchingUp,
     closeExploration,
     error,
     explorationOrigin,
@@ -209,7 +208,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
             navigationView={navigationView}
             onNavigationView={setNavigationView}
           >
-            {error || settingsError || catchingUp || lastSceneEnding ? (
+            {error || settingsError || lastSceneEnding ? (
               <div className={`${ELEMENT_TAG}-notice`}>
                 {error ? (
                   <p role="alert" className={`${ELEMENT_TAG}-error`}>
@@ -220,11 +219,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                   <p role="alert" className={`${ELEMENT_TAG}-error`}>
                     {settingsError}
                   </p>
-                ) : null}
-                {catchingUp ? (
-                  <span className={`${ELEMENT_TAG}-status`}>
-                    Catching up on {snapshot?.village.name ?? "the village"}…
-                  </span>
                 ) : null}
                 {lastSceneEnding ? <p className={`${ELEMENT_TAG}-status`}>{lastSceneEnding}</p> : null}
               </div>

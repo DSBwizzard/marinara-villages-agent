@@ -439,7 +439,7 @@ for (const canonical of [false, true]) {
   const world = defaultVillageState();
   const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["community"] }, null);
   world.venues = [venue];
-  world.storyPace = "off";
+  world.backgroundPace = "off";
   shared.rows.set("villages-village", { id: "villages-village", revision: 1, data: world });
   shared.pauseSceneCreation();
   const sharedB = createActivationScope();

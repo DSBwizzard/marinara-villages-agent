@@ -221,9 +221,9 @@ export function createSceneChanges({
                     ? workFailureSummary(result.failure)
                     : result.status === "rejected"
                       ? /evidence|witness|heard/iu.test(result.reason ?? "")
-                        ? "The proposed update cited words or events that were not witnessed by everyone it would affect. It wasn’t saved; the conversation remains in the transcript."
-                        : "The proposed update did not meet the requirements for saving. The conversation remains in the transcript; saved diagnostics contain the validation result."
-                      : "Saved changes could not be applied. Replay saved work first; inspect saved diagnostics if it persists.",
+                        ? "The proposed world change cited speech or actions that were not witnessed by everyone it would affect. It wasn’t saved; the conversation remains in the transcript."
+                        : "The proposed world change did not meet the requirements for saving. The conversation remains in the transcript; saved diagnostics contain the validation result."
+                      : "World changes could not be applied. Replay saved work first; inspect saved diagnostics if it persists.",
             })),
         )
         .sort((left, right) => {

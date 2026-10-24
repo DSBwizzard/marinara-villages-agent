@@ -1,6 +1,6 @@
 import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
-import type { VillageSnapshot, VillageState, VillageStoryPace } from "../../domain/models/world.js";
+import type { VillageSnapshot, VillageState, VillageBackgroundPace } from "../../domain/models/world.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
 import { readLoreTokenBudget, readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
 import { boundText, MAX_NOTICE_LENGTH, MAX_NOTICEBOARD_NOTES, remapVenues } from "../../domain/rules/prompt-preset.js";
@@ -43,21 +43,14 @@ export function createVillageSettings({
     return buildVillageSnapshot();
   }
 
-  /**
-   * Read a part of the village day out of a request body.
-   *
-   * Refused rather than ignored, for the same reason an over-long preset is: the
-   * player is looking at the switches they pressed, so a value that cannot name a
-   * part of the day has to come back as an error rather than as a village that
-   * quietly disagrees with the panel.
-   */
-  async function setVillageStoryPace(value: unknown): Promise<VillageSnapshot> {
-    const paces: readonly VillageStoryPace[] = ["off", "quiet", "balanced", "lively"];
-    if (typeof value !== "string" || !paces.includes(value as VillageStoryPace)) {
-      throw badRequest("Background events and wishes must be off, quiet, balanced or lively.");
+  /** Set the allowance for optional resident planning and new Wishes. */
+  async function setVillageBackgroundPace(value: unknown): Promise<VillageSnapshot> {
+    const paces: readonly VillageBackgroundPace[] = ["off", "quiet", "balanced", "lively"];
+    if (typeof value !== "string" || !paces.includes(value as VillageBackgroundPace)) {
+      throw badRequest("Resident activity and Wishes must be off, quiet, balanced or lively.");
     }
     await mutateVillageState((state) => {
-      state.storyPace = value as VillageStoryPace;
+      state.backgroundPace = value as VillageBackgroundPace;
     });
     return buildVillageSnapshot();
   }
@@ -232,7 +225,7 @@ export function createVillageSettings({
   return {
     setVillagePromptKnowledge,
     setVillageLoreSettings,
-    setVillageStoryPace,
+    setVillageBackgroundPace,
     setVillageSpriteCardFlipEnabled,
     setVillageSendOnEnter,
     setVillageCharacterSpeechColors,

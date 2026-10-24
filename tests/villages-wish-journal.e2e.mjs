@@ -198,7 +198,7 @@ try {
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
     await page.getByRole("button", { name: "Visit venue", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
-    const notices = page.getByRole("button", { name: "1 village notice" });
+    const notices = page.getByRole("button", { name: "1 World change" });
     await expect(notices).toBeVisible();
     // Fresh notices open after rendering; clicking during that effect would race and close the panel.
     await expect(notices).toHaveAttribute("aria-expanded", "true");

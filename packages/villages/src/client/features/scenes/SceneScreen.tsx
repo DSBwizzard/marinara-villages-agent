@@ -335,7 +335,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onReplayChanges={() => {
             if (!room?.id) return;
             void request(`/rooms/${encodeURIComponent(room.id)}/changes/replay`, { method: "POST" }).catch((cause) =>
-              setRoomError(messageFrom(cause, "Saved changes could not be replayed.")),
+              setRoomError(messageFrom(cause, "World changes could not be replayed.")),
             );
           }}
           debugDiscardEnabled={debugDiscardEnabled}

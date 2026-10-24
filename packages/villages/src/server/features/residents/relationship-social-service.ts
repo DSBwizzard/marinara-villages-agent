@@ -41,7 +41,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         if (
           plan &&
           !state.applied[`social-plan-date:${plan.dateKey}`] &&
-          current.storyPace !== "off" &&
+          current.backgroundPace !== "off" &&
           socialPlanValid(current, plan, now)
         ) {
           state.socialPlans.push(plan);
@@ -54,7 +54,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         } catch {
           /* Reject invalid interpretation locally, without a paid repair. */
         }
-        if (encounter && current.storyPace !== "off") {
+        if (encounter && current.backgroundPace !== "off") {
           applyRelationshipReview(state, encounter.review, current, encounter.id, encounter.at, villageNow().getTime());
           state.socialEncounters = [...state.socialEncounters, encounter].slice(-64);
           const at = current.timeZone ? new ZonedDate(encounter.at, current.timeZone) : new Date(encounter.at);

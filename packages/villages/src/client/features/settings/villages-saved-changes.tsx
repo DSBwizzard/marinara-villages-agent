@@ -20,7 +20,7 @@ export function SavedChangesDiagnostics({
       setError("");
       onError?.("");
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Saved changes are unavailable.";
+      const message = cause instanceof Error ? cause.message : "World changes are unavailable.";
       setError(message);
       onError?.(message);
     } finally {
@@ -33,11 +33,8 @@ export function SavedChangesDiagnostics({
         if (event.currentTarget.open && !page && !busy) void load();
       }}
     >
-      <summary>Saved change diagnostics · includes private evidence</summary>
-      <p>
-        Read saved evidence, interpretation source, validation results, committed notices, and available request usage.
-        Reading makes no model request.
-      </p>
+      <summary>World change diagnostics · includes private evidence</summary>
+      <p>Reading makes no model request.</p>
       <button type="button" disabled={busy} onClick={() => void load()}>
         Refresh saved records
       </button>

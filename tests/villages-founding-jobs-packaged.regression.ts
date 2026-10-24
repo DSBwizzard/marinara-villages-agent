@@ -22,7 +22,7 @@ const world = coerceVillageState({
   seed: "founding-http",
   name: "Synthetic place",
   setting: "Shared converted rooms",
-  storyPace: "off",
+  backgroundPace: "off",
   wishSystemVersion: 3,
   setupAt: now,
   foundedAt: now,
