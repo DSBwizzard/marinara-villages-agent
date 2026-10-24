@@ -68,11 +68,7 @@ export function ProjectsPanel({
   const editable = project?.status === "planning",
     resumable = project?.status === "paused";
   const sceneActive = !!room && room.status !== "closed";
-  const placementBlocked = sceneActive
-    ? "End the Scene to choose a map position."
-    : draft.dirty
-      ? "Save design to choose a map position."
-      : "";
+  const placementBlocked = draft.dirty ? "Save design to choose a map position." : "";
   const missing =
     flow?.affectedIds.filter((id) => !flow.approvals.some((approval) => approval.residentId === id)) ?? [];
   const stale = draft.dirty && (!editable || draft.revision !== flow?.revision);
