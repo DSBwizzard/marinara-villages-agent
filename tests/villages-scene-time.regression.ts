@@ -37,6 +37,7 @@ const start = Date.now() - 3 * day,
 function fixture() {
   const state = coerceVillageState({
     version: 3,
+    socialContractVersion: 2,
     seed: "time-world",
     foundedAt: new Date(start - day).toISOString(),
     timeZone: "America/Los_Angeles",
@@ -62,10 +63,10 @@ function fixture() {
     },
   ];
   state.relationshipContext = defaultRelationshipState(state.seed);
+  state.relationshipContext.reviewedActorIds = ["a"];
   state.relationshipContext.edges[relationshipKey("a", "player")] = {
     ...neutralRelationship("a", "player"),
-    warmth: 25,
-    familiarity: 1,
+    connection: "Friends",
   };
   const scene = coerceSession({
     id: "morning",
@@ -148,16 +149,16 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
   await live.requireLiveVenueSession(scene.id);
   assert.equal(raw.relationshipContext, undefined, "world DTO remains separate from relationship authority");
   assert.equal(
-    scene.continuity!.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.warmth,
-    25,
+    scene.continuity!.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.connection,
+    "Friends",
     "actual Scene setup captures hydrated relationships before world normalization strips them",
   );
-  relationships.edges[relationshipKey("a", "player")]!.warmth = -20;
+  relationships.edges[relationshipKey("a", "player")]!.connection = "Former friends";
   assert.equal(
     sceneContinuityView(await world.readVillageState(), scene).relationshipContext!.edges[
       relationshipKey("a", "player")
-    ]!.warmth,
-    25,
+    ]!.connection,
+    "Friends",
   );
 }
 
@@ -256,7 +257,7 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
   const privateSnapshot = structuredClone(scene.continuity);
   state.chronicle.unshift(memory("later", "Ada opened a new shop during the three days"));
   state.villagers[0]!.agenda!.wishes = [];
-  state.relationshipContext!.edges[relationshipKey("a", "player")]!.warmth = -20;
+  state.relationshipContext!.edges[relationshipKey("a", "player")]!.connection = "Former friends";
   state.simulatedThrough = new Date().toISOString();
   resolveVenueZone(state.venues[0]!, "community")!.state.condition = "A changed Village";
   const packet = semanticContext(scene, state, "I hop on", false, false, sceneContinuityView(state, scene));
@@ -265,8 +266,8 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
   assert.equal(packet.actors[0]!.wishes[0]!.id, "ride");
   assert.equal(packet.time!.capturedAt, at);
   assert.equal(
-    sceneContinuityView(state, scene).relationshipContext!.edges[relationshipKey("a", "player")]!.warmth,
-    25,
+    sceneContinuityView(state, scene).relationshipContext!.edges[relationshipKey("a", "player")]!.connection,
+    "Friends",
   );
   assert.equal(
     sceneContinuityView(state, scene).simulatedThrough,
@@ -279,7 +280,7 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
   assert.equal(restored.capturedAt, at, "capture survives a restart");
   assert.equal(restored.facts.chronicle[0]!.text, scene.continuity.facts.chronicle[0]!.text);
   assert.equal(restored.facts.villagers[0]!.agenda!.wishes[0]!.id, "ride");
-  assert.equal(restored.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.warmth, 25);
+  assert.equal(restored.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.connection, "Friends");
   assert.throws(
     () => coerceSession({ ...scene, continuity: { ...scene.continuity, version: 99 } }),
     /captured context/,

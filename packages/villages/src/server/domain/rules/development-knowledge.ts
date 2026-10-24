@@ -6,6 +6,20 @@ export function knownDevelopment(state: VillageState, characterId: string) {
     p.known ? [{ id: p.id, ...p.known, title: knownPursuitTitle(p.known) }] : [],
   );
 }
+/** Publish only retained witnessed after-values, never current private progress. */
+export function publishDevelopmentKnowledge(state: VillageState, sceneId: string, submissionId: string): void {
+  for (const receipt of Object.values(state.exchangeReceipts)) {
+    if (receipt.sceneId !== sceneId || receipt.submissionId !== submissionId || receipt.status !== "applied") continue;
+    const facts = receipt.sceneFacts?.development;
+    if (!facts) continue;
+    const resident = state.development?.residents[facts.characterId];
+    for (const saved of facts.resident.pursuits) {
+      const current = resident?.pursuits.find((p) => p.id === saved.id);
+      if (saved.known && current && (!current.known || Date.parse(saved.known.at) >= Date.parse(current.known.at)))
+        current.known = structuredClone(saved.known);
+    }
+  }
+}
 /** Older snapshots contain this fixed summary format. Read its saved name, never current private housing. */
 export function knownPursuitTitle(known: { title?: string; text: string }): string {
   const legacy = known.text.match(/^.+: move to (.+) : (?:considering|stalled|arranged|completed|ended)\.$/u);

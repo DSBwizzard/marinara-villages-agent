@@ -25,6 +25,7 @@ import {
   bindDevelopmentChanges,
   applyDevelopmentScene,
 } from "../packages/villages/src/server/domain/rules/development-scene.js";
+import { publishDevelopmentKnowledge } from "../packages/villages/src/server/domain/rules/development-knowledge.js";
 import type {
   VenueScene,
   VenueReplyLine,
@@ -89,6 +90,8 @@ function shareWithConsent(
     developmentChanges: order === "consent-first" ? [...changes].reverse() : changes,
   } as unknown as VenueSubmission;
   applyDevelopmentScene(state, scene, submission, elapsed(1.3));
+  assert.equal(p.known, undefined, "Private authority does not publish the source");
+  publishDevelopmentKnowledge(state, scene.id, submission.id);
   return p.known!;
 }
 {
@@ -268,6 +271,8 @@ for (const decision of ["refuse", "conditional"] as const) {
   } as VenueSubmission;
   scene.submissions = [submission];
   applyDevelopmentScene(state, scene, submission, elapsed(1.3));
+  assert.equal(knownDevelopment(state, "a").length, 0);
+  publishDevelopmentKnowledge(state, scene.id, submission.id);
   assert.equal(knownDevelopment(state, "a").length, 1);
   assert.equal(
     knownDevelopment(state, "a")[0]!.title,
@@ -353,6 +358,7 @@ for (const decision of ["refuse", "conditional"] as const) {
       ],
     } as VenueSubmission;
     applyDevelopmentScene(state, scene, submission, elapsed(1.4));
+    publishDevelopmentKnowledge(state, scene.id, submission.id);
     return { scene, submission };
   };
   consent(true, "unheard-consent");

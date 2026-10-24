@@ -1341,6 +1341,7 @@ async function main() {
   const store = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
   const refusals = store.coerceVillageState({
     version: 3,
+    socialContractVersion: 2,
     wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",
     villagers: [
@@ -1364,6 +1365,7 @@ async function main() {
 
   const partial = store.coerceVillageState({
     version: 3,
+    socialContractVersion: 2,
     wishSystemVersion: 3,
     villagers: [
       {
@@ -1420,6 +1422,7 @@ async function main() {
   assert.deepEqual(
     store.coerceVillageState({
       version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       villagers: [{ characterId: "a", cardSnapshot: cardSnapshot("a", "A"), addedAt: "", agenda: null, remap: null }],
     }).villagers[0]!.remapFailure,
@@ -1550,6 +1553,7 @@ async function main() {
   // restart.
   const stored = store.coerceVillageState({
     version: 3,
+    socialContractVersion: 2,
     wishSystemVersion: 3,
     villagers: [
       {

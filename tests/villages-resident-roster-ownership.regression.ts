@@ -185,6 +185,7 @@ const departed = fixture("Departed");
 await departed.service.addVillager("same");
 const home = coerceVillageState({
   version: 3,
+  socialContractVersion: 2,
   venues: [
     parsePlace(
       {

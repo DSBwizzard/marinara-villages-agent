@@ -71,6 +71,7 @@ async function main() {
   });
   const world = coerceVillageState({
     version: 3,
+    socialContractVersion: 2,
     ...defaultVillageState(),
     seed: "attendance-fixture",
     foundedAt: stamp,

@@ -19,6 +19,7 @@ const { activate } = await import(pathToFileURL(resolve("packages/villages/serve
 const now = new Date().toISOString();
 const world = coerceVillageState({
   version: 3,
+  socialContractVersion: 2,
   seed: "founding-http",
   name: "Synthetic place",
   setting: "Shared converted rooms",

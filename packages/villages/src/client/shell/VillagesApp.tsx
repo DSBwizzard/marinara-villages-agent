@@ -7,6 +7,7 @@ import { ResumeScreen } from "../features/founding/ResumeScreen.js";
 import { ResidentsScreen } from "../features/residents/ResidentsScreen.js";
 import { RosterScreen } from "../features/residents/RosterScreen.js";
 import { SceneScreen } from "../features/scenes/SceneScreen.js";
+import { Mailbox } from "../features/residents/Mailbox.js";
 import { MenuScreen } from "./MenuScreen.js";
 import { VenueScreen } from "../features/venues/VenueScreen.js";
 import { useVillageController } from "./useVillageController.js";
@@ -128,6 +129,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const showing = !!origin && (bookVisible || (controller.screen !== "home" && controller.screen !== "room"));
   return (
     <VillagesFrame controller={navigation}>
+      <Mailbox
+        open={controller.mailboxOpen}
+        snapshot={controller.snapshot}
+        setSnapshot={controller.setSnapshot}
+        onClose={() => controller.setMailboxOpen(false)}
+        openMenu={controller.openMenu}
+        initialResidentId={controller.screen === "person" ? controller.personProfile?.actorId : ""}
+      />
       <div hidden={showing} inert={showing} style={{ height: "100%" }}>
         <VillageScreen
           controller={showing ? { ...navigation, screen: origin.screen, menuPage: origin.menuPage } : navigation}

@@ -1,4 +1,5 @@
 import { developmentSceneContext } from "./development-knowledge.js";
+import { socialContextState } from "./social-context.js";
 import { openingSemanticContext } from "./opening-context.js";
 import { createHash } from "node:crypto";
 import { asRecord } from "./coerce.js";
@@ -90,6 +91,13 @@ export function semanticContext(
     worldFacts: state.worldFacts,
     sceneId: scene.id,
     revision: scene.sceneRevision,
+    social: {
+      capturedAndScene: socialContextState(state.relationshipContext, actors, query),
+      live: socialContextState(authority.relationshipContext, actors, query),
+      liveAt: new Date().toISOString(),
+      intentions: Object.fromEntries(actors.map((id) => [id, state.relationshipContext?.intentions[id] ?? []])),
+      rule: "Each changed pair must cite its exact current live revision. sceneAfter and liveAfter are separate interpretations of this same event; never import later live facts into Scene continuity.",
+    },
     zoneId: scene.zoneId,
     actors: state.villagers
       .filter((row) => actors.includes(row.characterId))

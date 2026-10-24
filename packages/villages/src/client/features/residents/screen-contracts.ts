@@ -25,6 +25,7 @@ import type { useAddVillager } from "./actions.js";
 
 /** Values and actions used by ResidentsScreen; independent of shell implementation. */
 export type ResidentsScreenController = {
+  readonly setMailboxOpen: (open: boolean) => void;
   readonly agendas: ResidentsState["agendas"];
   readonly applyVillagerRefresh: ReturnType<typeof useApplyVillagerRefresh>;
   readonly busy: boolean;

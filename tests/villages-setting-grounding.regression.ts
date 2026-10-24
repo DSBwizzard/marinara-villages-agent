@@ -112,13 +112,14 @@ async function main() {
   try {
     assert.equal(coerceVillageState({ version: 3 }).name, "", "new worlds have no invented village name");
     assert.equal(
-      coerceVillageState({ version: 3, name: "Willowbrook" }).name,
+      coerceVillageState({ version: 3, socialContractVersion: 2, name: "Willowbrook" }).name,
       "Willowbrook",
       "authored names remain intact",
     );
     for (const [name, setting, circumstances, home] of scenarios) {
       const state = coerceVillageState({
         version: 3,
+        socialContractVersion: 2,
         wishSystemVersion: 3,
         name,
         setting,
@@ -231,6 +232,7 @@ async function main() {
     common.state.condition = "The roof leaks";
     const farm = coerceVillageState({
       version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       seed: "farm-progress",
       setupAt: "2026-10-01T12:00:00Z",
@@ -312,6 +314,7 @@ async function main() {
 
     const legacy = coerceVillageState({
       version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       setupAt: "2025-01-01T00:00:00Z",
       setting: "Old harbor",
@@ -323,7 +326,8 @@ async function main() {
     assert.equal(legacy.promptKnowledge, "My custom prompt");
     assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
     assert.equal(
-      coerceVillageState({ version: 3, wishSystemVersion: 3, setupAt: legacy.setupAt }).playerBackground,
+      coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, setupAt: legacy.setupAt })
+        .playerBackground,
       "",
     );
     assert.equal(usageDocument.data.requests.length, calls, "every grounding request is accounted for");

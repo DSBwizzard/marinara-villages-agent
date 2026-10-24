@@ -6,6 +6,7 @@ import { fixtureLocalAttention, fixtureAcousticModel } from "./fixtures/villages
 import { setVillageSendOnEnter } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import assert from "node:assert/strict";
 import { wishReceiptRecords } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
 import { physicalVenueEvents } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
@@ -138,6 +139,12 @@ let documentWriteCalls = 0,
   providerResolves = 0;
 const documents = {
   async getById(packageId: string, id: string) {
+    if (id.startsWith("villages-relationships-") && !records.has(key(packageId, id))) {
+      const world = records.get(key(packageId, "villages-village")).data,
+        social = defaultRelationshipState(world.seed);
+      social.reviewedActorIds = world.villagers.map((person: any) => person.characterId);
+      records.set(key(packageId, id), { id, packageId, kind: "relationships", data: social, revision: 1 });
+    }
     return records.get(key(packageId, id)) ?? null;
   },
   async list(packageId: string, kind: string) {
@@ -1694,19 +1701,24 @@ async function main() {
       /Alternate narration and speakers|Every player speech turn needs spoken dialogue/u,
     );
     assert.equal(defaultVillageState().sendOnEnter, false);
-    assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3 }).sendOnEnter, false);
-    assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, sendOnEnter: "true" }).sendOnEnter, false);
+    assert.equal(coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3 }).sendOnEnter, false);
+    assert.equal(
+      coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, sendOnEnter: "true" })
+        .sendOnEnter,
+      false,
+    );
     assert.equal((await setVillageSendOnEnter(true)).settings.sendOnEnter, true);
     assert.equal((await readVillageState()).sendOnEnter, true);
     assert.equal((await setVillageSendOnEnter(false)).settings.sendOnEnter, false);
     await assert.rejects(() => setVillageSendOnEnter("true"), /must be on or off/u);
     assert.deepEqual(
-      coerceVillageState({ version: 3, wishSystemVersion: 3 }).narrationStyle,
+      coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3 }).narrationStyle,
       defaultVillageState().narrationStyle,
     );
     assert.deepEqual(
       coerceVillageState({
         version: 3,
+        socialContractVersion: 2,
         wishSystemVersion: 3,
         narrationStyle: {
           tense: "past",
@@ -3461,6 +3473,7 @@ async function main() {
     const roomForMigration = homeForMigration.privateSpaces!.find((space) => space.ownerId === "bob")!;
     const migrated = coerceVillageState({
       version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       ...persistedForMigration,
       venues: persistedForMigration.venues.map((place) =>

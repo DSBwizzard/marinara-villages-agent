@@ -30,6 +30,7 @@ const records = new Map<string, any>(),
 const now = new Date().toISOString();
 const village = coerceVillageState({
   version: 3,
+  socialContractVersion: 2,
   wishSystemVersion: 3,
   name: "Preserved village",
   foundedAt: now,

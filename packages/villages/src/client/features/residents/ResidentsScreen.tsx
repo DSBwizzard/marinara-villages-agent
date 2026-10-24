@@ -96,6 +96,12 @@ export function ResidentsScreen({
       };
     });
     const relatedLinks: DossierLink[] = [];
+    relatedLinks.push({
+      id: "personal-mail",
+      title: "Message",
+      detail: "Mailbox",
+      onOpen: () => controller.setMailboxOpen(true),
+    });
     for (const project of snapshot?.projects ?? []) {
       const flow = project.lifecycle;
       if (

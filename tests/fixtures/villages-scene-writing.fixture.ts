@@ -40,6 +40,7 @@ export async function currentScenePrompt(
   };
   const world = coerceVillageState({
     version: 3,
+    socialContractVersion: 2,
     ...state,
     villagers: state.villagers.some((resident) => resident.characterId === card.id)
       ? state.villagers.map((resident) =>

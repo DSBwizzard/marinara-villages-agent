@@ -39,7 +39,6 @@ export function draftZonePolicy(
           ? ["workers"]
           : [],
     inviterIds: [],
-    regularVisitors: [],
     visitorHours: "inherit",
     accompanied: false,
   };

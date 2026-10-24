@@ -291,13 +291,15 @@ async function main() {
   }
 
   assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).foundingPreparation,
+    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
+      .foundingPreparation,
     null,
     "older villages remain ready",
   );
   assert.deepEqual(
     coerceVillageState({
       version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       foundingPreparation: { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     }).foundingPreparation,
@@ -307,6 +309,7 @@ async function main() {
   assert.deepEqual(
     coerceVillageState({
       version: 3,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       foundingPreparation: {
         status: "pending",
@@ -335,12 +338,17 @@ async function main() {
     "the active stage and bounded retry count survive a process restart",
   );
   assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3 }).foundingGuidance,
+    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3 }).foundingGuidance,
     "",
     "older villages have no narrative direction",
   );
   assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3, foundingGuidance: "Favor quiet bonds." }).foundingGuidance,
+    coerceVillageState({
+      version: 3,
+      socialContractVersion: 2,
+      wishSystemVersion: 3,
+      foundingGuidance: "Favor quiet bonds.",
+    }).foundingGuidance,
     "Favor quiet bonds.",
   );
   const ongoingOnly = readScenarioImprint({
@@ -411,7 +419,7 @@ async function main() {
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
   const noMapSetup = createFoundingSetup({
     ...setupPorts,
-    readVillageState: async () => coerceVillageState({ version: 3, wishSystemVersion: 3 }),
+    readVillageState: async () => coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3 }),
     readTownMapSubmission: async () => ({
       image: "",
       size: null,
@@ -670,6 +678,7 @@ async function foundingConnectionOwnership() {
       let held = false;
       const state = coerceVillageState({
         version: 3,
+        socialContractVersion: 2,
         wishSystemVersion: 3,
         seed: "equal-founding-seed",
         name: label,

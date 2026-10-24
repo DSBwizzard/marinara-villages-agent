@@ -231,13 +231,11 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
           zone.access.managerIds = null;
           zone.access.memberIds = [];
           zone.access.inviterIds = [];
-          zone.access.regularVisitors = [];
         }
         if (zone.ownerId && old?.ownerId !== zone.ownerId) {
           zone.access.managerIds = [zone.ownerId];
           zone.access.memberIds = [zone.ownerId];
           zone.access.inviterIds = [];
-          zone.access.regularVisitors = [];
         }
         if (zone.access.memberRoles.includes("workers"))
           zone.access.inviterIds = zone.access.inviterIds.filter(

@@ -9,13 +9,91 @@ import { type CharacterParams, fail, readCharacterId } from "../../adapters/http
 import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { addVillager, removeVillager, editIdentityDescription } from "./resident-roster.js";
-import { changeRelationshipCreator, readRelationshipsView } from "./relationships.js";
+import { clarifyRelationships, readRelationshipsInspect, readRelationshipsView } from "./relationships.js";
 import { generateResidentSignature, readResidentSignature } from "./resident-signature.js";
+import { recoverSocialOutbox } from "./relationship-social.js";
+import { z } from "zod";
+import { socialMail } from "./social-mail.js";
 import { readWishHistoryPage } from "./wishes/wish-archive.js";
 import { retireResidentWish } from "./wishes/wish-lifecycle.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerRelationshipRoutes(engine: FastifyInstance) {
+  engine.get("/mailbox", async (_request, reply) => {
+    try {
+      return await socialMail().readMailbox();
+    } catch (error) {
+      return fail(reply, error, "read Mailbox");
+    }
+  });
+  engine.post("/mailbox/threads", async (request, reply) => {
+    try {
+      return await socialMail().send(request.body);
+    } catch (error) {
+      return fail(reply, error, "send personal mail");
+    }
+  });
+  engine.post<{ Params: { threadId: string } }>("/mailbox/threads/:threadId/messages", async (request, reply) => {
+    try {
+      return await socialMail().send(request.body, request.params.threadId);
+    } catch (error) {
+      return fail(reply, error, "reply to personal mail");
+    }
+  });
+  engine.post<{ Params: { threadId: string } }>("/mailbox/threads/:threadId/read", async (request, reply) => {
+    try {
+      return await socialMail().readThread(request.params.threadId);
+    } catch (error) {
+      return fail(reply, error, "read personal thread");
+    }
+  });
+  engine.post<{ Params: { threadId: string; messageId: string } }>(
+    "/mailbox/threads/:threadId/messages/:messageId/cancel",
+    async (request, reply) => {
+      try {
+        return await socialMail().cancel(request.params.threadId, request.params.messageId);
+      } catch (error) {
+        return fail(reply, error, "cancel personal mail");
+      }
+    },
+  );
+  engine.post<{ Params: { threadId: string; messageId: string } }>(
+    "/mailbox/threads/:threadId/messages/:messageId/retry",
+    async (request, reply) => {
+      try {
+        return await socialMail().retry(
+          request.params.threadId,
+          request.params.messageId,
+          z.object({ requestId: z.string() }).parse(request.body).requestId,
+        );
+      } catch (error) {
+        return fail(reply, error, "retry personal mail");
+      }
+    },
+  );
+  engine.post<{ Params: { id: string } }>("/mailbox/invitations/:id/response", async (request, reply) => {
+    try {
+      return await socialMail().respond(request.params.id, request.body);
+    } catch (error) {
+      return fail(reply, error, "respond to invitation");
+    }
+  });
+
+  engine.post<{ Params: { id: string } }>("/relationships/outbox/:id/recovery", async (request, reply) => {
+    try {
+      await recoverSocialOutbox(request.params.id, request.body);
+      return readRelationshipsInspect();
+    } catch (error) {
+      return fail(reply, error, "recover encounter");
+    }
+  });
+  engine.post("/relationships/clarifications", async (request, reply) => {
+    try {
+      return await clarifyRelationships(request.body);
+    } catch (error) {
+      return fail(reply, error, "clarify starting history");
+    }
+  });
   engine.get("/relationships", async (_request, reply) => {
     try {
       return await readRelationshipsView();
@@ -34,11 +112,11 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
       }
     },
   );
-  engine.post("/relationships/creator", async (request, reply) => {
+  engine.get("/relationships/inspect", async (_request, reply) => {
     try {
-      return await changeRelationshipCreator(request.body);
+      return await readRelationshipsInspect();
     } catch (error) {
-      return fail(reply, error, "relationship creator");
+      return fail(reply, error, "inspect relationships");
     }
   });
 }

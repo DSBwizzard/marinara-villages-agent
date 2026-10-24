@@ -30,7 +30,8 @@ export function createVillageStateService(repository: VillageRepository, worldRe
     if (state.seed && !state.clock?.recovery) {
       const { readRelationshipState, reconcileRelationships } = worldRelationships();
       const { projectSocialActivities, processSocialOutbox, reconcileSocialPlans } = worldRelationships();
-      if (await processSocialOutbox(state)) {
+      const mailChanged = await worldRelationships().processPersonalMailOutbox?.(state);
+      if ((await processSocialOutbox(state)) || mailChanged) {
         const refreshed = await readVillageAuthority();
         Object.assign(state, refreshed);
         state.relationshipContext = await readRelationshipState(state.seed);

@@ -1,17 +1,61 @@
-export type RelationshipDimension = "warmth" | "trust";
+/** Old social contracts are never silently converted. */
+export const SOCIAL_CONTRACT_VERSION = 2;
+export type SocialEvidence = {
+  id: string;
+  sourceId: string;
+  speakerId: string;
+  content: string;
+  heardBy: string[];
+  hash: string;
+};
+export type SocialRecord = {
+  id: string;
+  revision: number;
+  kind: "history" | "declaration" | "boundary" | "agreement" | "commitment";
+  text: string;
+  participants: string[];
+  status: "stated" | "proposed" | "accepted" | "fulfilled" | "cancelled" | "overdue";
+  /** Only an explicitly agreed real-world instant creates a deadline. */
+  dueAt?: string;
+  /** Authored historical facts may be unknown even to their subjects. */
+  knownBy?: string[];
+  evidenceIds: string[];
+};
+export type RelationshipEdge = {
+  fromId: string;
+  toId: string;
+  revision: number;
+  connection: string;
+  stance: string;
+  expectations: string[];
+  concerns: string[];
+  experiences: string[];
+  records: Record<string, SocialRecord>;
+  updatedAt: string;
+};
+export type RelationshipUpdate = Pick<RelationshipEdge, "connection" | "stance" | "expectations" | "concerns"> & {
+  /** Upserts: omission cannot erase history or active terms. */
+  records: SocialRecord[];
+};
 export type RelationshipChange = {
   id: string;
   fromId: string;
   toId: string;
-  dimension: RelationshipDimension;
-  amount: number;
-  ordinary: boolean;
+  expectedRevision: number;
+  sceneAfter: RelationshipUpdate;
+  liveAfter: RelationshipUpdate;
   reason: string;
   lineIds: string[];
-  disclosed: boolean;
-  contact: boolean;
-  /** Deterministic contact accounting, independent of interpreted score changes. */
-  contactOnly?: boolean;
+  evidence: SocialEvidence[];
+};
+export type SocialIntention = {
+  id: string;
+  actorId: string;
+  targetIds: string[];
+  text: string;
+  reason: string;
+  evidenceIds: string[];
+  status: "active" | "retired" | "attempted";
 };
 export type RelationshipPermission = {
   id: string;
@@ -27,13 +71,20 @@ export type RelationshipDisclosure = {
   fromId: string;
   toId: string;
   text: string;
-  kind: "explanation" | "preference" | "boundary";
+  kind: "explanation" | "preference" | "boundary" | "routine" | "history" | "connection";
   lineIds: string[];
 };
 export type RelationshipReview = {
   changes: RelationshipChange[];
   permissions: RelationshipPermission[];
   disclosures: RelationshipDisclosure[];
+  intentions?: {
+    actorId: string;
+    expectedRevision: number;
+    items: SocialIntention[];
+    sceneItems: SocialIntention[];
+    evidence: SocialEvidence[];
+  }[];
 };
 export type RelationshipEvidenceLine = {
   id: string;
@@ -44,24 +95,6 @@ export type RelationshipEvidenceLine = {
   kind?: string;
   playerHeard?: boolean;
 };
-export type RelationshipEdge = {
-  fromId: string;
-  toId: string;
-  warmth: number;
-  trust: number;
-  familiarity: number;
-  lastContactAt: string;
-  decayAnchorAt: string;
-  decayTimerAt?: string;
-  knowledgeBlockedUntilContact: boolean;
-  decayThrough: number;
-  decayAmount: number;
-  playerContactAt: string;
-  updatedAt: string;
-  friend: boolean;
-  close: boolean;
-  ordinaryGains: Record<string, number>;
-};
 export type RelationshipGrant = {
   id: string;
   controllerId: string;
@@ -70,7 +103,6 @@ export type RelationshipGrant = {
   zoneId: string;
   active: boolean;
   revoked: boolean;
-  automatic: boolean;
   at: string;
 };
 export type RelationshipReceipt = {
@@ -81,24 +113,31 @@ export type RelationshipReceipt = {
   id: string;
   fromId: string;
   toId: string;
-  dimension: RelationshipDimension;
-  before: number;
-  after: number;
+  beforeRevision: number;
+  sceneAfter: RelationshipEdge;
+  liveAfter: RelationshipEdge;
   reason: string;
   at: string;
   sourceId: string;
   lineIds: string[];
+  evidence: SocialEvidence[];
 };
 export type RelationshipKnowledge = {
   fromId: string;
   at: string;
+  summary: string;
   routine: string[];
   interests: string;
-  wishes: string[];
-  ties: { toId: string; warmth: number; trust: number }[];
-  closeAt: string;
 };
-export type StartingTie = { fromId: string; toId: string; warmth: number; trust: number; established: boolean };
+export type StartingTie = {
+  fromId: string;
+  toId: string;
+  connection: string;
+  stance: string;
+  expectations: string[];
+  concerns: string[];
+  history: { text: string; sourceIds: string[]; knownBy: string[] }[];
+};
 export type SocialPlan = {
   id: string;
   dateKey: string;
@@ -128,18 +167,39 @@ export type SocialEncounter = {
 export type RelationshipState = {
   clockShiftMs?: number;
   noticeSequence: number;
-  version: 1;
+  version: 2;
   seed: string;
   edges: Record<string, RelationshipEdge>;
+  intentions: Record<string, SocialIntention[]>;
+  intentionRevisions: Record<string, number>;
+  intentionReceipts: Record<
+    string,
+    {
+      sourceId: string;
+      actorId: string;
+      sceneId?: string;
+      submissionId?: string;
+      at: string;
+      sceneAfter: SocialIntention[];
+      liveAfter: SocialIntention[];
+      sceneRevision: number;
+      liveRevision: number;
+      evidence: SocialEvidence[];
+    }
+  >;
   grants: Record<string, RelationshipGrant>;
   receipts: Record<string, RelationshipReceipt>;
   applied: Record<string, true>;
-  disclosures: Record<string, RelationshipDisclosure & { at: string; sourceId: string }>;
+  disclosures: Record<string, RelationshipDisclosure & { at: string; sourceId: string; publicationId?: string }>;
   knowledge: Record<string, RelationshipKnowledge>;
+  sharedRecords: Record<string, SocialRecord>;
   reviewedActorIds: string[];
   startingTies: StartingTie[];
   startingActorIds: string[];
-  spoilers: boolean;
+  initializationConflicts: { actorIds: string[]; question: string; sourceIds: string[] }[];
+  mailThreads: Record<string, import("./social-mail.js").SocialMailThread>;
+  mailDeliveries: Record<string, { messageId: string; at: string; sourceHash: string }>;
+  invitations: Record<string, import("./social-mail.js").SocialInvitation>;
   socialPlans: SocialPlan[];
   socialEncounters: SocialEncounter[];
 };

@@ -74,7 +74,7 @@ async function main() {
   assert.equal(refreshed, outboxInput, "refresh updates the original hydrated object after outbox settlement");
   assert.equal(refreshed.name, "After outbox");
   assert.equal(refreshed.relationshipContext!.seed, "after-outbox");
-  assert.equal(captures, 3, "the original separate collaboration captures stay at their call positions");
+  assert.equal(captures, 4, "refresh checks both saved social outboxes");
   assert.deepEqual(events, [
     "read:initial",
     "relationships:initial",

@@ -11,11 +11,11 @@ export function localDateKey(now: Date): string {
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
-export function storyAllowance(pace: VillageStoryPace, seed: string, date: string): number {
+export function storyAllowance(pace: VillageStoryPace, _seed: string, _date: string): number {
   if (pace === "off") return 0;
   if (pace === "quiet") return 1;
-  if (pace === "lively") return 3;
-  return 1 + (hashString(`${seed}|${date}|creative-allowance`) % 3);
+  if (pace === "lively") return 6;
+  return 3;
 }
 export function creativeOpportunity(
   village: VillageState,

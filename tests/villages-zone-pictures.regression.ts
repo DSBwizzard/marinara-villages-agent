@@ -32,6 +32,7 @@ const image = picture("original");
 function fixture() {
   return coerceVillageState({
     version: 3,
+    socialContractVersion: 2,
     ...defaultVillageState(),
     wishSystemVersion: 3,
     venues: [

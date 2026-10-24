@@ -1,17 +1,8 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import {
-  activationScope,
-  createActivationScope,
-  installDefaultActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   defaultVillageState,
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { resolveVenueZone, canInviteToZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
-import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import {
   defaultRelationshipState,
   neutralRelationship,
@@ -19,1066 +10,484 @@ import {
   relationshipFor,
   applyRelationshipReview,
   reconcileRelationships,
-  relationshipZoneController,
+  coerceRelationshipState,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import {
-  mutateRelationships,
-  readRelationshipState,
-} from "../packages/villages/src/server/features/residents/relationship-store.js";
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
-  substantiveContact,
 } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
 import {
-  captureRelationshipKnowledge,
-  projectRelationshipProfiles,
-  proposeStartingTies,
-} from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
-import {
-  readRelationshipsView,
-  changeRelationshipCreator,
-} from "../packages/villages/src/server/features/residents/relationships.js";
-import {
+  relationshipWritingPrompt,
   relationshipChangeNotices,
-  filterRelationshipNotices,
 } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import {
-  socialPlanCandidates,
-  socialPlanValid,
-  socialContinuationValid,
-  projectSocialActivities,
-  reconcileSocialPlans,
-} from "../packages/villages/src/server/domain/rules/social-rules.js";
-import { processSocialOutbox } from "../packages/villages/src/server/features/residents/relationship-social.js";
-
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
+  captureSceneContinuity,
+  sceneContinuityView,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import {
+  reserveEventAttempt,
+  eventAttemptAvailable,
+} from "../packages/villages/src/server/domain/rules/event-attempts.js";
+import {
+  queuePersonalMessage,
+  cancelPersonalMessage,
+  beginMailDelivery,
+  completeMailDelivery,
+  readPersonalThread,
+  respondSocialInvitation,
+} from "../packages/villages/src/server/domain/rules/social-mail.js";
+import { createRelationships } from "../packages/villages/src/server/features/residents/relationship-service.js";
+import { startVillagesApplication } from "../packages/villages/src/server/entry/application.js";
 import type {
-  RelationshipChange,
   RelationshipEvidenceLine,
+  RelationshipUpdate,
+  SocialRecord,
 } from "../packages/villages/src/server/domain/models/relationship-types.js";
 
-const now = new Date(),
-  stamp = now.toISOString(),
-  weekday = now.toLocaleDateString("en-US", { weekday: "long" });
-
-async function relationshipConnectionOwnership() {
-  function deferred() {
-    let resolve!: () => void;
-    const promise = new Promise<void>((done) => {
-      resolve = done;
-    });
-    return { promise, resolve };
-  }
-  const seed = "relationship-owner-fixture";
-  const relationshipId = "villages-relationships-" + createHash("sha256").update(seed).digest("hex").slice(0, 24);
-  function fixture(label: string, operation: "creator" | "social", stage?: string) {
-    const scope = createActivationScope(),
-      entered = deferred(),
-      gate = deferred();
-    const village = defaultVillageState();
-    village.seed = seed;
-    village.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    village.clock = {
-      revision: 1,
-      trustedAt: new Date().toISOString(),
-      recovery: null,
-      replayUntilDate: "",
-      shiftTotalMs: 0,
-    };
-    village.foundedAt = village.setupAt = new Date().toISOString();
-    const entry = {
-      id: "equal-outbox",
-      seed,
-      at: new Date().toISOString(),
-      opportunity: { id: "equal-opportunity", kind: "encounter", actorIds: [], venueId: "missing" },
-      proposal: { encounter: null },
-      candidates: [],
-    };
-    if (operation === "social") village.socialOutbox = [entry as any];
-    const relationships = defaultRelationshipState(seed);
-    relationships.reviewedActorIds = [label];
-    const records = new Map<string, any>([
-      ["villages-village", { id: "villages-village", kind: "village", revision: 1, data: village }],
-      [relationshipId, { id: relationshipId, kind: "relationships", revision: 1, data: relationships }],
-    ]);
-    const writes: string[] = [];
-    let held = false,
-      relationshipReads = 0,
-      conflicts = stage === "save" ? 1 : 0;
-    let failure: Error | undefined,
-      failureTarget: string | undefined,
-      failAfterSave = false;
-    async function pause(candidate: string) {
-      if (!held && candidate === stage) {
-        held = true;
-        entered.resolve();
-        await gate.promise;
-      }
-    }
-    const documents = {
-      async getById(_packageId: string, id: string) {
-        assert.equal(activationScope(), scope, label + " read owner");
-        if (id === "villages-village") await pause("world");
-        if (id === relationshipId && ++relationshipReads === (operation === "creator" ? 2 : 1)) await pause("mutation");
-        if (failure && !failureTarget) throw failure;
-        return structuredClone(records.get(id) ?? null);
-      },
-      async list() {
-        return [];
-      },
-      async create(input: any) {
-        throw new Error("Unexpected creation: " + input.id);
-      },
-      async update(input: any) {
-        assert.equal(activationScope(), scope, label + " write owner");
-        if (input.id === relationshipId) await pause("save");
-        if (failure && (!failureTarget || failureTarget === input.id) && !failAfterSave) throw failure;
-        const old = records.get(input.id);
-        if (input.id === relationshipId && conflicts-- > 0) {
-          records.set(input.id, {
-            ...old,
-            revision: old.revision + 1,
-            data: { ...old.data, reviewedActorIds: [label, "concurrent"] },
-          });
-          return null;
-        }
-        if (!old || old.revision !== input.expectedRevision) return null;
-        const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
-        records.set(input.id, row);
-        writes.push(input.id);
-        if (failure && failureTarget === input.id && failAfterSave) throw failure;
-        return structuredClone(row);
-      },
-      async remove() {
-        return false;
-      },
-    };
-    const release = scope.run(() =>
-      configureVillagesRuntime({
-        persistence: { documents },
-        getAgentConfig: async () => null,
-        logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
-      } as any),
-    );
-    assert.deepEqual(writes, [], "assembling connections performs no relationship work");
-    return {
-      scope,
-      entered,
-      gate,
-      records,
-      writes,
-      release,
-      village,
-      fail(error?: Error, target?: string, afterSave = false) {
-        failure = error;
-        failureTarget = target;
-        failAfterSave = afterSave;
-      },
-    };
-  }
-  for (const operation of ["creator", "social"] as const)
-    for (const stage of ["world", "mutation", "save"]) {
-      const a = fixture("A", operation, stage),
-        b = fixture("B", operation);
-      const clearA = installDefaultActivation(a.scope, () => {});
-      let clearB = () => {};
-      const invoke = (owned: typeof a) =>
-        operation === "creator"
-          ? changeRelationshipCreator({ action: "acknowledge", spoilerAcknowledged: true })
-          : processSocialOutbox(structuredClone(owned.village));
-      try {
-        const pending = invoke(a);
-        await Promise.race([
-          a.entered.promise,
-          pending.then(() => assert.fail("Operation completed before controlled " + stage + " pause")),
-        ]);
-        clearB = installDefaultActivation(b.scope, () => {});
-        await invoke(b);
-        clearA();
-        a.gate.resolve();
-        await pending;
-        for (const owned of [a, b]) {
-          const saved = owned.records.get(relationshipId).data;
-          assert(saved.reviewedActorIds.includes(owned === a ? "A" : "B"));
-          assert(!saved.reviewedActorIds.includes(owned === a ? "B" : "A"));
-          if (operation === "creator") assert.equal(saved.spoilers, true);
-          else {
-            assert.equal(saved.applied["equal-outbox"], true);
-            assert.deepEqual(owned.records.get("villages-village").data.socialOutbox, []);
-            assert.deepEqual(
-              owned.writes,
-              [relationshipId, "villages-village"],
-              "relationship commit precedes Village acknowledgement",
-            );
-            const before = owned.writes.length;
-            await owned.scope.run(() => processSocialOutbox(structuredClone(owned.village)));
-            assert.equal(
-              owned.records.get(relationshipId).data.socialEncounters.length,
-              0,
-              "invalid local encounter causes no paid repair or invented relationship evidence",
-            );
-            assert.equal(owned.writes.length, before + 2, "replay retains the saved transaction path");
-          }
-        }
-        if (stage === "save")
-          assert(
-            a.records.get(relationshipId).data.reviewedActorIds.includes("concurrent"),
-            "losing CAS attempt preserves authoritative saved changes",
-          );
-        console.log("Owned relationship stage passed:", operation, stage);
-      } finally {
-        a.gate.resolve();
-        clearA();
-        clearB();
-        a.release();
-        b.release();
-        a.scope.dispose();
-        b.scope.dispose();
-      }
-    }
-  for (const afterSave of [false, true]) {
-    const owned = fixture("A", "social"),
-      clear = installDefaultActivation(owned.scope, () => {});
-    try {
-      const exact = new Error(afterSave ? "lost social acknowledgement" : "failed social acknowledgement");
-      owned.fail(exact, "villages-village", afterSave);
-      await assert.rejects(processSocialOutbox(structuredClone(owned.village)), (error) => error === exact);
-      assert.equal(
-        owned.records.get(relationshipId).data.applied["equal-outbox"],
-        true,
-        "relationship settlement survives an acknowledgement error",
-      );
-      assert.equal(owned.records.get("villages-village").data.socialOutbox.length, afterSave ? 0 : 1);
-      owned.fail();
-      await processSocialOutbox(structuredClone(owned.village));
-      assert.deepEqual(owned.records.get("villages-village").data.socialOutbox, []);
-      assert.equal(owned.records.get(relationshipId).data.socialEncounters.length, 0);
-      assert.deepEqual(Object.keys(owned.records.get(relationshipId).data.applied), ["equal-outbox"]);
-    } finally {
-      clear();
-      owned.release();
-      owned.scope.dispose();
-    }
-  }
-  const a = fixture("A", "creator"),
-    b = fixture("B", "creator");
-  const clearA = installDefaultActivation(a.scope, () => {});
-  let clearB = () => {};
-  try {
-    const exact = new Error("exact relationship read failure");
-    a.fail(exact);
-    await assert.rejects(
-      changeRelationshipCreator({ action: "acknowledge", spoilerAcknowledged: true }),
-      (error) => error === exact,
-    );
-    assert.deepEqual(a.writes, []);
-    a.fail();
-    clearB = installDefaultActivation(b.scope, () => {});
-    a.scope.dispose();
-    await assert.rejects(
-      a.scope.run(() => readRelationshipState(seed)),
-      /not configured/,
-    );
-    await assert.rejects(
-      a.scope.run(() => changeRelationshipCreator({ action: "hide" })),
-      /not configured/,
-    );
-    await assert.rejects(
-      a.scope.run(() => processSocialOutbox(a.village)),
-      /not configured/,
-    );
-    assert.deepEqual(b.writes, [], "disposed interfaces never borrow the replacement's store");
-    await changeRelationshipCreator({ action: "acknowledge", spoilerAcknowledged: true });
-    assert.equal(b.records.get(relationshipId).data.spoilers, true);
-  } finally {
-    clearA();
-    clearB();
-    a.release();
-    b.release();
-    a.scope.dispose();
-    b.scope.dispose();
-  }
-}
-function venue(id: string, classes: VillageVenue["classes"]): VillageVenue {
-  return {
-    id,
-    name: id,
-    classes,
-    spaces: classes!.map((role) => defaultVenueSpace(role, "Interior")),
-    description: "Outside",
-    category: "",
-    presentation: { image: null, x: 0.2, y: 0.3 },
-    occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-    residentIds: [],
-    workerIds: [],
-    improvements: [null, null],
-    residenceCapacity: 3,
-    capabilities: [],
-    state: {
-      condition: "standing",
-      furniture: [],
-      publicFacts: [],
-      features: [],
-      traces: [],
-      updatedAt: stamp,
-    },
-  };
-}
-function resident(id: string): VillageVillager {
-  const block = {
-    startMinute: 0,
-    endMinute: 1440,
-    venueId: "park",
-    zoneId: "community",
-    activity: "Reading",
-    reason: "Free time",
-    status: "online",
-    flexible: true,
-  };
-  return {
-    characterId: id,
-    cardSnapshot: {
-      id,
-      revision: 1,
-      name: id,
-      sourceStatus: "available",
-      capturedAt: stamp,
-      comment: "",
-      summary: "",
-      tags: [],
-      description: "",
-      personality: "",
-      systemPrompt: "",
-      scenario: "",
-      backstory: "",
-      appearance: "",
-      exampleDialogue: "",
-    },
-    addedAt: stamp,
-    completedWishes: [],
-    remap: null,
-    ingestSchedule: false,
-    agenda: {
-      wishes: [{ id: "wish", wish: "A quiet garden", tell: "Looking outside", intensity: 1, addedAt: stamp }],
-      routineSummary: "Enjoys reading",
-      day: [block],
-      week: { [weekday]: [block] },
-      activeDay: { dateKey: agendaDateKey(now), weekday, blocks: [block], scheduleInformed: false },
-      source: "village",
-      generatedAt: stamp,
-    },
-  } as VillageVillager;
-}
-const raw = defaultVillageState();
-raw.seed = "relationship-regression";
-raw.foundedAt = stamp;
-raw.setupAt = stamp;
-raw.visitMemoryBackfilled = true;
-raw.storyPace = "lively";
-const home = venue("home", ["residence"]),
-  park = venue("park", ["community"]),
-  shop = venue("shop", ["workplace"]);
-home.residentIds = ["Rosa"];
-home.occupancy.residentCharacterId = "Rosa";
-home.privateSpaces = [{ ...defaultVenueSpace("residence", "Private"), id: "private:Rosa", ownerId: "Rosa" }];
-shop.workerIds = ["Rosa"];
-raw.venues = [home, park, shop];
-raw.villagers = [resident("Rosa"), resident("Ives")];
-const village = coerceVillageState(raw);
-const state = defaultRelationshipState(village.seed);
-const set = (fromId: string, toId: string, warmth: number, trust: number, target = state) =>
-  (target.edges[relationshipKey(fromId, toId)] = {
-    ...neutralRelationship(fromId, toId),
-    warmth,
-    trust,
-    lastContactAt: stamp,
-  });
-const change = (
-  id: string,
-  amount: number,
-  dimension: RelationshipChange["dimension"] = "warmth",
-  ordinary = false,
-  fromId = "Rosa",
-  toId = "player",
-): RelationshipChange => ({
-  id,
-  amount,
-  dimension,
-  ordinary,
-  fromId,
-  toId,
-  reason: "Shared experience",
-  lineIds: [id + ":line"],
-  disclosed: false,
-  contact: true,
-});
-const apply = (changes: RelationshipChange[], source = changes[0]?.id ?? "empty", at = stamp, target = state) =>
-  applyRelationshipReview(target, { ...emptyRelationshipReview(), changes }, village, source, at);
-
-assert.equal(relationshipFor(state, "Rosa", "player").familiarity, 0);
-set("Rosa", "Ives", 50, -25);
-set("Ives", "Rosa", -50, 25);
-assert.equal(relationshipFor(state, "Rosa", "Ives").warmth, 50);
-assert.equal(relationshipFor(state, "Ives", "Rosa").warmth, -50, "directions remain independent");
-apply([change("a", 2, "warmth", true), change("b", 2, "warmth", true)], "contact");
-assert.equal(relationshipFor(state, "Rosa", "player").warmth, 2, "ordinary daily cap");
-assert.equal(relationshipFor(state, "Rosa", "player").trust, 0);
-assert.equal(relationshipFor(state, "Rosa", "player").familiarity, 1);
-apply([change("a", 2, "warmth", true)], "contact");
-assert.equal(relationshipFor(state, "Rosa", "player").familiarity, 1, "idempotent contact");
-apply([change("major", 15, "trust"), change("loss", -5)], "mixed");
-const beforeDuplicate = relationshipFor(state, "Rosa", "player").trust;
-const beforeDuplicateFamiliarity = relationshipFor(state, "Rosa", "player").familiarity;
-apply([{ ...change("same-evidence", 15, "trust"), lineIds: ["major:line"] }]);
-assert.equal(
-  relationshipFor(state, "Rosa", "player").trust,
-  beforeDuplicate,
-  "overlapping evidence cannot score twice",
-);
-assert.equal(
-  relationshipFor(state, "Rosa", "player").familiarity,
-  beforeDuplicateFamiliarity,
-  "duplicate evidence cannot build familiarity",
-);
-const unchangedIds = ["b", "same-evidence"];
-assert.ok(unchangedIds.every((id) => state.receipts[id].before === state.receipts[id].after));
-assert.deepEqual(
-  relationshipChangeNotices(
-    unchangedIds.map((id) => state.receipts[id]),
-    state,
-    village,
-  ),
-  [],
-);
-assert.deepEqual(
-  filterRelationshipNotices(
-    [
-      ...unchangedIds.map((id) => ({ id, kind: "relationship-down" })),
-      { id: "a", kind: "relationship-up" },
-      { id: "memory", kind: "memory" },
-    ],
-    state,
-  ).map((event) => event.id),
-  ["a", "memory"],
-);
-const notices = relationshipChangeNotices(apply([change("up", 5), change("down", -5, "trust")], "two"), state, village);
-assert.deepEqual(
-  notices.map((row) => row.kind),
-  ["relationship-up", "relationship-down"],
-);
-assert.ok(
-  notices.every((row) => !row.detail),
-  "inferred explanations are private",
-);
-
-const decay = defaultRelationshipState(village.seed),
-  day = 86_400_000;
-set("Rosa", "player", 20, 30, decay);
-set("Ives", "player", -20, -30, decay);
-reconcileRelationships(decay, village, now.getTime() + 7 * day);
-assert.equal(relationshipFor(decay, "Rosa", "player").warmth, 20);
-reconcileRelationships(decay, village, now.getTime() + 10 * day);
-assert.equal(relationshipFor(decay, "Rosa", "player").warmth, 20);
-assert.equal(relationshipFor(decay, "Ives", "player").warmth, -20);
-assert.equal(relationshipFor(decay, "Rosa", "player").trust, 30);
-reconcileRelationships(decay, village, now.getTime() + 10 * day);
-assert.equal(relationshipFor(decay, "Ives", "player").warmth, -20, "absence never changes player feelings");
-set("Rosa", "Ives", 20, 30, decay);
-set("Ives", "Rosa", -20, -30, decay);
-reconcileRelationships(decay, village, now.getTime() + 10 * day);
-assert.equal(relationshipFor(decay, "Rosa", "Ives").warmth, 17, "resident ties retain passive decay");
-assert.equal(relationshipFor(decay, "Ives", "Rosa").warmth, -17);
-const witnessed = defaultRelationshipState(village.seed);
-apply(
-  [{ ...change("witnessed", 15), contact: false }],
-  "witnessed",
-  new Date(now.getTime() - 10 * day).toISOString(),
-  witnessed,
-);
-assert.equal(
-  relationshipFor(witnessed, "Rosa", "player").warmth,
-  15,
-  "earned player feelings survive without direct substantive contact",
-);
-assert.equal(
-  relationshipFor(witnessed, "Rosa", "player").lastContactAt,
-  "",
-  "observing evidence does not invent direct contact",
-);
-const delayed = defaultRelationshipState(village.seed);
-set("Rosa", "player", 20, 30, delayed);
-delayed.edges[relationshipKey("Rosa", "player")]!.lastContactAt = new Date(now.getTime() - 20 * day).toISOString();
-reconcileRelationships(delayed, village);
-apply([change("delayed", 0)], "delayed", new Date(now.getTime() - 10 * day).toISOString(), delayed);
-assert.equal(
-  relationshipFor(delayed, "Rosa", "player").warmth,
-  20,
-  "late contact does not reconstruct decay in a player tie",
-);
-const legacy = defaultRelationshipState(village.seed);
-set("Rosa", "player", 11, 30, legacy);
-const oldEdge = legacy.edges[relationshipKey("Rosa", "player")]!;
-oldEdge.decayAmount = 9;
-oldEdge.decayThrough = 10;
-oldEdge.lastContactAt = new Date(now.getTime() - 20 * day).toISOString();
-reconcileRelationships(legacy, village, now.getTime() + 30 * day);
-apply([change("legacy-contact", 0)], "legacy", stamp, legacy);
-assert.equal(
-  relationshipFor(legacy, "Rosa", "player").warmth,
-  11,
-  "historical losses are neither refunded nor repeated",
-);
-apply([change("legacy-contact", 0)], "legacy", stamp, legacy);
-assert.equal(relationshipFor(legacy, "Rosa", "player").warmth, 11, "contact replay is idempotent");
-
-const shared = resolveVenueZone(village.venues[0]!, "residence")!,
-  personal = resolveVenueZone(village.venues[0]!, "private:Rosa")!;
-set("Rosa", "player", 25, 25);
-set("Rosa", "Ives", 25, 25);
-reconcileRelationships(state, village);
-assert.equal(relationshipZoneController(state, village, village.venues[0]!, shared, "player"), "Rosa");
-assert.equal(
-  relationshipZoneController(state, village, village.venues[0]!, shared, "Ives"),
-  "Rosa",
-  "NPC visitor uses controller feelings",
-);
-assert.equal(canInviteToZone(village.venues[0]!, shared, "Ives"), false, "guest is not a controller");
-const own = relationshipFor(state, "Rosa", "player");
-own.warmth = 15;
-own.trust = 15;
-reconcileRelationships(state, village);
-assert.ok(relationshipZoneController(state, village, village.venues[0]!, shared, "player"));
-own.trust = 14;
-reconcileRelationships(state, village);
-assert.equal(relationshipZoneController(state, village, village.venues[0]!, shared, "player"), null);
-own.trust = 24;
-reconcileRelationships(state, village);
-assert.equal(relationshipZoneController(state, village, village.venues[0]!, shared, "player"), null);
-own.warmth = own.trust = 50;
-applyRelationshipReview(
-  state,
-  {
-    ...emptyRelationshipReview(),
-    permissions: [
-      {
-        id: "invite",
-        controllerId: "Rosa",
-        visitorId: "player",
-        venueId: "home",
-        zoneId: personal.id,
-        action: "grant",
-        lineIds: ["invitation"],
-      },
-    ],
-  },
-  village,
-  "invite",
-  stamp,
-);
-assert.ok(relationshipZoneController(state, village, village.venues[0]!, personal, "player"));
-own.warmth = own.trust = 35;
-reconcileRelationships(state, village);
-assert.ok(relationshipZoneController(state, village, village.venues[0]!, personal, "player"));
-own.trust = 34;
-reconcileRelationships(state, village);
-assert.equal(relationshipZoneController(state, village, village.venues[0]!, personal, "player"), null);
-own.warmth = own.trust = 50;
-reconcileRelationships(state, village);
-applyRelationshipReview(
-  state,
-  {
-    ...emptyRelationshipReview(),
-    permissions: [
-      {
-        id: "revoke",
-        controllerId: "Rosa",
-        visitorId: "player",
-        venueId: "home",
-        zoneId: personal.id,
-        action: "revoke",
-        lineIds: ["revocation"],
-      },
-    ],
-  },
-  village,
-  "revoke",
-  stamp,
-);
-reconcileRelationships(state, village);
-assert.equal(
-  relationshipZoneController(state, village, village.venues[0]!, personal, "player"),
-  null,
-  "score recovery cannot reverse revocation",
-);
-applyRelationshipReview(
-  state,
-  {
-    ...emptyRelationshipReview(),
-    permissions: [
-      {
-        id: "late-old-grant",
-        controllerId: "Rosa",
-        visitorId: "player",
-        venueId: "home",
-        zoneId: personal.id,
-        action: "grant",
-        lineIds: ["older-invitation"],
-      },
-    ],
-  },
-  village,
-  "older-scene",
-  new Date(Date.parse(stamp) - 1000).toISOString(),
-);
-reconcileRelationships(state, village);
-assert.equal(
-  relationshipZoneController(state, village, village.venues[0]!, personal, "player"),
-  null,
-  "replaying an earlier grant cannot overwrite a newer revocation",
-);
-const changedController = structuredClone(village);
-changedController.venues[0]!.residentIds = [];
-changedController.venues[0]!.occupancy.residentCharacterId = null;
-reconcileRelationships(state, changedController);
-assert.equal(
-  relationshipZoneController(state, village, village.venues[0]!, shared, "player"),
-  null,
-  "authority loss persists after reassignment",
-);
-const workplace = village.venues[2]!;
-const staff = {
-  ...defaultVenueSpace("workplace", "Stockroom"),
-  id: "stock",
-  name: "Stockroom",
-  kind: "staff" as const,
-};
-workplace.zones!.push(staff);
-const invitationLines: RelationshipEvidenceLine[] = [
-  {
-    id: "standing",
-    speakerId: "Rosa",
-    role: "assistant",
-    kind: "dialogue",
-    content: "You can enter the Stockroom whenever you like.",
-    heardBy: ["Rosa"],
-    playerHeard: true,
-  },
-];
-const permission = {
-  controllerId: "Rosa",
-  visitorId: "player",
-  venueId: "shop",
-  zoneId: "stock",
-  action: "grant",
-  lineIds: ["standing"],
-};
-const standing = parseRelationshipReview(
-  { changes: [], permissions: [permission], disclosures: [] },
-  "staff",
-  invitationLines,
-  village,
-);
-assert.throws(
-  () =>
-    parseRelationshipReview(
-      { changes: [], permissions: [{ ...permission, controllerId: "Ives" }], disclosures: [] },
-      "guest",
-      invitationLines,
-      village,
-    ),
-  /controller/,
-);
-assert.throws(
-  () =>
-    parseRelationshipReview(
-      { changes: [], permissions: [permission], disclosures: [] },
-      "conditional",
-      invitationLines.map((line) => ({
-        ...line,
-        content: "If you behave, you can enter the Stockroom whenever you like.",
-      })),
-      village,
-    ),
-  /unconditional/,
-);
-own.warmth = -75;
-own.trust = 50;
-applyRelationshipReview(state, standing, village, "staff", stamp);
-assert.ok(
-  relationshipZoneController(state, village, workplace, staff, "player"),
-  "staff permission relies on trust independently of warmth",
-);
-own.trust = 35;
-reconcileRelationships(state, village);
-assert.ok(relationshipZoneController(state, village, workplace, staff, "player"));
-own.trust = 34;
-reconcileRelationships(state, village);
-assert.equal(relationshipZoneController(state, village, workplace, staff, "player"), null);
-own.trust = 49;
-reconcileRelationships(state, village);
-assert.equal(relationshipZoneController(state, village, workplace, staff, "player"), null);
-own.trust = 50;
-reconcileRelationships(state, village);
-assert.ok(relationshipZoneController(state, village, workplace, staff, "player"));
-workplace.constructionStatus = "worksite";
-assert.equal(
-  relationshipZoneController(state, village, workplace, staff, "player"),
-  null,
-  "construction closes relationship entry",
-);
-workplace.constructionStatus = "complete";
-workplace.archivedZones = [{ zone: staff, archivedAt: stamp }];
-workplace.zones = workplace.zones!.filter((zone) => zone.id !== staff.id);
-reconcileRelationships(state, village);
-workplace.zones.push(staff);
-assert.equal(
-  relationshipZoneController(state, village, workplace, staff, "player"),
-  null,
-  "archiving invalidates the old grant",
-);
-assert.equal(
-  canInviteToZone(village.venues[0]!, personal, "Ives"),
-  false,
-  "private invitation belongs to the current owner",
-);
-
-const evidence: RelationshipEvidenceLine[] = [
+const village = defaultVillageState();
+village.seed = "social-v2";
+village.foundedAt = "2026-10-22T10:00:00.000Z";
+village.villagers = ["ada", "ben", "cy"].map((id) => ({
+  characterId: id,
+  cardSnapshot: { name: id },
+  completedWishes: [],
+})) as any;
+village.relationshipContext = defaultRelationshipState(village.seed);
+const state = village.relationshipContext;
+const lines: RelationshipEvidenceLine[] = [
   {
     id: "p",
     speakerId: "player",
     role: "user",
-    content: "I enjoyed our conversation about gardening.",
-    heardBy: ["Rosa"],
+    content: "I accept meeting at noon tomorrow.",
+    heardBy: ["ada", "ben"],
+    playerHeard: true,
   },
   {
-    id: "r",
-    speakerId: "Rosa",
+    id: "a",
+    speakerId: "ada",
     role: "assistant",
-    content: "I enjoyed sharing those stories with you.",
-    heardBy: ["Rosa"],
+    content: "I can meet you at noon tomorrow.",
+    heardBy: ["ada", "ben"],
+    playerHeard: true,
+  },
+  {
+    id: "b",
+    speakerId: "ben",
+    role: "assistant",
+    content: "I agree to those terms.",
+    heardBy: ["ada", "ben"],
+    playerHeard: true,
   },
 ];
-assert.ok(substantiveContact(evidence, "Rosa", "player"));
-assert.equal(
-  substantiveContact(
-    evidence.map((line) => ({
-      ...line,
-      content: line.role === "user" ? "Hello, how are you doing today?" : "It is good to see you again!",
-    })),
-    "Rosa",
-    "player",
-  ),
-  false,
-  "greeting-only exchanges stay local",
-);
-assert.equal(
-  substantiveContact(
-    evidence.map((line) => ({ ...line, content: "Hello!" })),
-    "Rosa",
-    "player",
-  ),
-  false,
-);
-const decision = {
-  fromId: "Rosa",
+const after = (connection: string, records: any[] = []): RelationshipUpdate => ({
+  connection,
+  stance: "Particular perspective",
+  expectations: [],
+  concerns: [],
+  records,
+});
+const proposal = (connection: string, revision = 0) => ({
+  fromId: "ada",
   toId: "player",
-  dimension: "warmth",
-  strength: "minor",
-  direction: "increase",
-  ordinary: true,
-  reason: "Enjoyed company",
-  lineIds: ["p", "r"],
-  disclosed: false,
-};
-assert.equal(
-  parseRelationshipReview({ changes: [decision], permissions: [], disclosures: [] }, "parse", evidence, village)
-    .changes[0]!.amount,
-  2,
-);
-assert.throws(
-  () =>
-    parseRelationshipReview(
-      { changes: [{ ...decision, fromId: "Ives" }], permissions: [], disclosures: [] },
-      "parse",
-      evidence,
-      village,
-    ),
-  /audience/,
-);
-assert.throws(
-  () =>
-    parseRelationshipReview(
-      { changes: [decision, decision], permissions: [], disclosures: [] },
-      "parse",
-      evidence,
-      village,
-    ),
-  /Repeated/,
-);
-assert.throws(
-  () =>
-    parseRelationshipReview(
-      { changes: [{ ...decision, dimension: "trust" }], permissions: [], disclosures: [] },
-      "parse",
-      evidence,
-      village,
-    ),
-  /Ordinary/,
-);
-assert.throws(
-  () =>
-    parseRelationshipReview(
-      {
-        changes: [],
-        permissions: [],
-        disclosures: [{ fromId: "Rosa", toId: "Ives", kind: "explanation", text: "Secret", lineIds: ["r"] }],
-      },
-      "parse",
-      evidence.map((line) => ({ ...line, playerHeard: false })),
-      village,
-    ),
-  /disclosure/,
-);
+  expectedRevision: revision,
+  sceneAfter: after(connection),
+  liveAfter: after(connection),
+  reason: "Witnessed choice",
+  lineIds: ["p", "a"],
+});
+const review = (row: any, source = "source") =>
+  parseRelationshipReview({ ...emptyRelationshipReview(), changes: [row] }, source, lines, village, true);
 
-const speechDisclosure = {
-  changes: [],
-  permissions: [],
-  disclosures: [{ fromId: "Rosa", toId: "player", kind: "preference", text: "Enjoys sharing stories", lineIds: ["r"] }],
-};
-assert.equal(parseRelationshipReview(speechDisclosure, "speech-disclosure", evidence, village).disclosures.length, 1);
-assert.throws(
-  () =>
-    parseRelationshipReview(
-      speechDisclosure,
-      "narration-disclosure",
-      evidence.map((line) =>
-        line.id === "r"
-          ? { ...line, speakerId: "__venue_scene__", content: "Rosa turns toward you.", playerHeard: true }
-          : line,
-      ),
-      village,
-    ),
-  /villager's own speech/,
-  "A disclosure citing the narration between spoken segments is rejected even when the player witnessed it",
-);
-const knowledge = defaultRelationshipState(village.seed);
-set("Rosa", "player", 50, 50, knowledge);
-set("Rosa", "Ives", -40, 10, knowledge);
-reconcileRelationships(knowledge, village);
-captureRelationshipKnowledge(knowledge, village);
+// Directionality and player agency. No score, decay, familiarity or invented player perspective.
+const initial = review(proposal("Friends"));
+applyRelationshipReview(state, initial, village, "source", village.foundedAt);
+assert.equal(relationshipFor(state, "ada", "player").connection, "Friends");
+assert.equal(relationshipFor(state, "ben", "ada").connection, "");
 assert.equal(
-  projectRelationshipProfiles(knowledge, village)[0]!.knownAt,
-  "",
-  "creator values do not establish player knowledge",
+  Object.values(state.edges).some((edge) => edge.fromId === "player"),
+  false,
 );
-knowledge.edges[relationshipKey("Rosa", "player")]!.playerContactAt = stamp;
-captureRelationshipKnowledge(knowledge, village);
-assert.equal(projectRelationshipProfiles(knowledge, village)[0]!.ties[0]!.reasons.length, 0);
+const saved = structuredClone(state);
+reconcileRelationships(state, village, Date.parse("2036-10-22T10:00:00Z"));
+assert.deepEqual(state, saved, "Ordinary absence changes no social state");
+applyRelationshipReview(state, initial, village, "source", village.foundedAt);
+assert.deepEqual(state, saved, "Source replay is idempotent");
+assert.throws(() => review({ ...proposal("Friends"), fromId: "player" }), /actor/);
+assert.throws(() => review({ ...proposal("Friends"), lineIds: ["missing"] }), /missing source/);
+assert.throws(() => review({ ...proposal("Friends"), fromId: "cy" }), /audience/);
 assert.equal(
-  projectRelationshipProfiles(knowledge, village)[0]!.wishes.length,
+  relationshipChangeNotices(Object.values(state.receipts), state, village).length,
   0,
-  "Friendship alone cannot reveal private wishes",
-);
-village.wishKnowledge.Rosa = [{ wishId: "wish", text: "A quiet garden", learnedAt: stamp, lineIds: ["disclosed"] }];
-assert.deepEqual(projectRelationshipProfiles(knowledge, village)[0]!.wishes, ["A quiet garden"]);
-knowledge.edges[relationshipKey("Rosa", "player")]!.trust = 14;
-reconcileRelationships(knowledge, village);
-const oldKnowledge = structuredClone(knowledge.knowledge);
-const later = structuredClone(village);
-later.villagers[0]!.agenda!.wishes[0]!.wish = "Unknown new wish";
-captureRelationshipKnowledge(knowledge, later, new Date(now.getTime() + day));
-assert.deepEqual(knowledge.knowledge, oldKnowledge, "privilege loss retains dated values");
-const spoilerKnowledge = structuredClone(knowledge);
-spoilerKnowledge.edges[relationshipKey("Rosa", "player")]!.trust = 75;
-spoilerKnowledge.edges[relationshipKey("Rosa", "player")]!.knowledgeBlockedUntilContact = true;
-reconcileRelationships(spoilerKnowledge, later);
-captureRelationshipKnowledge(spoilerKnowledge, later);
-assert.deepEqual(
-  spoilerKnowledge.knowledge,
-  oldKnowledge,
-  "creator edits also cannot refresh previously earned knowledge",
-);
-const history = structuredClone(village);
-history.villagers[0]!.cardSnapshot.backstory = "Rosa is Ives's sister and works with Ives.";
-assert.ok(proposeStartingTies(history, defaultRelationshipState(history.seed)).every((tie) => !tie.established));
-history.villagers[0]!.cardSnapshot.backstory = "Rosa likes Ives. Rosa distrusts Ives.";
-assert.deepEqual(
-  proposeStartingTies(history, defaultRelationshipState(history.seed)).find((tie) => tie.toId === "Ives"),
-  { fromId: "Rosa", toId: "Ives", warmth: 25, trust: -50, established: true },
+  "Private interpretation produces no public notice",
 );
 
-const socialState = defaultRelationshipState(village.seed);
-set("Rosa", "Ives", 30, 30, socialState);
-set("Ives", "Rosa", 30, 30, socialState);
-const socialVillage = { ...structuredClone(village), relationshipContext: socialState };
-// A controlled morning timestamp avoids a midnight fixture losing all future slots.
-const morning = new Date(now);
-morning.setHours(8, 0, 0, 0);
-const plans = socialPlanCandidates(socialVillage, morning);
-assert.ok(
-  plans.length > 1 && plans.length <= 6,
-  "Code offers bounded feasible choices for System, not one preferred meeting",
-);
-assert.ok(plans.every((plan) => socialPlanValid(socialVillage, plan, morning)));
-const neutralSocial = structuredClone(socialVillage);
-set("Rosa", "Ives", 0, 0, neutralSocial.relationshipContext!);
-set("Ives", "Rosa", 0, 0, neutralSocial.relationshipContext!);
-assert.deepEqual(
-  socialPlanCandidates(neutralSocial, morning),
-  plans,
-  "Friendship scores do not arbitrarily exclude feasible meetings",
-);
-const plan = plans.find((plan) => plan.kind === "meeting")!;
-assert.ok(plan);
-assert.ok(socialPlanValid(socialVillage, plan, morning));
-socialState.socialPlans.push(plan);
-const duringMeeting = new Date(morning);
-duringMeeting.setHours(Math.floor(plan.startMinute / 60), plan.startMinute % 60);
-assert.ok(
-  socialContinuationValid(socialVillage, plan.id, plan, duringMeeting),
-  "hydrated plan stays valid during the meeting",
-);
-assert.ok(
-  socialContinuationValid({ ...socialVillage, relationshipContext: undefined }, plan.id, plan, duringMeeting),
-  "the coordinator's raw Village CAS can apply the frozen plan",
-);
-assert.equal(socialContinuationValid(socialVillage, "unknown-plan", plan, duringMeeting), false);
-projectSocialActivities(socialVillage, morning);
-assert.equal(socialVillage.villagers[0]!.agenda!.socialActivities!.length, 1);
-const busy = structuredClone(socialVillage);
-busy.villagers[1]!.agenda!.week![weekday]![0]!.flexible = false;
-busy.villagers[1]!.agenda!.activeDay!.blocks[0]!.flexible = false;
-assert.equal(socialPlanValid(busy, plan, morning), false);
-const inaccessible = structuredClone(socialVillage);
-inaccessible.venues.find((place) => place.id === plan.venueId)!.constructionStatus = "worksite";
-assert.equal(socialPlanValid(inaccessible, plan, morning), false, "social plans respect construction");
-assert.equal(socialPlanValid(socialVillage, { ...plan, actorIds: ["Rosa", "player"] }, morning), false);
-const absent = new Date(morning.getTime() + day);
-reconcileSocialPlans(socialVillage, absent);
-assert.equal(socialState.socialPlans[0]!.status, "cancelled");
-assert.equal(socialState.receipts[plan.id], undefined, "missed plans do not reward relationships");
-socialVillage.storyPace = "off";
-assert.equal(socialPlanCandidates(socialVillage, morning).length, 0);
+// A unilateral ending needs no invented acceptance and does not erase earlier history.
+const history: SocialRecord = {
+  id: "family",
+  revision: 1,
+  kind: "history",
+  text: "They grew up together.",
+  participants: ["ada", "player"],
+  status: "stated",
+  evidenceIds: ["card"],
+};
+state.edges[relationshipKey("ada", "player")]!.records.family = history;
+const ending = review(proposal("Former friends", 1), "ending");
+applyRelationshipReview(state, ending, village, "ending", "2026-10-23T10:00:00Z");
+assert.equal(relationshipFor(state, "ada", "player").records.family.text, history.text);
+assert.equal(Object.keys(state.grants).length, 0, "Relationships never create access permission");
 
-async function main() {
-  await relationshipConnectionOwnership();
-  const records = new Map<string, any>();
-  records.set("villages-village", { id: "villages-village", kind: "village", revision: 1, data: village });
-  let failWrite = false;
-  configureVillagesRuntime({
-    logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
-    resources: {
-      async listCharacters() {
-        return [];
-      },
-    },
-    persistence: {
-      documents: {
-        async getById(_package: string, id: string) {
-          return structuredClone(records.get(id) ?? null);
-        },
-        async list(_package: string, kind: string) {
-          return [...records.values()].filter((row) => row.kind === kind);
-        },
-        async create(input: any) {
-          if (failWrite && input.kind === "relationships") throw new Error("relationship storage unavailable");
-          const row = { ...input, revision: 1 };
-          records.set(input.id, structuredClone(row));
-          return row;
-        },
-        async update(input: any) {
-          if (failWrite && input.id.startsWith("villages-relationships-"))
-            throw new Error("relationship storage unavailable");
-          const row = records.get(input.id);
-          if (!row || row.revision !== input.expectedRevision) return null;
-          const next = { ...row, ...input, revision: row.revision + 1 };
-          records.set(input.id, structuredClone(next));
-          return next;
-        },
-      },
-    },
-  } as any);
-  failWrite = true;
-  await assert.rejects(
-    () => mutateRelationships(village.seed, (saved) => apply([change("storage", 5)], "storage", stamp, saved)),
-    /unavailable/,
-  );
-  assert.equal(relationshipFor(await readRelationshipState(village.seed), "Rosa", "player").warmth, 0);
-  failWrite = false;
-  await mutateRelationships(village.seed, (saved) => apply([change("storage", 5)], "storage", stamp, saved));
-  await mutateRelationships(village.seed, (saved) => apply([change("storage", 5)], "storage", stamp, saved));
-  assert.equal(relationshipFor(await readRelationshipState(village.seed), "Rosa", "player").warmth, 5);
-  const view = await readRelationshipsView();
-  assert.ok(view.starting.pending);
-  assert.equal("values" in view.starting, false);
-  await assert.rejects(
-    () => changeRelationshipCreator({ action: "edit", fromId: "Rosa", toId: "Ives", warmth: 75, trust: 50 }),
-    /spoilers/,
-  );
-  await changeRelationshipCreator({ action: "acknowledge", spoilerAcknowledged: true });
-  assert.ok((await readRelationshipsView()).starting.values);
-  await changeRelationshipCreator({ action: "neutral" });
-  await changeRelationshipCreator({ action: "hide" });
-  assert.equal("values" in (await readRelationshipsView()).starting, false);
+// Stale live context fails before any sibling effect or disclosure can commit.
+const stale = review(proposal("Friends", 1), "stale");
+stale.disclosures.push({
+  id: "leak",
+  fromId: "ada",
+  toId: "player",
+  text: "Unpublished",
+  kind: "connection",
+  lineIds: ["a"],
+});
+const beforeStale = structuredClone(state);
+assert.throws(
+  () => applyRelationshipReview(state, stale, village, "stale", "2026-10-24T10:00:00Z"),
+  /live relationship changed/,
+);
+assert.deepEqual(state, beforeStale);
 
-  const entry = {
-    id: "encounter",
-    seed: village.seed,
-    at: stamp,
-    opportunity: {
-      id: "opportunity",
-      kind: "encounter" as const,
-      actorIds: ["Rosa", "Ives"],
-      venueId: "park",
-      zoneId: "community",
-      startsAt: stamp,
-      endsAt: stamp,
-      facts: [],
-    },
-    candidates: [],
-    proposal: {
-      encounter: {
-        opportunityId: "opportunity",
-        lines: [
-          { speakerId: "Rosa", text: "I enjoyed discussing our favorite books." },
-          { speakerId: "Ives", text: "It was pleasant reading together here." },
-        ],
-        relationshipReview: {
-          changes: [{ ...decision, toId: "Ives", evidence: [0, 1], lineIds: undefined }],
-          permissions: [],
-          disclosures: [],
-        },
-      },
-    },
+// The old Scene stays in its own timeline while the live settlement preserves a later ending.
+const scene: any = {
+  id: "scene",
+  villageSeed: village.seed,
+  startedAt: village.foundedAt,
+  lines: [],
+  submissions: [],
+  activeIds: ["ada"],
+  sceneAttendance: { capturedAt: village.foundedAt },
+};
+const captured = structuredClone(village);
+captured.relationshipContext!.edges[relationshipKey("ada", "player")] = {
+  ...neutralRelationship("ada", "player"),
+  revision: 1,
+  connection: "Partners",
+};
+scene.continuity = captureSceneContinuity(captured, scene, Date.parse(village.foundedAt));
+const dual = proposal("Former partners", 2);
+dual.sceneAfter = after("Partners");
+dual.liveAfter = after("Former partners");
+const dualReview = review(dual, "dual");
+applyRelationshipReview(
+  state,
+  dualReview,
+  village,
+  "dual",
+  "2026-10-22T11:00:00Z",
+  Date.now(),
+  captured.relationshipContext,
+);
+const receipt = state.receipts[dualReview.changes[0]!.id]!;
+receipt.sceneId = scene.id;
+receipt.submissionId = "turn";
+scene.submissions = [{ id: "turn" }];
+assert.equal(
+  sceneContinuityView(village, scene).relationshipContext!.edges[relationshipKey("ada", "player")]!.connection,
+  "Partners",
+);
+assert.equal(relationshipFor(state, "ada", "player").connection, "Former partners");
+assert.equal(receipt.at, "2026-10-22T11:00:00Z", "Event date survives delayed settlement");
+
+// Actual mutual terms require all participants' communication and their access to the cited terms.
+const terms: any = {
+  id: "",
+  expectedRevision: 0,
+  kind: "commitment",
+  text: "Meet at noon",
+  participants: ["ada", "player"],
+  status: "accepted",
+  dueAt: "2026-10-25T12:00:00Z",
+};
+const withTerms = proposal("Friends", 3);
+withTerms.sceneAfter = after("Friends", [terms]);
+withTerms.liveAfter = after("Friends", [terms]);
+assert.doesNotThrow(() => review(withTerms, "terms"));
+assert.throws(() => review({ ...withTerms, lineIds: ["a"] }, "missing-consent"), /explicit communication/);
+const unheard = lines.map((row) => (row.id === "a" ? { ...row, heardBy: ["ada"], playerHeard: false } : row));
+assert.throws(
+  () =>
+    parseRelationshipReview({ ...emptyRelationshipReview(), changes: [withTerms] }, "unheard", unheard, village, true),
+  /explicit communication/,
+);
+const accepted = review(withTerms, "terms");
+applyRelationshipReview(state, accepted, village, "terms", "2026-10-24T10:00:00Z");
+const canonical = Object.values(state.sharedRecords)[0]!;
+assert.equal(canonical.status, "accepted");
+{
+  const conflictState = defaultRelationshipState(village.seed);
+  const shared: SocialRecord = {
+    id: "shared",
+    revision: 1,
+    kind: "commitment",
+    text: "Meet tomorrow",
+    participants: ["ada", "ben"],
+    status: "accepted",
+    evidenceIds: ["a", "b"],
   };
-  entry.proposal.encounter.relationshipReview.changes.push({
-    ...entry.proposal.encounter.relationshipReview.changes[0],
-    fromId: "absent",
-  } as any);
-  await processSocialOutbox({ ...village, socialOutbox: [entry] });
-  await processSocialOutbox({ ...village, socialOutbox: [entry] });
-  const settledSocial = await readRelationshipState(village.seed);
-  assert.equal(relationshipFor(settledSocial, "Rosa", "Ives").warmth, 2);
-  assert.equal(relationshipFor(settledSocial, "Ives", "Rosa").familiarity, 1);
-  assert.equal(settledSocial.socialEncounters.length, 1, "typed encounter replays once");
-  assert.equal(
-    settledSocial.socialEncounters[0].rejectedProposals?.length,
-    1,
-    "Invalid background row leaves valid siblings committed",
-  );
-  await processSocialOutbox({ ...village, storyPace: "off", socialOutbox: [{ ...entry, id: "off" }] });
-  assert.equal((await readRelationshipState(village.seed)).socialEncounters.length, 1);
-  await processSocialOutbox({
-    ...village,
-    socialOutbox: [{ ...entry, id: "obsolete-plan", requiredPlanId: "cancelled-or-missing" }],
+  conflictState.sharedRecords.shared = shared;
+  const operation = (owner: string, target: string, status: SocialRecord["status"]) => ({
+    id: "shared-update:" + owner,
+    fromId: owner,
+    toId: target,
+    expectedRevision: 0,
+    sceneAfter: after("Friends", [{ ...shared, revision: 2, status }]),
+    liveAfter: after("Friends", [{ ...shared, revision: 2, status }]),
+    reason: "Current shared event",
+    lineIds: ["a", "b"],
+    evidence: [],
   });
-  assert.equal(
-    (await readRelationshipState(village.seed)).socialEncounters.length,
-    1,
-    "obsolete planned encounters produce no reward",
+  const before = structuredClone(conflictState);
+  assert.throws(
+    () =>
+      applyRelationshipReview(
+        conflictState,
+        {
+          ...emptyRelationshipReview(),
+          changes: [operation("ada", "ben", "cancelled"), operation("ben", "ada", "fulfilled")],
+        },
+        village,
+        "contradictory",
+        "2026-10-24T10:00:00Z",
+      ),
+    /Conflicting interpretations/,
   );
-  console.log("villages-relationships: ok");
+  assert.deepEqual(conflictState, before, "Contradictory canonical updates reject the whole source before mutation");
 }
-await main();
+const changed = {
+  ...terms,
+  id: canonical.id,
+  expectedRevision: canonical.revision,
+  participants: ["ada", "player", "ben"],
+};
+const changedRow = proposal("Friends", 4);
+changedRow.sceneAfter = after("Friends", [changed]);
+changedRow.liveAfter = after("Friends", [changed]);
+assert.throws(() => review(changedRow, "changed-participants"), /immutable/);
+const historic = { ...terms, kind: "history", status: "overdue" };
+const badHistory = proposal("Family", 4);
+badHistory.sceneAfter = after("Family", [historic]);
+badHistory.liveAfter = after("Family", [historic]);
+assert.throws(() => review(badHistory), /History cannot/);
+
+// Only source-published, actually shared information belongs in the notebook.
+state.disclosures.hidden = {
+  id: "hidden",
+  fromId: "ada",
+  toId: "player",
+  text: "Unpublished private change",
+  kind: "connection",
+  lineIds: ["a"],
+  sourceId: "hidden",
+  at: "2026-10-29T00:00:00Z",
+  publicationId: "unpublished",
+};
+state.disclosures.routine = {
+  id: "routine",
+  fromId: "ada",
+  toId: "player",
+  text: "I visit the garden.",
+  kind: "routine",
+  lineIds: ["a"],
+  sourceId: "routine",
+  at: "2026-10-28T00:00:00Z",
+};
+state.disclosures.connection = {
+  id: "connection",
+  fromId: "ada",
+  toId: "player",
+  text: "I consider you my friend.",
+  kind: "connection",
+  lineIds: ["a"],
+  sourceId: "connection",
+  at: "2026-10-27T00:00:00Z",
+};
+const publicProfile = projectRelationshipProfiles(state, village)[0]!;
+assert.equal(
+  publicProfile.summary,
+  "I consider you my friend.",
+  "Routine ordering cannot suppress an earlier connection",
+);
+assert.deepEqual(publicProfile.routine, ["I visit the garden."]);
+assert.equal(JSON.stringify(publicProfile).includes("Unpublished"), false);
+assert.equal("stance" in publicProfile, false);
+assert.equal("warmth" in publicProfile, false);
+state.edges[relationshipKey("ada", "ben")] = {
+  ...neutralRelationship("ada", "ben"),
+  revision: 1,
+  connection: "",
+  records: {
+    secret: {
+      id: "secret",
+      revision: 1,
+      kind: "history",
+      text: "SECRET_SIBLING",
+      participants: ["ada", "ben"],
+      knownBy: ["ben"],
+      status: "stated",
+      evidenceIds: ["authored"],
+    },
+  },
+};
+assert.equal(
+  relationshipWritingPrompt(village, "ada").includes("SECRET_SIBLING"),
+  false,
+  "Unknown objective history is not owner knowledge",
+);
+
+// Personal outbox ownership, irreversible delivery receipt, read disclosures and explicit invitations.
+const mail = queuePersonalMessage(
+  state,
+  "ada",
+  "request-1",
+  "Exact text \n including whitespace",
+  "2026-10-22T13:00:00Z",
+);
+assert.equal(queuePersonalMessage(state, "ada", "request-1", mail.text, mail.at).id, mail.id);
+assert.throws(() => queuePersonalMessage(state, "ada", "request-1", "Different text", mail.at), /different message/);
+const thread = state.mailThreads["personal:ada"]!;
+beginMailDelivery(state, thread.id, mail.id);
+assert.throws(() => cancelPersonalMessage(state, thread.id, mail.id), /recovery/);
+completeMailDelivery(state, thread.id, mail.id, "source-hash", "2026-10-22T13:01:00Z");
+assert.equal(mail.replyStatus, "pending");
+assert.throws(() => cancelPersonalMessage(state, thread.id, mail.id), /already been delivered/);
+const once = structuredClone(state.mailDeliveries);
+completeMailDelivery(state, thread.id, mail.id, "other-hash", "2026-10-22T13:02:00Z");
+assert.deepEqual(state.mailDeliveries, once, "A later write cannot replace delivery authority");
+mail.replyStatus = "complete";
+const cancelled = queuePersonalMessage(state, "ada", "request-2", "Cancel me", mail.at);
+cancelPersonalMessage(state, thread.id, cancelled.id);
+assert.throws(() => beginMailDelivery(state, thread.id, cancelled.id), /cancelled/);
+const incoming = {
+  id: "incoming",
+  requestId: "incoming",
+  fromId: "ada",
+  toId: "player",
+  text: "Let's meet.",
+  at: mail.at,
+  status: "delivered" as const,
+  disclosures: [
+    {
+      id: "read-only",
+      fromId: "ada",
+      toId: "player",
+      text: "I enjoy gardening.",
+      kind: "preference" as const,
+      lineIds: ["incoming"],
+    },
+  ],
+};
+thread.messages.push(incoming);
+state.mailDeliveries.incoming = { messageId: "incoming", at: mail.at, sourceHash: "incoming-hash" };
+assert.equal(state.disclosures["read-only"], undefined);
+readPersonalThread(state, thread.id, "2026-10-22T13:05:00Z");
+assert.equal(state.disclosures["read-only"]!.text, "I enjoy gardening.");
+const readOnce = structuredClone(state.disclosures);
+readPersonalThread(state, thread.id, "2026-10-22T13:06:00Z");
+assert.deepEqual(state.disclosures, readOnce);
+state.invitations.invite = {
+  id: "invite",
+  threadId: thread.id,
+  messageId: "incoming",
+  proposerId: "ada",
+  participantIds: ["ada", "player"],
+  revision: 1,
+  terms: {
+    title: "Garden visit",
+    detail: "Meet in the garden",
+    venueId: "garden",
+    zoneId: "outside",
+    dueAt: "2026-10-23T12:00:00Z",
+  },
+  status: "proposed",
+};
+assert.throws(() => respondSocialInvitation(state, "invite", 0, true, "2026-10-22T14:00:00Z"), /changed/);
+respondSocialInvitation(state, "invite", 1, true, "2026-10-22T14:00:00Z");
+assert.equal(state.sharedRecords.invite!.status, "accepted");
+assert.equal(state.sharedRecords.invite!.dueAt, "2026-10-23T12:00:00Z");
+assert.equal(Object.keys(state.grants).length, 0, "Acceptance neither travels nor grants entry");
+assert.throws(() => respondSocialInvitation(state, "invite", 1, true, "2026-10-22T14:00:00Z"), /changed/);
+state.invitations.expired = { ...state.invitations.invite!, id: "expired", status: "proposed", revision: 1 };
+assert.throws(() => respondSocialInvitation(state, "expired", 1, true, "2026-10-24T14:00:00Z"), /expired/);
+
+// Shared Events budget counts admitted attempts, including failed, empty and uncertain calls.
+const budget = defaultVillageState();
+budget.storyPace = "balanced";
+const instant = Date.parse("2026-10-22T12:00:00Z");
+for (let index = 0; index < 3; index++) {
+  assert.equal(eventAttemptAvailable(budget, "2026-10-22", instant + index * 900000), true);
+  reserveEventAttempt(budget, "attempt:" + index, "2026-10-22", instant + index * 900000);
+  reserveEventAttempt(budget, "attempt:" + index, "2026-10-22", instant + index * 900000);
+}
+assert.equal(budget.eventAttempts!.attempts.length, 3);
+assert.equal(eventAttemptAvailable(budget, "2026-10-22", instant + 2700000), false);
+const restored = structuredClone(budget);
+assert.equal(eventAttemptAvailable(restored, "2026-10-22", instant + 2700000), false, "Restart preserves attempts");
+assert.equal(eventAttemptAvailable(restored, "2026-10-21", instant + 86400000), false, "No calendar replay");
+assert.equal(eventAttemptAvailable(restored, "2026-10-23", instant + 86400000), true);
+restored.storyPace = "off";
+assert.equal(eventAttemptAvailable(restored, "2026-10-23", instant + 86400000), false);
+
+// Raw contract rejection precedes fallback coercion and startup workers; reads never invoke preparation.
+assert.throws(
+  () => coerceVillageState({ ...village, socialContractVersion: undefined }),
+  /unsupported relationship contract/,
+);
+assert.throws(
+  () => coerceRelationshipState(village.seed, { seed: village.seed, version: 1 }),
+  /unsupported relationship contract/,
+);
+let generated = 0,
+  mutated = 0;
+const views = createRelationships({
+  readVillageState: async () => village,
+  mutateRelationships: async () => {
+    mutated++;
+    return state;
+  },
+  prepareStartingTies: async () => {
+    generated++;
+  },
+  readVillageLore: async () => [],
+} as any);
+await views.readRelationshipsView();
+await views.readRelationshipsInspect();
+assert.equal(generated, 0);
+assert.equal(mutated, 0);
+let workers = 0,
+  recovery = 0,
+  cleanups = 0;
+await assert.rejects(
+  () =>
+    startVillagesApplication(
+      { api: { runtime: {} } } as any,
+      {
+        configureRuntime: () => () => {
+          cleanups++;
+        },
+        assertSocialContract: async () => {
+          throw Error("Unsupported contract");
+        },
+        startTownMapGeneration: () => {
+          workers++;
+          return () => {};
+        },
+        recoverFoundingPreparation: async () => {
+          recovery++;
+        },
+      } as any,
+    ),
+  /Unsupported contract/,
+);
+assert.equal(workers, 0);
+assert.equal(recovery, 0);
+assert.equal(cleanups, 1);
+console.log("villages-relationships: ok");

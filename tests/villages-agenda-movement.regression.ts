@@ -204,6 +204,7 @@ assert.equal(overnight.Monday?.at(-1)?.activity, "Keeping watch");
 assert.equal(overnight.Tuesday?.[0]?.endMinute, 360, "an overnight source continues into the next day");
 const recovered = coerceVillageState({
   version: 3,
+  socialContractVersion: 2,
   wishSystemVersion: 3,
   villagers: [
     {

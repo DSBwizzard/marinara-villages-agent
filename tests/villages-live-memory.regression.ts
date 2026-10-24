@@ -39,7 +39,6 @@ import {
   defaultRelationshipState,
   relationshipFor,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
 
 async function liveConnectionOwnership() {
   function deferred() {
@@ -124,10 +123,21 @@ async function liveConnectionOwnership() {
                   {
                     fromId: "a",
                     toId: "player",
-                    dimension: "warmth",
-                    strength: "minor",
-                    direction: "increase",
-                    ordinary: true,
+                    expectedRevision: 0,
+                    sceneAfter: {
+                      connection: "Acquaintances",
+                      stance: "Enjoys planning together",
+                      expectations: [],
+                      concerns: [],
+                      records: [],
+                    },
+                    liveAfter: {
+                      connection: "Acquaintances",
+                      stance: "Enjoys planning together",
+                      expectations: [],
+                      concerns: [],
+                      records: [],
+                    },
                     reason: label + " planning together",
                     lineIds: ["player", 0],
                     disclosed: false,
@@ -241,7 +251,7 @@ async function liveConnectionOwnership() {
       for (const owned of [a, b]) {
         const label = owned === a ? "A" : "B",
           relationships = owned.records.get(relationshipId).data;
-        assert.equal(relationshipFor(relationships, "a", "player").warmth, 2);
+        assert.equal(relationshipFor(relationships, "a", "player").revision, 1);
         assert(
           Object.values(relationships.receipts).every(
             (receipt: any) => !receipt.reason || !receipt.reason.includes((label === "A" ? "B" : "A") + " planning"),
@@ -250,8 +260,8 @@ async function liveConnectionOwnership() {
         const before = JSON.stringify(relationships);
         await owned.scope.run(() => processLiveRelationships(owned.scene, "equal-turn"));
         assert.equal(
-          relationshipFor(owned.records.get(relationshipId).data, "a", "player").warmth,
-          2,
+          relationshipFor(owned.records.get(relationshipId).data, "a", "player").revision,
+          1,
           "saved relationship replay spends no second reward",
         );
         assert.equal(JSON.stringify(owned.records.get(relationshipId).data), before);
@@ -475,6 +485,11 @@ async function main() {
       actionReceiptIds: [],
     });
     processing.domains.projects.status = "applied";
+    const socialDocument = records.get(
+      "villages-relationships-" + createHash("sha256").update(state.seed).digest("hex").slice(0, 24),
+    )?.data;
+    for (const row of (relationshipChanges as any).changes ?? [])
+      if (row.fromId === "a") row.expectedRevision = relationshipFor(socialDocument, "a", "player").revision;
     const liveProposals = bindLiveProposals(
       {
         responseDiagnostics: options.responseDiagnostics,
@@ -521,10 +536,21 @@ async function main() {
         {
           fromId: "a",
           toId: "player",
-          dimension: "warmth",
-          strength: "minor",
-          direction: "increase",
-          ordinary: true,
+          expectedRevision: 0,
+          sceneAfter: {
+            connection: "Acquaintances",
+            stance: "Enjoys planning together",
+            expectations: [],
+            concerns: [],
+            records: [],
+          },
+          liveAfter: {
+            connection: "Acquaintances",
+            stance: "Enjoys planning together",
+            expectations: [],
+            concerns: [],
+            records: [],
+          },
           reason: "Planning together",
           lineIds: ["player", 0],
           disclosed: false,
@@ -536,10 +562,10 @@ async function main() {
     await processSavedExchange("live", "one");
     let village = await readVillageState();
     assert.equal(village.chronicle[0].text, memory.text);
-    assert.equal(relationshipFor(village.relationshipContext, "a", "player").warmth, 2);
+    assert.equal(relationshipFor(village.relationshipContext, "a", "player").revision, 1);
     let saved = await readVenueVisit("live");
     assert.equal(saved.submissions[0].recordEvents?.filter((event) => event.kind === "memory").length, 1);
-    assert.equal(saved.submissions[0].recordEvents?.filter((event) => event.kind === "relationship-up").length, 1);
+    assert.equal(saved.submissions[0].recordEvents?.filter((event) => event.kind === "relationship-up").length, 0);
     assert.equal((publicSceneResponse(saved) as any).submissions[0].liveProposals, undefined);
     const before = JSON.stringify(village.chronicle);
     await processSavedExchange("live", "one");
@@ -707,10 +733,21 @@ async function main() {
         {
           fromId: "a",
           toId: "player",
-          dimension: "warmth",
-          strength: "minor",
-          direction: "increase",
-          ordinary: false,
+          expectedRevision: 0,
+          sceneAfter: {
+            connection: "Acquaintances",
+            stance: "Enjoys planning together",
+            expectations: [],
+            concerns: [],
+            records: [],
+          },
+          liveAfter: {
+            connection: "Acquaintances",
+            stance: "Enjoys planning together",
+            expectations: [],
+            concerns: [],
+            records: [],
+          },
           reason: "Working together",
           lineIds: ["player", 0],
           disclosed: false,
@@ -719,7 +756,7 @@ async function main() {
       permissions: [],
       disclosures: [],
     };
-    const warmthBeforeMixed = relationshipFor((await readVillageState()).relationshipContext, "a", "player").warmth;
+    const warmthBeforeMixed = relationshipFor((await readVillageState()).relationshipContext, "a", "player").revision;
     saveExchange("mixed-relationships", [], {
       ...positiveRelationship,
       changes: [
@@ -740,22 +777,22 @@ async function main() {
     });
     await processSavedExchange("live", "mixed-relationships");
     const mixed = (await readVenueVisit("live")).submissions.at(-1)!.processing!.domains.relationships;
-    assert.equal(mixed.status, "applied");
-    assert.equal(mixed.rejectedProposals?.length, 3);
+    assert.equal(mixed.status, "failed");
+    assert.match(mixed.failure?.message ?? "", /Social interpretation needs correction/i);
     assert.equal(
-      relationshipFor((await readVillageState()).relationshipContext, "a", "player").warmth,
-      warmthBeforeMixed + 2,
+      relationshipFor((await readVillageState()).relationshipContext, "a", "player").revision,
+      warmthBeforeMixed,
     );
-    const trustBeforeContact = relationshipFor((await readVillageState()).relationshipContext, "a", "player").trust;
+    const trustBeforeContact = relationshipFor((await readVillageState()).relationshipContext, "a", "player").stance;
     saveExchange("brief-contact", [], emptyRelations, { playerText: "I am sorry.", text: "I forgive you." });
     await processSavedExchange("live", "brief-contact");
     assert.ok(
-      Object.values((await readVillageState()).relationshipContext!.receipts).some(
+      !Object.values((await readVillageState()).relationshipContext!.receipts).some(
         (receipt) => receipt.submissionId === "brief-contact",
       ),
     );
     assert.equal(
-      relationshipFor((await readVillageState()).relationshipContext, "a", "player").trust,
+      relationshipFor((await readVillageState()).relationshipContext, "a", "player").stance,
       trustBeforeContact,
     );
     for (const after of [false, true]) {
@@ -793,19 +830,12 @@ async function main() {
         }
         if (domain === "relationships") {
           const ledger = (await readVillageState()).relationshipContext!;
-          const committed = Object.values(ledger.receipts).find(
-            (receipt) => receipt.submissionId === id && receipt.before !== receipt.after,
-          )!;
+          const committed = Object.values(ledger.receipts).find((receipt) => receipt.submissionId === id)!;
+          assert.ok(committed, "Social effect survives failed Scene bookkeeping");
           assert.ok(
-            independentFeed.notices.some((notice) => notice.id === committed.id),
-            "Committed heart survives failed Scene bookkeeping",
+            !independentFeed.notices.some((notice) => notice.id === committed.id),
+            "Private social state produces no heart notice",
           );
-          assert.ok(
-            !independentFeed.notices.find((notice) => notice.id === committed.id)?.detail,
-            "Private reasons stay hidden",
-          );
-          await dismissSceneNotice("live", committed.id);
-          assert.ok(!(await readSceneChanges("live")).notices.some((notice) => notice.id === committed.id));
         }
         fault = "";
         await processSavedExchange("live", id);
@@ -886,12 +916,10 @@ async function main() {
     assert(!(await readVillageState()).chronicle.some((entry) => entry.text.includes("array kind")));
     saveExchange("array-strength", [], {
       ...emptyRelations,
-      changes: [{ ...positiveRelationship.changes[0], strength: ["major"] }],
+      changes: [{ ...positiveRelationship.changes[0], sceneAfter: { connection: ["Friends"] } }],
     });
     await processSavedExchange("live", "array-strength");
-    assert(
-      (await readVenueVisit("live")).submissions.at(-1).processing.domains.relationships.rejectedProposals.length > 0,
-    );
+    assert.equal((await readVenueVisit("live")).submissions.at(-1).processing.domains.relationships.status, "failed");
     const updates = await readSceneChanges("live", cursor);
     assert.ok(
       updates.changes.some((change) => change.submissionId === "missing"),
@@ -901,20 +929,6 @@ async function main() {
       updates.changes.find((change) => change.submissionId === "missing")?.requests?.some((request) => request.usage),
     );
     const unchangedId = "cached-contact-only";
-    await mutateRelationships(state.seed, (relationships) => {
-      relationships.receipts[unchangedId] = {
-        id: unchangedId,
-        fromId: "a",
-        toId: "player",
-        dimension: "warmth",
-        before: 2,
-        after: 2,
-        reason: "Recorded contact",
-        at,
-        sourceId: "live",
-        lineIds: [],
-      };
-    });
     const falseNotice = {
       id: unchangedId,
       kind: "relationship-down",
@@ -953,8 +967,10 @@ async function main() {
     saveExchange("authority-race", [], { ...emptyRelations, changes: [{ ...positiveRelationship.changes[0] }] });
     const raceScene = await readVenueVisit("live");
     authorityReadCountdown = 2;
-    const race = await processLiveRelationships(raceScene, "authority-race");
-    assert.ok(race.rejectedProposals?.length, "Resident removal between validation and commit rejects stale authority");
+    await assert.rejects(
+      () => processLiveRelationships(raceScene, "authority-race"),
+      /Social (authority changed|interpretation needs correction)/,
+    );
     assert.ok(
       !Object.values((await readVillageState()).relationshipContext!.receipts).some(
         (receipt) => receipt.submissionId === "authority-race",

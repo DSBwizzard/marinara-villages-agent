@@ -43,6 +43,8 @@ import { createRelationshipStore } from "../features/residents/relationship-stor
 import { configureRelationshipStore, mutateRelationships } from "../features/residents/relationship-store.js";
 import { createRelationshipSocial } from "../features/residents/relationship-social-service.js";
 import { configureRelationshipSocial } from "../features/residents/relationship-social.js";
+import { createSocialMail } from "../features/residents/social-mail-service.js";
+import { configureSocialMail } from "../features/residents/social-mail.js";
 import { createStartingTies } from "../features/residents/starting-ties-service.js";
 import { createRelationships } from "../features/residents/relationship-service.js";
 import { configureRelationships } from "../features/residents/relationships.js";
@@ -152,6 +154,7 @@ import {
   proposePublicVenueNames,
   draftVillageVenueDescriptions,
   proposeHappenings,
+  interpretSocialSource,
   proposeReaction,
 } from "../features/founding/village-bootstrap.js";
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
@@ -573,9 +576,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateDocument: createDocumentMutator(villagesDocuments),
     }),
   );
-  const releaseRelationshipSocial = configureRelationshipSocial(
-    createRelationshipSocial({ mutateVillageState, mutateRelationships, processLiveMemories }),
-  );
+  const relationshipSocial = createRelationshipSocial({
+    mutateVillageState,
+    mutateRelationships,
+    processLiveMemories,
+    readVillageSnapshot,
+    queueBackgroundJob,
+    interpretSocialSource,
+  });
+  const releaseRelationshipSocial = configureRelationshipSocial(relationshipSocial);
   const startingTies = createStartingTies({
     readVillageLore,
     readVillageState,
@@ -587,12 +596,27 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     villagesConnectionIdFor,
     completeWithRoom,
   });
+  const personalMail = createSocialMail({
+    readVillageSnapshot,
+    mutateVillageState,
+    mutateRelationships,
+    readRelationshipState,
+    queueBackgroundJob,
+    retryBackgroundJob,
+    backgroundWorkSummaries,
+    villagesLanguageModels,
+    villagesConnectionIdFor,
+    completeWithRoom,
+  });
+  const releasePersonalMail = configureSocialMail(personalMail);
   const releaseRelationshipViews = configureRelationships(
     createRelationships({
       readVillageLore,
       readVillageState,
       mutateRelationships,
       prepareStartingTies: startingTies.prepare,
+      clarifyStartingTies: startingTies.clarify,
+      backgroundWorkSummaries,
       applySavedStartingTies: startingTies.applySaved,
     }),
   );
@@ -601,6 +625,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseRelationships = configureWorldRelationships({
     readRelationshipState,
+    processPersonalMailOutbox: personalMail.processOutbox,
     reconcileRelationships,
     persistRelationshipAuthority,
     processSocialOutbox,
@@ -1075,6 +1100,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const worldCoordination = createWorldCoordination({
     reconcileDevelopment,
     processProjectWishOutbox,
+    automaticMail: personalMail.automaticOutbox,
     readScene: readSession,
     readVillageState,
     mutateVillageState,
@@ -1115,6 +1141,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["wish", wishLifecycle().wishBackgroundHandler],
         ["wish-check", wishProgress().wishCheckBackgroundHandler],
         ["mail", venueMailbox().mailBackgroundHandler],
+        ["personal-mail", personalMail.handler],
+        ["social-recovery", relationshipSocial.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
         ["story", bindActivationService(worldCoordination.storyBackgroundHandler)],
@@ -1200,6 +1228,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseLiveScenes();
     releaseLiveMemory();
     releaseRelationshipViews();
+    releasePersonalMail();
     releaseWishArchive();
     releaseFoundingProgress();
     releaseWritingSettings();
