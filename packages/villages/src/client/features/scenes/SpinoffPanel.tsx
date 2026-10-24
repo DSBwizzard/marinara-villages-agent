@@ -1,3 +1,4 @@
+import { useVillageActivity, useVisibleInterval } from "../../shared/activity.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { createContext, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { SceneView } from "../../../shared/contracts/village.js";
@@ -34,6 +35,7 @@ export function SpinoffPanel({
   onResolved: () => Promise<void>;
   children: ReactNode;
 }) {
+  const { visible } = useVillageActivity();
   const [value, setValue] = useState<SpinoffView | null>(null);
   const [residentId, setResidentId] = useState("");
   const [idea, setIdea] = useState("");
@@ -57,11 +59,11 @@ export function SpinoffPanel({
   const locked = !!value && value.status !== "resolved";
   const available = !locked && scene?.status === "active" && !!scene.activeIds.length && !!host.startScene;
   const start = useCallback(() => setShowStart(true), []);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     const result = await request<{ spinoff: SpinoffView | null }>("/spinoffs/active", {
-      signal: AbortSignal.timeout(10000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
     });
-    if (alive.current) setValue(result.spinoff);
+    if (alive.current && !signal?.aborted) setValue(result.spinoff);
   }, []);
   useEffect(() => {
     alive.current = true;
@@ -75,7 +77,7 @@ export function SpinoffPanel({
   }, [element]);
   const needsRecovery = locked || !!scene?.spinoffPending;
   useEffect(() => {
-    if (!needsRecovery) return;
+    if (!needsRecovery || !visible) return;
     let current = true;
     const update = () => {
       const originSceneId = latestScene.current?.id ?? null;
@@ -92,7 +94,7 @@ export function SpinoffPanel({
       element.removeEventListener("marinara-capability-props", update);
       window.removeEventListener("focus", update);
     };
-  }, [element, refresh, needsRecovery, scene?.id]);
+  }, [element, refresh, needsRecovery, scene?.id, visible]);
   useEffect(() => {
     onLocked(locked ? !browsing : showStart);
     return () => onLocked(false);
@@ -105,13 +107,7 @@ export function SpinoffPanel({
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [showStart, locked]);
-  useEffect(() => {
-    if (!locked || busy) return;
-    const timer = window.setInterval(() => {
-      void refresh().catch(() => undefined);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [locked, busy, refresh]);
+  useVisibleInterval((signal) => refresh(signal), value?.status === "running" && !busy ? 5_000 : null);
   useEffect(() => {
     if (host.focusSceneOriginId && value?.sessionId === host.focusSceneOriginId) host.onFocusSceneOriginHandled?.();
   }, [host, value?.sessionId]);

@@ -110,6 +110,8 @@ try {
       let failSpriteSave = false;
       const api = async (route) => {
         const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/background/presence"))
+          return fulfill(route, { json: { status: "ready", snapshot: fixture } });
         let value = fixture;
         if (path.endsWith("/settings") && route.request().method() === "PATCH") {
           if (failSpriteSave)

@@ -1,3 +1,4 @@
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 
@@ -47,6 +48,7 @@ export function createSceneChanges({
   async function readSceneChanges(id: string, cursor = "", limit = 20) {
     const scene = await readSession(id);
     const village = await readVillageSnapshot();
+    const presentation = sceneContinuityView(village, scene);
     if (scene.villageSeed && scene.villageSeed !== village.seed)
       throw conflict("This Scene belongs to a previous village.");
     const parts = (cursor || "0:0").split(":").map(Number);
@@ -74,6 +76,7 @@ export function createSceneChanges({
     const notices = effects
       .filter(
         (receipt) =>
+          receipt.sceneId === id &&
           receipt.notice &&
           (receipt.noticeSequence ?? 0) > afterNotice &&
           !village.dismissedNoticeIds.includes(receipt.id),
@@ -82,13 +85,19 @@ export function createSceneChanges({
     const page = notices.slice(0, size);
     const relationshipState = village.relationshipContext;
     const relationshipReceipts = Object.values(relationshipState?.receipts ?? {})
-      .filter((receipt) => (receipt.noticeSequence ?? 0) > afterRelationship)
+      .filter(
+        (receipt) =>
+          (receipt.sceneId === id || (!receipt.sceneId && receipt.sourceId === id)) &&
+          (receipt.noticeSequence ?? 0) > afterRelationship,
+      )
       .sort((a, b) => a.noticeSequence! - b.noticeSequence!);
     const relationshipPage = relationshipReceipts.slice(0, size);
     const relationshipNotices = relationshipState
-      ? relationshipChangeNotices(relationshipPage, relationshipState, village).filter(
-          (event) => !village.dismissedNoticeIds.includes(event.id),
-        )
+      ? relationshipChangeNotices(
+          relationshipPage,
+          presentation.relationshipContext ?? relationshipState,
+          presentation,
+        ).filter((event) => !village.dismissedNoticeIds.includes(event.id))
       : [];
     const relationshipCursor =
       relationshipReceipts.length > relationshipPage.length
@@ -100,7 +109,14 @@ export function createSceneChanges({
         (job) =>
           job.seed === village.seed &&
           job.kind === "wish-check" &&
-          (asRecord(job.input).sceneId === id || String(job.subjectId).startsWith(`wish-change:${id}:`)),
+          (asRecord(job.input).sceneId === id ||
+            String(job.subjectId).startsWith(`wish-change:${id}:`) ||
+            String(job.subjectId).startsWith(`wish-batch:${id}:`)),
+      )
+      .sort(
+        (a, b) =>
+          Number(["queued", "running"].includes(String(b.status))) -
+          Number(["queued", "running"].includes(String(a.status))),
       )
       .slice(0, 50)
       .map((job) => ({
@@ -154,12 +170,14 @@ export function createSceneChanges({
         requests: turn.requestMetrics ?? null,
         responseDiagnostics: coerceResponseDiagnostics(turn.liveProposals?.responseDiagnostics) ?? null,
         interpretationHistory: turn.interpretationHistory ?? [],
-        notices: filterRelationshipNotices(turn.recordEvents ?? [], village.relationshipContext)
+        notices: filterRelationshipNotices(turn.recordEvents ?? [], presentation.relationshipContext)
           .filter(
             (event) =>
               event.kind !== "wish" ||
               (!!event.wishUpdate &&
-                village.villagers.some((person) => knownWish(village, person.characterId, event.wishUpdate!.wishId))),
+                presentation.villagers.some((person) =>
+                  knownWish(presentation, person.characterId, event.wishUpdate!.wishId),
+                )),
           )
           .filter((event) => !village.dismissedNoticeIds.includes(event.id)),
         evidence: scene.lines.filter(
@@ -178,7 +196,7 @@ export function createSceneChanges({
       })),
       notices: filterRelationshipNotices(
         [...page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])), ...relationshipNotices],
-        village.relationshipContext,
+        presentation.relationshipContext,
       ),
       dismissedNoticeIds: village.dismissedNoticeIds,
       unresolved: scene.submissions

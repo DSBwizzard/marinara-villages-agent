@@ -1,3 +1,4 @@
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { randomUUID } from "node:crypto";
 import type {
@@ -84,17 +85,25 @@ export function createSpinoffs(ports: SpinoffPorts) {
       )
     )
       throw conflict("Finish or resolve the Scene's saved work before starting a spinoff.");
-    const resident = village.villagers.find((person) => person.characterId === residentId);
-    if (!resident || !scene.activeIds.includes(residentId)) throw conflict("Choose a resident in your current Zone.");
+    const presentation = sceneContinuityView(village, scene);
+    if (presentation.playerPersonaId !== village.playerPersonaId)
+      throw conflict("The linked player Persona changed. Start a new Scene before starting a spinoff.");
+    const resident = presentation.villagers.find((person) => person.characterId === residentId);
+    if (
+      !resident ||
+      !village.villagers.some((person) => person.characterId === residentId) ||
+      !scene.activeIds.includes(residentId)
+    )
+      throw conflict("Choose a resident in your current Zone.");
     const model = await ports.models().resolve(await ports.connectionId());
     const at = new Date(scene.sceneAttendance?.capturedAt || scene.startedAt);
     if (!Number.isFinite(at.getTime()))
       throw conflict("The original Scene time is unavailable. Start a new Scene first.");
     const moment = deriveVillageMoment({
-      foundedAt: village.foundedAt,
+      foundedAt: presentation.foundedAt,
       seed: village.seed,
       now: at,
-      timeZone: village.timeZone,
+      timeZone: presentation.timeZone,
     });
     const transcript = scene.lines
       .filter(
@@ -109,7 +118,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
       )
       .slice(-30)
       .map((line) => ({
-        speaker: line.role === "user" ? village.playerPersonaName : resident.cardSnapshot.name,
+        speaker: line.role === "user" ? presentation.playerPersonaName : resident.cardSnapshot.name,
         content: line.content.slice(0, 2000),
       }));
     const sharedIds = new Set(
@@ -126,7 +135,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
         .map((line) => line.id),
     );
     const memories = selectPromptMemories(
-      village.chronicle.filter(
+      presentation.chronicle.filter(
         (memory) =>
           memory.sourceVisitId === scene.id &&
           memory.sourceLineIds?.length &&
@@ -137,15 +146,15 @@ export function createSpinoffs(ports: SpinoffPorts) {
       1000,
     );
     const context = JSON.stringify({
-      setting: village.setting,
-      worldFacts: village.worldFacts,
-      origin: village.scenarioImprint?.origin,
+      setting: presentation.setting,
+      worldFacts: presentation.worldFacts,
+      origin: presentation.scenarioImprint?.origin,
       date: moment.dateLabel,
       time: moment.localTime,
       timeZone: moment.timeZone,
       place: scene.placeName,
       activity: scene.participants.find((person) => person.characterId === residentId)?.doing,
-      player: { name: village.playerPersonaName, identity: village.playerPersonaIdentity },
+      player: { name: presentation.playerPersonaName, identity: presentation.playerPersonaIdentity },
       resident: { name: resident.cardSnapshot.name, description: resident.cardSnapshot.description },
       // Only timing bounds leave Villages; private wishes, activities and other Zone attendance do not.
       commitmentBoundaries: (resident.agenda?.activeDay?.blocks ?? resident.agenda?.day ?? []).map((block) => ({
@@ -169,7 +178,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
       capturedRevision: revision,
       context,
       transcript,
-      lorebookIds: [...village.selectedLorebookIds],
+      lorebookIds: [...presentation.selectedLorebookIds],
       chatId: null,
       status: "prepared",
       summary: "",

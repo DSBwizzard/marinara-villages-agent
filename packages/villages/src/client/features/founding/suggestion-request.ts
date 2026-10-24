@@ -14,6 +14,7 @@ type Receipt = {
   error: string;
 };
 type Ports = {
+  signal?: AbortSignal;
   setupBeginningSourceKey: string;
   setupWorkspace?: FoundingState["setupWorkspace"];
   setSetupWorkspace?: FoundingState["setSetupWorkspace"];
@@ -27,6 +28,8 @@ export async function requestFoundingSuggestions(
   options: Options | undefined,
   input: object,
 ): Promise<Result> {
+  const { signal } = ports;
+  signal?.throwIfAborted();
   const { setupWorkspace, setSetupWorkspace, persistSetupDraft, setupDraftData } = ports;
   // Older embedders without a persisted founding workspace retain the synchronous API.
   if (!setupWorkspace || !setSetupWorkspace || !persistSetupDraft || !setupDraftData)
@@ -67,6 +70,7 @@ export async function requestFoundingSuggestions(
           body: JSON.stringify({ ...input, actionId: pending.id, sourceKey: pending.sourceKey }),
         });
     for (let poll = 0; ; poll++) {
+      signal?.throwIfAborted();
       if (receipt.id !== pending.id || receipt.sourceKey !== pending.sourceKey)
         throw new Error("The saved suggestion attempt does not match this draft. Check suggestions again.");
       if (receipt.status !== "running") {
@@ -83,8 +87,10 @@ export async function requestFoundingSuggestions(
         return receipt.result;
       }
       if (poll >= 60) throw new Error("Suggestions are still being prepared.");
+      signal?.throwIfAborted();
       await new Promise((resolve) => window.setTimeout(resolve, 2000));
-      receipt = await request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`);
+      signal?.throwIfAborted();
+      receipt = await request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`, { signal });
     }
   } catch (error) {
     // A definite refusal permits a new explicit attempt; connection loss keeps the ID for GET recovery.

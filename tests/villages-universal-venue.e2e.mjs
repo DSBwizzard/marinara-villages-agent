@@ -106,6 +106,8 @@ try {
         path = new URL(request.url()).pathname;
       if (request.method() !== "GET" && !path.endsWith("/background/presence") && !path.endsWith("/reconcile"))
         writes.push({ path, body: request.postDataJSON() });
+      if (path.endsWith("/background/presence"))
+        return fulfill(route, { json: { status: "ready", snapshot: snapshot } });
       let value = snapshot;
       if (path.endsWith("/rooms/active")) value = { session };
       else if (path.endsWith("/rooms") && request.method() === "POST") {

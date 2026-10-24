@@ -151,6 +151,7 @@ export type BackgroundWork = {
 };
 
 export type VillageSnapshot = {
+  sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
   opening?: import("./opening.js").OpeningView;
   clock?: import("./clock.js").VillageClockView;
@@ -855,6 +856,8 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  snapshotCaptured?: true;
+  playerName?: string;
   /** An existing handoff needs return/recovery controls; private context stays server-side. */
   spinoffPending?: boolean;
   openingReader?: boolean;

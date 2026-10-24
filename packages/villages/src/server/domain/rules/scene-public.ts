@@ -96,6 +96,15 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
               };
             }),
             processingSummary: sceneProcessingSummary(row as VenueScene),
+            ...(row.continuity
+              ? {
+                  snapshotCaptured: true,
+                  playerName:
+                    asRecord(asRecord(row.continuity).facts).playerPersonaName ||
+                    asRecord(asRecord(row.continuity).facts).playerName ||
+                    "You",
+                }
+              : {}),
             ...(row.spinoff
               ? {
                   spinoffPending: asRecord(row.spinoff).status !== "resolved" || !asRecord(row.spinoff).resolvedAt,

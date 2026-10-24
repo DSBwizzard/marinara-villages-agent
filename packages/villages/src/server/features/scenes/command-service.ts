@@ -3691,12 +3691,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     // Domain bookkeeping can finish after the reply's original Scene object was read.
     submission = (await readSession(session.id)).submissions.find((turn) => turn.id === submission.id) ?? submission;
     const village = await readVillageSnapshot();
-    const cached = filterRelationshipNotices(submission.recordEvents ?? [], village.relationshipContext)
+    const presentation = sceneContinuityView(village, session);
+    const cached = filterRelationshipNotices(submission.recordEvents ?? [], presentation.relationshipContext)
       .filter(
         (event) =>
           event.kind !== "wish" ||
           (!!event.wishUpdate &&
-            village.villagers.some((person) => knownWish(village, person.characterId, event.wishUpdate!.wishId))),
+            village.villagers.some((person) => knownWish(presentation, person.characterId, event.wishUpdate!.wishId))),
       )
       .map((event) => {
         if (event.kind !== "memory" || event.detail) return event;
@@ -3711,7 +3712,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         (receipt) =>
           receiptIds.has(receipt.id) || (receipt.sceneId === session.id && receipt.submissionId === submission.id),
       );
-      events.push(...relationshipChangeNotices(receipts, village.relationshipContext, village));
+      events.push(
+        ...relationshipChangeNotices(
+          receipts,
+          presentation.relationshipContext ?? village.relationshipContext,
+          presentation,
+        ),
+      );
     }
     for (const receipt of Object.values(village.exchangeReceipts))
       if (receipt.sceneId === session.id && receipt.submissionId === submission.id && receipt.notice)
@@ -3775,19 +3782,20 @@ Keep dialogue attributed to the target. The server conveys it through the messen
 
   async function sceneReceipts(session: VenueScene): Promise<VenueRecordEvent[]> {
     const current = await readVillageSnapshot();
+    const presentation = sceneContinuityView(current, session);
     return filterRelationshipNotices(
       [
         ...new Map(
           session.submissions.flatMap((turn) => turn.recordEvents ?? []).map((event) => [event.id, event]),
         ).values(),
       ],
-      current.relationshipContext,
+      presentation.relationshipContext,
     ).filter(
       (event) =>
         !current.dismissedNoticeIds.includes(event.id) &&
         (event.kind !== "wish" ||
           (!!event.wishUpdate &&
-            current.villagers.some((person) => knownWish(current, person.characterId, event.wishUpdate!.wishId)))),
+            current.villagers.some((person) => knownWish(presentation, person.characterId, event.wishUpdate!.wishId)))),
     );
   }
 
