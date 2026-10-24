@@ -1,3 +1,4 @@
+import { ELEMENT_TAG } from "../../shared/constants.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useEffect, useState } from "react";
 import { messageFrom, request } from "../../shared/api.js";
@@ -27,14 +28,14 @@ export function DevelopmentControls() {
       });
     return () => controller.abort();
   }, []);
-  async function act(path: string, body?: unknown) {
+  async function act(path: string, body?: unknown, method: "GET" | "POST" | "PATCH" = body ? "PATCH" : "POST") {
     setBusy(true);
     setError("");
     try {
       setView(
         await request(path, {
-          method: body ? "PATCH" : "POST",
-          body: JSON.stringify(body ?? { actionId: createVillagesClientId() }),
+          method,
+          body: method === "GET" ? undefined : JSON.stringify(body ?? { actionId: createVillagesClientId() }),
         }),
       );
     } catch (cause) {
@@ -59,11 +60,24 @@ export function DevelopmentControls() {
       {view?.enabled ? (
         <>
           <p>Reviews begin after one day. Moves need consent and take 24 hours.</p>
-          <button type="button" disabled={busy} onClick={() => void act("/development/review")}>
+          <button
+            className={ELEMENT_TAG + "-button"}
+            type="button"
+            disabled={busy}
+            onClick={() => void act("/development/review")}
+          >
             Review due intentions
           </button>
         </>
       ) : null}
+      <button
+        className={ELEMENT_TAG + "-button"}
+        type="button"
+        disabled={busy}
+        onClick={() => void act("/development", undefined, "GET")}
+      >
+        Refresh
+      </button>
       {view?.work ? (
         <p role="status">
           Review: {view.work.status}
@@ -90,7 +104,10 @@ export function DevelopmentControls() {
           <ol>
             {view.log.map((row) => (
               <li key={row.id}>
-                <strong>{row.outcome}</strong> · {row.reason}
+                <strong>
+                  {view.residents.find((r) => r.characterId === row.actorId)?.name ?? row.actorId} · {row.outcome}
+                </strong>{" "}
+                · {row.reason}
                 <br />
                 <small>
                   Effective {new Date(row.effectiveAt).toLocaleString()} · Saved {new Date(row.at).toLocaleString()}

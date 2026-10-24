@@ -9,11 +9,18 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
     let enabled = false,
-      reviewCount = 0;
+      reviewCount = 0,
+      completed = false;
     const view = () => ({
       enabled,
       activatedAt: enabled ? "2026-10-20T12:00:00Z" : null,
-      work: reviewCount ? { status: "failed", error: "Saved review needs deliberate recovery.", requests: 1 } : null,
+      work: reviewCount
+        ? {
+            status: completed ? "completed" : "failed",
+            error: completed ? "" : "Saved review needs deliberate recovery.",
+            requests: 1,
+          }
+        : null,
       residents: [
         {
           characterId: "a",
@@ -72,6 +79,14 @@ try {
     await page.getByRole("button", { name: "Review due intentions", exact: true }).click();
     await expect(page.getByText(/Saved review needs deliberate recovery/)).toBeVisible();
     assert.equal(reviewCount, 1);
+    completed = true;
+    await page
+      .getByRole("region", { name: "Resident development", exact: true })
+      .getByRole("button", { name: "Refresh", exact: true })
+      .click();
+    await expect(page.getByText("Review: completed", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Saved review needs deliberate recovery/)).not.toBeVisible();
+    assert.equal(reviewCount, 1, "Refreshing the inspector never buys another review.");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     await mkdir(".build-tmp/development-layout", { recursive: true });
     await page.screenshot({ path: `.build-tmp/development-layout/${width}.png`, fullPage: true });
