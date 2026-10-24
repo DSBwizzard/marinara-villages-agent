@@ -1,3 +1,4 @@
+import { useVillageActivity } from "../../shared/activity.js";
 import { useEffect, useState } from "react";
 
 export type RelationshipProfile = {
@@ -76,6 +77,7 @@ export function VillagesRelationships({
   view?: RelationshipView | null;
   onView?: (view: RelationshipView) => void;
 }) {
+  const { visible, backgroundRevision } = useVillageActivity();
   const [localView, setLocalView] = useState<RelationshipView | null>(null);
   const view = suppliedView === undefined ? localView : suppliedView;
   const [error, setError] = useState("");
@@ -83,7 +85,7 @@ export function VillagesRelationships({
   const [acknowledge, setAcknowledge] = useState(false);
   const [selected, setSelected] = useState("");
   useEffect(() => {
-    if (suppliedView !== undefined) return;
+    if (!visible || suppliedView !== undefined) return;
     const controller = new AbortController();
     const refresh = () => {
       void request<RelationshipView>("/relationships", { signal: controller.signal })
@@ -99,12 +101,10 @@ export function VillagesRelationships({
         });
     };
     refresh();
-    const interval = window.setInterval(refresh, 30_000);
     return () => {
       controller.abort();
-      window.clearInterval(interval);
     };
-  }, [request, suppliedView]);
+  }, [request, suppliedView, visible, backgroundRevision]);
   const action = async (body: Record<string, unknown>) => {
     setBusy(true);
     setError("");

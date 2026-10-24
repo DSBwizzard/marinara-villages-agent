@@ -187,12 +187,11 @@ import {
   usePendingWorkPolling,
   useReconcileVillage,
   useSnapshotReference,
-  useVillagePolling,
   useVillagePresence,
-  useVillageTransitions,
   useWriteVillageEvent,
   useVillageSnapshot,
 } from "../shared/data-controller.js";
+import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
 import type { MapFrameShape, MapPin, MapZoomRange, MenuPage } from "../shared/types.js";
 import { useScenesOpenMenu } from "./navigation-actions.js";
 import { useNavigationGoHome, useNavigationOpenPerson } from "./navigation-controller.js";
@@ -200,6 +199,7 @@ import { menuCategory } from "./navigation.js";
 import { useLayoutEffect, useRef, useState } from "react";
 
 export function useVillageController({ element }: { element: HTMLElement }) {
+  const visible = useCapabilityVisibility(element);
   const [mobile, setMobile] = useState(false);
 
   useLayoutEffect(() => {
@@ -913,7 +913,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // Roster changes reconcile only the required graph; existing authored Venues survive.
   useFoundingRosterReconciliation({ catalog, draftReady, screen, setSetupVenues, setupFoundingVillagerIds, snapshot });
 
+  const suggestionSignal = useActivitySignal(visible && screen === "setup");
   const suggestSetupVenues = createFoundingSuggestSetupVenues({
+    signal: suggestionSignal,
     setupWorkspace,
     setSetupWorkspace,
     persistSetupDraft,
@@ -963,6 +965,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   useSceneChangesPolling({
+    visible,
+    viewing: screen === "room",
+    busy: roomBusy,
+    snapshot,
     dismissedRoomEventIdsRef,
     receiveRoomRecordEvents,
     room,
@@ -978,16 +984,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomError,
     setRoomNotices,
   });
-
-  /**
-   * The next exact transition the server reported for schedules or atmosphere.
-   *
-   * A ref rather than state, because the poll reads and writes it on a timer and
-   * storing it in state would resubscribe the timer every time it noticed
-   * something. Empty until the first read, so opening the tab immediately asks
-   * the server to reconcile any elapsed time.
-   */
-  const transitionRef = useRef("");
 
   /** Stops a second village write-up starting while one is already running. */
   const reconcilingRef = useRef(false);
@@ -1006,26 +1002,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   useKnowledgeCaret({ knowledgeDraft, knowledgeRef, pendingCaretRef });
 
-  /**
-   * Ask the village to write down whatever has happened since it last did.
-   *
-   * Safe to call whenever: the server advances from its exact high-water mark,
-   * deduplicates stable opportunity ids, and spends no generation when there is
-   * no eligible creative work.
-   *
-   * Called whenever the next exact transition changes. The package scheduler
-   * uses the same endpoint while Marinara is running; reopening Marinara uses
-   * this call to reconstruct elapsed time since the stored high-water mark.
-   *
-   * `force` is passed through untouched and is only ever true from the debug
-   * menu; see `writeItUpNow`. An ordinary call sends no body at all, so the
-   * request the tab makes on its own is exactly the request it made before
-   * anything could force one.
-   *
-   * It returns the snapshot it read, or null when the call failed, because the
-   * one caller that forces has to be able to say what actually happened rather
-   * than assume it worked.
-   */
+  // Explicit debug reconciliation uses the same authority and publication order as presence.
   const currentSnapshotRef = useRef(snapshot);
 
   useSnapshotReference({ currentSnapshotRef, snapshot });
@@ -1055,45 +1032,16 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const writeItUpNow = useWriteVillageEvent({ reconcile, setWriteUpNote, snapshot });
 
-  /**
-   * Read the village.
-   *
-   * `quiet` is the whole of the difference between the two callers. Opening the
-   * tab has nothing to fall back on, so a failure there clears the village and
-   * says so; a stumble in a read that runs every minute leaves the last good
-   * reading on screen instead of blanking a village that is working perfectly
-   * well.
-   */
   const loadSnapshot = useLoadVillageSnapshot({ setError, beginSnapshotRead });
 
   const presenceSession = useRef("");
 
-  useVillagePresence({ element, loadSnapshot, presenceSession, reconcile, beginSnapshotRead, snapshot });
+  useVillagePresence({ visible, presenceSession, beginSnapshotRead, snapshot });
 
   const backgroundPending =
     snapshot?.backgroundWork?.some((job) => ["queued", "running"].includes(job.status)) ?? false;
 
-  usePendingWorkPolling({ backgroundPending, loadSnapshot });
-
-  /*
-    Reconcile whenever the server's next meaningful transition changes.
-
-    Watching the snapshot rather than hanging off each read means this covers
-    every way the tab can learn the time — the opening read, the minute-by-minute
-    poll, founding the village, coming back to a tab that was hidden — without
-    any of them having to remember to ask. The ref is what makes it happen once
-    per exact transition rather than once per snapshot: nearly every snapshot
-    carries the same transition timestamp, and the ones that do end right here.
-
-    The ref starts empty, so the very first snapshot the tab ever sees always
-    looks like a transition. That is the point of it: opening the tab on a
-    village that has been sitting unread for a week reconciles that week then,
-    instead of waiting for the next scheduled transition.
-
-    An unfounded village is shown and not reconciled. There is no durable village
-    state to advance before founding.
-  */
-  useVillageTransitions({ reconcile, snapshot, transitionRef });
+  usePendingWorkPolling({ visible, backgroundPending, loadSnapshot });
 
   const loadCatalog = useResidentsLoadCatalog({ setCatalog, setError });
 
@@ -1125,7 +1073,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setMemoryLibrary,
   });
 
-  useResidentAgendaPolling({ agendas, loadAgendas, personProfile, profileInspection, screen });
+  useResidentAgendaPolling({ visible, agendas, loadAgendas, personProfile, profileInspection, screen });
 
   /**
    * Ask the village to work one villager out again.
@@ -1158,23 +1106,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const setAgendaScheduleIngestion = useSetAgendaScheduleIngestion({ setAgendas, setBusy, setError });
 
-  useInitialVillageLoad({ loadSnapshot });
-
-  /*
-    Keep the tab in step with the village for as long as it is open.
-
-    A capability package gets no timer and no background loop, so nothing can
-    advance a village whose tab is closed — which is why the catch-up matters
-    more than the poll. Once a minute is far finer than the thing being watched
-    (four parts to a day), so nearly every one of these reads finds the same
-    moment and stops at the first question, and the whole arrangement costs
-    about as much as the clock in the corner.
-
-    A hidden tab is skipped rather than ticked, since nobody is looking at it.
-    The read on the way back covers the time it was away in one batch, because
-    that is what the server makes of a moment it has fallen behind on.
-  */
-  useVillagePolling({ loadSnapshot, reconcilingRef });
+  useInitialVillageLoad({ visible: visible && !snapshot?.isFounded, loadSnapshot });
 
   useSceneSelectionReset({
     loadSnapshot,
@@ -1198,8 +1130,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // authoritative read can recover it even when the original fetch and its
   // recovery read failed; a delayed failure must not revive the old warning.
   useSceneOpeningWarning({ room, roomGreetingError, setRoomGreetingError });
-
-  useSceneOperationPolling({ room, roomBusy, setRoom, setRoomEnded, setRoomError });
 
   useSceneInterruptedSubmission({
     composerEditVersionRef,
@@ -1410,6 +1340,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const { sendRoom, turnRecovery, checkSavedReply, replyPending } = useSendRoom({
+    visible: visible && screen === "room",
     composerEditVersionRef,
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -1451,6 +1382,17 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * home is what an hour that named nowhere resolves to. So one lookup answers
    * both questions and no place has to be asked twice.
    */
+  useSceneOperationPolling({
+    visible,
+    viewing: screen === "room",
+    recoveryPending: replyPending,
+    room,
+    roomBusy,
+    setRoom,
+    setRoomEnded,
+    setRoomError,
+  });
+
   const standingAt = useResidentsStandingAt({ snapshot });
 
   /**
@@ -1661,6 +1603,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   // ── Town map ───────────────────────────────────────────────────────────────
   useFoundingMapReceipt({
+    visible,
     screen,
     setSetupMapBusy,
     setSetupMapGeneratedKey,
@@ -2090,7 +2033,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     snapshot,
   });
 
-  useFoundingPreparationPolling({ screen, setPreparationProblem, setScreen, setSnapshot });
+  useFoundingPreparationPolling({
+    visible,
+    status: snapshot?.foundingPreparation?.status,
+    screen,
+    setPreparationProblem,
+    setScreen,
+    setSnapshot,
+  });
 
   const retryPreparation = useRetryPreparation({ setPreparationProblem, setSnapshot });
 
@@ -2276,6 +2226,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     sceneRestoration,
     ...venueScreenCommands,
     element,
+    visible,
     addNotice,
     addVenue,
     addVillager,

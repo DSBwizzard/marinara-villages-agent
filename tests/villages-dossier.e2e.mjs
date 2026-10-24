@@ -195,6 +195,8 @@ try {
       if (request.method() === "GET") reads.push(path);
       else if (!path.endsWith("/background/presence") && !path.endsWith("/reconcile"))
         writes.push({ path, method: request.method(), body: request.postDataJSON() });
+      if (path.endsWith("/background/presence"))
+        return fulfill(route, { json: { status: "ready", snapshot: village } });
       let value = village;
       if (path.endsWith("/villagers/mara/description")) {
         if (failDescription)

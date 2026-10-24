@@ -80,6 +80,14 @@ export function relationshipPrompt(village: VillageState, fromId: string): strin
   ].join("\n");
 }
 
+function visibleRelationship(receipt: RelationshipReceipt, state: RelationshipState) {
+  const edge = relationshipFor(state, receipt.fromId, "player");
+  return (
+    receipt.toId === "player" ||
+    (edge.close && !edge.knowledgeBlockedUntilContact && !!state.knowledge[receipt.fromId]?.closeAt)
+  );
+}
+
 export function relationshipChangeNotices(
   receipts: RelationshipReceipt[],
   state: RelationshipState,
@@ -91,13 +99,7 @@ export function relationshipChangeNotices(
       : (village.villagers.find((person) => person.characterId === id)?.cardSnapshot.name ?? "a villager");
   return receipts
     .filter((receipt) => receipt.before !== receipt.after)
-    .filter(
-      (receipt) =>
-        receipt.toId === "player" ||
-        (relationshipFor(state, receipt.fromId, "player").close &&
-          !relationshipFor(state, receipt.fromId, "player").knowledgeBlockedUntilContact &&
-          !!state.knowledge[receipt.fromId]?.closeAt),
-    )
+    .filter((receipt) => visibleRelationship(receipt, state))
     .map((receipt) => ({
       id: receipt.id,
       kind: receipt.after > receipt.before ? ("relationship-up" as const) : ("relationship-down" as const),
@@ -115,6 +117,6 @@ export function filterRelationshipNotices<T extends { id: string; kind: string }
   return notices.filter((notice) => {
     if (notice.kind !== "relationship-up" && notice.kind !== "relationship-down") return true;
     const receipt = state?.receipts[notice.id];
-    return !receipt || receipt.before !== receipt.after;
+    return !receipt || (receipt.before !== receipt.after && visibleRelationship(receipt, state!));
   });
 }

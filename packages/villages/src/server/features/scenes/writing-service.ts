@@ -377,7 +377,7 @@ export function createSceneWriting({
         ? venueInZone(storedPlace, session.zoneId)
         : venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
       : undefined;
-    const pendingMoves = authority.residences.filter(
+    const pendingMoves = village.residences.filter(
       (residence) => residence.status === "pending" && audience.includes(residence.characterId),
     );
     // Prose Events are visual only. Verified player deeds have separate receipts.
@@ -422,7 +422,7 @@ export function createSceneWriting({
     const projectContexts =
       mode === "chat" || mode === "ask"
         ? projectSpeechContexts(
-            authority,
+            village,
             audience,
             `${session.lines
               .filter(
@@ -436,7 +436,7 @@ export function createSceneWriting({
             session.placeId,
           )
         : [];
-    const pendingEdits = (authority.venues.find((row) => row.id === session.placeId)?.editProposals ?? []).filter(
+    const pendingEdits = (village.venues.find((row) => row.id === session.placeId)?.editProposals ?? []).filter(
       (proposal) =>
         !proposal.declined &&
         (!proposal.zoneId || proposal.zoneId === session.zoneId) &&
@@ -630,7 +630,7 @@ export function createSceneWriting({
           }),
         ),
         ...residentContexts,
-        projectSpeechPrompt(authority, projectContexts),
+        projectSpeechPrompt(village, projectContexts),
         session.pendingProjectQuestions?.length
           ? `These Project matters remain unresolved: ${session.pendingProjectQuestions.join("; ")}. Clarify naturally; do not assume approval, commitment, or complete requirements. Do not demand formal wording.`
           : "",

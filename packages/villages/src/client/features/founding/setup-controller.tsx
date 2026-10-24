@@ -14,6 +14,7 @@ import { requestFoundingSuggestions } from "./suggestion-request.js";
 import { useCallback } from "react";
 
 export function createFoundingSuggestSetupVenues(ports: {
+  signal?: AbortSignal;
   readonly setupWorkspace?: FoundingState["setupWorkspace"];
   readonly setSetupWorkspace?: FoundingState["setSetupWorkspace"];
   readonly persistSetupDraft?: (data: import("./draft-model.js").SetupDraftData) => Promise<void>;

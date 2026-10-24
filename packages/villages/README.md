@@ -132,6 +132,8 @@ Signatures may be names, initials, symbols or doodles chosen from the saved char
 
 Time, construction, approved moves, expiry and schedule rollover advance locally. Recurring enrichment runs while Villages is visible and pauses before its next request after the player leaves. Finite work already requested by the player can finish while away. Returning does not generate stories for every missed day.
 
+While visible, Villages renews its background-work lease every 30 seconds and uses that response as its shared refresh. Faster status reads run only for unfinished work in the relevant visible view. Settled Scenes, profiles, signatures and closed diagnostics have no dedicated refresh timer. Scene changes are scoped to their originating Scene; delayed results also trigger retrieval through the shared refresh. Returning retrieves saved results without repeating generation.
+
 **Background events and wishes → Off** pauses automatic Events, housing proposals and new Wishes. It does not stop time, schedules, construction, approved moves or existing Wish expiry.
 
 Background work reports saved stages, progress and provider-reported usage; missing usage stays unavailable. Configuration or authentication failures pause shared connection admission. Timeouts, transport failures and invalid responses fail their task without automatic retry. Deliberate retries reuse valid saved results before requesting replacements.

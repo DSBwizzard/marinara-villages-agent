@@ -19,6 +19,7 @@ function recoveryMessage(pending: Pending, message: string) {
 }
 /** Read-only reconciliation. A lost transport never authorizes another turn. */
 export function useTurnRecovery(ports: {
+  visible?: boolean;
   room: SceneView;
   setRoom: React.Dispatch<React.SetStateAction<SceneView>>;
   setRoomEnded: React.Dispatch<React.SetStateAction<boolean>>;
@@ -133,7 +134,7 @@ export function useTurnRecovery(ports: {
     [pending],
   );
   useEffect(() => {
-    if (!pending) return;
+    if (!pending || ports.visible === false) return;
     const poll = () => {
       if (document.hidden) return;
       if (Date.now() - pending.started < 60_000) void check();
@@ -142,7 +143,8 @@ export function useTurnRecovery(ports: {
     const resume = () => {
       if (!document.hidden) void check();
     };
-    poll();
+    // Returning after the automatic recovery window still retrieves the saved outcome once.
+    void check();
     const timer = window.setInterval(poll, 1500);
     window.addEventListener("online", resume);
     window.addEventListener("focus", resume);
@@ -153,6 +155,6 @@ export function useTurnRecovery(ports: {
       window.removeEventListener("focus", resume);
       document.removeEventListener("visibilitychange", resume);
     };
-  }, [pending, check]);
+  }, [pending, check, ports.visible]);
   return { begin, status, check, pending: pending?.sceneId === ports.room?.id };
 }

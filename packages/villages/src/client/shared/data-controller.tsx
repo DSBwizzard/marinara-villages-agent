@@ -1,6 +1,7 @@
 import type { PersonaResponse, VillageLorebookOption, VillageSnapshot } from "../../shared/contracts/village.js";
+import { useVisibleInterval } from "./activity.js";
 import { messageFrom, request } from "./api.js";
-import { SHOW_CATCHING_UP_AFTER_MS, VILLAGE_PULSE_MS } from "./presentation.js";
+import { SHOW_CATCHING_UP_AFTER_MS } from "./presentation.js";
 import { createVillagesClientId } from "./request-id.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -151,15 +152,7 @@ export function useWriteVillageEvent(ports: {
   }, [snapshot?.happenings, setWriteUpNote, reconcile]);
 }
 
-/**
- * Read the village.
- *
- * `quiet` is the whole of the difference between the two callers. Opening the
- * tab has nothing to fall back on, so a failure there clears the village and
- * says so; a stumble in a read that runs every minute leaves the last good
- * reading on screen instead of blanking a village that is working perfectly
- * well.
- */
+/** Read once or refresh shared pending work without clearing a good snapshot on a quiet failure. */
 export function useLoadVillageSnapshot(ports: {
   readonly setError: React.Dispatch<React.SetStateAction<string>>;
   readonly beginSnapshotRead: () => SnapshotRead;
@@ -183,108 +176,69 @@ export function useLoadVillageSnapshot(ports: {
   );
 }
 
+/** The visible capability lease also returns the shared refresh snapshot. */
 export function useVillagePresence(ports: {
-  readonly element: HTMLElement;
-  readonly loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
-  readonly presenceSession: React.RefObject<string>;
-  readonly reconcile: (forceStory?: boolean) => Promise<import("../../shared/contracts/village").VillageSnapshot>;
-  readonly beginSnapshotRead: () => SnapshotRead;
-  readonly snapshot: import("../../shared/contracts/village").VillageSnapshot;
+  visible: boolean;
+  presenceSession: React.RefObject<string>;
+  beginSnapshotRead: () => SnapshotRead;
+  snapshot: VillageSnapshot;
 }) {
-  const { element, loadSnapshot, presenceSession, reconcile, beginSnapshotRead, snapshot } = ports;
-
+  const { visible, presenceSession, beginSnapshotRead, snapshot } = ports;
   useEffect(() => {
-    if (!snapshot?.isFounded) return;
+    if (!snapshot?.isFounded || !visible) return;
     presenceSession.current ||= createVillagesClientId();
-    let stopped = false;
-    let heartbeatSequence = 0;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    let reading = false;
     const heartbeat = async () => {
-      if (stopped) return;
-      const sequence = ++heartbeatSequence;
+      if (controller.signal.aborted || reading) return;
+      reading = true;
+      clearTimeout(timer);
       const read = beginSnapshotRead();
-      const visible = document.visibilityState === "visible" && element.checkVisibility({ checkVisibilityCSS: true });
       try {
         const presence = await request<{ snapshot?: VillageSnapshot }>("/background/presence", {
           method: "POST",
-          body: JSON.stringify({ sessionId: presenceSession.current, visible }),
+          body: JSON.stringify({ sessionId: presenceSession.current, visible: true }),
+          signal: controller.signal,
         });
-        if (!stopped && visible && sequence === heartbeatSequence && read.isCurrent()) {
-          if (presence.snapshot) read.publish(presence.snapshot);
-          else {
-            await reconcile();
-            if (!stopped && sequence === heartbeatSequence) await loadSnapshot({ quiet: true });
-          }
-        }
+        if (!controller.signal.aborted && presence.snapshot) read.publish(presence.snapshot);
       } catch {
-        /* A lost heartbeat expires on the server. */
+        // A lost heartbeat expires on the server; no action is resubmitted here.
+      } finally {
+        reading = false;
+        if (!controller.signal.aborted) timer = setTimeout(() => void heartbeat(), 30_000);
       }
     };
     void heartbeat();
-    const timer = window.setInterval(() => void heartbeat(), 30_000);
-    const changed = () => void heartbeat();
-    document.addEventListener("visibilitychange", changed);
-    const observer = new IntersectionObserver(changed);
-    observer.observe(element);
+    const focus = () => {
+      if (!document.hidden) void heartbeat();
+    };
+    window.addEventListener("focus", focus);
+    document.addEventListener("visibilitychange", focus);
     return () => {
-      stopped = true;
-      observer.disconnect();
-      heartbeatSequence++;
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", changed);
+      controller.abort();
+      clearTimeout(timer);
+      window.removeEventListener("focus", focus);
+      document.removeEventListener("visibilitychange", focus);
       void request("/background/presence", {
         method: "POST",
         body: JSON.stringify({ sessionId: presenceSession.current, visible: false }),
       }).catch(() => {});
     };
-  }, [snapshot?.isFounded, reconcile, loadSnapshot, element, presenceSession, beginSnapshotRead]);
+  }, [snapshot?.isFounded, visible, presenceSession, beginSnapshotRead]);
 }
 
+/** Faster shared reads have an owner: unfinished background work. */
 export function usePendingWorkPolling(ports: {
-  readonly backgroundPending: boolean;
-  readonly loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
+  visible: boolean;
+  backgroundPending: boolean;
+  loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
 }) {
-  const { backgroundPending, loadSnapshot } = ports;
-
-  useEffect(() => {
-    if (!backgroundPending) return;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadSnapshot({ quiet: true });
-    }, 5_000);
-    return () => clearInterval(timer);
-  }, [backgroundPending, loadSnapshot]);
-}
-
-/*
-    Reconcile whenever the server's next meaningful transition changes.
-
-    Watching the snapshot rather than hanging off each read means this covers
-    every way the tab can learn the time — the opening read, the minute-by-minute
-    poll, founding the village, coming back to a tab that was hidden — without
-    any of them having to remember to ask. The ref is what makes it happen once
-    per exact transition rather than once per snapshot: nearly every snapshot
-    carries the same transition timestamp, and the ones that do end right here.
-
-    The ref starts empty, so the very first snapshot the tab ever sees always
-    looks like a transition. That is the point of it: opening the tab on a
-    village that has been sitting unread for a week reconciles that week then,
-    instead of waiting for the next scheduled transition.
-
-    An unfounded village is shown and not reconciled. There is no durable village
-    state to advance before founding.
-  */
-export function useVillageTransitions(ports: {
-  readonly reconcile: (forceStory?: boolean) => Promise<import("../../shared/contracts/village").VillageSnapshot>;
-  readonly snapshot: import("../../shared/contracts/village").VillageSnapshot;
-  readonly transitionRef: React.RefObject<string>;
-}) {
-  const { reconcile, snapshot, transitionRef } = ports;
-
-  useEffect(() => {
-    const transition = snapshot?.village.nextTransitionAt ?? "";
-    if (transition.length === 0 || transition === transitionRef.current) return;
-    transitionRef.current = transition;
-    if (snapshot?.isFounded) void reconcile();
-  }, [snapshot, reconcile, transitionRef]);
+  useVisibleInterval(
+    (signal) => ports.loadSnapshot({ signal, quiet: true }),
+    ports.backgroundPending ? 5_000 : null,
+    ports.visible,
+  );
 }
 
 export function useLoadPersonas(ports: {
@@ -341,49 +295,15 @@ export function useLoadLorebooks(ports: {
 }
 
 export function useInitialVillageLoad(ports: {
+  visible: boolean;
   readonly loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
 }) {
-  const { loadSnapshot } = ports;
+  const { loadSnapshot, visible } = ports;
 
   useEffect(() => {
+    if (!visible) return;
     const controller = new AbortController();
     void loadSnapshot({ signal: controller.signal });
     return () => controller.abort();
-  }, [loadSnapshot]);
-}
-
-/*
-    Keep the tab in step with the village for as long as it is open.
-
-    A capability package gets no timer and no background loop, so nothing can
-    advance a village whose tab is closed — which is why the catch-up matters
-    more than the poll. Once a minute is far finer than the thing being watched
-    (four parts to a day), so nearly every one of these reads finds the same
-    moment and stops at the first question, and the whole arrangement costs
-    about as much as the clock in the corner.
-
-    A hidden tab is skipped rather than ticked, since nobody is looking at it.
-    The read on the way back covers the time it was away in one batch, because
-    that is what the server makes of a moment it has fallen behind on.
-  */
-export function useVillagePolling(ports: {
-  readonly loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
-  readonly reconcilingRef: React.RefObject<boolean>;
-}) {
-  const { loadSnapshot, reconcilingRef } = ports;
-
-  useEffect(() => {
-    const onVisible = () => {
-      if (!document.hidden) void loadSnapshot({ quiet: true });
-    };
-    const timer = setInterval(() => {
-      if (document.hidden || reconcilingRef.current) return;
-      void loadSnapshot({ quiet: true });
-    }, VILLAGE_PULSE_MS);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [loadSnapshot, reconcilingRef]);
+  }, [loadSnapshot, visible]);
 }

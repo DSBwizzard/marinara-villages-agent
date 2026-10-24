@@ -291,16 +291,6 @@ const CLOCK_DATE = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "
 const CLOCK_TIME = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
 /**
- * How often an open tab checks whether the village has moved on.
- *
- * A minute, against a clock that turns over four times a day. Fine enough that
- * nothing the village does can be noticed late, coarse enough that the check
- * itself is never the thing anyone is waiting for — and nearly every check ends
- * at the first question, because the part of the day has not changed.
- */
-export const VILLAGE_PULSE_MS = 60_000;
-
-/**
  * How long a write-up has to be running before the tab admits to it.
  *
  * The common tick is the one that finds nothing to write and answers in a few

@@ -91,20 +91,10 @@ export async function completedGreetingAfterFailure(sessionId: string, owns = ()
 
 export async function refreshSceneAfterFailure(
   sessionId: string,
-  submissionId?: string,
+  _submissionId?: string,
   owns = () => true,
 ): Promise<SceneView | null> {
   try {
-    if (!owns()) return null;
-    if (submissionId)
-      try {
-        await request(`/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`, {
-          signal: AbortSignal.timeout(5_000),
-        });
-      } catch {
-        // Operation diagnostics can be missing or unavailable after a lost POST.
-        // The saved Scene and submission receipt still establish completion.
-      }
     if (!owns()) return null;
     const { session } = await request<{ session: SceneView | null }>("/rooms/active", {
       signal: AbortSignal.timeout(5_000),
@@ -802,45 +792,6 @@ export function RoomPanel({
    * to in the settings, so the sentence that carries the information here is that
    * the room is answering at all, and that it may take one call or several.
    */
-  const [progress, setProgress] = useState("");
-  useEffect(() => {
-    if (!busy || !room.id) {
-      setProgress("");
-      return;
-    }
-    let stopped = false;
-    let reading = false;
-    const poll = async () => {
-      if (stopped || reading || document.hidden) return;
-      reading = true;
-      try {
-        const { operation } = await request<{
-          operation: import("../../../shared/contracts/village.js").RoomOperation | null;
-        }>("/rooms/" + encodeURIComponent(room.id) + "/operation", { signal: AbortSignal.timeout(5000) });
-        if (!stopped)
-          setProgress(
-            operation?.status === "running"
-              ? /routing|attention|acoustic/.test(operation.stage ?? "")
-                ? "Working out who can hear…"
-                : /interpret/.test(operation.stage ?? "")
-                  ? "Checking the reply and its effects…"
-                  : /reply|response/.test(operation.stage ?? "")
-                    ? "Writing the reply…"
-                    : "Processing the Scene…"
-              : "",
-          );
-      } catch {
-        /* Progress is optional; never replace the request's result. */
-      } finally {
-        reading = false;
-      }
-    };
-    const timer = window.setInterval(() => void poll(), 1500);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
-  }, [room.id, busy]);
   const waiting = (
     <p className={`${ELEMENT_TAG}-chat-pending`} role="status">
       <span className={`${ELEMENT_TAG}-chat-spinner ${ELEMENT_TAG}-spin`} aria-hidden="true" />
@@ -851,7 +802,7 @@ export function RoomPanel({
             ? "Saving this Scene…"
             : mode === "move"
               ? "Moving…"
-              : progress || "This Scene is responding. Your draft stays here."}
+              : "This Scene is responding. Your draft stays here."}
       </span>
     </p>
   );

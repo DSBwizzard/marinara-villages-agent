@@ -27,8 +27,14 @@ export type RelationshipProfile = {
   access: { venueId: string; zoneId: string; active: boolean; name: string }[];
 };
 
-export function captureRelationshipKnowledge(state: RelationshipState, village: VillageState, now = new Date()): void {
+export function captureRelationshipKnowledge(
+  state: RelationshipState,
+  village: VillageState,
+  now = new Date(),
+  actorIds?: readonly string[],
+): void {
   for (const resident of village.villagers) {
+    if (actorIds && !actorIds.includes(resident.characterId)) continue;
     const edge = relationshipFor(state, resident.characterId, "player");
     const old = state.knowledge[resident.characterId];
     if ((!edge.friend && !edge.close) || !edge.playerContactAt || edge.knowledgeBlockedUntilContact) continue;

@@ -653,6 +653,7 @@ export function useMoveRoom(ports: {
 }
 
 export function useSendRoom(ports: {
+  visible?: boolean;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
   composerEditVersionRef?: React.RefObject<number>;
@@ -729,6 +730,7 @@ export function useSendRoom(ports: {
     setBusy: setRoomBusy,
   });
   const recovery = useTurnRecovery({
+    visible: ports.visible,
     room,
     setRoom,
     setRoomEnded,

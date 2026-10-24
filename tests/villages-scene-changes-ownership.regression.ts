@@ -1,3 +1,4 @@
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
@@ -309,13 +310,13 @@ async function main() {
     true,
     "privileged server diagnostics retain exact saved evidence",
   );
-  assert.equal(feed.nextCursor, "1:1:0");
+  assert.equal(feed.nextCursor, "1:3:0");
   assert.equal(feed.hasMore, true);
   const second = await read.service.readSceneChanges("same", feed.nextCursor, 1);
   assert.deepEqual(
     second.notices.map((x) => x.id),
-    ["global"],
-    "notices remain a global Village stream",
+    [],
+    "another Scene cannot inject future notices into this Scene",
   );
   assert.deepEqual(second.changes[0]!.receipts.domainEffects, []);
   assert.equal(second.nextCursor, "2:3:0");
@@ -337,7 +338,10 @@ async function main() {
   assert.deepEqual(mismatch.calls, ["scene:same", "snapshot"]);
   const capped = fixture("seed");
   for (let i = 0; i < 55; i++) capped.job("job-" + i, {});
-  assert.equal((await capped.service.readSceneChanges("same")).backgroundChecks.length, 50);
+  capped.job("current-batch", { input: {}, subjectId: "wish-batch:same:latest", status: "running" });
+  const cappedFeed = await capped.service.readSceneChanges("same");
+  assert.equal(cappedFeed.backgroundChecks.length, 50);
+  assert.equal(cappedFeed.backgroundChecks[0]!.id, "current-batch");
 
   const relationships = fixture("seed"),
     state = defaultRelationshipState("seed");
@@ -368,7 +372,7 @@ async function main() {
     const receipt = state.receipts[id]!;
     assert(receipt);
     Object.assign(receipt, {
-      sceneId: "other-scene",
+      sceneId: "same",
       submissionId: id,
       committedAt: stamp,
       noticeSequence: ++state.noticeSequence,
@@ -383,6 +387,37 @@ async function main() {
   assert.equal(visible.notices.length, 1);
   assert.equal(visible.nextCursor, "50:0:2");
   assert.equal(visible.hasMore, false);
+
+  const privacy = fixture("seed");
+  privacy.world.relationshipContext = defaultRelationshipState("seed");
+  privacy.scene.continuity = captureSceneContinuity(privacy.world, privacy.scene, Date.parse(stamp));
+  const later = privacy.world.relationshipContext;
+  later.edges['["mara","player"]'] = { fromId: "mara", toId: "player", close: true, warmth: 90, trust: 90 } as any;
+  later.knowledge.mara = { closeAt: stamp } as any;
+  later.receipts.private = {
+    id: "private",
+    sceneId: "same",
+    sourceId: "same",
+    fromId: "mara",
+    toId: "another",
+    before: 0,
+    after: 2,
+    dimension: "warmth",
+    at: stamp,
+    lineIds: [],
+    noticeSequence: 1,
+    reason: "Private",
+  };
+  privacy.scene.submissions[0]!.recordEvents!.push({ id: "private", kind: "relationship-up", text: "Private" });
+  const privateFeed = await privacy.service.readSceneChanges("same");
+  assert(
+    !privateFeed.notices.some((notice) => notice.id === "private"),
+    "later global closeness cannot expose private Scene receipts",
+  );
+  assert(
+    !privateFeed.changes.some((turn) => turn.notices.some((notice) => notice.id === "private")),
+    "cached notices use the same captured visibility",
+  );
 
   const dismiss = fixture("seed");
   await assert.rejects(dismiss.service.dismissSceneNotice("same", "missing"), /unavailable/);

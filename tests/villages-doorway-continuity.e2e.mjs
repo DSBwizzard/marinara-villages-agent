@@ -144,6 +144,7 @@ try {
       },
     ];
     summary = { pending: 1, failed: 1, rejected: 1 };
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(page.getByRole("button", { name: "2 Scene errors", exact: true })).toBeVisible();
     status = await openSceneErrors(page);
     await expect(status).toContainText("relationships update failed");
@@ -153,6 +154,7 @@ try {
     await expect(status.getByRole("button", { name: /Retry wishes/ })).toHaveCount(0);
     issues = [];
     summary = { pending: 0, failed: 0, rejected: 1 };
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await closeSceneErrors(page);
     status = await openSceneErrors(page);
     await expect(status).toContainText("saved diagnostics for the remaining results");

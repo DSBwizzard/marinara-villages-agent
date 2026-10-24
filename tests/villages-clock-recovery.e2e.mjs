@@ -37,6 +37,8 @@ try {
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/background/presence"))
+        return fulfill(route, { json: { status: "ready", snapshot: state() } });
       let value = state();
       const status = 200;
       if (path.endsWith("/clock/recover")) {

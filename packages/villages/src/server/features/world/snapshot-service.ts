@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { observeHousing } from "../../domain/rules/resident-development.js";
 import { foundingCompletedIds } from "../../domain/rules/founding-tasks.js";
 import { openingView } from "../../domain/rules/opening-project.js";
@@ -256,6 +257,37 @@ export function createVillageSnapshot({
                 sceneAccessContext(residenceAccess, sceneWorld),
                 now,
               ).venues.find((venue) => venue.id === capturedVenue.id)!,
+            },
+          }
+        : {}),
+      ...(residenceAccess
+        ? {
+            sceneChanges: {
+              sceneId: residenceAccess.id,
+              revision: createHash("sha256")
+                .update(
+                  JSON.stringify([
+                    residenceAccess.status,
+                    residenceAccess.changeSequence,
+                    residenceAccess.submissions.map((turn) => [
+                      turn.id,
+                      turn.changeSequence,
+                      turn.semanticReady,
+                      turn.processing,
+                    ]),
+                    Object.values(village.exchangeReceipts)
+                      .filter((receipt) => receipt.sceneId === residenceAccess.id)
+                      .map((receipt) => [receipt.id, receipt.noticeSequence]),
+                    Object.values(village.relationshipContext?.receipts ?? {})
+                      .filter(
+                        (receipt) =>
+                          receipt.sceneId === residenceAccess.id ||
+                          (!receipt.sceneId && receipt.sourceId === residenceAccess.id),
+                      )
+                      .map((receipt) => [receipt.id, receipt.noticeSequence]),
+                  ]),
+                )
+                .digest("hex"),
             },
           }
         : {}),
