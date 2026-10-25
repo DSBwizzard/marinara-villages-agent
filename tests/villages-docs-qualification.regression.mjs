@@ -33,6 +33,8 @@ try {
     git("config", "user.email", "fixture@example.invalid");
     git("config", "commit.gpgsign", "false");
     git("config", "core.autocrlf", "false");
+    // Mode cases use the index explicitly on every host, including Windows.
+    git("config", "core.filemode", "false");
     for (const path of ["AGENTS.md", "DEVELOPMENT.md", "source.mjs", "package.json"])
       await writeFile(join(root, path), "baseline\n");
     git("add", ".");
