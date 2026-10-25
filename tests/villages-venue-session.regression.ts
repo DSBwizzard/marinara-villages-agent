@@ -180,7 +180,9 @@ const documents = {
     if (
       failMemoryStorageForVisit &&
       input.id === "villages-village" &&
-      input.data.memories.records.some((entry: any) => entry.origin.sceneId === failMemoryStorageForVisit)
+      coerceVillageState(input.data).memories.records.some(
+        (entry: any) => entry.origin.sceneId === failMemoryStorageForVisit,
+      )
     )
       throw new Error("memory storage unavailable");
     const id = key(input.packageId, input.id);

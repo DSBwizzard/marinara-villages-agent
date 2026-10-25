@@ -1,3 +1,4 @@
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -293,7 +294,7 @@ try {
   assert.equal(prepared.spinoff.memories.length, 1);
   await post("/spinoffs/resolve", { sessionId: "source", acceptedIds: [prepared.spinoff.memories[0].id] });
   assert.equal((await readScene()).spinoffPending, false, "the built Scene API stops recovery after resolution");
-  const saved = records.get("villages-village")!.data as typeof village;
+  const saved = coerceVillageState(records.get("villages-village")!.data);
   assert.equal(saved.memories.records.filter((row) => row.text === prepared.spinoff.memories[0].text).length, 1);
   console.log(
     "Archive-identical packaged HTTP spinoff: registration, resolved connection, ownership, conclusion callback, explicit synthetic interpretation and reviewed memory import passed.",

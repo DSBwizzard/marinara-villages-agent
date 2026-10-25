@@ -11,6 +11,21 @@ const villageSlot: DocumentSlot<VillageState> = {
   name: "Village record",
   description: "The village's own record of itself, kept by the Villages package.",
   coerce: coerceVillageState,
+  // These fields contain prose and source IDs, never media owners. Keep them in this
+  // same CAS as opaque JSON to avoid the host's generic object traversal ceiling.
+  encode: (state) => ({
+    ...state,
+    memories: JSON.stringify(state.memories),
+    memoryScenes: JSON.stringify(state.memoryScenes),
+    // Native memory receipts have no mechanical snapshots or media owners.
+    // Keep every other domain receipt visible to the host's reference scanner.
+    memoryReceipts: JSON.stringify(
+      Object.fromEntries(Object.entries(state.exchangeReceipts).filter(([, row]) => row.domain === "memories")),
+    ),
+    exchangeReceipts: Object.fromEntries(
+      Object.entries(state.exchangeReceipts).filter(([, row]) => row.domain !== "memories"),
+    ),
+  }),
   label: (state) => state.name,
 };
 

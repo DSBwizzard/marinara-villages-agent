@@ -2,7 +2,10 @@ import { addMemory } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 import {
   relationshipPrompt,
@@ -150,7 +153,7 @@ const release = configureVillagesRuntime({
         id === "villages-village" ? { id, kind: "village", data: state, revision: 1 } : null,
       list: async () => [],
       update: async (input: any) => {
-        Object.assign(state, input.data);
+        Object.assign(state, coerceVillageState(input.data));
         return { ...input, revision: input.expectedRevision + 1 };
       },
       create: async (input: any) => ({ ...input, revision: 1 }),

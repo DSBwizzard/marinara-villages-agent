@@ -628,7 +628,9 @@ try {
     { memoryChanges: [durable] },
   );
   assert(
-    !records.get("villages-village").data.memories.records.some((row: any) => row.text === durable.text),
+    !coerceVillageState(records.get("villages-village").data).memories.records.some(
+      (row: any) => row.text === durable.text,
+    ),
     "Narration alone has no fresh System write screen",
   );
   assert.doesNotMatch(JSON.stringify(checked), /systemVerification/, "internal check markers remain private");
@@ -661,7 +663,11 @@ try {
     ["0", 0],
     "Retired metadata has no memory reader",
   );
-  assert(!records.get("villages-village").data.memories.records.some((row: any) => row.text === passingText));
+  assert(
+    !coerceVillageState(records.get("villages-village").data).memories.records.some(
+      (row: any) => row.text === passingText,
+    ),
+  );
   assert.doesNotMatch(JSON.stringify(canonical), /systemVerification|PRIVATE/);
   assert.equal(
     canonicalTurn.liveProposals.memoryChanges[0].systemVerificationFailure.message,
@@ -717,7 +723,11 @@ try {
   );
   const pending = state().submissions.find((row: any) => row.id === "durable-unresolved");
   assert.equal(pending.processing.domains.memories.status, "rejected");
-  assert(!records.get("villages-village").data.memories.records.some((row: any) => row.text === rejectedText));
+  assert(
+    !coerceVillageState(records.get("villages-village").data).memories.records.some(
+      (row: any) => row.text === rejectedText,
+    ),
+  );
   const boundary = "Please ask me before reading my private letters.";
   await turn(
     "source-disclosure",
@@ -853,7 +863,11 @@ try {
     "forgetful/bluffing character dialogue remains intact",
   );
   assert.equal(state().submissions.at(-1).processing.domains.memories.status, "rejected");
-  assert(!records.get("villages-village").data.memories.records.some((row: any) => row.text === falseFact));
+  assert(
+    !coerceVillageState(records.get("villages-village").data).memories.records.some(
+      (row: any) => row.text === falseFact,
+    ),
+  );
   await turn("continue-after-effects", "*nods*", [
     { kind: "dialogue", speakerId: "aqua", text: "We can keep talking." },
   ]);
@@ -1231,11 +1245,15 @@ try {
   assert.equal(state().submissions.at(-1).semanticReady, true);
   assert.equal(state().submissions.at(-1).processing.domains.memories.status, "applied");
   assert(
-    records
-      .get("villages-village")
-      .data.memories.records.some((row: any) => row.text === "Aqua suggested discussing the harbour tomorrow."),
+    coerceVillageState(records.get("villages-village").data).memories.records.some(
+      (row: any) => row.text === "Aqua suggested discussing the harbour tomorrow.",
+    ),
   );
-  assert(!JSON.stringify(records.get("villages-village").data.memories.records).includes("FORGED NARRATOR AUTHORITY"));
+  assert(
+    !JSON.stringify(coerceVillageState(records.get("villages-village").data).memories.records).includes(
+      "FORGED NARRATOR AUTHORITY",
+    ),
+  );
   const beforeSemanticRead = modelCalls;
   const semanticPublic = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
   assert.doesNotMatch(

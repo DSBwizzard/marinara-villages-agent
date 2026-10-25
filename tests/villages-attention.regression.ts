@@ -1001,9 +1001,9 @@ try {
     assert.ok(!line.content.includes("PRIVATE SECRET"));
   assert.ok(noise.session.lines.find((line) => line.content === mixed)!.heardBy.every((id) => id === "local"));
   assert.ok(
-    !records
-      .get("villages-village")
-      .data.memories.records.some((memory: any) => memory.text.includes("PRIVATE SECRET")),
+    !coerceVillageState(records.get("villages-village").data).memories.records.some((memory: any) =>
+      memory.text.includes("PRIVATE SECRET"),
+    ),
   );
   assert.ok(!JSON.stringify(publicSceneResponse(noise.session)).includes("An audible sound"));
   const savedNoise = await readProjectTurnEvidence(noise.session.id, "mixed-noise");
@@ -1457,7 +1457,7 @@ try {
   const priorMigration = await activeVenueSession();
   if (priorMigration) await discardVenueVisitDebug(priorMigration.id);
   scene = await open();
-  const migrationWorld = structuredClone(records.get("villages-village").data);
+  const migrationWorld = coerceVillageState(records.get("villages-village").data);
   delete records.get("villages-venue-visit-" + scene.id).data.sceneAttendance.layout;
   const migrationSnapshot = structuredClone(scene);
   delete migrationSnapshot.sceneAttendance.layout;
@@ -1508,7 +1508,7 @@ try {
   behavior = "answer";
   const priorMany = await activeVenueSession();
   if (priorMany) await discardVenueVisitDebug(priorMany.id);
-  const beforeManyWorld = structuredClone(records.get("villages-village").data);
+  const beforeManyWorld = coerceVillageState(records.get("villages-village").data);
   await mutateVillageState((world) => {
     const template = world.villagers.find((person) => person.characterId === "faraway")!;
     for (let index = 0; index < 8; index++) {

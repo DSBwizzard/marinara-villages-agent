@@ -1,6 +1,6 @@
 import { readWishGoalJournal } from "../rules/wish-journal.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
-import { readMemoryCollection, memoryRequire } from "../rules/memory-integrity.js";
+import { readMemoryCollection, memoryObject, memoryRequire } from "../rules/memory-integrity.js";
 import { readMemorySceneStates } from "../rules/village-memories.js";
 import { localDateKey } from "../rules/resident-planning.js";
 import { readDevelopment } from "../rules/development-codec.js";
@@ -1634,6 +1634,15 @@ function coerceVenueMail(value: unknown): VillageVenueMail[] {
     })
     .slice(-256);
 }
+/** Native runtime values and their exact JSON storage representation share one strict schema. */
+function memoryField(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new Error("Invalid saved Memories JSON.");
+  }
+}
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
   if (value != null && raw.version !== 4) throw new Error("Unsupported Village format. Start a fresh Village.");
@@ -1648,17 +1657,27 @@ export function coerceVillageState(value: unknown): VillageState {
   const seen = new Set<string>();
 
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
-  const memories = readMemoryCollection(raw.memories ?? fallback.memories);
+  const memories = readMemoryCollection(memoryField(raw.memories ?? fallback.memories));
+  const memoryReceipts = raw.memoryReceipts === undefined ? {} : memoryField(raw.memoryReceipts);
+  memoryObject(memoryReceipts);
+  for (const [id, receipt] of Object.entries(memoryReceipts)) {
+    memoryObject(receipt);
+    memoryRequire(receipt.id === id && receipt.domain === "memories", "invalid encoded memory receipt");
+    memoryRequire(!Object.hasOwn(asRecord(raw.exchangeReceipts), id), "duplicate memory receipt");
+  }
   const state: VillageState = {
     version: 4,
     memories,
-    memoryScenes: readMemorySceneStates(raw.memoryScenes ?? {}, memories),
+    memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(
       Object.entries(asRecord(raw.backgroundReceipts)).filter(
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     ),
-    exchangeReceipts: structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"],
+    exchangeReceipts: structuredClone({
+      ...asRecord(raw.exchangeReceipts),
+      ...memoryReceipts,
+    }) as VillageState["exchangeReceipts"],
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
     projectWishOutbox: Array.isArray(raw.projectWishOutbox)

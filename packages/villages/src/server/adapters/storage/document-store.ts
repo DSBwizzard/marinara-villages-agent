@@ -9,6 +9,7 @@ export type DocumentSlot<T> = {
   name: string;
   description: string;
   coerce(data: unknown): T;
+  encode?(state: T): unknown;
   label(state: T): string;
 };
 /** A mutation captures its document store once, then retains it across CAS retries. */
@@ -40,7 +41,7 @@ export function createDocumentMutator(getDocuments: () => CapabilityDocumentStor
               kind: slot.kind,
               name: slot.label(state) || slot.name,
               description: slot.description,
-              data: state,
+              data: slot.encode ? slot.encode(state) : state,
               createdAt: stamp,
               updatedAt: stamp,
             }),
@@ -54,7 +55,7 @@ export function createDocumentMutator(getDocuments: () => CapabilityDocumentStor
             expectedRevision: record.revision,
             name: slot.label(state) || slot.name,
             description: slot.description,
-            data: state,
+            data: slot.encode ? slot.encode(state) : state,
             updatedAt: stamp,
           }),
         );
