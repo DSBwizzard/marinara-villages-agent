@@ -208,7 +208,7 @@ try {
       endedAt: "",
     }),
   );
-  await expect(page.locator("#screen")).toHaveText("room");
+  await expect(page.locator("#screen")).toHaveText("home");
   await page.evaluate(() => window.navigation.closeRoom());
   await expect(page.locator("#screen")).toHaveText("checking");
   await expect.poll(() => !!guardRead).toBe(true);
