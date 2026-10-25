@@ -56,6 +56,32 @@ try {
     0,
     "A broad parent cannot certify missing child cases",
   );
+  for (const options of [["--filter="], ["--filter=   "], ["--filter=probe", "--filter="]]) {
+    const empty = await probe('console.log("unexpected broad run")', options);
+    assert.notEqual(empty.status, 0, "Empty filter values must fail before executing tests");
+    assert.doesNotMatch(empty.stdout, /unexpected broad run/);
+  }
+  const children =
+    '// Test cases: parent/a, parent/b\nimport { runCase } from "../scripts/test-cases.mjs"; await runCase("parent/a", async () => {});';
+  const incompleteParent = await probe(children, ["--case=parent"]);
+  assert.notEqual(incompleteParent.status, 0, "Every declared child of the selected parent must complete");
+  assert.match(incompleteParent.stderr, /case did not execute/);
+  assert.notEqual((await probe(children, ["--case=parent", "--shard=1/2"])).status, 0);
+  const leaf = await probe(children, ["--case=parent/a"]);
+  assert.equal(leaf.status, 0, leaf.stdout + leaf.stderr);
+  const allChildren = children + '\nawait runCase("parent/b", async () => {});';
+  for (const options of [["--case=parent"], ["--case=parent", "--shard=1/2"], ["--case=parent/a", "--case=parent/b"]]) {
+    const complete = await probe(allChildren, options);
+    assert.equal(complete.status, 0, complete.stdout + complete.stderr);
+  }
+  assert.notEqual((await probe(allChildren, ["--case=unknown"])).status, 0);
+  assert.notEqual((await probe(allChildren, ["--filter=missing"])).status, 0);
+  assert.notEqual((await probe(allChildren, ["--shard=2/2"])).status, 0, "An empty shard cannot pass");
+  const broad = await probe(
+    '// Test cases: parent\nimport { runCase } from "../scripts/test-cases.mjs"; await runCase("parent", async () => {});',
+    ["--case=parent/a"],
+  );
+  assert.notEqual(broad.status, 0, "A declared parent cannot certify an unexecuted requested descendant");
   const valid =
     '// Test cases: first, second\nimport { runCase } from "../scripts/test-cases.mjs"; await runCase("first", async () => {}); await runCase("second", async () => {});';
   const full = await probe(valid);
