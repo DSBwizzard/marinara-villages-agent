@@ -7,7 +7,7 @@ import type { VillageState, VillageWish } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { validDecisionEvidence } from "./decision-candidates.js";
 import { createProgressTask, type ProgressTask, revealProgress, submitProgressEvidence } from "./progress-engine.js";
-import { deriveVillageMoment } from "./village-clock.js";
+
 import { localWishRequirements } from "./wish-admission.js";
 import { wishExpired } from "./wish-definition.js";
 import { sceneWishProtected } from "./scene-wish-protection.js";
@@ -15,9 +15,9 @@ import { captureSceneWishEffect } from "./scene-continuity.js";
 import {
   addWishFacts,
   bindWishFacts,
+  wishJournal,
   knownWish,
   rememberWishEvidence,
-  setWishJournalStatus,
   wishConditionRevision,
 } from "./wish-journal.js";
 import { matchingWishReceipts, wishFingerprint, wishReceiptRecords } from "./wish-interpretation-rules.js";
@@ -43,7 +43,7 @@ export function formatWishNotice(
 }
 
 export const WISH_PROPOSAL_INSTRUCTION =
-  'Return wishChanges:[] or [{actorId:"resident ID",wishId:"listed Wish ID",intent:"reveal|journal|progress|check",evidence:["player",0],facts:[{kind:"preference|concern|possibility|condition",quote:"short exact resident speech",evidence:[0],supersedes:"optional existing fact ID"}]}]. Cite only this exchange. Reveal requires the resident telling the player their existing wish. Journal records discoveries, not fulfillment, and makes no check request; use it for preferences, concerns, mentioned approaches or explicit essential conditions. Facts are optional, at most four, with exact resident quotes of at most 320 characters. A concern is not a condition. Conditions require explicit necessity, must clarify the same desired outcome, and apply only prospectively. Never invent hidden requirements or change a goal. Supersede only an explicitly corrected existing fact. Progress/check is for actual new fulfillment evidence, not merely learning preferences or arranging an approach. Promises and plans cannot establish physical results. Physical results use verified action receipts. Leave hidden wishes hidden and record only player-witnessed speech. Do not expose a solution checklist or require the first approach to be completed.';
+  'Return wishChanges:[] or [{actorId:"resident ID",wishId:"listed Wish ID",intent:"reveal|journal|progress|check",evidence:["player",0],facts:[{kind:"goal|condition",quote:"short exact resident speech",evidence:[0],supersedes:"optional existing fact ID"}]}]. Cite only this exchange. Reveal requires the resident telling the player their existing wish. Journal records only exact owner statements that materially clarify this goal (kind goal) or explicit essential conditions. Ordinary preferences, concerns and possible approaches belong solely in memoryChanges. A goal clarification does not impose a new requirement. Facts are optional, at most four, with exact resident quotes of at most 320 characters. A concern is not a condition. Conditions require explicit necessity, must clarify the same desired outcome, and apply only prospectively. Never invent hidden requirements or change a goal. Supersede only an explicitly corrected existing fact. Progress/check is for actual new fulfillment evidence, not merely learning preferences or arranging an approach. Promises and plans cannot establish physical results. Physical results use verified action receipts. Leave hidden wishes hidden and record only player-witnessed speech. Do not expose a solution checklist or require the first approach to be completed.';
 
 export function bindWishProposals(
   value: unknown,
@@ -299,7 +299,6 @@ export function applyPreparedWishVerdict(
       wishConditionRevision(state, input.proposal.actorId, wish, input.proposal.conditionAt)
   )
     return;
-  if (state.correctedWishMemoryIds.includes(`${input.sceneId}:wish:${wish.id}`)) return;
   const matching = matchingWishReceipts(
     verdict.criteria,
     { actorId: input.proposal.actorId, receipts: wishReceiptRecords(state, input.proposal.actorId) },
@@ -319,6 +318,20 @@ export function applyPreparedWishVerdict(
           (line) => line.id === id && (!wish.addedAt || (line.at && line.at >= wish.addedAt)),
         ) || matching.some((receipt) => `receipt:${receipt.id}` === id),
     );
+  const playerWitnessed =
+    verdict.evidenceIds.length > 0 && verdict.evidenceIds.every((id) => input.context.playerEvidenceIds?.includes(id));
+  const playerKnows =
+    !!knownWish(state, input.proposal.actorId, wish.id) ||
+    Object.values(state.exchangeReceipts).some(
+      (row) =>
+        row.sceneId === input.sceneId &&
+        row.submissionId === input.submissionId &&
+        row.wishId === wish.id &&
+        row.actorId === input.proposal.actorId &&
+        row.status === "applied" &&
+        row.wishDisclosure,
+    );
+  let fulfilled = false;
   let reason = verdict.reason,
     notice: VenueRecordEvent | undefined;
   const task = ensureTask(state, input.proposal, wish, verdict.criteria);
@@ -327,7 +340,7 @@ export function applyPreparedWishVerdict(
   else if (!supported && (verdict.outcome === "fulfilled" || verdict.outcome === "progress"))
     reason = "Required witnessed evidence absent or obsolete";
   else if (verdict.outcome === "fulfilled") {
-    const memoryId = `${input.sceneId}:wish:${wish.id}`;
+    const memoryId = id;
     const result = submitProgressEvidence(
       task,
       "all",
@@ -346,38 +359,32 @@ export function applyPreparedWishVerdict(
         verifiers: { "wish.prepared-verdict": () => ({ status: "accepted" }) },
         resolvers: {
           "wish.fulfill": () => {
-            if (state.correctedWishMemoryIds.includes(memoryId)) return;
             const resident = state.villagers.find((resident) => resident.characterId === input.proposal.actorId)!;
-            fulfillResidentWish(resident, wish.id, input.at, memoryId);
-            const moment = deriveVillageMoment({
-              foundedAt: state.foundedAt,
-              seed: state.seed,
-              now: new Date(input.at),
-            });
-            if (!state.chronicle.some((entry) => entry.id === memoryId))
-              state.chronicle.unshift({
-                id: memoryId,
-                dayIndex: moment.dayIndex,
-                clock: moment.dayPhase,
-                occurredAt: input.at,
-                timePrecision: "exact",
-                scope: "private",
-                actors: [{ id: resident.characterId, name: resident.cardSnapshot.name }],
-                kind: "favour",
-                weight: wish.intensity,
-                text: verdict.memory || `${resident.cardSnapshot.name}'s wish was fulfilled: ${wish.wish}`,
-                sourceVisitId: input.sceneId,
-                sourceLineIds: verdict.evidenceIds,
-                knownByCharacterIds: [resident.characterId],
-              });
+            rememberWishEvidence(
+              (wish.goalJournal ??= { facts: [], evidence: [] }),
+              input.context.evidence.filter((line) => verdict.evidenceIds.includes(line.id)),
+              input.sceneId,
+              input.submissionId,
+            );
+            for (const receipt of matching.filter((receipt) => verdict.receiptIds.includes(receipt.id)))
+              addWishFacts(
+                state,
+                input.proposal.actorId,
+                wish,
+                [{ kind: "result", quote: receipt.text.slice(0, 320), lineIds: ["receipt:" + receipt.id] }],
+                input.sceneId,
+                input.submissionId,
+                input.at,
+              );
+            fulfilled = !!fulfillResidentWish(resident, wish.id, input.at, memoryId);
           },
         },
       },
     );
-    if (result.status === "accepted" && !state.correctedWishMemoryIds.includes(memoryId) && wish.learnedAt)
+    if (result.status === "accepted" && playerWitnessed && playerKnows)
       notice = formatWishNotice(id, input.context.card.name, wish, "fulfilled");
     reason = result.status === "accepted" ? "All faithful Wish conditions confirmed" : result.reason;
-  } else if (verdict.outcome === "progress" && wish.learnedAt) {
+  } else if (verdict.outcome === "progress" && playerWitnessed && playerKnows) {
     const previous = Object.values(state.exchangeReceipts).some(
       (receipt) =>
         receipt.domain === "wishes" &&
@@ -390,8 +397,8 @@ export function applyPreparedWishVerdict(
     if (!previous) notice = formatWishNotice(id, input.context.card.name, wish, "progress");
     reason = "New Wish evidence accepted";
   }
-  const journal = knownWish(state, input.proposal.actorId, wish.id);
-  if (journal && supported && physical && ["progress", "fulfilled"].includes(verdict.outcome)) {
+  const journal = wishJournal(state, input.proposal.actorId, wish.id);
+  if (journal && supported && physical && verdict.outcome === "progress") {
     rememberWishEvidence(
       journal,
       input.context.evidence.filter((line) => verdict.evidenceIds.includes(line.id)),
@@ -408,14 +415,12 @@ export function applyPreparedWishVerdict(
         input.submissionId,
         input.at,
       );
-    if (verdict.outcome === "fulfilled") setWishJournalStatus(state, input.proposal.actorId, wish.id, "fulfilled");
   }
   if (notice) notice.wishUpdate = { ...notice.wishUpdate!, actorId: input.proposal.actorId };
   state.exchangeReceipts[id] = {
     actorId: input.proposal.actorId,
     wishId: wish.id,
-    status:
-      notice || (supported && physical && ["progress", "fulfilled"].includes(verdict.outcome)) ? "applied" : "rejected",
+    status: fulfilled || (supported && physical && verdict.outcome === "progress") ? "applied" : "rejected",
     id,
     sceneId: input.sceneId,
     submissionId: input.submissionId,
@@ -423,9 +428,13 @@ export function applyPreparedWishVerdict(
     at: input.at,
     evidenceIds: verdict.evidenceIds,
     reason,
+    wishOutcome: fulfilled ? "fulfilled" : undefined,
+    wishGoal: fulfilled ? wish.wish : undefined,
+    wishAudience: fulfilled
+      ? [input.proposal.actorId, ...(playerWitnessed && playerKnows ? ["player"] : [])]
+      : undefined,
     sceneFacts: {
       ...captureSceneWishEffect(state, input.proposal.actorId, wish.id),
-      memories: structuredClone(state.chronicle.filter((row) => row.id === `${input.sceneId}:wish:${wish.id}`)),
     },
     ...(notice ? { notice } : {}),
   };

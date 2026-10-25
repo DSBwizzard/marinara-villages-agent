@@ -1,5 +1,4 @@
 import { backgroundRevision } from "./background-revision.js";
-import { recordWitnessedPursuits } from "./development-knowledge.js";
 import { sceneEvidencePerception } from "./scene-evidence-perception.js";
 import { z } from "zod";
 import type { DevelopmentSceneChange } from "../models/development-model.js";
@@ -160,7 +159,6 @@ export function applyDevelopmentScene(
         : { sceneFacts: { development: { characterId: change.characterId, resident: structuredClone(r) } } }),
     };
   }
-  recordWitnessedPursuits(state, scene, witnessed, appliedAt);
   for (const characterId of changedActors) {
     const r = state.development!.residents[characterId]!;
     r.revision++;

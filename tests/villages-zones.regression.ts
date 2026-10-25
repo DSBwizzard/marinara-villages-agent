@@ -24,6 +24,7 @@ await f.mutate((state) => {
   });
 });
 const scene: any = {
+  version: 2,
   id: "scene",
   villageSeed: f.state().seed,
   placeId: "cafe",

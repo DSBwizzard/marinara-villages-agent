@@ -1,4 +1,4 @@
-import type { KnownPursuitSnapshot, PursuitDecision, PursuitStatus } from "../../../shared/contracts/pursuits.js";
+import type { PursuitDecision, PursuitStatus } from "../../../shared/contracts/pursuits.js";
 export type DevelopmentDecision = PursuitDecision;
 export type Pursuit = {
   id: string;
@@ -11,8 +11,6 @@ export type Pursuit = {
   startedAt: string;
   updatedAt: string;
   consents: Record<string, { decision: DevelopmentDecision; at: string; source: string }>;
-  /** A historical disclosure, never silently refreshed from private progress. */
-  known?: KnownPursuitSnapshot;
 };
 export type ResidentDevelopment = {
   revision: number;

@@ -1,3 +1,5 @@
+import { memoryProposal } from "./helpers/memories-fixture.js";
+import { applyVillageMemory } from "../packages/villages/src/server/domain/rules/village-memories.js";
 import { normalizeVillageMutation } from "../packages/villages/src/server/domain/rules/world-mutation.js";
 import { housingAvailableAt } from "../packages/villages/src/server/domain/rules/development-housing.js";
 import assert from "node:assert/strict";
@@ -89,7 +91,7 @@ function shareWithConsent(
     developmentChanges: order === "consent-first" ? [...changes].reverse() : changes,
   } as unknown as VenueSubmission;
   applyDevelopmentScene(state, scene, submission, elapsed(1.3));
-  return p.known!;
+  return { status: p.status, consents: p.consents, known: knownDevelopment(state, "a") };
 }
 {
   const known = shareWithConsent("disclose-first");
@@ -98,7 +100,7 @@ function shareWithConsent(
     known,
     "Same heard speech has the same journal history regardless of model row order.",
   );
-  assert.equal(known.agreements![0]!.decision, "agree");
+  assert.equal(known.consents.b.decision, "agree");
   const ended = shareWithConsent("disclose-first", "Bram's home", "I had wanted to move to Bram's home.", true);
   assert.equal(ended.status, "ended");
   assert.deepEqual(
@@ -106,12 +108,7 @@ function shareWithConsent(
     ended,
     "A heard disclosure and ending have the same result in either proposal order.",
   );
-  assert.equal(known.title, "Move to Bram's home");
-  assert.equal(
-    shareWithConsent("disclose-first", "Inn", "I would like company at dinner.").title,
-    "Move",
-    "A word fragment cannot reveal a private destination.",
-  );
+  assert.deepEqual(known.known, [], "Mechanical speech receipts do not create unscreened knowledge.");
 }
 function apply(days: number, decision: "agree" | "refuse" | "conditional" = "agree") {
   const state = developmentFixture(),
@@ -142,7 +139,7 @@ function apply(days: number, decision: "agree" | "refuse" | "conditional" = "agr
   assert.equal(state.venueMail.length, 0, "Typed consent does not buy another mailbox decision.");
   assert.equal(knownDevelopment(state, "a").length, 0, "Private progress does not reveal itself to the player.");
   assert.equal(
-    state.chronicle.find((m) => m.id.endsWith(":completed"))!.occurredAt,
+    state.memories.records.find((m) => m.committedEffect?.id.endsWith(":completed"))!.occurredAt,
     new Date(Date.parse(elapsed(2)) + 3000).toISOString(),
   );
   assert.deepEqual(
@@ -160,9 +157,9 @@ function apply(days: number, decision: "agree" | "refuse" | "conditional" = "agr
   completeResidenceMove(state, "a", false, new Date(elapsed(2.01)));
   finishDevelopmentMove(state, "a", elapsed(2.01));
   assert.equal(home(state), "home-b");
-  const before = state.chronicle.length;
+  const before = state.memories.records.length;
   finishDevelopmentMove(state, "a", elapsed(10));
-  assert.equal(state.chronicle.length, before, "Completion memory is idempotent.");
+  assert.equal(state.memories.records.length, before, "Completion memory is idempotent.");
 }
 for (const decision of ["refuse", "conditional"] as const) {
   const { state } = apply(4, decision);
@@ -190,7 +187,7 @@ for (const decision of ["refuse", "conditional"] as const) {
   );
   applyDevelopmentReview(state, input, moveProposal(elapsed(4)), elapsed(4.1));
   assert.equal(home(state), "home-b");
-  const memory = state.chronicle.find((m) => m.id.endsWith(":completed"))!;
+  const memory = state.memories.records.find((m) => m.committedEffect?.id.endsWith(":completed"))!;
   assert.equal(memory.occurredAt, elapsed(4.1), "A move cannot be backdated across a current housing observation.");
   assert.equal(state.development!.log.find((l) => l.outcome === "Moved")!.effectiveAt, elapsed(4.1));
 }
@@ -221,8 +218,8 @@ for (const decision of ["refuse", "conditional"] as const) {
       absent.development!.residents.a!.pursuits[0]!.consents,
     );
     assert.equal(
-      frequent.chronicle.find((m) => m.id.endsWith(":completed"))!.occurredAt,
-      absent.chronicle.find((m) => m.id.endsWith(":completed"))!.occurredAt,
+      frequent.memories.records.find((m) => m.committedEffect?.id.endsWith(":completed"))!.occurredAt,
+      absent.memories.records.find((m) => m.committedEffect?.id.endsWith(":completed"))!.occurredAt,
       "The same scripted choices have the same causal timing whether opened daily or after a long absence.",
     );
   }
@@ -268,10 +265,18 @@ for (const decision of ["refuse", "conditional"] as const) {
   } as VenueSubmission;
   scene.submissions = [submission];
   applyDevelopmentScene(state, scene, submission, elapsed(1.3));
+  assert.equal(knownDevelopment(state, "a").length, 0, "Mechanical disclosure receipt alone does not teach.");
+  const memory = memoryProposal(state.memories, {
+    audience: ["player", "a"],
+    text: "I am considering moving in with Bram",
+    patch: { kind: "information", domainRef: { kind: "pursuit", id: "ada-move", characterId: "a" } },
+  });
+  for (const learner of Object.values(memory.proposal.learners)) learner.disclosed = { status: "considering" };
+  applyVillageMemory(state, memory.proposal, memory.context);
   assert.equal(knownDevelopment(state, "a").length, 1);
   assert.equal(
     knownDevelopment(state, "a")[0]!.title,
-    "Move",
+    undefined,
     "A broad disclosure does not reveal an unspoken private destination.",
   );
   assert.equal(
@@ -317,65 +322,6 @@ for (const decision of ["refuse", "conditional"] as const) {
 }
 
 {
-  const { state } = apply(1.25, "refuse");
-  const r = state.development!.residents.a!;
-  const pursuit = r.pursuits[0]!;
-  pursuit.known = { at: elapsed(1.2), text: "Ada: move to Bram's home : stalled.", status: "stalled" };
-  assert.equal(
-    knownDevelopment(state, "a")[0]!.title,
-    "Move to Bram's home",
-    "Old summaries retain their frozen destination.",
-  );
-  const old = structuredClone(pursuit.known);
-  const consent = (hidden: boolean, id: string, kind: "consent" | "wait" = "consent") => {
-    const speakerId = kind === "wait" ? "a" : "b";
-    const content = kind === "wait" ? "I will put this move on hold." : "I agree to share my home with Ada.";
-    const scene = {
-      id,
-      villageSeed: state.seed,
-      lines: [{ id: "line", kind: "dialogue", speakerId, content, heardBy: ["a", "b"], contactHidden: hidden }],
-      submissions: [],
-    } as unknown as VenueScene;
-    const submission = {
-      id: "turn",
-      semanticProvenance: { version: 2, developmentVersion: 1 },
-      developmentChanges: [
-        {
-          pursuitId: pursuit.id,
-          characterId: "a",
-          actorId: speakerId,
-          expectedRevision: r.revision,
-          kind,
-          ...(kind === "consent" ? { decision: "agree" } : {}),
-          citations: [{ segment: 0, quote: content }],
-          lineIds: ["line"],
-        },
-      ],
-    } as VenueSubmission;
-    applyDevelopmentScene(state, scene, submission, elapsed(1.4));
-    return { scene, submission };
-  };
-  consent(true, "unheard-consent");
-  assert.deepEqual(pursuit.known, old, "A resident's private agreement never changes player knowledge.");
-  const visible = consent(false, "heard-consent");
-  assert.equal(pursuit.known!.agreements![0]!.name, "Bram");
-  assert.equal(pursuit.known!.agreements![0]!.decision, "agree");
-  const facts = pursuit.known!.facts!.length;
-  applyDevelopmentScene(state, visible.scene, visible.submission, elapsed(4));
-  assert.equal(pursuit.known!.facts!.length, facts, "Replaying saved speech does not duplicate journal history.");
-  consent(false, "heard-wait", "wait");
-  assert.equal(pursuit.known!.status, "stalled", "A witnessed wait updates the known stage.");
-  state.venues[1]!.name = "Secret renamed home";
-  assert.equal(
-    knownDevelopment(state, "a")[0]!.title,
-    "Move to Bram's home",
-    "Live private names do not overwrite the saved title.",
-  );
-  assert.equal(JSON.stringify(knownDevelopment(state, "a")).includes("Secret renamed home"), false);
-  assert.deepEqual(readDevelopment(JSON.parse(JSON.stringify(state.development))), state.development);
-}
-
-{
   const { state } = apply(1.25);
   state.venues[1]!.access!.managerIds.push("c");
   assert.throws(
@@ -390,7 +336,7 @@ for (const decision of ["refuse", "conditional"] as const) {
   observeHousing(state, elapsed(3));
   applyDevelopmentReview(state, input, moveProposal(elapsed(1.25)), elapsed(4));
   assert.equal(
-    state.chronicle.find((m) => m.id.endsWith(":completed"))!.occurredAt,
+    state.memories.records.find((m) => m.committedEffect?.id.endsWith(":completed"))!.occurredAt,
     elapsed(4),
     "Delayed replay rebases even when completion was beyond the original review window.",
   );

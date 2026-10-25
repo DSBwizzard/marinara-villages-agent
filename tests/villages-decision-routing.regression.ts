@@ -71,6 +71,7 @@ home.residentIds = ["ada"];
 roomWorld.venues = [home];
 roomWorld.playerPersonaName = "Pat";
 const roomScene = coerceSession({
+  version: 2,
   id: "room",
   placeId: home.id,
   zoneId: "exterior",

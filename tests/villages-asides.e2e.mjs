@@ -42,7 +42,7 @@ try {
       at: now,
     };
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       id: "aside-scene",
       placeId: "mill",

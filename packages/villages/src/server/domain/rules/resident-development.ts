@@ -1,3 +1,4 @@
+import { rememberDomainFact } from "./domain-memories.js";
 import { recordHousingAvailability, housingAvailableAt } from "./development-housing.js";
 import { moveConsentingActors } from "./development-consent.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
@@ -14,7 +15,6 @@ import { assertResidencePrivateDestination } from "./venue-layout.js";
 import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { completeResidenceMove } from "./residence-move.js";
-import { deriveVillageMoment } from "./village-clock.js";
 
 export const DEVELOPMENT_HOUR_MS = 3_600_000;
 export const DEVELOPMENT_MOVE_MS = 24 * DEVELOPMENT_HOUR_MS;
@@ -131,33 +131,19 @@ function remember(
   characterId: string,
   id: string,
   at: string,
+  recordedAt: string,
   text: string,
   knowers: string[],
 ): void {
-  if (state.chronicle.some((r) => r.id === id)) return;
-  const moment = deriveVillageMoment({
-    foundedAt: state.foundedAt,
-    seed: state.seed,
-    timeZone: state.timeZone || undefined,
-    now: new Date(at),
-  });
-  state.chronicle.push({
+  rememberDomainFact(state, {
     id,
-    dayIndex: moment.dayIndex,
-    clock: moment.dayPhase,
-    occurredAt: at,
-    timePrecision: "exact",
-    scope: "private",
-    kind: "chat",
+    at,
+    recordedAt,
     text,
-    actors: [
-      {
-        id: characterId,
-        name: state.villagers.find((r) => r.characterId === characterId)?.cardSnapshot.name ?? characterId,
-      },
-    ],
-    subjectCharacterIds: [characterId],
-    knownByCharacterIds: [...new Set(knowers.filter((id) => id !== "player"))],
+    subjects: [characterId],
+    knowers: knowers.filter((id) => id !== "player"),
+    domainRef: { kind: "pursuit", id: p.id, characterId },
+    event: true,
   });
 }
 export function finishDevelopmentMove(state: VillageState, characterId: string, appliedAt: string): void {
@@ -176,7 +162,7 @@ export function finishDevelopmentMove(state: VillageState, characterId: string, 
     const name = state.villagers.find((row) => row.characterId === characterId)?.cardSnapshot.name ?? characterId;
     const home = state.venues.find((v) => v.id === p.targetVenueId)?.name ?? p.targetVenueId;
     const text = `${name} moved to ${home}.`;
-    remember(state, p, characterId, `development:${p.id}:completed`, effectiveAt, text, [
+    remember(state, p, characterId, `development:${p.id}:completed`, effectiveAt, appliedAt, text, [
       characterId,
       ...Object.keys(p.consents),
     ]);
@@ -258,7 +244,7 @@ function applyStep(state: VillageState, input: DevelopmentReview, step: Developm
       p.status = step.decision === "agree" ? "considering" : "stalled";
       const name = state.villagers.find((v) => v.characterId === step.actorId)!.cardSnapshot.name;
       const text = `${name} ${step.decision === "agree" ? "agreed to" : step.decision === "refuse" ? "refused" : "set an unresolved condition for"} the proposed move to ${target.name}.`;
-      remember(state, p, step.characterId, `development:${p.id}:${step.id}`, step.at, text, [
+      remember(state, p, step.characterId, `development:${p.id}:${step.id}`, step.at, appliedAt, text, [
         step.characterId,
         step.actorId,
       ]);

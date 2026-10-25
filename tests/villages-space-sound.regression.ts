@@ -1,3 +1,4 @@
+import { bindSceneMemorySuggestion } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import assert from "node:assert/strict";
 import {
   contactNeighborIds,
@@ -115,6 +116,7 @@ assert.deepEqual(
 );
 
 const base: any = {
+  version: 2,
   id: "s",
   placeId: "house",
   zoneId: "exterior",
@@ -297,17 +299,19 @@ for (const localIds of [[], ["local"]]) {
 const evidence: any = {
   attentionWitnesses: [inputWitness],
   acousticReplies: [],
-  recollections: [{ evidence: ["attention:0"], knownByCharacterIds: ["far"] }],
-  memoryChanges: [{ evidence: ["sound:attention:0"], knownByCharacterIds: ["far"] }],
+  memoryChanges: [
+    { learners: { near: { support: [{ lineId: "attention:0", excerpt: message }] } } },
+    { learners: { far: { support: [{ lineId: "sound:attention:0", excerpt: "noise" }] } } },
+  ],
 };
 applyAcousticWitnesses(evidence, context, message, parsed);
 assert.deepEqual(parsed.lines.find((line) => line.content === message).heardBy, ["local", "near"]);
 assert(parsed.lines.some((line) => line.kind === "narration" && line.heardBy.includes("far")));
 assert(
-  !parsed.lines[evidence.recollections[0].evidence[0]].heardBy.includes("far"),
+  !parsed.lines[evidence.memoryChanges[0].learners.near.support[0].lineId].heardBy.includes("far"),
   "noise cannot prove knowledge of words",
 );
-assert(!parsed.lines[evidence.memoryChanges[0].evidence[0]].content.includes(message));
+assert(!parsed.lines[evidence.memoryChanges[1].learners.far.support[0].lineId].content.includes(message));
 for (const witness of [
   { ...inputWitness, understoodBy: ["far"] },
   { ...inputWitness, heardBy: ["unknown"] },
@@ -555,13 +559,40 @@ assert(
       line.evidenceId === "reply-sound:0" && line.heardBy.includes("far") && !line.content.includes("Local fires"),
   ),
 );
-const noiseMemory = {
-  memoryChanges: [{ text: "CODE RED", evidence: ["sound:attention:0"], knownByCharacterIds: ["far"] }],
+const noiseMemory: any = {
+  memoryChanges: [
+    {
+      action: "create",
+      kind: "information",
+      text: message,
+      subjects: [],
+      learners: { far: { basis: "observation", support: [{ lineId: "sound:attention:0", excerpt: "noise" }] } },
+      screening: { disposition: "clear", protectedRoots: [], fingerprint: "unused" },
+    },
+  ],
   attentionWitnesses: [inputWitness],
   acousticReplies: [],
 };
-applyAcousticWitnesses(noiseMemory, context, message, noReply());
-assert(!noiseMemory.memoryChanges[0].text.includes(message), "a noise-only memory cannot contain the utterance");
+const noiseReply = noReply();
+applyAcousticWitnesses(noiseMemory, context, message, noiseReply);
+const noiseSuggestion = noiseMemory.memoryChanges[0];
+noiseSuggestion.learners.far.support[0].excerpt =
+  noiseReply.lines[noiseSuggestion.learners.far.support[0].lineId].content;
+assert.throws(
+  () =>
+    bindSceneMemorySuggestion(noiseSuggestion, {
+      source: { kind: "scene", id: "noise", revision: 1, fingerprint: "a".repeat(64) },
+      operationId: "noise",
+      proposalId: "noise",
+      collectionRevision: 0,
+      lines: noiseReply.lines.map((line: any, index: number) => ({ ...line, id: "noise-" + index })),
+      playerLineId: "",
+      replyLineIds: noiseReply.lines.map((_line: any, index: number) => "noise-" + index),
+      residentIds: ["far"],
+    }),
+  /Sound alone/u,
+  "Sound evidence cannot teach private words",
+);
 
 for (const version of [2, 3, 4]) {
   const oldScene = { ...scene, operation: { kind: "turn", input: { interactionScopeVersion: version } } } as any;
@@ -729,7 +760,18 @@ for (const mixed of [false, true]) {
     acousticEvents: [
       { segment: 0, speakerId: "near", delivery: "ordinary", emitted: true, heardBy: ["near"], playerHeard: true },
     ],
-    memoryChanges: [{ evidence: ["player", 1], knownByCharacterIds: ["near"] }],
+    memoryChanges: [
+      {
+        learners: {
+          near: {
+            support: [
+              { lineId: "player", excerpt: "speech" },
+              { lineId: 1, excerpt: "speech" },
+            ],
+          },
+        },
+      },
+    ],
     relationshipChanges: { changes: [{ lineIds: [1] }] },
     roomEvents: [{ evidence: [1] }],
     projectSpeech: [{ citations: [{ segment: 1 }] }],
@@ -759,12 +801,12 @@ for (const mixed of [false, true]) {
   assert.equal(parsed.lines[3].anchorIndex, 2);
   assert.equal(parsed.lines[4].anchorIndex, 2);
   assert(parsed.lines[2].heardBy.includes("near"), "speaker knows their authored words");
-  assert.equal(raw.memoryChanges[0].evidence[1], 2);
+  assert.equal(raw.memoryChanges[0].learners.near.support[1].lineId, 2);
   assert.equal(raw.relationshipChanges.changes[0].lineIds[0], 2);
   assert.equal(raw.roomEvents[0].evidence[0], 2);
   assert.equal(raw.projectSpeech[0].citations[0].segment, 2);
   assert.equal(raw.interpretationRouting[0].segments[0], 2);
-  const playerRef = raw.memoryChanges[0].evidence[0];
+  const playerRef = raw.memoryChanges[0].learners.near.support[0].lineId;
   if (mixed) assert.equal(playerRef, "player", "private/partial input is never promoted to whole-input hearing");
   else assert.equal(parsed.lines[playerRef].content, text);
   const publicLines = (publicSceneResponse({ ...scene, lines: parsed.lines }) as any).lines;

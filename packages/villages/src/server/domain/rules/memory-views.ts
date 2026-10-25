@@ -97,6 +97,42 @@ export function sceneMemoryCollection(collection: MemoryCollection, snapshot: Me
 export function inspectMemory(collection: MemoryCollection, id: string) {
   return structuredClone(collection.records.find((row) => row.id === id) ?? null);
 }
+/** Deliberate privileged view. Reading suppressed knowledge never teaches it. */
+export function inspectMemoryCandidates(collection: MemoryCollection, knower: string): MemoryCandidate[] {
+  memoryKnowerId(knower);
+  const visible = projectMemories(collection, [knower]);
+  const latest = new Map<string, MemoryRecord>();
+  for (const record of collection.records)
+    if (record.knowers[knower]) {
+      const prior = latest.get(record.rootId);
+      if (!prior || record.createdRevision > prior.createdRevision) latest.set(record.rootId, record);
+    }
+  for (const root of collection.records) {
+    const state = root.id === root.rootId && root.knowers[knower];
+    if (!state || !state.forgotten) continue;
+    const record = latest.get(root.id)!;
+    visible.push({
+      id: record.id,
+      rootId: root.id,
+      revision: record.revision,
+      rootRevision: root.revision,
+      kind: record.kind,
+      text: state.repair?.text ?? record.text,
+      subjects: [...record.subjects],
+      occurredAt: record.occurredAt,
+      recordedAt: record.recordedAt,
+      ...(record.domainRef ? { domainRef: { ...record.domainRef } } : {}),
+      knowers: {
+        [knower]: {
+          ...structuredClone(record.knowers[knower]),
+          forgotten: { ...state.forgotten },
+          ...(state.repair ? { repair: { ...state.repair } } : {}),
+        },
+      },
+    });
+  }
+  return visible;
+}
 /** Pure ordinary player projection. Domain existence never supplies disclosure visibility. */
 export function pagePlayerMemories(
   collection: MemoryCollection,

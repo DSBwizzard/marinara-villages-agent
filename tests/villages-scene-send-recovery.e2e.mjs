@@ -32,7 +32,7 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     const fixture = structuredClone(snapshot);
     const session = {
-      version: 1,
+      version: 2,
       id: "send-recovery",
       placeId: "mill",
       placeName: "The Mill",

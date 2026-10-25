@@ -43,22 +43,23 @@ export function sceneRelationshipView(
       view.applied[contactKey] = true;
     }
   }
-  for (const disclosure of Object.values(current.disclosures))
-    if (disclosure.sourceId === scene.id) view.disclosures[disclosure.id] = structuredClone(disclosure);
+  for (const receipt of Object.values(current.receipts))
+    if (receipt.sceneId === scene.id && current.disclosureReceipts[receipt.id])
+      view.disclosureReceipts[receipt.id] = true;
   return view;
 }
 export const permissionKey = (controllerId: string, visitorId: string, venueId: string, zoneId: string): string =>
   JSON.stringify([controllerId, visitorId, venueId, zoneId]);
 export function defaultRelationshipState(seed: string): RelationshipState {
   return {
-    version: 1,
+    version: 2,
     noticeSequence: 0,
     seed,
     edges: {},
     grants: {},
     receipts: {},
     applied: {},
-    disclosures: {},
+    disclosureReceipts: {},
     knowledge: {},
     reviewedActorIds: [],
     startingTies: [],
@@ -94,6 +95,7 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
   const raw = asRecord(structuredClone(value)),
     result = defaultRelationshipState(seed);
   if (raw.seed !== seed) return result;
+  if (raw.version !== 2) throw new Error("Unsupported relationship format. Saved bytes are preserved.");
   result.clockShiftMs =
     typeof raw.clockShiftMs === "number" && Number.isFinite(raw.clockShiftMs) ? raw.clockShiftMs : 0;
   for (const row of Object.values(asRecord(raw.edges))) {
@@ -134,7 +136,9 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
     Math.max(0, Number(raw.noticeSequence) || 0),
   );
   result.applied = asRecord(raw.applied) as RelationshipState["applied"];
-  result.disclosures = asRecord(raw.disclosures) as RelationshipState["disclosures"];
+  result.disclosureReceipts = Object.fromEntries(
+    Object.entries(asRecord(raw.disclosureReceipts)).filter(([, value]) => value === true),
+  ) as Record<string, true>;
   result.knowledge = asRecord(raw.knowledge) as RelationshipState["knowledge"];
   result.reviewedActorIds = Array.isArray(raw.reviewedActorIds)
     ? raw.reviewedActorIds.filter((id): id is string => typeof id === "string")
@@ -334,23 +338,9 @@ export function applyRelationshipReview(
       lineIds: change.lineIds,
     };
     state.applied[change.id] = true;
-    if (change.disclosed)
-      state.disclosures[change.id] = {
-        id: change.id,
-        fromId: change.fromId,
-        toId: change.toId,
-        text: change.reason,
-        kind: "explanation",
-        lineIds: change.lineIds,
-        at,
-        sourceId,
-      };
+    if (change.disclosed) state.disclosureReceipts[change.id] = true;
   }
-  for (const disclosure of review.disclosures) {
-    if (state.applied[disclosure.id] || !residents.has(disclosure.fromId)) continue;
-    state.disclosures[disclosure.id] = { ...disclosure, at, sourceId };
-    state.applied[disclosure.id] = true;
-  }
+  // Conversational disclosures are written only through screened memoryChanges.
   for (const permission of review.permissions) {
     if (state.applied[permission.id]) continue;
     const venue = village.venues.find((place) => place.id === permission.venueId);

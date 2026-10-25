@@ -163,26 +163,6 @@ export function renderSceneArchivePage(ports: SceneArchivePagePorts) {
                     </li>
                   ))}
                 </ul>
-                {(openArchivedVisit.submissions ?? []).some((submission) => submission.recollections?.length) ? (
-                  <details className={`${ELEMENT_TAG}-agenda-notes`}>
-                    <summary>Captured recollections and evidence</summary>
-                    <ul className={`${ELEMENT_TAG}-story`}>
-                      {(openArchivedVisit.submissions ?? []).flatMap((submission) =>
-                        (submission.recollections ?? []).map((recollection) => (
-                          <li key={recollection.id} className={`${ELEMENT_TAG}-wish-card`}>
-                            <p className={`${ELEMENT_TAG}-wish-text`}>{recollection.text}</p>
-                            <p className={`${ELEMENT_TAG}-wish-meta`}>
-                              {`Subjects: ${recollection.subjectCharacterIds.join(", ") || "none"} · Known by: ${recollection.knownByCharacterIds.join(", ")}`}
-                            </p>
-                            <p className={`${ELEMENT_TAG}-wish-meta`}>
-                              {`Evidence: ${recollection.lineIds.join(", ")}`}
-                            </p>
-                          </li>
-                        )),
-                      )}
-                    </ul>
-                  </details>
-                ) : null}
               </>
             ) : null}
           </section>

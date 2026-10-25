@@ -32,7 +32,7 @@ See [activation dispatch ownership](activation-dispatch-ownership.md), [activati
 
 ## Scenes and privacy
 
-A Venue contains Zones; a Scene continues across movement between those Zones. At admission, the server captures attendance, positions, activities, connections, time and source facts for writing. Background changes cannot rewrite an active snapshot. Exact accepted Scene effects extend its presentation context through existing receipts; those projections never become authority for a world write. Unseen attendance, captured facts and private contents stay server-side. Legacy open Scenes capture available source facts once; closed Scenes stay closed.
+A Venue contains Zones; a Scene continues across movement between those Zones. At admission, the server captures attendance, positions, activities, connections, time and source facts for writing. Background changes cannot rewrite an active snapshot. Exact accepted Scene effects extend its presentation context through existing receipts; those projections never become authority for a world write. Unseen attendance, captured facts and private contents stay server-side. Current-format Scenes reserve sparse memory continuity before attaching their captured facts; recovery reuses that reservation. Closed Scenes stay closed.
 
 Source spans, witnesses, authority, revisions and physical receipts bind proposed effects to the saved interaction. Hearing, understanding, disclosure, entry and permission to change a space remain separate. Domain validation determines actual effects after model interpretation.
 
@@ -41,6 +41,8 @@ Ordinary snapshots expose only player-safe projections. Private diagnostics, raw
 See [Scene privacy](scene-response-privacy.md), [System responsibilities](system-ownership.md) and [generation lifecycle](generation-pipeline.md) for the detailed contracts.
 
 ## Saved work and compatibility
+
+The Memories cutover deliberately accepts only Village format 4, Scene/continuity format 2 and relationship format 2. Older saves remain stored but cannot be read by this runtime. There is no migration, backfill, dual write or old memory reader. The collection and active sparse memory preimages share one Village CAS; Scene attachment is a separate resumable stage. See [Memories](memories-core.md).
 
 Saved generation, validation, committed effects and Scene bookkeeping are distinct stages. Claims precede provider dispatch; completed responses and effect receipts support local replay. Compare-and-swap retries reuse saved output and preserve request accounting.
 

@@ -100,7 +100,7 @@ export function VillagerWishJournal({
             <p>
               <strong>{wish.text}</strong>
             </p>
-            <small>{wish.status ?? "active"}</small>
+            {wish.status ? <small>{wish.status}</small> : null}
             <h4>What you’ve learned</h4>
             <ul aria-label="Learned facts">
               <li>
@@ -134,7 +134,7 @@ export function VillagerWishJournal({
                 </ul>
               </details>
             ) : null}
-            {!wish.status || wish.status === "active" ? (
+            {wish.status === "active" ? (
               <button
                 type="button"
                 className={`${prefix}-button`}

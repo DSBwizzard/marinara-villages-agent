@@ -88,7 +88,8 @@ function place(layout: string, role = "residence", owner = "a"): VillageVenue {
   const zones = readBaseVenueLayout(source, [role as "residence"], owner, () => null);
   const parsed = { ...parsePlace(source, false), zones };
   initializeVenueAccess(parsed);
-  return coerceVillageState({ version: 3, wishSystemVersion: 3, venues: [parsed] }).venues[0]!;
+  return coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3, venues: [parsed] })
+    .venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
   for (const role of ["residence", "workplace", "community", "other"]) {
@@ -96,7 +97,7 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     const expected =
       1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both");
     assert.equal(venue.zones!.length, expected, `${role} ${layout} creates only selected Zones`);
-    let saved = coerceVillageState({ version: 3, wishSystemVersion: 3, venues: [venue] });
+    let saved = coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3, venues: [venue] });
     for (let pass = 0; pass < 3; pass++) {
       const before = structuredClone(saved);
       saved = coerceVillageState(saved);
@@ -164,7 +165,8 @@ initial.venues[0]!.zones![1]!.state.items = ["Personal hammock"];
 initial.venues[0]!.zones![1]!.state.condition = "Fixed hammock hooks remain anchored to the beams.";
 initial.venues[0]!.zones![1]!.state.publicFacts = ["A personal secret"];
 initial.villagers = coerceVillageState({
-  version: 3,
+  ...defaultVillageState(),
+  version: 4,
   wishSystemVersion: 3,
   villagers: [
     {
@@ -197,7 +199,8 @@ assertResidencePrivateDestination(state, vacant, "b", "personal");
 assert.throws(() => assertResidencePrivateDestination(state, privateOnly, "b", "personal"), /no longer vacant/);
 const legacy = structuredClone(privateOnly);
 delete legacy.layoutVersion;
-const preserved = coerceVillageState({ version: 3, wishSystemVersion: 3, venues: [legacy] }).venues[0]!;
+const preserved = coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3, venues: [legacy] })
+  .venues[0]!;
 assert.equal(preserved.zones!.find((zone) => zone.id === "personal")!.description, privateOnly.zones![1]!.description);
 const records = new Map<string, any>();
 records.set("villages-village", { id: "villages-village", kind: "village", data: state, revision: 1 });

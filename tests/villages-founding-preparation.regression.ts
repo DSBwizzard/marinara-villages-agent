@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 import { villageFoundingSetting } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
@@ -45,7 +46,8 @@ const sourceSnapshots = new Map<string, any>();
 function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
   const state = coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    version: 4,
     wishSystemVersion: 3,
     seed: "station-fields",
     name: "Station Fields",

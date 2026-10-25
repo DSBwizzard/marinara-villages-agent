@@ -33,7 +33,7 @@ function deferred() {
 }
 function fixture(label: string, missingColors = false) {
   const world = coerceVillageState({
-    version: 3,
+    version: 4,
     ...defaultVillageState(),
     seed: "same-seed",
     name: label,
@@ -156,6 +156,7 @@ async function main() {
   await assert.rejects(buildVillageSnapshot(now), /not configured/);
   const marker = fixture("marker");
   const scene = coerceSession({
+    version: 2,
     id: "active",
     villageSeed: marker.world.seed,
     status: "active",
@@ -214,9 +215,9 @@ async function main() {
   oldRead.world.visitMemoryBackfilled = false;
   await oldRead.service.buildVillageSnapshot(now);
   assert.deepEqual(
-    oldRead.calls.slice(0, 3),
-    ["world", "world", "roll"],
-    "the existing hydrated reread stays before Agenda work",
+    oldRead.calls.slice(0, 2),
+    ["world", "roll"],
+    "Snapshot reads do not backfill retired memory stores",
   );
   const colors = fixture("colors", true);
   const painted = await colors.service.buildVillageSnapshot(now);

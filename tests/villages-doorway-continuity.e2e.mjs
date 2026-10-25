@@ -41,6 +41,7 @@ try {
       ...extra,
     });
     const session = {
+      version: 2,
       id: "doorway-browser",
       placeId: "mill",
       placeName: "The Mill",

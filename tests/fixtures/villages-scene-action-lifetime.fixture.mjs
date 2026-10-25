@@ -86,7 +86,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   function scene(id, operationId, closed = false, revision = 2) {
     return {
       id,
-      version: 1,
+      version: 2,
       sceneRevision: revision,
       placeId: "mill",
       zoneId: "private-" + id,

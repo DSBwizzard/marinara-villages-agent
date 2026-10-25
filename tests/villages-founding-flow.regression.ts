@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { foundingDraftDescription } from "../packages/villages/src/client/features/founding/draft-model.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
 import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
@@ -291,13 +292,15 @@ async function main() {
   }
 
   assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).foundingPreparation,
+    coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
+      .foundingPreparation,
     null,
     "older villages remain ready",
   );
   assert.deepEqual(
     coerceVillageState({
-      version: 3,
+      ...defaultVillageState(),
+      version: 4,
       wishSystemVersion: 3,
       foundingPreparation: { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     }).foundingPreparation,
@@ -306,7 +309,8 @@ async function main() {
   );
   assert.deepEqual(
     coerceVillageState({
-      version: 3,
+      ...defaultVillageState(),
+      version: 4,
       wishSystemVersion: 3,
       foundingPreparation: {
         status: "pending",
@@ -335,12 +339,17 @@ async function main() {
     "the active stage and bounded retry count survive a process restart",
   );
   assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3 }).foundingGuidance,
+    coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3 }).foundingGuidance,
     "",
     "older villages have no narrative direction",
   );
   assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3, foundingGuidance: "Favor quiet bonds." }).foundingGuidance,
+    coerceVillageState({
+      ...defaultVillageState(),
+      version: 4,
+      wishSystemVersion: 3,
+      foundingGuidance: "Favor quiet bonds.",
+    }).foundingGuidance,
     "Favor quiet bonds.",
   );
   const ongoingOnly = readScenarioImprint({
@@ -411,7 +420,7 @@ async function main() {
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
   const noMapSetup = createFoundingSetup({
     ...setupPorts,
-    readVillageState: async () => coerceVillageState({ version: 3, wishSystemVersion: 3 }),
+    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3 }),
     prepareVillageMap: async () => ({
       image: "",
       size: null,
@@ -669,7 +678,8 @@ async function foundingConnectionOwnership() {
         gate = deferred();
       let held = false;
       const state = coerceVillageState({
-        version: 3,
+        ...defaultVillageState(),
+        version: 4,
         wishSystemVersion: 3,
         seed: "equal-founding-seed",
         name: label,

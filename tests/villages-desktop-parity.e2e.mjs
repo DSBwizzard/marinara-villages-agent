@@ -151,7 +151,7 @@ try {
     let lastEntry = null;
     let lastLeave = null;
     let session = {
-      version: 1,
+      version: 2,
       id: "visit-1",
       placeId: "mill",
       placeName: "The Mill",

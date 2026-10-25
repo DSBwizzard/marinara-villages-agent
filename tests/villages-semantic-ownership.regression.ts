@@ -1,3 +1,4 @@
+import { addMemory } from "./helpers/memories-fixture.js";
 import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { lifecycle } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
@@ -100,6 +101,7 @@ async function main() {
       staging: { prose: "render-only ".repeat(80) },
     }));
     const historyScene = {
+      version: 2,
       id: "supper",
       activeIds: ["a", "b", "c"],
       lines: rows,
@@ -155,6 +157,7 @@ async function main() {
     fitContext: (messages: unknown, options: any) => ({ messages, ...options, trimmed: false }),
   };
   const planning = createResidentPlanning({
+    readVillageState: async () => defaultVillageState(),
     villagesLanguageModels: () => ({ resolveForRequest: async () => fakeSystem }),
     villagesConnectionIdFor: async () => "system",
     completeWithRoom: async (_model: unknown, messages: any[], _tokens: number, options: any) => {
@@ -215,6 +218,7 @@ async function main() {
   const state = defaultVillageState();
   state.seed = "synthetic-semantic";
   const scene = coerceSession({
+    version: 2,
     id: "scene",
     placeId: "none",
     status: "active",
@@ -593,31 +597,31 @@ async function main() {
   accessRows = [];
   state.venues = [];
   scene.activeIds = ["host"];
-  state.chronicle = [
-    {
-      id: "needed-memory",
-      kind: "event",
-      scope: "private",
-      text: "The exact condition is only after supper.",
-      knownByCharacterIds: ["host"],
-      actors: [{ id: "host" }],
-      at: scene.startedAt,
-    },
-  ] as any;
+  state.memories = addMemory(state.memories, { text: "The exact condition is only after supper.", audience: ["host"] });
   behavior = "needs-context";
   const beforeContext = calls.length;
-  await assert.rejects(service.intent(scene, "Need historical context"), /Additional System context is saved/);
+  await assert.rejects(service.intent(scene, "Need historical context supper condition"), /no expansion call/);
   assert.equal(calls.length, beforeContext + 1, "Context requests never automatically dispatch a second inference");
   behavior = "valid";
-  await service.intent(scene, "Need historical context");
+  explicitRetry = true;
+  await service.intent(scene, "Need historical context supper condition");
+  explicitRetry = false;
   assert.equal(calls.length, beforeContext + 2);
-  assert.equal(lastPacket.input.context.expandedContext, true);
-  assert(lastPacket.input.context.memories.some((row: any) => row.text === state.chronicle[0].text));
+  assert.equal(lastPacket.input.context.expandedContext, undefined);
+  assert(lastPacket.input.context.memory.memories.some((row: any) => row.text === state.memories.records[0].text));
   scene.activeIds = [];
-  state.chronicle = [];
+  state.memories = { format: 1, revision: 0, records: [] };
   assert.equal(
-    semanticUnit("memory", { kind: "passing", text: "one", evidence: [2, 1] }),
-    semanticUnit("memory", { kind: "passing", text: "two", evidence: [1, 2] }),
+    semanticUnit("memory", {
+      action: "create",
+      text: "one",
+      learners: { host: { support: [{ lineId: 2 }, { lineId: 1 }] } },
+    }),
+    semanticUnit("memory", {
+      action: "create",
+      text: "two",
+      learners: { host: { support: [{ lineId: 1 }, { lineId: 2 }] } },
+    }),
   );
   behavior = "valid";
   checkpoints.clear();
@@ -716,6 +720,7 @@ async function main() {
     "Code retains exact saved speech without asking the checker to reconstruct the pitch",
   );
   const savedIndexed = coerceSession({
+    version: 2,
     ...scene,
     submissions: [
       {
@@ -1171,7 +1176,7 @@ async function main() {
   assert.throws(() => continueSemanticDomain(turn, "wishes"), /Only a failed/);
   assert.equal(semanticBlocker(pendingScene), "Updates pending.");
   assert.equal(
-    coerceSession({ ...scene, semanticVersion: undefined }).semanticVersion,
+    coerceSession({ version: 2, ...scene, semanticVersion: undefined }).semanticVersion,
     undefined,
     "legacy Scenes are not upgraded on read",
   );
@@ -1771,11 +1776,7 @@ async function main() {
   assert(systemPrompt.includes("within the player's already occupied public Zone do not change access"));
   assert(systemPrompt.includes("Inspect each context.actors entry's wishes independently using actor.id and wish.id."));
   assert(systemPrompt.includes("Opening pitches are reported in openingSignal, not projectSpeech."));
-  assert(
-    systemPrompt.includes(
-      "Memory subjectCharacterIds and knownByCharacterIds contain resident IDs only, never player.",
-    ),
-  );
+  assert(systemPrompt.includes('Include literal "player" as a learner ONLY'));
   assert(systemPrompt.includes("Never use an opening proposal, its name, or a newly spoken desire as a Wish ID."));
   assert.doesNotMatch(systemPrompt, /lineIds:\["player",0\]/);
   assert.doesNotMatch(systemPrompt, /evidence:\["player",0\]/);
@@ -1836,6 +1837,7 @@ async function main() {
   calls.length = 0;
   await actionWriter.generate(actionScene, "A quiet conversation", "chat", "", null);
   const decodedReceipt = coerceSession({
+    version: 2,
     ...actionScene,
     submissions: [{ id: "saved", residentActionReceipt: actionResult.residentActionReceipt }],
   }).submissions[0]!.residentActionReceipt;
@@ -1925,22 +1927,20 @@ async function main() {
   const currentContextScene = { ...actionScene, activeIds: ["host"] };
   behavior = "needs-context";
   const beforeCurrentContext = calls.length;
-  await assert.rejects(
-    service.exchange(currentContextScene, "Current verdict", [], null, []),
-    /did not finish the current Scene verdict/,
-  );
+  await assert.rejects(service.exchange(currentContextScene, "Current verdict", [], null, []), /no expansion call/);
   assert.equal(calls.length, beforeCurrentContext + 1, "Current-scene retrieval refusal adds no call");
   assert(![...checkpoints.keys()].some((key) => key.endsWith(":retrieval")));
   const oldPolicySnapshot = [...checkpoints].find(([key]) => key.endsWith(":input"))![1] as any;
   delete oldPolicySnapshot.currentEvidenceOnly;
   delete oldPolicySnapshot.systemPrompt;
-  await assert.rejects(
-    service.exchange(currentContextScene, "Current verdict", [], null, []),
-    /Additional System context is saved/,
+  await assert.rejects(service.exchange(currentContextScene, "Current verdict", [], null, []), /no expansion call/);
+  assert.equal(
+    calls.length,
+    beforeCurrentContext + 2,
+    "Each explicit request stays within one inference and never expands history",
   );
-  assert.equal(calls.length, beforeCurrentContext + 2, "Older frozen v2 policy retains explicit retrieval behavior");
   behavior = "valid";
-  state.chronicle = [];
+  state.memories = { format: 1, revision: 0, records: [] };
   state.venues = [venue];
   const checksBefore = calls.length;
   const accessScene = { ...actionScene, placeId: venue.id };
@@ -2170,6 +2170,7 @@ async function main() {
       },
     ] as any;
     const requestScene = coerceSession({
+      version: 2,
       id: "request-roster",
       placeId: "house",
       placeName: "House",

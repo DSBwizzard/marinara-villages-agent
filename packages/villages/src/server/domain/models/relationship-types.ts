@@ -22,18 +22,10 @@ export type RelationshipPermission = {
   action: "grant" | "revoke";
   lineIds: string[];
 };
-export type RelationshipDisclosure = {
-  id: string;
-  fromId: string;
-  toId: string;
-  text: string;
-  kind: "explanation" | "preference" | "boundary";
-  lineIds: string[];
-};
 export type RelationshipReview = {
   changes: RelationshipChange[];
   permissions: RelationshipPermission[];
-  disclosures: RelationshipDisclosure[];
+  disclosures: never[];
 };
 export type RelationshipEvidenceLine = {
   id: string;
@@ -116,6 +108,7 @@ export type SocialPlan = {
 export type SocialEncounter = {
   semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
   memoryChanges?: unknown;
+  memoryContexts?: Record<string, import("../rules/scene-memories.js").SceneMemoryContext>;
   rejectedProposals?: import("../rules/relationship-review.js").RelationshipProposalRejection[];
   id: string;
   at: string;
@@ -128,13 +121,13 @@ export type SocialEncounter = {
 export type RelationshipState = {
   clockShiftMs?: number;
   noticeSequence: number;
-  version: 1;
+  version: 2;
   seed: string;
   edges: Record<string, RelationshipEdge>;
   grants: Record<string, RelationshipGrant>;
   receipts: Record<string, RelationshipReceipt>;
   applied: Record<string, true>;
-  disclosures: Record<string, RelationshipDisclosure & { at: string; sourceId: string }>;
+  disclosureReceipts: Record<string, true>;
   knowledge: Record<string, RelationshipKnowledge>;
   reviewedActorIds: string[];
   startingTies: StartingTie[];

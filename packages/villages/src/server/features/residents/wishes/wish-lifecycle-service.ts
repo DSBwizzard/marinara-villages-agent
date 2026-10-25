@@ -1,3 +1,5 @@
+import { rememberDomainFact } from "../../../domain/rules/domain-memories.js";
+import { invalidateWishCompletion } from "../../../domain/rules/wish-memories.js";
 import { admissionLoreContext } from "../../../../shared/helpers/resident-admission.js";
 import { foundingRequestMessages } from "../../../domain/rules/founding-requests.js";
 import type { CompactFoundingContext } from "../../../domain/rules/compact-founding-rules.js";
@@ -34,7 +36,7 @@ import {
   validateGeneratedWishWording,
   wishGenerationDirection,
 } from "../../../domain/rules/wish-definition.js";
-import { setWishJournalStatus } from "../../../domain/rules/wish-journal.js";
+
 import {
   knownNeedBlocked,
   newWishLifecycle,
@@ -114,8 +116,20 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         const wish = resident?.agenda?.wishes.find((item) => item.id === wishId);
         if (!resident?.agenda || !wish?.learnedAt) throw notFound("That discovered wish is not active.");
         resident.agenda.wishes = resident.agenda.wishes.filter((item) => item.id !== wishId);
+        const at = villageNow().toISOString();
+        rememberDomainFact(state, {
+          id: `wish-retired:${characterId}:${wishId}`,
+          at,
+          recordedAt: at,
+          text: "You retired this Wish.",
+          subjects: [characterId],
+          knowers: ["player"],
+          domainRef: { kind: "wish", id: wishId, characterId },
+          event: true,
+          disclosed: { status: "retired" },
+        });
         removeWishActivities(resident, wishId, villageNow());
-        setWishJournalStatus(state, characterId, wishId, "retired");
+
         if (resident.wishLifecycle) {
           const need = resident.wishLifecycle.needs.find((need) => need.id === wish.need?.id);
           if (need) need.state = "expired";
@@ -150,9 +164,9 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       const resident = state.villagers.find((entry) => entry.characterId === characterId),
         lifecycle = resident?.wishLifecycle;
       if (!resident || !lifecycle) throw notFound("That villager does not live here.");
-      if (state.correctedWishMemoryIds.includes(outcome.memoryId)) return;
-      state.correctedWishMemoryIds = [...state.correctedWishMemoryIds, outcome.memoryId];
-      state.chronicle = state.chronicle.filter((entry) => entry.id !== outcome.memoryId);
+      if (state.exchangeReceipts[outcome.memoryId]?.wishOutcome === "corrected") return;
+      if (lifecycle.pendingOutcomes.some((row) => row.sequence === outcome.sequence && row.correctedAt)) return;
+      invalidateWishCompletion(state, outcome.memoryId, now.toISOString());
       const corrected = { ...outcome, correctedAt: now.toISOString() };
       lifecycle.pendingOutcomes = [
         ...lifecycle.pendingOutcomes.filter((entry) => entry.sequence !== outcome.sequence),
@@ -174,6 +188,8 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       ) {
         const wish = coerceWish({ ...outcome.wish, need: outcome.wish.need }, wishId, now.toISOString());
         if (wish) {
+          // New evidence and a fresh task are required after withdrawing the old completion.
+          wish.addedAt = now.toISOString();
           wish.learnedAt = outcome.wish.learnedAt;
           wish.learnedLineIds = outcome.wish.learnedLineIds;
           rememberWishNeed(resident, wish, outcome.needId);
@@ -269,7 +285,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     }
     if (job.stage === "reserved") job.calls = 0;
     if (job.stage === "reserved") {
-      const slots = job.resetRefill || founding ? [] : wishSlots(resident, state, now),
+      const slots = founding ? [] : wishSlots(resident, state, now),
         card = resident.cardSnapshot;
       const lore = founding
         ? []
@@ -306,9 +322,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
                   : "") +
                 "\n" +
                 'Propose at most ONE personal desire grounded in the complete authored character, or none. Their circumstances may change; their personality, voice, and values are not rewritten by the village. Do not prescribe a visible tell or recurring gesture. JSON only: {"wish":null} or {"wish":{"wish":"...","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}}}. Also return matchedNeedId (exact supplied known id, or empty for a new need) and certain (false if uncertain). Match the same unmet need, not merely the same object; acquiring, repairing and using differ. Do not change a matched recurrence policy. ' +
-                (job.resetRefill
-                  ? "This is a one-time Wish replacement only. Omit adjustment and routineIdea; do not change the routine. "
-                  : "You may optionally return adjustment:{slot,activity,venueId,zoneId} using only a supplied future free-time slot and saved destination IDs. You may optionally include ONE routineIdea:{activity,venueId,zoneId,flexible:true} for an ordinary future optional activity; it establishes no asset, job or physical fact. ") +
+                "You may optionally return adjustment:{slot,activity,venueId,zoneId} using only a supplied future free-time slot and saved destination IDs. You may optionally include ONE routineIdea:{activity,venueId,zoneId,flexible:true} for an ordinary future optional activity; it establishes no asset, job or physical fact. " +
                 " Never invent people, places, physical changes, injuries, debts, emergencies, or an object already owned. Wishes are personal interests, not player errands. Lasting achievements stay settled; recurring ordinary needs may return only after seven fulfilled days. Active wishes must not repeat. No suitable wish is a valid quiet day.",
             },
             {
@@ -372,7 +386,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
             stage: "wish-generation",
             message: "Wish generation returned no usable answer; explicit retry required.",
           });
-        job.routineIdea = job.resetRefill || founding ? undefined : payload.routineIdea;
+        job.routineIdea = founding ? undefined : payload.routineIdea;
         job.stage = "done";
         job.reason = "No new wish today.";
         return job;
@@ -393,11 +407,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       } else validateGeneratedWishWording(candidate.wish);
       if (candidate.need) candidate.need.id = "";
       const adjustment =
-        !job.resetRefill &&
-        !founding &&
-        payload?.adjustment &&
-        typeof payload.adjustment === "object" &&
-        !Array.isArray(payload.adjustment)
+        !founding && payload?.adjustment && typeof payload.adjustment === "object" && !Array.isArray(payload.adjustment)
           ? proposalActivity(payload.adjustment as Record<string, unknown>, candidate, slots, resident, state)
           : undefined;
       job.needComparison = {
@@ -405,7 +415,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         certain: payload.certain === true || (!known.length && payload.certain !== false),
         knownIds: known.map((need) => need.id),
       };
-      job.routineIdea = job.resetRefill ? undefined : payload.routineIdea;
+      job.routineIdea = payload.routineIdea;
       job.candidate = candidate;
       job.activity = adjustment;
       job.stage = "generated";
@@ -455,7 +465,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
           ownsFoundingTask(state, input.characterId, "wish", input.revision, input.id)
         );
       return (
-        (state.backgroundPace !== "off" || resident?.wishLifecycle?.attempt?.resetRefill === true) &&
+        state.backgroundPace !== "off" &&
         !!resident?.agenda &&
         resident.cardSnapshot.capturedAt === input.capturedAt &&
         resident.wishLifecycle?.attempt?.id === input.id &&
@@ -465,32 +475,25 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     apply(state, input, result: WishAttempt, context) {
       const owner = state.villagers.find((entry) => entry.characterId === input.characterId)!;
       const founding = input.foundingContract === 1;
-      if (!founding && !result.resetRefill && owner.agenda && result.routineIdea)
+      if (!founding && owner.agenda && result.routineIdea)
         addRoutineIdea(owner.agenda, result.routineIdea, owner, state, villageNow());
       const committedAt = (readWishAttemptClock(input.id) ?? (() => villageNow()))();
       const attempt = structuredClone(result);
       // A deliberate retry consumes the current allowance, even when its paid proposal was saved on an earlier day.
-      if (context.retrying || attempt.resetRefill || founding) {
+      if (context.retrying || founding) {
         attempt.dateKey = agendaDateKey(committedAt);
         attempt.at = committedAt.toISOString();
-        if (attempt.resetRefill && attempt.candidate)
-          attempt.candidate = coerceWish(attempt.candidate, attempt.candidate.id, attempt.at) ?? undefined;
       }
       if (
         attempt.accepted &&
         attempt.candidate &&
         owner.agenda!.wishes.length < MAX_ACTIVE &&
-        (state.backgroundPace !== "off" || attempt.resetRefill === true || founding) &&
+        (state.backgroundPace !== "off" || founding) &&
         attempt.dateKey === agendaDateKey(committedAt)
       ) {
         rememberWishNeed(owner, attempt.candidate, attempt.matchedNeedId);
         owner.agenda!.wishes.push(attempt.candidate);
-        if (
-          !founding &&
-          !attempt.resetRefill &&
-          attempt.activity &&
-          canApplyWishActivity(attempt.activity, owner, state, committedAt)
-        )
+        if (!founding && attempt.activity && canApplyWishActivity(attempt.activity, owner, state, committedAt))
           owner.agenda!.wishActivities = [...(owner.agenda!.wishActivities ?? []), attempt.activity];
       } else if (attempt.accepted) attempt.reason = "State changed before commit; no wish granted.";
       attempt.stage = "done";
@@ -566,22 +569,12 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     const state = await readVillageState(),
       resident = state.villagers.find((entry) => entry.characterId === characterId);
     const job = resident?.wishLifecycle?.attempt;
-    if (
-      !resident?.agenda ||
-      !job ||
-      job.id !== id ||
-      job.stage === "done" ||
-      (state.backgroundPace === "off" && !job.resetRefill)
-    )
-      return;
+    if (!resident?.agenda || !job || job.id !== id || job.stage === "done" || state.backgroundPace === "off") return;
     const existingStatus = await backgroundStatus("wish", characterId, id);
     if (["failed", "interrupted"].includes(existingStatus ?? "") && wishRevision(resident, state) === job.revision)
       return;
     const interrupted = job.stage === "reserved" && job.calls > 0;
-    if (
-      !interrupted &&
-      (wishRevision(resident, state) !== job.revision || (!job.resetRefill && job.dateKey !== agendaDateKey(now)))
-    ) {
+    if (!interrupted && (wishRevision(resident, state) !== job.revision || job.dateKey !== agendaDateKey(now))) {
       await mutateVillageState((live) => {
         const attempt = live.villagers.find((entry) => entry.characterId === characterId)?.wishLifecycle?.attempt;
         if (attempt?.id === id) {
@@ -604,8 +597,8 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       subjectId: characterId,
       seed: state.seed,
       revision: backgroundRevision([id, job.revision]),
-      finite: job.resetRefill === true,
-      label: resident.cardSnapshot.name + (job.resetRefill ? "'s replacement wish" : "'s next wish"),
+      finite: false,
+      label: resident.cardSnapshot.name + "'s next wish",
       legacyError: interrupted ? "Interrupted wish request: outcome unknown; deliberate retry required." : undefined,
       input: {
         state,
@@ -646,35 +639,6 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
           now,
         }),
         phaseKey = `${dateKey}:${moment.dayPhase}`;
-      // The migration records intent locally; reservation owns every finite replacement exactly once.
-      state.wishResetPending = state.wishResetPending.filter((characterId) => {
-        const resident = state.villagers.find((entry) => entry.characterId === characterId);
-        if (!resident) return false;
-        if (!resident.agenda?.generatedAt || resident.agenda.personalizationPending) return true;
-        if (resident.wishLifecycle?.attempt) return false;
-        const lifecycle = (resident.wishLifecycle = newWishLifecycle());
-        lifecycle.attempt = {
-          id: randomVillageSeed(),
-          resetRefill: true,
-          dateKey,
-          at: now.toISOString(),
-          stage: "reserved",
-          semanticVersion: 2,
-          reason: "Queued",
-          calls: 0,
-          elapsedMs: 0,
-          inputTokens: null,
-          outputTokens: null,
-          revision: wishRevision(resident, state),
-        };
-        lifecycle.lastPhaseKey = phaseKey;
-        return false;
-      });
-      for (const resident of state.villagers) {
-        const job = resident.wishLifecycle?.attempt;
-        if (job?.resetRefill && job.stage !== "done" && !blocked.has(resident.characterId))
-          work.push({ characterId: resident.characterId, id: job.id });
-      }
       if (state.backgroundPace === "off") return;
       // A clock rollback must not reopen an earlier phase for ordinary automatic work.
       if (state.villagers.some((resident) => Date.parse(resident.wishLifecycle?.attempt?.at ?? "") > now.getTime()))
@@ -684,7 +648,6 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         .filter(
           (resident) =>
             !blocked.has(resident.characterId) &&
-            !resident.wishLifecycle?.attempt?.resetRefill &&
             resident.wishLifecycle?.attempt &&
             resident.wishLifecycle.attempt.stage !== "done",
         )

@@ -1,3 +1,4 @@
+import { knownWishes } from "../packages/villages/src/server/domain/rules/wish-journal.js";
 import { configureSceneQueries, sceneQueries } from "../packages/villages/src/server/features/scenes/services.js";
 import assert from "node:assert/strict";
 
@@ -320,8 +321,13 @@ async function main() {
       "Historical gardening plus the current agreement completes the original goal",
     );
     assert.equal(completed.villagers[0].wishLifecycle?.pendingOutcomes.at(-1)?.kind, "fulfilled");
-    assert.equal(completed.chronicle.filter((entry) => entry.kind === "favour").length, 1);
-    assert.equal(completed.wishKnowledge.a?.length ?? 0, 0, "Private proof does not disclose an unrevealed Wish");
+    assert.equal(
+      Object.values(completed.exchangeReceipts).filter(
+        (entry) => entry.domain === "wishes" && entry.wishOutcome === "fulfilled",
+      ).length,
+      1,
+    );
+    assert.equal(knownWishes(completed, "a").length, 0, "Private proof does not disclose an unrevealed Wish");
     assert.equal(calls, beforeContinuity + 1, "Continuity adds storage reads, not another provider stage");
     await processWishExchange(next, "next-turn");
     await settleBackgroundWork();

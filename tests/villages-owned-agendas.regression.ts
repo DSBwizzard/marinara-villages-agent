@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   clearVillagerAgenda,
   setVillagerScheduleInfluence,
@@ -88,7 +89,9 @@ const block = {
 const legacyWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [block]]));
 const translated = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [{ ...block, activity: "Tending herbs" }]]));
 const raw = {
-  version: 3,
+  memories: { format: 1, revision: 0, records: [] },
+  memoryScenes: {},
+  version: 4,
   seed: "owned-test",
   setting: "Quiet valley",
   backgroundPace: "off",
@@ -499,7 +502,13 @@ async function main() {
       state: { condition: "sound", publicFacts: [] },
       presentation: { image: null, x: 0.2, y: 0.2 },
     };
-    const access = coerceVillageState({ version: 3, wishSystemVersion: 3, ...raw, venues: [safeVenue] });
+    const access = coerceVillageState({
+      ...defaultVillageState(),
+      version: 4,
+      wishSystemVersion: 3,
+      ...raw,
+      venues: [safeVenue],
+    });
     resident.scheduleInfluence = influenceSettings({ enabled: true });
     assert.ok(
       deriveInfluence(
@@ -517,7 +526,8 @@ async function main() {
     access.venues[0]!.constructionStatus = "worksite";
     assert.equal(validateRoutineDay([destination], resident, access)[0]!.venueId, "");
     const crowd = coerceVillageState({
-      version: 3,
+      ...defaultVillageState(),
+      version: 4,
       wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],

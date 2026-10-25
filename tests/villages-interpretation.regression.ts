@@ -650,6 +650,7 @@ async function main() {
     };
     village.venues = [venue];
     const scene: any = {
+      version: 2,
       id: "same-scene",
       placeId: "home",
       zoneId: "bedroom",

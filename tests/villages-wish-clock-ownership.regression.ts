@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -28,7 +29,8 @@ function deferred() {
 }
 function fixture(name: string, stamp: string) {
   const state = coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    version: 4,
     villagers: [
       {
         characterId: "same-resident",

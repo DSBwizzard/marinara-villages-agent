@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
 
@@ -106,7 +107,8 @@ globalThis.fetch = async () =>
     ]),
   );
 const state = coerceVillageState({
-  version: 3,
+  ...defaultVillageState(),
+  version: 4,
   wishSystemVersion: 3,
   seed: "seed",
   setting: "Village",

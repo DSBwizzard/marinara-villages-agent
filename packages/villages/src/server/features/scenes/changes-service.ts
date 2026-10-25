@@ -17,7 +17,6 @@ import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { coerceResponseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { sceneProcessingSummary } from "../../domain/rules/scene-public.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
-import { knownWish } from "../../domain/rules/wish-journal.js";
 import { workFailureSummary } from "../../domain/rules/work-failure.js";
 export interface SceneChangesPorts {
   finishSemanticScene?(id: string): Promise<void>;
@@ -161,25 +160,16 @@ export function createSceneChanges({
           projects: (turn.processing?.domains.projects.receiptIds ?? []).flatMap((id) =>
             projectReceiptIndex.has(id) ? [projectReceiptIndex.get(id)!] : [],
           ),
-          memories: village.chronicle.filter(
-            (memory) =>
-              memory.sourceVisitId === id &&
-              memory.sourceLineIds?.some((lineId) => turn.processing?.lineIds.includes(lineId)),
+          memories: village.memories.records.filter(
+            (row) => row.origin.sceneId === id && row.origin.id === id + ":" + turn.id,
           ),
         },
         requests: turn.requestMetrics ?? null,
         responseDiagnostics: coerceResponseDiagnostics(turn.liveProposals?.responseDiagnostics) ?? null,
         interpretationHistory: turn.interpretationHistory ?? [],
-        notices: filterRelationshipNotices(turn.recordEvents ?? [], presentation.relationshipContext)
-          .filter(
-            (event) =>
-              event.kind !== "wish" ||
-              (!!event.wishUpdate &&
-                presentation.villagers.some((person) =>
-                  knownWish(presentation, person.characterId, event.wishUpdate!.wishId),
-                )),
-          )
-          .filter((event) => !village.dismissedNoticeIds.includes(event.id)),
+        notices: filterRelationshipNotices(turn.recordEvents ?? [], presentation.relationshipContext).filter(
+          (event) => !village.dismissedNoticeIds.includes(event.id),
+        ),
         evidence: scene.lines.filter(
           (line) => turn.processing?.lineIds.includes(line.id) || turn.liveProposals?.earlierLineIds.includes(line.id),
         ),
@@ -191,7 +181,7 @@ export function createSceneChanges({
           memory: turn.liveProposals?.memoryChanges,
           relationship: turn.liveProposals?.relationshipChanges,
           wishes: turn.wishProposals,
-          memoryVersions: turn.liveProposals?.memoryVersions,
+          memoryContexts: turn.liveProposals?.memoryContexts,
         },
       })),
       notices: filterRelationshipNotices(

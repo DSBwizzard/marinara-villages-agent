@@ -257,11 +257,19 @@ export function applyAcousticWitnesses(
           return ref;
         })
       : value;
-  for (const field of ["memoryChanges", "wishChanges", "recollections"])
+  if (Array.isArray(raw.memoryChanges))
+    for (const value of raw.memoryChanges)
+      for (const [id, learner] of Object.entries(asRecord(asRecord(value).learners)))
+        if (Array.isArray(asRecord(learner).support))
+          for (const value of asRecord(learner).support as unknown[]) {
+            const citation = asRecord(value);
+            citation.lineId = (refs([citation.lineId], [id]) as unknown[])[0];
+          }
+  for (const field of ["wishChanges"])
     if (Array.isArray(raw[field]))
       raw[field] = raw[field].map((value) => {
         const row = asRecord(value),
-          evidence = refs(row.evidence, row.knownByCharacterIds);
+          evidence = refs(row.evidence, [row.actorId]);
         const cited = Array.isArray(evidence)
           ? evidence.flatMap((ref) => (typeof ref === "number" && parsed.lines[ref] ? [parsed.lines[ref]] : []))
           : [];

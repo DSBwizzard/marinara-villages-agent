@@ -180,7 +180,7 @@ const documents = {
     if (
       failMemoryStorageForVisit &&
       input.id === "villages-village" &&
-      input.data.chronicle.some((entry: any) => entry.sourceVisitId === failMemoryStorageForVisit)
+      input.data.memories.records.some((entry: any) => entry.origin.sceneId === failMemoryStorageForVisit)
     )
       throw new Error("memory storage unavailable");
     const id = key(input.packageId, input.id);
@@ -1626,18 +1626,6 @@ async function main() {
     });
     assert.equal((await listVenueVisits({ placeId: "empty" })).length, 1);
     await mutateVillageState((state) => {
-      const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now });
-      state.chronicle.unshift({
-        id: "legacy-tick-memory",
-        kind: "tick",
-        scope: "village",
-        actors: [],
-        dayIndex: moment.dayIndex,
-        clock: moment.dayPhase,
-        occurredAt: moment.instant,
-        timePrecision: "exact",
-        text: "LEGACY_EVENT_POISON memory",
-      });
       state.noticeboard.push({ author: "Buster", text: "LEGACY_EVENT_POISON notice" });
     });
     const undiscoveredPark = (await buildVillageSnapshot()).settings.venues.find((place) => place.id === "park")!;
@@ -1680,19 +1668,24 @@ async function main() {
       /Alternate narration and speakers|Every player speech turn needs spoken dialogue/u,
     );
     assert.equal(defaultVillageState().sendOnEnter, false);
-    assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3 }).sendOnEnter, false);
-    assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, sendOnEnter: "true" }).sendOnEnter, false);
+    assert.equal(coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3 }).sendOnEnter, false);
+    assert.equal(
+      coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3, sendOnEnter: "true" })
+        .sendOnEnter,
+      false,
+    );
     assert.equal((await setVillageSendOnEnter(true)).settings.sendOnEnter, true);
     assert.equal((await readVillageState()).sendOnEnter, true);
     assert.equal((await setVillageSendOnEnter(false)).settings.sendOnEnter, false);
     await assert.rejects(() => setVillageSendOnEnter("true"), /must be on or off/u);
     assert.deepEqual(
-      coerceVillageState({ version: 3, wishSystemVersion: 3 }).narrationStyle,
+      coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3 }).narrationStyle,
       defaultVillageState().narrationStyle,
     );
     assert.deepEqual(
       coerceVillageState({
-        version: 3,
+        ...defaultVillageState(),
+        version: 4,
         wishSystemVersion: 3,
         narrationStyle: {
           tense: "past",
@@ -2309,8 +2302,8 @@ async function main() {
       "other trace kinds persist after discovery",
     );
     assert.ok(
-      discovered.chronicle.some(
-        (entry) => entry.text.includes("Meet me by the bridge.") && entry.actors.some((actor) => actor.id === "tina"),
+      discovered.memories.records.some(
+        (entry) => entry.text.includes("Meet me by the bridge.") && !!entry.knowers.tina,
       ),
       "the recipient remembers the found note",
     );
@@ -3104,7 +3097,7 @@ async function main() {
       targetId: "bob",
       submissionId: "debug-memory",
     });
-    const committedContinuity = (await readVillageState()).recollections;
+    const committedContinuity = (await readVillageState()).memories;
     const reviewsBeforeDebugDiscard = reviewCalls;
     debugEnabled = true;
     await discardVenueVisitDebug(debugVisit.id);
@@ -3116,7 +3109,7 @@ async function main() {
       "DEBUG discard removes its transcript",
     );
     assert.deepEqual(
-      (await readVillageState()).recollections,
+      (await readVillageState()).memories,
       committedContinuity,
       "DEBUG discard preserves committed continuity",
     );
@@ -3472,7 +3465,8 @@ async function main() {
     const homeForMigration = persistedForMigration.venues.find((place) => place.id === "home")!;
     const roomForMigration = homeForMigration.privateSpaces!.find((space) => space.ownerId === "bob")!;
     const migrated = coerceVillageState({
-      version: 3,
+      ...defaultVillageState(),
+      version: 4,
       wishSystemVersion: 3,
       ...persistedForMigration,
       venues: persistedForMigration.venues.map((place) =>
@@ -3717,8 +3711,10 @@ async function main() {
       targetId: "bob",
       message: "Live commitment",
     });
-    assert.equal(liveTurn.recordEvents.filter((event) => event.kind === "memory").length, 1);
-    assert.ok((await readVillageState()).chronicle.some((entry) => entry.id === live.id + ":live-commitment:memory:0"));
+    assert.equal(liveTurn.session.submissions.at(-1)?.processing?.domains.memories.status, "rejected");
+    assert.ok(
+      !(await readVillageState()).memories.records.some((entry) => entry.origin.id === live.id + ":live-commitment"),
+    );
     const beforeTruncated = calls;
     const truncated = await sendVenueTurn({
       sessionId: live.id,

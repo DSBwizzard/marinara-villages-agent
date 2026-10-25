@@ -22,7 +22,7 @@ async function checkMapPlacement(width, activeScene = false) {
   const session = activeScene
     ? {
         id: "project-scene",
-        version: 1,
+        version: 2,
         sceneRevision: 0,
         placeId: "mill",
         placeName: "The Mill",

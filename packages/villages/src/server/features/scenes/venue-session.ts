@@ -6,8 +6,6 @@ export type {
   VenueParticipant,
   SceneAttendance,
   VenueSubmission,
-  VenueMemory,
-  VenueRecollection,
   VenueRecordEvent,
   VenueScene,
   VenueSession,

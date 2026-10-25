@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
@@ -42,7 +43,8 @@ async function until(ready: () => boolean) {
 function fixture(name: string) {
   const stamp = new Date().toISOString();
   let state = coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    version: 4,
     seed: "same-seed",
     name,
     setting: name,

@@ -22,7 +22,6 @@ Object.assign(village, {
   foundedAt: at,
   setupAt: at,
   backgroundPace: "off",
-  visitMemoryBackfilled: true,
   timeZone: "America/Los_Angeles",
   playerPersonaId: "persona",
   playerPersonaName: "Player",
@@ -45,6 +44,7 @@ village.villagers = [
   },
 ] as unknown as typeof village.villagers;
 const scene = coerceSession({
+  version: 2,
   id: "source",
   placeId: "market",
   placeName: "Market",
@@ -110,7 +110,7 @@ const model = {
   maxContext: 32000,
   maxOutputTokens: 4000,
   fitContext: (messages: unknown[]) => ({ messages, trimmed: false }),
-  chatComplete: async () => {
+  chatComplete: async (messages: any[]) => {
     modelCalls++;
     return {
       content: JSON.stringify({
@@ -118,7 +118,29 @@ const model = {
         explanation: "The whole outing fits the encounter.",
         evidenceIds: [],
         memories: [
-          { text: "You and Buster enjoyed choosing apples at the market.", evidenceIds: ["player", "resident"] },
+          {
+            action: "create",
+            kind: "experience",
+            subjects: ["buster"],
+            text: "You and Buster enjoyed choosing apples at the market.",
+            learners: Object.fromEntries(
+              ["player", "buster"].map((id) => [
+                id,
+                {
+                  basis: "observation",
+                  support: [
+                    { lineId: "player-source", excerpt: "Let us choose apples together." },
+                    { lineId: "resident", excerpt: "I enjoyed this outing with you." },
+                  ],
+                },
+              ]),
+            ),
+            screening: {
+              disposition: "clear",
+              protectedRoots: [],
+              fingerprint: JSON.parse(messages[1].content).memory.administrative.fingerprint,
+            },
+          },
         ],
       }),
       finishReason: "stop",
@@ -136,7 +158,7 @@ const runtime = {
       metadata: { sceneStatus: "active" },
     }),
     listMessages: async () => [
-      { id: "player", role: "user", characterId: null, content: "Let us choose apples together.", extra: "{}" },
+      { id: "player-source", role: "user", characterId: null, content: "Let us choose apples together.", extra: "{}" },
       {
         id: "resident",
         role: "assistant",
@@ -272,7 +294,7 @@ try {
   await post("/spinoffs/resolve", { sessionId: "source", acceptedIds: [prepared.spinoff.memories[0].id] });
   assert.equal((await readScene()).spinoffPending, false, "the built Scene API stops recovery after resolution");
   const saved = records.get("villages-village")!.data as typeof village;
-  assert.equal(saved.chronicle.filter((row) => row.id === prepared.spinoff.memories[0].id).length, 1);
+  assert.equal(saved.memories.records.filter((row) => row.text === prepared.spinoff.memories[0].text).length, 1);
   console.log(
     "Archive-identical packaged HTTP spinoff: registration, resolved connection, ownership, conclusion callback, explicit synthetic interpretation and reviewed memory import passed.",
   );

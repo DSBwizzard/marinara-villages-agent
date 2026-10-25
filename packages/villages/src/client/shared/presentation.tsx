@@ -1,6 +1,5 @@
 import type {
   SceneView,
-  StoryEntry,
   VillageBuildingOption,
   VillagerAgendaView,
   VillageSnapshot,
@@ -23,18 +22,6 @@ export function stampTime(at: string): string {
   if (at.length === 0) return "";
   const when = new Date(at);
   return Number.isNaN(when.getTime()) ? "" : CLOCK_TIME.format(when);
-}
-
-/**
- * The time of day a memory was written, when it was written with one.
- *
- * This is the only place a memory's `at` is ever used, and it is formatted
- * rather than compared — the day the memory belongs to arrived as a label
- * already, so nothing here has to work out what "today" means or in whose
- * timezone.
- */
-export function storyTime(entry: StoryEntry): string {
-  return stampTime(entry.occurredAt);
 }
 
 /**

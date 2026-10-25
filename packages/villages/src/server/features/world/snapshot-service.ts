@@ -43,9 +43,6 @@ export function createVillageSnapshot({
   /** The village as the tab draws it: live library labels and adopted card colors. */
   async function buildVillageSnapshot(at?: Date, observeCurrentHousing = false): Promise<VillageSnapshot> {
     let village = await readVillageState();
-    if (!village.visitMemoryBackfilled && (village.setupAt || village.foundedAt)) {
-      village = await readVillageState();
-    }
     const clock = await observeVillageClock();
     let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     if (clock?.paused) now = villageNow();

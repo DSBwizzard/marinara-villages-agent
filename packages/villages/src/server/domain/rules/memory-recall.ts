@@ -5,6 +5,7 @@ import { projectMemories, sceneMemoryCollection } from "./memory-views.js";
 
 export type MemoryRecallRequest = {
   query: string;
+  names?: Record<string, string>;
   /** The fresh local System lookup includes the accepted Narration reply. */
   narration?: string;
   audience: string[];
@@ -42,6 +43,7 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
     const text = [
       candidate.text,
       ...candidate.subjects,
+      ...candidate.subjects.map((id) => request.names?.[id] ?? ""),
       ...Object.values(candidate.knowers).flatMap((state) => state.support.map((e) => e.excerpt)),
     ].join(" ");
     const tokens = memoryTerms(text);
@@ -71,7 +73,11 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
     .sort((a, b) => b.score - a.score || a.candidate.id.localeCompare(b.candidate.id) || a.index - b.index);
   const selected: MemoryCandidate[] = [];
   const selectedRows = new Set<number>();
-  const encode = () => JSON.stringify({ ...(administrative ? { administrative } : {}), memories: selected });
+  const encode = () =>
+    JSON.stringify({
+      ...(administrative ? { administrative } : {}),
+      memories: request.purpose === "system" ? selected : promptMemoryCandidates(selected),
+    });
   memoryRequire(estimatedMemoryTokens(encode()) <= budget, "required protection exceeds recall budget");
   const take = (row: (typeof ranked)[number]) => {
     if (selectedRows.has(row.index) || (request.countCap !== undefined && selected.length >= request.countCap)) return;
@@ -128,4 +134,18 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
     tokens: estimatedMemoryTokens(serialized),
     eligibleCount: candidates.length,
   };
+}
+
+/** Effective repaired text may guide future Scenes without inventing a witnessed event
+ * or presenting administrative edit identities and source pointers as character knowledge. */
+export function promptMemoryCandidates(rows: readonly MemoryCandidate[]) {
+  return rows.map((row) => ({
+    ...row,
+    knowers: Object.fromEntries(
+      Object.entries(row.knowers).map(([id, state]) => {
+        const { repair, sourceRefs: _sources, ...known } = state;
+        return [id, { ...known, ...(repair ? { basis: "player-repaired" } : {}) }];
+      }),
+    ),
+  }));
 }

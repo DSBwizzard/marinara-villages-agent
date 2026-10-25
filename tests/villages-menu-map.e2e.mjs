@@ -151,6 +151,7 @@ try {
     await page.getByRole("button", { name: "Save map", exact: true }).click();
     await expect(page.locator("." + P + "-maps-saved-row").first()).toContainText("Maple House Interior");
     session = {
+      version: 2,
       id: "scene-map",
       memoryMode: "live",
       sceneRevision: 1,

@@ -39,6 +39,7 @@ state.venues = [
 const village = coerceVillageState(state);
 const venue = village.venues[0];
 const scene = coerceSession({
+  version: 2,
   id: "doorway",
   placeId: "home",
   zoneId: "exterior",
@@ -207,7 +208,7 @@ assert.deepEqual(
   frames.map((frame) => frame.activeIds),
   [[], ["buster"], ["buster"]],
 );
-const reloaded = coerceSession({ ...scene, lines: stored });
+const reloaded = coerceSession({ version: 2, ...scene, lines: stored });
 assert.deepEqual(reloaded.lines[1].physicalIdsAfter, ["buster"], "paragraph timing survives reload");
 
 const localScene = {
@@ -330,7 +331,18 @@ const parsed = {
 };
 const raw = {
   attentionWitnesses: fragments.map((fragment) => ({ id: fragment.id, emitted: true, heardBy: ["buster"] })),
-  memoryChanges: [{ evidence: ["attention:0", "attention:1"] }],
+  memoryChanges: [
+    {
+      learners: {
+        buster: {
+          support: [
+            { lineId: "attention:0", excerpt: first },
+            { lineId: "attention:1", excerpt: second },
+          ],
+        },
+      },
+    },
+  ],
   wishChanges: [{ evidence: ["attention:0"] }],
   relationshipChanges: { changes: [{ lineIds: ["attention:1", 0] }], permissions: [], disclosures: [] },
 };
@@ -341,7 +353,10 @@ assert.deepEqual(
 );
 assert.ok(parsed.lines.slice(1).every((line) => line.heardBy.includes("buster")));
 assert.ok(!parsed.lines.slice(1).some((line) => line.content.includes("offer my hand")));
-assert.deepEqual(raw.memoryChanges[0].evidence, [1, 2]);
+assert.deepEqual(
+  raw.memoryChanges[0].learners.buster.support.map((row) => row.lineId),
+  [1, 2],
+);
 assert.deepEqual(raw.wishChanges[0].evidence, [1]);
 assert.deepEqual(raw.relationshipChanges.changes[0].lineIds, [2, 0]);
 assert.deepEqual(parsed.heardPlayerBy, [], "arrival or remote speech never grants the complete local input");

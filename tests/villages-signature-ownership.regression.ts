@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import {
@@ -29,7 +30,8 @@ function deferred<T = void>() {
 const stamp = "2026-10-07T00:00:00.000Z";
 function documents(name: string) {
   const state = coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    version: 4,
     seed: "identical-seed",
     name,
     foundedAt: stamp,

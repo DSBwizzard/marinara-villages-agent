@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import sharp from "sharp";
@@ -29,7 +30,8 @@ const records = new Map<string, any>(),
   files = new Map<string, string>();
 const now = new Date().toISOString();
 const village = coerceVillageState({
-  version: 3,
+  ...defaultVillageState(),
+  version: 4,
   wishSystemVersion: 3,
   name: "Preserved village",
   foundedAt: now,

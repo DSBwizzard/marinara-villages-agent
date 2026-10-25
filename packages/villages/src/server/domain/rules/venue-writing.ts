@@ -50,7 +50,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     direction: "Writing direction",
     identity: "Complete authored character identity",
     circumstances: "Current Scene circumstances",
-    conversation: "Witnessed conversation and contextual recollections",
+    conversation: "Witnessed conversation and recalled memories",
     authoredInstructions: "Authored post-history direction",
     metadata: "Response format and evidence metadata",
   };
@@ -88,7 +88,7 @@ export function fitVenueWritingMessages(
   connectionName = "Narration",
 ) {
   const kept = [...blocks];
-  // Old history first, then optional recollections/lore. Essential blocks and the
+  // Old history first, then optional memories/lore. Essential blocks and the
   // latest player input must survive fitting byte-for-byte before any paid call.
   for (;;) {
     const messages = assembleVenueWritingMessages(kept, input);

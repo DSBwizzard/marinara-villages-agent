@@ -110,6 +110,7 @@ export function readEncounter(
     ...(raw.semanticVersion === 2
       ? {
           memoryChanges: raw.memoryChanges,
+          memoryContexts: raw.memoryContexts as SocialEncounter["memoryContexts"],
           semanticProvenance: {
             version: 2 as const,
             sourceHash: String(raw.semanticSourceHash),

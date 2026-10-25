@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   startBackgroundWork,
   settleBackgroundWork,
@@ -109,7 +110,8 @@ async function archiveConnectionOwnership() {
       gate = deferred(),
       at = new Date().toISOString();
     const state = coerceVillageState({
-      version: 3,
+      ...defaultVillageState(),
+      version: 4,
       seed: "equal-archive-seed",
       timeZone: "UTC",
       clock: { revision: 1, trustedAt: at, recovery: null, replayUntilDate: "", shiftTotalMs: 0 },
@@ -386,7 +388,7 @@ async function archiveConnectionOwnership() {
           const label = owned === a ? "A" : "B",
             saved = owned.records.get("villages-village").data;
           if (mode === "correction") {
-            assert.deepEqual(saved.correctedWishMemoryIds, [label + "-receipt"]);
+            assert.equal(saved.villagers[0].wishLifecycle.needs[0].state, "active");
             assert.equal(owned.records.get(pageId).data.entries[0].memoryId, label + "-receipt");
             assert.equal(owned.records.get(pageId).data.entries[0].correctedAt, at.toISOString());
             assert.equal(saved.villagers[0].agenda.wishes[0].id, "equal-wish");
@@ -626,7 +628,8 @@ function seed(count = 1): VillageState {
   neutralWordingResult = true;
   optionalIdea = false;
   const state = coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    version: 4,
     wishSystemVersion: 3,
     seed: "wish-test",
     name: "Willow",
@@ -805,168 +808,6 @@ async function run() {
     assert.equal(modelCalls.length, 1, "continuity reuses the existing Wish request");
     assert.match(modelCalls[0], /LIFELONG RESIDENT OF THIS VILLAGE/);
     assert.match(modelCalls[0], /Preserve complete source identity/);
-
-    // Version-two saves reset once and reserve finite replacements for every prepared resident.
-    const previous = seed(6);
-    previous.wishSystemVersion = 2;
-    previous.backgroundPace = "off";
-    for (const resident of previous.villagers) resident.agenda!.wishes = [freshWish("old-" + resident.characterId)];
-    const savedWeeks = previous.villagers.map((resident) => resident.agenda!.week);
-    put(previous);
-    const migrated = await readVillageState();
-    assert.equal(migrated.wishSystemVersion, 3);
-    assert.equal(migrated.wishResetPending.length, 6);
-    assert.ok(migrated.villagers.every((resident) => !resident.agenda!.wishes.length));
-    const replacements = await reserveWishAttempts(now);
-    assert.equal(replacements.length, 6, "finite refill bypasses the phase cap and story pace Off");
-    assert.deepEqual(await reserveWishAttempts(now), replacements, "reload resumes the same identities");
-    assert.deepEqual((await readVillageState()).wishResetPending, []);
-    await villageBackgroundPresence("wish-tests", false);
-    optionalIdea = true;
-    for (const job of replacements) await processWishAttempt(job.characterId, job.id, now, () => now);
-    assert.equal(modelCalls.length, 6);
-    assert.ok(modelCalls.every((prompt) => /neutral description/.test(prompt)));
-    assert.ok(
-      modelCalls.every(
-        (prompt) =>
-          !/chocolate|identifying a tune|stuck in their head|borrowing a pencil|repair a favorite chair|arrange a picnic|perform a song/.test(
-            prompt,
-          ),
-      ),
-    );
-    const replaced = await readVillageState();
-    assert.ok(
-      replaced.villagers.every(
-        (resident) => resident.agenda!.wishes.length === 1 && resident.wishLifecycle!.attempt!.resetRefill,
-      ),
-    );
-    assert.deepEqual(
-      replaced.villagers.map((resident) => resident.agenda!.week),
-      savedWeeks,
-    );
-    assert.ok(
-      replaced.villagers.every(
-        (resident) =>
-          !resident.agenda!.routineProfile!.activities.some((activity) => activity.activity === "Sketching quietly"),
-      ),
-    );
-    assert.ok(
-      [...docs.values()]
-        .filter((record) => record.kind === "background-work" && (record.data as any).kind === "wish")
-        .every((record) => (record.data as any).finite),
-    );
-    await reconcileWishLifecycle(now, false, () => now);
-    assert.equal(modelCalls.length, 6, "no repeated refill");
-    await mutateVillageState((live) => {
-      live.backgroundPace = "balanced";
-    });
-    assert.equal((await reserveWishAttempts(new Date(now.getTime() + WISH_DAY_MS - 1))).length, 0);
-
-    const quietReset = seed(3);
-    quietReset.wishSystemVersion = 2;
-    put(quietReset);
-    mode = "none";
-    await reconcileWishLifecycle(now, false, () => now);
-    assert.equal(modelCalls.length, 3);
-    assert.ok(
-      (await readVillageState()).villagers.every(
-        (resident) => resident.wishLifecycle!.attempt!.stage === "done" && !resident.agenda!.wishes.length,
-      ),
-    );
-    await reconcileWishLifecycle(now, false, () => now);
-    assert.equal(modelCalls.length, 3, "a quiet refill is final for each resident");
-
-    // A real version-two archive stays stored but is unreachable after the reset.
-    const historical = seed();
-    const completed = freshWish("old-archive");
-    historical.villagers[0].agenda!.wishes = [completed];
-    rememberWishNeed(historical.villagers[0], completed);
-    fulfillResidentWish(historical.villagers[0], completed.id, now.toISOString(), "historical-receipt");
-    put(historical);
-    await flushWishOutcomes();
-    const archiveKey = (version: number) =>
-      "wish-history:" +
-      createHash("sha256")
-        .update("wish-journal-v" + version + "\0wish-test\0r0")
-        .digest("hex");
-    const oldArchiveIds: string[] = [];
-    for (const [id, record] of [...docs.entries()]) {
-      if (!id.startsWith(archiveKey(3))) continue;
-      const previousId = id.replace(archiveKey(3), archiveKey(2));
-      oldArchiveIds.push(previousId);
-      docs.delete(id);
-      docs.set(previousId, { ...record, id: previousId });
-    }
-    assert.ok(oldArchiveIds.length);
-    const archivedState = await readVillageState();
-    archivedState.wishSystemVersion = 2;
-    put(archivedState);
-    assert.equal((await readWishHistoryPage("r0")).total, 0);
-    assert.deepEqual((await readWishHistoryPage("r0")).entries, []);
-    assert.equal(await readWishOutcome("r0", completed.id), null);
-    assert.ok(
-      oldArchiveIds.every((id) => docs.has(id)),
-      "migration does not delete old archive files",
-    );
-
-    const unprepared = seed(2);
-    unprepared.wishSystemVersion = 2;
-    unprepared.villagers[1].agenda!.generatedAt = "";
-    put(unprepared);
-    assert.deepEqual((await readVillageState()).wishResetPending, ["r0"]);
-
-    // A response admitted before migration cannot restore a removed Wish.
-    seed();
-    onModel = async () => {
-      const obsolete = await readVillageState();
-      obsolete.wishSystemVersion = 2;
-      put(obsolete);
-    };
-    await reconcileWishLifecycle(now, false, () => now);
-    assert.equal(modelCalls.length, 1);
-    assert.equal((await readVillageState()).villagers[0].agenda!.wishes.length, 0);
-    assert.equal((await backgroundWorkSummaries()).find((job) => job.kind === "wish")?.status, "obsolete");
-
-    // A finite replacement survives a day boundary.
-    const delayedRefill = seed();
-    delayedRefill.wishSystemVersion = 2;
-    put(delayedRefill);
-    const [refill] = await reserveWishAttempts(now);
-    // A midnight completion remains eligible and starts its lifetime when committed.
-    const midnight = new Date(2026, 9, 1, 0, 1);
-    await processWishAttempt(refill.characterId, refill.id, now, () => midnight);
-    assert.equal((await readVillageState()).villagers[0].agenda!.wishes[0].addedAt, midnight.toISOString());
-    assert.equal(modelCalls.length, 1);
-    assert.equal((await reserveWishAttempts(midnight)).length, 0);
-
-    // Application failure reuses the saved finite result and never calls the provider again.
-    const storageRefill = seed();
-    storageRefill.wishSystemVersion = 2;
-    put(storageRefill);
-    const [storedJob] = await reserveWishAttempts(now);
-    onModel = async () => {
-      failVillageWrite = true;
-    };
-    await processWishAttempt(storedJob.characterId, storedJob.id, now, () => now);
-    const failedRefill = (await backgroundWorkSummaries()).find((job) => job.kind === "wish")!;
-    assert.equal(failedRefill.status, "failed");
-    assert.equal((await readVillageState()).villagers[0].agenda!.wishes.length, 0);
-    await retryBackgroundJob(failedRefill.id, failedRefill.attempt, "refill-storage-retry");
-    await settleBackgroundWork();
-    assert.equal(modelCalls.length, 1, "saved refill result is reused after application failure");
-    assert.equal((await readVillageState()).villagers[0].agenda!.wishes.length, 1);
-
-    // Old failed slots cannot prevent admission of a different post-reset attempt.
-    seed();
-    mode = "blank";
-    await reconcileWishLifecycle(now, false, () => now);
-    const oldFailure = await readVillageState();
-    oldFailure.wishSystemVersion = 2;
-    put(oldFailure);
-    mode = "fresh";
-    await reconcileWishLifecycle(now, false, () => now);
-    assert.equal(modelCalls.length, 2);
-    assert.equal((await readVillageState()).villagers[0].agenda!.wishes.length, 1);
 
     // Labeled System rejection uses explicit recovery; code performs no pronoun classification.
     for (const text of [

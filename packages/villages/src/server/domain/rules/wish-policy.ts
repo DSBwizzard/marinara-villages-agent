@@ -61,7 +61,6 @@ export function wishRevision(resident: VillageVillager, state: VillageState): st
         state.worldName,
         resident.admission,
         state.backgroundPace,
-        state.wishSystemVersion,
       ]),
     )
     .digest("hex");

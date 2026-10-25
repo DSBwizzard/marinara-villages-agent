@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { PNG } from "pngjs";
@@ -14,7 +15,7 @@ import { managerResidentSprite } from "../packages/villages/src/server/domain/ru
 const documents = new Map<string, unknown>();
 const imageBytes = PNG.sync.write(new PNG({ width: 64, height: 96 }));
 const imageData = "data:image/png;base64," + imageBytes.toString("base64");
-let village = coerceVillageState({ version: 3 });
+let village = coerceVillageState({ ...defaultVillageState(), version: 4 });
 let calls = 0,
   failImage = false,
   resolved = "",
@@ -219,7 +220,8 @@ assert.equal((await service.read("bupkis")).manager.artwork.length, 2, "unassign
 assert.equal(calls, before);
 await assert.rejects(service.preparedManager("bupkis", draft.revision - 1), /changed/);
 village = coerceVillageState({
-  version: 3,
+  ...defaultVillageState(),
+  version: 4,
   villagers: [
     {
       characterId: "bupkis",

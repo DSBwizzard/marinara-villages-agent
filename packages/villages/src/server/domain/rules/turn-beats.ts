@@ -26,7 +26,7 @@
 // The tag is on the wire and never in the village. `content` is written from
 // `renderVillagesTurnBeats`, which joins the beats' own text, so a stored line
 // reads exactly as it did before tags existed and the SIX other readers of a
-// transcript — the chronicle judge, the distiller, the agenda writer, the SCENE
+// transcript — the memory writer, the agenda writer, the SCENE
 // lane, storyboard and the spin-off — are reading prose. The register travels
 // beside the text in `VillagesTurnBeat[]`, and only the tab that draws it knows
 // it is there.

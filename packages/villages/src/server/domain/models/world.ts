@@ -28,6 +28,7 @@ import type { VillagesTurnBeat } from "../rules/turn-beats.js";
  * Legacy tells stay readable but are excluded from Scene writing. Essential conditions are
  * separately versioned, explicitly witnessed journal facts, not generated solution steps. */
 export type VillageWish = {
+  goalJournal?: import("../rules/wish-journal.js").WishGoalJournal;
   semanticCriteria?: import("./wish-interpretation-model.js").WishCriteria;
   size?: import("../rules/wish-definition.js").WishSize;
   conditionRevision?: number;
@@ -128,7 +129,7 @@ export type VillageAgenda = {
   /** Display-only date of the latest personalization attempt. */
   personalizationAttemptDate?: string;
   source: "native" | "village";
-  /** Display-only, exactly like `VillageChronicleEntry.at`. Read by nothing. */
+  /** Display-only, Read by nothing. */
   generatedAt: string;
 };
 
@@ -301,7 +302,7 @@ export type VillageRemap = {
    * should be allowed another try.
    */
   attempts: number;
-  /** Display-only, exactly like `VillageChronicleEntry.at`. Read by nothing. */
+  /** Display-only, Read by nothing. */
   generatedAt: string;
   /** Present on compact founding translations so later schedule drift can be applied locally. */
   foundingLens?: string;
@@ -892,88 +893,6 @@ export type VillageNotice = {
  * An actor with a name but no id is kept rather than dropped — a deleted card
  * costs the player the join, not the memory.
  */
-export type VillageChronicleActor = {
-  /** The card id, or "" when the entry names someone the village cannot join to. */
-  id: string;
-  /** The name as the village spelled it when the entry was written. */
-  name: string;
-};
-
-/**
- * Who a memory belongs to.
- *
- * `village` is the shared story every villager knows. `private` is one entry
- * about one person that only that person is told — the mechanism behind "Rosa
- * remembers the evening you sat with her", and the reason an event can land on
- * a villager rather than only on the village.
- */
-export type VillageChronicleScope = "village" | "private";
-
-/** What wrote a memory down. Kept so the debug tab can say where a line came from. */
-export type VillageChronicleKind = "tick" | "chat" | "favour";
-
-/** Why a conversation memory was important enough to survive its visit. */
-export type VillageMemoryCategory =
-  "commitment" | "personal-fact" | "preference" | "relationship" | "shared-experience";
-
-/**
- * One event the cast may use for continuity during the next 24 real hours.
- *
- * Subjects and knowers are deliberately separate. A promise made to four
- * people is one event about those four people, known by those four people; it
- * is not four copies competing for a per-visit quota.
- */
-export type VillageRecollection = {
-  id: string;
-  visitId: string;
-  occurredAt: string;
-  expiresAt: string;
-  text: string;
-  subjectCharacterIds: string[];
-  knownByCharacterIds: string[];
-  sourceLineIds: string[];
-  sourceSubmissionIds: string[];
-  /** Exact archive coordinates, including each later repeat that refreshed this recollection. */
-  evidence: { visitId: string; submissionId: string; lineIds: string[] }[];
-  reinforcementCount: number;
-  lastReinforcedAt: string;
-};
-
-/** Retained, attributed knowledge. Exact occurredAt is authoritative; legacy phase fields support display. */
-export type VillageChronicleEntry = {
-  id: string;
-  /** Whole days since the village was founded, matching `VillageMoment.dayIndex`. */
-  dayIndex: number;
-  /** Part of the day: one of `VILLAGE_CLOCKS`, or "" when the stored value named none. */
-  clock: string;
-  /** Exact instant when it occurred; migrated quadrant-only records use an approximate midpoint. */
-  occurredAt: string;
-  /** Whether `occurredAt` was known exactly or reconstructed from an old day phase. */
-  timePrecision: "exact" | "phase";
-  scope: VillageChronicleScope;
-  /** Who this is about, empty for a memory of the village as a whole. */
-  actors: VillageChronicleActor[];
-  kind: VillageChronicleKind;
-  /** Importance for bounded prompt selection; stored notes are retained. */
-  weight?: number;
-  /** Visit line IDs supporting a conversation memory, when available. */
-  sourceLineIds?: string[];
-  /** Durable conversation-memory classification. Absent on legacy and simulation entries. */
-  memoryCategory?: VillageMemoryCategory;
-  /** Who the event concerns. Kept apart from the audience that is allowed to recall it. */
-  subjectCharacterIds?: string[];
-  /** Who directly witnessed every cited line. Absent entries use legacy scope/actors semantics. */
-  knownByCharacterIds?: string[];
-  /** Exact archived visit and transient recollections that support this durable memory. */
-  sourceVisitId?: string;
-  sourceRecollectionIds?: string[];
-  evidenceHistory?: { visitId: string; submissionId: string; lineIds: string[] }[];
-  lastReinforcedAt?: string;
-  supersededAt?: string;
-  supersededBy?: string;
-  text: string;
-};
-
 export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
 
 export type ResidentPlanningOpportunity = {
@@ -985,13 +904,6 @@ export type ResidentPlanningOpportunity = {
   venueId: string;
   zoneId?: string;
   facts: string[];
-};
-
-export type VillageRelationship = {
-  firstCharacterId: string;
-  secondCharacterId: string;
-  closeness: number;
-  updatedAt: string;
 };
 
 export type VillageProjectPhase = "planning" | "working" | "paused" | "complete" | "cancelled";
@@ -1102,21 +1014,6 @@ export type VillagePendingDecision = {
  * a village whose founding stamp is restored from a backup gets its dates back
  * without a migration. Nothing is derived from `at` here either.
  */
-export type VillageChronicleEntryView = VillageChronicleEntry & {
-  /** e.g. "12 September". */
-  dateLabel: string;
-};
-
-/**
- * The village's own record of itself.
- *
- * There is no stored clock here on purpose. A stored moment would be a moment
- * that can disagree with the wall clock, so what is stored instead are the two
- * facts a clock can be DERIVED from — `foundedAt` and `seed` — and
- * `village-clock.ts` turns those plus the wall clock into a moment on every
- * read. Adding a stored clock would mean migrating it on every upgrade that
- * changed the shape of a day, which is work the derivation never has to do.
- */
 export type VillageScenarioImprint = {
   /** A past event, if the scenario actually describes one. */
   origin: string;
@@ -1129,6 +1026,8 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  memories: import("./memories.js").MemoryCollection;
+  memoryScenes: Record<string, import("./memories.js").MemorySceneState>;
   development?: import("./development-model.js").DevelopmentState;
   opening?: import("../rules/opening-project.js").OpeningRecord;
   semanticRequestReceipts?: Record<string, string>;
@@ -1138,14 +1037,10 @@ export type VillageState = {
     stateHash?: string;
     ties: import("./relationship-types.js").StartingTie[];
   };
-  visitMemoryBackfilled?: boolean;
-  wishSystemVersion: number;
   /** Prepared residents awaiting their one-time, finite post-reset Wish attempt. */
-  wishResetPending: string[];
   exchangeReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
   noticeSequence: number;
   dismissedNoticeIds: string[];
-  wishKnowledge: Record<string, import("../rules/wish-journal.js").KnownWish[]>;
   projectWishOutbox: { projectId: string; at: string }[];
   relationshipContext?: import("./relationship-types.js").RelationshipState;
   socialOutbox?: import("./social-outbox-model.js").SocialOutboxEntry[];
@@ -1153,7 +1048,7 @@ export type VillageState = {
   wishRefillIntents: Record<string, { id: string; settled: string }>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
   sceneWishProtections?: Record<string, import("../rules/scene-wish-protection.js").SceneWishProtection>;
-  version: 3;
+  version: 4;
   /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;
@@ -1251,18 +1146,6 @@ export type VillageState = {
   seed: string;
   /** Pinned by the player and by the villagers, oldest first. Empty at founding. */
   noticeboard: VillageNotice[];
-  /**
-   * What the village REMEMBERS, newest first. Durable, attributed history;
-   * these entries can inform eligible residents.
-   *
-   * A chronicle entry is distilled, attributed to people, and scoped to the
-   * whole village or to specific residents.
-   */
-  chronicle: VillageChronicleEntry[];
-  /** Active, expiring conversational continuity. Exact transcripts live in the Scene archive. */
-  recollections: VillageRecollection[];
-  /** Submission IDs whose false wish completion was explicitly corrected. */
-  correctedWishMemoryIds: string[];
   /** Durable high-water mark for deterministic reconciliation. */
   simulatedThrough: string;
   /** Device timezone observed by the last reconciliation. */
@@ -1276,7 +1159,6 @@ export type VillageState = {
   lastPlanningDate: string;
   planningUsage: { dateKey: string; count: number };
   processedActionIds: string[];
-  relationships: VillageRelationship[];
   projects: VillageProject[];
   /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
   progressTasks: ProgressTask[];

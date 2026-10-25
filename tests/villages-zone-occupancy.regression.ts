@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -55,7 +56,8 @@ function fixture(count: number) {
     ownerId,
   });
   const state = coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    version: 4,
     seed: "capacity",
     foundedAt: stamp,
     setupAt: stamp,
@@ -147,6 +149,7 @@ assert.equal(zoneActivityFits(state, ids.slice(0, 4), "hall", "b", 720, 780, at)
 assert.equal(zoneActivityFits(state, ids.slice(0, 2), "home0", "exterior", 720, 780, at), true);
 
 const scene = coerceSession({
+  version: 2,
   id: "crowd",
   villageSeed: state.seed,
   placeId: "hall",
@@ -202,6 +205,7 @@ assert.equal(
   });
   resolveVenueZone(venue, "a")!.connectedTo!.push("hidden");
   const saved = coerceSession({
+    version: 2,
     ...scene,
     activeIds: ids.slice(0, 4),
     sceneAttendance: captureSceneAttendance(state, venue.id, at),
@@ -421,6 +425,7 @@ assert.throws(
   zone.ownerId = ids[0];
   zone.state.condition = "blue motorcycle";
   const saved = coerceSession({
+    version: 2,
     ...scene,
     id: "ownership-fence",
     status: "active",
@@ -460,7 +465,7 @@ assert.throws(
 // Village polling and Scene navigation survive background removal of the captured current Zone.
 {
   const { state, ids } = fixture(4);
-  const saved = coerceSession({ ...scene, id: "removed-zone", status: "active", continuity: undefined });
+  const saved = coerceSession({ version: 2, ...scene, id: "removed-zone", status: "active", continuity: undefined });
   saved.continuity = captureSceneContinuity(state, saved, at.getTime());
   state.venues[0].zones = state.venues[0].zones!.filter((zone) => zone.id !== "a");
   resolveVenueZone(state.venues[0], "b")!.closed = true;
@@ -491,6 +496,7 @@ assert.throws(
   initializeVenueAccess(venue);
   venue.access!.managerIds = [ids[0]];
   const saved = coerceSession({
+    version: 2,
     ...scene,
     id: "access-recovery",
     status: "active",
@@ -602,7 +608,7 @@ assert.throws(
     warmth: 24,
     trust: 30,
   };
-  const saved = coerceSession({ ...scene, id: "friendship", status: "active", continuity: undefined });
+  const saved = coerceSession({ version: 2, ...scene, id: "friendship", status: "active", continuity: undefined });
   saved.continuity = captureSceneContinuity(state, saved, at.getTime());
   assert.equal(contactCanEnter(state, venue, "b", "player", saved), false);
   state.relationshipContext.receipts.friend = {
@@ -626,6 +632,7 @@ assert.throws(
   venue.access!.managerIds = [ids[1]];
   resolveVenueZone(venue, "b")!.adaptationPending = true;
   let saved = coerceSession({
+    version: 2,
     ...scene,
     id: "forced",
     status: "active",

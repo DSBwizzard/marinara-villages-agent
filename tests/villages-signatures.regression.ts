@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { createHash } from "node:crypto";
 import {
   previousSignaturePrompt,
@@ -27,7 +28,8 @@ import {
 
 const now = "2026-10-04T12:00:00.000Z";
 const village = coerceVillageState({
-  version: 3,
+  ...defaultVillageState(),
+  version: 4,
   wishSystemVersion: 3,
   seed: "signature-fixture",
   name: "Signature Village",

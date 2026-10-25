@@ -19,7 +19,7 @@ try {
         reads = 0;
       const session = {
         id: "navigation",
-        version: 1,
+        version: 2,
         sceneRevision: 0,
         placeId: "mill",
         placeName: "The Mill",
@@ -126,7 +126,7 @@ try {
   await mockEngineLookups(page);
   const session = {
     id: "guard",
-    version: 1,
+    version: 2,
     sceneRevision: 0,
     placeId: "mill",
     placeName: "The Mill",
@@ -197,7 +197,7 @@ try {
   await page.evaluate(() =>
     window.navigation.setRoom({
       id: "",
-      version: 1,
+      version: 2,
       placeId: "mill",
       placeName: "The Mill",
       status: "opening",

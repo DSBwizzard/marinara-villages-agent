@@ -805,8 +805,8 @@ try {
   );
   assert.equal(
     introduced.session.submissions.at(-1)?.processing?.domains.memories.status,
-    "applied",
-    "a remote memory cites complete witnessed speech rather than the local-only player input",
+    "rejected",
+    "Narration-only memory metadata cannot bypass the current System screening contract",
   );
   const introducedEvidence = introduced.session.lines.filter((line) => line.attentionEvidence && line.role === "user");
   assert.ok(introducedEvidence.some((line) => line.content === "Nice to meet you, I am LBP."));
@@ -1001,7 +1001,9 @@ try {
     assert.ok(!line.content.includes("PRIVATE SECRET"));
   assert.ok(noise.session.lines.find((line) => line.content === mixed)!.heardBy.every((id) => id === "local"));
   assert.ok(
-    !records.get("villages-village").data.chronicle.some((memory: any) => memory.text.includes("PRIVATE SECRET")),
+    !records
+      .get("villages-village")
+      .data.memories.records.some((memory: any) => memory.text.includes("PRIVATE SECRET")),
   );
   assert.ok(!JSON.stringify(publicSceneResponse(noise.session)).includes("An audible sound"));
   const savedNoise = await readProjectTurnEvidence(noise.session.id, "mixed-noise");

@@ -1,3 +1,5 @@
+import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
+import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
 import assert from "node:assert/strict";
 import {
@@ -825,6 +827,13 @@ async function main() {
       sourceLineId: "standing-line",
       accessRevision: (await readVillageState()).venues[0].access!.revision,
     });
+    const turn = standingScene.submissions[0];
+    turn.liveProposals = bindLiveProposals(
+      turn.liveProposals,
+      turn.liveProposals.playerLineId,
+      turn.liveProposals.replyLineIds,
+      standingScene.lines,
+    );
     const standingResult = await processLiveRelationships(standingScene, "standing-turn");
     assert.ok(
       (await readVillageState()).venues[0].access!.permissions.some(
@@ -970,6 +979,7 @@ async function main() {
       0,
     );
     const speechScene = {
+      version: 2,
       id: "speech-scene",
       placeId: "home",
       lines: [{ ...draft[0], id: "speech-line" }],
@@ -1072,6 +1082,7 @@ async function main() {
       0,
     );
     const recoveryScene = {
+      version: 2,
       id: "recovery-scene",
       placeId: "home",
       lines: [{ ...recoveryDraft[0], id: "recovery-line" }],
@@ -1169,6 +1180,7 @@ async function main() {
         (ban) => ban.zoneId === null && ban.visitorId === "player" && ban.active,
       ),
     );
+    await mutateVillageState((state) => reserveMemoryScene(state, banScene.id, banScene.startedAt));
     const recoveredRevision = (await readVillageState()).venues[0].access!.revision;
     assert.ok(recoveredRevision > recoveryRevision);
     await processSavedExchange(banScene.id, "saved-ban-turn");

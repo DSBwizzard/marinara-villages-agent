@@ -1,9 +1,10 @@
+import { promptMemoryCandidates } from "./memory-recall.js";
+import { readWishGoalJournal } from "./wish-journal.js";
 import { readSemanticWishCriteria } from "./wish-criteria.js";
 import type {
   TownMapFit,
   VillageAgenda,
   VillageChatMode,
-  VillageChronicleEntry,
   VillageDayBlock,
   VillageNotice,
   VillagePlaceView,
@@ -16,7 +17,7 @@ import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admis
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { agendaPromptDay } from "./owned-routine.js";
 import { hasVenueClass } from "./venue-model.js";
-import { describeVillageAge, hashString, villageDateLabel, type VillageMoment } from "./village-clock.js";
+import { hashString, type VillageMoment } from "./village-clock.js";
 import { sizedWishLifetime, wishSize } from "./wish-definition.js";
 
 // Villages — the village's own half of a villager's prompt.
@@ -72,12 +73,6 @@ export const MAX_PHYSICAL_NARRATION_LENGTH = 320;
 
 /** Recent physical changes; exchange receipts retain durable proof. */
 export const MAX_VENUE_EVENTS = 200;
-/** Compatibility alias for older package tests; no longer a chronicle limit. */
-export const MAX_CHRONICLE = MAX_VENUE_EVENTS;
-/** How many memories reach one villager's prompt. */
-export const MAX_CHRONICLE_IN_PROMPT = 12;
-/** How long one memory may be, and how many one write may add. */
-export const MAX_CHRONICLE_LENGTH = 320;
 /**
  * How many conversations are kept for one villager.
  *
@@ -791,52 +786,15 @@ export function renderNoticeboardBlock(notes: readonly VillageNotice[]): string 
  * An entry whose age is unknown (see `describeVillageAge`) is dated without
  * one, rather than being given an age the village cannot vouch for.
  */
-function chronologicalLine(
-  entry: { dayIndex: number; clock: string; occurredAt: string; text: string },
-  stamp: { foundedAt: string; moment: VillageMoment },
-): string {
-  const occurred = Date.parse(entry.occurredAt);
-  const current = Date.parse(stamp.moment.instant);
-  const date = Number.isFinite(occurred)
-    ? new Date(occurred).toLocaleDateString(undefined, { day: "numeric", month: "long" })
-    : villageDateLabel(stamp.foundedAt, entry.dayIndex);
-  const elapsedHours =
-    Number.isFinite(occurred) && Number.isFinite(current) ? Math.max(0, current - occurred) / 3_600_000 : -1;
-  const age =
-    elapsedHours < 0
-      ? describeVillageAge(entry.dayIndex, entry.clock, stamp.moment)
-      : elapsedHours < 24
-        ? elapsedHours < 1
-          ? "within the hour"
-          : `${Math.floor(elapsedHours)} hours ago`
-        : elapsedHours < 48
-          ? "yesterday"
-          : `${Math.floor(elapsedHours / 24)} days ago`;
-  return age.length > 0 ? `- [${date} — ${age}] ${entry.text}` : `- [${date}] ${entry.text}`;
-}
-
-/**
- * What this villager REMEMBERS, as opposed to what merely happened lately.
- *
- * The list arrives already scoped by the caller — a villager is handed the
- * village's shared story plus whatever is remembered privately about them, and
- * never anybody else's private lines. That selection is done where the library
- * can be read, because it needs the speaker's id; the rendering here is pure
- * and takes what it is given.
- *
- * Entries render oldest first for chronological context.
- */
+/** Caller supplies already scoped, budgeted native recall, including per-knower basis. */
 export function renderMemoryBlock(
-  entries: readonly VillageChronicleEntry[],
-  stamp: { foundedAt: string; moment: VillageMoment },
+  entries: readonly import("../models/memories.js").MemoryCandidate[],
+  _stamp: { foundedAt: string; moment: VillageMoment },
 ): string {
-  const kept = entries.slice(0, MAX_CHRONICLE_IN_PROMPT);
-  if (kept.length === 0) return "";
-  return [
-    "## What you remember",
-    "Things you know happened here, oldest first. They are in the past; do not describe them as happening now.",
-    ...[...kept].reverse().map((entry) => chronologicalLine(entry, stamp)),
-  ].join("\n");
+  return entries.length
+    ? "Memories (each knower retains their own observation, report or interpretation): " +
+        JSON.stringify(promptMemoryCandidates(entries))
+    : "";
 }
 
 /**
@@ -964,12 +922,7 @@ function blockEnd(time: string): string {
  *
  * The whole point of `intensity` is that a wish can be at the back of somebody's
  * mind or occupy them for the day. It is not a measure of a wish's size: somebody
- * can badly want a chocolate bar, while a larger concern can sit quietly. Until
- * this existed, the number was
- * stored, judged, and used to weight a chronicle entry, and then dropped. Since
- * the generator is told to use 1 for most things, the ordinary case was a
- * background wish delivered at full volume, which is a character who cannot stop
- * talking about the one thing.
+ * can badly want a chocolate bar, while a larger concern can sit quietly. The generator uses 1 for most things; lower intensity must remain quiet rather than repeatedly steering every conversation toward the goal.
  *
  * Phrased as words rather than printed as the number, for the reason the tab
  * already draws it as words: "this is on your mind most of the day" is something
@@ -1293,7 +1246,7 @@ export function buildPromptValues(input: {
    * by the caller — see `memoryForVillager` — because deciding WHO may know a
    * private memory needs the speaker's id and the library behind it.
    */
-  memory: readonly VillageChronicleEntry[];
+  memory: readonly import("../models/memories.js").MemoryCandidate[];
   /**
    * When the village began keeping time. Needed by both chronological blocks to
    * turn a stored day number into a date, so it travels with the moment rather
@@ -1436,6 +1389,7 @@ export function coerceWish(entry: unknown, id: string, at: string): VillageWish 
       ? { semanticCriteria: readSemanticWishCriteria(raw.semanticCriteria, wish) }
       : {}),
     size: wishSize(raw.size),
+    goalJournal: readWishGoalJournal(raw.goalJournal),
     conditionRevision:
       Number.isSafeInteger(raw.conditionRevision) && (raw.conditionRevision as number) >= 0
         ? (raw.conditionRevision as number)
@@ -1456,10 +1410,4 @@ export function coerceWish(entry: unknown, id: string, at: string): VillageWish 
         }
       : {}),
   };
-}
-
-/** Compatibility helper; durable memories are never trimmed by entry count. */
-export function trimChronicle(entries: readonly VillageChronicleEntry[], _max: number): VillageChronicleEntry[] {
-  // Prompt selection is bounded; stored memories are not evicted by a prompt budget.
-  return [...entries];
 }

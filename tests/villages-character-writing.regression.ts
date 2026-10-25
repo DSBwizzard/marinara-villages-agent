@@ -94,6 +94,7 @@ const release = configureVillagesRuntime({
 async function run() {
   try {
     const session: any = {
+      version: 2,
       id: "fixture",
       placeId: "camp",
       placeName: "Camp",
@@ -204,7 +205,8 @@ async function run() {
     assert.ok(!String(background[0].content).includes("SCRIPTED TELL SECRET"));
     assert.equal(paidCalls, 0);
     const legacy = coerceVillageState({
-      version: 3,
+      ...defaultVillageState(),
+      version: 4,
       wishSystemVersion: 3,
       ...state,
       villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],

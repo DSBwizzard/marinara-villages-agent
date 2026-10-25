@@ -1,3 +1,4 @@
+import { addMemory } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 import { developmentFixture } from "./fixtures/villages-development.fixture.js";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
@@ -73,19 +74,7 @@ async function fixture() {
       villagerDecision: "approved",
     },
   ];
-  state.recollections = [
-    {
-      id: "passing",
-      text: "Yesterday's weather",
-      subjectCharacterIds: ["a"],
-      knownByCharacterIds: ["a"],
-      expiresAt: new Date(start + day).toISOString(),
-      firstAt: state.simulatedThrough,
-      lastReinforcedAt: state.simulatedThrough,
-      reinforcementCount: 0,
-      evidence: [],
-    } as any,
-  ];
+  state.memories = addMemory(state.memories, { text: "Yesterday’s weather", audience: ["player", "a"] });
   state.relationshipContext = defaultRelationshipState(state.seed);
   for (const to of ["b", "player"])
     state.relationshipContext.edges[relationshipKey("a", to)] = {
@@ -137,6 +126,7 @@ async function fixture() {
     },
   } as any);
   const world = createWorldCoordination({
+    readVillageAuthority: async () => structuredClone(state),
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot: async (now = villageNow()) =>
@@ -216,7 +206,7 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
       assert.equal(state.villagers[0]!.agenda!.activeDay!.dateKey, agendaDateKey(new Date(start + duration)));
       assert.equal(state.residences[0]!.status, duration >= day ? "current" : "moving");
       assert.equal(state.villagers[0]!.agenda!.wishes.length, duration >= 3 * 3_600_000 ? 0 : 1);
-      assert.equal(memories.recollections.length, duration >= day ? 0 : 1);
+      assert.equal(memories.total, 1, "Meaningful memory never expires during catch-up");
       assert.equal(
         f.reviews.length,
         duration >= day ? 1 : 0,
@@ -225,7 +215,7 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
       results.push({
         move: state.residences[0],
         wishes: state.villagers[0]!.agenda!.wishes,
-        recollections: memories.recollections,
+        memories: memories.entries,
         project: state.projects.map((p) => [p.status, p.lifecycle?.phase, p.lifecycle?.completedAt]),
         npcWarmth: state.relationshipContext!.edges[relationshipKey("a", "b")]!.warmth,
         date: state.villagers[0]!.agenda!.activeDay!.dateKey,

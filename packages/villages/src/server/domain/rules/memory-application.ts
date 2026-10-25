@@ -73,7 +73,11 @@ function commit(collection: MemoryCollection, changes: MemoryRecord[], snapshots
     status: "applied" as const,
   };
 }
-function learningState(previous: MemoryRecord["knowers"][string] | undefined, learning: MemoryLearning, at: string) {
+export function mergeMemoryLearning(
+  previous: MemoryRecord["knowers"][string] | undefined,
+  learning: MemoryLearning,
+  at: string,
+) {
   // Retain original support and the newest exact evidence, not an exhaustive conversational bank.
   const support = previous
     ? [previous.support[0], ...learning.support]
@@ -194,8 +198,9 @@ export function applyMemoryProposal(
       proposal.text === undefined &&
         proposal.kind === undefined &&
         proposal.subjects === undefined &&
-        proposal.domainRef === undefined &&
-        proposal.effectId === undefined,
+        ((proposal.domainRef === undefined && proposal.effectId === undefined) ||
+          (proposal.effectId === target!.record.committedEffect?.id &&
+            same(proposal.domainRef, target!.record.domainRef))),
       "reinforcement cannot rewrite",
     );
   else {
@@ -278,13 +283,23 @@ export function applyMemoryProposal(
   const application = { id: proposal.operationId, fingerprint };
   if (proposal.action === "reinforce") {
     const record = structuredClone(target!.record);
+    if (effect) {
+      memoryRequire(
+        record.committedEffect &&
+          effect.id === record.committedEffect.id &&
+          effect.occurredAt === record.occurredAt &&
+          effect.committedAt === record.committedEffect.committedAt,
+        "reinforcement effect changed",
+      );
+      record.committedEffect.audience = [...new Set([...record.committedEffect.audience, ...effect.audience])];
+    }
     for (const [knower, learning] of Object.entries(proposal.learners)) {
       memoryRequire(!record.knowers[knower]?.forgotten, "forgotten target");
       memoryRequire(
         learning.basis !== "validated-event" || record.committedEffect?.audience.includes(knower),
         "reinforcement lacks authority",
       );
-      record.knowers[knower] = learningState(record.knowers[knower], learning, context.recordedAt);
+      record.knowers[knower] = mergeMemoryLearning(record.knowers[knower], learning, context.recordedAt);
     }
     record.revision++;
     record.lastApplication = application;
@@ -293,7 +308,7 @@ export function applyMemoryProposal(
       const root = structuredClone(target!.root);
       for (const [knower, learning] of Object.entries(proposal.learners))
         root.knowers[knower] = {
-          ...learningState(root.knowers[knower], learning, context.recordedAt),
+          ...mergeMemoryLearning(root.knowers[knower], learning, context.recordedAt),
           learnedVia: record.id,
         };
       root.revision++;
@@ -314,7 +329,7 @@ export function applyMemoryProposal(
     knowers: Object.fromEntries(
       Object.entries(proposal.learners).map(([knower, learning]) => [
         knower,
-        learningState(undefined, learning, context.recordedAt),
+        mergeMemoryLearning(undefined, learning, context.recordedAt),
       ]),
     ),
     origin: structuredClone(context.source),
@@ -331,7 +346,10 @@ export function applyMemoryProposal(
     const root = structuredClone(target!.root);
     for (const [knower, learning] of Object.entries(proposal.learners))
       if (!root.knowers[knower])
-        root.knowers[knower] = { ...learningState(undefined, learning, context.recordedAt), learnedVia: record.id };
+        root.knowers[knower] = {
+          ...mergeMemoryLearning(undefined, learning, context.recordedAt),
+          learnedVia: record.id,
+        };
     root.revision++;
     root.lastApplication = application;
     changes.push(root);

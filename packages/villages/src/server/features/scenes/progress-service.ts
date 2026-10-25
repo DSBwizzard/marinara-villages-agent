@@ -1,3 +1,5 @@
+import { fillCommittedWishMemories, pendingWishMemories } from "../../domain/rules/wish-memories.js";
+import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
 import { applyOpeningExchange } from "../../domain/rules/opening-project.js";
 import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failure.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -140,7 +142,11 @@ export function createSceneProgress({
       applySavedExchange(sessionId, submissionId),
     );
     const settled = await readSession(sessionId);
-    if (settled.status === "closed") await mutateVillageState((state) => releaseSceneWishes(state, settled));
+    if (settled.status === "closed")
+      await mutateVillageState((state) => {
+        releaseSceneWishes(state, settled);
+        releaseSceneMemories(state, settled);
+      });
   }
 
   async function processOpeningSignal(scene: VenueScene, turn: VenueSubmission, projectStatus?: string): Promise<void> {
@@ -264,6 +270,11 @@ export function createSceneProgress({
     );
     if (valid && turn.openingSignal?.kind === "first-use")
       await processOpeningSignal(scene, turn, updates.get("projects")?.status ?? processing.domains.projects.status);
+    if (valid && pendingWishMemories(await readVillageState(), sessionId, submissionId).length)
+      await mutateVillageState((state) => {
+        if (state.seed === scene.villageSeed)
+          fillCommittedWishMemories(state, sessionId, submissionId, villageNow().toISOString());
+      });
     const recordEvents = await receiptForTurn(scene, turn, false);
     if (updates.size)
       await changeSession(scene.id, (saved) => {

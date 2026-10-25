@@ -1,3 +1,4 @@
+import { addMemory } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -68,6 +69,7 @@ async function main() {
     },
   ];
   const scene: any = {
+    version: 2,
     id: "s",
     villageSeed: state.seed,
     processingVersion: 1,
@@ -291,7 +293,7 @@ async function main() {
         proposal,
         wish: physical,
         at,
-        context: { actorId: "a", evidence: [{ id: "p", at }], card: { name: "Ada" } },
+        context: { actorId: "a", playerEvidenceIds: ["p"], evidence: [{ id: "p", at }], card: { name: "Ada" } },
       } as any,
       {
         criteria: { kind: "transfer", goal: physical.wish, requiresPhysical: true, itemName: "cupcake" },
@@ -309,6 +311,12 @@ async function main() {
     const second = { ...wish, id: "partial-two", learnedAt: at };
     const hidden = { ...wish, id: "partial-hidden" };
     progressState.villagers[0].agenda!.wishes = [first, second, hidden];
+    for (const known of [first, second])
+      progressState.memories = addMemory(progressState.memories, {
+        text: known.wish,
+        audience: ["player"],
+        patch: { kind: "information", domainRef: { kind: "wish", id: known.id, characterId: "a" } },
+      });
     const progressVerdict: any = {
       criteria: { kind: "conversation", goal: wish.wish, requiresPhysical: false },
       outcome: "progress",
@@ -333,7 +341,7 @@ async function main() {
             intent: "progress",
             lineIds: ["p"],
           },
-          context: { actorId: "a", evidence: [{ id: "p", at }], card: { name: "Ada" } },
+          context: { actorId: "a", playerEvidenceIds: ["p"], evidence: [{ id: "p", at }], card: { name: "Ada" } },
         } as any,
         progressVerdict,
       );
@@ -358,6 +366,7 @@ async function main() {
       { memoryChanges: [], relationshipChanges: { changes: [], permissions: [], disclosures: [] } },
       "p",
       ["r"],
+      pendingScene.lines,
     );
     pendingScene.submissions[0].id = "uncertain-turn";
     pendingScene.submissions[0].wishProposals = [

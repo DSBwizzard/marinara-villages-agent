@@ -3,6 +3,8 @@ import type {
   BackgroundWork,
   CatalogEntry,
   MemoryLibrary,
+  MemoryListEntry,
+  MemoryCursor,
   VillagerAgendaView,
   VillagerRefreshPreview,
   VillageSnapshot,
@@ -15,40 +17,56 @@ export function useLoadMemoryLibrary(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
   setMemoryLibrary: React.Dispatch<SetStateAction<MemoryLibrary>>;
 }) {
+  const active = useRef<AbortController | null>(null);
   const { setError, setMemoryLibrary } = ports;
   return useCallback(
-    async (signal?: AbortSignal) => {
+    async (signal?: AbortSignal, query: { characterId?: string; query?: string; cursor?: MemoryCursor } = {}) => {
+      active.current?.abort();
+      const controller = new AbortController();
+      active.current = controller;
+      const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+      const params = new URLSearchParams({ characterId: query.characterId ?? "player", query: query.query ?? "" });
+      if (query.cursor) {
+        params.set("afterId", query.cursor.afterId);
+        params.set("revision", String(query.cursor.revision));
+      }
+      setMemoryLibrary(null);
       try {
-        const response = await request<MemoryLibrary>("/memories", { signal });
-        if (signal?.aborted) return;
+        const response = await request<MemoryLibrary>("/memories/inspect?" + params, { signal: requestSignal });
+        if (requestSignal.aborted || active.current !== controller) return;
         setMemoryLibrary(response);
         setError("");
       } catch (cause) {
-        if (signal?.aborted) return;
-        setMemoryLibrary(null);
-        setError(messageFrom(cause, "Could not read villager memories."));
+        if (requestSignal.aborted || active.current !== controller) return;
+        setError(messageFrom(cause, "Could not read memories."));
       }
     },
     [setError, setMemoryLibrary],
   );
 }
-
 export function useForgetMemory(ports: {
-  loadMemoryLibrary: (signal?: AbortSignal) => Promise<void>;
+  loadMemoryLibrary: ReturnType<typeof useLoadMemoryLibrary>;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
   const { loadMemoryLibrary, setBusy, setError } = ports;
   return useCallback(
-    async (kind: "durable" | "recollections", id: string) => {
-      const label = kind === "durable" ? "Forget this durable memory?" : "Let this passing recollection go now?";
-      if (!window.confirm(label)) return;
+    async (entry: MemoryListEntry, knowers: string[], library: MemoryLibrary) => {
       setBusy(true);
       try {
-        await request(`/memories/${kind}/${encodeURIComponent(id)}`, { method: "DELETE" });
-        await loadMemoryLibrary();
+        await request("/memories/" + encodeURIComponent(entry.id) + "/forget", {
+          method: "POST",
+          body: JSON.stringify({
+            operationId: createVillagesClientId(),
+            seed: library.seed,
+            expectedCollectionRevision: library.revision,
+            target: { id: entry.id, revision: entry.revision, rootRevision: entry.rootRevision },
+            knowers,
+          }),
+        });
+        await loadMemoryLibrary(undefined, { characterId: library.characterId, query: library.query });
       } catch (cause) {
-        setError(messageFrom(cause, "That memory could not be removed."));
+        setError(messageFrom(cause, "Could not forget that memory."));
       } finally {
         setBusy(false);
       }

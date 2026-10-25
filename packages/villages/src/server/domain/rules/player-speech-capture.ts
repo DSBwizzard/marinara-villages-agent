@@ -203,7 +203,7 @@ export function recoverPlayerSpeech(saved: Record<string, unknown>, metadata: Re
     return Object.fromEntries(
       Object.entries(value).map(([key, value]) => [
         key,
-        ["source", "segment"].includes(key) ? reference(value) : remap(value, key),
+        ["source", "segment", "lineId"].includes(key) ? reference(value) : remap(value, key),
       ]),
     );
   };

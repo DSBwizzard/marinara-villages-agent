@@ -80,21 +80,6 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
       Array.isArray(row.lines) && Array.isArray(row.submissions)
         ? {
             ...row,
-            submissions: (row.submissions as Record<string, unknown>[]).map((turn) => {
-              if (!privateHearing && asRecord(asRecord(turn.attention).validation).version !== 3) return turn;
-              const publicLines = new Set(
-                (row.lines as Record<string, unknown>[]).filter((line) => !line.contactHidden).map((line) => line.id),
-              );
-              return {
-                ...turn,
-                recollections: Array.isArray(turn.recollections)
-                  ? turn.recollections.filter((value) => {
-                      const refs = asRecord(value).lineIds;
-                      return Array.isArray(refs) && refs.length > 0 && refs.every((id) => publicLines.has(id));
-                    })
-                  : turn.recollections,
-              };
-            }),
             processingSummary: sceneProcessingSummary(row as VenueScene),
             ...(row.continuity
               ? {
@@ -180,9 +165,14 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "requestMetrics",
             "timing",
             "memoryChanges",
+            "memories",
+            "memoryScenes",
+            "recollections",
+            "turnMemories",
             "relationshipChanges",
             "earlierLineIds",
-            "memoryVersions",
+            "memoryContexts",
+            "sourceFingerprint",
             "wishProposalError",
             "wishChanges",
             "snapshot",
@@ -202,25 +192,12 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             }
           : visible && ["heardBy", "heardPlayerBy"].includes(key) && Array.isArray(entry)
             ? entry.filter((id) => visible.has(id))
-            : key === "recollections" && visible && Array.isArray(entry)
+            : key === "heardHistory" && visible && Array.isArray(entry)
               ? publicSceneResponse(
-                  entry.filter((memory) => {
-                    const row = asRecord(memory);
-                    return ["subjectCharacterIds", "knownByCharacterIds"].every(
-                      (field) =>
-                        !Array.isArray(row[field]) ||
-                        row[field].every((id: unknown) => typeof id === "string" && visible.has(id)),
-                    );
-                  }),
+                  entry.filter((history) => visible.has(asTrimmedString(asRecord(history).characterId))),
                   visible,
-                  privateHearing,
                 )
-              : key === "heardHistory" && visible && Array.isArray(entry)
-                ? publicSceneResponse(
-                    entry.filter((history) => visible.has(asTrimmedString(asRecord(history).characterId))),
-                    visible,
-                  )
-                : publicSceneResponse(entry, visible, privateHearing),
+              : publicSceneResponse(entry, visible, privateHearing),
       ]),
   ) as T;
 }

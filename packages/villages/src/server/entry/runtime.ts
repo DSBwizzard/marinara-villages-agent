@@ -1086,6 +1086,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const worldCoordination = createWorldCoordination({
+    readVillageAuthority,
     reconcileResidentPlanning: residentPlanning.reconcile,
     reconcileDevelopment,
     processProjectWishOutbox,
@@ -1094,7 +1095,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     mutateVillageState,
     buildVillageSnapshot,
     villagesLogger,
-    listVillagerCards,
     outsideVenueOperation: operations.outsideVenueOperation,
     completeVillageResidence,
     retryResidencePrivateSpaceAdaptation,

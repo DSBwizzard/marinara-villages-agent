@@ -36,7 +36,6 @@ Object.assign(world, {
   foundedAt: now,
   setupAt: now,
   backgroundPace: "off",
-  visitMemoryBackfilled: true,
   timeZone: "America/Los_Angeles",
   playerPersonaId: "persona",
   playerPersonaName: "Player",
@@ -98,6 +97,7 @@ world.venues = [
 ] as typeof world.venues;
 const village = coerceVillageState(world);
 const scene = coerceSession({
+  version: 2,
   id: "harbour-scene",
   placeId: "harbour",
   placeName: "The Harbour Terrace",
@@ -177,7 +177,6 @@ const documents = {
 };
 let modelCalls = 0;
 let answer: any;
-let verificationStatus: unknown = "supported";
 let captureRecoveryAnswers: unknown[] = [];
 let domainRecoveryAnswer: unknown;
 let closeCoreBeforeEffects = false;
@@ -221,6 +220,13 @@ const model = {
         ? semanticIntentAnswer
         : { immediateResidentMoves: [], ...semanticExchangeAnswer, intent: semanticIntentAnswer };
       assert(response, "A labeled System response is required");
+      if (!intent && Array.isArray((response as any).memoryChanges))
+        for (const row of (response as any).memoryChanges)
+          row.screening = {
+            disposition: "clear",
+            protectedRoots: [],
+            fingerprint: packet.input.context.memory.administrative.fingerprint,
+          };
       // The fixture supplies meaning explicitly; System discovers these omitted Narration actions.
       const accessActions = ((response as any).access ?? []).map(({ evidence, ...row }: any, index: number) => ({
         ...row,
@@ -271,14 +277,6 @@ const model = {
         }),
         finishReason: "stop",
         usage: { promptTokens: 10, completionTokens: 10 },
-      };
-    }
-    if (messages[0].content.startsWith("Verify consequential Scene proposals")) {
-      const { proposals } = JSON.parse(messages[1].content);
-      return {
-        content: JSON.stringify({ results: proposals.map((row: any) => ({ id: row.id, status: verificationStatus })) }),
-        finishReason: "stop",
-        usage: { inputTokens: 10, outputTokens: 10 },
       };
     }
     if (messages[0].content.includes("Recover ONLY capture metadata")) {
@@ -354,7 +352,7 @@ async function turn(
   segments: any[],
   extra: any = {},
   effects: any = {},
-  expectedChecks?: number,
+  _expectedChecks?: number,
 ) {
   const captured = segments.flatMap((row, index) =>
     row.speakerId === "player"
@@ -366,10 +364,7 @@ async function turn(
     ...effects,
     segments,
   };
-  const expectedCalls =
-    state().semanticVersion === 2
-      ? 2
-      : 1 + (expectedChecks ?? (Array.isArray(effects.memoryChanges) && effects.memoryChanges.length ? 1 : 0));
+  const expectedCalls = state().semanticVersion === 2 ? 2 : 1;
   const payload = {
     sessionId: scene.id,
     submissionId: id,
@@ -382,7 +377,7 @@ async function turn(
   const before = modelCalls;
   const response = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
   assert.equal(response.statusCode, 200, response.body);
-  assert.equal(modelCalls, before + expectedCalls, "one writer plus only eligible consequential verification");
+  assert.equal(modelCalls, before + expectedCalls, "Narration plus the existing combined System stage only");
   assert.equal(state().operation.input.interactionScopeVersion, 6);
   assert.equal(state().operation.input.writingContractVersion, 3);
   assert.equal(typeof state().operation.input.writingCapabilities.movement, "boolean");
@@ -632,7 +627,10 @@ try {
     {},
     { memoryChanges: [durable] },
   );
-  assert(records.get("villages-village").data.chronicle.some((row: any) => row.text === durable.text));
+  assert(
+    !records.get("villages-village").data.memories.records.some((row: any) => row.text === durable.text),
+    "Narration alone has no fresh System write screen",
+  );
   assert.doesNotMatch(JSON.stringify(checked), /systemVerification/, "internal check markers remain private");
   // Numeric-string references must bind before captured player speech shifts segment indexes.
   const passingText = "Aqua and the visitor exchanged a greeting beside the harbour.";
@@ -656,12 +654,20 @@ try {
     },
   );
   const canonicalTurn = state().submissions.find((row: any) => row.id === "quoted-index-memory");
-  assert.equal(canonicalTurn.processing.domains.memories.status, "applied");
+  assert.equal(canonicalTurn.processing.domains.memories.status, "rejected");
   assert.equal(canonicalTurn.processing.domains.relationships.status, "applied");
-  assert.deepEqual(canonicalTurn.liveProposals.memoryChanges[0].evidence, [1, 0]);
-  assert(records.get("villages-village").data.recollections.some((row: any) => row.text === passingText));
+  assert.deepEqual(
+    canonicalTurn.liveProposals.memoryChanges[0].evidence,
+    ["0", 0],
+    "Retired metadata has no memory reader",
+  );
+  assert(!records.get("villages-village").data.memories.records.some((row: any) => row.text === passingText));
   assert.doesNotMatch(JSON.stringify(canonical), /systemVerification|PRIVATE/);
-  assert.equal(canonicalTurn.liveProposals.memoryChanges[0].systemVerificationFailure, undefined);
+  assert.equal(
+    canonicalTurn.liveProposals.memoryChanges[0].systemVerificationFailure.message,
+    "PRIVATE",
+    "Untrusted saved metadata remains private and cannot authorize a write",
+  );
 
   const malformedRelationship = {
     fromId: "aqua",
@@ -699,9 +705,8 @@ try {
   const citationDiagnostics = await app.inject({ method: "GET", url: "/api/villages/rooms/" + scene.id + "/changes" });
   assert.match(
     citationDiagnostics.json().unresolved.find((row: any) => row.submissionId === "unavailable-memory-citation").reason,
-    /citation is unavailable or was not witnessed/,
+    /did not meet the requirements for saving/,
   );
-  verificationStatus = ["rejected"];
   const rejectedText = "Aqua is permanently timid.";
   await turn(
     "durable-unresolved",
@@ -711,10 +716,8 @@ try {
     { memoryChanges: [{ ...durable, text: rejectedText }] },
   );
   const pending = state().submissions.find((row: any) => row.id === "durable-unresolved");
-  assert.equal(pending.processing.domains.memories.status, "failed");
-  assert.equal(pending.processing.domains.memories.failure.cause, "missing_result");
-  assert.equal(pending.processing.domains.memories.failure.stage, "proposal-result");
-  assert(!records.get("villages-village").data.chronicle.some((row: any) => row.text === rejectedText));
+  assert.equal(pending.processing.domains.memories.status, "rejected");
+  assert(!records.get("villages-village").data.memories.records.some((row: any) => row.text === rejectedText));
   const boundary = "Please ask me before reading my private letters.";
   await turn(
     "source-disclosure",
@@ -781,7 +784,6 @@ try {
   assert.equal(asideLine.presentation, "aside");
   assert.equal(asideLine.delivery, "ordinary");
   assert(asideLine.heardBy.includes("neighbor"), "aside shorthand never acquires whisper privacy");
-  verificationStatus = "supported";
   for (const [field, domain] of [
     ["memoryChanges", "memories"],
     ["relationshipChanges", "relationships"],
@@ -826,7 +828,6 @@ try {
     assert.deepEqual(state().lines, beforeLines);
     assert.equal(state().submissions.find((row: any) => row.id === id).processing.domains[domain].status, "applied");
   }
-  verificationStatus = "rejected";
   const denial = "You never told me which tea you liked.";
   const falseFact = "The player never shared a tea preference.";
   await turn(
@@ -851,9 +852,8 @@ try {
     state().lines.some((line: any) => line.content === denial),
     "forgetful/bluffing character dialogue remains intact",
   );
-  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "failed");
-  assert(!records.get("villages-village").data.recollections.some((row: any) => row.text === falseFact));
-  verificationStatus = "supported";
+  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "rejected");
+  assert(!records.get("villages-village").data.memories.records.some((row: any) => row.text === falseFact));
   await turn("continue-after-effects", "*nods*", [
     { kind: "dialogue", speakerId: "aqua", text: "We can keep talking." },
   ]);
@@ -935,7 +935,6 @@ try {
   assert(playerSource.speechSource?.spans.length);
   assert.deepEqual(playerSource.heardBy, ["aqua", "feddy", "neighbor"]);
   assert.doesNotMatch(recovered.body, /speechSource|effectFailures|writing-completion/);
-  verificationStatus = "supported";
   const compact = await turn(
     "compact-preference",
     '"Mint is my favourite, only hot."',
@@ -955,7 +954,7 @@ try {
       ],
     },
   );
-  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "applied");
+  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "rejected");
   assert(
     state().lines.some((line: any) => line.attentionEvidence && line.content === "Mint is my favourite, only hot."),
   );
@@ -1175,6 +1174,7 @@ try {
   assert.equal(state().pictureEvaluatedZoneIds.filter((id: string) => id === "kitchen").length, 1);
   // A fresh v2 Scene exercises the archive-identical server and real HTTP application owners.
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
+    version: 2,
     ...clone(scene),
     semanticVersion: 2,
     lines: [],
@@ -1197,12 +1197,17 @@ try {
     events: { moves: [], departures: [], contactEnd: [] },
     memoryChanges: [
       {
-        kind: "passing",
+        action: "create",
+        kind: "open-matter",
+        subjects: ["aqua"],
         text: "Aqua suggested discussing the harbour tomorrow.",
-        category: "commitment",
-        subjectCharacterIds: ["aqua"],
-        knownByCharacterIds: ["aqua"],
-        evidence: [1],
+        learners: {
+          aqua: {
+            basis: "report",
+            attributedTo: "aqua",
+            support: [{ lineId: 1, excerpt: "Then let us talk about the harbour tomorrow." }],
+          },
+        },
       },
     ],
     relationshipChanges: { changes: [], permissions: [], disclosures: [] },
@@ -1228,9 +1233,9 @@ try {
   assert(
     records
       .get("villages-village")
-      .data.recollections.some((row: any) => row.text === "Aqua suggested discussing the harbour tomorrow."),
+      .data.memories.records.some((row: any) => row.text === "Aqua suggested discussing the harbour tomorrow."),
   );
-  assert(!JSON.stringify(records.get("villages-village").data.chronicle).includes("FORGED NARRATOR AUTHORITY"));
+  assert(!JSON.stringify(records.get("villages-village").data.memories.records).includes("FORGED NARRATOR AUTHORITY"));
   const beforeSemanticRead = modelCalls;
   const semanticPublic = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
   assert.doesNotMatch(
@@ -1514,6 +1519,7 @@ try {
   initializeVenueAccess(canonicalVenue);
   canonicalVenue.access.managerIds = ["aqua"];
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
+    version: 2,
     ...clone(scene),
     semanticVersion: 2,
     status: "opening",
@@ -1712,7 +1718,7 @@ try {
     const retained = clone(records),
       oldIntent = clone(semanticIntentAnswer),
       oldExchange = clone(semanticExchangeAnswer);
-    const blocked = coerceSession({ ...clone(scene), semanticVersion: 2, sceneRevision: 0 });
+    const blocked = coerceSession({ version: 2, ...clone(scene), semanticVersion: 2, sceneRevision: 0 });
     blocked.sceneAttendance!.occupants.find((row) => row.characterId === "distant")!.zoneId = "kitchen";
     records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen = true;
     records.get("villages-venue-visit-" + scene.id).data = blocked;

@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import {
   captureMissingVillagerCardColors,
@@ -40,7 +41,8 @@ const legacy = {
 } satisfies VillageVillagerCardSnapshot;
 const migrated = captureMissingVillagerCardColors(legacy, card);
 const recovered = coerceVillageState({
-  version: 3,
+  ...defaultVillageState(),
+  version: 4,
   wishSystemVersion: 3,
   villagers: [{ characterId: "resident", cardSnapshot: legacy, addedAt: legacy.capturedAt }],
 });

@@ -21,6 +21,7 @@ try {
       { id: "private:mara", kind: "private-residence", venueClass: "residence", name: "Secret bedroom", seen: false },
     ];
     let session = {
+      version: 2,
       id: "contact-browser",
       placeId: "mill",
       placeName: "The Mill",

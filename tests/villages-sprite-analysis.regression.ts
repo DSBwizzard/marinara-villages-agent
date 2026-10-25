@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import sharp from "sharp";
@@ -111,7 +112,7 @@ function fixture(image = dataUrl(small)) {
       }),
     },
     writes: createSpriteWrites(),
-    readVillageState: async () => coerceVillageState({ version: 3 }),
+    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 4 }),
   } as unknown as SpriteSetupPorts);
   return {
     service,

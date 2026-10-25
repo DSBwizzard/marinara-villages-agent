@@ -85,6 +85,7 @@ async function main() {
       ],
     })) as any;
     const scene: any = {
+      version: 2,
       id: "room-events",
       placeId: "mall",
       zoneId: "exterior",

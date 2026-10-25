@@ -53,22 +53,13 @@ export function normalizeVillageMutation(
   const capacity = villageVenueUsage(state);
   if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)
     assertVillageVenueCapacity(state);
-  for (const resident of state.villagers)
-    for (const entry of state.wishKnowledge[resident.characterId] ?? []) {
-      if (
-        (entry.status && entry.status !== "active") ||
-        resident.agenda?.wishes.some((wish) => wish.id === entry.wishId)
-      )
-        continue;
-      const outcome = resident.wishLifecycle?.pendingOutcomes.find((outcome) => outcome.wish.id === entry.wishId);
-      entry.status = outcome?.kind === "fulfilled" ? "fulfilled" : "expired";
-    }
   // Assign notice order in the same document write as its committed effect.
-  for (const receipt of Object.values(state.exchangeReceipts))
-    if (receipt.notice && !receipt.noticeSequence) {
-      receipt.noticeSequence = ++state.noticeSequence;
-      receipt.committedAt = sources.now().toISOString();
-    }
+  for (const receipt of Object.values(state.exchangeReceipts)) {
+    if (receipt.status === "applied") receipt.committedAt ||= sources.now().toISOString();
+    if (!receipt.notice || receipt.noticeSequence) continue;
+    receipt.noticeSequence = ++state.noticeSequence;
+    receipt.committedAt = sources.now().toISOString();
+  }
   const knownHousing = state.development
     ? Object.fromEntries(
         state.venues.flatMap((venue) => {

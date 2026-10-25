@@ -1,3 +1,5 @@
+import { sceneEvidencePerception } from "../../../domain/rules/scene-evidence-perception.js";
+import { fillCommittedWishMemories, pendingWishMemories } from "../../../domain/rules/wish-memories.js";
 import { projectPhysicalDesign } from "../../../../shared/helpers/project-design.js";
 import { villageNow } from "../../../adapters/time/clock-gate.js";
 import type { Handler } from "../../../domain/models/background-model.js";
@@ -22,8 +24,7 @@ import { readPlayerIdentity } from "../../../domain/rules/village-projections.js
 import { localWishRequirements, wishEvidenceAdmission } from "../../../domain/rules/wish-admission.js";
 import {
   addWishFacts,
-  discloseWish,
-  knownWish,
+  wishJournal,
   rememberWishEvidence,
   wishCheckKnowledge,
   wishConditionRevision,
@@ -187,9 +188,18 @@ export function createWishProgress(ports: WishProgressPorts) {
       }
     },
     async afterApply(input: WishCheckInput | WishBatchInput) {
+      try {
+        if (!input.sceneId.startsWith("project:"))
+          await sceneQueries().processSavedExchange(input.sceneId, input.submissionId);
+      } finally {
+        const current = await readVillageState();
+        if (current.seed === input.seed && pendingWishMemories(current, input.sceneId, input.submissionId).length)
+          await mutateVillageState((state) => {
+            if (state.seed === input.seed)
+              fillCommittedWishMemories(state, input.sceneId, input.submissionId, villageNow().toISOString());
+          });
+      }
       if (input.sceneId.startsWith("project:")) return;
-      const { processSavedExchange } = sceneQueries();
-      await processSavedExchange(input.sceneId, input.submissionId);
       if (batchItems(input).some((item) => item.proposal.semanticCriteria?.semanticVersion === 2))
         await ports.finishSemanticScene?.(input.sceneId);
     },
@@ -399,10 +409,11 @@ export function createWishProgress(ports: WishProgressPorts) {
           const current = currentWish(live, proposal, villageNow().getTime(), scene.id);
           if (live.seed !== scene.villageSeed || !current || live.exchangeReceipts[id]) return;
           const fresh = !current.learnedAt;
-          discloseWish(live, proposal.actorId, current, turn.at!, proposal.lineIds);
+          current.learnedAt ||= turn.at!;
+          current.learnedLineIds = [...new Set([...(current.learnedLineIds ?? []), ...proposal.lineIds])];
           addWishFacts(live, proposal.actorId, current, proposal.facts ?? [], scene.id, turn.id, turn.at!);
           rememberWishEvidence(
-            knownWish(live, proposal.actorId, current.id)!,
+            wishJournal(live, proposal.actorId, current.id)!,
             cited.map((line) => ({
               id: line.id,
               speakerId: line.speakerId,
@@ -428,6 +439,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             at: turn.at!,
             evidenceIds: proposal.lineIds,
             reason: "Wish disclosed through witnessed speech",
+            wishDisclosure: true,
             ...(fresh
               ? {
                   notice: {
@@ -456,7 +468,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             turn.id,
             turn.at!,
           );
-          const entry = knownWish(live, proposal.actorId, current.id);
+          const entry = wishJournal(live, proposal.actorId, current.id);
           if (added && entry)
             rememberWishEvidence(
               entry,
@@ -599,6 +611,18 @@ export function createWishProgress(ports: WishProgressPorts) {
         .slice(-16);
 
       const context: WishInterpretationContext = {
+        playerEvidenceIds: [
+          ...scene.lines
+            .filter((line) => sceneEvidencePerception(line).playerPerception === "full")
+            .map((line) => line.id),
+          ...receipts
+            .filter(
+              (receipt) =>
+                receipt.id.startsWith(`venue-chat:${scene.id}:`) &&
+                scene.submissions.some((row) => row.id === receipt.actionReceipt?.submissionId && row.action?.happened),
+            )
+            .map((receipt) => "receipt:" + receipt.id),
+        ],
         knowledge,
         ...(proposal.semanticCriteria ? { semanticCriteria: proposal.semanticCriteria } : {}),
         actorId: proposal.actorId,

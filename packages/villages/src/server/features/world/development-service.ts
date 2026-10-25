@@ -1,3 +1,4 @@
+import { recallMemories, promptMemoryCandidates } from "../../domain/rules/memory-recall.js";
 import { recordHousingAvailability } from "../../domain/rules/development-housing.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { DevelopmentReview } from "../../domain/models/development-model.js";
@@ -117,14 +118,19 @@ export function createDevelopment(ports: DevelopmentPorts) {
       },
       pursuits: state.development?.residents[r.characterId]?.pursuits ?? [],
       home: state.venues.find((v) => venueResidentIds(v).includes(r.characterId))?.id ?? "",
-      memories: state.chronicle
-        .filter(
-          (m) => m.scope === "village" || (m.knownByCharacterIds ?? m.actors.map((a) => a.id)).includes(r.characterId),
-        )
-        .filter((m) => !m.supersededBy)
-        .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt))
-        .slice(0, 8)
-        .map((m) => ({ id: m.id, text: m.text, at: m.occurredAt })),
+      memories: promptMemoryCandidates(
+        recallMemories(state.memories, {
+          purpose: "development",
+          audience: [r.characterId],
+          query: [
+            r.characterId,
+            r.cardSnapshot.name,
+            ...(state.development?.residents[r.characterId]?.pursuits ?? []).map((p) => p.reason),
+          ].join(" "),
+          budget: 1200,
+          countCap: 8,
+        }).candidates,
+      ),
     }));
     const homes = state.venues
       .filter((v) => v.classes.includes("residence"))

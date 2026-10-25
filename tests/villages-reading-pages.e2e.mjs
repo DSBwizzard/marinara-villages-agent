@@ -37,7 +37,7 @@ try {
       window.sceneViewport = viewport;
     });
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       memoryMode: "live",
       id: "reading-pages",
