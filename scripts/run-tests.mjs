@@ -28,6 +28,12 @@ const browserJobs = Number(
 );
 for (const arg of args) {
   if (
+    ["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs=", "--shard="].some(
+      (prefix) => arg.startsWith(prefix) && !arg.slice(prefix.length).trim(),
+    )
+  )
+    throw new Error("Empty test option: " + arg.split("=")[0]);
+  if (
     arg !== group &&
     arg !== "--list" &&
     arg !== "--fail-fast" &&
@@ -175,7 +181,12 @@ try {
             });
           });
         });
-        const requiredCases = testCases.length ? testCases : test.cases;
+        const requiredCases = testCases.length
+          ? testCases.flatMap((name) => {
+              const declared = test.cases.filter((entry) => caseMatches(entry, name));
+              return declared.length ? declared : [name];
+            })
+          : test.cases;
         if (requiredCases.length && result.code === 0) {
           try {
             const coverage = JSON.parse(await readFile(caseReport, "utf8"));
