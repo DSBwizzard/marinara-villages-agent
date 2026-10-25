@@ -4,7 +4,7 @@ name = "Villages"
 [setup]
 script = "corepack npm ci && corepack enable --install-directory node_modules/.bin npm"
 
-[setup.windows]
+[setup.win32]
 script = '''
 corepack npm ci
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
