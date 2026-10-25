@@ -165,6 +165,13 @@ export function applyMemoryProposal(
       "target not supplied by unambiguous recall",
     );
   if (proposal.action === "reinforce")
+    for (const id of ids)
+      if (target!.record.knowers[id])
+        memoryRequire(
+          context.recall.candidates.some((row) => row.id === target!.record.id && !!row.knowers[id]),
+          "reinforcement target is not current for learner",
+        );
+  if (proposal.action === "reinforce")
     memoryRequire(
       proposal.text === undefined &&
         proposal.kind === undefined &&

@@ -552,6 +552,24 @@ await runCase("memories/consolidation", () => {
   assert.doesNotMatch(JSON.stringify(projectMemories(collection, ["player"])), /Move to the orchard/u);
 });
 await runCase("memories/review-regressions", () => {
+  let mixed = addMemory(emptyMemories(), { audience: ["aqua", "gidget"] });
+  const gidgetCorrection = memoryProposal(mixed, {
+    audience: ["gidget"],
+    text: "Aqua clarified that the telescope was only borrowed.",
+    patch: { action: "correct", target: targetOf(mixed), kind: "information" },
+  });
+  mixed = applyMemoryProposal(mixed, gidgetCorrection.proposal, gidgetCorrection.context).collection;
+  const misplaced = memoryProposal(mixed, {
+    audience: ["aqua", "gidget"],
+    patch: { action: "reinforce", target: targetOf(mixed), text: undefined, kind: undefined, subjects: undefined },
+  });
+  misplaced.proposal.learners = { gidget: { ...misplaced.proposal.learners.gidget, basis: "observation" } };
+  assert.throws(
+    () => applyMemoryProposal(mixed, misplaced.proposal, misplaced.context),
+    /current for learner/u,
+    "Another character's current root cannot authorize reinforcement of an obsolete perspective.",
+  );
+  assert.doesNotThrow(() => readMemoryCollection(JSON.parse(JSON.stringify(mixed))));
   let collection = addMemory(emptyMemories(), { audience: ["aqua"] });
   const first = memoryProposal(collection, {
     audience: ["aqua", "gidget"],
