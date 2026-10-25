@@ -59,7 +59,7 @@ const service = createStartingTies({
         model: "fake",
         connectionId: "configured-system",
         maxOutputTokens: 2400,
-        fitContext: (messages: any, options: any) => ({ messages, ...options }),
+        fitContext: (messages: any, options: any) => ({ messages, ...options, estimatedTokensBefore: 13000 }),
         chatComplete: () => assert.fail("Real providers are forbidden"),
       };
     },
@@ -343,7 +343,7 @@ const influence = createScheduleInfluence({
     resolveForRequest: async () => ({
       model: "fake",
       maxOutputTokens: 2400,
-      fitContext: (messages: any) => ({ messages, estimatedTokensBefore: 1000 }),
+      fitContext: (messages: any) => ({ messages, estimatedTokensBefore: 13000 }),
     }),
   }),
   completeWithRoom: async () => {

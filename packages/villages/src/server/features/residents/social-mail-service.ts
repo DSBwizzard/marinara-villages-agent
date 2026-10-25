@@ -22,8 +22,13 @@ import {
   RELATIONSHIP_REVIEW_INSTRUCTION,
 } from "../../domain/rules/relationship-review.js";
 import { captureRelationshipKnowledge } from "../../domain/rules/relationship-knowledge.js";
-import { settleStandingAccess } from "../../domain/rules/venue-access.js";
-import { resolveVenueZone, zoneClosed, zoneControllerIds } from "../../domain/rules/venue-zones.js";
+import {
+  accessChangedAfter,
+  applyAccessCommand,
+  readAccessCommand,
+  settleStandingAccess,
+} from "../../domain/rules/venue-access.js";
+import { canInviteToZone, resolveVenueZone, zoneClosed, zoneControllerIds } from "../../domain/rules/venue-zones.js";
 import {
   queuePersonalMessage,
   personalThreadId,
@@ -54,6 +59,10 @@ const invitationSchema = z.object({
   venueId: z.string().min(1),
   zoneId: z.string().min(1),
   dueAt: z.string().datetime({ offset: true }).optional(),
+  visitAccess: z
+    .object({ accompanied: z.boolean(), outsideHours: z.boolean() })
+    .nullish()
+    .transform((value) => value ?? undefined),
 });
 /** Retain only the authority needed to interpret this correspondence. Never a second transcript database. */
 function admission(village: VillageState, residentId: string): VillageState {
@@ -95,11 +104,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       .resolveForRequest({ connectionId: await ports.villagesConnectionIdFor(role) });
     const output = Math.min(maxTokens, model.maxOutputTokens ?? maxTokens),
       fit = model.fitContext(messages, { maxTokens: output });
-    if (
-      fit.trimmed ||
-      JSON.stringify(fit.messages) !== JSON.stringify(messages) ||
-      (fit.estimatedTokensBefore ?? Buffer.byteLength(JSON.stringify(messages))) > 12000
-    )
+    if (fit.trimmed || JSON.stringify(fit.messages) !== JSON.stringify(messages))
       throw new Error("Personal mail context does not fit the configured " + role + " connection.");
     const requestTokens = Math.min(output, fit.maxTokens ?? output);
     const result = await ports.completeWithRoom(model, messages, requestTokens, {
@@ -186,7 +191,8 @@ export function createSocialMail(ports: SocialMailPorts) {
           role: "system",
           content:
             RELATIONSHIP_REVIEW_INSTRUCTION +
-            " Interpret this correspondence as two separate source bundles. Return JSON {sourceReview:relationshipReview,replyReview:relationshipReview,invitation?:{title,detail,venueId,zoneId,dueAt?}}. sourceReview may cite ONLY incoming.id; it establishes the effects of delivering the player's exact text before any reply. replyReview may cite incoming.id and reply.id. Its revisions include sourceReview\'s effects. If mode is resident, incoming is the resident\'s already written message: interpret only sourceReview, return empty replyReview and allow an invitation grounded in incoming instead of a reply. When sourceDelivered is true, sourceReview must be empty and replyReview uses the supplied current live state. sceneAfter and liveAfter coincide for mail. Private stances remain private. Disclosures are saved for local notebook application only when the player opens the delivered reply. Spoken/written physical claims are attributed claims, never verified deeds. A resident invitation must be explicitly communicated in this reply, use an existing Venue and Zone, and remain proposed until a separate explicit player choice. A deadline must be an explicitly proposed future real-time ISO instant; no retroactive appointments. In player mode an empty reply means empty replyReview and no invitation. Only exact supplied source IDs are evidence.",
+            " Every invitation must include visitAccess: either {accompanied:boolean,outsideHours:boolean} or null. An explicit invitation to enter the resident's authorized non-exterior Zone (for example, 'come on in' in response to a request to visit that room) REQUIRES the visitAccess object when the supplied controllers include the resident. It grants one visit on player acceptance, never standing access. Preserve explicit accompaniment and visitor-hour conditions. Use null for a general meeting suggestion, lack of invitation authority, or unsupported conditions; never infer a ban exception. " +
+            " Interpret this correspondence as two separate source bundles. Return JSON {sourceReview:relationshipReview,replyReview:relationshipReview,invitation?:{title,detail,venueId,zoneId,dueAt?,visitAccess:null|{accompanied:boolean,outsideHours:boolean}}}. sourceReview may cite ONLY incoming.id; it establishes the effects of delivering the player's exact text before any reply. replyReview may cite incoming.id and reply.id. Its revisions include sourceReview\'s effects. If mode is resident, incoming is the resident\'s already written message: interpret only sourceReview, return empty replyReview and allow an invitation grounded in incoming instead of a reply. When sourceDelivered is true, sourceReview must be empty and replyReview uses the supplied current live state. sceneAfter and liveAfter coincide for mail. Private stances remain private. Disclosures are saved for local notebook application only when the player opens the delivered reply. Spoken/written physical claims are attributed claims, never verified deeds. A resident invitation must be explicitly communicated in this reply, use an existing Venue and Zone, and remain proposed until a separate explicit player choice. A deadline must be an explicitly proposed future real-time ISO instant; no retroactive appointments. In player mode an empty reply means empty replyReview and no invitation. Only exact supplied source IDs are evidence.",
         },
         {
           role: "user",
@@ -246,6 +252,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         !venue ||
         !zone ||
         zoneClosed(state, venue, zone) ||
+        (invitation.visitAccess && (zone.kind === "exterior" || !canInviteToZone(venue, zone, input.residentId))) ||
         (invitation.dueAt && Date.parse(invitation.dueAt) <= Date.now())
       )
         throw new Error("The reply's invitation is unavailable or already expired.");
@@ -541,6 +548,18 @@ export function createSocialMail(ports: SocialMailPorts) {
         )
         .map((row) => ({
           ...row,
+          ...(row.terms.visitAccess && row.response?.accepted
+            ? (() => {
+                const receipt = village.venues.find((venue) => venue.id === row.terms.venueId)?.access?.receipts[
+                  row.response!.id + ":visit"
+                ];
+                return receipt?.outcome === "rejected"
+                  ? { accessError: "This visit invitation is no longer valid. Ask the host for a new invitation." }
+                  : !receipt && state.sharedRecords[row.id]?.status === "accepted"
+                    ? { accessRecovery: { expectedRevision: row.response!.expectedRevision } }
+                    : {};
+              })()
+            : {}),
           status:
             state.sharedRecords[row.id]?.status === "cancelled"
               ? "cancelled"
@@ -659,6 +678,58 @@ export function createSocialMail(ports: SocialMailPorts) {
         throw conflict("This invitation is no longer available.");
       respondSocialInvitation(state, id, input.expectedRevision, input.accepted, new Date().toISOString());
     });
+    if (input.accepted)
+      await ports.mutateVillageState((state) => {
+        if (state.seed !== village.seed) throw conflict("Village identity changed.");
+        const invitation = state.relationshipContext?.invitations[id];
+        if (!invitation?.terms.visitAccess) return;
+        if (
+          invitation.status !== "accepted" ||
+          invitation.response?.expectedRevision !== input.expectedRevision ||
+          invitation.response.accepted !== true ||
+          state.relationshipContext?.mailDeliveries[invitation.messageId]?.sourceHash !==
+            invitation.response.sourceHash ||
+          JSON.stringify(invitation.response.terms) !== JSON.stringify(invitation.terms)
+        )
+          throw conflict("This invitation changed before access could settle.");
+        const venue = state.venues.find((row) => row.id === invitation.terms.venueId),
+          zone = venue && resolveVenueZone(venue, invitation.terms.zoneId),
+          operationId = invitation.response.id + ":visit";
+        if (venue?.access?.receipts[operationId]) return;
+        if (
+          !venue?.access ||
+          !zone ||
+          zoneClosed(state, venue, zone) ||
+          !state.villagers.some((row) => row.characterId === invitation.proposerId) ||
+          !canInviteToZone(venue, zone, invitation.proposerId) ||
+          state.relationshipContext?.sharedRecords[id]?.status !== "accepted" ||
+          accessChangedAfter(venue, zone.id, state.relationshipContext!.mailDeliveries[invitation.messageId]!.at)
+        ) {
+          if (venue?.access)
+            venue.access.receipts[operationId] = {
+              fingerprint: "obsolete-mail-invitation",
+              revision: venue.access.revision,
+              outcome: "rejected",
+            };
+          return;
+        }
+        applyAccessCommand(
+          venue,
+          readAccessCommand({
+            operationId,
+            expectedRevision: venue.access.revision,
+            action: "invite",
+            zoneId: zone.id,
+            visitorId: "player",
+            duration: "visit",
+            ...invitation.terms.visitAccess,
+          }),
+          invitation.proposerId,
+          invitation.respondedAt!,
+          ["player", ...state.villagers.map((row) => row.characterId)],
+          [invitation.messageId, invitation.response.id],
+        );
+      });
     return readMailbox();
   }
   const handler: Handler = {

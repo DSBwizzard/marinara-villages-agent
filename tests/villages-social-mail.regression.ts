@@ -8,6 +8,12 @@ import {
 import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import type { SocialMailInput } from "../packages/villages/src/server/domain/models/social-mail.js";
 import type { RelationshipState } from "../packages/villages/src/server/domain/models/relationship-types.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import {
+  initializeVenueAccess,
+  evaluateZoneAccess,
+  claimVisitPermission,
+} from "../packages/villages/src/server/domain/rules/venue-access.js";
 const village = defaultVillageState();
 village.seed = "mail";
 village.foundedAt = new Date().toISOString();
@@ -27,6 +33,7 @@ let calls = 0,
   failCleanup = false,
   truncateMeaning = false,
   sourceOnlyReply = false;
+let failInvitationWrite = false;
 const snapshot = async () => ({ ...structuredClone(village), relationshipContext: structuredClone(social) });
 const projection = (connection: string) => ({
   connection,
@@ -66,6 +73,10 @@ const service = createSocialMail({
   mutateVillageState: async (mutate: any) => {
     const next = { ...structuredClone(village), relationshipContext: structuredClone(social) };
     mutate(next);
+    if (failInvitationWrite && next.venues.some((venue) => venue.access?.permissions.length)) {
+      failInvitationWrite = false;
+      throw Error("Invitation permission storage unavailable");
+    }
     if (failCleanup && (next.socialMailOutbox?.length ?? 0) < (village.socialMailOutbox?.length ?? 0)) {
       failCleanup = false;
       throw Error("Final cleanup unavailable");
@@ -85,7 +96,7 @@ const service = createSocialMail({
       connectionId,
       model: "fixture",
       maxOutputTokens: 4096,
-      fitContext: (messages: any, options: any) => ({ messages, ...options }),
+      fitContext: (messages: any, options: any) => ({ messages, ...options, estimatedTokensBefore: 13000 }),
       chatComplete: () => assert.fail("Real providers forbidden"),
     }),
   }),
@@ -317,6 +328,157 @@ await assert.rejects(() => service.handler.generate(active), /4,096 output-token
 assert.equal(social.mailDeliveries[active.messageId], undefined);
 truncateMeaning = false;
 await service.cancel(active.threadId, active.messageId);
+const home = {
+  id: "ada-home",
+  name: "Ada's home",
+  classes: ["residence"],
+  residentIds: ["ada"],
+  workerIds: [],
+  occupancy: { playerHome: false, residentCharacterId: "ada", homeKind: null },
+  zones: [
+    { ...defaultVenueSpace("residence", "Living room"), id: "living", kind: "shared-residence", name: "Living room" },
+  ],
+} as any;
+initializeVenueAccess(home);
+village.venues = [home];
+const offer = (id: string, visitAccess?: { accompanied: boolean; outsideHours: boolean }) => {
+  social.mailDeliveries[id] = { messageId: id, at: new Date().toISOString(), sourceHash: "source:" + id };
+  social.invitations[id] = {
+    id,
+    threadId: "personal:ada",
+    messageId: id,
+    proposerId: "ada",
+    participantIds: ["ada", "player"],
+    revision: 1,
+    terms: {
+      title: "A visit",
+      detail: "Come over for tea",
+      venueId: home.id,
+      zoneId: "living",
+      ...(visitAccess ? { visitAccess } : {}),
+    },
+    status: "proposed",
+  };
+};
+offer("meeting-only");
+await service.respond("meeting-only", { expectedRevision: 1, accepted: true });
+assert.equal(village.venues[0]!.access!.permissions.length, 0, "An old or general meeting invitation grants no access");
+offer("hosted-visit", { accompanied: false, outsideHours: false });
+failInvitationWrite = true;
+await assert.rejects(service.respond("hosted-visit", { expectedRevision: 1, accepted: true }), /permission storage/);
+assert.equal(
+  social.invitations["hosted-visit"]!.status,
+  "accepted",
+  "The exact player decision survives a permission storage failure",
+);
+assert.equal(village.venues[0]!.access!.permissions.length, 0);
+const beforeAccessRecovery = calls;
+assert.equal(
+  (await service.readMailbox()).invitations.find((row) => row.id === "hosted-visit")?.accessRecovery?.expectedRevision,
+  1,
+  "A refreshed Mailbox exposes local access recovery",
+);
+await service.respond("hosted-visit", { expectedRevision: 1, accepted: true });
+await service.respond("hosted-visit", { expectedRevision: 1, accepted: true });
+let currentHome = village.venues[0]!;
+assert.equal(currentHome.access!.permissions.length, 1);
+const permission = currentHome.access!.permissions[0]!;
+assert.equal(permission.duration, "visit");
+assert.deepEqual(permission.sourceLineIds, ["hosted-visit", "hosted-visit:accept"]);
+assert.equal(
+  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", { sceneId: "one", accepting: true }).allowed,
+  true,
+);
+claimVisitPermission(currentHome, permission.id, "one");
+assert.equal(
+  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", { sceneId: "two", accepting: true }).allowed,
+  false,
+);
+permission.revoked = true;
+await service.respond("hosted-visit", { expectedRevision: 1, accepted: true });
+assert.equal(
+  village.venues[0]!.access!.permissions[0]!.revoked,
+  true,
+  "Replaying acceptance cannot revive revoked access",
+);
+offer("escorted-visit", { accompanied: true, outsideHours: false });
+await service.respond("escorted-visit", { expectedRevision: 1, accepted: true });
+currentHome = village.venues[0]!;
+assert.equal(
+  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", { sceneId: "two", accepting: true }).reason,
+  "accompaniment-required",
+);
+currentHome.access!.visitorHours = [{ days: ["Monday"], start: "09:00", end: "17:00" }];
+assert.equal(
+  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", {
+    at: new Date("2026-10-25T00:00:00Z"),
+    sceneId: "two",
+    accepting: true,
+  }).reason,
+  "outside-hours",
+);
+currentHome.access!.visitorHours = null;
+currentHome.access!.bans.push({
+  id: "ban",
+  zoneId: "living",
+  visitorId: "player",
+  issuerId: "ada",
+  active: true,
+  issuedAt: new Date().toISOString(),
+  sourceLineIds: [],
+});
+assert.equal(
+  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", {
+    sceneId: "two",
+    accepting: true,
+    positions: { ada: "living" },
+  }).reason,
+  "banned",
+);
+offer("lost-authority", { accompanied: false, outsideHours: false });
+currentHome.zones![0]!.access!.managerIds = ["player"];
+currentHome.zones![0]!.access!.memberRoles = [];
+await service.respond("lost-authority", { expectedRevision: 1, accepted: true });
+assert.equal(village.venues[0]!.access!.permissions.length, 2);
+assert.equal(village.venues[0]!.access!.receipts["lost-authority:accept:visit"]?.outcome, "rejected");
+village.venues[0]!.zones![0]!.access!.managerIds = ["ada"];
+await service.respond("lost-authority", { expectedRevision: 1, accepted: true });
+assert.equal(
+  village.venues[0]!.access!.permissions.length,
+  2,
+  "Restored authority cannot revive a rejected invitation",
+);
+for (const status of ["cancelled", "fulfilled"] as const) {
+  offer(status, { accompanied: false, outsideHours: false });
+  failInvitationWrite = true;
+  await assert.rejects(service.respond(status, { expectedRevision: 1, accepted: true }), /permission storage/);
+  social.sharedRecords[status]!.status = status;
+  await service.respond(status, { expectedRevision: 1, accepted: true });
+  assert.equal(village.venues[0]!.access!.receipts[status + ":accept:visit"]?.outcome, "rejected");
+  social.sharedRecords[status]!.status = "accepted";
+  await service.respond(status, { expectedRevision: 1, accepted: true });
+  assert.equal(village.venues[0]!.access!.permissions.length, 2, "An inactive commitment cannot later recreate access");
+}
+offer("changed-policy", { accompanied: false, outsideHours: false });
+failInvitationWrite = true;
+await assert.rejects(service.respond("changed-policy", { expectedRevision: 1, accepted: true }), /permission storage/);
+village.venues[0]!.access!.changes.push({
+  id: "later-policy",
+  revision: 3,
+  actorId: "ada",
+  zoneId: "living",
+  action: "zone-policy",
+  at: new Date(Date.now() + 1000).toISOString(),
+  sourceLineIds: [],
+});
+await service.respond("changed-policy", { expectedRevision: 1, accepted: true });
+assert.equal(village.venues[0]!.access!.receipts["changed-policy:accept:visit"]?.outcome, "rejected");
+assert.equal(
+  village.venues[0]!.access!.permissions.length,
+  2,
+  "Later policy changes fence delayed access even when current host authority is restored",
+);
+assert.equal(calls, beforeAccessRecovery, "Invitation acceptance and recovery dispatch no model requests");
 console.log(
   "Personal mail: exact outbox, failed delivery, failed reply, local replay, read privacy and automatic delivery passed.",
 );

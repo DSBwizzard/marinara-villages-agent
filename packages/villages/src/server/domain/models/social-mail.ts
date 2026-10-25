@@ -28,7 +28,14 @@ export type SocialInvitation = {
   proposerId: string;
   participantIds: string[];
   revision: number;
-  terms: { title: string; detail: string; venueId: string; zoneId: string; dueAt?: string };
+  terms: {
+    title: string;
+    detail: string;
+    venueId: string;
+    zoneId: string;
+    dueAt?: string;
+    visitAccess?: { accompanied: boolean; outsideHours: boolean };
+  };
   status: "proposed" | "accepted" | "declined" | "cancelled" | "fulfilled";
   respondedAt?: string;
   response?: {

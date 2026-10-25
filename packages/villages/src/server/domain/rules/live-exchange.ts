@@ -111,6 +111,7 @@ export function liveEvidence(scene: VenueScene, proposals: LiveExchangeProposals
     })
     .map((line) => ({
       ...line,
+      speakerId: line.role === "user" ? "player" : line.speakerId,
       playerHeard:
         (!line.contactHidden || line.attentionEvidence === true) &&
         (line.kind !== "whisper" || line.targetId === "player"),

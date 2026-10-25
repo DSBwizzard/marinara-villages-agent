@@ -1236,6 +1236,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             : job?.kind !== "development" &&
               job?.kind !== "story" &&
               job?.kind !== "starting-ties" &&
+              job?.kind !== "personal-mail" &&
+              job?.kind !== "social-recovery" &&
               !state.villagers.some((resident) => resident.characterId === job?.subjectId);
       if (
         !job ||
@@ -1252,6 +1254,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                   ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
                   : job?.kind !== "development" &&
                     job?.kind !== "story" &&
+                    job?.kind !== "personal-mail" &&
+                    job?.kind !== "social-recovery" &&
                     !state.villagers.some((resident) => resident.characterId === job?.subjectId);
             if (subjectGone || job?.seed !== state.seed) discardedReceipts.push(record.id);
           }

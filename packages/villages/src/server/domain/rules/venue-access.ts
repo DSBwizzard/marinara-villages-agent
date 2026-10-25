@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   AccessCommand,
   VenueAccessState,
@@ -550,6 +551,16 @@ export function claimVisitPermission(venue: VillageVenue, permissionId: string |
     throw conflict("This invitation belongs to another visit.");
   grant.sceneId = sceneId;
 }
+/** Later authority changes invalidate a previously witnessed permission. */
+export function accessChangedAfter(venue: VillageVenue, zoneId: string, at: string): boolean {
+  return !!venue.access?.changes.some(
+    (change) =>
+      change.action !== "invite" &&
+      change.action !== "destinations" &&
+      (change.zoneId === null || change.zoneId === zoneId) &&
+      Date.parse(change.at) > Date.parse(at),
+  );
+}
 /** Both live and offscreen witnessed standing permissions use this replay/authority fence. */
 export function settleStandingAccess(
   venue: VillageVenue,
@@ -566,16 +577,7 @@ export function settleStandingAccess(
 ): void {
   const ledger = venue.access;
   if (!ledger || ledger.receipts[permission.id]) return;
-  if (
-    permission.action === "grant" &&
-    ledger.changes.some(
-      (change) =>
-        change.action !== "invite" &&
-        change.action !== "destinations" &&
-        (change.zoneId === null || change.zoneId === permission.zoneId) &&
-        Date.parse(change.at) > Date.parse(at),
-    )
-  ) {
+  if (permission.action === "grant" && accessChangedAfter(venue, permission.zoneId, at)) {
     ledger.receipts[permission.id] = {
       fingerprint: "obsolete-standing-speech",
       revision: ledger.revision,
@@ -606,11 +608,16 @@ export function settleStandingAccess(
       (grant) =>
         grant.zoneId === permission.zoneId &&
         grant.visitorId === permission.visitorId &&
+        grant.duration === "standing" &&
         !grant.revoked &&
         Date.parse(grant.issuedAt) <= Date.parse(at) &&
         grant.issuerId === permission.controllerId,
     )) {
-      const operationId = permission.id + ":" + grant.id;
+      const operationId =
+        "standing-revoke:" +
+        createHash("sha256")
+          .update(JSON.stringify([permission.id, grant.id]))
+          .digest("hex");
       if (!ledger.receipts[operationId])
         applyAccessCommand(
           venue,

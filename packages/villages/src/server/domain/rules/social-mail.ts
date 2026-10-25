@@ -116,6 +116,12 @@ export function respondSocialInvitation(
   now: string,
 ): void {
   const invitation = state.invitations[id];
+  if (
+    invitation?.status === (accepted ? "accepted" : "declined") &&
+    invitation.response?.expectedRevision === revision &&
+    invitation.response.accepted === accepted
+  )
+    return;
   if (!invitation || invitation.revision !== revision || invitation.status !== "proposed")
     throw conflict("This invitation changed. Refresh it before deciding.");
   if (invitation.terms.dueAt && Date.parse(invitation.terms.dueAt) <= Date.parse(now))

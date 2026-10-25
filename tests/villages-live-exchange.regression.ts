@@ -33,7 +33,7 @@ const scene: VenueScene = {
   lines: [
     line("unprovided"),
     line("earlier"),
-    line("player", { role: "user", speakerId: "player" }),
+    line("player", { role: "user", speakerId: "" }),
     line("hidden", { contactHidden: true }),
     line("report", { contactReport: true }),
     line("whisper-away", { kind: "whisper", targetId: "b" }),
@@ -54,6 +54,11 @@ const proposals = bindLiveProposals({ earlierLineIds: ["earlier"] }, "player", [
   "absent",
 ]);
 const evidence = liveEvidence(scene, proposals);
+assert.equal(
+  evidence.find((row) => row.id === "player")?.speakerId,
+  "player",
+  "Saved player speech has a stable social identity",
+);
 assert.deepEqual(
   evidence.map((row) => [row.id, row.playerHeard]),
   [

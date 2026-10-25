@@ -110,7 +110,6 @@ export function createSemanticService(ports: SemanticPorts) {
           currentEvidenceOnly,
           systemPrompt: SYSTEM_BASE + (currentEvidenceOnly ? SYSTEM_CURRENT_SCENE : SYSTEM_RETRIEVAL) + instruction,
           reasoningEffort: identity.pipelineVersion === 3 ? ("none" as const) : ("low" as const),
-          budget: { inputTokens: 12000, plannedShards: 1 },
         };
       });
       const model =
@@ -156,8 +155,7 @@ export function createSemanticService(ports: SemanticPorts) {
       ];
       if (output < 1024) throw badGateway("System interpretation needs more context allowance; no request was made.");
       const fitted = model.fitContext(messages, { maxTokens: output });
-      const inputTokens = fitted.estimatedTokensBefore ?? Buffer.byteLength(JSON.stringify(messages), "utf8");
-      if (inputTokens > 12000 || fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(messages))
+      if (fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(messages))
         throw badGateway("Essential System evidence does not fit; no request was made.");
       if ((fitted.maxTokens ?? output) < 1024)
         throw badGateway("System output allowance is insufficient; no request was made.");

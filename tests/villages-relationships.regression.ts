@@ -417,7 +417,10 @@ respondSocialInvitation(state, "invite", 1, true, "2026-10-22T14:00:00Z");
 assert.equal(state.sharedRecords.invite!.status, "accepted");
 assert.equal(state.sharedRecords.invite!.dueAt, "2026-10-23T12:00:00Z");
 assert.equal(Object.keys(state.grants).length, 0, "Acceptance neither travels nor grants entry");
-assert.throws(() => respondSocialInvitation(state, "invite", 1, true, "2026-10-22T14:00:00Z"), /changed/);
+const acceptedInvitation = structuredClone(state.invitations.invite);
+respondSocialInvitation(state, "invite", 1, true, "2026-10-22T14:00:00Z");
+assert.deepEqual(state.invitations.invite, acceptedInvitation, "The same acknowledged decision replays unchanged");
+assert.throws(() => respondSocialInvitation(state, "invite", 1, false, "2026-10-22T14:00:00Z"), /changed/);
 state.invitations.expired = { ...state.invitations.invite!, id: "expired", status: "proposed", revision: 1 };
 assert.throws(() => respondSocialInvitation(state, "expired", 1, true, "2026-10-24T14:00:00Z"), /expired/);
 

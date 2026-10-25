@@ -6,6 +6,7 @@ import {
   initializeVenueAccess,
   evaluateZoneAccess,
   readVenueAccess,
+  settleStandingAccess,
   claimVisitPermission,
   reconcileVenueAccess,
   withinVisitorHours,
@@ -243,6 +244,27 @@ assert.deepEqual(
   "The authoritative ledger reloads without dropping receipts.",
 );
 const reloaded = coerceVillageState(state).venues[0]!;
+const longReceiptVenue = structuredClone(venue);
+const longGrant = longReceiptVenue.access!.permissions.find((grant) => grant.duration === "standing")!;
+longGrant.id = "g".repeat(180);
+longGrant.revoked = false;
+const visitGrant = { ...longGrant, id: "visit-stays", duration: "visit" as const };
+longReceiptVenue.access!.permissions.push(visitGrant);
+const revoke = {
+  id: "r".repeat(180),
+  controllerId: longGrant.issuerId,
+  visitorId: longGrant.visitorId,
+  zoneId: longGrant.zoneId,
+  action: "revoke" as const,
+  lineIds: ["withdrawal-speech"],
+};
+settleStandingAccess(longReceiptVenue, revoke, "2099-01-01T00:00:00.000Z", known);
+assert.equal(longGrant.revoked, true);
+assert.equal(visitGrant.revoked, false, "Withdrawing standing permission alone does not end an invited visit");
+const settledRevision = longReceiptVenue.access!.revision;
+assert.deepEqual(readVenueAccess(JSON.parse(JSON.stringify(longReceiptVenue.access))), longReceiptVenue.access);
+settleStandingAccess(longReceiptVenue, revoke, "2099-01-01T00:00:00.000Z", known);
+assert.equal(longReceiptVenue.access!.revision, settledRevision, "Withdrawal retries retain bounded stable receipts");
 assert.equal(
   reloaded.zones!.filter((zone) => zone.ownerId === "jim").length,
   2,

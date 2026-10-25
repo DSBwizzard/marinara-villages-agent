@@ -234,6 +234,21 @@ export function Mailbox({
                   <p>{invitation.terms.detail}</p>
                   {invitation.terms.dueAt ? <p>Due {new Date(invitation.terms.dueAt).toLocaleString()}</p> : null}
                   <p>{invitation.status}</p>
+                  {invitation.accessError ? <p role="alert">{invitation.accessError}</p> : null}
+                  {invitation.accessRecovery ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void action("/mailbox/invitations/" + encodeURIComponent(invitation.id) + "/response", {
+                          expectedRevision: invitation.accessRecovery!.expectedRevision,
+                          accepted: true,
+                        })
+                      }
+                    >
+                      Retry visit access
+                    </button>
+                  ) : null}
                   {invitation.status === "proposed" ? (
                     <div className="villages-mail-actions">
                       <button

@@ -233,6 +233,7 @@ async function main() {
   let attemptIdentity = "initial";
   const rejected: any[] = [];
   let inputEstimate = 1000;
+  let contextTrimmed = false;
   let loreReads = 0;
   let accessRows: any[] = [];
   let actionReview: ((packet: any) => any) | undefined;
@@ -256,7 +257,7 @@ async function main() {
       maxTokens: options.maxTokens,
       estimatedTokensBefore: inputEstimate,
       estimatedTokensAfter: inputEstimate,
-      trimmed: false,
+      trimmed: contextTrimmed,
     }),
     chatComplete: () => assert.fail("No real provider dispatch is allowed"),
   };
@@ -502,8 +503,16 @@ async function main() {
 
   inputEstimate = 12001;
   const beforeBudget = calls.length;
-  await assert.rejects(service.intent(scene, "A request exceeding the reserved context"), /does not fit/);
-  assert.equal(calls.length, beforeBudget, "Budget exhaustion dispatches nothing");
+  await service.intent(scene, "A request that fits the configured model");
+  assert.equal(
+    calls.length,
+    beforeBudget + 1,
+    "The model's context allowance admits complete evidence above 12,000 tokens",
+  );
+  contextTrimmed = true;
+  await assert.rejects(service.intent(scene, "A request exceeding the model context"), /does not fit/);
+  assert.equal(calls.length, beforeBudget + 1, "Required evidence cannot be trimmed to dispatch a request");
+  contextTrimmed = false;
   inputEstimate = 1000;
   behavior = "wrong-hash";
   await assert.rejects(service.intent(scene, "Another input"), /different source/);
@@ -1636,6 +1645,25 @@ async function main() {
       ).access[0].outcome,
       outcome,
     );
+  }
+  for (const outcome of ["refuse", "dismiss", "ban-zone"]) {
+    const withdrawal = makeAction("You cannot come by any time anymore.", {
+        id: "withdraw-standing",
+        outcome: "revoke-standing",
+        duration: "standing",
+      }),
+      refusal = makeAction("Please leave this space.", { id: "end-visit", outcome });
+    const ordered = [...evidenceFor(withdrawal.source.quote), ...evidenceFor(refusal.source.quote)];
+    for (const proposed of [
+      [withdrawal, refusal],
+      [refusal, withdrawal],
+    ]) {
+      const reconciled = reconcileResidentActions(readResidentActions(proposed), reviewFor(ordered, proposed), ordered);
+      assert.equal(reconciled.access.length, 1, "Ending current access can also withdraw future permission");
+      assert.equal(reconciled.access[0].outcome, outcome);
+      assert.equal(reconciled.permissions.length, 1);
+      assert.equal(reconciled.permissions[0].action, "revoke");
+    }
   }
   for (const [first, second] of [
     ["invite-now", "dismiss"],

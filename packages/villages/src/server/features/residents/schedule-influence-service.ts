@@ -71,7 +71,6 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
       if (
         fitted.trimmed ||
         JSON.stringify(fitted.messages) !== JSON.stringify(messages) ||
-        (fitted.estimatedTokensBefore ?? Buffer.byteLength(JSON.stringify(messages), "utf8")) > 12000 ||
         (fitted.maxTokens ?? maxTokens) < 1024
       )
         throw new Error("Schedule interpretation does not fit; no request was made.");

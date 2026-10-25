@@ -222,6 +222,11 @@ try {
           ];
         }
         if (path.endsWith("/cancel")) mailbox.threads[0].messages[0].status = "cancelled";
+        if (path.endsWith("/invitations/recover-visit/response")) {
+          assert.equal(request.postDataJSON().expectedRevision, 1);
+          assert.equal(request.postDataJSON().accepted, true);
+          delete mailbox.invitations[0].accessRecovery;
+        }
         value = mailbox;
       } else if (path.endsWith("/villagers/mara/description")) {
         if (failDescription)
@@ -667,6 +672,23 @@ try {
     await expect(draft).toHaveValue("");
     assert.equal(writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.text, exactMessage);
     await expect(mail.getByText(exactMessage, { exact: true })).toBeVisible();
+    mailbox.invitations = [
+      {
+        id: "recover-visit",
+        threadId: "personal:mara",
+        messageId: "source",
+        proposerName: "Mara",
+        revision: 2,
+        status: "accepted",
+        terms: { title: "Tea at Mara's", detail: "Come over for tea", venueId: "mill", zoneId: "common:base" },
+        accessRecovery: { expectedRevision: 1 },
+      },
+    ];
+    await mail.getByRole("button", { name: "Close Mailbox" }).click();
+    await profile.getByText("Message", { exact: true }).click();
+    await expect(mail.getByRole("button", { name: "Retry visit access", exact: true })).toBeVisible();
+    await mail.getByRole("button", { name: "Retry visit access", exact: true }).click();
+    await expect(mail.getByRole("button", { name: "Retry visit access", exact: true })).toHaveCount(0);
     assert.equal(
       await mail.evaluate((node) => node.scrollWidth > node.clientWidth + 1),
       false,

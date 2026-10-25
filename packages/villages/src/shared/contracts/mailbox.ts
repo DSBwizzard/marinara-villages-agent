@@ -32,6 +32,8 @@ export type MailboxView = {
     revision: number;
     terms: { title: string; detail: string; venueId: string; zoneId: string; dueAt?: string };
     status: "proposed" | "accepted" | "declined" | "cancelled" | "fulfilled";
+    accessRecovery?: { expectedRevision: number };
+    accessError?: string;
   }[];
   venueMail: VillageSnapshot["venueMail"];
 };
