@@ -566,10 +566,54 @@ await runCase("memories/review-regressions", () => {
   misplaced.proposal.learners = { gidget: { ...misplaced.proposal.learners.gidget, basis: "observation" } };
   assert.throws(
     () => applyMemoryProposal(mixed, misplaced.proposal, misplaced.context),
-    /current for learner/u,
+    /current for learner|older correction/u,
     "Another character's current root cannot authorize reinforcement of an obsolete perspective.",
   );
   assert.doesNotThrow(() => readMemoryCollection(JSON.parse(JSON.stringify(mixed))));
+  let variants = addMemory(emptyMemories(), { audience: ["aqua", "gidget"] });
+  for (const id of ["aqua", "gidget"]) {
+    const correction = memoryProposal(variants, {
+      audience: [id],
+      text: id + " clarified the plan for the star chart.",
+      patch: { action: "correct", target: targetOf(variants), kind: "information" },
+    });
+    variants = applyMemoryProposal(variants, correction.proposal, correction.context).collection;
+  }
+  const olderId = projectMemories(variants, ["aqua"])[0].id;
+  const olderLearning = memoryProposal(variants, {
+    audience: ["aqua", "gidget"],
+    patch: {
+      action: "reinforce",
+      target: targetOf(variants, olderId),
+      text: undefined,
+      kind: undefined,
+      subjects: undefined,
+    },
+  });
+  olderLearning.proposal.learners = { gidget: olderLearning.proposal.learners.gidget };
+  assert.throws(
+    () => applyMemoryProposal(variants, olderLearning.proposal, olderLearning.context),
+    /older correction/u,
+  );
+  const newerId = projectMemories(variants, ["gidget"])[0].id;
+  const newerLearning = memoryProposal(variants, {
+    audience: ["aqua", "gidget"],
+    patch: {
+      action: "reinforce",
+      target: targetOf(variants, newerId),
+      text: undefined,
+      kind: undefined,
+      subjects: undefined,
+    },
+  });
+  newerLearning.proposal.learners = { aqua: newerLearning.proposal.learners.aqua };
+  const learned = applyMemoryProposal(variants, newerLearning.proposal, newerLearning.context).collection;
+  assert.equal(
+    projectMemories(learned, ["aqua"])[0].id,
+    newerId,
+    "Existing knowers can still learn a newer correction.",
+  );
+  assert.doesNotThrow(() => readMemoryCollection(JSON.parse(JSON.stringify(learned))));
   let collection = addMemory(emptyMemories(), { audience: ["aqua"] });
   const first = memoryProposal(collection, {
     audience: ["aqua", "gidget"],

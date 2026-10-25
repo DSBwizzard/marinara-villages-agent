@@ -166,6 +166,24 @@ export function applyMemoryProposal(
     );
   if (proposal.action === "reinforce")
     for (const id of ids)
+      if (target!.root.knowers[id]) {
+        let current = target!.root;
+        for (const row of collection.records)
+          if (
+            row.corrects === target!.root.id &&
+            row.knowers[id] &&
+            !row.knowers[id].forgotten &&
+            (row.createdRevision > current.createdRevision ||
+              (row.createdRevision === current.createdRevision && row.id < current.id))
+          )
+            current = row;
+        memoryRequire(
+          target!.record.id === current.id || target!.record.createdRevision > current.createdRevision,
+          "reinforcement would restore an older correction",
+        );
+      }
+  if (proposal.action === "reinforce")
+    for (const id of ids)
       if (target!.record.knowers[id])
         memoryRequire(
           context.recall.candidates.some((row) => row.id === target!.record.id && !!row.knowers[id]),
