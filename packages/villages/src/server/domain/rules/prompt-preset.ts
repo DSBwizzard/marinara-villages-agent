@@ -442,8 +442,6 @@ export function isTownMapImage(value: string): boolean {
  * are also the generation target and the recommended upload size. New maps use
  * a 16:9 landscape; saved maps retain their own canvas and placement coordinates.
  */
-export const LEGACY_TOWN_MAP_WIDTH = 1216;
-export const LEGACY_TOWN_MAP_HEIGHT = 832;
 export const TOWN_MAP_EXPECTED_WIDTH = 2560;
 export const TOWN_MAP_EXPECTED_HEIGHT = 1440;
 

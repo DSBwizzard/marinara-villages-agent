@@ -228,7 +228,12 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
 
     description,
     category: typeof record.category === "string" ? record.category.trim() : "",
-    presentation: { image: founding ? foundingImage(presentationRecord.image) : null, x, y },
+    presentation: {
+      mapId: asTrimmedString(presentationRecord.mapId),
+      image: founding ? foundingImage(presentationRecord.image) : null,
+      x,
+      y,
+    },
     occupancy: {
       playerHome,
       residentCharacterId: characterId.length > 0 ? characterId : null,

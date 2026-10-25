@@ -1,144 +1,122 @@
-import {
-  MAP_UPLOAD_UNREADABLE,
-  townMapFileSizeMessage,
-  townMapImageProblem,
-} from "../../../shared/helpers/town-map-upload.js";
+import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
 import { coerceTownMapView } from "../../domain/decoding/village-codec.js";
-import type { VillageState, VillageSnapshot } from "../../domain/models/world.js";
-import { asTrimmedString } from "../../domain/rules/coerce.js";
+import type { VillageMap, VillageState, VillageSnapshot } from "../../domain/models/world.js";
+import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
-import {
-  DEFAULT_TOWN_MAP_VIEW,
-  isTownMapImage,
-  MAX_TOWN_MAP_IMAGE_LENGTH,
-  TOWN_MAP_EXPECTED_WIDTH,
-  TOWN_MAP_EXPECTED_HEIGHT,
-} from "../../domain/rules/prompt-preset.js";
-import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
+import { assertMapRevision, mapName, villageMap } from "../../domain/rules/village-maps.js";
+import { MAX_TOWN_MAP_IMAGE_LENGTH } from "../../domain/rules/prompt-preset.js";
+import { decodeVillageImageDataUrl } from "../../adapters/engine/image-files.js";
+import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
 
 export interface TownMapReviewPorts {
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
   inspectVillageImage(image: string): Promise<{ width: number; height: number }>;
+  uploadVillageGalleryImage: typeof uploadVillageGalleryImage;
 }
-
-/** One validation and replacement path connects saved maps and Engine inspection. Construction is inert. */
-export function createTownMapReview({
-  readVillageState,
-  mutateVillageState,
-  buildVillageSnapshot,
-  inspectVillageImage,
-}: TownMapReviewPorts) {
-  /** Replace the background and its complete pin layout in one village write. */
-  async function replaceVillageTownMap(value: unknown): Promise<VillageSnapshot> {
-    const body = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+export function createTownMapReview(ports: TownMapReviewPorts) {
+  const { readVillageState, mutateVillageState, buildVillageSnapshot, inspectVillageImage, uploadVillageGalleryImage } =
+    ports;
+  async function prepareVillageMap(value: unknown): Promise<VillageMap> {
+    const body = asRecord(value);
+    const id = asTrimmedString(body.id);
+    if (!/^[a-zA-Z0-9_-]{8,128}$/.test(id)) throw badRequest("A map ID is required.");
+    const name = mapName(body.name);
+    const decoded = decodeVillageImageDataUrl(body.image, {
+      label: "map artwork",
+      maxBase64Length: MAX_TOWN_MAP_IMAGE_LENGTH,
+    });
+    const size = await inspectVillageImage(decoded.dataUrl);
+    const problem = townMapImageProblem(size);
+    if (problem) throw badRequest(problem);
+    const artwork = await uploadVillageGalleryImage({
+      bytes: decoded.bytes,
+      mime: decoded.mime,
+      name,
+      prompt: "",
+      ...size,
+    });
+    return { id, name, artwork, ...size, view: coerceTownMapView(body.view), revision: 1 };
+  }
+  async function createVillageMap(value: unknown): Promise<VillageSnapshot> {
+    const body = asRecord(value);
     const current = await readVillageState();
-    const submitted = await readTownMapSubmission(body.image, body.view, current.townMapImage);
-    if (typeof body.expectedMapSetAt !== "string") throw badRequest("Reload the village map before replacing it.");
-    if (!Array.isArray(body.placements)) throw badRequest("Review every Venue photograph before saving the map.");
-    const positions = new Map<
-      string,
-      { x: number | null; y: number | null; fromX: number | null; fromY: number | null }
-    >();
-    const coordinate = (value: unknown): number | null => {
-      if (value === null) return null;
-      if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1)
-        throw badRequest("Venue photograph coordinates must be between 0 and 1.");
-      return value;
-    };
-    for (const row of body.placements) {
-      if (!row || typeof row !== "object" || Array.isArray(row))
-        throw badRequest("A Venue photograph placement is invalid.");
-      const item = row as Record<string, unknown>;
-      const id = asTrimmedString(item.venueId);
-      if (!id || positions.has(id)) throw badRequest("Every Venue must have one distinct photograph placement.");
-      const x = coordinate(item.x);
-      const y = coordinate(item.y);
-      const fromX = coordinate(item.fromX);
-      const fromY = coordinate(item.fromY);
-      if ((x === null) !== (y === null) || (fromX === null) !== (fromY === null))
-        throw badRequest("A Venue photograph needs both coordinates or neither.");
-      positions.set(id, { x, y, fromX, fromY });
-    }
+    if (!current.setupAt) throw conflict("Found the Village before adding a map.");
+    if (current.maps.some((map) => map.id === body.id)) return buildVillageSnapshot();
+    const prepared = await prepareVillageMap(body);
     await mutateVillageState((state) => {
-      if (!isVillageFounded(state)) throw conflict("Found the village before replacing its map.");
-      if (state.townMapImageSetAt !== body.expectedMapSetAt)
-        throw conflict("The village map changed. Reload it before saving.");
-      if (state.venues.length !== positions.size || state.venues.some((venue) => !positions.has(venue.id)))
-        throw conflict("The venue list changed. Reload the village map before saving.");
-      for (const venue of state.venues) {
-        const spot = positions.get(venue.id)!;
-        if (venue.presentation.x !== spot.fromX || venue.presentation.y !== spot.fromY)
-          throw conflict("A Venue photograph moved. Reload the village map before saving.");
-        if (submitted.image === state.townMapImage && (spot.x !== spot.fromX || spot.y !== spot.fromY))
-          throw conflict("Choose a replacement map before moving venues.");
-      }
-      for (const venue of state.venues) {
-        const spot = positions.get(venue.id)!;
-        venue.presentation.x = spot.x;
-        venue.presentation.y = spot.y;
-      }
-      if (!submitted.image || submitted.image !== state.townMapImage) {
-        state.townMapCanvasWidth = submitted.size?.width ?? TOWN_MAP_EXPECTED_WIDTH;
-        state.townMapCanvasHeight = submitted.size?.height ?? TOWN_MAP_EXPECTED_HEIGHT;
-      }
-      state.townMapImage = submitted.image;
-      state.townMapImageSetAt = submitted.image
-        ? new Date(Math.max(Date.now(), (Date.parse(state.townMapImageSetAt) || 0) + 1)).toISOString()
-        : "";
-      state.townMapView = submitted.view;
+      if (state.seed !== current.seed) throw conflict("The Village changed. Reload before saving.");
+      if (!state.maps.some((map) => map.id === prepared.id)) state.maps.push(prepared);
     });
     return buildVillageSnapshot();
   }
-
-  async function readTownMapSubmission(
-    value: unknown,
-    view?: unknown,
-    retainedImage = "",
-  ): Promise<{
-    image: string;
-    size: { width: number; height: number } | null;
-    view: ReturnType<typeof coerceTownMapView>;
-  }> {
-    if (typeof value !== "string")
-      throw badRequest("We couldn't use this map image. Choose the image file again and try uploading it.");
-    const image = value.trim();
-    if (image.length > 0 && !isTownMapImage(image)) {
-      throw badRequest(MAP_UPLOAD_UNREADABLE);
+  async function updateVillageMap(id: string, value: unknown): Promise<VillageSnapshot> {
+    const body = asRecord(value);
+    const current = await readVillageState();
+    const map = villageMap(current, id);
+    assertMapRevision(map, body.expectedRevision);
+    const prepared =
+      body.image === undefined ? null : await prepareVillageMap({ ...body, id, name: body.name ?? map.name });
+    const name = body.name === undefined ? map.name : mapName(body.name);
+    const placements = body.placements === undefined ? null : new Map<string, { x: number | null; y: number | null }>();
+    if (body.image !== undefined && !placements)
+      throw badRequest("Review every Venue and Project placement before replacing artwork.");
+    if (placements) {
+      if (!Array.isArray(body.placements)) throw badRequest("Review this map's Venue placements.");
+      for (const value of body.placements) {
+        const row = asRecord(value);
+        const venueId = asTrimmedString(row.venueId);
+        const valid = (n: unknown) => n === null || (typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 1);
+        if (
+          !venueId ||
+          placements.has(venueId) ||
+          !valid(row.x) ||
+          !valid(row.y) ||
+          (row.x === null) !== (row.y === null)
+        )
+          throw badRequest("A Venue placement is invalid.");
+        placements.set(venueId, { x: row.x as number | null, y: row.y as number | null });
+      }
     }
-    if (image.length > MAX_TOWN_MAP_IMAGE_LENGTH) {
-      throw badRequest(
-        townMapFileSizeMessage(
-          Math.ceil((image.length * 3) / 4),
-          Math.floor(((MAX_TOWN_MAP_IMAGE_LENGTH - 64) * 3) / 4),
-        ),
+    await mutateVillageState((state) => {
+      if (state.seed !== current.seed) throw conflict("The Village changed. Reload before saving.");
+      const target = villageMap(state, id);
+      assertMapRevision(target, body.expectedRevision);
+      const venues = state.venues.filter((venue) => venue.presentation.mapId === id);
+      const projects = state.projects.filter(
+        (project) =>
+          project.kind === "new-venue" &&
+          !["complete", "cancelled"].includes(project.status) &&
+          !project.venueId &&
+          project.venueDraft?.position.mapId === id,
       );
-    }
-    const size = image.length > 0 ? await inspectVillageImage(image) : null;
-    // Only an exact saved image is grandfathered; new submissions are always checked.
-    if (size && image !== retainedImage) {
-      const problem = townMapImageProblem(size);
-      if (problem) throw badRequest(problem);
-    }
-    return {
-      image,
-      size,
-      view: image.length > 0 ? coerceTownMapView(view) : { ...DEFAULT_TOWN_MAP_VIEW },
-    };
+      const keys = [...venues.map((venue) => venue.id), ...projects.map((project) => "project:" + project.id)];
+      if (placements && (keys.length !== placements.size || keys.some((key) => !placements.has(key))))
+        throw conflict("Map placements changed. Reload before saving.");
+      if (prepared)
+        Object.assign(target, {
+          artwork: prepared.artwork,
+          width: prepared.width,
+          height: prepared.height,
+          view: prepared.view,
+        });
+      target.name = name;
+      if (body.view !== undefined) target.view = coerceTownMapView(body.view);
+      if (placements) for (const venue of venues) Object.assign(venue.presentation, placements.get(venue.id));
+      if (placements)
+        for (const project of projects) {
+          const point = placements.get("project:" + project.id)!;
+          const position = project.venueDraft!.position;
+          if (position.x !== point.x || position.y !== point.y) {
+            Object.assign(position, point);
+            if (project.lifecycle) project.lifecycle.revision++;
+          }
+        }
+      target.revision++;
+    });
+    return buildVillageSnapshot();
   }
-
-  /**
-   * The stored map on its own, away from the snapshot.
-   *
-   * A snapshot is read on every chat send, so the image is deliberately not part
-   * of it: the tab asks for the picture here, once, and asks again only when the
-   * stamp it was given changes.
-   */
-  async function readVillageTownMapImage(): Promise<{ image: string }> {
-    const village = await readVillageState();
-    return { image: village.townMapImage };
-  }
-  return { replaceVillageTownMap, readTownMapSubmission, readVillageTownMapImage };
+  return { prepareVillageMap, createVillageMap, updateVillageMap };
 }
 export type TownMapReview = ReturnType<typeof createTownMapReview>;

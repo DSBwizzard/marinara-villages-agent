@@ -40,7 +40,7 @@ const snapshot = {
   settings: {
     venues: [],
     visitRetention: { mode: "forever", value: 0 },
-    townMapImageSetAt: "",
+    maps: [],
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     backgroundPaces: [],
     macros: [],

@@ -13,7 +13,7 @@ import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
 import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
-import { removeFoundingDraft } from "./villages-founding-draft.js";
+import { removeDeviceDraft } from "../../shared/device-drafts.js";
 import { venueHasCommon } from "./villages-founding-editor";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
@@ -61,7 +61,7 @@ export function useSuggestPlaces(ports: {
           name: place.name,
           description: "",
           category: "public",
-          presentation: { image: null, x: null, y: null },
+          presentation: { mapId: "", image: null, x: null, y: null },
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
           capabilities: [],
           state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
@@ -595,7 +595,7 @@ export function useFoundVillage(ports: {
       setSnapshot(founded);
       setDraftReady(false);
       await draftSaveQueue.current;
-      await removeFoundingDraft(API_PATH).catch(() => undefined);
+      await removeDeviceDraft(API_PATH).catch(() => undefined);
       setScreen(
         !snapshot?.isFounded ||
           founded.foundingPreparation?.status === "pending" ||

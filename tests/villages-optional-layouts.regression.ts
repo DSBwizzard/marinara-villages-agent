@@ -147,6 +147,17 @@ assert.equal(
 assert.equal(canOccupyZone(vacant, vacant.zones![1]!, "a"), false);
 const initial = defaultVillageState();
 initial.foundedAt = initial.setupAt = new Date().toISOString();
+initial.maps = [
+  {
+    id: "map-house",
+    name: "QA Village",
+    artwork: { id: "map-art", ref: "global-gallery:map-art", url: "/map.png" },
+    width: 1500,
+    height: 1000,
+    view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+    revision: 1,
+  },
+];
 initial.venues = [privateOnly, place("exterior", "residence", "b"), vacant];
 initial.venues[0]!.zones![1]!.description = "A secret journal and old furnishings.";
 initial.venues[0]!.zones![1]!.state.items = ["Personal hammock"];
@@ -234,6 +245,8 @@ async function placeNewVenueProject(id: string, value: any) {
     ...value,
     requestId: crypto.randomUUID(),
     expectedRevision: project.lifecycle!.revision,
+    mapId: initial.maps[0].id,
+    expectedMapRevision: (await readVillageState()).maps[0].revision,
   });
 }
 async function finish(id: string, body: any = {}) {

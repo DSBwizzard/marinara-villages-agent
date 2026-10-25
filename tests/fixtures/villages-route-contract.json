@@ -123,12 +123,13 @@
       "path": "/image-style-profiles"
     },
     {
-      "method": "get",
-      "path": "/town-map"
+      "method": "post",
+      "path": "/maps",
+      "bodyLimit": 8065536
     },
     {
       "method": "put",
-      "path": "/town-map",
+      "path": "/maps/:id",
       "bodyLimit": 8065536
     },
     {
@@ -349,11 +350,11 @@
     },
     {
       "method": "post",
-      "path": "/setup/town-map/generate"
+      "path": "/maps/generate"
     },
     {
       "method": "get",
-      "path": "/setup/town-map/generation/:actionId"
+      "path": "/maps/generation/:targetId/:actionId"
     },
     {
       "method": "post",

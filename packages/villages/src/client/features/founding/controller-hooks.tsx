@@ -454,9 +454,12 @@ export function useFoundingMapReceipt(ports: {
     let timer: number | undefined;
     const poll = async () => {
       try {
-        const receipt = await requestSetupMapReceipt(`/setup/town-map/generation/${encodeURIComponent(pending.id)}`, {
-          signal: controller.signal,
-        });
+        const receipt = await requestSetupMapReceipt(
+          `/maps/generation/founding-map/${encodeURIComponent(pending.id)}`,
+          {
+            signal: controller.signal,
+          },
+        );
         if (cancelled) return;
         if (receipt.status === "running") {
           timer = window.setTimeout(() => void poll(), 2000);

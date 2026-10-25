@@ -74,9 +74,6 @@ import {
   isGlobalGalleryRef,
   isHomeBuildingKind,
   isTownMapFit,
-  isTownMapImage,
-  LEGACY_TOWN_MAP_HEIGHT,
-  LEGACY_TOWN_MAP_WIDTH,
   MAX_CHRONICLE_LENGTH,
   MAX_PHYSICAL_NARRATION_LENGTH,
   MAX_NOTICE_AUTHOR_LENGTH,
@@ -92,7 +89,6 @@ import {
   MAX_REMAP_SLOT_LENGTH,
   MAX_ROUTINE_SUMMARY_LENGTH,
   MAX_SETTING_LENGTH,
-  MAX_TOWN_MAP_IMAGE_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_EVENTS,
   MAX_VENUE_IMAGE_URL_LENGTH,
@@ -101,8 +97,6 @@ import {
   MAX_VILLAGER_WISHES,
   MAX_WISH_LENGTH,
   MAX_WISH_TELL_LENGTH,
-  TOWN_MAP_EXPECTED_HEIGHT,
-  TOWN_MAP_EXPECTED_WIDTH,
   TOWN_MAP_FOCUS_MAX,
   TOWN_MAP_FOCUS_MIN,
   TOWN_MAP_ZOOM_MAX,
@@ -228,13 +222,7 @@ export function defaultVillageState(): VillageState {
     playerPersonaMissing: false,
     // No map until the player adds one. The image is a data URL so it is carried
     // with the record rather than sitting somewhere the village cannot back up.
-    townMapImage: "",
-    townMapImageSetAt: "",
-    townMapCanvasWidth: TOWN_MAP_EXPECTED_WIDTH,
-    townMapCanvasHeight: TOWN_MAP_EXPECTED_HEIGHT,
-    // A copy rather than the shared object, so a write through one village's
-    // state cannot reach the default every other village is given.
-    townMapView: { ...DEFAULT_TOWN_MAP_VIEW },
+    maps: [],
   };
 }
 function coerceVillager(value: unknown, venues: readonly VillageVenue[]): VillageVillager | null {
@@ -880,6 +868,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     description,
     category,
     presentation: {
+      mapId: asTrimmedString(presentation.mapId),
       image: coerceVenueImage(presentation.image),
       x: x !== null && y !== null ? x : null,
       y: x !== null && y !== null ? y : null,
@@ -1455,29 +1444,6 @@ function coerceRecollections(value: unknown): VillageRecollection[] {
     })
     .filter((entry): entry is VillageRecollection => entry !== null);
 }
-function coerceTownMapImage(value: unknown): string {
-  const image = asString(value);
-  return image.length <= MAX_TOWN_MAP_IMAGE_LENGTH && isTownMapImage(image) ? image : "";
-}
-function coerceTownMapCanvas(raw: Record<string, unknown>, legacyCanvas: boolean): { width: number; height: number } {
-  if (legacyCanvas) return { width: LEGACY_TOWN_MAP_WIDTH, height: LEGACY_TOWN_MAP_HEIGHT };
-  const width = raw.townMapCanvasWidth;
-  const height = raw.townMapCanvasHeight;
-  if (
-    typeof width === "number" &&
-    typeof height === "number" &&
-    Number.isInteger(width) &&
-    Number.isInteger(height) &&
-    width > 0 &&
-    height > 0 &&
-    width <= 8192 &&
-    height <= 8192 &&
-    width * height <= 16_000_000
-  ) {
-    return { width, height };
-  }
-  return { width: TOWN_MAP_EXPECTED_WIDTH, height: TOWN_MAP_EXPECTED_HEIGHT };
-}
 function coerceRefreshClocks(value: unknown): string[] {
   if (!Array.isArray(value)) return [...VILLAGE_CLOCKS];
   const wanted = new Set<string>();
@@ -1657,6 +1623,9 @@ function coerceProjects(value: unknown): VillageProject[] {
               classes: draft.classes as VillageVenueClass[],
               description: asTrimmedString(draft.description),
               position: {
+                ...(asTrimmedString(asRecord(draft.position).mapId)
+                  ? { mapId: asTrimmedString(asRecord(draft.position).mapId) }
+                  : {}),
                 x: typeof position.x === "number" ? position.x : null,
                 y: typeof position.y === "number" ? position.y : null,
               },
@@ -1858,11 +1827,7 @@ export function coerceVillageState(value: unknown): VillageState {
         .filter((entry): entry is VillageVillager => entry !== null)
     : [];
   const seen = new Set<string>();
-  const townMapImage = coerceTownMapImage(raw.townMapImage);
-  const legacyCanvas =
-    raw.townMapCanvasWidth === undefined &&
-    (townMapImage.length > 0 || (typeof raw.setupAt === "string" && raw.setupAt.length > 0));
-  const townMapCanvas = coerceTownMapCanvas(raw, legacyCanvas);
+
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
   const state: VillageState = {
     version: 3,
@@ -2091,16 +2056,23 @@ export function coerceVillageState(value: unknown): VillageState {
       boundText(raw.playerPersonaId, MAX_PLAYER_PERSONA_ID_LENGTH).length > 0
         ? raw.playerPersonaMissing === true
         : false,
-    townMapImage,
-    townMapCanvasWidth: townMapCanvas.width,
-    townMapCanvasHeight: townMapCanvas.height,
-    // Dropped along with the image it describes, rather than keeping a stamp
-    // that claims a map which is not there.
-    townMapImageSetAt: townMapImage.length > 0 ? (asIsoString(raw.townMapImageSetAt) ?? "") : "",
-    // Likewise dropped with the picture it frames. A framing is a framing OF
-    // something, so a village with no picture of its own must draw the map the
-    // package ships the way it was drawn before anyone picked a picture.
-    townMapView: coerceTownMapView(townMapImage.length > 0 ? raw.townMapView : {}),
+    maps: Array.isArray(raw.maps)
+      ? raw.maps.map((entry) => {
+          const map = asRecord(entry);
+          const artwork = coerceVenueImage(map.artwork);
+          if (!asTrimmedString(map.id) || !asTrimmedString(map.name) || !artwork)
+            throw new Error("A saved map is incomplete.");
+          return {
+            id: asTrimmedString(map.id),
+            name: asTrimmedString(map.name),
+            artwork,
+            width: Number(map.width),
+            height: Number(map.height),
+            view: coerceTownMapView(map.view),
+            revision: Number(map.revision),
+          };
+        })
+      : [],
   };
   for (const villager of state.villagers) {
     for (const move of villager.remap?.moves ?? []) {

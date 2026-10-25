@@ -2,7 +2,6 @@
 
 The opt-in [resident development prototype](../../docs/resident-development.md) tests elapsed-time intentions and independent moves into existing homes.
 
-
 A text-first shared-life sim for Marinara Engine. A Village can be any shared place: a settlement, station, workplace, or other setting. Your linked Persona lives alongside characters from your library.
 
 Villages requires Engine 2.5.0 or later, before 4.0.0. Install the package and restart Engine to open its tab in Home.
@@ -11,7 +10,7 @@ Villages requires Engine 2.5.0 or later, before 4.0.0. Install the package and r
 
 Founding proceeds through Place, People, Map, Venues and Review. Write one Place description covering the location, world and current conditions, choose your Persona and up to three starting residents, then prepare the map and Venues. There is no required Starting Scenario or start-mode selector. An existing place need not be newly established or in disrepair.
 
-Map artwork is required, through explicit generation or upload. New generation requests a continuous overhead environment at 2560 × 1440 (16:9), with scenery extending to the edges and no baked-in interface or labels. Providers may return different dimensions. Uploads need at least 768 pixels on the shorter side and 1024 on the longer side, with proportions between 2:3 and 2:1. Existing saved maps retain their dimensions and placements; images are not automatically cropped, stretched or upscaled.
+Map artwork is required, through explicit generation or upload. The first map takes the Village's name. Map details describe the area shown, whether it is a building interior, a neighborhood or another kind of place. New generation requests a continuous overhead environment at 2560 × 1440 (16:9), with scenery extending to the edges and no baked-in interface or labels. Providers may return different dimensions. Uploads need at least 768 pixels on the shorter side and 1024 on the longer side, with proportions between 2:3 and 2:1.
 
 Quick Start can suggest required Venues from the founding context. It preserves manual edits and existing placements. **Check suggestions** retrieves a saved result after a lost connection without another generation request. Invalid or incomplete suggestions preserve the draft and require deliberate retry.
 
@@ -115,6 +114,10 @@ Opening guidance is optional. After the gathering, founders are available indivi
 Refresh restores saved progress. Incomplete gathering or introduction writing stays retained for diagnosis; replacing it requires explicit retry. Private preparation and unseen attendance remain server-side. Provider-free checks establish mechanics and layout, not live-model writing quality.
 
 ## Map, artwork and sprites
+
+One Village can have multiple named maps. **All maps** shows thumbnails; the map selector switches directly between them. Map opens the last viewed map, and Places searches only that map. Browsing changes the view without moving anyone or changing an active Scene. The Scene's actions menu opens Map; **Return to Scene** restores its composer draft. Starting another Scene still requires concluding the current one.
+
+Village Settings manages map names, artwork, framing and reviewed marker placements. Each additional map requires artwork and starts empty. A new Venue Project chooses its map when placing its site; creating or browsing a map never creates Venues. Village-wide Venue and resident limits remain shared. Maps have no required connections, exits or travel steps. Map deletion and moving existing Venues between maps are outside this pass. This implementation starts with fresh Village data and provides no conversion of earlier maps.
 
 Map exploration fills the play area with pan, zoom, and labeled Venue markers. The searchable Places navigator is a collapsible desktop rail and a phone drawer. Venue names sit centered below their dots. Tapping or keyboard-selecting a map marker opens its Venue screen directly. Returning to the map retains the camera position. Places remains a separate searchable list. Selecting a destination from Places centers it without entering; **Visit** starts entry. Map, Places, People and More provide navigation on both layouts. People retains its shared notebook. Portrait is the supported phone design. Resizing retains search, drafts and reading position, and reduced motion skips notebook movement.
 

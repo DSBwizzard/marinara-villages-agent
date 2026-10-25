@@ -228,7 +228,7 @@ export type BuildProject = {
     name: string;
     description: string;
     classes: VenueClass[];
-    position?: { x: number | null; y: number | null };
+    position?: { mapId?: string; x: number | null; y: number | null };
   };
   plan?: {
     capacity: number;
@@ -456,6 +456,7 @@ export type VillageVenue = {
   description: string;
   category: string;
   presentation: {
+    mapId: string;
     image: VillageVenueImage | null;
     x: number | null;
     y: number | null;
@@ -619,14 +620,8 @@ export type VillageSettings = {
    * The stamp of the current town map, not the picture. Empty means there is no
    * map; a change means the tab should fetch `/town-map` again.
    */
-  townMapImageSetAt: string;
-  /** How large a stored town map may be, as the length of its data URL. */
+  maps: VillageMap[];
   townMapImageMaxLength: number;
-  /** Stored canvas size; older maps retain their original frame. */
-  townMapCanvasWidth: number;
-  townMapCanvasHeight: number;
-  /** How the drawn map is framed right now. */
-  townMapView: TownMapView;
   /**
    * The shape the map is drawn in, as the picture size it is authored against.
    * The frame is laid out from these rather than from a ratio of this file's
@@ -1289,3 +1284,13 @@ export type WishHistoryEntry = CompletedVillagerWish & {
 };
 
 export type WishHistoryPage = { entries: WishHistoryEntry[]; nextCursor: string | null; total: number };
+
+export type VillageMap = {
+  id: string;
+  name: string;
+  artwork: VillageVenueImage;
+  width: number;
+  height: number;
+  view: TownMapView;
+  revision: number;
+};

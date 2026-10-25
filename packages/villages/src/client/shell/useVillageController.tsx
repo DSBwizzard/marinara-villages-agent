@@ -6,33 +6,17 @@ import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
 import { useProgressDiagnostics } from "../features/background/useProgressDiagnostics.js";
 import {
   useCloseExploration,
-  useDiscardTownMapDraft,
   useDrawPlaceImage,
   useDropPlaceImage,
-  useGenerateReplacementMap,
   useKeepPlaceImage,
   useOpenPlace,
-  usePickTownMap,
-  useSaveTownMap,
-  useStartMapReplacement,
 } from "../features/exploration/actions.js";
 import {
-  calculateFramingMap,
-  calculatePanelMapView,
   calculateSavedPins,
   calculateSavedTownMapShape,
   calculateSavedTownMapView,
-  calculateTownMapAdvice,
-  calculateTownMapShape,
-  calculateTownMapSrc,
-  calculateTownMapZoom,
 } from "../features/exploration/calculations.js";
-import {
-  useExplorationOutsideClick,
-  useMapNavigationReset,
-  useRemovedVenueNavigation,
-  useTownMapImage,
-} from "../features/exploration/controller-hooks.js";
+import { useExplorationOutsideClick, useRemovedVenueNavigation } from "../features/exploration/controller-hooks.js";
 import { useExplorationState } from "../features/exploration/useExplorationState.js";
 import { createVenueExplorationActions } from "../features/exploration/venue-actions.js";
 import { useExplorationViewport } from "../features/exploration/villages-exploration";
@@ -190,7 +174,7 @@ import {
   useVillageSnapshot,
 } from "../shared/data-controller.js";
 import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
-import type { MapFrameShape, MapPin, MapZoomRange, MenuPage } from "../shared/types.js";
+import type { MapFrameShape, MapPin, MenuPage } from "../shared/types.js";
 import { useScenesOpenMenu } from "./navigation-actions.js";
 import { useNavigationGoHome, useNavigationOpenPerson } from "./navigation-controller.js";
 import { menuCategory } from "./navigation.js";
@@ -428,44 +412,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     navigationView,
     setNavigationView,
     explorationOrigin,
-    selectedMapVenueId,
-    setSelectedMapVenueId,
-    placingMapVenueId,
-    setPlacingMapVenueId,
-    mapReplaceOpen,
-    setMapReplaceOpen,
-    mapRemoveDraft,
-    setMapRemoveDraft,
-    mapGenerating,
-    setMapGenerating,
-    mapExpectedSetAt,
-    setMapExpectedSetAt,
-    mapBasePositions,
-    setMapBasePositions,
-    mapPinDraft,
-    setMapPinDraft,
-    townMapImage,
-    setTownMapImage,
-    townMapPick,
-    setTownMapPick,
-    townMapDraft,
-    setTownMapDraft,
-    reframingMap,
-    setReframingMap,
-  } = useExplorationState();
+    selectedMap,
+    setSelectedMapId,
+    showAllMaps,
+    setShowAllMaps,
+  } = useExplorationState(snapshot);
+  const townMapImage = selectedMap?.artwork.url ?? "";
 
   useExplorationViewport(element, mobile && screen === "home");
-
-  const explorationMapKey = snapshot
-    ? JSON.stringify([
-        snapshot.isFounded,
-        snapshot.settings.townMapImageSetAt,
-        snapshot.settings.townMapExpectedWidth,
-        snapshot.settings.townMapExpectedHeight,
-      ])
-    : "";
-
-  useMapNavigationReset({ explorationMapKey, setExploreSheet, setNavigationView });
 
   const closeExploration = useCloseExploration({
     element,
@@ -712,16 +666,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * The framing the village has saved. The map is drawn with this everywhere
    * except in the panel's own preview, which draws the draft being tried out.
    */
-  const savedTownMapView: TownMapView = calculateSavedTownMapView({ snapshot });
+  const savedTownMapView: TownMapView = calculateSavedTownMapView({ snapshot, selectedMap });
 
   /**
    * The shape a map is drawn at, as the settings give it. This is the one place
    * that answers "how big is a map", so the frame the picture is drawn in, the
    * advice beside the file box and the server all agree about it.
    */
-  const savedTownMapShape: MapFrameShape | null = calculateSavedTownMapShape({ snapshot });
-
-  const townMapShape: MapFrameShape | null = calculateTownMapShape({ savedTownMapShape, townMapPick });
+  const savedTownMapShape: MapFrameShape | null = calculateSavedTownMapShape({ snapshot, selectedMap });
 
   const setupMapShape: MapFrameShape | null = calculateSetupMapShape({
     setupMapImageSource,
@@ -731,13 +683,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   /** How far the picture may be magnified in the panel, and how far one press moves it. */
-  const townMapZoom: MapZoomRange = calculateTownMapZoom({ snapshot });
 
   /**
    * The map as it is drawn: the picture being previewed in the panel, or the
    * village's own picture, or the one the package ships.
    */
-  const townMapSrc = calculateTownMapSrc({ mapRemoveDraft, townMapImage, townMapPick });
 
   const setupMapSrc = calculateSetupMapSrc({ setupMapImage, setupMapImageSource, setupMapSource, townMapImage });
 
@@ -939,17 +889,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   /** Whether the panel is framing a picture: one just picked, or the saved one under revision. */
-  const framingMap = calculateFramingMap({ reframingMap, townMapPick });
 
   /**
    * The framing the panel draws. Everywhere else draws the saved one, so the
    * draft never leaks out of the panel and the village is never seen wearing a
    * framing that has not been agreed to.
    */
-  const panelMapView: TownMapView = calculatePanelMapView({ framingMap, savedTownMapView, townMapDraft });
 
   /** What is true of the picture being previewed, if the panel is holding one. */
-  const townMapAdvice = calculateTownMapAdvice({ townMapPick });
 
   const [busy, setBusy] = useState(false);
 
@@ -1143,9 +1090,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // Kept as its own effect, keyed on the stamp: the picture is fetched once and
   // re-fetched only when the server says the map changed, so the homepage never
   // holds a stale copy and the snapshot never carries a megabyte of base64.
-  const townMapSetAt = snapshot ? snapshot.settings.townMapImageSetAt : null;
-
-  useTownMapImage({ setTownMapImage, townMapSetAt });
 
   const addVillager = useAddVillager({ loadCatalog, setBusy, setError, setSnapshot });
 
@@ -1608,71 +1552,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // one down to fit would be the same mistake as truncating an over-long prompt
   // box, so a file that will not fit is refused with both sizes in the message
   // instead.
-  const startMapReplacement = useStartMapReplacement({
-    setMapBasePositions,
-    setMapExpectedSetAt,
-    setMapPinDraft,
-    setMapRemoveDraft,
-    setMapReplaceOpen,
-    setReframingMap,
-    setSelectedMapVenueId,
-    setSettingsError,
-    setTownMapDraft,
-    setTownMapPick,
-    snapshot,
-  });
-
-  const generateReplacementMap = useGenerateReplacementMap({
-    setMapGenerating,
-    setMapRemoveDraft,
-    setSettingsError,
-    setTownMapDraft,
-    setTownMapPick,
-    snapshot,
-  });
-
-  const pickTownMap = usePickTownMap({
-    setBusy,
-    setMapRemoveDraft,
-    setSettingsError,
-    setTownMapDraft,
-    setTownMapPick,
-    snapshot,
-  });
-
-  const saveTownMap = useSaveTownMap({
-    mapBasePositions,
-    mapExpectedSetAt,
-    mapPinDraft,
-    mapRemoveDraft,
-    mapReplaceOpen,
-    setBusy,
-    setMapRemoveDraft,
-    setMapReplaceOpen,
-    setPlacingMapVenueId,
-    setReframingMap,
-    setSettingsError,
-    setSnapshot,
-    setTownMapDraft,
-    setTownMapImage,
-    setTownMapPick,
-    snapshot,
-    townMapDraft,
-    townMapImage,
-    townMapPick,
-  });
-
-  /** Put the panel back the way it was: nothing picked, nothing changed. */
-  const discardTownMapDraft = useDiscardTownMapDraft({
-    setMapRemoveDraft,
-    setMapReplaceOpen,
-    setPlacingMapVenueId,
-    setReframingMap,
-    setSettingsError,
-    setTownMapDraft,
-    setTownMapPick,
-  });
-
   // ── Pictures of the places ─────────────────────────────────────────────────
   // These handlers serve player-requested draws, uploads, and removal. First
   // entry to a private space can also start one background draw on the server.
@@ -2160,7 +2039,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     snapshot,
   });
 
-  const savedPins: MapPin[] = calculateSavedPins({ mobile, nameOfCharacter, openPlaceId, openVenue, snapshot });
+  const savedPins: MapPin[] = calculateSavedPins({
+    mapId: selectedMap?.id,
+    mobile,
+    nameOfCharacter,
+    openPlaceId,
+    openVenue,
+    snapshot,
+  });
 
   const draftPins: MapPin[] = calculateDraftPins({
     selectedSetupVenueId,
@@ -2176,6 +2062,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupZoneDrafts,
   });
   return {
+    selectedMap,
+    setSelectedMapId,
+    showAllMaps,
+    setShowAllMaps,
+    returnToScene: () => setScreen("room"),
     setupSpriteRevisions,
     setSetupSpriteRevisions,
     sceneRestoration,
@@ -2209,7 +2100,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     decideResidenceMove,
     deleteArchivedVisits,
     discardRoomDebug,
-    discardTownMapDraft,
     dismissRoomNotice,
     draftPins,
     draftSaveError,
@@ -2227,8 +2117,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     projectsController,
     forgetMemory,
     foundVillage,
-    framingMap,
-    generateReplacementMap,
     generateSetupImage,
     generateSetupTownMap,
     goHome,
@@ -2249,10 +2137,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     lorebooks,
     lorebooksError,
     mailboxOpen,
-    mapGenerating,
-    mapPinDraft,
-    mapRemoveDraft,
-    mapReplaceOpen,
     mapVisualLore,
     memoryLibrary,
     menuPage,
@@ -2275,7 +2159,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     openSetup,
     openVenue,
     openVisit,
-    panelMapView,
     patchSetupVenue,
     personProfile,
     personaDraft,
@@ -2283,13 +2166,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     personalizeHomes,
     personas,
     pickSetupTownMap,
-    pickTownMap,
     pickerOpen,
     placeBusyId,
     placeCount,
     placeProblem,
     placeSetupPin,
-    placingMapVenueId,
     placingProjectId,
     playerMovePrivateZoneId,
     portraits,
@@ -2297,7 +2178,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     previewVillagerRefresh,
     profileOrigin,
     progressDebug,
-    reframingMap,
     refreshBusyId,
     refreshPreviews,
     removeNotice,
@@ -2339,7 +2219,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     saveSettings,
     saveSpriteCardFlip,
     saveBackgroundPace,
-    saveTownMap,
     saveVenue,
     saveVisitRetention,
     savedPins,
@@ -2350,7 +2229,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     sceneryStyleProfileId,
     screen,
     search,
-    selectedMapVenueId,
     selectedResidentAdmissions,
     selectedSetupVenueId,
     sendRoom,
@@ -2372,8 +2250,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setLoreTokenBudgetDraft,
     setLorebookDraft,
     setMailboxOpen,
-    setMapPinDraft,
-    setMapRemoveDraft,
     setMapVisualLore,
     setMemoryLibrary,
     setMenuPage,
@@ -2389,12 +2265,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setPersonalizeHomes,
     setPickerOpen,
     setPlaceProblem,
-    setPlacingMapVenueId,
     setPlacingProjectId,
     setPlayerMovePrivateZoneId,
     setProfileInspection,
     loadProgressDebug,
-    setReframingMap,
     setRequestEdits,
     setResetArmed,
     setRoom,
@@ -2411,7 +2285,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSceneryStyleProfileId,
     setScreen,
     setSearch,
-    setSelectedMapVenueId,
     setSelectedSetupVenueId,
     setSettingDraft,
     setSettingsError,
@@ -2444,8 +2317,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSiteProjectId,
     setSnapshot,
     setSpriteManagerId,
-    setTownMapDraft,
-    setTownMapPick,
     setVenueEditBusy,
     setVenueEditDraft,
     setVenueEditError,
@@ -2508,16 +2379,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     spriteManagerId,
     spriteProfileScroll,
     standingAt,
-    startMapReplacement,
     startOver,
     suggestPlaces,
     suggestSetupVenues,
-    townMapAdvice,
     townMapImage,
-    townMapPick,
-    townMapShape,
-    townMapSrc,
-    townMapZoom,
     updateSetupMapRequest,
     uploadSetupImage,
     venueEditBusy,

@@ -121,49 +121,7 @@ async function main() {
   assert.deepEqual(legacy.worldFacts, []);
   assert.match(villageCurrentSetting(legacy), /^Misty cliffs\n/);
   assert.match(villageRelevantOrigin(legacy, "Tell me the village history"), /After the flood/);
-  assert.deepEqual([defaultVillageState().townMapCanvasWidth, defaultVillageState().townMapCanvasHeight], [2560, 1440]);
-  assert.deepEqual(
-    [
-      coerceVillageState({ version: 3, wishSystemVersion: 3 }).townMapCanvasWidth,
-      coerceVillageState({ version: 3, wishSystemVersion: 3 }).townMapCanvasHeight,
-    ],
-    [2560, 1440],
-  );
-  assert.deepEqual(
-    [
-      coerceVillageState({ version: 3, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasWidth,
-      coerceVillageState({ version: 3, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasHeight,
-    ],
-    [1216, 832],
-  );
-  assert.deepEqual(
-    [
-      coerceVillageState({ version: 3, wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
-        .townMapCanvasWidth,
-      coerceVillageState({ version: 3, wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
-        .townMapCanvasHeight,
-    ],
-    [1264, 848],
-  );
-  assert.deepEqual(
-    [
-      coerceVillageState({ version: 3, wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 })
-        .townMapCanvasWidth,
-      coerceVillageState({ version: 3, wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 })
-        .townMapCanvasHeight,
-    ],
-    [2560, 1440],
-  );
-  const mapPrefix = "data:image/png;base64,";
-  const acceptedMap = mapPrefix + "A".repeat(7_999_976);
-  const oversizedMap = mapPrefix + "A".repeat(7_999_980);
-  assert.ok(acceptedMap.length <= MAX_TOWN_MAP_IMAGE_LENGTH);
-  assert.ok(oversizedMap.length > MAX_TOWN_MAP_IMAGE_LENGTH);
-  assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3, townMapImage: acceptedMap }).townMapImage.length,
-    acceptedMap.length,
-  );
-  assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, townMapImage: oversizedMap }).townMapImage, "");
+  assert.deepEqual(defaultVillageState().maps, []);
   assert.match(
     DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
     /Make rooms, outdoor spaces, entrances and connecting routes easy to distinguish/,
@@ -332,39 +290,42 @@ async function main() {
     imageGate = new Promise<void>((resolve) => {
       releaseImage = resolve;
     });
-    const attempt = { ...input, actionId: "map-attempt-one", sourceKey: "original-inputs" };
+    const attempt = { targetId: "target-map", ...input, actionId: "map-attempt-one", sourceKey: "original-inputs" };
     const first = await requestTownMapGeneration(attempt);
     assert.equal(first.status, "running", "admission finishes before the provider response");
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(imageRequests.length, 3);
     assert.equal((await requestTownMapGeneration(attempt)).id, first.id);
-    assert.equal(
-      (await requestTownMapGeneration({ ...attempt, actionId: "map-attempt-two" })).id,
-      first.id,
-      "another tab joins the existing request",
+    await assert.rejects(
+      requestTownMapGeneration({ ...attempt, actionId: "map-attempt-two" }),
+      /still being generated/,
     );
-    assert.equal((await readTownMapGeneration(first.id)).status, "running");
+    assert.equal((await readTownMapGeneration(first.id, "target-map")).status, "running");
     assert.equal(imageRequests.length, 3, "status reads and repeated admission do not spend again");
     releaseImage();
-    for (let i = 0; i < 30 && (await readTownMapGeneration(first.id)).status === "running"; i++)
+    for (let i = 0; i < 30 && (await readTownMapGeneration(first.id, "target-map")).status === "running"; i++)
       await new Promise((resolve) => setImmediate(resolve));
-    const complete = await readTownMapGeneration(first.id);
+    const complete = await readTownMapGeneration(first.id, "target-map");
     assert.equal(complete.status, "complete");
     assert.deepEqual(complete.result, generated);
     stop();
     stop = startTownMapGeneration();
     assert.equal(
-      (await readTownMapGeneration(first.id)).status,
+      (await readTownMapGeneration(first.id, "target-map")).status,
       "complete",
       "completed result survives runtime restart",
     );
     failImage = true;
     imageGate = undefined;
-    const second = await requestTownMapGeneration({ ...attempt, actionId: "map-attempt-two" });
-    for (let i = 0; i < 30 && (await readTownMapGeneration(second.id)).status === "running"; i++)
+    const second = await requestTownMapGeneration({
+      targetId: "target-map",
+      ...attempt,
+      actionId: "map-attempt-two",
+    });
+    for (let i = 0; i < 30 && (await readTownMapGeneration(second.id, "target-map")).status === "running"; i++)
       await new Promise((resolve) => setImmediate(resolve));
-    assert.equal((await readTownMapGeneration(second.id)).status, "failed");
-    assert.match((await readTownMapGeneration(second.id)).error, /Provider unavailable/);
+    assert.equal((await readTownMapGeneration(second.id, "target-map")).status, "failed");
+    assert.match((await readTownMapGeneration(second.id, "target-map")).error, /Provider unavailable/);
     assert.equal(imageRequests.length, 4);
     await assert.rejects(requestTownMapGeneration(attempt), /already used/);
     assert.equal(imageRequests.length, 4, "replaying a replaced receipt must not spend again");
@@ -372,15 +333,19 @@ async function main() {
     imageGate = new Promise<void>((resolve) => {
       releaseImage = resolve;
     });
-    const third = await requestTownMapGeneration({ ...attempt, actionId: "map-attempt-three" });
+    const third = await requestTownMapGeneration({
+      targetId: "target-map",
+      ...attempt,
+      actionId: "map-attempt-three",
+    });
     await new Promise((resolve) => setImmediate(resolve));
     stop();
     stop = startTownMapGeneration();
-    assert.equal((await readTownMapGeneration(third.id)).status, "interrupted");
+    assert.equal((await readTownMapGeneration(third.id, "target-map")).status, "interrupted");
     releaseImage();
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.equal(
-      (await readTownMapGeneration(third.id)).status,
+      (await readTownMapGeneration(third.id, "target-map")).status,
       "interrupted",
       "late response cannot overwrite restarted runtime state",
     );
@@ -400,7 +365,7 @@ async function main() {
   for (const step of ["People", "Place", "Venues", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
-  assert.ok(client.includes('"/setup/town-map/generate"'));
+  assert.ok(client.includes('"/maps/generate"'));
   assert.ok(client.includes("More options"));
   assert.equal(client.includes("setupMapOptions"), false);
   assert.equal(client.includes("Fit entire map"), false);
@@ -416,21 +381,16 @@ async function main() {
   assert.equal(client.includes('["none", "Simple map"'), false, "map artwork is required");
   assert.ok(client.includes("setupMapNegativePrompt"));
   assert.equal(client.includes("DEFAULT_TOWN_MAP_SRC"), false);
-  assert.equal(
-    client.match(/\/setup\/town-map\/generate/g)?.length,
-    2,
-    "founding and replacement each generate explicitly",
-  );
 
   const routes = villageRouteSource();
   assert.ok(routes.includes('>("/setup", { bodyLimit: SETTINGS_BODY_LIMIT }'));
-  assert.ok(routes.includes('>("/setup/town-map/generate"'));
+  assert.ok(routes.includes('>("/maps/generate"'));
 
   const village = await readFile(join(services, "features/founding/founding-setup-service.ts"), "utf8");
   assert.ok(
     village.includes('if (setting.length === 0) throw badRequest("Describe the place and world before founding.")'),
   );
-  assert.ok(village.includes("state.townMapImage = townMap.image"));
+  assert.ok(village.includes("state.maps = [townMap]"));
 
   const builder = await readFile(join(root, "packages/villages/package-definition.mjs"), "utf8");
   assert.equal(builder.includes('"villages-townmap.png"'), false);

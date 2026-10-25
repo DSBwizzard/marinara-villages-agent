@@ -10,6 +10,12 @@ import { useState } from "react";
 
 export function ExplorationScreen({ controller }: { controller: ExplorationScreenController }) {
   const {
+    selectedMap,
+    setSelectedMapId,
+    showAllMaps,
+    setShowAllMaps,
+    room,
+    returnToScene,
     busy,
     closeExploration,
     error,
@@ -43,7 +49,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
   } = controller;
   const [collapsed, setCollapsed] = useState(false);
   const [focusSearch, setFocusSearch] = useState(false);
-  const places = snapshot?.settings.venues ?? [];
+  const places = (snapshot?.settings.venues ?? []).filter((venue) => venue.presentation.mapId === selectedMap?.id);
   const navigatorOpen = !placingProjectId && (mobile ? exploreSheet?.tab === "places" : !collapsed);
   const selectPlace = (place: VillageVenue) => {
     setFocusSearch(false);
@@ -68,7 +74,9 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       .join(" · "),
     selected: openPlaceId === place.id,
     onSelect: () => selectPlace(place),
-    actions: venueExplorationActions(place),
+    actions: venueExplorationActions(place).filter(
+      (action) => action.label !== "Visit" || !room || room.status === "closed",
+    ),
   }));
   const pins = savedPins
     .filter((pin) => pin.kind !== "person")
@@ -88,8 +96,10 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       onChoose={(tab, button) => {
         explorationOrigin.current = button;
         explorationReturnTab.current = tab;
-        if (tab === "map") closeExploration();
-        else if (tab === "places") {
+        if (tab === "map") {
+          closeExploration();
+          setShowAllMaps(false);
+        } else if (tab === "places") {
           setFocusSearch(true);
           setCollapsed(false);
           setExploreSheet({ tab: "places" });
@@ -135,96 +145,149 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           ) : null}
         </span>
       </div>
-      <div className={`${ELEMENT_TAG}-room`}>
-        {navigatorOpen ? (
-          <LocationNavigator
-            mobile={mobile}
-            focusSearch={focusSearch}
-            search={explorationSearch.places}
-            onSearch={(value) => setExplorationSearch((current) => ({ ...current, places: value }))}
-            disabled={busy}
-            onClose={() => {
-              if (mobile) closeExploration();
-              else {
-                setCollapsed(true);
-                setExploreSheet(null);
-              }
-              setFocusSearch(false);
-            }}
-            rows={rows}
-          />
-        ) : !mobile && !placingProjectId ? (
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-navigator-toggle`}
-            aria-label="Show places"
-            onClick={() => {
-              setFocusSearch(true);
-              setCollapsed(false);
-              setExploreSheet({ tab: "places" });
-            }}
-          >
-            <MapIcon name="places" />
-            <span>Places</span>
+      <div className={ELEMENT_TAG + "-maps-toolbar"}>
+        <button type="button" disabled={busy} onClick={() => setShowAllMaps(true)}>
+          All maps
+        </button>
+        <select
+          aria-label="Displayed map"
+          disabled={busy}
+          value={selectedMap?.id ?? ""}
+          onChange={(event) => setSelectedMapId(event.target.value)}
+        >
+          {(snapshot?.settings.maps ?? []).map((map) => (
+            <option key={map.id} value={map.id}>
+              {map.name}
+            </option>
+          ))}
+        </select>
+        {room && room.status !== "closed" ? (
+          <button type="button" onClick={returnToScene}>
+            Return to Scene
           </button>
         ) : null}
-        <div className={`${ELEMENT_TAG}-home-map-viewport`}>
-          <MapStage
-            src={townMapImage || null}
-            alt={`A map of ${snapshot?.village.name ?? "the village"}.`}
-            pins={pins}
-            placing={!!placingProjectId && !busy}
-            view={savedTownMapView}
-            shape={savedTownMapShape}
-            onPlace={(x, y) => {
-              if (!placingProjectId || busy) return;
-              const projectId = placingProjectId;
-              setBusy(true);
-              setError("");
-              void request<VillageSnapshot>(`/projects/${encodeURIComponent(projectId)}/place`, {
-                method: "POST",
-                body: JSON.stringify({
-                  x,
-                  y,
-                  requestId: createVillagesClientId(),
-                  expectedRevision: snapshot?.projects.find((project) => project.id === projectId)?.lifecycle?.revision,
-                }),
-              })
-                .then((next) => {
-                  setSnapshot(next);
-                  setPlacingProjectId("");
-                  setFocusedProjectId(projectId);
-                  openMenu("projects");
-                })
-                .catch((cause) => setError(messageFrom(cause, "The Project could not be placed here.")))
-                .finally(() => setBusy(false));
-            }}
-            onDismiss={() => {
-              setExploreSheet(null);
-              setOpenPlaceId(null);
-            }}
-            mobile={mobile}
-            exploration
-            navigationView={navigationView}
-            onNavigationView={setNavigationView}
-          >
-            {error || settingsError || lastSceneEnding ? (
-              <div className={`${ELEMENT_TAG}-notice`}>
-                {error ? (
-                  <p role="alert" className={`${ELEMENT_TAG}-error`}>
-                    {error}
-                  </p>
-                ) : null}
-                {settingsError ? (
-                  <p role="alert" className={`${ELEMENT_TAG}-error`}>
-                    {settingsError}
-                  </p>
-                ) : null}
-                {lastSceneEnding ? <p className={`${ELEMENT_TAG}-status`}>{lastSceneEnding}</p> : null}
-              </div>
+      </div>
+      <div className={ELEMENT_TAG + "-room"}>
+        {showAllMaps ? (
+          <div className={ELEMENT_TAG + "-maps-overview"}>
+            <div className={ELEMENT_TAG + "-maps-heading"}>
+              <h2>Maps</h2>
+              <button type="button" onClick={() => openMenu("village")}>
+                Manage maps
+              </button>
+            </div>
+            <div className={ELEMENT_TAG + "-maps-grid"}>
+              {(snapshot?.settings.maps ?? []).map((map) => (
+                <button type="button" key={map.id} onClick={() => setSelectedMapId(map.id)}>
+                  <img src={map.artwork.url} alt="" loading="lazy" />
+                  <strong>{map.name}</strong>
+                  <small>
+                    {snapshot.settings.venues.filter((venue) => venue.presentation.mapId === map.id).length} Venues
+                  </small>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            {navigatorOpen ? (
+              <LocationNavigator
+                mobile={mobile}
+                focusSearch={focusSearch}
+                search={explorationSearch.places}
+                onSearch={(value) => setExplorationSearch((current) => ({ ...current, places: value }))}
+                disabled={busy}
+                onClose={() => {
+                  if (mobile) closeExploration();
+                  else {
+                    setCollapsed(true);
+                    setExploreSheet(null);
+                  }
+                  setFocusSearch(false);
+                }}
+                rows={rows}
+              />
+            ) : !mobile && !placingProjectId ? (
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-navigator-toggle`}
+                aria-label="Show places"
+                onClick={() => {
+                  setFocusSearch(true);
+                  setCollapsed(false);
+                  setExploreSheet({ tab: "places" });
+                }}
+              >
+                <MapIcon name="places" />
+                <span>Places</span>
+              </button>
             ) : null}
-          </MapStage>
-        </div>
+            <div className={`${ELEMENT_TAG}-home-map-viewport`}>
+              <MapStage
+                key={selectedMap?.id}
+                src={townMapImage || null}
+                alt={`A map of ${snapshot?.village.name ?? "the village"}.`}
+                pins={pins}
+                placing={!!placingProjectId && !busy}
+                view={savedTownMapView}
+                shape={savedTownMapShape}
+                onPlace={(x, y) => {
+                  if (!placingProjectId || busy) return;
+                  const projectId = placingProjectId;
+                  setBusy(true);
+                  setError("");
+                  void request<VillageSnapshot>(`/projects/${encodeURIComponent(projectId)}/place`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                      x,
+                      y,
+                      mapId: selectedMap?.id,
+                      expectedMapRevision: selectedMap?.revision,
+                      requestId: createVillagesClientId(),
+                      expectedRevision: snapshot?.projects.find((project) => project.id === projectId)?.lifecycle
+                        ?.revision,
+                    }),
+                  })
+                    .then((next) => {
+                      setSnapshot(next);
+                      setPlacingProjectId("");
+                      setFocusedProjectId(projectId);
+                      openMenu("projects");
+                    })
+                    .catch((cause) => setError(messageFrom(cause, "The Project could not be placed here.")))
+                    .finally(() => setBusy(false));
+                }}
+                onDismiss={() => {
+                  setExploreSheet(null);
+                  setOpenPlaceId(null);
+                }}
+                mobile={mobile}
+                exploration
+                navigationView={navigationView}
+                onNavigationView={setNavigationView}
+              >
+                {error || settingsError || lastSceneEnding ? (
+                  <div className={`${ELEMENT_TAG}-notice`}>
+                    {error ? (
+                      <p role="alert" className={`${ELEMENT_TAG}-error`}>
+                        {error}
+                      </p>
+                    ) : null}
+                    {settingsError ? (
+                      <p role="alert" className={`${ELEMENT_TAG}-error`}>
+                        {settingsError}
+                      </p>
+                    ) : null}
+                    {lastSceneEnding ? <p className={`${ELEMENT_TAG}-status`}>{lastSceneEnding}</p> : null}
+                  </div>
+                ) : null}
+                {!places.length && !placingProjectId ? (
+                  <div className={ELEMENT_TAG + "-maps-empty"}>No Venues on this map.</div>
+                ) : null}
+              </MapStage>
+            </div>
+          </>
+        )}
       </div>
       {mobile && !placingProjectId ? navigation : null}
     </div>

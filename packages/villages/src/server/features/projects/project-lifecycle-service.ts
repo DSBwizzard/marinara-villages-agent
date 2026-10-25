@@ -1,3 +1,4 @@
+import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
 import { venueDesignHash, changedZoneIds } from "../../domain/rules/project-structure.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageProject, VillageState } from "../../domain/models/world.js";
@@ -137,7 +138,21 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
         y > 0.97
       )
         throw badRequest("Choose a spot on the Village map.");
-      project.venueDraft!.position = { x, y };
+      const map = villageMap(state, row.mapId);
+      assertMapRevision(map, row.expectedMapRevision);
+      if (
+        state.venues.some(
+          (venue) =>
+            venue.presentation.mapId === map.id &&
+            venue.presentation.x !== null &&
+            venue.presentation.y !== null &&
+            Math.abs(venue.presentation.x - x) < 0.055 &&
+            Math.abs(venue.presentation.y - y) < 0.055,
+        )
+      )
+        throw conflict("That spot overlaps another Venue.");
+      project.venueDraft!.position = { mapId: map.id, x, y };
+      map.revision++;
       project.lifecycle.revision++;
       renew(state, project);
       project.updatedAt = villageNow().toISOString();
@@ -257,6 +272,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       if (!project.plan) throw conflict("Save the physical design first.");
       const position = project.venueDraft!.position;
       if (position.x === null || position.y === null) throw conflict("Choose a map position first.");
+      villageMap(state, position.mapId);
       const shell = plannedVenue(project);
       readProjectPlan(project.plan, shell);
       if (!resume) {
@@ -266,6 +282,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
         if (
           state.venues.some(
             (venue) =>
+              venue.presentation.mapId === position.mapId &&
               venue.presentation.x !== null &&
               venue.presentation.y !== null &&
               Math.abs(venue.presentation.x - position.x!) < 0.055 &&

@@ -45,7 +45,7 @@ export function newSetupVenue(
 
     description: "",
     category: venueClass === "community" ? "public-center" : "",
-    presentation: { image: null, x, y },
+    presentation: { mapId: "", image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     capabilities: [],
     state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },

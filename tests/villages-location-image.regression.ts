@@ -916,7 +916,7 @@ async function main() {
     "founding creates exactly one public venue",
   );
   assert.equal(draws().length, 0, "founding a village does not spend the player's money on a picture");
-  assert.equal(galleryCalls(UPLOAD_PATH).length, 0, "and it puts nothing in their gallery either");
+  assert.equal(galleryCalls(UPLOAD_PATH).length, 1, "founding stores the uploaded first map in the gallery");
   const editedHome = await put("/api/villages/locations/venue/player-home", {
     description: "A snug home overlooking the square.",
   });
@@ -988,12 +988,12 @@ async function main() {
       .json()
       .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
       .map((venue: any) => venue.presentation.image),
-    [{ ref: "global-gallery:gallery-1", url: "/api/global-gallery/file/gallery-1.png", id: "gallery-1" }, null],
+    [{ ref: "global-gallery:gallery-2", url: "/api/global-gallery/file/gallery-2.png", id: "gallery-2" }, null],
     "the picture is kept as a reference and no other place is touched",
   );
   assert.equal(draws().length, 0, "choosing a picture the player already has never asks the Engine to draw");
 
-  const firstUpload = galleryCalls(UPLOAD_PATH)[0]!;
+  const firstUpload = galleryCalls(UPLOAD_PATH)[1]!;
   assert.equal(firstUpload.method, "POST");
   assert.equal(firstUpload.search, "", "a folder that cannot be found costs tidiness and nothing else");
   assert.equal(firstUpload.form?.provider, "villages", "the gallery entry says who put the picture there");
@@ -1008,17 +1008,17 @@ async function main() {
   assert.equal(second.statusCode, 200, second.body);
   assert.equal(
     second.json().settings.venues.find((venue: any) => venue.id === "ridge").presentation.image.ref,
-    "global-gallery:gallery-2",
+    "global-gallery:gallery-3",
   );
   assert.deepEqual(
     galleryCalls(FOLDERS_PATH)
-      .slice(0, 3)
+      .slice(1, 4)
       .map((call) => call.method),
     ["GET", "GET", "POST"],
     "the folder is looked for, looked for again once the lookup heals, and then made",
   );
-  assert.equal(galleryCalls(FOLDERS_PATH)[2]!.body?.name, "Villages");
-  assert.equal(galleryCalls(UPLOAD_PATH)[1]!.search, "?folderId=folder-villages", "and then everything is filed in it");
+  assert.equal(galleryCalls(FOLDERS_PATH)[3]!.body?.name, "Villages");
+  assert.equal(galleryCalls(UPLOAD_PATH)[2]!.search, "?folderId=folder-villages", "and then everything is filed in it");
 
   // ── Drawing one ───────────────────────────────────────────────────────────
   // Which connection is used is a three-step chain the connections regression
@@ -1128,7 +1128,7 @@ async function main() {
   assert.equal(drawnUpload.form?.width, "1216");
   assert.equal(drawnUpload.form?.height, "832");
   assert.ok(String(drawnUpload.form?.prompt).includes("the mill pond"), "the gallery entry keeps what was asked for");
-  assert.deepEqual(galleryCalls(FOLDERS_PATH).length, 3, "the folder is not looked for again once it is known");
+  assert.deepEqual(galleryCalls(FOLDERS_PATH).length, 4, "the folder is not looked for again once it is known");
 
   const stored = kept.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image;
   const drawn = await get("/api/villages");
@@ -1357,12 +1357,11 @@ async function main() {
     assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
     assert.doesNotMatch(draws().at(-1).body.appearance, /Painted background art|watercolor illustration/i);
   }
-  const styledMap = await post("/api/villages/setup/town-map/generate", {
+  await generateVillageTownMap({
     setting: "Misty cliffs",
     sceneryArtStyle: "Pixel art with a restrained sea-green palette",
     useVisualLore: false,
   });
-  assert.equal(styledMap.statusCode, 200, styledMap.body);
   assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
   assert.ok(draws().at(-1).body.appearance.length <= 4000);
 

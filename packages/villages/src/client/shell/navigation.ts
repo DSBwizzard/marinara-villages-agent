@@ -25,6 +25,6 @@ export function sceneNavigationScreen<T extends string>(
   placingProject = false,
 ): T | "room" {
   if (requested === "home" && placingProject) return requested;
-  if (!locked || ["room", "menu", "venue", "person"].includes(requested)) return requested;
+  if (!locked || ["room", "menu", "venue", "person", "home"].includes(requested)) return requested;
   return "room";
 }

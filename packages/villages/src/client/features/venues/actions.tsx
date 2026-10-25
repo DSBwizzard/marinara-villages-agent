@@ -152,7 +152,7 @@ export function useAddVenue(ports: { setVenueEditDraft: React.Dispatch<SetStateA
 
       description: "",
       category: "",
-      presentation: { image: null, x: null, y: null },
+      presentation: { mapId: "", image: null, x: null, y: null },
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       capabilities: [],
       state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },

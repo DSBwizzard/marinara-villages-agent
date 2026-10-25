@@ -6,6 +6,12 @@ import type { MobileMapView } from "./villages-mobile-map.js";
 
 /** Values and actions used by ExplorationScreen; independent of shell implementation. */
 export type ExplorationScreenController = {
+  readonly selectedMap: import("../../../shared/contracts/village.js").VillageMap | null;
+  readonly setSelectedMapId: (id: string) => void;
+  readonly showAllMaps: boolean;
+  readonly setShowAllMaps: React.Dispatch<React.SetStateAction<boolean>>;
+  readonly room: { status: string } | null;
+  readonly returnToScene: () => void;
   readonly openPlace: (place: VillageVenue) => void;
   readonly busy: boolean;
   readonly closeExploration: () => void;

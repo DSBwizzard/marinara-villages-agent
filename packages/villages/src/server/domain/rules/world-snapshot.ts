@@ -354,18 +354,10 @@ export function villageSettings(
     setupPlaceCount: 2 + SETUP_MAX_VILLAGER_COUNT,
     setupMinVillagerCount: SETUP_MIN_VILLAGER_COUNT,
     setupMaxVillagerCount: SETUP_MAX_VILLAGER_COUNT,
-    // The stamp, not the image: the tab holds the picture and refetches it from
-    // `/town-map` when this changes, which keeps a megabyte off every snapshot.
-    townMapImageSetAt: village.townMapImageSetAt,
+    maps: village.maps,
     townMapImageMaxLength: MAX_TOWN_MAP_IMAGE_LENGTH,
-    townMapCanvasWidth: village.townMapCanvasWidth,
-    townMapCanvasHeight: village.townMapCanvasHeight,
-    townMapView: village.townMapView,
-    // The shape, and the picture size it is authored against. The tab lays its
-    // frame out from these rather than owning a ratio of its own, so the shape
-    // the map is drawn in and the shape the panel describes are one number.
-    townMapExpectedWidth: village.townMapCanvasWidth,
-    townMapExpectedHeight: village.townMapCanvasHeight,
+    townMapExpectedWidth: TOWN_MAP_EXPECTED_WIDTH,
+    townMapExpectedHeight: TOWN_MAP_EXPECTED_HEIGHT,
     townMapGenerationWidth: TOWN_MAP_EXPECTED_WIDTH,
     townMapGenerationHeight: TOWN_MAP_EXPECTED_HEIGHT,
     townMapZoomMin: TOWN_MAP_ZOOM_MIN,

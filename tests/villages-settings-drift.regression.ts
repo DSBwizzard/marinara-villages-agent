@@ -21,8 +21,6 @@ state.playerPersonaId = "persona";
 state.playerPersonaName = "Robin Hale";
 state.playerPersonaIdentity = "PRIVATE-PERSONA-IDENTITY";
 state.zonePictureEpoch = 73;
-state.townMapCanvasWidth = 1024;
-state.townMapCanvasHeight = 768;
 const venue = venueDraft({ name: "Hall", description: "A public hall", classes: ["community"] }, null);
 venue.access = {
   version: 1,
@@ -145,17 +143,14 @@ const publicFields = [
   "spriteCardFlipEnabled",
   "backgroundPace",
   "backgroundPaces",
-  "townMapCanvasHeight",
-  "townMapCanvasWidth",
+  "maps",
   "townMapExpectedHeight",
   "townMapExpectedWidth",
   "townMapGenerationHeight",
   "townMapGenerationWidth",
   "townMapImageMaxLength",
-  "townMapImageSetAt",
   "townMapLayoutPrompt",
   "townMapNegativePrompt",
-  "townMapView",
   "townMapZoomMax",
   "townMapZoomMin",
   "townMapZoomStep",
@@ -189,10 +184,8 @@ try {
   assert.equal(initial.scenarioImprint, null);
   assert.equal(initial.sceneryStyleProfileId, null);
   assert.equal(initial.playerPersonaName, "Robin Hale");
-  assert.equal(initial.townMapCanvasWidth, 1024);
-  assert.equal(initial.townMapCanvasHeight, 768);
-  assert.equal(initial.townMapExpectedWidth, 1024);
-  assert.equal(initial.townMapExpectedHeight, 768);
+  assert.equal(initial.townMapExpectedWidth, 2560);
+  assert.equal(initial.townMapExpectedHeight, 1440);
   for (const field of ["automaticZonePictures", "personalizeVenueImagesByDefault", "useVisualLoreByDefault"] as const)
     assert.equal(typeof initial[field], "boolean", field);
   assert.equal(typeof initial.sceneryArtStyle, "string");

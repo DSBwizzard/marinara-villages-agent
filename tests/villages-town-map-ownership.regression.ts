@@ -23,7 +23,7 @@ function deferred() {
   return { promise, resolve };
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
-const attempt = (id = "shared-map-attempt") => ({ actionId: id, sourceKey: "fixture-inputs" });
+const attempt = (id = "shared-map-attempt") => ({ actionId: id, sourceKey: "fixture-inputs", targetId: "target-map" });
 function fixture(label: string) {
   const records = new Map<string, any>();
   const generated: string[] = [];
@@ -63,7 +63,7 @@ function fixture(label: string) {
     }),
     async generateVillageTownMap(input) {
       assert.equal(
-        records.get("villages-town-map-generation").data.request.status,
+        records.get("villages-map-artwork-target-map").data.request.status,
         "running",
         "claim precedes dispatch",
       );
@@ -118,7 +118,7 @@ async function independentFactories() {
     assert.equal(requestA.status, "running");
     assert.equal(a.generated.length, 1, "same request ID belongs to separate stores");
     await serviceA.requestTownMapGeneration(attempt());
-    await serviceB.requestTownMapGeneration(attempt("another-map-attempt"));
+    await assert.rejects(serviceB.requestTownMapGeneration(attempt("another-map-attempt")), /still being generated/);
     assert.deepEqual(
       [a.generated.length, b.generated.length],
       [1, 1],
@@ -126,17 +126,20 @@ async function independentFactories() {
     );
     stopA();
     b.gate.resolve();
-    const completeB = await untilComplete(() => serviceB.readTownMapGeneration(requestB.id));
+    const completeB = await untilComplete(() => serviceB.readTownMapGeneration(requestB.id, "target-map"));
     assert.equal(completeB.status, "complete");
     assert.equal(completeB.result?.image, "image-B", "A cleanup cannot fence B's save");
     a.gate.resolve();
     await tick();
-    const interruptedA = await serviceA.readTownMapGeneration(requestA.id);
+    const interruptedA = await serviceA.readTownMapGeneration(requestA.id, "target-map");
     assert.equal(interruptedA.status, "interrupted");
     assert.equal(interruptedA.result, null, "late A output never overwrites its interrupted receipt");
     stopA();
     const laterB = await serviceB.requestTownMapGeneration(attempt("later-map-attempt"));
-    assert.equal((await untilComplete(() => serviceB.readTownMapGeneration(laterB.id))).status, "complete");
+    assert.equal(
+      (await untilComplete(() => serviceB.readTownMapGeneration(laterB.id, "target-map"))).status,
+      "complete",
+    );
     assert.deepEqual([a.generated.length, b.generated.length], [1, 2]);
     await assert.rejects(serviceB.requestTownMapGeneration(attempt()), /already used/);
     assert.deepEqual([a.errors, b.errors], [[], []]);
@@ -163,13 +166,13 @@ async function restartedServiceCleanup() {
     const request = await pending;
     oldStop();
     assert.equal(
-      (await service.readTownMapGeneration(request.id)).status,
+      (await service.readTownMapGeneration(request.id, "target-map")).status,
       "running",
       "stale cleanup cannot interrupt current admission or provider work",
     );
     assert.equal(f.generated.length, 1);
     f.gate.resolve();
-    const complete = await untilComplete(() => service.readTownMapGeneration(request.id));
+    const complete = await untilComplete(() => service.readTownMapGeneration(request.id, "target-map"));
     assert.equal(complete.status, "complete");
     assert.equal(complete.result?.image, "restarted-image");
     currentStop();
@@ -181,12 +184,15 @@ async function restartedServiceCleanup() {
       oldStop();
       currentStop();
       assert.equal(
-        (await service.readTownMapGeneration(request.id)).status,
+        (await service.readTownMapGeneration(request.id, "target-map")).status,
         "complete",
         "restart retains saved results",
       );
       const later = await service.requestTownMapGeneration(attempt("later-restart-attempt"));
-      assert.equal((await untilComplete(() => service.readTownMapGeneration(later.id))).status, "complete");
+      assert.equal(
+        (await untilComplete(() => service.readTownMapGeneration(later.id, "target-map"))).status,
+        "complete",
+      );
       assert.equal(f.generated.length, 2, "only deliberate new admission dispatches");
     } finally {
       laterStop();
@@ -225,17 +231,20 @@ async function scopedDispatch() {
   try {
     const requestB = await requestTownMapGeneration(attempt());
     a.gate.resolve();
-    const completeA = await untilComplete(() => ownerA.run(() => readTownMapGeneration(requestA.id)));
+    const completeA = await untilComplete(() => ownerA.run(() => readTownMapGeneration(requestA.id, "target-map")));
     assert.equal(completeA.result?.image, "scoped-image-A");
     stopA();
     releaseA();
     cleanupA();
     ownerA.dispose();
     b.gate.resolve();
-    const completeB = await untilComplete(() => readTownMapGeneration(requestB.id));
+    const completeB = await untilComplete(() => readTownMapGeneration(requestB.id, "target-map"));
     assert.equal(completeB.result?.image, "scoped-image-B");
     assert.equal(requireHost(), hostB);
-    assert.throws(() => ownerA.run(() => readTownMapGeneration(requestA.id)), /map generation is not configured/);
+    assert.throws(
+      () => ownerA.run(() => readTownMapGeneration(requestA.id, "target-map")),
+      /map generation is not configured/,
+    );
   } finally {
     a.gate.resolve();
     b.gate.resolve();

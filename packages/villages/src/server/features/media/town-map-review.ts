@@ -1,15 +1,15 @@
 import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
 import type { TownMapReview } from "./town-map-review-service.js";
-const binding = createActivationBinding<TownMapReview>("Town map review is not configured.");
+const binding = createActivationBinding<TownMapReview>("Map editing is not configured.");
 export function configureTownMapReview(service: TownMapReview): () => void {
   return binding.configure(bindActivationService(service));
 }
-export async function replaceVillageTownMap(...args: Parameters<TownMapReview["replaceVillageTownMap"]>) {
-  return binding.get().replaceVillageTownMap(...args);
+export function prepareVillageMap(...args: Parameters<TownMapReview["prepareVillageMap"]>) {
+  return binding.get().prepareVillageMap(...args);
 }
-export async function readTownMapSubmission(...args: Parameters<TownMapReview["readTownMapSubmission"]>) {
-  return binding.get().readTownMapSubmission(...args);
+export function createVillageMap(...args: Parameters<TownMapReview["createVillageMap"]>) {
+  return binding.get().createVillageMap(...args);
 }
-export async function readVillageTownMapImage(...args: Parameters<TownMapReview["readVillageTownMapImage"]>) {
-  return binding.get().readVillageTownMapImage(...args);
+export function updateVillageMap(...args: Parameters<TownMapReview["updateVillageMap"]>) {
+  return binding.get().updateVillageMap(...args);
 }

@@ -1389,6 +1389,10 @@ export function useOpenRoom(ports: {
     ) => {
       if (roomBusy) return;
       const zoneOnly = !!(room?.id && room.status === "active" && room.placeId === place.id && zoneId);
+      if (room && room.status !== "closed" && !zoneOnly) {
+        setScreen("room");
+        return;
+      }
       const claim = lifetime.begin(zoneOnly);
       if (!claim) return;
       const owns = () => lifetime.owns(claim);

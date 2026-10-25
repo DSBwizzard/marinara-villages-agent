@@ -139,7 +139,7 @@ import { processSavedProgressSubmission } from "../features/scenes/progress.js";
 import { removeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
 import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
 import { configureFoundingSetup } from "../features/founding/founding-setup.js";
-import { readTownMapSubmission } from "../features/media/town-map-review.js";
+import { prepareVillageMap } from "../features/media/town-map-review.js";
 import {
   configureConnectionSettings,
   readVillageConnectionSettings,
@@ -945,7 +945,13 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseTownMapReview = configureTownMapReview(
-    createTownMapReview({ readVillageState, mutateVillageState, buildVillageSnapshot, inspectVillageImage }),
+    createTownMapReview({
+      readVillageState,
+      mutateVillageState,
+      buildVillageSnapshot,
+      inspectVillageImage,
+      uploadVillageGalleryImage,
+    }),
   );
   const spriteManagerService = createSpriteManager({
     readVillageState,
@@ -991,7 +997,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readVillageState,
       mutateVillageState,
       buildVillageSnapshot,
-      readTownMapSubmission,
+      prepareVillageMap,
       readVillageConnectionSettings,
       validateVillageSetupConnections,
       readLinkedPersona,
