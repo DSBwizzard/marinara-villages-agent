@@ -103,12 +103,16 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     };
     await mount();
-    const selector = () => page.getByRole("combobox", { name: "Displayed map" });
-    await expect(selector()).toHaveValue("map-house");
+    const mapImage = (name) => page.getByRole("img", { name: "A map of " + name + ".", exact: true });
+    const places = page.getByRole("complementary", { name: "Places navigator" });
+    await expect(page.getByRole("combobox", { name: "Displayed map" })).toHaveCount(0);
+    await expect(places).toHaveCount(0);
+    await expect(mapImage("Maple House")).toBeVisible();
     await page.getByRole("button", { name: "All maps", exact: true }).click();
     await expect(page.locator("." + P + "-maps-grid button")).toHaveCount(2);
     await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
-    await expect(selector()).toHaveValue("map-street");
+    await expect(mapImage("Maple Street")).toBeVisible();
+    await expect(places).toHaveCount(0);
     await page.getByRole("button", { name: "Places", exact: true }).click();
     await expect(page.getByRole("button", { name: /Corner Café.*Venue/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Lobby.*Workplace/ })).toHaveCount(0);
@@ -118,7 +122,8 @@ try {
       "browsing does not create a Scene or change the world: " + JSON.stringify(writes.map((write) => write.path)),
     );
     await mount();
-    await expect(selector()).toHaveValue("map-street");
+    await expect(mapImage("Maple Street")).toBeVisible();
+    await expect(places).toHaveCount(0);
     await page.getByRole("button", { name: "All maps", exact: true }).click();
     await page.getByRole("button", { name: "Manage maps", exact: true }).click();
     await page.getByRole("button", { name: "Add map", exact: true }).click();
@@ -179,7 +184,11 @@ try {
     const beforeBrowsing = writes.length;
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Map", exact: true }).click();
-    await selector().selectOption("map-street");
+    await expect(places).toHaveCount(0);
+    await page.getByRole("button", { name: "All maps", exact: true }).click();
+    await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
+    await expect(mapImage("Maple Street")).toBeVisible();
+    await expect(places).toHaveCount(0);
     await page.getByRole("button", { name: "Places", exact: true }).click();
     await expect(page.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Return to Scene", exact: true }).click();

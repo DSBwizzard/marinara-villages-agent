@@ -295,6 +295,7 @@ try {
     await expect(home.locator(".marinara-capability-villages-canvas-img")).toHaveAttribute("src", mapImage);
     await expect(home.locator('[data-pin-id="market"]')).toBeInViewport();
     await expect(page.getByRole("img", { name: "Weather: clear" })).toBeVisible();
+    await expect(home.getByRole("complementary", { name: "Places navigator" })).toHaveCount(0);
     if (!mobile) {
       await expect(page.getByRole("button", { name: "Places", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: /whole screen/u })).toBeVisible();
@@ -302,9 +303,6 @@ try {
       assert.ok(stage && stage.width <= width && stage.height <= height, "desktop fits the whole map");
       const bar = await home.locator(".marinara-capability-villages-home-bar").boundingBox();
       assert.ok(bar && stage.y >= bar.y + bar.height, "desktop controls sit above the map");
-      await expect(
-        home.getByRole("complementary", { name: "Places navigator" }).getByRole("button", { name: /The Harbour/ }),
-      ).toBeVisible();
     }
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({

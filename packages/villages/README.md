@@ -115,7 +115,7 @@ Refresh restores saved progress. Incomplete gathering or introduction writing st
 
 ## Map, artwork and sprites
 
-One Village can have multiple named maps. **All maps** shows thumbnails; the map selector switches directly between them. Map opens the last viewed map, and Places searches only that map. Browsing changes the view without moving anyone or changing an active Scene. The Scene's actions menu opens Map; **Return to Scene** restores its composer draft. Starting another Scene still requires concluding the current one.
+One Village can have multiple named maps. **All maps** shows thumbnails for switching directly between them. Map opens the last viewed map. Places starts closed, opens only when requested, and searches only the displayed map. Browsing changes the view without moving anyone or changing an active Scene. The Scene's actions menu opens Map; **Return to Scene** restores its composer draft. Starting another Scene still requires concluding the current one.
 
 Village Settings manages map names, artwork, framing and reviewed marker placements. Each additional map requires artwork and starts empty. A new Venue Project chooses its map when placing its site; creating or browsing a map never creates Venues. Village-wide Venue and resident limits remain shared. Maps have no required connections, exits or travel steps. Map deletion and moving existing Venues between maps are outside this pass. This implementation starts with fresh Village data and provides no conversion of earlier maps.
 

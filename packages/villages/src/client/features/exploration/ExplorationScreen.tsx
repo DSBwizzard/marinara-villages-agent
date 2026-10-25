@@ -47,10 +47,9 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     townMapImage,
     venueExplorationActions,
   } = controller;
-  const [collapsed, setCollapsed] = useState(false);
   const [focusSearch, setFocusSearch] = useState(false);
   const places = (snapshot?.settings.venues ?? []).filter((venue) => venue.presentation.mapId === selectedMap?.id);
-  const navigatorOpen = !placingProjectId && (mobile ? exploreSheet?.tab === "places" : !collapsed);
+  const navigatorOpen = !placingProjectId && exploreSheet?.tab === "places";
   const selectPlace = (place: VillageVenue) => {
     setFocusSearch(false);
     explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -58,8 +57,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     setOpenPlaceId(place.id);
     const point = placeSpot(place);
     if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
-    if (mobile) setExploreSheet({ tab: "places" });
-    else setCollapsed(false);
+    setExploreSheet({ tab: "places" });
   };
   const rows = places.map((place) => ({
     id: place.id,
@@ -101,7 +99,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           setShowAllMaps(false);
         } else if (tab === "places") {
           setFocusSearch(true);
-          setCollapsed(false);
           setExploreSheet({ tab: "places" });
         } else {
           setExploreSheet(null);
@@ -149,18 +146,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         <button type="button" disabled={busy} onClick={() => setShowAllMaps(true)}>
           All maps
         </button>
-        <select
-          aria-label="Displayed map"
-          disabled={busy}
-          value={selectedMap?.id ?? ""}
-          onChange={(event) => setSelectedMapId(event.target.value)}
-        >
-          {(snapshot?.settings.maps ?? []).map((map) => (
-            <option key={map.id} value={map.id}>
-              {map.name}
-            </option>
-          ))}
-        </select>
         {room && room.status !== "closed" ? (
           <button type="button" onClick={returnToScene}>
             Return to Scene
@@ -200,7 +185,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 onClose={() => {
                   if (mobile) closeExploration();
                   else {
-                    setCollapsed(true);
                     setExploreSheet(null);
                   }
                   setFocusSearch(false);
@@ -214,7 +198,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 aria-label="Show places"
                 onClick={() => {
                   setFocusSearch(true);
-                  setCollapsed(false);
                   setExploreSheet({ tab: "places" });
                 }}
               >
@@ -226,7 +209,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
               <MapStage
                 key={selectedMap?.id}
                 src={townMapImage || null}
-                alt={`A map of ${snapshot?.village.name ?? "the village"}.`}
+                alt={`A map of ${selectedMap?.name ?? snapshot?.village.name ?? "the village"}.`}
                 pins={pins}
                 placing={!!placingProjectId && !busy}
                 view={savedTownMapView}

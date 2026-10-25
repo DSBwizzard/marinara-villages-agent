@@ -100,8 +100,7 @@ export const EXPLORATION_STYLES = `
 }
 .${P}-sectioned-menu[data-page="noticeboard"] :is(.${P}-button,.${P}-notice-input) { background:var(--explore-surface); color:var(--explore-text); border-color:var(--explore-border); border-radius:var(--explore-radius); min-height:48px; }
 .${P}-maps-toolbar { display:flex; flex:none; align-items:center; gap:8px; padding:4px 12px; border-bottom:1px solid var(--explore-border); background:var(--explore-panel); }
-.${P}-maps-toolbar :is(button,select),.${P}-maps-overview button { min-height:44px; border:1px solid var(--explore-border); border-radius:7px; padding:8px 12px; background:var(--explore-surface); color:var(--explore-text); font:inherit; cursor:pointer; }
-.${P}-maps-toolbar select { flex:1; min-width:0; max-width:320px; }
+.${P}-maps-toolbar button,.${P}-maps-overview button { min-height:44px; border:1px solid var(--explore-border); border-radius:7px; padding:8px 12px; background:var(--explore-surface); color:var(--explore-text); font:inherit; cursor:pointer; }
 .${P}-maps-overview { flex:1; min-width:0; overflow:auto; padding:16px; }
 .${P}-maps-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .${P}-maps-heading h2 { margin:0 0 12px; font-size:20px; }
@@ -123,7 +122,6 @@ export const EXPLORATION_STYLES = `
 .${P}-maps-editor .${P}-stage { width:100%!important; max-height:55vh; }
 @container (max-width:500px) {
   .${P}-maps-toolbar { padding:4px 8px; gap:4px; flex-wrap:wrap; }
-  .${P}-maps-toolbar select { max-width:none; }
   .${P}-maps-saved-row { flex-wrap:wrap; }
   .${P}-maps-saved-row img { width:72px; height:52px; }
 }
