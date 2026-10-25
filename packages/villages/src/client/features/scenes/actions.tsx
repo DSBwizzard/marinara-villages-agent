@@ -1389,7 +1389,7 @@ export function useOpenRoom(ports: {
     ) => {
       if (roomBusy) return;
       const zoneOnly = !!(room?.id && room.status === "active" && room.placeId === place.id && zoneId);
-      if (room && room.status !== "closed" && !zoneOnly) {
+      if (room?.id && room.status !== "closed" && !zoneOnly) {
         setScreen("room");
         return;
       }

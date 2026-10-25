@@ -152,7 +152,13 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             <button
               type="button"
               className={`${ELEMENT_TAG}-button`}
-              onClick={menuPage !== "index" ? () => setMenuPage("index") : goHome}
+              onClick={
+                menuPage !== "index"
+                  ? () => setMenuPage("index")
+                  : room?.id && room.status !== "closed"
+                    ? () => setScreen("room")
+                    : goHome
+              }
             >
               {menuPage !== "index"
                 ? "Back to menu"

@@ -330,8 +330,8 @@ try {
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Close ×" }).click();
     await page.getByRole("button", { name: "Village Settings" }).click();
-    await expect(page.getByRole("heading", { name: "Village Map" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Replace map" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit map" })).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "DEBUG Settings" }).click();
     await expect(page.getByRole("button", { name: "Scenes" })).toBeVisible();

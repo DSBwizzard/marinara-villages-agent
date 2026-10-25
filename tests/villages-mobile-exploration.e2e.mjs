@@ -327,7 +327,16 @@ try {
       "true",
     );
     const marker = home.locator('[data-pin-id="market"]');
-    await expect(marker).toBeInViewport({ ratio: 1 });
+    await expect(
+      marker,
+      JSON.stringify({
+        width,
+        height,
+        marker: await marker.boundingBox(),
+        canvas: await canvas.boundingBox(),
+        navigator: await navigator.boundingBox(),
+      }),
+    ).toBeInViewport({ ratio: 1 });
     const markerBox = await marker.boundingBox();
     assert.ok(markerBox.width >= 44 && markerBox.height >= 44, "location targets remain touch sized");
     if (mobile) {

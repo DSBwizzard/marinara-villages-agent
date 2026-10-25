@@ -99,7 +99,7 @@ export const EXPLORATION_STYLES = `
   .${P}-home-full[data-mobile="false"] .${P}-explore-nav button { padding:0 7px; font-size:12px; }
 }
 .${P}-sectioned-menu[data-page="noticeboard"] :is(.${P}-button,.${P}-notice-input) { background:var(--explore-surface); color:var(--explore-text); border-color:var(--explore-border); border-radius:var(--explore-radius); min-height:48px; }
-.${P}-maps-toolbar { display:flex; flex:none; align-items:center; gap:8px; min-height:50px; padding:4px 12px; border-bottom:1px solid var(--explore-border); background:var(--explore-panel); }
+.${P}-maps-toolbar { display:flex; flex:none; align-items:center; gap:8px; padding:4px 12px; border-bottom:1px solid var(--explore-border); background:var(--explore-panel); }
 .${P}-maps-toolbar :is(button,select),.${P}-maps-overview button { min-height:44px; border:1px solid var(--explore-border); border-radius:7px; padding:8px 12px; background:var(--explore-surface); color:var(--explore-text); font:inherit; cursor:pointer; }
 .${P}-maps-toolbar select { flex:1; min-width:0; max-width:320px; }
 .${P}-maps-overview { flex:1; min-width:0; overflow:auto; padding:16px; }
