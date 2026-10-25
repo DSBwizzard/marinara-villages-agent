@@ -720,6 +720,7 @@ export type VillageVenue = {
   category: string;
   /** Presentation data is separate from physical venue state. */
   presentation: {
+    mapId: string;
     image: VillageVenueImage | null;
     x: number | null;
     y: number | null;
@@ -836,7 +837,7 @@ export type VillageVenueDraft = {
   classes: VillageVenueClass[];
   description: string;
   category: string;
-  position: VillageVenuePosition;
+  position: VillageVenuePosition & { mapId?: string };
   occupancy: VillageVenue["occupancy"];
   capabilities: string[];
   state: VillageVenue["state"];
@@ -1069,7 +1070,7 @@ export type VillageProject = {
     name: string;
     classes: VillageVenueClass[];
     description: string;
-    position: { x: number | null; y: number | null };
+    position: { mapId?: string; x: number | null; y: number | null };
   };
   requesterCharacterId?: string;
   lifecycle?: VillageProjectLifecycle;
@@ -1337,25 +1338,7 @@ export type VillageState = {
    * id is broken, and only the tab has to say so.
    */
   playerPersonaMissing: boolean;
-  /**
-   * The town map the homepage draws, as a `data:` URL. Empty means the village
-   * has no map yet.
-   *
-   * Deliberately NOT part of the snapshot: the snapshot is read on every chat
-   * send, so a picture in it would be re-sent on every single turn. It travels
-   * on its own route, and `townMapImageSetAt` is the key the tab refetches on.
-   */
-  townMapImage: string;
-  /** When the map was last set or cleared. Empty whenever `townMapImage` is. */
-  townMapImageSetAt: string;
-  townMapCanvasWidth: number;
-  townMapCanvasHeight: number;
-  /**
-   * How that picture is framed in the map's own shape. Meaningless without a
-   * picture, so it is reset to the shipped framing whenever the map is cleared
-   * — the map the package ships must be drawn as it was drawn before.
-   */
-  townMapView: VillageTownMapView;
+  maps: VillageMap[];
 };
 
 /**
@@ -1925,4 +1908,14 @@ export type VillageDayBlock = {
 export type VillagePromptMessage = {
   role: "system" | "user";
   content: string;
+};
+
+export type VillageMap = {
+  id: string;
+  name: string;
+  artwork: VillageVenueImage;
+  width: number;
+  height: number;
+  view: VillageTownMapView;
+  revision: number;
 };

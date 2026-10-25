@@ -113,10 +113,18 @@ function fixture(name: string) {
       note("snapshot");
       return { village: { name: state.name, timeZone: state.timeZone } } as VillageSnapshot;
     },
-    async readTownMapSubmission(value) {
+    async prepareVillageMap(value) {
       note("map");
-      assert.equal(value, "test-map");
-      return { image: "test-map", size: null, view: DEFAULT_TOWN_MAP_VIEW };
+      assert.equal(value.image, "test-map");
+      return {
+        id: value.id,
+        name: value.name,
+        artwork: { ref: "global-gallery:map", id: "map", url: "/map.png" },
+        width: 1440,
+        height: 900,
+        view: DEFAULT_TOWN_MAP_VIEW,
+        revision: 1,
+      };
     },
     async readVillageConnectionSettings() {
       note("connections");

@@ -38,7 +38,7 @@ const place = (id, x, y) => ({
   category: "destination",
   description: "A village place.",
   capabilities: [],
-  presentation: { image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id }, x, y },
+  presentation: { mapId: "map-house", image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id }, x, y },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   state: { condition: "sound", furniture: [], publicFacts: [], updatedAt: now },
 });
@@ -91,7 +91,17 @@ const snapshot = {
     maxVenueImageBytes: 1000000,
     villageGalleryFolderName: "QA Village",
     visitRetention: { mode: "forever", value: 0 },
-    townMapImageSetAt: now,
+    maps: [
+      {
+        id: "map-house",
+        name: "QA Village",
+        artwork: { id: "map-art", ref: "map-art", url: mapImage },
+        width: 1500,
+        height: 1000,
+        view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+        revision: 1,
+      },
+    ],
     townMapExpectedWidth: 1500,
     townMapExpectedHeight: 1000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
@@ -285,6 +295,7 @@ try {
     await expect(home.locator(".marinara-capability-villages-canvas-img")).toHaveAttribute("src", mapImage);
     await expect(home.locator('[data-pin-id="market"]')).toBeInViewport();
     await expect(page.getByRole("img", { name: "Weather: clear" })).toBeVisible();
+    await expect(home.getByRole("complementary", { name: "Places navigator" })).toHaveCount(0);
     if (!mobile) {
       await expect(page.getByRole("button", { name: "Places", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: /whole screen/u })).toBeVisible();
@@ -292,9 +303,6 @@ try {
       assert.ok(stage && stage.width <= width && stage.height <= height, "desktop fits the whole map");
       const bar = await home.locator(".marinara-capability-villages-home-bar").boundingBox();
       assert.ok(bar && stage.y >= bar.y + bar.height, "desktop controls sit above the map");
-      await expect(
-        home.getByRole("complementary", { name: "Places navigator" }).getByRole("button", { name: /The Harbour/ }),
-      ).toBeVisible();
     }
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({
@@ -320,8 +328,8 @@ try {
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Close ×" }).click();
     await page.getByRole("button", { name: "Village Settings" }).click();
-    await expect(page.getByRole("heading", { name: "Village Map" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Replace map" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit map" })).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "DEBUG Settings" }).click();
     await expect(page.getByRole("button", { name: "Scenes" })).toBeVisible();

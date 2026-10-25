@@ -1,9 +1,7 @@
+import { MapsPanel } from "./MapsPanel.js";
 import { WorldNameSettings } from "./WorldNameSettings.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { pinTone, placeSpot, playerDisplayName } from "../../shared/presentation.js";
-import type { MapPin } from "../../shared/types.js";
-import { isHouse } from "../../shared/venue.js";
-import { MapStage, PROJECT_BLUEPRINT_IMAGE, TOWN_MAP_FITS } from "../exploration/MapStage.js";
+
 import { PlayerIdentityEditor, VillageLorebookPicker, LoreTokenBudgetField } from "../founding/FoundingPanels.js";
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
 import { PlayerBackgroundSummary } from "../founding/villages-player-background.js";
@@ -15,9 +13,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     addVenue,
     backgroundPanel,
     busy,
-    discardTownMapDraft,
-    framingMap,
-    generateReplacementMap,
     insertMacro,
     knowledgeDraft,
     knowledgeRef,
@@ -25,55 +20,30 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     lorebookDraft,
     lorebooks,
     lorebooksError,
-    mapGenerating,
-    mapPinDraft,
-    mapRemoveDraft,
-    mapReplaceOpen,
     mobile,
-    nameOfCharacter,
     openPlace,
     openSetup,
-    panelMapView,
     personaDraft,
     personalizeHomes,
     personas,
-    pickTownMap,
     placeCount,
-    placingMapVenueId,
-    reframingMap,
     saveScenerySettings,
     saveSettings,
-    saveTownMap,
     sceneryStyle,
     sceneryStyleProfileId,
-    selectedMapVenueId,
     setKnowledgeDraft,
     setLoreTokenBudgetDraft,
     setLorebookDraft,
-    setMapPinDraft,
-    setMapRemoveDraft,
     setPersonaDraft,
     setPersonalizeHomes,
-    setPlacingMapVenueId,
-    setReframingMap,
     setSceneryStyle,
     setSceneryStyleProfileId,
-    setSelectedMapVenueId,
     setSettingDraft,
-    setTownMapDraft,
-    setTownMapPick,
     setVenueSearch,
     setVisualLoreDefault,
     settingDraft,
     settingsError,
     snapshot,
-    startMapReplacement,
-    townMapAdvice,
-    townMapImage,
-    townMapPick,
-    townMapShape,
-    townMapSrc,
-    townMapZoom,
     venueSearch,
     visualLoreDefault,
   } = ports;
@@ -129,243 +99,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
 
           <VillageWritingSettings />
 
-          <section className={ELEMENT_TAG + "-field"} aria-label="Village Map">
-            <h3 className={ELEMENT_TAG + "-panel-title"}>Village Map</h3>
-            <p className={ELEMENT_TAG + "-hint"}>
-              Replace the background image here. Venue photographs remain in their saved places until you reposition
-              them in the preview.
-            </p>
-            {mapReplaceOpen ? (
-              <p className={ELEMENT_TAG + "-error"} role="alert">
-                Venues will not move automatically. Review every Venue photograph on the new map; moving one here is
-                free and does not change its residents, projects, or history.
-              </p>
-            ) : null}
-            <MapStage
-              src={townMapSrc}
-              alt="Village map preview with Venue photographs"
-              pins={snapshot.settings.venues.flatMap((venue): MapPin[] => {
-                const spot = mapReplaceOpen ? mapPinDraft[venue.id] : placeSpot(venue);
-                if (!spot || spot.x === null || spot.y === null) return [];
-                return [
-                  {
-                    id: venue.id,
-                    x: spot.x,
-                    y: spot.y,
-                    text: venue.name,
-                    image:
-                      venue.constructionStatus === "worksite"
-                        ? PROJECT_BLUEPRINT_IMAGE
-                        : (venue.presentation.image?.url ?? null),
-                    tone: isHouse(venue)
-                      ? pinTone({
-                          isPlayerHome: venue.occupancy.playerHome,
-                          occupant: venue.occupancy.residentCharacterId,
-                        })
-                      : "venue",
-                    onSelect: () => setSelectedMapVenueId(venue.id),
-                  },
-                ];
-              })}
-              placing={mapReplaceOpen && placingMapVenueId !== null}
-              view={panelMapView}
-              shape={townMapShape}
-              zoom={townMapZoom}
-              mobile={mobile}
-              onView={framingMap && !placingMapVenueId ? setTownMapDraft : undefined}
-              onPlace={
-                mapReplaceOpen && placingMapVenueId
-                  ? (x, y) => {
-                      setMapPinDraft((current) => ({ ...current, [placingMapVenueId]: { x, y } }));
-                      setSelectedMapVenueId(placingMapVenueId);
-                      setPlacingMapVenueId(null);
-                    }
-                  : undefined
-              }
-            />
-            {mapReplaceOpen ? (
-              <>
-                <div className={ELEMENT_TAG + "-row"}>
-                  <button
-                    type="button"
-                    className={ELEMENT_TAG + "-button"}
-                    disabled={busy || mapGenerating}
-                    onClick={() => void generateReplacementMap()}
-                  >
-                    {mapGenerating ? "Generating map…" : "Generate replacement"}
-                  </button>
-
-                  <input
-                    autoComplete="off"
-                    className={ELEMENT_TAG + "-file"}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/avif"
-                    aria-label="Upload replacement village map"
-                    disabled={busy || mapGenerating}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = "";
-                      void pickTownMap(file);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className={ELEMENT_TAG + "-button"}
-                    disabled={busy || mapGenerating}
-                    onClick={() => {
-                      setMapRemoveDraft(true);
-                      setTownMapPick(null);
-                      setTownMapDraft(null);
-                      setPlacingMapVenueId(null);
-                    }}
-                  >
-                    No background image
-                  </button>
-                </div>
-                {townMapPick || mapRemoveDraft ? (
-                  <>
-                    <p className={ELEMENT_TAG + "-hint"}>
-                      Select a venue, then choose Move photograph and its new position on the preview. Unmoved venues
-                      keep their saved coordinates.
-                    </p>
-                    <div className={ELEMENT_TAG + "-field"} aria-label="Venue placement">
-                      {snapshot.settings.venues.map((venue) => {
-                        const spot = mapPinDraft[venue.id];
-                        const resident = venue.occupancy.residentCharacterId
-                          ? nameOfCharacter(venue.occupancy.residentCharacterId)
-                          : venue.occupancy.playerHome
-                            ? playerDisplayName(snapshot)
-                            : "";
-                        return (
-                          <div key={venue.id} className={ELEMENT_TAG + "-row"}>
-                            <button
-                              type="button"
-                              className={ELEMENT_TAG + "-button"}
-                              aria-pressed={selectedMapVenueId === venue.id}
-                              onClick={() => setSelectedMapVenueId(venue.id)}
-                            >
-                              {venue.name}
-                            </button>
-                            <span className={ELEMENT_TAG + "-hint"}>{resident || "No resident"}</span>
-                            <span className={ELEMENT_TAG + "-hint"}>
-                              {spot?.x !== null && spot?.x !== undefined && spot?.y !== null && spot?.y !== undefined
-                                ? "On map"
-                                : "Not placed"}
-                            </span>
-                            <button
-                              type="button"
-                              className={ELEMENT_TAG + "-button"}
-                              aria-pressed={placingMapVenueId === venue.id}
-                              onClick={() => setPlacingMapVenueId(venue.id)}
-                            >
-                              Move photograph
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : null}
-                {townMapAdvice ? (
-                  <p className={ELEMENT_TAG + "-hint"} data-tone={townMapAdvice.tone}>
-                    {townMapAdvice.text}
-                  </p>
-                ) : null}
-                {framingMap ? (
-                  <div className={ELEMENT_TAG + "-steps"} role="group" aria-label="How the picture sits in the frame">
-                    {TOWN_MAP_FITS.map((option) => (
-                      <button
-                        key={option.fit}
-                        type="button"
-                        className={ELEMENT_TAG + "-step"}
-                        data-clickable="true"
-                        data-active={panelMapView.fit === option.fit ? "true" : "false"}
-                        aria-pressed={panelMapView.fit === option.fit}
-                        onClick={() => setTownMapDraft({ ...panelMapView, fit: option.fit })}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                <div className={ELEMENT_TAG + "-row"}>
-                  <button
-                    type="button"
-                    className={ELEMENT_TAG + "-button"}
-                    disabled={busy || mapGenerating || (!townMapPick && !mapRemoveDraft)}
-                    onClick={() => void saveTownMap()}
-                  >
-                    Save map and placements
-                  </button>
-                  <button
-                    type="button"
-                    className={ELEMENT_TAG + "-button"}
-                    disabled={busy || mapGenerating}
-                    onClick={discardTownMapDraft}
-                  >
-                    Cancel replacement
-                  </button>
-                </div>
-              </>
-            ) : framingMap ? (
-              <>
-                <div className={ELEMENT_TAG + "-steps"} role="group" aria-label="How the picture sits in the frame">
-                  {TOWN_MAP_FITS.map((option) => (
-                    <button
-                      key={option.fit}
-                      type="button"
-                      className={ELEMENT_TAG + "-step"}
-                      data-clickable="true"
-                      data-active={panelMapView.fit === option.fit ? "true" : "false"}
-                      aria-pressed={panelMapView.fit === option.fit}
-                      onClick={() => setTownMapDraft({ ...panelMapView, fit: option.fit })}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                <div className={ELEMENT_TAG + "-row"}>
-                  <button
-                    type="button"
-                    className={ELEMENT_TAG + "-button"}
-                    disabled={busy}
-                    onClick={() => void saveTownMap()}
-                  >
-                    Save framing
-                  </button>
-                  <button
-                    type="button"
-                    className={ELEMENT_TAG + "-button"}
-                    disabled={busy}
-                    onClick={discardTownMapDraft}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className={ELEMENT_TAG + "-row"}>
-                <button type="button" className={ELEMENT_TAG + "-button"} disabled={busy} onClick={startMapReplacement}>
-                  Replace map
-                </button>
-                {snapshot.settings.townMapImageSetAt ? (
-                  <button
-                    type="button"
-                    className={ELEMENT_TAG + "-button"}
-                    disabled={busy || !townMapImage}
-                    onClick={() => setReframingMap(true)}
-                  >
-                    Crop or fit current map
-                  </button>
-                ) : null}
-              </div>
-            )}
-            {settingsError ? (
-              <p className={ELEMENT_TAG + "-error"} role="alert">
-                {settingsError}
-              </p>
-            ) : null}
-          </section>
+          <MapsPanel snapshot={snapshot} onSnapshot={ports.setSnapshot} mobile={mobile} />
 
           <div className={`${ELEMENT_TAG}-field`}>
             <div className={`${ELEMENT_TAG}-row`}>
@@ -550,7 +284,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
         </section>
       ) : null}
 
-      {settingsError && !mapReplaceOpen && !reframingMap ? (
+      {settingsError ? (
         <p className={`${ELEMENT_TAG}-error`} role="alert">
           {settingsError}
         </p>

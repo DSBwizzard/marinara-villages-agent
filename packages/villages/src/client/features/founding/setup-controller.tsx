@@ -4,7 +4,7 @@ import { API_PATH } from "../../shared/constants.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
 
 import type { FoundingState } from "./useFoundingState.js";
-import { removeFoundingDraft } from "./villages-founding-draft.js";
+import { removeDeviceDraft } from "../../shared/device-drafts.js";
 import { personalSpaceDraft } from "./villages-founding-editor";
 import { draftZonePolicy } from "./villages-founding-zones";
 import { playerBackgroundProblem } from "./villages-player-background.js";
@@ -322,7 +322,7 @@ export function useFoundingStartOver(ports: {
   readonly setDraftReady: FoundingState["setDraftReady"];
   readonly setResetArmed: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
+    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
   readonly setSettingsError: React.Dispatch<React.SetStateAction<string>>;
   readonly setSnapshot: React.Dispatch<
@@ -352,7 +352,7 @@ export function useFoundingStartOver(ports: {
       // The offer to found the village is made again by hand: the player asked
       // for the wizard by asking to start over.
       await draftSaveQueue.current;
-      await removeFoundingDraft(API_PATH);
+      await removeDeviceDraft(API_PATH);
       draftRevision.current = 0;
       setSavedSetupDraft(null);
       setDraftReady(true);

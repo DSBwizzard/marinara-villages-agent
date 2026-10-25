@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import type { DocumentSlot, createDocumentMutator } from "../adapters/storage/document-store.js";
@@ -5,11 +6,13 @@ import { asRecord, asTrimmedString } from "../domain/rules/coerce.js";
 import { badRequest, notFound, safeFailureMessage } from "../domain/rules/errors.js";
 import type { generateVillageTownMap } from "../features/media/town-map-image.js";
 
-const DOCUMENT = "villages-town-map-generation";
+const documentId = (target: string) => "villages-map-artwork-" + target;
 type MapInput = Parameters<typeof generateVillageTownMap>[0];
 export type TownMapGeneration = {
   id: string;
   sourceKey: string;
+  inputKey: string;
+  targetId: string;
   startedAt: string;
   status: "running" | "complete" | "failed" | "interrupted";
   error: string;
@@ -67,12 +70,12 @@ export function createTownMapGeneration(ports: TownMapGenerationPorts) {
     if (!/^[a-zA-Z0-9_-]{8,128}$/.test(id)) throw badRequest("A map request ID is required.");
     return id;
   }
-  async function read(): Promise<TownMapGeneration | null> {
-    return slot.coerce((await villagesDocuments().getById(VILLAGES_PACKAGE_ID, DOCUMENT))?.data).request;
+  async function read(target: string): Promise<TownMapGeneration | null> {
+    return slot.coerce((await villagesDocuments().getById(VILLAGES_PACKAGE_ID, documentId(target)))?.data).request;
   }
   async function recover(request: TownMapGeneration | null): Promise<TownMapGeneration | null> {
     if (request?.status !== "running" || activeId === request.id) return request;
-    await mutateDocument(DOCUMENT, slot, (state) => {
+    await mutateDocument(documentId(request.targetId), slot, (state) => {
       if (state.request?.id !== request.id || state.request.status !== "running") return false;
       state.request.status = "interrupted";
       state.request.error =
@@ -87,23 +90,33 @@ export function createTownMapGeneration(ports: TownMapGenerationPorts) {
     const token = lifecycle;
     const input = asRecord(value);
     const id = actionId(input.actionId);
+    const targetId = actionId(input.targetId);
+    const { actionId: _actionId, sourceKey: _sourceKey, ...parameters } = input;
+    const inputKey = createHash("sha256").update(JSON.stringify(parameters)).digest("hex");
     const sourceKey = asTrimmedString(input.sourceKey);
     if (!sourceKey || sourceKey.length > 20_000) throw badRequest("The map request inputs are missing or too long.");
     return serialized(async () => {
       if (!enabled || token !== lifecycle)
         throw badRequest("Map generation is restarting. Check status before trying again.");
-      const previous = await recover(await read());
-      if (previous?.id === id || previous?.status === "running") return previous;
+      const previous = await recover(await read(targetId));
+      if (previous?.id === id) {
+        if (previous.sourceKey !== sourceKey || previous.inputKey !== inputKey)
+          throw badRequest("This artwork request has different inputs.");
+        return previous;
+      }
+      if (previous?.status === "running" || activeId) throw badRequest("Another map picture is still being generated.");
       const request: TownMapGeneration = {
         id,
         sourceKey,
+        inputKey,
+        targetId,
         startedAt: new Date().toISOString(),
         status: "running",
         error: "",
         result: null,
       };
       // A claim is saved before dispatch. A restart does not authorize another request.
-      await mutateDocument(DOCUMENT, slot, (state) => {
+      await mutateDocument(documentId(request.targetId), slot, (state) => {
         if (!enabled || token !== lifecycle)
           throw badRequest("Map generation is restarting. Check status before trying again.");
         if (state.retiredIds.includes(id))
@@ -113,11 +126,11 @@ export function createTownMapGeneration(ports: TownMapGenerationPorts) {
       });
       if (!enabled || token !== lifecycle) return request;
       activeId = id;
-      void draw(id, structuredClone(input) as MapInput, token);
+      void draw(id, targetId, structuredClone(input) as MapInput, token);
       return request;
     });
   }
-  async function draw(id: string, input: MapInput, token: number): Promise<void> {
+  async function draw(id: string, targetId: string, input: MapInput, token: number): Promise<void> {
     let result: TownMapGeneration["result"] = null;
     let error = "";
     try {
@@ -127,7 +140,7 @@ export function createTownMapGeneration(ports: TownMapGenerationPorts) {
     }
     if (token !== lifecycle) return;
     try {
-      await mutateDocument(DOCUMENT, slot, (state) => {
+      await mutateDocument(documentId(targetId), slot, (state) => {
         if (token !== lifecycle || state.request?.id !== id || state.request.status !== "running") return false;
         state.request.result = result;
         state.request.error = error;
@@ -141,10 +154,11 @@ export function createTownMapGeneration(ports: TownMapGenerationPorts) {
   }
 
   /** Retrieving a saved result or error makes zero image requests. */
-  function readTownMapGeneration(value: unknown): Promise<TownMapGeneration> {
+  function readTownMapGeneration(value: unknown, target: unknown): Promise<TownMapGeneration> {
     const id = actionId(value);
+    const targetId = actionId(target);
     return serialized(async () => {
-      const request = await recover(await read());
+      const request = await recover(await read(targetId));
       if (request?.id !== id)
         throw notFound(
           "This map attempt is no longer available. It may not have started, or a newer attempt replaced it. Generate again only when you choose.",

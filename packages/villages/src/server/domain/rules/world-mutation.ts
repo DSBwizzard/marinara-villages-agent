@@ -20,8 +20,34 @@ export function normalizeVillageMutation(
   sources: VillageMutationSources = { now: () => new Date(), seed: randomVillageSeed },
 ): void {
   const previousVenues = new Map(state.venues.map((venue) => [venue.id, structuredClone(venue)]));
+  const placementKey = (world: VillageState, id: string) =>
+    JSON.stringify([
+      world.venues
+        .filter((venue) => venue.presentation.mapId === id)
+        .map((venue) => [venue.id, venue.presentation.x, venue.presentation.y]),
+      world.projects
+        .filter(
+          (project) =>
+            project.kind === "new-venue" &&
+            !["complete", "cancelled"].includes(project.status) &&
+            project.venueDraft?.position.mapId === id,
+        )
+        .map((project) => [project.id, project.venueDraft!.position.x, project.venueDraft!.position.y]),
+    ]);
+  const previousMaps = new Map(
+    state.maps.map((map) => [map.id, { revision: map.revision, key: placementKey(state, map.id) }]),
+  );
   const previousCapacity = villageVenueUsage(state);
   mutate(state);
+  for (const map of state.maps) {
+    const prior = previousMaps.get(map.id);
+    if (prior && map.revision === prior.revision && placementKey(state, map.id) !== prior.key) map.revision++;
+  }
+  for (const venue of state.venues) {
+    const prior = previousVenues.get(venue.id);
+    if (prior && venue.presentation.mapId !== prior.presentation.mapId)
+      throw new Error("Moving an existing Venue between maps is not supported.");
+  }
   reconcileOpening(state);
   if (state.seed !== relationshipSeed) delete state.relationshipContext;
   const capacity = villageVenueUsage(state);

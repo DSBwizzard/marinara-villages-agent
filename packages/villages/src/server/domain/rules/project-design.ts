@@ -119,7 +119,7 @@ export function plannedVenue(project: VillageProject): VillageVenue {
     privateSpaces: [],
     residentIds: [],
     workerIds: [],
-    presentation: { image: null, x: draft.position.x, y: draft.position.y },
+    presentation: { mapId: draft.position.mapId ?? "", image: null, x: draft.position.x, y: draft.position.y },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
     exteriorState: entrance.state,

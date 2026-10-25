@@ -15,7 +15,7 @@ function draftVenue(name: string, classes: VenueClass[], physicalDesign: string)
     category: "",
     layoutVersion: 1,
     layout: "exterior",
-    presentation: { image: null, x: null, y: null },
+    presentation: { mapId: "", image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
     residenceCapacity: 1,
@@ -63,7 +63,7 @@ export function useProjectsController({
                 layout: project.plan.layout,
                 spaces: project.plan.spaces,
                 privateSpaces: project.plan.privateSpaces.map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" })),
-                presentation: { image: project.plan.exteriorImage, x: null, y: null },
+                presentation: { mapId: "", image: project.plan.exteriorImage, x: null, y: null },
                 residenceCapacity: project.plan.capacity,
               }
             : {}),

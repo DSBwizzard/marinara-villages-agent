@@ -160,7 +160,7 @@ export type ResumeScreenController = {
   readonly draftSavedAt: FoundingState["draftSavedAt"];
   readonly newSetupDraft: ReturnType<typeof createFoundingNewSetupDraft>;
   readonly restoreSetupDraft: ReturnType<typeof createFoundingRestoreSetupDraft>;
-  readonly savedSetupDraft: import("./villages-founding-draft").SavedFoundingDraft<
+  readonly savedSetupDraft: import("../../shared/device-drafts").SavedDeviceDraft<
     import("./draft-model").SetupDraftData
   >;
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";

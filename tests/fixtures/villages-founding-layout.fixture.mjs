@@ -35,7 +35,7 @@ const snapshot = {
     worldFacts: [],
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
-    townMapImageSetAt: "",
+    maps: [],
     townMapExpectedWidth: 1536,
     townMapExpectedHeight: 1024,
     townMapGenerationWidth: 1536,
@@ -393,7 +393,7 @@ export async function verifyFoundingLayout(group) {
               ),
             });
           }
-          if (path.endsWith("/setup/town-map/generate")) {
+          if (path.endsWith("/maps/generate")) {
             assert.equal(route.request().postDataJSON().sceneryStyleProfileId, "engine-paint");
             mapCalls++;
             const body = route.request().postDataJSON();
@@ -421,7 +421,7 @@ export async function verifyFoundingLayout(group) {
             };
             return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
           }
-          if (path.includes("/setup/town-map/generation/")) {
+          if (path.includes("/maps/generation/founding-map/")) {
             if (failMapStatus)
               return fulfill(route, {
                 status: 503,
@@ -940,7 +940,7 @@ export async function verifyFoundingLayout(group) {
         if (width === 1366) {
           await page.evaluate(async () => {
             const db = await new Promise((resolve) => {
-              const open = indexedDB.open("villages-founding-v3", 1);
+              const open = indexedDB.open("villages-drafts-v4", 1);
               open.onsuccess = () => resolve(open.result);
             });
             await new Promise((resolve, reject) => {
@@ -1134,7 +1134,7 @@ export async function verifyFoundingLayout(group) {
           await forward("Save & exit").click();
           await page.evaluate(async () => {
             const db = await new Promise((resolve) => {
-              const request = indexedDB.open("villages-founding-v3", 1);
+              const request = indexedDB.open("villages-drafts-v4", 1);
               request.onsuccess = () => resolve(request.result);
             });
             await new Promise((resolve) => {
@@ -1636,7 +1636,7 @@ export async function verifyFoundingLayout(group) {
           await competingTab.goto("http://villages.test/");
           await competingTab.evaluate(async () => {
             const db = await new Promise((resolve) => {
-              const open = indexedDB.open("villages-founding-v3", 1);
+              const open = indexedDB.open("villages-drafts-v4", 1);
               open.onsuccess = () => resolve(open.result);
             });
             await new Promise((resolve) => {
@@ -1818,7 +1818,7 @@ export async function verifyFoundingLayout(group) {
             await forward("Save & exit").click();
             await page.evaluate(async (legacyStep) => {
               const db = await new Promise((resolve) => {
-                const open = indexedDB.open("villages-founding-v3", 1);
+                const open = indexedDB.open("villages-drafts-v4", 1);
                 open.onsuccess = () => resolve(open.result);
               });
               await new Promise((resolve, reject) => {

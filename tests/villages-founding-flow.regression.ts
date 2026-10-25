@@ -167,7 +167,7 @@ async function main() {
     readVillageState: unexpected,
     mutateVillageState: unexpected,
     buildVillageSnapshot: unexpected,
-    readTownMapSubmission: unexpected,
+    prepareVillageMap: unexpected,
     readVillageConnectionSettings: unexpected,
     validateVillageSetupConnections: unexpected,
     readLinkedPersona: unexpected,
@@ -412,7 +412,7 @@ async function main() {
   const noMapSetup = createFoundingSetup({
     ...setupPorts,
     readVillageState: async () => coerceVillageState({ version: 3, wishSystemVersion: 3 }),
-    readTownMapSubmission: async () => ({
+    prepareVillageMap: async () => ({
       image: "",
       size: null,
       view: { fit: "cover" as const, focusX: 50, focusY: 50, zoom: 1 },

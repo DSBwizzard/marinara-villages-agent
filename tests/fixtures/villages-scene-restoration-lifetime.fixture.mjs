@@ -212,7 +212,11 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       assert.equal((await failedRead.refs()).flight, false);
       await failedRead.finish();
       for (const kind of ["continue", "open"]) {
-        const f = await mount(strict, width, { holdRead: true, holdPosts: true });
+        const f = await mount(strict, width, {
+          initial: kind === "open" ? "blank" : "A",
+          holdRead: true,
+          holdPosts: true,
+        });
         await expect.poll(() => f.held.some((h) => h.kind === "active")).toBe(true);
         await f.run(kind);
         await expect.poll(() => f.held.some((h) => h.kind === (kind === "open" ? "rooms" : kind))).toBe(true);

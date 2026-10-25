@@ -75,7 +75,7 @@ export function coerceProposal(payload: Record<string, unknown>): { venues: Vill
       classes: ["community"],
       description: "",
       category: "",
-      presentation: { image: null, x: null, y: null },
+      presentation: { mapId: "", image: null, x: null, y: null },
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       capabilities: [],
       state: {

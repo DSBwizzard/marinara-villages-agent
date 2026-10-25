@@ -79,7 +79,7 @@ const snapshot = {
     setupPlaceCount: 5,
     setupMinVillagerCount: 0,
     setupMaxVillagerCount: 3,
-    townMapImageSetAt: "",
+    maps: [],
     townMapImageMaxLength: 100000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     townMapExpectedWidth: 1280,

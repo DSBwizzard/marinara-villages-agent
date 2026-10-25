@@ -22,12 +22,7 @@ import {
 } from "../../domain/rules/lore-policy.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
 import { playerBackgroundForSetup } from "../../domain/rules/player-background.js";
-import {
-  isHousePlace,
-  TOWN_MAP_EXPECTED_WIDTH,
-  TOWN_MAP_EXPECTED_HEIGHT,
-  villageCurrentSetting,
-} from "../../domain/rules/prompt-preset.js";
+import { isHousePlace, villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 import { readFoundingResidentAdmissions } from "../../domain/rules/resident-admission.js";
 import { readScenarioImprint, readWorldFacts } from "../../domain/rules/scenario-rules.js";
@@ -37,7 +32,7 @@ import { validVenueClasses, venueResidentIds, venueSpaces } from "../../domain/r
 import { readBool } from "../../domain/rules/village-projections.js";
 import { readHomeBuildingNames, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
-import type { readTownMapSubmission } from "../media/town-map-review.js";
+import type { prepareVillageMap } from "../media/town-map-review.js";
 import type { readVillageConnectionSettings, validateVillageSetupConnections } from "../settings/connections.js";
 import type { readLinkedPersona } from "../settings/personas.js";
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
@@ -51,7 +46,7 @@ export interface FoundingSetupPorts {
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
-  readTownMapSubmission: typeof readTownMapSubmission;
+  prepareVillageMap: typeof prepareVillageMap;
   readVillageConnectionSettings: typeof readVillageConnectionSettings;
   validateVillageSetupConnections: typeof validateVillageSetupConnections;
   readLinkedPersona: typeof readLinkedPersona;
@@ -72,7 +67,7 @@ export function createFoundingSetup({
   readVillageState,
   mutateVillageState,
   buildVillageSnapshot,
-  readTownMapSubmission,
+  prepareVillageMap,
   readVillageConnectionSettings,
   validateVillageSetupConnections,
   readLinkedPersona,
@@ -160,13 +155,10 @@ export function createFoundingSetup({
     const worldFacts = founding
       ? (scenarioImprint?.worldFacts ?? [])
       : readWorldFacts(input.worldFacts ?? village.worldFacts);
-    const townMap = await readTownMapSubmission(input.townMapImage ?? "", input.townMapView, village.townMapImage);
-    if (founding && !townMap.image) throw badRequest("Generate or upload map artwork before founding.");
-    if (
-      !founding &&
-      (townMap.image !== village.townMapImage || JSON.stringify(townMap.view) !== JSON.stringify(village.townMapView))
-    )
-      throw conflict("Replace the village map from Village Settings.");
+    if (founding && !input.townMapImage) throw badRequest("Generate or upload map artwork before founding.");
+    const townMap = founding
+      ? await prepareVillageMap({ id: randomUUID(), name, image: input.townMapImage, view: input.townMapView })
+      : village.maps[0];
     const connections = await readVillageConnectionSettings();
     await validateVillageSetupConnections(connections);
     // Resolved before anything is written, so a village is never founded holding a
@@ -299,7 +291,7 @@ export function createFoundingSetup({
         throw conflict("The village changed during setup. Reload it before saving.");
       if (
         !founding &&
-        (state.townMapImageSetAt !== village.townMapImageSetAt ||
+        (JSON.stringify(state.maps) !== JSON.stringify(village.maps) ||
           state.venues.length !== village.venues.length ||
           state.venues.some((venue) => {
             const prior = village.venues.find((entry) => entry.id === venue.id);
@@ -326,11 +318,8 @@ export function createFoundingSetup({
       state.selectedLorebookIds = selectedLorebookIds;
       state.loreTokenBudget = loreTokenBudget;
       if (founding) {
-        state.townMapImage = townMap.image;
-        state.townMapCanvasWidth = townMap.size?.width ?? TOWN_MAP_EXPECTED_WIDTH;
-        state.townMapCanvasHeight = townMap.size?.height ?? TOWN_MAP_EXPECTED_HEIGHT;
-        state.townMapImageSetAt = townMap.image.length > 0 ? villageNow().toISOString() : "";
-        state.townMapView = townMap.view;
+        state.maps = [townMap];
+        for (const venue of venues) venue.presentation.mapId = townMap.id;
       }
       // Written on every setup, like the name and the setting: the wizard is the
       // only editor of the village's identity, and it opens holding what is

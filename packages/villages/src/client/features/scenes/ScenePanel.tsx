@@ -237,6 +237,7 @@ export function RoomPanel({
   debugDiscardEnabled,
   onDebugDiscard,
   onUseMailbox,
+  onMap,
   onProjects,
   onProposals,
   sceneSettings,
@@ -297,6 +298,7 @@ export function RoomPanel({
   debugDiscardEnabled: boolean;
   onDebugDiscard: () => void;
   onUseMailbox?: () => void;
+  onMap?: () => void;
   onProjects?: () => void;
   onProposals?: () => void;
   sceneSettings: ReactNode;
@@ -895,6 +897,18 @@ export function RoomPanel({
                   }}
                 >
                   Start a spinoff
+                </button>
+              ) : null}
+              {onMap ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onMap();
+                  }}
+                >
+                  Map
                 </button>
               ) : null}
               {onProjects ? (
