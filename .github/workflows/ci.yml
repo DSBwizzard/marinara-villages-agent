@@ -16,12 +16,23 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.21.0
           cache: npm
+      - name: Identify instruction-only changes
+        id: documentation
+        run: node scripts/documentation-only.mjs
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha }}
       - run: npm ci
-      - run: npm run audit:dependencies && npm run check && npm run verify:build && npm run verify:package && npm test
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm run audit:dependencies && npm run check
+      - run: npm run verify:build && npm run verify:package
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm test
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: villages-linux
@@ -43,12 +54,23 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.21.0
           cache: npm
+      - name: Identify instruction-only changes
+        id: documentation
+        run: node scripts/documentation-only.mjs
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha }}
       - run: npm ci
-      - run: npm run audit:dependencies && npm run check && npm run verify:build && npm run verify:package && npm test
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm run audit:dependencies && npm run check
+      - run: npm run verify:build && npm run verify:package
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm test
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: villages-windows
@@ -79,17 +101,27 @@ jobs:
         part: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
       - name: Trust checked-out workspace
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.21.0
           cache: npm
-      - run: npm ci
-      - run: npm run build
-      - run: npm run test:browser -- --shard=${{ matrix.part }}/2
+      - name: Identify instruction-only changes
+        id: documentation
+        run: node scripts/documentation-only.mjs
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha }}
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm ci
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm run build
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm run test:browser -- --shard=${{ matrix.part }}/2
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        if: always() && steps.documentation.outputs.only != 'true'
         with:
           name: diagnostics-browser-Linux-${{ matrix.part }}
           path: .build-tmp/test-results/
@@ -106,22 +138,33 @@ jobs:
         part: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24.21.0
           cache: npm
-      - run: npm ci
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Identify instruction-only changes
+        id: documentation
+        run: node scripts/documentation-only.mjs
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha }}
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm ci
+      - if: steps.documentation.outputs.only != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: browser-cache
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-      - if: steps.browser-cache.outputs.cache-hit != 'true'
+      - if: steps.documentation.outputs.only != 'true' && steps.browser-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium
-      - run: npm run build
-      - run: npm run test:browser -- --shard=${{ matrix.part }}/2
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm run build
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm run test:browser -- --shard=${{ matrix.part }}/2
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+        if: always() && steps.documentation.outputs.only != 'true'
         with:
           name: diagnostics-browser-${{ runner.os }}-${{ matrix.part }}
           path: .build-tmp/test-results/
