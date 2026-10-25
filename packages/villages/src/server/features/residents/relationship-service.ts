@@ -38,6 +38,8 @@ export function createRelationships(ports: RelationshipPorts) {
       processing: ((await ports.backgroundWorkSummaries?.()) ?? [])
         .filter((row) => ["starting-ties", "story", "personal-mail", "social-recovery"].includes(row.kind))
         .map((row) => ({
+          id: row.id,
+          attempt: row.attempt,
           label: row.label,
           status: row.status,
           message: row.error,

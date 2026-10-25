@@ -1040,7 +1040,9 @@ export function createSceneCommands({
       !existing &&
       village.villagers.some((person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId))
     )
-      throw conflict("Starting relationship history needs preparation or clarification before a Scene can begin.");
+      throw conflict(
+        "Starting relationship history is not ready. Open Inspect → Relationships to check preparation, retry failed work, or clarify history before opening a Scene.",
+      );
     const classes = venueClasses(place),
       spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
     if (!classes.includes(spaceClass) && !requestedZoneId) throw badRequest("That Venue has no such space.");

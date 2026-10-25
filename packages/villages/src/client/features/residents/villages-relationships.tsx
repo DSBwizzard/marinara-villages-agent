@@ -67,7 +67,9 @@ export function VillagesRelationships({
       .villages-relationships pre {white-space:pre-wrap;font-size:.8rem}
     `}</style>
       {error ? <p role="alert">{error}</p> : null}
-      {view?.starting.pending ? <p role="status">Starting history needs preparation.</p> : null}
+      {view?.starting.pending ? (
+        <p role="status">Starting history is not ready. Check preparation in Inspect → Relationships.</p>
+      ) : null}
       {!view ? (
         <p role="status">Reading relationships…</p>
       ) : (
@@ -110,6 +112,36 @@ export function VillagesRelationships({
                         · {work.requests} requests
                         {work.tokens !== null ? " · " + work.tokens.toLocaleString() + " tokens" : ""}
                       </small>
+                      {["failed", "interrupted", "paused"].includes(work.status) ? (
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={async () => {
+                            const key = work.id + ":" + work.attempt;
+                            recoveryIdentity.current[key] ??= createVillagesClientId();
+                            setSaving(true);
+                            setError("");
+                            try {
+                              await request("/background/retry", {
+                                method: "POST",
+                                body: JSON.stringify({
+                                  id: work.id,
+                                  expectedAttempt: work.attempt,
+                                  actionId: recoveryIdentity.current[key],
+                                }),
+                              });
+                              delete recoveryIdentity.current[key];
+                              setDebug(await request<RelationshipInspectView>("/relationships/inspect"));
+                            } catch (cause) {
+                              setError(cause instanceof Error ? cause.message : "Preparation retry failed.");
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                        >
+                          Retry unfinished work
+                        </button>
+                      ) : null}
                     </p>
                   ))}
                 </section>

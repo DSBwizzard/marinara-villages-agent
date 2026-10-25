@@ -137,6 +137,7 @@ try {
       starting: { pending: false },
     };
     const mailbox = { threads: [], invitations: [], recovery: [], venueMail: [] };
+    let historyRetried = false;
     const agendas = {
       villagers: ["mara", "eli"].map((characterId) => ({
         characterId,
@@ -191,7 +192,13 @@ try {
       else if (!path.endsWith("/background/presence") && !path.endsWith("/reconcile"))
         writes.push({ path, method: request.method(), body: request.postDataJSON() });
       let value = village;
-      if (path.includes("/mailbox")) {
+      if (path.endsWith("/background/retry")) {
+        const body = request.postDataJSON();
+        assert.equal(body.id, "history-job");
+        assert.equal(body.expectedAttempt, 1);
+        assert.ok(body.actionId);
+        historyRetried = true;
+      } else if (path.includes("/mailbox")) {
         if (path.endsWith("/mailbox/threads") && request.method() === "POST") {
           const body = request.postDataJSON();
           mailbox.threads = [
@@ -254,7 +261,17 @@ try {
       else if (path.endsWith("/catalog")) value = { characters: [] };
       else if (path.endsWith("/relationships/inspect"))
         value = {
-          processing: [],
+          processing: [
+            {
+              id: "history-job",
+              attempt: historyRetried ? 2 : 1,
+              label: "Interpret starting relationships",
+              status: historyRetried ? "completed" : "failed",
+              message: historyRetried ? "" : "Starting history returned an invalid connection.",
+              requests: 1,
+              tokens: 100,
+            },
+          ],
           conflicts: [],
           residents: [
             {
@@ -627,6 +644,10 @@ try {
     await expect(profile.getByText("Agenda destination", { exact: true })).toBeVisible();
     await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
     await expect(profile.getByText("PRIVATE MARA STANCE", { exact: true })).toBeVisible();
+    await expect(profile.getByText("Starting history returned an invalid connection.", { exact: false })).toBeVisible();
+    await profile.getByRole("button", { name: "Retry unfinished work", exact: true }).click();
+    await expect(profile.getByRole("button", { name: "Retry unfinished work", exact: true })).toHaveCount(0);
+    assert.equal(writes.findLast((row) => row.path.endsWith("/background/retry")).body.expectedAttempt, 1);
     await profile.getByText(/^A welcome conversation/).click();
     await expect(profile.locator("blockquote")).toContainText("I enjoyed talking.");
     await expect(profile.getByRole("spinbutton")).toHaveCount(0);

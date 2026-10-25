@@ -94,6 +94,47 @@ assert.equal(calls, 0, "Admission queues finite preparation without dispatching 
 assert(queued);
 assert.equal(queued.input.source.playerBackground, state.playerBackground);
 assert.equal(queued.input.source.playerId, "player", "The captured source separates the player ID from display text");
+const longerConnection =
+  "Two musicians sharing a city: one knows the other's small but growing public profile; nothing establishes that the other knows she exists.";
+const purchased = {
+  ties: [
+    {
+      fromId: "a",
+      toId: "b",
+      connection: longerConnection,
+      stance: "Aware of their public work",
+      expectations: [],
+      concerns: [],
+      history: [],
+    },
+  ],
+  conflicts: [],
+};
+const recover = (value: unknown, finishReason = "stop", key = "starting-ties:" + queued.input.sourceHash) =>
+  service.handler.recoverSavedResult!(queued.input, [
+    { key, fingerprint: "saved", status: "completed", response: { finishReason, content: JSON.stringify(value) } },
+  ]);
+assert(longerConnection.length > 120);
+assert.equal((recover(purchased) as any).ties[0].connection, longerConnection, "Local recovery retains the full text");
+assert.equal(calls, 0, "Revalidating a purchased response cannot dispatch another request");
+assert.equal(recover(purchased, "stop", "another-checkpoint"), undefined);
+assert.throws(() => recover(purchased, "length"), /output-token limit/);
+assert.throws(
+  () => recover({ ...purchased, ties: [{ ...purchased.ties[0], connection: "x".repeat(401) }] }),
+  /invalid ties · connection.*maximum 400 characters/,
+);
+for (const tie of [
+  { ...purchased.ties[0], fromId: "player" },
+  { ...purchased.ties[0], toId: "unknown" },
+  { ...purchased.ties[0], history: [{ text: "Invalid", sourceIds: ["unknown"], knownBy: ["a"] }] },
+  { ...purchased.ties[0], history: [{ text: "Invalid", sourceIds: ["card:a:description"], knownBy: ["unknown"] }] },
+])
+  assert.throws(() => recover({ ...purchased, ties: [tie] }), /identity or source/);
+assert.throws(() => recover({ ...purchased, ties: [purchased.ties[0], purchased.ties[0]] }), /identity or source/);
+assert.throws(
+  () => recover({ ties: [], conflicts: [{ actorIds: ["player"], question: "Invalid", sourceIds: ["x", "y"] }] }),
+  /Invalid authored relationship conflict/,
+);
 const originalBackground = state.playerBackground;
 state.playerBackground = "Changed starting relationship";
 assert.equal(

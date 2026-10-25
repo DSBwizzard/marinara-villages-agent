@@ -99,6 +99,9 @@ const proposal = (connection: string, revision = 0) => ({
 });
 const review = (row: any, source = "source") =>
   parseRelationshipReview({ ...emptyRelationshipReview(), changes: [row] }, source, lines, village, true);
+const descriptiveConnection = "Old friends rebuilding trust after a difficult conversation. ".repeat(3);
+assert.equal(review(proposal(descriptiveConnection)).changes[0]?.liveAfter.connection, descriptiveConnection);
+assert.throws(() => review(proposal("x".repeat(401))), /400/);
 
 // Directionality and player agency. No score, decay, familiarity or invented player perspective.
 const initial = review(proposal("Friends"));
@@ -448,6 +451,18 @@ assert.throws(
 let generated = 0,
   mutated = 0;
 const views = createRelationships({
+  backgroundWorkSummaries: async () => [
+    {
+      id: "history-job",
+      attempt: 2,
+      kind: "starting-ties",
+      label: "Starting history",
+      status: "failed",
+      error: "Retry",
+      requests: 1,
+      tokens: 100,
+    },
+  ],
   readVillageState: async () => village,
   mutateRelationships: async () => {
     mutated++;
@@ -459,7 +474,9 @@ const views = createRelationships({
   readVillageLore: async () => [],
 } as any);
 await views.readRelationshipsView();
-await views.readRelationshipsInspect();
+const inspection = await views.readRelationshipsInspect();
+assert.equal(inspection.processing[0]?.id, "history-job");
+assert.equal(inspection.processing[0]?.attempt, 2, "Inspect retains the retry revision");
 assert.equal(generated, 0);
 assert.equal(mutated, 0);
 let workers = 0,
