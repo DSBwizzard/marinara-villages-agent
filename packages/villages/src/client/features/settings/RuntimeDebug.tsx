@@ -93,6 +93,7 @@ export function VillagesRuntimeDebug() {
           <label className={ELEMENT_TAG + "-field"}>
             Test keys
             <input
+              autoComplete="off"
               type="text"
               value={query}
               maxLength={2000}
