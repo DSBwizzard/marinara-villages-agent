@@ -4,6 +4,7 @@ import { isHousePlace } from "./prompt-preset.js";
 import type { NativeRoutine } from "./schedule-rules.js";
 import { deriveVillageMoment, hashString } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
+import { resolveVenueZone } from "./venue-zones.js";
 
 export function localDateKey(now: Date): string {
   const year = String(now.getFullYear()).padStart(4, "0");
@@ -38,29 +39,34 @@ export function creativeOpportunity(
   const activeProject = village.projects.find((project) => project.status === "working");
   const wishing = village.villagers.find((villager) => (villager.agenda?.wishes.length ?? 0) > 0);
   const publicVenue = village.venues.find((venue) => !isHousePlace(venue));
-  const firstResident = village.villagers[0];
+  const firstResident = village.villagers.length
+    ? village.villagers[(village.eventAttempts?.attempts.length ?? 0) % village.villagers.length]
+    : undefined;
   const kind: VillageOpportunity["kind"] = overlap
     ? "encounter"
     : activeProject
       ? "project"
       : wishing
         ? "wish"
-        : publicVenue
-          ? "weather"
-          : firstResident
-            ? "routine"
-            : "weather";
+        : firstResident
+          ? "routine"
+          : "weather";
   const actorIds =
     overlap?.[1].slice(0, 4) ??
     activeProject?.participantIds.slice(0, 4) ??
     (wishing ? [wishing.characterId] : firstResident ? [firstResident.characterId] : []);
   const destinationKey =
     overlap?.[0] ??
-    (wishing ? currentPlaces.entries().find(([, ids]) => ids.includes(wishing.characterId))?.[0] : undefined);
+    (wishing || (kind === "routine" && firstResident)
+      ? currentPlaces.entries().find(([, ids]) => ids.includes((wishing ?? firstResident)!.characterId))?.[0]
+      : undefined);
   const [destinationVenueId, zoneId] = destinationKey
     ? (JSON.parse(destinationKey) as [string, string])
     : [undefined, "exterior"];
   const venueId = destinationVenueId ?? activeProject?.venueId ?? publicVenue?.id ?? "";
+  const venue = village.venues.find((entry) => entry.id === destinationVenueId);
+  const zone = venue && resolveVenueZone(venue, zoneId);
+  const contactOnly = kind === "routine" && (!zone || (zone.kind !== "exterior" && zone.access?.mode !== "public"));
   if (actorIds.length === 0 && venueId.length === 0) return null;
   const facts = [
     `${moment.localTime} local time`,
@@ -68,6 +74,8 @@ export function creativeOpportunity(
     overlap ? `${actorIds.length} residents share this zone` : "",
     activeProject ? `active project: ${activeProject.title}` : "",
     wishing?.agenda?.wishes[0] ? `active wish: ${wishing.agenda.wishes[0].wish}` : "",
+    kind === "routine" ? "An available resident may initiate contact or continue their own activity." : "",
+    contactOnly ? "Personal contact only; no public observation or current shared location is offered." : "",
   ].filter(Boolean);
   const identity = `${village.seed}|${startsAt}|${moment.instant}|${kind}|${actorIds.join(",")}|${venueId}`;
   return {
@@ -76,8 +84,8 @@ export function creativeOpportunity(
     startsAt,
     endsAt: moment.instant,
     actorIds,
-    venueId,
-    zoneId,
+    venueId: contactOnly ? "" : venueId,
+    zoneId: contactOnly ? undefined : zoneId,
     facts,
   };
 }

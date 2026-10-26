@@ -88,7 +88,7 @@ try {
     input: {},
   });
   await started;
-  mock.timers.tick(30_000);
+  mock.timers.tick(120_000);
   await settleBackgroundWork();
   assert.equal(applied, 0);
   finish({ content: '{"ok":true}', finishReason: "stop" });
@@ -122,7 +122,7 @@ try {
     input: {},
   });
   await secondStarted;
-  mock.timers.tick(30_000);
+  mock.timers.tick(120_000);
   await settleBackgroundWork();
   finish({ content: "invalid JSON", finishReason: "stop" });
   await new Promise((resolve) => setImmediate(resolve));
@@ -140,7 +140,7 @@ try {
   began = thirdStarted;
   await retryBackgroundJob(invalid.id, records.get(invalid.id).data.attempt, "replace-invalid");
   await third;
-  mock.timers.tick(30_000);
+  mock.timers.tick(120_000);
   await settleBackgroundWork();
   finish({ content: '{"ok":true}', finishReason: "stop" });
   await new Promise((resolve) => setImmediate(resolve));

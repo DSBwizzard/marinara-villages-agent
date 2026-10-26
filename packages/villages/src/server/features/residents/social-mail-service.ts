@@ -155,7 +155,7 @@ export function createSocialMail(ports: SocialMailPorts) {
                       ownContext,
                       thread: thread.map((row) => ({ fromId: row.fromId, text: row.text, at: row.at })),
                       incoming: { text: input.sourceText, at: input.sourceAt },
-                      now: new Date().toISOString(),
+                      now: input.admittedAt ?? input.sourceAt,
                     }),
                   },
                 ],
@@ -212,7 +212,7 @@ export function createSocialMail(ports: SocialMailPorts) {
                 controllers: zoneControllerIds(venue, zone),
               })),
             })),
-            now: new Date().toISOString(),
+            now: input.admittedAt ?? input.sourceAt,
           }),
         },
       ],
@@ -487,6 +487,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       residentId: resident.characterId,
       sourceText: message.text,
       sourceAt: message.at,
+      admittedAt: new Date().toISOString(),
       sourceHash: message.sourceHash,
       incarnation,
       admitted: admission({ ...village, relationshipContext: state }, resident.characterId),
@@ -657,7 +658,8 @@ export function createSocialMail(ports: SocialMailPorts) {
       );
       if (job && ["failed", "interrupted", "paused"].includes(job.status))
         await ports.retryBackgroundJob(job.id, job.attempt, requestId);
-      else if (message.status === "pending") await queue(await makeInput(village, threadId, messageId));
+      else if (message.status === "pending")
+        await queue(await makeInput(village, threadId, messageId), job?.status === "obsolete" ? requestId : undefined);
     }
     return readMailbox();
   }

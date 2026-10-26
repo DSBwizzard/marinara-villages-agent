@@ -230,7 +230,7 @@ export function buildTickMessages(context: VillageTickContext): CapabilityLangua
   );
   const sections = [
     VILLAGE_SHARED_SETTING_RULE,
-    `Write a brief visual Events update for ${context.village}, a shared place. This feed has no effect on the village or its residents.`,
+    `Write an Events update for ${context.village}, a shared place. Public visual prose is observational; only the separately interpreted structured proposals below can change the village or its residents.`,
     "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Do not give them a new turn in an Event. Mention a player action only when it is already established in the supplied village record; never invent what they do next.",
     context.setting.trim()
       ? `Setting: ${context.descriptionVersion === 1 ? context.setting : boundText(context.setting, 500)}`
@@ -273,6 +273,9 @@ export function buildTickMessages(context: VillageTickContext): CapabilityLangua
     context.social
       ? `Structured social simulation is separate from visual prose. You may choose one offered future plan with social:{planId:"exact offered ID"}. Offered plans: ${JSON.stringify(context.social.candidates)}. Participants' own feelings: ${context.social.relationships.join("\n")}.
 For a CURRENT encounter opportunity with at least two actors in the same zone, social may also include encounter:{opportunityId:"exact ID",lines:[{speakerId:"present actor ID",text:"brief spoken line"}],relationshipReview:{changes:[],permissions:[],disclosures:[]}}. Write two to eight short spoken lines grounded in the current moment. Never invent past betrayals, fulfilled promises, new secrets, player actions, possessions, injuries, or physical effects. Only these structured lines establish this small interaction; visual prose has no authority. Do not interpret relationships in this writing response: System will independently interpret the exact spoken sources. relationshipReview must contain empty arrays. Keep private intentions, undisclosed history and offscreen private speech out of public visual entries. Omit social when no interaction or offered plan fits. Alternatively send ONE setting-appropriate personal message to the player with social:{mail:{senderId:"one current opportunity actor",text:"max2000"}}. Use that resident\'s initiative and intentions; the player may engage or decline. Do not invent player acceptance or physical actions. Choose either an encounter or personal mail, never both. Neither requires a public happening. Private intentions/history/mail contents must stay out of public Events prose. System will independently interpret the exact communication. Social is an additional allowed response key only when this section is present.`
+      : "",
+    context.social && context.opportunities.some((opportunity) => opportunity.kind === "routine")
+      ? "For a routine opportunity, decide whether this resident would initiate personal contact now, using their own character, current activity, relationships and intentions. A personal message is allowed without co-location. If no contact or meaningful observation fits, return empty happenings and omit social. Do not substitute weather descriptions for this resident opportunity."
       : "",
     housingOptions.length
       ? `Housing options for people in the offered opportunity: ${housingOptions.join(" | ")}.`
@@ -348,6 +351,7 @@ export function coerceOpportunityHappenings(
     const opportunityId = boundText(raw.opportunityId, 160);
     const opportunity = offered.get(opportunityId);
     if (!opportunity) continue;
+    if (opportunity.kind === "routine" && !opportunity.venueId) continue;
     const narration = boundText(raw.narration, MAX_HAPPENING_LENGTH);
     const key = narration.toLowerCase();
     if (!narration || seen.has(key)) continue;

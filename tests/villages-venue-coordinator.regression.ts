@@ -247,9 +247,9 @@ async function main() {
       mock.timers.enable({ apis: ["setTimeout"] });
       try {
         const first = coordinateVenue(id, "turn", "turn", policyInput, 0, undefined, policyWork("low"));
-        const failed = assert.rejects(first, /timed out after 30 seconds/);
+        const failed = assert.rejects(first, /timed out after 120 seconds/);
         await ready.promise;
-        mock.timers.tick(30_000);
+        mock.timers.tick(120_000);
         await failed;
         delayed.resolve({ content: finishReason === "stop" ? '{"valid":true}' : "", finishReason });
         await new Promise((resolve) => setImmediate(resolve));
@@ -427,9 +427,9 @@ async function main() {
     mock.timers.enable({ apis: ["setTimeout"] });
     try {
       const request = coordinateVenue("provider-timeout", "turn", "turn", {}, 0, undefined, timeoutWork);
-      const failure = assert.rejects(request, /timed out after 30 seconds/);
+      const failure = assert.rejects(request, /timed out after 120 seconds/);
       await dispatched.promise;
-      mock.timers.tick(30_000);
+      mock.timers.tick(120_000);
       await failure;
       const saved = await readVenueOperation("provider-timeout");
       assert.equal(saved!.status, "interrupted");
@@ -479,9 +479,9 @@ async function main() {
             ),
           ),
       );
-      const failed = assert.rejects(original, /timed out after 30 seconds/);
+      const failed = assert.rejects(original, /timed out after 120 seconds/);
       await originalStarted.promise;
-      mock.timers.tick(30_000);
+      mock.timers.tick(120_000);
       await failed;
       const saved = (await readVenueOperation("late-after-edit"))!;
       const editedStarted = deferred<void>(),
@@ -540,7 +540,7 @@ async function main() {
       const pending = coordinateVenue("late-invalid", "same", "turn", {}, 0, undefined, invalidWork);
       const failed = assert.rejects(pending, /timed out/);
       await invalidStarted.promise;
-      mock.timers.tick(30_000);
+      mock.timers.tick(120_000);
       await failed;
       finishInvalid("invalid result");
       await new Promise((resolve) => setImmediate(resolve));

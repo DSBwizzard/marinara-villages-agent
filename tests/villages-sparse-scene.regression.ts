@@ -729,4 +729,19 @@ for (const supplied of [
     /capture needs recovery/,
   );
   assert.equal(resolve("mint mint", [{ text: "mint", occurrence: 2 }]).get(0)![0].start, 5);
+  const originalWords = "Mari, I don’t want to be friends anymore. I’m ending our friendship.";
+  const typography = resolve(originalWords, [
+    { text: "Mari, I don't want to be friends anymore. I'm ending our friendship.", occurrence: 1 },
+  ]);
+  assert.equal(typography.get(0)![0].text, originalWords, "Typography repair always keeps the player's original words");
+  assert.equal(typography.get(0)![0].start, 0);
+  assert.equal(typography.get(0)![0].end, originalWords.length);
+  assert.equal(resolve("I don't mind.", [{ text: "I don’t mind." }]).get(0)![0].text, "I don't mind.");
+  for (const [input, text, occurrence] of [
+    ["I don’t mind. I don‘t mind.", "I don't mind.", 1],
+    ["I don’t mind.", "I don't mind.", 2],
+    ["I don’t mind.", "I do not mind.", 1],
+    ["I don’t mind.", "I don't Mind.", 1],
+  ])
+    assert.throws(() => resolve(input as string, [{ text, occurrence }]), /capture needs recovery/);
 }

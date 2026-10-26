@@ -13,7 +13,7 @@ export function carryLateProviderResponse(from: unknown, to: object): void {
   if (response) lateResponses.set(to, response);
 }
 
-export const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
+export const PROVIDER_REQUEST_TIMEOUT_MS = 120_000;
 
 /** Bound one dispatched request even when a provider ignores cancellation. Never retries. */
 export async function withProviderDeadline<T>(
@@ -39,7 +39,7 @@ export async function withProviderDeadline<T>(
           cause: "provider_exception",
           stage: "dispatch",
           message:
-            "The provider request timed out after 30 seconds. It may have been billed; explicitly retry the saved request.",
+            "The provider request timed out after 120 seconds. It may have been billed; explicitly retry the saved request.",
         }),
       ),
     PROVIDER_REQUEST_TIMEOUT_MS,

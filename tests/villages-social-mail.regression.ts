@@ -27,6 +27,7 @@ village.villagers = [
 let social = defaultRelationshipState(village.seed);
 social.reviewedActorIds = ["ada"];
 const queued: any[] = [];
+let backgroundStatuses: any[] = [];
 let calls = 0,
   failMeaning = false,
   failReplyWrite = false,
@@ -52,6 +53,7 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
   lineIds: [reply ? input.messageId + ":reply" : input.messageId],
 });
 let active: SocialMailInput;
+const promptHistory: string[] = [];
 const service = createSocialMail({
   readVillageSnapshot: snapshot,
   readRelationshipState: async () => structuredClone(social),
@@ -89,7 +91,7 @@ const service = createSocialMail({
     queued.push(structuredClone(job));
   },
   retryBackgroundJob: async () => assert.fail("No provider job recovery in this fixture"),
-  backgroundWorkSummaries: async () => [],
+  backgroundWorkSummaries: async () => backgroundStatuses,
   villagesConnectionIdFor: async (role: string) => role,
   villagesLanguageModels: () => ({
     resolveForRequest: async ({ connectionId }: any) => ({
@@ -101,6 +103,7 @@ const service = createSocialMail({
     }),
   }),
   completeWithRoom: async (model: any, messages: any[], _maxTokens: number, options: any) => {
+    promptHistory.push(JSON.stringify([model.connectionId, messages]));
     if (options.responseFormat?.type === "json_object")
       assert(
         messages.some((message) => message.role === "system" && /\bjson\b/iu.test(message.content)),
@@ -163,6 +166,18 @@ await service.readMailbox();
 assert.equal(calls, 0);
 await service.send({ residentId: "ada", requestId: "one", text: "Hello\n  exact text" });
 assert.equal(calls, 0, "Sending first saves exact pending text before dispatch");
+active = queued.at(-1).input;
+const initialCalls = calls,
+  initialPrompts = promptHistory.length;
+await service.handler.generate(active);
+await new Promise((resolve) => setTimeout(resolve, 25));
+await service.handler.generate(active);
+assert.deepEqual(
+  promptHistory.slice(initialPrompts, initialPrompts + 2),
+  promptHistory.slice(initialPrompts + 2),
+  "A later retry must reuse identical admitted prompts so purchased responses remain replayable",
+);
+calls = initialCalls;
 assert.equal(social.mailThreads["personal:ada"]!.messages[0]!.text, "Hello\n  exact text");
 await service.send({ residentId: "ada", requestId: "one", text: "Hello\n  exact text" });
 assert.equal(social.mailThreads["personal:ada"]!.messages.length, 1);
@@ -479,6 +494,23 @@ assert.equal(
   "Later policy changes fence delayed access even when current host authority is restored",
 );
 assert.equal(calls, beforeAccessRecovery, "Invitation acceptance and recovery dispatch no model requests");
+await service.send({ residentId: "ada", requestId: "obsolete-source", text: "Please try again." });
+const obsoleteInput = queued.at(-1).input as SocialMailInput;
+backgroundStatuses = [
+  { id: "obsolete-job", kind: "personal-mail", subjectId: obsoleteInput.messageId, status: "obsolete", attempt: 1 },
+];
+await service.retry(obsoleteInput.threadId, obsoleteInput.messageId, "new-admission");
+assert.equal(
+  queued.at(-1).revision,
+  obsoleteInput.sourceHash + ":new-admission",
+  "Deliberate recovery admits an obsolete pending source under a new revision",
+);
+assert.equal(
+  queued.at(-1).input.sourceText,
+  obsoleteInput.sourceText,
+  "Re-admission preserves the exact unsent source",
+);
+assert.equal(calls, beforeAccessRecovery, "Re-admission only queues deliberate work");
 console.log(
   "Personal mail: exact outbox, failed delivery, failed reply, local replay, read privacy and automatic delivery passed.",
 );

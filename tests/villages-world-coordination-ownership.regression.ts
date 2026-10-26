@@ -273,6 +273,17 @@ const now = new Date("2026-10-07T12:00:00.000Z");
 await reconcileVillage({ now });
 assert.equal(a.state.simulatedThrough, now.toISOString());
 assert.equal(a.queued.length, 0);
+const weatherOnly = fixture("Weather-only"),
+  weatherOwner = install(weatherOnly);
+weatherOnly.state.setupAt = weatherOnly.state.foundedAt = weatherOnly.state.simulatedThrough = stamp;
+weatherOnly.state.storyPace = "balanced";
+weatherOnly.state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
+await weatherOwner.scope.run(() => reconcileVillage({ now }));
+assert.equal(weatherOnly.queued.length, 0, "Weather alone queues no automatic model work");
+assert(!weatherOnly.calls.some((call) => call.startsWith("story:")), "Weather-only fallback makes no provider request");
+assert.equal(weatherOnly.state.eventAttempts?.attempts.length ?? 0, 0, "Skipped weather consumes no Events allowance");
+weatherOwner.release();
+weatherOwner.scope.dispose();
 assert(a.calls.indexOf("projects") < a.calls.indexOf("mail"));
 assert(a.calls.indexOf("roll") < a.calls.indexOf("mail"));
 assert(a.calls.indexOf("mail") < a.calls.indexOf("prepare"));

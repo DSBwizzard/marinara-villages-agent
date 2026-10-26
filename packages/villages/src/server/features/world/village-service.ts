@@ -339,7 +339,7 @@ export function createWorldCoordination({
           facts: [activeSocialPlan.activity, "An accepted free-time plan is happening now."],
         }
       : creativeOpportunity(village, routines, moment, now.toISOString());
-    if (!opportunity) {
+    if (!opportunity || (!forced && opportunity.kind === "weather")) {
       const snapshot = await buildVillageSnapshot(now);
       return { ...snapshot, recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs) };
     }

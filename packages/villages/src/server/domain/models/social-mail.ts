@@ -63,6 +63,7 @@ export type SocialMailInput = {
   residentId: string;
   sourceText: string;
   sourceAt: string;
+  admittedAt?: string;
   sourceHash: string;
   incarnation: string;
   admitted: import("./world.js").VillageState;
