@@ -351,16 +351,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onContinueWithoutGreeting={() => {
             if (room.id) void continueRoomWithoutGreeting(room.id);
           }}
-          onUseMailbox={
-            snapshot?.settings.venues.some(
-              (venue) =>
-                venue.id === room.placeId &&
-                venue.occupancy.playerHome &&
-                (!room.spaceClass || room.spaceClass === "residence"),
-            )
-              ? () => setMailboxOpen(true)
-              : undefined
-          }
+          onUseMailbox={() => setMailboxOpen(true)}
           onMap={goHome}
           onProjects={() => openMenu("projects")}
           onProposals={() => openMenu("venueRequests")}

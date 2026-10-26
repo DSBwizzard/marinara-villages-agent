@@ -1965,7 +1965,7 @@ try {
       };
       semanticExchangeAnswer = {
         consistent: true,
-        authority: { physical: false, access: false, projects: false, standing: false },
+        authority: { physical: false, access: false, projects: false, standing: false, social: false },
         action: null,
         access: [],
         events: { moves: [], departures: [], contactEnd: [] },
