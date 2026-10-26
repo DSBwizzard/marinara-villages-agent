@@ -596,9 +596,7 @@ export async function verifyFoundingLayout(group) {
         await expect(loreBudget).toHaveAttribute("placeholder", "1600");
         const budgetHelp = root.getByRole("button", { name: "Help: Lorebook Token Budget", exact: true });
         await budgetHelp.click();
-        await expect(root.getByRole("note")).toContainText(
-          "Maximum tokens lorebooks can use in any lorebook-enabled prompt.",
-        );
+        await expect(root.getByRole("note")).toContainText("Estimated token allowance per prompt.");
         await page.keyboard.press("Escape");
         const chooseLore = loreCard.getByRole("button", { name: "Choose Village Lorebooks", exact: true });
         await chooseLore.click();

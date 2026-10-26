@@ -93,10 +93,15 @@ export function fitVenueWritingMessages(
   for (;;) {
     const messages = assembleVenueWritingMessages(kept, input);
     const fitted = model.fitContext(messages, { maxTokens });
-    if (JSON.stringify(fitted.messages) === JSON.stringify(messages)) return fitted;
+    if (JSON.stringify(fitted.messages) === JSON.stringify(messages))
+      return { ...fitted, loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text) };
     const optional =
       ["history", "memory", "lore"]
-        .map((kind) => kept.findIndex((block) => block.optional === kind))
+        .map((kind) =>
+          kind === "lore"
+            ? kept.findLastIndex((block) => block.optional === kind)
+            : kept.findIndex((block) => block.optional === kind),
+        )
         .find((index) => index >= 0) ?? -1;
     if (optional < 0)
       throw badRequest(

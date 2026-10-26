@@ -15,6 +15,7 @@ import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
 import { wishCheckKnowledge } from "./wish-journal.js";
 import { accessManagementPrompt } from "./access-speech.js";
 import { capturedSceneCalendar } from "./scene-halt.js";
+import { sharedLoreHistory } from "./scene-writing-history.js";
 
 export { readSemanticWishCriteria } from "./wish-criteria.js";
 
@@ -91,6 +92,7 @@ export function semanticContext(
     loreSelection: {
       bookIds: state.selectedLorebookIds,
       tokenBudget: compact ? Math.min(state.loreTokenBudget ?? 1200, 1200) : state.loreTokenBudget,
+      recent: sharedLoreHistory(scene, history, actors),
     },
     worldFacts: state.worldFacts,
     sceneId: scene.id,

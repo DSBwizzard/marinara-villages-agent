@@ -46,8 +46,10 @@ import {
 } from "../../domain/rules/semantic-contract.js";
 import { LIVE_MEMORY_INSTRUCTION } from "../../domain/rules/live-exchange.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../../domain/rules/wish-progress-rules.js";
+import type { LoreInspection } from "../../../shared/contracts/lore.js";
 
 export interface SemanticPorts {
+  runtimeDebug?: typeof import("../../adapters/observability/runtime-debug.js").runtimeDebug;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   readVillageLore?: typeof import("../../adapters/engine/lorebooks.js").readVillageLore;
   villagesLanguageModels: typeof import("../../adapters/models/language-models.js").villagesLanguageModels;
@@ -88,6 +90,7 @@ export function createSemanticService(ports: SemanticPorts) {
       const requested = await ports.villagesConnectionIdFor("system");
       const initial = await ports.villagesLanguageModels().resolveForRequest({ connectionId: requested ?? undefined });
       const snapshot = await ports.venueCheckpoint(key + ":input", async () => {
+        let loreInspection: LoreInspection | undefined;
         const context = asRecord(identity.context),
           selection = asRecord(context.loreSelection);
         const lore =
@@ -97,10 +100,20 @@ export function createSemanticService(ports: SemanticPorts) {
                 JSON.stringify([context.setting, context.worldName, identity.message, context.actors]),
                 ports.venueOperationSignal(),
                 typeof selection.tokenBudget === "number" ? selection.tokenBudget : undefined,
-                true,
+                {
+                  current: String(identity.message ?? ""),
+                  recent: Array.isArray(selection.recent)
+                    ? selection.recent.filter((value): value is string => typeof value === "string")
+                    : [],
+                  inspect: (report) => {
+                    loreInspection = report;
+                  },
+                },
               )
             : [];
         return {
+          lorePolicy: 2 as const,
+          loreInspection,
           input: { ...identity, context: { ...context, lore } } as Input,
           connectionId: initial.connectionId,
           model: initial.model,
@@ -131,23 +144,66 @@ export function createSemanticService(ports: SemanticPorts) {
               }))
             ).output
           : snapshot.output);
-      const effectiveInput = snapshot.input;
-      const { _memoryWrite: _privateMemoryWrite, ...promptContext } = asRecord(asRecord(effectiveInput).context);
-      const promptInput = { ...asRecord(effectiveInput), context: promptContext };
-      const effectiveHash = semanticHash(effectiveInput);
-      const messages = [
-        {
-          role: "system" as const,
-          content: snapshot.systemPrompt ?? SYSTEM_BASE + SYSTEM_RETRIEVAL + (snapshot.instruction ?? instruction),
-        },
-        { role: "user" as const, content: JSON.stringify({ sourceHash: effectiveHash, input: promptInput }) },
-      ];
       if (output < 1024) throw badGateway("System interpretation needs more context allowance; no request was made.");
+      const packet = await ports.venueCheckpoint(key + ":prompt", async () => {
+        const context = asRecord(asRecord(snapshot.input).context);
+        const originalLore = Array.isArray(context.lore) ? context.lore : [];
+        let lore = [...originalLore];
+        for (;;) {
+          const input = (
+            lore.length === originalLore.length
+              ? snapshot.input
+              : {
+                  ...asRecord(snapshot.input),
+                  context: { ...context, lore },
+                }
+          ) as Input;
+          const { _memoryWrite: _privateMemoryWrite, ...promptContext } = asRecord(asRecord(input).context);
+          const sourceHash = semanticHash(input);
+          const messages = [
+            {
+              role: "system" as const,
+              content: snapshot.systemPrompt ?? SYSTEM_BASE + SYSTEM_RETRIEVAL + (snapshot.instruction ?? instruction),
+            },
+            {
+              role: "user" as const,
+              content: JSON.stringify({ sourceHash, input: { ...asRecord(input), context: promptContext } }),
+            },
+          ];
+          const fitted = model.fitContext(messages, { maxTokens: output });
+          if (
+            !fitted.trimmed &&
+            JSON.stringify(fitted.messages) === JSON.stringify(messages) &&
+            (fitted.maxTokens ?? output) >= 1024
+          ) {
+            let retained = lore.length;
+            const loreInspection = snapshot.loreInspection
+              ? {
+                  ...snapshot.loreInspection,
+                  purpose: "Scene System",
+                  stage: "prompt" as const,
+                  entries: snapshot.loreInspection.entries.map((entry) =>
+                    entry.status === "included"
+                      ? { ...entry, status: retained-- > 0 ? ("included" as const) : ("context-limit" as const) }
+                      : entry,
+                  ),
+                }
+              : undefined;
+            return { input, messages, sourceHash, loreInspection };
+          }
+          // Existing snapshots keep their original hash/evidence. New requests shed whole optional facts.
+          if (snapshot.lorePolicy !== 2 || !lore.length)
+            throw badGateway("Essential System evidence does not fit; no request was made.");
+          lore = lore.slice(0, -1);
+        }
+      });
+      const { input: effectiveInput, sourceHash: effectiveHash, messages } = packet;
       const fitted = model.fitContext(messages, { maxTokens: output });
       if (fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(messages))
         throw badGateway("Essential System evidence does not fit; no request was made.");
       if ((fitted.maxTokens ?? output) < 1024)
         throw badGateway("System output allowance is insufficient; no request was made.");
+      if (packet.loreInspection) ports.runtimeDebug?.("lore inspection", packet.loreInspection);
       const answer = await ports.completeWithRoom(model, messages, Math.min(fitted.maxTokens ?? output, output), {
         responseFormat: { type: "json_object" },
         temperature: 0.1,

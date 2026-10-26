@@ -3,6 +3,7 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  "tests/villages-lore-inspection.e2e.mjs",
   "tests/villages-scene-halt.regression.ts",
   // Pure Memories rules and deterministic process-local histories; no runtime or saved worlds.
   "tests/villages-memories-core.regression.ts",
