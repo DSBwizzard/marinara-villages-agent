@@ -6,7 +6,13 @@ import { addNotice, removeNoticeAt } from "../settings/village-settings.js";
 import { fail } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageSnapshot } from "./snapshot.js";
-import { buildVillageMemories, reconcileVillage, readVillageMemoryEvidence, forgetMemory } from "./village.js";
+import {
+  buildVillageMemories,
+  reconcileVillage,
+  readVillageMemoryEvidence,
+  forgetMemory,
+  correctMemory,
+} from "./village.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerSnapshotCatalogRoutes(engine: FastifyInstance) {
@@ -155,6 +161,17 @@ export function registerHistoryRoutes(app: FastifyInstance) {
         return { forgotten: true };
       } catch (error) {
         return fail(reply, error, "forgetting memory");
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Body: import("../../../shared/contracts/village.js").MemoryCorrectRequest }>(
+    "/memories/:id/correct",
+    async (request, reply) => {
+      try {
+        await correctMemory(request.params.id, request.body);
+        return { corrected: true };
+      } catch (error) {
+        return fail(reply, error, "correcting memory");
       }
     },
   );

@@ -93,6 +93,10 @@ try {
     ];
     const person = (id) => ({ id, name: id === "mara" ? "Mara" : "Eli" });
     let failMemories = false;
+    const corrections = [];
+    let staleCorrection = false;
+    let holdCorrection = false;
+    let releaseCorrection;
     const memory = (id, actor, text) => ({
       id,
       rootId: id,
@@ -266,8 +270,35 @@ try {
         library.entries[0].forgotten = true;
         library.revision++;
         value = { forgotten: true };
+      } else if (path.endsWith("/memories/m1/correct")) {
+        const body = request.postDataJSON();
+        corrections.push(body);
+        if (holdCorrection) {
+          await new Promise((resolve) => {
+            releaseCorrection = resolve;
+          });
+          return fulfill(route, { json: { corrected: true } });
+        }
+        if (staleCorrection)
+          return fulfill(route, { status: 409, json: { error: "Memories changed. Refresh the list." } });
+        assert.deepEqual(body.knowers, ["mara"]);
+        assert.equal(body.seed, library.seed);
+        assert.equal(body.target.id, "m1");
+        if (corrections.length === 1) {
+          assert.equal(body.expectedCollectionRevision, library.revision);
+          library.entries[0].text = body.text;
+          library.entries[0].playerCorrection = true;
+          library.entries[0].revision++;
+          library.entries[0].rootRevision++;
+          library.revision++;
+          return fulfill(route, { status: 503, json: { error: "Saved response unavailable. Try again." } });
+        }
+        assert.deepEqual(body, corrections[0], "An uncertain result retries the identical operation.");
+        value = { corrected: true };
       } else if (path.endsWith("/memories/inspect/m1"))
         value = {
+          seed: library.seed,
+          revision: library.revision,
           entry: library.entries[0],
           knowers: [
             {
@@ -276,7 +307,8 @@ try {
               learnedAt: now,
               reinforcedAt: now,
               forgotten: library.entries[0].forgotten,
-              playerCorrection: false,
+              playerCorrection: library.entries[0].playerCorrection,
+              text: library.entries[0].text,
               support: [{ sourceId: "deleted-source-scene", lineId: "line", excerpt: "SOURCE EVIDENCE" }],
             },
           ],
@@ -613,6 +645,64 @@ try {
     await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
     await settleTurn();
     await page.screenshot({ path: resolve(output, `inspect-${width}-${height}.png`) });
+    await profile.getByRole("button", { name: "Correct", exact: true }).click();
+    const correction = profile.getByRole("form", { name: "Correct memory" });
+    await expect(correction.getByRole("textbox", { name: "Corrected memory" })).toHaveValue("PRIVATE MARA MEMORY");
+    await expect(correction.getByRole("checkbox", { name: "Mara", exact: true })).toBeChecked();
+    await expect(correction.getByRole("checkbox", { name: "Eli", exact: true })).toHaveCount(0);
+    await correction.getByRole("checkbox", { name: "Mara", exact: true }).uncheck();
+    await expect(correction.getByRole("button", { name: "Save correction" })).toBeDisabled();
+    await correction.getByRole("checkbox", { name: "Mara", exact: true }).check();
+    await correction.getByRole("textbox").fill("é".repeat(301));
+    await expect(correction.getByRole("alert")).toContainText("too long");
+    await expect(correction.getByRole("button", { name: "Save correction" })).toBeDisabled();
+    await correction.getByRole("textbox").fill("PRIVATE corrected wording");
+    await correction.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.equal(corrections.length, 0, "Cancel makes no write.");
+    await profile.getByRole("button", { name: "Correct", exact: true }).click();
+    await correction.getByRole("textbox").fill("PRIVATE corrected wording");
+    await settleTurn();
+    await page.screenshot({ path: resolve(output, `correct-${width}-${height}.png`) });
+    await correction.getByRole("button", { name: "Save correction" }).click();
+    await expect(correction.getByRole("alert")).toContainText("Saved response unavailable");
+    await expect(correction.getByRole("textbox")).toHaveValue("PRIVATE corrected wording");
+    await correction.getByRole("button", { name: "Save correction" }).click();
+    await expect(correction).toHaveCount(0);
+    await expect(profile.getByText("Player correction", { exact: true })).toBeVisible();
+    await profile.getByRole("button", { name: "Inspect", exact: true }).last().click();
+    await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
+    staleCorrection = true;
+    await profile.getByRole("button", { name: "Correct", exact: true }).click();
+    await correction.getByRole("textbox").fill("Uncommitted correction");
+    await correction.getByRole("button", { name: "Save correction" }).click();
+    await expect(correction.getByRole("alert")).toContainText("Memories changed");
+    await expect(correction.getByRole("textbox")).toHaveValue("Uncommitted correction");
+    await correction.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
+    staleCorrection = false;
+    holdCorrection = true;
+    await profile.getByRole("button", { name: "Correct", exact: true }).click();
+    await correction.getByRole("textbox").fill("Deferred correction");
+    await correction.getByRole("button", { name: "Save correction" }).click();
+    await expect.poll(() => !!releaseCorrection).toBe(true);
+    await expect(correction.getByRole("textbox")).toBeDisabled();
+    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("eli");
+    await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
+    const readsBeforeRelease = reads.filter((path) => path.endsWith("/memories/inspect")).length;
+    const finishedCorrection = page.waitForResponse((response) => response.url().endsWith("/memories/m1/correct"));
+    releaseCorrection();
+    await (await finishedCorrection).finished();
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(
+      reads.filter((path) => path.endsWith("/memories/inspect")).length,
+      readsBeforeRelease,
+      "An unmounted editor cannot refresh or abort the new view.",
+    );
+    await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
+    await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("mara");
+    await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "Forget", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Forget", exact: true })).toBeDisabled();
     await expect(profile.getByText("Forgotten", { exact: true }).first()).toBeVisible();

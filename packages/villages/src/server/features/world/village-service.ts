@@ -4,11 +4,16 @@ import type {
   MemoryInspection,
   MemoryListEntry,
   MemoryForgetRequest,
+  MemoryCorrectRequest,
 } from "../../../shared/contracts/village.js";
 import type { MemoryCandidate } from "../../domain/models/memories.js";
 import { inspectMemoryCandidates, projectMemories } from "../../domain/rules/memory-views.js";
-import { forgetVillageMemory as applyForget } from "../../domain/rules/village-memories.js";
+import {
+  forgetVillageMemory as applyForget,
+  correctVillageMemory as applyCorrection,
+} from "../../domain/rules/village-memories.js";
 import { memoryTerms } from "../../domain/rules/memory-protection.js";
+import { MEMORY_TEXT_LIMIT } from "../../domain/rules/memory-integrity.js";
 import { calendarReplay } from "../../domain/rules/clock-recovery.js";
 import {
   advanceVillageClock,
@@ -18,7 +23,7 @@ import {
 } from "../../adapters/time/clock-gate.js";
 import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
-import type { VillageSnapshot, VillageVenue } from "../../domain/models/world.js";
+import type { VillageSnapshot, VillageState, VillageVenue } from "../../domain/models/world.js";
 import { badRequest, notFound, conflict } from "../../domain/rules/errors.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
@@ -43,6 +48,7 @@ import type { readVillageState, mutateVillageState } from "./village-store.js";
 
 export interface WorldCoordinationPorts {
   readVillageAuthority: typeof import("./village-store.js").readVillageAuthority;
+  mutateMemoryAuthority: (update: (state: VillageState) => void) => Promise<void>;
   reconcileDevelopment?: (now: Date) => Promise<void>;
   reconcileResidentPlanning?: (now: Date) => Promise<void>;
   processProjectWishOutbox?: typeof import("../residents/wishes/wish-progress.js").processProjectWishOutbox;
@@ -67,6 +73,7 @@ export interface WorldCoordinationPorts {
 /** Owns world advancement and history connections. Construction never reads, writes or dispatches work. */
 export function createWorldCoordination({
   readVillageAuthority,
+  mutateMemoryAuthority,
   reconcileDevelopment,
   reconcileResidentPlanning,
   processProjectWishOutbox,
@@ -388,6 +395,8 @@ export function createWorldCoordination({
     const root = state.memories.records.find((row) => row.id === stored.rootId)!;
     const knowers = inspection ? stored.knowers : selected.knowers;
     return {
+      seed: state.seed,
+      revision: state.memories.revision,
       entry: memoryEntry(state, selected),
       knowers: Object.entries(knowers).map(([knower, value]) => ({
         person: memoryPerson(state, knower),
@@ -397,6 +406,7 @@ export function createWorldCoordination({
         reinforcedAt: value.reinforcedAt,
         forgotten: !!root.knowers[knower]?.forgotten,
         playerCorrection: !!root.knowers[knower]?.repair,
+        text: root.knowers[knower]?.repair?.text ?? stored.text,
         support: value.support.map((e) => ({
           sourceId: e.source.id,
           ...(e.source.sceneId ? { sceneId: e.source.sceneId } : {}),
@@ -407,6 +417,22 @@ export function createWorldCoordination({
     };
   }
   async function forgetMemory(id: string, input: MemoryForgetRequest) {
+    return mutateMemory(id, input, "forget");
+  }
+  async function correctMemory(id: string, input: MemoryCorrectRequest) {
+    if (
+      typeof input?.text !== "string" ||
+      !input.text.trim() ||
+      Buffer.byteLength(input.text, "utf8") > MEMORY_TEXT_LIMIT
+    )
+      throw badRequest("Enter a shorter, non-empty correction.");
+    return mutateMemory(id, input, "repair");
+  }
+  async function mutateMemory(
+    id: string,
+    input: MemoryForgetRequest | MemoryCorrectRequest,
+    action: "forget" | "repair",
+  ) {
     if (
       !input ||
       input.target?.id !== id ||
@@ -415,27 +441,25 @@ export function createWorldCoordination({
       !input.knowers.length
     )
       throw badRequest("Choose existing memory knowers.");
-    await mutateVillageState(
-      (state) => {
-        if (state.seed !== input.seed) throw conflict("Village identity changed.");
-        try {
-          applyForget(
-            state,
-            {
-              operationId: input.operationId,
-              expectedCollectionRevision: input.expectedCollectionRevision,
-              target: input.target,
-              knowers: input.knowers,
-              action: "forget",
-            },
-            villageNow().toISOString(),
-          );
-        } catch (error) {
-          throw conflict(error instanceof Error ? error.message : "The memory changed.");
-        }
-      },
-      { memories: true },
-    );
+    await mutateMemoryAuthority((state) => {
+      if (state.seed !== input.seed) throw conflict("Village identity changed.");
+      try {
+        (action === "forget" ? applyForget : applyCorrection)(
+          state,
+          {
+            operationId: input.operationId,
+            expectedCollectionRevision: input.expectedCollectionRevision,
+            target: input.target,
+            knowers: input.knowers,
+            action,
+            ...(action === "repair" ? { text: (input as MemoryCorrectRequest).text } : {}),
+          },
+          villageNow().toISOString(),
+        );
+      } catch (error) {
+        throw conflict(error instanceof Error ? error.message : "The memory changed.");
+      }
+    });
   }
 
   return {
@@ -444,6 +468,7 @@ export function createWorldCoordination({
     buildVillageMemories,
     readVillageMemoryEvidence,
     forgetMemory,
+    correctMemory,
   };
 }
 export type WorldCoordination = ReturnType<typeof createWorldCoordination>;

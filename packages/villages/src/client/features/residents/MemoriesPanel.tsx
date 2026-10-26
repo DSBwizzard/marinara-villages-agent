@@ -8,13 +8,14 @@ import type {
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { stampTime, renderVillagesMarkdown } from "../../shared/presentation.js";
+import { MemoryCorrectionForm } from "./MemoryCorrectionForm.js";
 
 export type MemoryListQuery = { characterId: string; query?: string; cursor?: MemoryCursor };
 const kindLabel = { experience: "Experience", information: "Information", "open-matter": "Open matter" };
 
 export function VillagerMemoriesPanel({
   library,
-  busy,
+  busy: parentBusy,
   characterId,
   onQuery,
   onForget,
@@ -30,6 +31,9 @@ export function VillagerMemoriesPanel({
   const [cursor, setCursor] = useState<MemoryCursor | undefined>();
   const [previous, setPrevious] = useState<(MemoryCursor | undefined)[]>([]);
   const [evidence, setEvidence] = useState<MemoryInspection | null>(null);
+  const [correction, setCorrection] = useState<MemoryInspection | null>(null);
+  const [saving, setSaving] = useState(false);
+  const busy = parentBusy || saving;
   const [error, setError] = useState("");
   const evidenceRequest = useRef<AbortController | null>(null);
   const pageRequest = useRef<AbortController | null>(null);
@@ -45,6 +49,7 @@ export function VillagerMemoriesPanel({
   const load = (next: MemoryCursor | undefined, audience = knower) => {
     evidenceRequest.current?.abort();
     setEvidence(null);
+    setCorrection(null);
     setError("");
     setCursor(next);
     pageRequest.current?.abort();
@@ -56,18 +61,23 @@ export function VillagerMemoriesPanel({
     setPrevious([]);
     void load(undefined);
   };
-  const inspect = async (entry: MemoryListEntry) => {
+  const inspect = async (entry: MemoryListEntry, correct = false) => {
     evidenceRequest.current?.abort();
     const controller = new AbortController();
     evidenceRequest.current = controller;
     setEvidence(null);
+    setCorrection(null);
     setError("");
     try {
       const result = await request<MemoryInspection>(
         `/memories/inspect/${encodeURIComponent(entry.id)}?characterId=${encodeURIComponent(knower)}`,
         { signal: controller.signal },
       );
-      if (!controller.signal.aborted) setEvidence(result);
+      if (!controller.signal.aborted) {
+        if (correct && result.entry.forgotten) setError("That memory is forgotten. Refresh the list.");
+        else if (correct) setCorrection(result);
+        else setEvidence(result);
+      }
     } catch (cause) {
       if (!controller.signal.aborted) setError(messageFrom(cause, "Could not read memory evidence."));
     }
@@ -89,6 +99,7 @@ export function VillagerMemoriesPanel({
       >
         <select
           aria-label="Memory knower"
+          disabled={busy}
           value={knower}
           onChange={(event) => {
             const value = event.target.value;
@@ -109,6 +120,7 @@ export function VillagerMemoriesPanel({
           aria-label="Search memories"
           placeholder="Search memories"
           value={query}
+          disabled={busy}
           onChange={(event) => setQuery(event.target.value)}
         />
         <button type="submit" disabled={busy}>
@@ -133,13 +145,27 @@ export function VillagerMemoriesPanel({
             </div>
             <p className={`${ELEMENT_TAG}-memory-text`}>{renderVillagesMarkdown(entry.text, entry.id)}</p>
             <div className={`${ELEMENT_TAG}-memory-card-actions`}>
-              <button type="button" onClick={() => void inspect(entry)}>
+              <button type="button" disabled={busy} onClick={() => void inspect(entry)}>
                 Inspect
+              </button>
+              <button type="button" disabled={busy || entry.forgotten} onClick={() => void inspect(entry, true)}>
+                Correct
               </button>
               <button type="button" disabled={busy || entry.forgotten} onClick={() => onForget(entry, knower)}>
                 Forget
               </button>
             </div>
+            {correction && (correction.entry.id === entry.id || correction.entry.rootId === entry.id) ? (
+              <MemoryCorrectionForm
+                key={`${correction.entry.id}:${correction.revision}`}
+                inspection={correction}
+                knower={knower}
+                busy={busy}
+                onSaving={setSaving}
+                onSaved={refresh}
+                onCancel={() => setCorrection(null)}
+              />
+            ) : null}
           </article>
         ))}
       </div>
@@ -183,6 +209,9 @@ export function VillagerMemoriesPanel({
                 {known.person.name}
                 {known.forgotten ? " · Forgotten" : known.playerCorrection ? " · Player correction" : ""}
               </h4>
+              {known.playerCorrection ? (
+                <p>{renderVillagesMarkdown(known.text, `${evidence.entry.id}:${known.person.id}`)}</p>
+              ) : null}
               <p>
                 {
                   {

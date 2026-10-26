@@ -1105,6 +1105,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     // Memory pages/evidence depend only on saved knowledge; reading them must not
     // observe/write the clock or decode the same large authority record twice.
     readVillageAuthority: () => villageRepository.readAuthority({ memories: true }),
+    // Manual history edits preserve current mechanics and do not reconcile the world.
+    mutateMemoryAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
     reconcileResidentPlanning: residentPlanning.reconcile,
     reconcileDevelopment,
     processProjectWishOutbox,

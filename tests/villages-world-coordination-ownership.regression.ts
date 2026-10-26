@@ -55,6 +55,18 @@ function fixture(name: string) {
     if (scopedActivation()?.active === false) throw Error("Original world is unavailable.");
   }
   const service = createWorldCoordination({
+    async mutateMemoryAuthority(update) {
+      note("mutate-memory");
+      const first = structuredClone(state);
+      update(first);
+      if (retry) {
+        retry(state);
+        retry = undefined;
+        const next = structuredClone(state);
+        update(next);
+        Object.assign(state, next);
+      } else Object.assign(state, first);
+    },
     async readVillageState() {
       note("read");
       if (pauseRead) {
