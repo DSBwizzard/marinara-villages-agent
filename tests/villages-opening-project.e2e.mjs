@@ -47,6 +47,7 @@ try {
       { page } = f;
     await expect(page.getByRole("button", { name: "New Venue", exact: true })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Renovation", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Opening proposals", exact: true }).click();
     await page.getByRole("navigation", { name: "Resident proposals" }).getByRole("button", { name: /Mara/ }).click();
     await expect(page.getByRole("button", { name: "Accept proposal", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Accept proposal", exact: true }).click();

@@ -88,6 +88,28 @@ const create = { requestId: "create", name: "Current", description: "A future ro
 await service.createNewVenueProject(create);
 await service.createNewVenueProject(create);
 await assert.rejects(service.createNewVenueProject({ ...create, name: "Other" }), /already used/);
+record = root();
+rows.clear();
+await service.createNewVenueProject({ ...create, requestId: "four", name: "Four" });
+await service.createNewVenueProject({ ...create, requestId: "five", name: "Five" });
+const draftRace = await Promise.allSettled([
+  service.createNewVenueProject({ ...create, requestId: "six-a", name: "Six A" }),
+  service.createNewVenueProject({ ...create, requestId: "six-b", name: "Six B" }),
+]);
+assert.equal(draftRace.filter((result) => result.status === "fulfilled").length, 1);
+assert.equal(draftRace.filter((result) => result.status === "rejected").length, 1);
+assert.equal(record.data.projects.filter((project) => project.status === "planning").length, 6);
+const winningDraft = record.data.projects.find((project) => ["project:six-a", "project:six-b"].includes(project.id))!;
+const winningBody =
+  winningDraft.id === "project:six-a"
+    ? { ...create, requestId: "six-a", name: "Six A" }
+    : { ...create, requestId: "six-b", name: "Six B" };
+await service.createNewVenueProject(winningBody);
+assert.equal(
+  record.data.projects.filter((project) => project.status === "planning").length,
+  6,
+  "replaying the winner remains idempotent at capacity",
+);
 for (const completeFirst of [false, true]) {
   record = root();
   rows.clear();

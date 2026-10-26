@@ -194,4 +194,35 @@ const full = defaultVillageState();
 full.venues = Array.from({ length: 48 }, (_, index) => venue(`Place ${index}`));
 assert.throws(() => addVillageVenue(full, venue("One more")), /no room/u);
 
+const drafts = defaultVillageState();
+drafts.setupAt = drafts.foundedAt = at;
+for (let index = 0; index < 6; index++)
+  draftNewVenueProject(
+    drafts,
+    { ...core, name: `Draft ${index}`, description: "A place to gather." },
+    "",
+    `draft:${index}`,
+  );
+assert.equal(
+  draftNewVenueProject(drafts, { ...core, description: "Ignored on replay" }, "", "draft:0").id,
+  "draft:0",
+  "idempotent replay remains valid at capacity",
+);
+assert.throws(
+  () => draftNewVenueProject(drafts, { ...core, description: "Another place." }),
+  /Six Project drafts maximum/u,
+);
+const legacy = structuredClone(drafts);
+const legacyDraft = structuredClone(legacy.projects[0]!);
+legacyDraft.id = "legacy-extra";
+legacy.projects.push(legacyDraft);
+assert.equal(
+  coerceVillageState(legacy).projects.filter((project) => project.status === "planning").length,
+  7,
+  "existing drafts above the new limit remain readable",
+);
+drafts.projects[0]!.status = "working";
+draftNewVenueProject(drafts, { ...core, description: "A newly available draft." });
+assert.equal(drafts.projects.filter((project) => project.status === "planning").length, 6);
+
 console.log("Villages venue request regression: draft, dedup, persistence, review decisions and limits ok");

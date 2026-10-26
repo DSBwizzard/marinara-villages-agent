@@ -89,7 +89,7 @@ async function checkMapPlacement(width, activeScene = false) {
   await page.goto("http://project-placement.test/");
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   const openSite = async () => {
-    await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
+    await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
     const projects = page.getByRole("navigation", { name: "Projects", exact: true });
     if (await projects.isVisible()) await projects.getByRole("button", { name: /Canvas Tent/ }).click();
     await page.getByRole("tab", { name: "Location", exact: true }).click();
@@ -148,7 +148,7 @@ async function checkMapPlacement(width, activeScene = false) {
     assert.equal(placements.length, 1, "a pending placement cannot admit a second map click");
     await fulfill(heldPlacement, { json: snapshot });
   }
-  await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
+  await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
   assert.equal(placements.length, 1, "a map click or tap places the Project exactly once");
   assert(placements[0].x >= 0.03 && placements[0].x <= 0.97);
   assert(placements[0].y >= 0.03 && placements[0].y <= 0.97);
@@ -256,6 +256,7 @@ try {
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).press("ArrowRight");
     await expect(page.getByRole("tab", { name: "People", exact: true })).toBeFocused();
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await page.getByRole("button", { name: "Zones", exact: true }).click();
     await page
       .getByRole("navigation", { name: "Project Zones" })
       .getByRole("button", { name: /Art room/ })
@@ -278,6 +279,7 @@ try {
     await back();
     await select(/Canvas Tent/);
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await page.getByRole("button", { name: "Design", exact: true }).click();
     await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("An edited pavilion");
     await page.getByRole("button", { name: "Save design", exact: true }).click();
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeEnabled();
@@ -295,11 +297,13 @@ try {
     await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
     await page.getByRole("button", { name: "Cancel Project", exact: true }).click();
     await back();
+    await page.getByRole("button", { name: "History", exact: true }).click();
     await expect(
       page
-        .getByRole("navigation", { name: "Projects", exact: true })
+        .getByRole("navigation", { name: "Project history", exact: true })
         .getByRole("button", { name: /Canvas Tent.*Cancelled/ }),
     ).toBeVisible();
+    await page.getByRole("button", { name: "‹ Projects", exact: true }).click();
     await select(/Workshop/);
     await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A revised workshop");
     await page.getByRole("button", { name: "Save design", exact: true }).click();
@@ -311,7 +315,7 @@ try {
     // All sections fit on desktop and phone, with a single visible section.
     for (const name of ["Overview & Progress", "Design & Spaces", "People", "Location"]) {
       await page.getByRole("tab", { name, exact: true }).click();
-      const box = await page.getByRole("main", { name: "Project portfolio" }).boundingBox();
+      const box = await page.getByRole("main", { name: "Projects" }).boundingBox();
       assert(box && box.x >= 0 && box.x + box.width <= width + 1, name + " stays within the viewport");
       assert(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
@@ -332,9 +336,14 @@ try {
     assert.deepEqual(f.calls.find((call) => call.path === "/projects").body.classes, ["community", "workplace"]);
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A shared garden.");
-    await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("");
     const longDesign = "A shared garden with sheltered work tables, winding paths and open planting beds. ".repeat(24);
     await page.getByLabel("Physical design", { exact: true }).fill(longDesign);
+    await page.getByRole("button", { name: "Zones", exact: true }).click();
+    if (width < 700)
+      await page
+        .getByRole("navigation", { name: "Project Zones" })
+        .getByRole("button", { name: /Entrance/ })
+        .click();
     await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("");
     await page.getByLabel("Entrance", { exact: true }).first().fill("A narrow gate beside the old oak.");
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
@@ -353,6 +362,12 @@ try {
     await expect(reopened.page.getByRole("tabpanel")).toContainText(longDesign.trim());
     await reopened.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(reopened.page.getByLabel("Physical design", { exact: true })).toHaveValue(longDesign);
+    await reopened.page.getByRole("button", { name: "Zones", exact: true }).click();
+    if (width < 700)
+      await reopened.page
+        .getByRole("navigation", { name: "Project Zones" })
+        .getByRole("button", { name: /Entrance/ })
+        .click();
     await expect(reopened.page.getByLabel("Entrance", { exact: true }).first()).toHaveValue(
       "A narrow gate beside the old oak.",
     );
@@ -372,6 +387,7 @@ try {
       .getByRole("button", { name: /Canvas Tent/ })
       .click();
     await limit.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await limit.page.getByRole("button", { name: "Zones", exact: true }).click();
     await expect(limit.page.getByRole("button", { name: "Add Zone", exact: true })).toBeDisabled();
     await expect(limit.page.getByRole("button", { name: "Add private Zone", exact: true })).toBeDisabled();
     await limit.page.getByRole("navigation", { name: "Project Zones" }).getByRole("button", { name: /Art 0/ }).click();
@@ -401,9 +417,11 @@ try {
       .getByRole("button", { name: /Workshop/ })
       .click();
     await restricted.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await restricted.page.getByRole("button", { name: "Zones", exact: true }).click();
     await restricted.page.getByRole("button", { name: "Add private Zone", exact: true }).click();
     await restricted.page.getByLabel("Zone Name", { exact: true }).fill("Archive");
     await restricted.page.getByLabel("Room Specification", { exact: true }).fill("Shelves and a reading desk.");
+    if (width < 700) await restricted.page.getByRole("button", { name: "Options", exact: true }).click();
     await restricted.page
       .getByRole("group", { name: "Zone controllers" })
       .getByRole("button", { name: "You", exact: true })

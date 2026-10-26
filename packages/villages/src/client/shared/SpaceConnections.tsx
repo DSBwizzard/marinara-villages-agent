@@ -10,13 +10,18 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
   spaces,
   onChange,
   editableIds,
+  disabled = false,
+  pageSize,
 }: {
   spaces: T[];
   editableIds?: string[];
+  disabled?: boolean;
+  pageSize?: number;
   onChange(spaces: T[]): void;
 }) {
   const [from, setFrom] = useState(""),
-    [to, setTo] = useState("");
+    [to, setTo] = useState(""),
+    [page, setPage] = useState(0);
   const rows = materializeConnections(spaces);
   const existing = new Set(rows.map((zone) => zone.id));
   const pairs = rows.flatMap((zone) =>
@@ -25,6 +30,9 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
       .map((id) => [zone.id, id] as const),
   );
   const name = (id: string) => (id === "exterior" ? "Exterior" : spaces.find((zone) => zone.id === id)?.name || "Zone");
+  const pages = pageSize ? Math.max(1, Math.ceil(pairs.length / pageSize)) : 1;
+  const currentPage = Math.min(page, pages - 1);
+  const visiblePairs = pageSize ? pairs.slice(currentPage * pageSize, currentPage * pageSize + pageSize) : pairs;
   const update = (a: string, b: string, connected: boolean) =>
     onChange(
       rows.map((zone) => {
@@ -45,14 +53,14 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
       <legend>Connections between spaces</legend>
 
       <ul>
-        {pairs.map(([a, b]) => (
+        {visiblePairs.map(([a, b]) => (
           <li key={a + ":" + b}>
             <span>
               {name(a)} ↔ {name(b)}
             </span>{" "}
             <button
               type="button"
-              disabled={!!editableIds && !editableIds.includes(a) && !editableIds.includes(b)}
+              disabled={disabled || (!!editableIds && !editableIds.includes(a) && !editableIds.includes(b))}
               aria-label={"Remove connection " + name(a) + " to " + name(b)}
               onClick={() => update(a, b, false)}
             >
@@ -61,9 +69,22 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
           </li>
         ))}
       </ul>
+      {pages > 1 ? (
+        <div className="vp-actions">
+          <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
+            Previous
+          </button>
+          <span>
+            {currentPage + 1} / {pages}
+          </span>
+          <button type="button" disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>
+            Next
+          </button>
+        </div>
+      ) : null}
       <label>
         From space
-        <select value={from} onChange={(event) => setFrom(event.target.value)}>
+        <select disabled={disabled} value={from} onChange={(event) => setFrom(event.target.value)}>
           <option value="">Choose a space</option>
           {spaces
             .filter((zone) => !editableIds || editableIds.includes(zone.id))
@@ -76,7 +97,7 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
       </label>
       <label>
         To space
-        <select value={to} onChange={(event) => setTo(event.target.value)}>
+        <select disabled={disabled} value={to} onChange={(event) => setTo(event.target.value)}>
           <option value="">Choose a space</option>
           {spaces
             .filter((zone) => zone.id !== from)
@@ -89,7 +110,7 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
       </label>
       <button
         type="button"
-        disabled={!from || !to || from === to || contactNeighborIds(rows, from).includes(to)}
+        disabled={disabled || !from || !to || from === to || contactNeighborIds(rows, from).includes(to)}
         onClick={() => {
           update(from, to, true);
           setFrom("");
