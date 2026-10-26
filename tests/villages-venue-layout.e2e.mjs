@@ -90,10 +90,9 @@ try {
       await page.getByRole("button", { name: "Projects (1)", exact: true }).click();
       await page.getByRole("button", { name: /Canvas Tent/ }).click();
       const editor = page.locator("main article");
-      await page.getByRole("tab", { name: "Design", exact: true }).click();
+      await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
       await editor.getByLabel("Physical design", { exact: true }).fill("A tent, or a mat beneath a tree");
       await editor.getByLabel("Entrance", { exact: true }).fill("A sheltered patch beneath a tree.");
-      await page.getByRole("tab", { name: "Zones", exact: true }).click();
       if (layout === "common" || layout === "both") {
         await editor.getByRole("button", { name: "Add Zone", exact: true }).click();
         await editor.getByLabel("Zone Name", { exact: true }).first().fill("Workshop");
