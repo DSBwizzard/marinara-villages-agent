@@ -138,16 +138,14 @@ export function ProjectZones({
         </div>
         <nav className="vp-zone-list" aria-label="Project Zones">
           <button type="button" aria-pressed={entrance} onClick={() => select("exterior")}>
-            <span className="vp-number">00</span>
             <span>
               <strong>Entrance</strong>
               <small>Arrival & departure</small>
             </span>
             <span>›</span>
           </button>
-          {rows.map((zone, index) => (
+          {rows.map((zone) => (
             <button type="button" key={zone.id} aria-pressed={selected?.id === zone.id} onClick={() => select(zone.id)}>
-              <span className="vp-number">{String(index + 1).padStart(2, "0")}</span>
               <span>
                 <strong>{zone.name || "Unnamed Zone"}</strong>
                 <small>

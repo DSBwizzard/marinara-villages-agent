@@ -92,7 +92,7 @@ async function checkMapPlacement(width, activeScene = false) {
     await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
     const projects = page.getByRole("navigation", { name: "Projects", exact: true });
     if (await projects.isVisible()) await projects.getByRole("button", { name: /Canvas Tent/ }).click();
-    await page.getByRole("tab", { name: "Site", exact: true }).click();
+    await page.getByRole("tab", { name: "Location", exact: true }).click();
   };
   if (activeScene) {
     await expect(
@@ -152,7 +152,7 @@ async function checkMapPlacement(width, activeScene = false) {
   assert.equal(placements.length, 1, "a map click or tap places the Project exactly once");
   assert(placements[0].x >= 0.03 && placements[0].x <= 0.97);
   assert(placements[0].y >= 0.03 && placements[0].y <= 0.97);
-  await page.getByRole("tab", { name: "Site", exact: true }).click();
+  await page.getByRole("tab", { name: "Location", exact: true }).click();
   await expect(page.getByRole("tabpanel")).toContainText("Marked on the village map");
   await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeEnabled();
   if (output) await page.screenshot({ path: resolve(output, "projects-placed-" + width + ".png"), fullPage: true });
@@ -225,34 +225,37 @@ try {
     await screenshot("index");
     await select(/Canvas Tent/);
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeEnabled();
-    await page.getByRole("tab", { name: "Design", exact: true }).click();
-    await page.getByRole("tab", { name: "Design", exact: true }).hover();
-    const selectedContrast = await page.getByRole("tab", { name: "Design", exact: true }).evaluate((element) => {
-      const style = getComputedStyle(element);
-      const luminance = (color) =>
-        color
-          .match(/[0-9.]+/g)
-          .slice(0, 3)
-          .map(Number)
-          .map((channel) => {
-            const value = channel / 255;
-            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-          })
-          .reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
-      const a = luminance(style.color),
-        b = luminance(style.backgroundColor);
-      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-    });
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).hover();
+    const selectedContrast = await page
+      .getByRole("tab", { name: "Design & Spaces", exact: true })
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        const luminance = (color) =>
+          color
+            .match(/[0-9.]+/g)
+            .slice(0, 3)
+            .map(Number)
+            .map((channel) => {
+              const value = channel / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            })
+            .reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
+        const a = luminance(style.color),
+          b = luminance(style.backgroundColor);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      });
     assert(selectedContrast >= 4.5, "a hovered selected tab retains readable contrast");
     await page.getByLabel("Physical design", { exact: true }).fill("An edited pavilion");
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
-    await page.getByRole("tab", { name: "Site", exact: true }).click();
+    await page.getByRole("tab", { name: "Location", exact: true }).click();
     await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeDisabled();
     await expect(page.getByRole("tabpanel")).toContainText("Save design to choose a map position.");
-    await page.getByRole("tab", { name: "Design", exact: true }).click();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     // Keyboard navigation changes tabs, never the design or server.
-    await page.getByRole("tab", { name: "Design", exact: true }).press("ArrowRight");
-    await expect(page.getByRole("tab", { name: "Zones", exact: true })).toBeFocused();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).press("ArrowRight");
+    await expect(page.getByRole("tab", { name: "People", exact: true })).toBeFocused();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await page
       .getByRole("navigation", { name: "Project Zones" })
       .getByRole("button", { name: /Art room/ })
@@ -267,14 +270,14 @@ try {
     await screenshot("people");
     await back();
     await select(/Workshop/);
-    await page.getByRole("tab", { name: "Design", exact: true }).click();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(
       page.getByRole("group", { name: "Classes", exact: true }).getByRole("button", { name: "Community", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
     await page.getByLabel("Physical design", { exact: true }).fill("A revised workshop");
     await back();
     await select(/Canvas Tent/);
-    await page.getByRole("tab", { name: "Design", exact: true }).click();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("An edited pavilion");
     await page.getByRole("button", { name: "Save design", exact: true }).click();
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeEnabled();
@@ -282,14 +285,14 @@ try {
     assert.equal(f.calls[0].body.expectedRevision, 1);
     assert.equal(f.calls[0].body.spaces[0].purpose, "Painting");
     await screenshot("design");
-    await page.getByRole("tab", { name: "Overview", exact: true }).click();
+    await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
     await expect(page.getByRole("tabpanel")).toContainText("An edited pavilion");
     await expect(page.getByRole("tabpanel")).not.toContainText("A shared art pavilion.");
     await page.getByRole("button", { name: "Start · 24 hours", exact: true }).click();
     await expect(page.locator("time")).toHaveAttribute("datetime", "2026-10-24T12:00:00Z");
-    await page.getByRole("tab", { name: "Design", exact: true }).click();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(page.getByLabel("Physical design", { exact: true })).toHaveCount(0);
-    await page.getByRole("tab", { name: "Progress", exact: true }).click();
+    await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
     await page.getByRole("button", { name: "Cancel Project", exact: true }).click();
     await back();
     await expect(
@@ -306,7 +309,7 @@ try {
       "saved Classes do not reset to the live target",
     );
     // All sections fit on desktop and phone, with a single visible section.
-    for (const name of ["Overview", "Design", "Zones", "People", "Site", "Progress"]) {
+    for (const name of ["Overview & Progress", "Design & Spaces", "People", "Location"]) {
       await page.getByRole("tab", { name, exact: true }).click();
       const box = await page.getByRole("main", { name: "Project portfolio" }).boundingBox();
       assert(box && box.x >= 0 && box.x + box.width <= width + 1, name + " stays within the viewport");
@@ -327,16 +330,16 @@ try {
     await expect(page.getByRole("heading", { name: "New Garden", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
     assert.deepEqual(f.calls.find((call) => call.path === "/projects").body.classes, ["community", "workplace"]);
-    await page.getByRole("tab", { name: "Design", exact: true }).click();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A shared garden.");
-    await expect(page.getByLabel("Entrance", { exact: true })).toHaveValue("");
+    await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("");
     const longDesign = "A shared garden with sheltered work tables, winding paths and open planting beds. ".repeat(24);
     await page.getByLabel("Physical design", { exact: true }).fill(longDesign);
-    await expect(page.getByLabel("Entrance", { exact: true })).toHaveValue("");
-    await page.getByLabel("Entrance", { exact: true }).fill("A narrow gate beside the old oak.");
-    await page.getByRole("tab", { name: "Zones", exact: true }).click();
-    await expect(page.getByLabel("Entrance", { exact: true })).toHaveValue("A narrow gate beside the old oak.");
-    await page.getByRole("tab", { name: "Overview", exact: true }).click();
+    await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("");
+    await page.getByLabel("Entrance", { exact: true }).first().fill("A narrow gate beside the old oak.");
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("A narrow gate beside the old oak.");
+    await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
     await expect(page.getByRole("tabpanel")).toContainText(longDesign.trim());
     await page.getByRole("button", { name: "Save design", exact: true }).click();
     await expect.poll(() => f.calls.at(-1)?.path).toBe("/projects/created/plan");
@@ -348,9 +351,9 @@ try {
       .getByRole("button", { name: /New Garden/ })
       .click();
     await expect(reopened.page.getByRole("tabpanel")).toContainText(longDesign.trim());
-    await reopened.page.getByRole("tab", { name: "Design", exact: true }).click();
+    await reopened.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(reopened.page.getByLabel("Physical design", { exact: true })).toHaveValue(longDesign);
-    await expect(reopened.page.getByLabel("Entrance", { exact: true })).toHaveValue(
+    await expect(reopened.page.getByLabel("Entrance", { exact: true }).first()).toHaveValue(
       "A narrow gate beside the old oak.",
     );
     await reopened.page.close();
@@ -368,7 +371,7 @@ try {
       .getByRole("navigation", { name: "Projects", exact: true })
       .getByRole("button", { name: /Canvas Tent/ })
       .click();
-    await limit.page.getByRole("tab", { name: "Zones", exact: true }).click();
+    await limit.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(limit.page.getByRole("button", { name: "Add Zone", exact: true })).toBeDisabled();
     await expect(limit.page.getByRole("button", { name: "Add private Zone", exact: true })).toBeDisabled();
     await limit.page.getByRole("navigation", { name: "Project Zones" }).getByRole("button", { name: /Art 0/ }).click();
@@ -397,7 +400,7 @@ try {
       .getByRole("navigation", { name: "Projects", exact: true })
       .getByRole("button", { name: /Workshop/ })
       .click();
-    await restricted.page.getByRole("tab", { name: "Zones", exact: true }).click();
+    await restricted.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await restricted.page.getByRole("button", { name: "Add private Zone", exact: true }).click();
     await restricted.page.getByLabel("Zone Name", { exact: true }).fill("Archive");
     await restricted.page.getByLabel("Room Specification", { exact: true }).fill("Shelves and a reading desk.");
@@ -419,7 +422,7 @@ try {
       .getByRole("navigation", { name: "Projects", exact: true })
       .getByRole("button", { name: /Canvas Tent/ })
       .click();
-    await changed.page.getByRole("tab", { name: "Design", exact: true }).click();
+    await changed.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await changed.page.getByLabel("Physical design", { exact: true }).fill("Local edit");
     changed.snapshot.projects[0].plan.form = "A design saved elsewhere";
     changed.snapshot.projects[0].lifecycle.revision++;

@@ -11,9 +11,8 @@ import type { ProjectsController } from "./useProjectsController.js";
 import { request, messageFrom } from "../../shared/api.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
 
-const tabs = ["Overview", "Design", "Zones", "People", "Site", "Progress"] as const;
+const tabs = ["Overview & Progress", "Design & Spaces", "People", "Location"] as const;
 type Tab = (typeof tabs)[number];
-const statuses = ["All", "Planning", "Working", "Paused", "Complete", "Cancelled"] as const;
 const active = (status: string) => status === "working" || status === "paused";
 const kindName = (kind: string) => (kind === "new-venue" ? "New Venue" : "Renovation");
 function Facts({ rows }: { rows: [string, string][] }) {
@@ -59,8 +58,7 @@ export function ProjectsPanel({
     venue = draft.venue;
   const [selectedTabs, setTabs] = useState<Record<string, Tab>>({});
   const [selectedZones, setZones] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState<(typeof statuses)[number]>("All");
-  const tab = selectedTabs[workspace.key] ?? "Overview";
+  const tab = selectedTabs[workspace.key] ?? "Overview & Progress";
   const selectTab = (next: Tab) => setTabs((current) => ({ ...current, [workspace.key]: next }));
   const tabId = useId();
   const people = snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }));
@@ -78,7 +76,7 @@ export function ProjectsPanel({
     : project?.kind === "new-venue" && !project.plan
       ? "Save the design."
       : project?.kind === "new-venue" && project.venueDraft?.position?.x == null
-        ? "Choose a map position in Site."
+        ? "Choose a map position in Location."
         : !flow?.builderId
           ? "Choose a willing lead in People."
           : missing.length
@@ -124,7 +122,7 @@ export function ProjectsPanel({
   };
   const start = async () => {
     const next = await c.action(resumable ? "resume" : "start");
-    if (next) selectTab("Progress");
+    if (next) selectTab("Overview & Progress");
   };
   const connections: { id: string; name?: string; kind: string; connectedTo?: string[] }[] = venue
     ? project?.kind === "new-venue"
@@ -147,7 +145,7 @@ export function ProjectsPanel({
         <header className="vp-header">
           <div>
             <span className="vp-eyebrow">Villages / Projects</span>
-            <h1>{project ? "02 / Project Portfolio" : "01 / Project Portfolio"}</h1>
+            <h1>Project Portfolio</h1>
           </div>
           <div className="vp-actions">
             {project || c.draftType ? (
@@ -179,45 +177,31 @@ export function ProjectsPanel({
                 Renovation
               </button>
             </div>
-            <nav className="vp-filters" aria-label="Project status">
-              {statuses.map((status) => (
-                <button type="button" key={status} aria-pressed={filter === status} onClick={() => setFilter(status)}>
-                  {status}
+            <nav className="vp-project-list" aria-label="Projects">
+              {snapshot.projects.map((entry) => (
+                <button
+                  type="button"
+                  className="vp-project-row"
+                  key={entry.id}
+                  onClick={() => c.setSelectedId(entry.id)}
+                >
+                  <span>
+                    <strong>{entry.title}</strong>
+                    <small>
+                      {kindName(entry.kind)} · {titleCase(entry.status)}
+                    </small>
+                    <small>
+                      {entry.lifecycle?.builderId ? "Lead · " + person(entry.lifecycle.builderId) : "No lead selected"}
+                      {entry.status === "working" && entry.lifecycle?.workOrder
+                        ? " · Due " + new Date(entry.lifecycle.workOrder.completesAt).toLocaleString()
+                        : ""}
+                    </small>
+                  </span>
+                  <span aria-hidden="true">›</span>
                 </button>
               ))}
             </nav>
-            <nav className="vp-project-list" aria-label="Projects">
-              {snapshot.projects
-                .filter((entry) => filter === "All" || entry.status === filter.toLowerCase())
-                .map((entry, index) => (
-                  <button
-                    type="button"
-                    className="vp-project-row"
-                    key={entry.id}
-                    onClick={() => c.setSelectedId(entry.id)}
-                  >
-                    <span className="vp-number">{String(index + 1).padStart(2, "0")}</span>
-                    <span>
-                      <strong>{entry.title}</strong>
-                      <small>
-                        {kindName(entry.kind)} · {titleCase(entry.status)}
-                      </small>
-                      <small>
-                        {entry.lifecycle?.builderId
-                          ? "Lead · " + person(entry.lifecycle.builderId)
-                          : "No lead selected"}
-                        {entry.status === "working" && entry.lifecycle?.workOrder
-                          ? " · Due " + new Date(entry.lifecycle.workOrder.completesAt).toLocaleString()
-                          : ""}
-                      </small>
-                    </span>
-                    <span aria-hidden="true">›</span>
-                  </button>
-                ))}
-            </nav>
-            {!snapshot.projects.some((entry) => filter === "All" || entry.status === filter.toLowerCase()) ? (
-              <p className="vp-note">No {filter === "All" ? "" : filter.toLowerCase() + " "}Projects.</p>
-            ) : null}
+            {!snapshot.projects.length ? <p className="vp-note">No Projects.</p> : null}
             {snapshot.opening && !["complete", "ended"].includes(snapshot.opening.stage) ? (
               <OpeningProjects snapshot={snapshot} busy={draft.busy} decide={c.openingAction} onPeople={onPeople} />
             ) : null}
@@ -236,9 +220,6 @@ export function ProjectsPanel({
               <span>Planning</span>
             </div>
             <div className="vp-columns">
-              <ProjectDrawing
-                caption={c.draftType === "new-venue" ? "A place to begin" : "A new design for an existing place"}
-              />
               <section className="vp-panel">
                 <h3>{c.draftType === "new-venue" ? "New Venue" : "Renovation"} specification</h3>
                 <fieldset disabled={draft.busy}>
@@ -346,7 +327,7 @@ export function ProjectsPanel({
               ))}
             </div>
             <div role="tabpanel" id={tabId + "panel"} aria-labelledby={tabId + tab}>
-              {tab === "Overview" ? (
+              {tab === "Overview & Progress" ? (
                 <div className="vp-columns">
                   <ProjectDrawing image={venue?.presentation.image} caption={project.title} />
                   <section className="vp-panel">
@@ -355,7 +336,6 @@ export function ProjectsPanel({
                     <p>{intended}</p>
                     <Facts
                       rows={[
-                        ["Status", titleCase(project.status)],
                         ["Lead", flow.builderId ? person(flow.builderId) : "Not selected"],
                         ["Design", count + " / 6 Zones"],
                         ["Agreements", missing.length ? missing.map(person).join(", ") : "Ready"],
@@ -365,7 +345,7 @@ export function ProjectsPanel({
                   </section>
                 </div>
               ) : null}
-              {tab === "Design" && venue ? (
+              {tab === "Design & Spaces" && venue ? (
                 <div className="vp-columns">
                   <ProjectDrawing image={venue.presentation.image} caption={project.title} />
                   <section className="vp-panel">
@@ -421,20 +401,7 @@ export function ProjectsPanel({
                           <Facts rows={[["Residence capacity", "Not applicable"]]} />
                         )}
                         {project.kind === "new-venue" ? (
-                          <>
-                            <label>
-                              Entrance
-                              <textarea
-                                aria-label="Entrance"
-                                autoComplete="off"
-                                rows={2}
-                                maxLength={1000}
-                                value={venue.description}
-                                onChange={(event) => patchVenue({ ...venue, description: event.target.value })}
-                              />
-                            </label>
-                            <ArtworkUpload busy={draft.busy} onUpload={(file) => void upload(file)} />
-                          </>
+                          <ArtworkUpload busy={draft.busy} onUpload={(file) => void upload(file)} />
                         ) : null}
                       </fieldset>
                     ) : (
@@ -446,14 +413,13 @@ export function ProjectsPanel({
                             "Residence capacity",
                             venue.classes?.includes("residence") ? String(draft.capacity) : "Not applicable",
                           ],
-                          ["Entrance", venue.description],
                         ]}
                       />
                     )}
                   </section>
                 </div>
               ) : null}
-              {tab === "Zones" && venue ? (
+              {tab === "Design & Spaces" && venue ? (
                 <ProjectZones
                   key={project.id}
                   venue={venue}
@@ -468,6 +434,34 @@ export function ProjectsPanel({
                   onZones={workspace.field("zones")}
                   onUpload={(file, id) => void upload(file, id)}
                 />
+              ) : null}
+              {tab === "Design & Spaces" && venue ? (
+                <fieldset disabled={!editable || draft.busy}>
+                  <SpaceConnections
+                    spaces={connections}
+                    editableIds={project.kind === "renovation" ? draft.zones.map((zone) => zone.id) : undefined}
+                    onChange={(rows) =>
+                      project.kind === "renovation"
+                        ? workspace.field("zones")(
+                            draft.zones.map((zone) => ({
+                              ...zone,
+                              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                            })),
+                          )
+                        : patchVenue({
+                            ...venue,
+                            spaces: venue.spaces?.map((zone) => ({
+                              ...zone,
+                              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                            })),
+                            privateSpaces: venue.privateSpaces?.map((zone) => ({
+                              ...zone,
+                              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                            })),
+                          })
+                    }
+                  />
+                </fieldset>
               ) : null}
               {tab === "People" ? (
                 <div className="vp-columns">
@@ -529,7 +523,7 @@ export function ProjectsPanel({
                   </section>
                 </div>
               ) : null}
-              {tab === "Site" ? (
+              {tab === "Location" ? (
                 <div className="vp-columns">
                   <ProjectDrawing
                     image={project.kind === "renovation" ? c.target?.presentation.image : null}
@@ -568,41 +562,13 @@ export function ProjectsPanel({
                         {placementBlocked ? <p id={tabId + "-placement-blocked"}>{placementBlocked}</p> : null}
                       </div>
                     ) : null}
-                    {venue ? (
-                      <fieldset disabled={!editable || draft.busy}>
-                        <SpaceConnections
-                          spaces={connections}
-                          editableIds={project.kind === "renovation" ? draft.zones.map((zone) => zone.id) : undefined}
-                          onChange={(rows) =>
-                            project.kind === "renovation"
-                              ? workspace.field("zones")(
-                                  draft.zones.map((zone) => ({
-                                    ...zone,
-                                    connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-                                  })),
-                                )
-                              : patchVenue({
-                                  ...venue,
-                                  spaces: venue.spaces?.map((zone) => ({
-                                    ...zone,
-                                    connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-                                  })),
-                                  privateSpaces: venue.privateSpaces?.map((zone) => ({
-                                    ...zone,
-                                    connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-                                  })),
-                                })
-                          }
-                        />
-                      </fieldset>
-                    ) : null}
                   </section>
                 </div>
               ) : null}
-              {tab === "Progress" ? (
+              {tab === "Overview & Progress" ? (
                 <div className="vp-columns">
                   <section className="vp-panel">
-                    <h3>{titleCase(project.status)}</h3>
+                    <h3>Progress</h3>
                     {project.status === "working" && flow.workOrder ? (
                       <>
                         <span className="vp-label">Completes</span>
@@ -615,13 +581,6 @@ export function ProjectsPanel({
                       <p>{Math.ceil(flow.workOrder.remainingMs / 60_000)} minutes remaining</p>
                     ) : null}
                     {editable ? <p>24 hours from Start.</p> : null}
-                    {flow.blockedReason ? <p role="status">{flow.blockedReason}</p> : null}
-                    <Facts
-                      rows={[
-                        ["Lead", flow.builderId ? person(flow.builderId) : "Not selected"],
-                        ["Result", intended],
-                      ]}
-                    />
                   </section>
                   <section className="vp-panel">
                     <h3>Project actions</h3>
