@@ -127,6 +127,7 @@ import {
   zoneControllerIds,
 } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
+import { capturedSceneCalendar } from "../../domain/rules/scene-halt.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure as typedCompletionFailure, type WorkFailure } from "../../domain/rules/work-failure.js";
 import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
@@ -528,12 +529,13 @@ export function createSceneWriting({
           ? "Open on a specific moment already underway in this place. Follow the residents' current activities, relationships, and cards. Do not force a welcome or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
           : "",
         mode === "leave"
-          ? "The player has chosen to leave now. Write a brief, grounded closing exchange: let someone present answer or say goodbye aloud, or narrate only that chosen departure if the room is empty. Do not invent the player's goodbye, further actions, or a new errand."
+          ? "The player selected Conclude. Read their ENTIRE authored input before writing a closing exchange; selecting Conclude does not reduce it to walking away. Never silently discard a clause, injury, death or other asserted outcome to produce a normal farewell. Input and draft remain subject to the same System boundary check as an ordinary turn. For a supported departure, let someone present answer or say goodbye aloud, or narrate only the chosen departure if the room is empty. Do not invent the player's goodbye, further actions, or a new errand."
           : "",
       ]),
       identity: blocksFor([...profiles]),
       circumstances: blocksFor([
         `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
+        `Authoritative encounter calendar: ${JSON.stringify(capturedSceneCalendar(session, village.timeZone || moment.timeZone))}. Calendar answers and relative dates use this captured date, weekday and local time. Earlier dialogue can contain mistakes and cannot override it. Real time between replies is not fictional waiting.`,
         `The player is ${player.name}. ${player.description}`,
         renderPlayerBackgroundWritingContext(
           village,

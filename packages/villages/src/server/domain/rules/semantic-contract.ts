@@ -13,6 +13,7 @@ import { badGateway } from "./errors.js";
 import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
 import { wishCheckKnowledge } from "./wish-journal.js";
 import { accessManagementPrompt } from "./access-speech.js";
+import { capturedSceneCalendar } from "./scene-halt.js";
 
 export { readSemanticWishCriteria } from "./wish-criteria.js";
 
@@ -69,6 +70,7 @@ export function semanticContext(
             sceneAt: scene.continuity?.capturedAt ?? scene.sceneAttendance?.capturedAt ?? scene.startedAt,
             chosenAt: String(scene.operation.input.chosenAt),
             timeZone: authority.timeZone,
+            calendar: capturedSceneCalendar(scene, authority.timeZone),
           },
         }
       : {}),

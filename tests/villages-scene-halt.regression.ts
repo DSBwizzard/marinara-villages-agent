@@ -1,7 +1,7 @@
-// Test cases: scene-halt/calendar, scene-halt/evidence, scene-halt/world, scene-halt/authority-order
+// Test cases: scene-halt/captured-calendar, scene-halt/calendar, scene-halt/evidence, scene-halt/world, scene-halt/authority-order
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import { readSceneHalt } from "../packages/villages/src/server/domain/rules/scene-halt.js";
+import { readSceneHalt, capturedSceneCalendar } from "../packages/villages/src/server/domain/rules/scene-halt.js";
 import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -11,6 +11,34 @@ import { createVillageRepository } from "../packages/villages/src/server/adapter
 
 const choice = { chosenAt: "2026-10-15T20:00:00Z", timeZone: "America/Los_Angeles" };
 const clear = { reason: "none", quote: "", appointments: [] };
+await runCase("scene-halt/captured-calendar", () => {
+  const scene = coerceSession({
+    version: 2,
+    startedAt: "2026-10-19T14:00:00.000Z",
+    lines: [{ content: "Thursday. Early Thursday." }],
+  });
+  assert.deepEqual(capturedSceneCalendar(scene, "America/Los_Angeles"), {
+    instant: "2026-10-19T14:00:00.000Z",
+    date: "2026-10-19",
+    weekday: "Monday",
+    time: "07:00",
+    timeZone: "America/Los_Angeles",
+  });
+  for (const at of ["2026-11-01T08:30:00.000Z", "2026-11-01T09:30:00.000Z"]) {
+    const calendar = capturedSceneCalendar({ ...scene, startedAt: at }, "America/Los_Angeles");
+    assert.equal(calendar.weekday, "Sunday");
+    assert.equal(calendar.date, "2026-11-01");
+    assert.equal(calendar.time, "01:30");
+  }
+  assert.equal(
+    capturedSceneCalendar({ ...scene, startedAt: "2027-01-01T07:30:00.000Z" }, "America/Los_Angeles").date,
+    "2026-12-31",
+  );
+  assert.throws(
+    () => capturedSceneCalendar({ ...scene, startedAt: "invalid" }, "America/Los_Angeles"),
+    /calendar is invalid/,
+  );
+});
 await runCase("scene-halt/calendar", () => {
   const appointment = (date: string, minute: number | null) => ({
     ...clear,

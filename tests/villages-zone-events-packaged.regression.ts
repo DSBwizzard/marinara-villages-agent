@@ -2016,6 +2016,13 @@ try {
       assert.equal(state().operation.input.message, message);
       assert.equal(state().operation.input.chosenAt, now);
       assert.equal(lastSemanticInput.context.preservation.sceneAt, "2026-10-12T14:00:00.000Z");
+      assert.deepEqual(lastSemanticInput.context.preservation.calendar, {
+        instant: "2026-10-12T14:00:00.000Z",
+        date: "2026-10-12",
+        weekday: "Monday",
+        time: "07:00",
+        timeZone: "America/Los_Angeles",
+      });
       assert.equal(modelCalls, calls + 2, "HALT adds no provider calls");
       await stop?.();
       await app.close();
@@ -2047,6 +2054,28 @@ try {
     assert.equal(farewell.json().turnOutcome, "halt-time");
     assert.equal(state().status, "active", "a held farewell does not conclude the Scene");
     assert.deepEqual(state().lines, sourceLines);
+    await reset();
+    const death = "I start walking away before I slip, hit my head, and die";
+    semanticExchangeAnswer.halt = { reason: "condition", quote: "hit my head, and die" };
+    answer = {
+      playerSpeechCapture: { status: "silent", segments: [] },
+      segments: [{ speakerId: "aqua", text: "Go steady." }],
+    };
+    const deathResult = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/leave",
+      payload: {
+        sessionId: scene.id,
+        submissionId: "halt-death-farewell",
+        message: death,
+        expectedSceneRevision: state().sceneRevision,
+      },
+    });
+    assert.equal(deathResult.statusCode, 200, deathResult.body);
+    assert.equal(deathResult.json().turnOutcome, "halt-state");
+    assert.equal(state().status, "active");
+    assert.equal(state().operation.input.message, death);
+    assert.deepEqual(state().lines, sourceLines, "the safe farewell cannot replace an unsupported death input");
     await reset();
     const zone = () => records.get("villages-village").data.venues[0].zones.find((row: any) => row.id === "terrace");
     const action = {
