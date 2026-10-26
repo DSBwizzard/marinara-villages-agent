@@ -260,7 +260,7 @@ await runCase("memory-correction/concurrency", async () => {
 await runCase("memory-correction/runtime", async () => {
   const f = await fixture();
   await f.repo.mutateAuthority((state) => {
-    state.clock = { revision: 1, trustedAt: memoryTime(), recovery: null, replayUntilDate: "" };
+    state.clock = { revision: 1, trustedAt: memoryTime(), recovery: null, replayUntilDate: "", advanceMs: 86400000 };
     state.timeZone = "UTC";
   });
   const original = await f.read();
@@ -281,6 +281,7 @@ await runCase("memory-correction/runtime", async () => {
     await villagesRoutes(app);
     const evidence = (await app.inject({ url: `/memories/inspect/${f.input.target.id}?characterId=player` })).json();
     assert.equal(evidence.seed, original.seed);
+    const correctionStarted = Date.now();
     const response = await app.inject({
       method: "POST",
       url: `/memories/${f.input.target.id}/correct`,
@@ -288,6 +289,11 @@ await runCase("memory-correction/runtime", async () => {
     });
     assert.equal(response.statusCode, 200, response.body);
     const corrected = await f.read();
+    const correctedAt = Date.parse(corrected.memories.records[0].knowers.player.repair!.at);
+    assert.ok(
+      correctedAt >= correctionStarted + 86400000 && correctedAt <= Date.now() + 86400000,
+      "Cold manual correction uses the saved time advance without observing the clock.",
+    );
     assert.deepEqual(
       mechanics(corrected),
       mechanics(original),
@@ -295,6 +301,7 @@ await runCase("memory-correction/runtime", async () => {
     );
     assert.deepEqual(sceneMemories(corrected, "frozen"), sceneMemories(original, "frozen"));
     assert.equal(projectMemories(corrected.memories, ["player"])[0].text, f.input.text);
+    const forgetStarted = Date.now();
     const forgotten = await app.inject({
       method: "POST",
       url: `/memories/${f.input.target.id}/forget`,
@@ -304,7 +311,10 @@ await runCase("memory-correction/runtime", async () => {
       },
     });
     assert.equal(forgotten.statusCode, 200, forgotten.body);
-    assert.deepEqual(mechanics(await f.read()), mechanics(original), "Forget uses the same history-only boundary.");
+    const forgottenState = await f.read();
+    const forgottenAt = Date.parse(forgottenState.memories.records[0].knowers.player.forgotten!.at);
+    assert.ok(forgottenAt >= forgetStarted + 86400000 && forgottenAt <= Date.now() + 86400000);
+    assert.deepEqual(mechanics(forgottenState), mechanics(original), "Forget uses the same history-only boundary.");
     assert.ok(
       [...f.rows.values()].every((row) => ["village", "memory-payload", "memory-payload-intent"].includes(row.kind)),
       "No relationship, Scene, settings or other domain documents are written.",

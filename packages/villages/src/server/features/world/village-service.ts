@@ -454,7 +454,7 @@ export function createWorldCoordination({
             action,
             ...(action === "repair" ? { text: (input as MemoryCorrectRequest).text } : {}),
           },
-          villageNow().toISOString(),
+          villageNow(state.clock?.advanceMs ?? 0).toISOString(),
         );
       } catch (error) {
         throw conflict(error instanceof Error ? error.message : "The memory changed.");
