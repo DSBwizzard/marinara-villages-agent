@@ -70,7 +70,7 @@ async function main() {
     },
   });
   const world = coerceVillageState({
-    version: 3,
+    version: 5,
     ...defaultVillageState(),
     seed: "attendance-fixture",
     foundedAt: stamp,
@@ -102,6 +102,7 @@ async function main() {
     "capture spans all Zones in the selected Venue and excludes other Venues/unplaced residents",
   );
   const scene = coerceSession({
+    version: 2,
     id: "attendance-scene",
     placeId: "hub",
     placeName: "Shared building",

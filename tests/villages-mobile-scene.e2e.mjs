@@ -67,7 +67,7 @@ try {
     const castIds = residents.slice(0, count).map((person) => person.characterId);
     let activityWrites = 0;
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       memoryMode: "live",
       id: "grouped-scene",

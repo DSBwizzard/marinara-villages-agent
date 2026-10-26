@@ -157,7 +157,7 @@ assert.equal(persisted.projects[0]?.status, "planning");
 assert.equal(persisted.projects[0]?.lifecycle?.phase, "planning");
 assert.deepEqual(persisted.projects[0]?.venueDraft?.classes, ["community"]);
 assert.equal(persisted.projects[0]?.venueDraft?.description, "A shared glasshouse for herbs.");
-assert.match(persisted.chronicle[0]?.text ?? "", /accepted Rosa's request to plan/u);
+assert.match(persisted.memories.records[0]?.text ?? "", /accepted Rosa's request to plan/u);
 assert.throws(() => applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse.", new Date(at)));
 assert.equal(coerceVillageState(persisted).projects[0]?.venueDraft?.name, core.name, "the project survives reload");
 
@@ -165,7 +165,7 @@ const denied = persisted.pendingDecisions.find((decision) => decision.venueDraft
 applyVillageVenueDecision(persisted, denied.id, false, null, "", new Date(at));
 assert.equal(denied.status, "denied");
 assert.equal(persisted.venues.length, 0, "denial must leave the map unchanged");
-assert.match(persisted.chronicle[0]?.text ?? "", /declined Rosa's request/u);
+assert.match(persisted.memories.records.at(-1)?.text ?? "", /declined Rosa's request/u);
 
 const competing = defaultVillageState();
 competing.setupAt = competing.foundedAt = at;

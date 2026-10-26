@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
@@ -200,10 +201,16 @@ async function actualDispatch() {
   const ownerA = createActivationScope(),
     ownerB = createActivationScope();
   const releaseA = ownerA.run(() =>
-    configureVillagesRuntime({ persistence: { documents: a.documents }, logger: a.logger } as any),
+    configureVillagesRuntime({
+      persistence: { documents: villageFixtureDocuments(a.documents) },
+      logger: a.logger,
+    } as any),
   );
   const releaseB = ownerB.run(() =>
-    configureVillagesRuntime({ persistence: { documents: b.documents }, logger: b.logger } as any),
+    configureVillagesRuntime({
+      persistence: { documents: villageFixtureDocuments(b.documents) },
+      logger: b.logger,
+    } as any),
   );
   try {
     const reply = await ownerA.run(() =>

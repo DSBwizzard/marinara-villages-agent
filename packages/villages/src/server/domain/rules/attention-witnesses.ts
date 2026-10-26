@@ -92,9 +92,17 @@ export function applyAttentionWitnesses(
     Array.isArray(value)
       ? value.map((ref) => (typeof ref === "string" && ref.startsWith("attention:") ? (aliases.get(ref) ?? -1) : ref))
       : value;
-  for (const field of ["memoryChanges", "wishChanges", "recollections"])
+  for (const field of ["wishChanges"])
     if (Array.isArray(raw[field]))
       raw[field] = raw[field].map((value) => ({ ...asRecord(value), evidence: refs(asRecord(value).evidence) }));
+  if (Array.isArray(raw.memoryChanges))
+    for (const value of raw.memoryChanges)
+      for (const learner of Object.values(asRecord(asRecord(value).learners)))
+        if (Array.isArray(asRecord(learner).support))
+          for (const value of asRecord(learner).support as unknown[]) {
+            const citation = asRecord(value);
+            citation.lineId = (refs([citation.lineId]) as unknown[])[0];
+          }
   const relationships = asRecord(raw.relationshipChanges);
   raw.relationshipChanges = Object.fromEntries(
     Object.entries(relationships).map(([key, value]) => [

@@ -1,4 +1,6 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
+import { addMemory } from "./helpers/memories-fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageRepository } from "../packages/villages/src/server/domain/models/world-repository.js";
@@ -71,7 +73,6 @@ async function main() {
   events.length = 0;
   captures = 0;
   const refreshed = await service.readVillageState();
-  assert.equal(refreshed, outboxInput, "refresh updates the original hydrated object after outbox settlement");
   assert.equal(refreshed.name, "After outbox");
   assert.equal(refreshed.relationshipContext!.seed, "after-outbox");
   assert.equal(captures, 3, "the original separate collaboration captures stay at their call positions");
@@ -158,7 +159,7 @@ async function main() {
   selected = firstDocuments;
   const raw = createVillageRepository(() => {
     accesses++;
-    return selected;
+    return villageFixtureDocuments(selected);
   });
   assert.equal(accesses, 0, "the repository does not capture a runtime at construction");
   await raw.mutateAuthority((state) => {
@@ -169,6 +170,70 @@ async function main() {
   assert.equal(secondWrites, 0);
   assert.equal(firstRecord.data.name, "First written");
   assert.equal((await raw.readAuthority()).seed, "second", "the next operation resolves the accessor anew");
+  const rows = new Map<string, any>([
+    [
+      "villages-village",
+      {
+        id: "villages-village",
+        packageId: "villages",
+        kind: "village",
+        revision: 1,
+        data: { ...defaultVillageState(), seed: "first-memory", setupAt: "2026-10-25T00:00:00Z" },
+      },
+    ],
+  ]);
+  const documents = villageFixtureDocuments({
+    getById: async (_pkg: string, id: string) => structuredClone(rows.get(id) ?? null),
+    list: async (_pkg: string, kind: string) =>
+      [...rows.values()].filter((row) => row.kind === kind).map((row) => structuredClone(row)),
+    create: async (input: any) => {
+      const row = { ...structuredClone(input), revision: 1 };
+      rows.set(row.id, row);
+      return structuredClone(row);
+    },
+    update: async (input: any) => {
+      const old = rows.get(input.id);
+      if (!old || old.revision !== input.expectedRevision) return null;
+      const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+      rows.set(row.id, row);
+      return structuredClone(row);
+    },
+    remove: async (_pkg: string, id: string, revision: number) => {
+      if (rows.get(id)?.revision !== revision) return false;
+      rows.delete(id);
+      return true;
+    },
+  } as CapabilityDocumentStore);
+  const historyRepository = createVillageRepository(() => documents);
+  let outboxSettled = false;
+  const historyService = createVillageStateService(historyRepository, () => ({
+    ...relationships,
+    persistRelationshipAuthority: async () => {},
+    processSocialOutbox: async () => {
+      if (outboxSettled) return false;
+      await historyRepository.mutateAuthority(
+        (state) => {
+          state.memories = addMemory(state.memories);
+          state.name = "First Memory committed by outbox";
+        },
+        { memories: true },
+      );
+      outboxSettled = true;
+      return true;
+    },
+  }));
+  const lightAfterOutbox = await historyService.readVillageState();
+  assert.equal(lightAfterOutbox.name, "First Memory committed by outbox");
+  assert.throws(
+    () => lightAfterOutbox.memories,
+    /not loaded/,
+    "refresh preserves the unloaded-history boundary after the first payload is published",
+  );
+  assert.equal(
+    (await historyService.readVillageState({ memories: true })).memories.records.length,
+    1,
+    "explicit history reads see the committed outbox Memory",
+  );
   console.log(
     "State service read-only hydration, outbox refresh, retry baselines, post-commit failures and storage capture passed.",
   );

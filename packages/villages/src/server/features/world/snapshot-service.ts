@@ -43,9 +43,6 @@ export function createVillageSnapshot({
   /** The village as the tab draws it: live library labels and adopted card colors. */
   async function buildVillageSnapshot(at?: Date, observeCurrentHousing = false): Promise<VillageSnapshot> {
     let village = await readVillageState();
-    if (!village.visitMemoryBackfilled && (village.setupAt || village.foundedAt)) {
-      village = await readVillageState();
-    }
     const clock = await observeVillageClock();
     let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     if (clock?.paused) now = villageNow();
@@ -85,7 +82,7 @@ export function createVillageSnapshot({
     const player = readPlayerIdentity(village);
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();
-    const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess) : village;
+    const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess, false) : village;
     const capturedVenue = residenceAccess && sceneWorld.venues.find((venue) => venue.id === residenceAccess.placeId);
     // ONE schedule read for the whole village, so every villager's pin and their
     // own drawer's plate are resolved off the same answer. Null when the Engine

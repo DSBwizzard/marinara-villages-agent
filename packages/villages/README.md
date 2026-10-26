@@ -73,7 +73,13 @@ Memories, relationships, Wishes and Projects retain their own evidence and appli
 
 Effects save per accepted exchange. For ordinary reversible properties, the most recently saved valid change wins the current Village, even when it comes from an older Scene. Ending the Scene never restores its snapshot or reapplies earlier changes. Resources, ownership, target existence and revision checks still protect consequential writes.
 
-Passing recollections last 24 real hours. Durable memories retain significant shared experiences, commitments, preferences and other supported facts. Subjects and knowers are separate: a person can be mentioned without learning the event. Transcripts are evidence, not automatic character knowledge.
+Memories retain meaningful experiences, information and open matters without expiry or automatic pruning. Each has explicit knowers and bounded exact source excerpts; mentioning someone does not teach them. Reports, observations, interpretations and committed events remain distinct. Recall searches the full eligible history locally within bounded prompts. Transcripts supply evidence rather than automatic knowledge.
+
+The Memories page starts with the player and loads 50 entries at a time. Inspect can select another knower and reveal retained evidence without teaching anyone. Forget suppresses the chosen existing knower on that memory root; independent disclosures, permissions, gameplay state and historical transcripts remain. Manual Correct is not exposed. Wishes keep only goal/condition clarifications, proof and lifecycle authority; ordinary conversational details live in Memories. Pursuit and relationship summaries use saved player disclosures and never fill gaps from private current state.
+
+History is held separately in Engine’s existing document store; the Village atomically publishes its committed reference with current gameplay state. Ordinary world activity does not load the growing history. Live presence renewals avoid repeated absence catch-up.
+
+This coordinated cutover requires Village format 5 and Scene format 2. Earlier saves and Scenes are rejected without conversion or deletion of their stored bytes. Use an independent fresh world; preserve older worlds for their matching runtime.
 
 New generation and consequential effects validate source identity, witnesses, revisions and authority. Rejected proposals do not become gameplay facts. The [generation lifecycle](../../docs/generation-pipeline.md), [Scene privacy](../../docs/scene-response-privacy.md) and [response recovery](../../docs/scene-response-recovery.md) describe the technical contracts.
 

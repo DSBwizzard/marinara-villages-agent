@@ -64,7 +64,7 @@ function submission(id: string, sequence: number): VenueSubmission {
 }
 function fixture(name: string) {
   const world = coerceVillageState({
-    version: 3,
+    version: 5,
     ...defaultVillageState(),
     seed: name,
     foundedAt: stamp,
@@ -80,6 +80,7 @@ function fixture(name: string) {
     ],
   });
   const scene = coerceSession({
+    version: 2,
     id: "same",
     processingVersion: 1,
     villageSeed: name,
@@ -303,7 +304,8 @@ async function main() {
   );
   assert.deepEqual(
     feed.changes[0]!.notices.map((x) => x.id),
-    ["first:notice"],
+    ["first:notice", "hidden-wish"],
+    "Delivered historical notices survive later knowledge changes",
   );
   assert.equal(
     feed.changes[0]!.evidence[0]!.contactHidden,

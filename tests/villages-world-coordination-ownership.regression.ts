@@ -1,3 +1,4 @@
+import { addMemory, memoryRepair } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -9,14 +10,9 @@ import {
   readEffectiveVillagerCard,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type {
-  VillageChronicleEntry,
-  VillageSnapshot,
-  VillageState,
-} from "../packages/villages/src/server/domain/models/world.js";
+import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { villageDateLabel } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { expireResidentWishes } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
 import {
   createWorldCoordination,
@@ -26,10 +22,8 @@ import {
   configureWorldCoordination,
   resetVillage,
   reconcileVillage,
-  buildVillageStory,
   buildVillageMemories,
-  removeChronicleEntry,
-  removeVillageRecollection,
+  forgetMemory,
 } from "../packages/villages/src/server/features/world/village.js";
 
 const stamp = "2026-10-06T12:00:00.000Z";
@@ -39,24 +33,6 @@ function deferred() {
     resolve = done;
   });
   return { promise, resolve };
-}
-function memory(id: string, name: string): VillageChronicleEntry {
-  return {
-    id,
-    text: name,
-    dayIndex: 0,
-    clock: "afternoon",
-    occurredAt: stamp,
-    timePrecision: "exact",
-    kind: "chat",
-    scope: "private",
-    actors: [{ id: "same", name }],
-    knownByCharacterIds: ["same"],
-    subjectCharacterIds: ["same"],
-    sourceVisitId: "visit",
-    sourceLineIds: ["line"],
-    memoryCategory: "shared-experience",
-  };
 }
 function fixture(name: string) {
   const state = defaultVillageState();
@@ -80,6 +56,16 @@ function fixture(name: string) {
   }
   const service = createWorldCoordination({
     async readVillageState() {
+      note("read");
+      if (pauseRead) {
+        pauseRead = false;
+        entered.resolve();
+        await gate.promise;
+        note("read-resumed");
+      }
+      return structuredClone(state);
+    },
+    async readVillageAuthority() {
       note("read");
       if (pauseRead) {
         pauseRead = false;
@@ -227,88 +213,70 @@ assert(
 await reconcileVillage({ now: new Date(stamp) });
 assert.equal(a.state.simulatedThrough, now.toISOString(), "backward clocks do not rewind the durable cursor");
 
-// Read projections use their own world and library even with equal character IDs.
-a.state.chronicle = [
-  memory("same", "remembered A"),
-  { ...memory("former", "Former"), actors: [{ id: "gone", name: "Former" }] },
-];
-b.state.foundedAt = stamp;
-b.state.chronicle = [memory("same", "remembered B")];
-assert.equal((await buildVillageStory())[0].actors[0].name, "A library");
-assert.equal((await buildVillageStory())[1].actors[0].name, "Former");
-assert.equal((await buildVillageStory())[0].dateLabel, villageDateLabel(stamp, 0));
-assert.equal((await B.scope.run(buildVillageStory))[0].actors[0].name, "B library");
-a.state.villagers = [
-  {
-    characterId: "same",
-    cardSnapshot: snapshotFromCard(a.card, 1),
-    addedAt: stamp,
-    completedWishes: [],
-    agenda: null,
-    remap: null,
-    remapFailure: null,
-  },
-];
-a.state.recollections = [
-  {
-    id: "transient",
-    visitId: "visit",
-    occurredAt: stamp,
-    expiresAt: new Date(Date.now() + 3600000).toISOString(),
-    text: "A transient",
-    subjectCharacterIds: ["same"],
-    knownByCharacterIds: ["same"],
-    sourceLineIds: ["line"],
-    sourceSubmissionIds: ["submission"],
-    evidence: [],
-    reinforcementCount: 0,
-    lastReinforcedAt: stamp,
-  },
-];
-const memories = await buildVillageMemories();
-assert.equal(memories.durable[0].knownBy[0].name, "A library");
-assert.deepEqual(memories.durable[0].evidence, { visitId: "visit", lineIds: ["line"] });
-assert.equal(memories.recollections.length, 1);
-const saves = a.calls.filter((x) => x === "mutate").length;
-await assert.rejects(removeChronicleEntry(""), /not a memory/);
-assert.equal(a.calls.filter((x) => x === "mutate").length, saves, "invalid deletion fails before mutation");
+// Native pages remain owned, scoped and read-only across equal actor IDs.
+for (const f of [a, b]) {
+  f.state.villagers = [
+    {
+      characterId: "same",
+      cardSnapshot: snapshotFromCard(f.card, 1),
+      addedAt: stamp,
+      completedWishes: [],
+      agenda: null,
+      remap: null,
+      remapFailure: null,
+    },
+  ];
+  f.state.memories = addMemory(f.state.memories, {
+    text: "remembered " + f.state.name,
+    audience: ["player", "same"],
+    sourceId: "owned",
+  });
+}
+const memories = await buildVillageMemories({ inspection: true, characterId: "same" });
+assert.equal(memories.entries[0].knownBy[0].name, "A library");
+assert.match((await B.scope.run(() => buildVillageMemories())).entries[0].text, /remembered B/);
+const selected = memories.entries[0],
+  operation = memoryRepair(a.state.memories, "forget", ["same"], undefined, selected.id);
 a.retry((state) => {
   state.name = "Concurrent A";
 });
-await removeChronicleEntry("same");
+await forgetMemory(selected.id, { ...operation, seed: a.state.seed });
 assert.equal(a.state.name, "Concurrent A");
-assert.equal(a.state.chronicle.length, 1);
-assert.equal(b.state.chronicle.length, 1);
-await assert.rejects(removeChronicleEntry("same"), /no longer kept/);
-await removeVillageRecollection("transient");
-await assert.rejects(removeVillageRecollection("transient"), /no longer active/);
-await assert.rejects(removeVillageRecollection(""), /not a passing recollection/);
+assert.equal((await buildVillageMemories({ inspection: true, characterId: "same" })).entries[0].forgotten, true);
+assert.equal(
+  (await B.scope.run(() => buildVillageMemories({ inspection: true, characterId: "same" }))).entries[0].forgotten,
+  false,
+);
 
 // A direct call binds before the first await; B cannot supply its final snapshot.
 const delayed = fixture("Delayed A"),
   D = install(delayed);
 removeDefault();
 removeDefault = installDefaultActivation(D.scope, () => {});
-delayed.state.chronicle = [memory("same", "Remembered")];
+delayed.state.memories = addMemory(delayed.state.memories, {
+  text: "Remembered",
+  audience: ["player"],
+  sourceId: "delayed",
+});
 delayed.pauseRead();
-const pending = buildVillageStory();
+const pending = buildVillageMemories();
 await delayed.entered.promise;
 removeDefault();
 removeDefault = installDefaultActivation(B.scope, () => {});
 delayed.gate.resolve();
-assert.equal((await pending)[0].actors[0].name, "Delayed A library");
+assert.equal((await pending).entries[0].text, "Remembered");
 assert(delayed.owners.every((owner) => owner === D.scope));
 D.release();
-assert.equal((await buildVillageStory())[0].actors[0].name, "B library", "old cleanup cannot unregister B");
+assert.match((await buildVillageMemories()).entries[0].text, /remembered B/, "old cleanup cannot unregister B");
 
 // Explicit reset operates only on its selected owner and returns that owner's snapshot.
 await B.scope.run(resetVillage);
 assert.deepEqual(b.state, defaultVillageState());
-assert.equal(delayed.state.chronicle.length, 1);
+assert.equal(delayed.state.memories.records.length, 1);
 const missing = createActivationScope();
-await assert.rejects(missing.run(buildVillageStory), /not configured/);
+await assert.rejects(missing.run(buildVillageMemories), /not configured/);
 B.scope.dispose();
-await assert.rejects(buildVillageStory(), /not configured/);
+await assert.rejects(buildVillageMemories(), /not configured/);
 removeDefault();
 A.release();
 A.scope.dispose();

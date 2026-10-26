@@ -98,7 +98,7 @@ try {
       else if (path.endsWith("/rooms") && route.request().method() === "POST") {
         writes++;
         session = {
-          version: 1,
+          version: 2,
           id: "visit",
           placeId: "mill",
           placeName: "The Mill",

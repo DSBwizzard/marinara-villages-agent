@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
@@ -208,8 +209,14 @@ async function scopedDispatch() {
   const a = fixture("scoped-image-A"),
     b = fixture("scoped-image-B");
   const ownerA = createActivationScope();
-  const hostA = { persistence: { documents: a.documents }, logger: a.ports.villagesLogger() } as CapabilityRuntimeHost;
-  const hostB = { persistence: { documents: b.documents }, logger: b.ports.villagesLogger() } as CapabilityRuntimeHost;
+  const hostA = {
+    persistence: { documents: villageFixtureDocuments(a.documents) },
+    logger: a.ports.villagesLogger(),
+  } as CapabilityRuntimeHost;
+  const hostB = {
+    persistence: { documents: villageFixtureDocuments(b.documents) },
+    logger: b.ports.villagesLogger(),
+  } as CapabilityRuntimeHost;
   const cleanupA = ownerA.run(() => configureVillagesRuntime(hostA));
   const releaseA = ownerA.run(() =>
     configureTownMapGeneration(

@@ -1,3 +1,5 @@
+import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
+import { sceneMemoryContext, SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
 import { bindDevelopmentChanges, applyDevelopmentScene } from "../../domain/rules/development-scene.js";
 import { observeHousing } from "../../domain/rules/resident-development.js";
 import { shape as projectZoneShape } from "../../domain/rules/project-structure.js";
@@ -43,7 +45,6 @@ import type { InterpretationBatch } from "../../domain/models/interpretation-mod
 import type {
   GreetingTrace,
   VenueLine,
-  VenueRecollection,
   VenueRecordEvent,
   VenueReplyLine,
   VenueScene,
@@ -110,14 +111,8 @@ import {
   zoneControllerIds,
 } from "../../domain/rules/venue-zones.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
-import { knownWish } from "../../domain/rules/wish-journal.js";
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
-import {
-  bindLiveProposals,
-  liveEvidence,
-  memoryVersion,
-  mergeLiveReplyProposals,
-} from "../../domain/rules/live-exchange.js";
+import { bindLiveProposals, liveEvidence, mergeLiveReplyProposals } from "../../domain/rules/live-exchange.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash, randomUUID } from "node:crypto";
@@ -350,16 +345,22 @@ export function createSceneCommands({
         return readSceneChanges(id);
       }
     }
-    const memoryIds = Object.keys(proposals.memoryVersions);
-    const memories = village.chronicle.filter((memory) => memoryIds.includes(memory.id) && !memory.supersededBy);
     const result = await venueCheckpoint("change-interpretation", async () => {
+      const nativeMemory = sceneMemoryContext(
+        village,
+        ["player", ...scene.activeIds],
+        turn.message,
+        liveEvidence(scene, proposals)
+          .map((line) => line.content)
+          .join("\n"),
+      );
       let model = await villagesLanguageModels().resolveForRequest({
         connectionId: await villagesConnectionIdFor("system"),
       });
       let messages: CapabilityLanguageModelMessage[] = [
         {
           role: "system",
-          content: `Interpret ONLY the supplied saved exchange for ${domain}. Do not rewrite narration, change physical state, or invent evidence. ${domain === "wishes" ? WISH_PROPOSAL_INSTRUCTION : domain === "projects" ? 'Return projectSpeech:[{projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{lineId,quote}]}]. Judge only supplied Projects and revisions against the full saved exchange. Distinguish unconditional consent and personal commitment to lead from capability, conditional willingness and refusal. One exchange can support approval and volunteering. Cite exact current saved speaker words. No speech starts or completes construction. Omit unsupported rows.' : domain === "relationships" ? 'Return relationshipChanges:{changes:[],permissions:[],disclosures:[]}. Changes use fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:[],disclosed:boolean. Trust needs demonstrated reliability or confidence/boundary interaction. Permissions require explicit unconditional standing authority; disclosures require actual heard speech. No rewards for mere co-location.' : 'Return memoryChanges:[{kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:[],memoryIds:[]}]. Every knower must witness every citation. Verify facts against supplied evidence; a speaker denial establishes only an attributed belief/statement, never historical absence. Partial history proves no absence. Preserve qualifications and distinguish promises from deeds. Durable entries need stable facts; reinforce/supersede cite supplied matching durable memoryIds. Unsupported factual memories must be omitted.'} Use exact saved evidence IDs, not numeric indexes. Return JSON only.`,
+          content: `Interpret ONLY the supplied saved exchange for ${domain}. Do not rewrite narration, change physical state, or invent evidence. ${domain === "wishes" ? WISH_PROPOSAL_INSTRUCTION : domain === "projects" ? 'Return projectSpeech:[{projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{lineId,quote}]}]. Judge only supplied Projects and revisions against the full saved exchange. Distinguish unconditional consent and personal commitment to lead from capability, conditional willingness and refusal. One exchange can support approval and volunteering. Cite exact current saved speaker words. No speech starts or completes construction. Omit unsupported rows.' : domain === "relationships" ? 'Return relationshipChanges:{changes:[],permissions:[],disclosures:[]}. Changes use fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:[],disclosed:boolean. Trust needs demonstrated reliability or confidence/boundary interaction. Permissions require explicit unconditional standing authority; disclosures require actual heard speech. No rewards for mere co-location.' : SCENE_MEMORY_INSTRUCTION} Use exact saved evidence IDs, not numeric indexes. Return JSON only.`,
         },
         {
           role: "user",
@@ -369,7 +370,7 @@ export function createSceneCommands({
                 domain !== "wishes" || line.id === proposals.playerLineId || proposals.replyLineIds.includes(line.id),
             ),
             residents: village.villagers.map((person) => ({ id: person.characterId, name: person.cardSnapshot.name })),
-            ...(domain === "memories" ? { memories } : {}),
+            ...(domain === "memories" ? { memory: nativeMemory.envelope } : {}),
             ...(domain === "projects"
               ? {
                   projects: (turn.projectContexts ?? []).map((context) => ({
@@ -520,7 +521,7 @@ export function createSceneCommands({
         value,
         recoveredProjects,
         responseDiagnostics: diagnostics,
-        memoryVersions: Object.fromEntries(memories.map((memory) => [memory.id, memoryVersion(memory)])),
+        memoryContexts: { [nativeMemory.saved.protection.fingerprint]: nativeMemory.saved },
         requests: venueRequestMetrics(),
       };
     });
@@ -572,7 +573,7 @@ export function createSceneCommands({
         entry.progressError = "";
       } else entry.liveProposals[domain === "memories" ? "memoryChanges" : "relationshipChanges"] = result.value;
       if (entry.effectFailures) delete entry.effectFailures[domain];
-      if (domain === "memories") entry.liveProposals.memoryVersions = result.memoryVersions;
+      if (domain === "memories") entry.liveProposals.memoryContexts = result.memoryContexts;
       entry.requestMetrics = [...(entry.requestMetrics ?? []), ...(result.requests ?? [])];
       entry.processing.domains[domain].status = "pending";
     });
@@ -1196,7 +1197,7 @@ export function createSceneCommands({
       openingIntroductionResidentId: introduction,
       openingGatheringId: gathering ? village.opening!.id : undefined,
       pendingAccessClaim: initialPermissionId,
-      version: 1,
+      version: 2,
       sceneRevision: 0,
       processingVersion: 1,
       semanticVersion: 2,
@@ -1228,7 +1229,6 @@ export function createSceneCommands({
       lines: [],
       heardHistory: participants.map((person) => ({ characterId: person.characterId, lineIds: [] })),
       submissions: [],
-      memories: null,
       recap: "",
     };
     await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => {
@@ -1431,7 +1431,7 @@ export function createSceneCommands({
                 privateOwnerIdAtTurn: state.privateOwnerId,
               }
             : {}),
-          liveProposals: bindLiveProposals(reply, "", savedLineIds),
+          liveProposals: bindLiveProposals(reply, "", savedLineIds, state.lines),
           effectFailures: reply.effectFailures,
 
           speechCapture: reply.speechCapture,
@@ -1737,7 +1737,7 @@ For an explicit end to doorway conversation return contactEnd:[{speakerId,quote:
 The full player input is available ONLY to the local physical cast. Remote listeners may perceive only emitted fragments, never private words, causes or unseen activity. Resolve attempted sounds within this one response; attempts can fail silently. Ordinary local actions retain their normal validation and only physically present people can exchange objects.
 Fragments: ${JSON.stringify(intent.attention.fragments.map((fragment) => ({ ...fragment, source: intent.quote.slice(fragment.start, fragment.end), possibleListeners: remote.filter((person) => fragment.zoneIds.includes(contactPosition(scene, person.characterId))).map((person) => person.characterId) })))}.
 Return attentionWitnesses:[{id:"attention:0",emitted:true|false,heardBy:[],segment:0}]. Return one row for every fragment. segment cites a visible narration segment establishing an emitted SOUND; an attempted/failed sound is not an emitted sound. Speech needs no segment. Choose actual witnesses among each fragment's possible listeners and local IDs. Unemitted fragments have no witnesses or reactions. heardPlayerBy refers ONLY to local witnesses of the complete input. Remote speech must be justified by a fragment they heard.
-Current audible fragments may support memoryChanges, relationshipChanges, wishChanges or recollections using evidence references "attention:0" etc. "player" always refers to the complete local-only input. Remote listeners never witness visible-only narration. Silence must not reveal attendance or its cause. Return no contactRelay or player movement.`;
+Current audible fragments may support memoryChanges, relationshipChanges, wishChanges  using evidence references "attention:0" etc. "player" always refers to the complete local-only input. Remote listeners never witness visible-only narration. Silence must not reveal attendance or its cause. Return no contactRelay or player movement.`;
     if (acoustics) context.contactGeneration!.instruction = acousticInstructions(scene, intent, venue);
     const reply = await venueCheckpoint(intent.attention ? "turn-reply" : "contact-response", () =>
       intent.attention
@@ -1845,7 +1845,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       contactMoves: [...reply.contactMoves, ...conveyed.contactMoves],
       invitationSignal: conveyed.invitationSignal ?? reply.invitationSignal,
       // Only witnessed direct speech qualifies as Project speech; a messenger's quote is not target approval.
-      recollections: reply.recollections,
       ...mergeLiveReplyProposals(reply, conveyed, reply.lines.length + 1),
     };
   }
@@ -2683,19 +2682,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           )
             wishChanges.proposals.push({ ...context, intent: "check", lineIds: cited });
       }
-      const recollections: VenueRecollection[] = reply.recollections.map((memory, index) => ({
-        id: `${session.id}:recollection:${input.submissionId}:${index}`,
-        text: memory.text,
-        subjectCharacterIds: memory.subjectCharacterIds,
-        knownByCharacterIds: memory.knownByCharacterIds,
-        lineIds: [
-          ...new Set<string>(
-            memory.evidence
-              .map((ref) => (ref === "player" ? playerLineId : replyLineIds[ref]))
-              .filter((id): id is string => !!id),
-          ),
-        ],
-      }));
       if (reply.recap) state.recap = reply.recap;
       state.submissions.push({
         id: input.submissionId,
@@ -2742,7 +2728,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         verdict,
         wishId,
         wishMemory,
-        recollections,
         wishProposals: wishChanges.proposals,
         wishProposalError: wishChanges.error,
         wishContexts: reply.wishContexts,
@@ -2750,7 +2735,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         semanticPlayerMoves: reply.semanticPlayerMoves,
         ...(session.semanticVersion === 2 && reply.sceneEnded ? { semanticConclude: true } : {}),
         physicalContext: reply.physicalContext,
-        liveProposals: bindLiveProposals(reply, playerLineId, replyLineIds),
+        liveProposals: bindLiveProposals(reply, playerLineId, replyLineIds, state.lines),
         accessEvents: savedAccessEvents(reply.roomInterpretation),
         ...(reply.residentActionReceipt ? { residentActionReceipt: reply.residentActionReceipt } : {}),
         requestMetrics: venueRequestMetrics(),
@@ -3674,18 +3659,9 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     submission = (await readSession(session.id)).submissions.find((turn) => turn.id === submission.id) ?? submission;
     const village = await readVillageSnapshot();
     const presentation = sceneContinuityView(village, session);
-    const cached = filterRelationshipNotices(submission.recordEvents ?? [], presentation.relationshipContext)
-      .filter(
-        (event) =>
-          event.kind !== "wish" ||
-          (!!event.wishUpdate &&
-            village.villagers.some((person) => knownWish(presentation, person.characterId, event.wishUpdate!.wishId))),
-      )
-      .map((event) => {
-        if (event.kind !== "memory" || event.detail) return event;
-        const memory = village.chronicle.find((entry) => entry.id === event.id);
-        return memory ? { ...event, detail: memory.text } : event;
-      });
+    // Saved notices were authorized at delivery; later Forget cannot rewrite that history.
+    const cached = filterRelationshipNotices(submission.recordEvents ?? [], presentation.relationshipContext);
+    if (session.status === "closed" && !village.memoryScenes[session.id]) return structuredClone(cached);
     const events: VenueRecordEvent[] = [];
     if (village.relationshipContext && submission.liveProposals) {
       const receiptIds = new Set(submission.processing?.domains.relationships.receiptIds ?? []);
@@ -3705,17 +3681,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     for (const receipt of Object.values(village.exchangeReceipts))
       if (receipt.sceneId === session.id && receipt.submissionId === submission.id && receipt.notice)
         events.push(receipt.notice);
-    for (const memory of submission.turnMemories ?? []) {
-      const id = `${session.id}:turn:${submission.id}:memory:${memory.characterId}`;
-      const saved = village.chronicle.find((entry) => entry.id === id);
-      if (saved)
-        events.push({
-          id,
-          kind: "memory",
-          text: `${session.participants.find((person) => person.characterId === memory.characterId)?.name ?? "A villager"} remembered this exchange.`,
-          detail: saved.text,
-        });
-    }
     const venueId = `venue-chat:${session.id}:${submission.id}`;
     const change = physicalVenueEvents(village).find((entry) => entry.id === venueId);
     if (change) events.push({ id: venueId, kind: "venue", text: change.text });
@@ -3764,21 +3729,11 @@ Keep dialogue attributed to the target. The server conveys it through the messen
 
   async function sceneReceipts(session: VenueScene): Promise<VenueRecordEvent[]> {
     const current = await readVillageSnapshot();
-    const presentation = sceneContinuityView(current, session);
-    return filterRelationshipNotices(
-      [
-        ...new Map(
-          session.submissions.flatMap((turn) => turn.recordEvents ?? []).map((event) => [event.id, event]),
-        ).values(),
-      ],
-      presentation.relationshipContext,
-    ).filter(
-      (event) =>
-        !current.dismissedNoticeIds.includes(event.id) &&
-        (event.kind !== "wish" ||
-          (!!event.wishUpdate &&
-            current.villagers.some((person) => knownWish(presentation, person.characterId, event.wishUpdate!.wishId)))),
-    );
+    return [
+      ...new Map(
+        session.submissions.flatMap((turn) => turn.recordEvents ?? []).map((event) => [event.id, event]),
+      ).values(),
+    ].filter((event) => !current.dismissedNoticeIds.includes(event.id));
   }
 
   async function endVenueSession(id: string, retryOfAttemptId?: string): Promise<VenueScene> {
@@ -3875,7 +3830,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       state.endedAt ||= villageNow().toISOString();
       state.endReason ||= "player";
     });
-    await mutateVillageState((state) => releaseSceneWishes(state, closed));
+    await mutateVillageState((state) => {
+      releaseSceneWishes(state, closed);
+      releaseSceneMemories(state, closed);
+    });
     await clearActivePointer(session.id);
     await pruneVenueVisits();
     return closed;
@@ -3916,7 +3874,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${session.id}`);
     if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
     await mutateVillageState((state) => {
-      if (state.seed === session.villageSeed) delete state.sceneWishProtections?.[session.id];
+      if (state.seed === session.villageSeed) {
+        delete state.sceneWishProtections?.[session.id];
+        delete state.memoryScenes[session.id];
+      }
     });
   }
 

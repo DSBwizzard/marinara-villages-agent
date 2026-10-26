@@ -9,15 +9,29 @@ export function configureVillageStateService(service: VillageStateService): () =
 function villageStateService(): VillageStateService {
   return stateBinding.get();
 }
-export function readVillageAuthority() {
-  return villageStateService().readVillageAuthority();
+export function readVillageAuthority(...args: Parameters<VillageStateService["readVillageAuthority"]>) {
+  return villageStateService().readVillageAuthority(...args);
 }
-export function readVillageSnapshot() {
-  return villageStateService().readVillageSnapshot();
+export function readVillageSnapshot(...args: Parameters<VillageStateService["readVillageSnapshot"]>) {
+  return villageStateService().readVillageSnapshot(...args);
 }
-export function readVillageState() {
-  return villageStateService().readVillageState();
+export function readVillageState(...args: Parameters<VillageStateService["readVillageState"]>) {
+  return villageStateService().readVillageState(...args);
 }
 export function mutateVillageState(...args: Parameters<VillageStateService["mutateVillageState"]>) {
   return villageStateService().mutateVillageState(...args);
+}
+
+/** Explicit history access for recall, disclosures, Scene capture and learning. */
+export function readVillageMemoryState() {
+  return villageStateService().readVillageState({ memories: true });
+}
+export function readVillageMemoryAuthority() {
+  return villageStateService().readVillageAuthority({ memories: true });
+}
+export function readVillageMemorySnapshot() {
+  return villageStateService().readVillageSnapshot({ memories: true });
+}
+export function mutateVillageMemoryState(update: Parameters<VillageStateService["mutateVillageState"]>[0]) {
+  return villageStateService().mutateVillageState(update, { memories: true });
 }

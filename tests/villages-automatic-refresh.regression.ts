@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
 // Continuous Villages time: exact projection, migration, idempotent restart
@@ -98,7 +100,9 @@ async function main() {
   assert.equal(villageSchedulerDelayMs(new Date("bad")), REFRESH_MAX_DELAY_MS);
 
   const migrated = coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    backgroundPace: "quiet",
+    version: 5,
     wishSystemVersion: 3,
     foundedAt: "2026-09-01T07:00:00.000Z",
     lastHappeningKey: "2:morning",
@@ -122,9 +126,23 @@ async function main() {
   assert.ok(Date.parse(migrated.simulatedThrough) > 0);
   assert.equal(Object.hasOwn(migrated, "happenings"), false);
   assert.equal(migrated.villagers[0]?.agenda?.day[0]?.startMinute, 300);
-  assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: [] }).backgroundPace, "off");
   assert.equal(
-    coerceVillageState({ version: 3, wishSystemVersion: 3, refreshClocks: ["morning", "evening"] }).backgroundPace,
+    coerceVillageState({
+      ...defaultVillageState(),
+      version: 5,
+      wishSystemVersion: 3,
+      backgroundPace: "off",
+      refreshClocks: [],
+    }).backgroundPace,
+    "off",
+  );
+  assert.equal(
+    coerceVillageState({
+      ...defaultVillageState(),
+      version: 5,
+      wishSystemVersion: 3,
+      refreshClocks: ["morning", "evening"],
+    }).backgroundPace,
     "balanced",
   );
 
@@ -172,7 +190,7 @@ async function main() {
       error() {},
       debugOverride() {},
     },
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: {
       async listCharacters() {
         return [];

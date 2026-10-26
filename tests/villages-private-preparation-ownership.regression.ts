@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 import assert from "node:assert/strict";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
@@ -28,7 +30,8 @@ function waitForDispatch(entered: Promise<void>, work: Promise<void>) {
 function world(name: string) {
   const stamp = new Date().toISOString();
   return coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    version: 5,
     seed: "same-seed",
     name,
     setting: name,
@@ -165,7 +168,7 @@ function fixture(name: string) {
     logger,
     getAgentConfig: async () => ({ connectionId: "same-connection" }),
     resources: { listCharacters: async () => [], listLorebooks: async () => [] },
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     languageModels: { resolveForRequest: async () => model },
   } as any;
   return { service, state, privateZone, gate, entered, calls, stages, host };

@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
@@ -101,7 +102,8 @@ assert(!JSON.stringify(coerceFoundingTasks({ resident: { routine: task } })).inc
 console.log("Founding request budgets, full identity, explicit Routine contract and safe receipts passed.");
 
 const state = coerceVillageState({
-  version: 3,
+  ...defaultVillageState(),
+  version: 5,
   seed: "revision-fixture",
   setting: "Shared place",
   villagers: [

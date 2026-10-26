@@ -84,6 +84,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           contactHidden: true,
         }));
         const privateScene = coerceSession({
+          version: 2,
           id: "offscreen:" + entry.id,
           processingVersion: 1,
           villageSeed: entry.seed,
@@ -103,9 +104,10 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
               at: accepted.at,
               semanticProvenance: accepted.semanticProvenance,
               liveProposals: bindLiveProposals(
-                { memoryChanges: accepted.memoryChanges },
+                { memoryChanges: accepted.memoryChanges, memoryContexts: accepted.memoryContexts },
                 "",
                 lines.map((line) => line.id),
+                lines,
               ),
             },
           ],

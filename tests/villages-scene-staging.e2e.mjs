@@ -77,7 +77,7 @@ try {
         })),
       };
       let session = {
-        version: 1,
+        version: 2,
         stagingVersion: 1,
         id: `staging-${count}`,
         placeId: "mill",
@@ -642,7 +642,7 @@ try {
       })),
     };
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       id: "attention-views",
       placeId: "mill",

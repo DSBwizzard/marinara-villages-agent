@@ -133,8 +133,6 @@ export type VenueSubmission = {
     quote: string;
     sourceLineId?: string;
   };
-  turnMemories?: VenueMemory[];
-  recollections?: VenueRecollection[];
   semanticReady?: boolean;
   semanticConclude?: boolean;
   semanticContinuedDomains?: import("./exchange-model.js").ExchangeDomain[];
@@ -154,15 +152,6 @@ export type VenueSubmission = {
   recordEvents?: VenueRecordEvent[];
   at?: string;
 };
-export type VenueMemory = { characterId: string; text: string; lineIds?: string[] };
-export type VenueRecollection = {
-  relationshipOnly?: boolean;
-  id: string;
-  text: string;
-  subjectCharacterIds: string[];
-  knownByCharacterIds: string[];
-  lineIds: string[];
-};
 export type VenueRecordEvent = {
   id: string;
   kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down";
@@ -180,7 +169,7 @@ export type VenueScene = {
   semanticVersion?: 2;
   semanticIntent?: import("./semantic-model.js").SemanticIntent;
   spinoff?: import("./spinoff-model.js").VillageSpinoff;
-  version: 1;
+  version: 2;
   processingVersion?: 1;
   changeSequence?: number;
   villageSeed?: string;
@@ -264,7 +253,6 @@ export type VenueScene = {
   lines: VenueLine[];
   heardHistory: { characterId: string; lineIds: string[] }[];
   submissions: VenueSubmission[];
-  memories: VenueMemory[] | null;
   recap: string;
 };
 export type VenueSession = VenueScene;

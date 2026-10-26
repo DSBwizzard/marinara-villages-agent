@@ -426,47 +426,55 @@ await runCase("memories/protection", () => {
 });
 
 await runCase("memories/consolidation", () => {
+  let memories = emptyMemories();
+  for (const kind of ["preference", "concern", "possibility"]) {
+    memories = addMemory(memories, {
+      text: "Exact " + kind,
+      audience: ["ella"],
+      patch: { kind: "information", domainRef: { kind: "wish", id: "lavender", characterId: "ella" } },
+    });
+    memories.records.at(-1)!.knowers.ella.disclosed = { kind };
+  }
+  memories = addMemory(memories, {
+    text: "Ella is considering the orchard.",
+    audience: ["player"],
+    patch: { kind: "information", domainRef: { kind: "pursuit", id: "move", characterId: "ella" } },
+  });
+  memories.records.at(-1)!.knowers.player.disclosed = { title: "Move to the orchard", status: "considering" };
   const village: any = {
-    villagers: [{ characterId: "ella", cardSnapshot: { name: "Ella" }, agenda: { wishes: [] } }],
-    venues: [{ id: "home", zones: [{ id: "door", name: "Front door" }] }],
-    wishKnowledge: {
-      ella: [
-        {
-          wishId: "lavender",
-          text: "A quiet garden",
-          learnedAt: memoryTime(1),
-          lineIds: ["spoken"],
-          facts: ["preference", "concern", "possibility", "condition"].map((kind, i) => ({
-            id: "fact-" + i,
-            kind,
-            quote: "Exact " + kind,
-            at: memoryTime(1),
-            lineIds: ["spoken"],
-            submissionId: "turn",
-            sceneId: "scene",
-            ...(kind === "condition" ? { conditionRevision: 2 } : {}),
-          })),
-        },
-      ],
-    },
-    development: {
-      residents: {
-        ella: {
-          pursuits: [
+    memories,
+    villagers: [
+      {
+        characterId: "ella",
+        cardSnapshot: { name: "Ella" },
+        agenda: {
+          wishes: [
             {
-              id: "move",
-              targetVenueId: "private-attic",
-              status: "arranged",
-              consent: "refused",
-              known: {
-                title: "Move to the orchard",
-                text: "Ella is considering the orchard.",
-                status: "considering",
-                at: memoryTime(1),
+              id: "lavender",
+              goalJournal: {
+                facts: [
+                  {
+                    id: "condition",
+                    kind: "condition",
+                    quote: "Exact condition",
+                    at: memoryTime(1),
+                    lineIds: ["spoken"],
+                    submissionId: "turn",
+                    sceneId: "scene",
+                    conditionRevision: 2,
+                  },
+                ],
+                evidence: [],
               },
             },
           ],
         },
+      },
+    ],
+    venues: [{ id: "home", zones: [{ id: "door", name: "Front door" }] }],
+    development: {
+      residents: {
+        ella: { pursuits: [{ id: "move", targetVenueId: "private-attic", status: "arranged", consent: "refused" }] },
       },
     },
   };

@@ -95,26 +95,26 @@ try {
     let failMemories = false;
     const memory = (id, actor, text) => ({
       id,
-      kind: "chat",
-      scope: "private",
-      dayIndex: 1,
-      clock: "morning",
-      occurredAt: now,
-      dateLabel: "Today",
+      rootId: id,
+      revision: 1,
+      rootRevision: 1,
+      kind: "experience",
       text,
-      actors: [person(actor)],
+      occurredAt: now,
+      recordedAt: now,
       subjects: [person(actor)],
       knownBy: [person(actor)],
-      memoryCategory: "shared-experience",
-      evidence: { visitId: "evidence", lineIds: ["line"] },
-      legacy: false,
+      forgotten: false,
+      playerCorrection: false,
     });
     const library = {
+      inspection: true,
+      seed: "dossier-world",
+      revision: 1,
       residents: [person("mara"), person("eli")],
-      durable: [memory("m1", "mara", "PRIVATE MARA MEMORY"), memory("m2", "eli", "PRIVATE ELI MEMORY")],
-      recollections: [],
-      expiredRecollectionCount: 0,
-      archive: { total: 2, recent: [] },
+      entries: [memory("m1", "mara", "PRIVATE MARA MEMORY"), memory("m2", "eli", "PRIVATE ELI MEMORY")],
+      total: 2,
+      next: null,
     };
     const relationships = {
       profiles: ["mara", "eli"].map((characterId) => ({
@@ -241,25 +241,45 @@ try {
         ];
         value = relationships;
       } else if (path.endsWith("/relationships")) value = relationships;
-      else if (path.endsWith("/memories")) {
+      else if (path.endsWith("/memories/inspect")) {
         if (failMemories)
           return fulfill(route, {
             status: 503,
             contentType: "application/json",
             body: '{"error":"Memory service unavailable"}',
           });
-        value = library;
-      } else if (path.endsWith("/memories/durable/m1")) {
-        library.durable = library.durable.filter((entry) => entry.id !== "m1");
-        value = {};
-      } else if (path.endsWith("/rooms/archive/evidence"))
+        const query = new URL(request.url()).searchParams,
+          characterId = query.get("characterId") || "player",
+          search = query.get("query") || "";
+        const entries = library.entries.filter(
+          (entry) =>
+            entry.knownBy.some((person) => person.id === characterId) &&
+            entry.text.toLowerCase().includes(search.toLowerCase()),
+        );
+        value = { ...library, characterId, query: search, entries, total: entries.length };
+      } else if (path.endsWith("/memories/m1/forget")) {
+        const body = request.postDataJSON();
+        assert.deepEqual(body.knowers, ["mara"]);
+        assert.equal(body.target.id, "m1");
+        assert.equal(body.seed, library.seed);
+        assert.equal(body.expectedCollectionRevision, library.revision);
+        library.entries[0].forgotten = true;
+        library.revision++;
+        value = { forgotten: true };
+      } else if (path.endsWith("/memories/inspect/m1"))
         value = {
-          visit: {
-            id: "evidence",
-            placeName: "The Mill",
-            participants: [{ characterId: "mara", name: "Mara" }],
-            lines: [{ id: "line", name: "Mara", at: now, heardBy: ["mara"], content: "SOURCE EVIDENCE" }],
-          },
+          entry: library.entries[0],
+          knowers: [
+            {
+              person: person("mara"),
+              basis: "observation",
+              learnedAt: now,
+              reinforcedAt: now,
+              forgotten: library.entries[0].forgotten,
+              playerCorrection: false,
+              support: [{ sourceId: "deleted-source-scene", lineId: "line", excerpt: "SOURCE EVIDENCE" }],
+            },
+          ],
         };
       else if (path.endsWith("/agendas/mara/influence")) {
         agendas.villagers[0].ingestSchedule = true;
@@ -405,7 +425,7 @@ try {
     await expect(page.locator('[data-villager-request="request:mara-request"]')).toBeFocused();
     await page.getByRole("button", { name: /^Villagers \(/ }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
-    assert.equal(reads.filter((path) => path.endsWith("/memories") || path.endsWith("/agendas")).length, 0);
+    assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
     assert.equal(writes.length, 0, JSON.stringify(writes));
     const signature = profile.getByRole("img", { name: "Mara's signature", exact: true });
     await expect(signature).toBeVisible();
@@ -589,18 +609,13 @@ try {
       await expect(query).toHaveValue("PRIVATE");
       await query.fill("");
     }
-    await profile
-      .locator(`.${P}-memory-card`)
-      .filter({ hasText: "PRIVATE MARA MEMORY" })
-      .getByText("Details", { exact: true })
-      .click();
-    await profile.getByRole("button", { name: "View evidence" }).click();
+    await profile.getByRole("button", { name: "Inspect", exact: true }).last().click();
     await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
     await settleTurn();
     await page.screenshot({ path: resolve(output, `inspect-${width}-${height}.png`) });
-    page.once("dialog", (dialog) => dialog.accept());
     await profile.getByRole("button", { name: "Forget", exact: true }).click();
-    await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toHaveCount(0);
+    await expect(profile.getByRole("button", { name: "Forget", exact: true })).toBeDisabled();
+    await expect(profile.getByText("Forgotten", { exact: true }).first()).toBeVisible();
     failMemories = true;
     await profile.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(profile.getByRole("alert")).toContainText("Memory service unavailable");

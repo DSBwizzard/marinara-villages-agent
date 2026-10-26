@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -62,6 +64,7 @@ function commandFixture(
     notice: { id: "same-notice", kind: "venue", text: label + " saved effect" },
   };
   const scene = coerceSession({
+    version: 2,
     id: "same-scene",
     villageSeed: world.seed,
     placeId: "same-place",
@@ -178,6 +181,14 @@ function commandFixture(
     },
   };
   Object.assign(supplied, configure?.({ scene, world, touch, stamp }));
+  for (const turn of scene.submissions)
+    if (turn.liveProposals)
+      turn.liveProposals = bindLiveProposals(
+        turn.liveProposals,
+        turn.liveProposals.playerLineId,
+        turn.liveProposals.replyLineIds,
+        scene.lines,
+      );
   // Unused typed connections fail if this replay unexpectedly enters another command path.
   const ports = new Proxy(supplied, {
     get(target, property) {
@@ -228,6 +239,7 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
         id: "villages-venue-visit-same",
         revision: 1,
         data: {
+          version: 2,
           id: "same",
           placeId: "same-place",
           placeName: name,
@@ -290,7 +302,7 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
   const release = scope.run(() =>
     configureVillagesRuntime(
       {
-        persistence: { documents },
+        persistence: { documents: villageFixtureDocuments(documents) },
         resources: { listCharacters: async () => [] },
         logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
         isDebugAgentsEnabled: () => false,
@@ -448,7 +460,7 @@ for (const canonical of [false, true]) {
   const releaseSharedB = sharedB.run(() =>
     configureVillagesRuntime(
       {
-        persistence: { documents: documentsB },
+        persistence: { documents: villageFixtureDocuments(documentsB) },
         resources: { listCharacters: async () => [] },
         get languageModels() {
           providerAccess++;

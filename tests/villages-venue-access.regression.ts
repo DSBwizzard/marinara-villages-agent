@@ -1,3 +1,6 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
+import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
 import assert from "node:assert/strict";
 import {
@@ -504,7 +507,7 @@ const release = configureVillagesRuntime({
     },
   },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_p: string, id: string) {
         return records.get(id) ?? null;
       },
@@ -551,7 +554,7 @@ const release = configureVillagesRuntime({
       async remove(_p: string, id: string) {
         return records.delete(id);
       },
-    },
+    }),
   },
   languageModels: {
     async resolveForRequest() {
@@ -564,14 +567,14 @@ async function main() {
     failSceneCreate = true;
     await assert.rejects(() => enterVenue("home", undefined, "", undefined, "bedroom"), /fixture Scene create failed/);
     assert.equal(
-      (await readVillageState()).venues[0].access!.permissions[0].sceneId,
+      (await readVillageState({ memories: true })).venues[0].access!.permissions[0].sceneId,
       null,
       "Failed initial Scene save cannot consume a visit.",
     );
     failSceneCreate = false;
     const entered = await enterVenue("home", undefined, "", undefined, "bedroom");
     assert.equal(entered.zoneId, "bedroom");
-    assert.equal((await readVillageState()).venues[0].access!.permissions[0].sceneId, entered.id);
+    assert.equal((await readVillageState({ memories: true })).venues[0].access!.permissions[0].sceneId, entered.id);
     const office = await moveVenueZone(entered.id, "office", entered.sceneRevision);
     const returned = await moveVenueZone(entered.id, "bedroom", office.sceneRevision);
     assert.equal(returned.id, entered.id, "Zone movements keep the same Scene and its visit permission.");
@@ -601,15 +604,15 @@ async function main() {
       "Repeated refresh cannot record a second exit.",
     );
     const route = contactPath(
-      await readVillageState(),
-      (await readVillageState()).venues[0],
+      await readVillageState({ memories: true }),
+      (await readVillageState({ memories: true })).venues[0],
       "office",
       "exterior",
       "player",
       exited!,
     );
     assert.ok(route, "Egress to Entrance remains possible.");
-    const world = await readVillageState();
+    const world = await readVillageState({ memories: true });
     const revision = world.venues[0].access!.revision;
     await changeVenueAccess("home", {
       action: "refuse-entry",
@@ -619,7 +622,9 @@ async function main() {
       visitorId: "player",
     });
     assert.equal(
-      (await readVillageState()).venues[0].access!.visitDenials.some((row) => row.zoneId === "living"),
+      (await readVillageState({ memories: true })).venues[0].access!.visitDenials.some(
+        (row) => row.zoneId === "living",
+      ),
       true,
     );
     await changeVenueAccess("home", {
@@ -632,7 +637,7 @@ async function main() {
       accompanied: false,
       outsideHours: false,
     });
-    const reinvited = (await readVillageState()).venues[0];
+    const reinvited = (await readVillageState({ memories: true })).venues[0];
     assert.equal(
       reinvited.access!.visitDenials.some((row) => row.zoneId === "living"),
       false,
@@ -646,7 +651,8 @@ async function main() {
     await endVenueSession(entered.id);
     await updateVillageZone("home", "exterior", { name: "Exterior", purpose: "Arrival", description: "A stone gate" });
     assert.equal(
-      (await readVillageState()).venues[0].zones!.find((zone) => zone.kind === "exterior")!.description,
+      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.kind === "exterior")!
+        .description,
       "A stone gate",
       "Venue managers can edit the Unrestricted Entrance's physical details.",
     );
@@ -738,8 +744,8 @@ async function main() {
     });
     assert.equal(
       evaluateZoneAccess(
-        (await readVillageState()).venues[0],
-        (await readVillageState()).venues[0].zones!.find((zone) => zone.id === "living")!,
+        (await readVillageState({ memories: true })).venues[0],
+        (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!,
         "player",
         { sceneId: arrival.id },
       ).allowed,
@@ -750,7 +756,7 @@ async function main() {
     const refusedMove = await moveVenueZone(arrival.id, "living", arrival.sceneRevision);
     assert.equal(refusedMove.zoneId, "living", "A later outside revocation preserves admission in the captured Scene.");
     assert.equal(
-      (await readVillageState()).venues[0].zones!.find((zone) => zone.id === "living")!.seen,
+      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!.seen,
       false,
       "A revoked interleaved move cannot reveal an unseen Zone.",
     );
@@ -769,7 +775,7 @@ async function main() {
         timing: "now",
         quote: invitationLine.content,
         sourceLineId: "immediate-retry",
-        accessRevision: (await readVillageState()).venues[0].access!.revision,
+        accessRevision: (await readVillageState({ memories: true })).venues[0].access!.revision,
       },
     );
     const admittedMove = await moveVenueZone(arrival.id, "living", refusedMove.sceneRevision);
@@ -783,7 +789,7 @@ async function main() {
     const standingAt = new Date().toISOString();
     const standingScene = {
       id: "standing-scene",
-      villageSeed: (await readVillageState()).seed,
+      villageSeed: (await readVillageState({ memories: true })).seed,
       lines: [{ ...invitationLine, id: "standing-line", at: standingAt }],
       submissions: [
         {
@@ -823,11 +829,18 @@ async function main() {
       timing: "now",
       quote: invitationLine.content,
       sourceLineId: "standing-line",
-      accessRevision: (await readVillageState()).venues[0].access!.revision,
+      accessRevision: (await readVillageState({ memories: true })).venues[0].access!.revision,
     });
+    const turn = standingScene.submissions[0];
+    turn.liveProposals = bindLiveProposals(
+      turn.liveProposals,
+      turn.liveProposals.playerLineId,
+      turn.liveProposals.replyLineIds,
+      standingScene.lines,
+    );
     const standingResult = await processLiveRelationships(standingScene, "standing-turn");
     assert.ok(
-      (await readVillageState()).venues[0].access!.permissions.some(
+      (await readVillageState({ memories: true })).venues[0].access!.permissions.some(
         (grant) => grant.duration === "standing" && grant.sourceLineIds.includes("standing-line"),
       ),
       "A visit invite in the same reply cannot invalidate its explicit standing invitation. " +
@@ -870,12 +883,14 @@ async function main() {
     });
     await processLiveRelationships(staleStanding, "old-standing-turn");
     assert.equal(
-      (await readVillageState()).venues[0].access!.permissions.filter((grant) => grant.duration === "standing").length,
+      (await readVillageState({ memories: true })).venues[0].access!.permissions.filter(
+        (grant) => grant.duration === "standing",
+      ).length,
       2,
       "Old queued standing speech cannot revive permission after authority was withdrawn and restored.",
     );
 
-    const friendWorld = await readVillageState();
+    const friendWorld = await readVillageState({ memories: true });
     const visitor = friendWorld.villagers.find((resident) => resident.characterId === "visitor")!;
     visitor.agenda = unwrittenVillageAgenda(friendWorld.venues, "visitor");
     const future = new Date();
@@ -930,8 +945,8 @@ async function main() {
       current.name = "An unrelated village rename";
     });
     assert.equal(
-      (await readVillageState()).villagers.find((resident) => resident.characterId === "visitor")!.agenda!
-        .wishActivities!.length,
+      (await readVillageState({ memories: true })).villagers.find((resident) => resident.characterId === "visitor")!
+        .agenda!.wishActivities!.length,
       1,
       "An unrelated save preserves a future friend-only activity using fresh relationship authority.",
     );
@@ -962,14 +977,19 @@ async function main() {
         command: { action: "zone-policy", zoneId: "living", policy: commandPolicy },
       },
     ];
-    const checks = accessManagementChecks(await readVillageState(), draft, events, "speech-fixture");
+    const checks = accessManagementChecks(await readVillageState({ memories: true }), draft, events, "speech-fixture");
     assert.equal(checks.length, 1);
     assert.equal(
-      accessManagementChecks(await readVillageState(), [{ ...draft[0], speakerId: "visitor" }], events, "wrong-speaker")
-        .length,
+      accessManagementChecks(
+        await readVillageState({ memories: true }),
+        [{ ...draft[0], speakerId: "visitor" }],
+        events,
+        "wrong-speaker",
+      ).length,
       0,
     );
     const speechScene = {
+      version: 2,
       id: "speech-scene",
       placeId: "home",
       lines: [{ ...draft[0], id: "speech-line" }],
@@ -1000,7 +1020,8 @@ async function main() {
     } as any;
     await recordRoomAccessEvents(speechScene, batch);
     assert.deepEqual(
-      (await readVillageState()).venues[0].zones!.find((zone) => zone.id === "living")!.access!.managerIds,
+      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!.access!
+        .managerIds,
       ["mara"],
       batch.traces[0].applied,
     );
@@ -1030,7 +1051,9 @@ async function main() {
     await recordRoomAccessEvents(speechScene, obsolete);
     assert.match(obsolete.traces[0].applied, /access changed/);
     assert.equal(
-      (await readVillageState()).venues[0].access!.receipts[obsolete.checks[0].facts.accessCommand.operationId].outcome,
+      (await readVillageState({ memories: true })).venues[0].access!.receipts[
+        obsolete.checks[0].facts.accessCommand.operationId
+      ].outcome,
       "rejected",
     );
     await recordRoomAccessEvents(speechScene, obsolete);
@@ -1056,7 +1079,7 @@ async function main() {
       },
     ];
     const recoveryChecks = accessManagementChecks(
-      await readVillageState(),
+      await readVillageState({ memories: true }),
       recoveryDraft,
       recoveryEvents,
       "npc-recovery",
@@ -1064,7 +1087,7 @@ async function main() {
     assert.equal(recoveryChecks.length, 1, "A current NPC Venue manager can propose scoped orphan recovery.");
     assert.equal(
       accessManagementChecks(
-        await readVillageState(),
+        await readVillageState({ memories: true }),
         recoveryDraft,
         [{ ...recoveryEvents[0], actorId: "visitor" }],
         "guest-recovery",
@@ -1072,6 +1095,7 @@ async function main() {
       0,
     );
     const recoveryScene = {
+      version: 2,
       id: "recovery-scene",
       placeId: "home",
       lines: [{ ...recoveryDraft[0], id: "recovery-line" }],
@@ -1084,12 +1108,13 @@ async function main() {
     } as any;
     await recordRoomAccessEvents(recoveryScene, recoveryBatch);
     assert.deepEqual(
-      (await readVillageState()).venues[0].zones!.find((zone) => zone.id === "office")!.access!.managerIds,
+      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "office")!.access!
+        .managerIds,
       ["mara"],
       recoveryBatch.traces[0].applied,
     );
     // Persisted reply effects recover without another model call or the latest turn's evidence.
-    const recoveryRevision = (await readVillageState()).venues[0].access!.revision;
+    const recoveryRevision = (await readVillageState({ memories: true })).venues[0].access!.revision;
     const savedDraft = [
       {
         speakerId: "jim",
@@ -1100,7 +1125,7 @@ async function main() {
     ] as any;
     const combinedManagerChecks = roomInterpretationChecks(
       arrival as any,
-      await readVillageState(),
+      await readVillageState({ memories: true }),
       "",
       savedDraft,
       "combined-manager-ban",
@@ -1122,7 +1147,7 @@ async function main() {
       for (const zone of current.venues[0].zones!.filter((zone) => zone.kind !== "exterior"))
         zone.access!.managerIds = ["mara"];
     });
-    const banWorld = await readVillageState();
+    const banWorld = await readVillageState({ memories: true });
     const banScene = {
       ...arrival,
       id: "saved-ban-scene",
@@ -1161,19 +1186,22 @@ async function main() {
     failAccessWrite = true;
     await assert.rejects(() => processSavedExchange(banScene.id, "saved-ban-turn"), /fixture access write failed/);
     assert.ok(
-      !(await readVillageState()).venues[0].access!.bans.some((ban) => ban.visitorId === "player" && ban.active),
+      !(await readVillageState({ memories: true })).venues[0].access!.bans.some(
+        (ban) => ban.visitorId === "player" && ban.active,
+      ),
     );
     await processSavedExchange(banScene.id, "saved-ban-turn");
     assert.ok(
-      (await readVillageState()).venues[0].access!.bans.some(
+      (await readVillageState({ memories: true })).venues[0].access!.bans.some(
         (ban) => ban.zoneId === null && ban.visitorId === "player" && ban.active,
       ),
     );
-    const recoveredRevision = (await readVillageState()).venues[0].access!.revision;
+    await mutateVillageState((state) => reserveMemoryScene(state, banScene.id, banScene.startedAt));
+    const recoveredRevision = (await readVillageState({ memories: true })).venues[0].access!.revision;
     assert.ok(recoveredRevision > recoveryRevision);
     await processSavedExchange(banScene.id, "saved-ban-turn");
     assert.equal(
-      (await readVillageState()).venues[0].access!.revision,
+      (await readVillageState({ memories: true })).venues[0].access!.revision,
       recoveredRevision,
       "Saved effect replay cannot duplicate a ban.",
     );
@@ -1197,7 +1225,7 @@ async function main() {
       );
       venue.zones!.find((zone) => zone.id === "living")!.access!.managerIds = ["jim"];
     });
-    const beforeOldReply = (await readVillageState()).venues[0].access!;
+    const beforeOldReply = (await readVillageState({ memories: true })).venues[0].access!;
     const oldReply = {
       ...banScene,
       id: "previous-world-reply",
@@ -1232,17 +1260,19 @@ async function main() {
     });
     await processSavedExchange(oldReply.id, "old-reply-turn");
     assert.deepEqual(
-      (await readVillageState()).venues[0].access,
+      (await readVillageState({ memories: true })).venues[0].access,
       beforeOldReply,
       "Reused Venue and actor IDs cannot replay prior-village speech into a new world, including a permission receipt.",
     );
 
     // An offscreen accepted encounter writes canonical standing permission; rejected continuations cannot.
-    const socialWorld = await readVillageState(),
+    const socialWorld = await readVillageState({ memories: true }),
       socialAt = new Date(
         Math.max(
           Date.now(),
-          ...(await readVillageState()).venues[0].access!.changes.map((change) => Date.parse(change.at)),
+          ...(await readVillageState({ memories: true })).venues[0].access!.changes.map((change) =>
+            Date.parse(change.at),
+          ),
         ) + 1,
       ).toISOString();
     for (const actor of ["jim", "mara"]) {
@@ -1302,9 +1332,9 @@ async function main() {
     records.set("villages-village", { id: "villages-village", kind: "village", data: socialWorld, revision: 180 });
     failAccessWrite = true;
     await assert.rejects(() => processSocialOutbox(socialWorld), /fixture access write failed/);
-    await processSocialOutbox(await readVillageState());
+    await processSocialOutbox(await readVillageState({ memories: true }));
     assert.ok(
-      (await readVillageState()).venues[0].access!.permissions.some(
+      (await readVillageState({ memories: true })).venues[0].access!.permissions.some(
         (grant) =>
           grant.duration === "standing" &&
           grant.visitorId === "mara" &&
@@ -1312,19 +1342,19 @@ async function main() {
       ),
       "Accepted offscreen standing access recovers from the saved encounter.",
     );
-    const rejectedWorld = await readVillageState();
+    const rejectedWorld = await readVillageState({ memories: true });
     rejectedWorld.socialOutbox = [
       { ...socialWorld.socialOutbox[0], id: "rejected-continuation", requiredPlanId: "missing-plan" },
     ];
     records.set("villages-village", { id: "villages-village", kind: "village", data: rejectedWorld, revision: 190 });
     await processSocialOutbox(rejectedWorld);
     assert.ok(
-      !(await readVillageState()).venues[0].access!.permissions.some((grant) =>
+      !(await readVillageState({ memories: true })).venues[0].access!.permissions.some((grant) =>
         grant.sourceLineIds.includes("rejected-continuation:line:0"),
       ),
       "Rejected offscreen continuation cannot grant access in the second transaction.",
     );
-    const moveWorld = await readVillageState(),
+    const moveWorld = await readVillageState({ memories: true }),
       oldHome = moveWorld.venues[0];
     oldHome.destinations!.jim = { home: "living", sleep: "bedroom" };
     for (const zone of oldHome.zones!.filter((zone) => zone.ownerId === "jim"))
@@ -1356,7 +1386,7 @@ async function main() {
     ] as any;
     records.set("villages-village", { id: "villages-village", kind: "village", data: moveWorld, revision: 200 });
     await completeVillageResidence("jim", true, new Date(), false);
-    const moved = await readVillageState(),
+    const moved = await readVillageState({ memories: true }),
       priorHome = moved.venues.find((venue) => venue.id === "home")!,
       newHome = moved.venues.find((venue) => venue.id === "new-home")!;
     assert.ok(priorHome.zones!.some((zone) => zone.id === "bedroom" && !zone.ownerId));

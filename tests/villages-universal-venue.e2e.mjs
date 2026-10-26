@@ -112,7 +112,7 @@ try {
       if (path.endsWith("/rooms/active")) value = { session };
       else if (path.endsWith("/rooms") && request.method() === "POST") {
         session = {
-          version: 1,
+          version: 2,
           id: "venue-visit",
           placeId: place.id,
           placeName: place.name,

@@ -160,10 +160,9 @@ export const serverFeatureInterfaces = Object.freeze({
   "world/village.ts": [
     "resetVillage",
     "reconcileVillage",
-    "buildVillageStory",
     "buildVillageMemories",
-    "removeChronicleEntry",
-    "removeVillageRecollection",
+    "readVillageMemoryEvidence",
+    "forgetMemory",
   ],
 });
 

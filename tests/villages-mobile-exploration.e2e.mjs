@@ -207,7 +207,7 @@ try {
       else if (path.endsWith("/rooms") && route.request().method() === "POST") {
         sceneRequests.push(route.request().postDataJSON());
         session = {
-          version: 1,
+          version: 2,
           id: "visit-1",
           placeId: "market",
           placeName: "Village Market",

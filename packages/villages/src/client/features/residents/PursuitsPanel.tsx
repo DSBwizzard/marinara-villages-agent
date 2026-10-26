@@ -115,7 +115,7 @@ export function PursuitsPanel({
             <header className={`${P}-pursuit-heading`}>
               <h3>{selected.title ?? "Move"}</h3>
               <span className={`${P}-pursuit-status`} data-status={selected.status}>
-                {statuses[selected.status]}
+                {selected.status ? statuses[selected.status] : ""}
               </span>
             </header>
             <p>{selected.facts?.at(-1)?.text ?? selected.text}</p>
@@ -199,7 +199,7 @@ function PursuitInspection({ characterId, request }: { characterId: string; requ
                 <h4>
                   {pursuit.title}{" "}
                   <span className={`${P}-pursuit-status`} data-status={pursuit.status}>
-                    {statuses[pursuit.status]}
+                    {pursuit.status ? statuses[pursuit.status] : ""}
                   </span>
                 </h4>
                 <p>{pursuit.reason}</p>

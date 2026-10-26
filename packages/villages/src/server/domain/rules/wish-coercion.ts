@@ -123,7 +123,6 @@ export function coerceWishLifecycle(value: unknown): WishLifecycle | undefined {
     attempt = {
       ...(job.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
       id: shortWishText(job.id),
-      ...(job.resetRefill === true ? { resetRefill: true as const } : {}),
       dateKey: shortWishText(job.dateKey, 10),
       at: instant(job.at),
       stage,

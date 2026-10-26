@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -33,7 +34,7 @@ const world = defaultVillageState();
 world.seed = "late-background";
 records.set("villages-village", { id: "villages-village", data: world, revision: 1 });
 const host = {
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   logger: { info() {}, debug() {}, warn() {}, error() {}, debugOverride() {} },
 } as any;
 let release = configureVillagesRuntime(host);

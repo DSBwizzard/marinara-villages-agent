@@ -31,7 +31,7 @@ const picture = (id: string): VillageVenueImage => ({
 const image = picture("original");
 function fixture() {
   return coerceVillageState({
-    version: 3,
+    version: 5,
     ...defaultVillageState(),
     wishSystemVersion: 3,
     venues: [
@@ -85,12 +85,12 @@ assert.equal(
   true,
 );
 
-const scene = coerceSession({ id: "scene", placeId: "home" });
+const scene = coerceSession({ version: 2, id: "scene", placeId: "home" });
 assert.equal(claimZonePictureEntry(scene, "exterior"), true);
 assert.equal(claimZonePictureEntry(scene, "living"), true);
 assert.equal(claimZonePictureEntry(scene, "exterior"), false);
 assert.equal(claimZonePictureEntry(coerceSession(JSON.parse(JSON.stringify(scene))), "living"), false);
-assert.equal(claimZonePictureEntry(coerceSession({ id: "next" }), "exterior"), true);
+assert.equal(claimZonePictureEntry(coerceSession({ version: 2, id: "next" }), "exterior"), true);
 
 const calls: Record<string, unknown>[] = [];
 let state = fixture(),

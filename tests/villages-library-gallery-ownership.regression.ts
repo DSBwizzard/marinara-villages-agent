@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -69,7 +70,7 @@ function library(name: string) {
   const host: any = {
     resources,
     logger,
-    persistence: { documents: { getById: async () => null, list: async () => [] } },
+    persistence: { documents: villageFixtureDocuments({ getById: async () => null, list: async () => [] }) },
     isDebugAgentsEnabled: () => false,
   };
   return {

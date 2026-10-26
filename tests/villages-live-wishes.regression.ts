@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { addMemory } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -68,6 +70,7 @@ async function main() {
     },
   ];
   const scene: any = {
+    version: 2,
     id: "s",
     villageSeed: state.seed,
     processingVersion: 1,
@@ -113,7 +116,7 @@ async function main() {
   let failJudgment = false;
   const release = configureVillagesRuntime({
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_package: string, id: string) {
           return structuredClone(records.get(id) ?? null);
         },
@@ -139,7 +142,7 @@ async function main() {
         async remove(_package: string, id: string) {
           return records.delete(id);
         },
-      },
+      }),
     },
     async getAgentConfig() {
       return null;
@@ -230,7 +233,7 @@ async function main() {
     scene.submissions[0].wishProposals = reveal.proposals;
     await processSavedExchange("s", "t");
     assert.equal(calls, 0, "disclosure adds no paid request");
-    assert.ok((await readVillageState()).villagers[0].agenda?.wishes[0].learnedAt);
+    assert.ok((await readVillageState({ memories: true })).villagers[0].agenda?.wishes[0].learnedAt);
     const sharedNotice = (await readSceneChanges("s")).notices.find((notice) => notice.kind === "wish")!;
     assert.equal(sharedNotice.wishUpdate?.state, "revealed");
     assert.equal(sharedNotice.detail, wish.wish);
@@ -248,7 +251,7 @@ async function main() {
     await processSavedExchange("s", "t");
     await settleBackgroundWork();
     await processSavedExchange("s", "t");
-    const current = await readVillageState();
+    const current = await readVillageState({ memories: true });
     assert.equal(calls, 1, "one shared interpretation without condition preparation");
     assert.equal(current.villagers[0].agenda?.wishes.length, 0);
     const fulfilledNotice = (await readSceneChanges("s")).notices.find(
@@ -291,7 +294,7 @@ async function main() {
         proposal,
         wish: physical,
         at,
-        context: { actorId: "a", evidence: [{ id: "p", at }], card: { name: "Ada" } },
+        context: { actorId: "a", playerEvidenceIds: ["p"], evidence: [{ id: "p", at }], card: { name: "Ada" } },
       } as any,
       {
         criteria: { kind: "transfer", goal: physical.wish, requiresPhysical: true, itemName: "cupcake" },
@@ -309,6 +312,12 @@ async function main() {
     const second = { ...wish, id: "partial-two", learnedAt: at };
     const hidden = { ...wish, id: "partial-hidden" };
     progressState.villagers[0].agenda!.wishes = [first, second, hidden];
+    for (const known of [first, second])
+      progressState.memories = addMemory(progressState.memories, {
+        text: known.wish,
+        audience: ["player"],
+        patch: { kind: "information", domainRef: { kind: "wish", id: known.id, characterId: "a" } },
+      });
     const progressVerdict: any = {
       criteria: { kind: "conversation", goal: wish.wish, requiresPhysical: false },
       outcome: "progress",
@@ -333,7 +342,7 @@ async function main() {
             intent: "progress",
             lineIds: ["p"],
           },
-          context: { actorId: "a", evidence: [{ id: "p", at }], card: { name: "Ada" } },
+          context: { actorId: "a", playerEvidenceIds: ["p"], evidence: [{ id: "p", at }], card: { name: "Ada" } },
         } as any,
         progressVerdict,
       );
@@ -358,6 +367,7 @@ async function main() {
       { memoryChanges: [], relationshipChanges: { changes: [], permissions: [], disclosures: [] } },
       "p",
       ["r"],
+      pendingScene.lines,
     );
     pendingScene.submissions[0].id = "uncertain-turn";
     pendingScene.submissions[0].wishProposals = [
@@ -405,7 +415,7 @@ async function main() {
     await retrySceneChangeInterpretation("uncertain-scene", "uncertain-turn", "wishes");
     await retrySceneChangeInterpretation("uncertain-scene", "uncertain-turn", "wishes");
     await settleBackgroundWork();
-    assert.equal((await readVillageState()).villagers[0].agenda?.wishes.length, 0);
+    assert.equal((await readVillageState({ memories: true })).villagers[0].agenda?.wishes.length, 0);
     assert.equal(calls, afterUnknown + 1, "explicit retry needs only one judgment");
     const cachedWish = { ...wish, id: "cached-retry" };
     records.get("villages-village").data.villagers[0].agenda.wishes = [cachedWish];
@@ -444,7 +454,7 @@ async function main() {
     await retrySceneChangeInterpretation("cached-scene", "uncertain-turn", "wishes");
     await settleBackgroundWork();
     assert.equal(calls, cachedCalls + 1, "Cached preparation does not shift or repeat paid stages");
-    assert.equal((await readVillageState()).villagers[0].agenda?.wishes.length, 0);
+    assert.equal((await readVillageState({ memories: true })).villagers[0].agenda?.wishes.length, 0);
     const retiredWish = { ...wish, id: "retired-wish" };
     records.get("villages-village").data.villagers[0].agenda.wishes = [retiredWish];
     const retiredScene = structuredClone(cachedScene);
@@ -534,7 +544,7 @@ async function main() {
       await processSavedExchange(sceneId, submissionId);
       await processSavedExchange(sceneId, submissionId);
       assert.equal(
-        Object.values((await readVillageState()).exchangeReceipts).filter(
+        Object.values((await readVillageState({ memories: true })).exchangeReceipts).filter(
           (receipt) => receipt.sceneId === sceneId && receipt.notice,
         ).length,
         1,

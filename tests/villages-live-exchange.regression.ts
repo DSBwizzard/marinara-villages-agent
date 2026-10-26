@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import type { VenueLine, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
-import type { VillageChronicleEntry } from "../packages/villages/src/server/domain/models/world.js";
 import {
   bindLiveProposals,
   createLiveEvidenceContext,
   liveEvidence,
-  memoryVersion,
   mergeLiveReplyProposals,
 } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 
@@ -14,7 +12,7 @@ function line(id: string, extra: Partial<VenueLine> = {}): VenueLine {
   return { id, speakerId: "a", name: "Ada", role: "assistant", content: id, at: stamp, heardBy: ["a", "b"], ...extra };
 }
 const scene: VenueScene = {
-  version: 1,
+  version: 2,
   sceneRevision: 1,
   id: "scene",
   placeId: "venue",
@@ -42,17 +40,14 @@ const scene: VenueScene = {
   ],
   heardHistory: [],
   submissions: [],
-  memories: null,
   recap: "This recap does not confer evidence authority.",
 };
-const proposals = bindLiveProposals({ earlierLineIds: ["earlier"] }, "player", [
-  "hidden",
-  "report",
-  "whisper-away",
-  "whisper-player",
-  "visible",
-  "absent",
-]);
+const proposals = bindLiveProposals(
+  { earlierLineIds: ["earlier"] },
+  "player",
+  ["hidden", "report", "whisper-away", "whisper-player", "visible", "absent"],
+  scene.lines,
+);
 const evidence = liveEvidence(scene, proposals);
 assert.deepEqual(
   evidence.map((row) => [row.id, row.playerHeard]),
@@ -87,51 +82,22 @@ assert.deepEqual(
   "Captured witnesses must not follow later Scene edits.",
 );
 
-const memory: VillageChronicleEntry = {
-  id: "memory",
-  dayIndex: 1,
-  clock: "morning",
-  occurredAt: stamp,
-  timePrecision: "exact",
-  scope: "village",
-  actors: [],
-  kind: "chat",
-  text: "Ada promised to bring bread.",
-  knownByCharacterIds: ["a", "b"],
-};
-const version = memoryVersion(memory);
-assert.equal(version.length, 64);
-assert.equal(
-  memoryVersion({ ...memory, dayIndex: 2, occurredAt: "later", sourceLineIds: ["display-context"] }),
-  version,
-);
-for (const change of [
-  { id: "different-memory" },
-  { text: "Ada promised to bring milk." },
-  { knownByCharacterIds: ["a"] },
-  { supersededBy: "replacement" },
-  { lastReinforcedAt: "later" },
-])
-  assert.notEqual(
-    memoryVersion({ ...memory, ...change }),
-    version,
-    "Material corrections must invalidate a saved memory version.",
-  );
-
+assert.throws(() => liveEvidence(scene, proposals), /source identity changed/);
 const rawMemory = [{ kind: "not-yet-validated", evidence: ["player", 0] }];
 const rawRelationship = { changes: [{ lineIds: ["player", 0, "earlier"] }], permissions: [], disclosures: [] };
 const earlier = ["earlier"];
-const versions = { memory: version };
+const contexts = { memory: { proof: "captured" } } as any;
 const replyIds = ["reply"];
 const bound = bindLiveProposals(
-  { memoryChanges: rawMemory, relationshipChanges: rawRelationship, earlierLineIds: earlier, memoryVersions: versions },
+  { memoryChanges: rawMemory, relationshipChanges: rawRelationship, earlierLineIds: earlier, memoryContexts: contexts },
   "player",
   replyIds,
+  scene.lines,
 );
 assert.equal(bound.memoryChanges, rawMemory);
 assert.equal(bound.relationshipChanges, rawRelationship);
 assert.equal(bound.earlierLineIds, earlier);
-assert.equal(bound.memoryVersions, versions);
+assert.deepEqual(bound.memoryContexts, contexts);
 assert.equal(bound.replyLineIds, replyIds);
 assert.equal(bound.version, 1, "Binding must preserve metadata for the later authoritative processors to validate.");
 
@@ -140,20 +106,25 @@ const merged = mergeLiveReplyProposals(
     memoryChanges: rawMemory,
     relationshipChanges: rawRelationship,
     earlierLineIds: ["earlier", "shared"],
-    memoryVersions: { memory: "old" },
+    memoryContexts: { old: { protection: { fingerprint: "old" } } as any },
   },
   {
-    memoryChanges: [{ evidence: ["player", 0, 2, "earlier"] }],
+    memoryChanges: [
+      { learners: { a: { support: ["player", 0, 2, "earlier"].map((lineId) => ({ lineId, excerpt: "quote" })) } } },
+    ],
     relationshipChanges: { changes: [{ lineIds: ["player", 1, "shared"] }], permissions: [], disclosures: [] },
     earlierLineIds: ["shared", "other"],
-    memoryVersions: { memory: version, other: "other-version" },
+    memoryContexts: { current: { protection: { fingerprint: "current" } } as any },
   },
   4,
 );
-assert.deepEqual(merged.memoryChanges, [rawMemory[0], { evidence: [3, 4, 6, "earlier"] }]);
+assert.deepEqual(
+  (merged.memoryChanges![1] as any).learners.a.support.map((row: any) => row.lineId),
+  [3, 4, 6, "earlier"],
+);
 assert.deepEqual(merged.relationshipChanges.changes, [rawRelationship.changes[0], { lineIds: [3, 5, "shared"] }]);
 assert.deepEqual(merged.earlierLineIds, ["earlier", "shared", "other"]);
-assert.deepEqual(merged.memoryVersions, { memory: version, other: "other-version" });
+assert.deepEqual(Object.keys(merged.memoryContexts), ["old", "current"]);
 assert.deepEqual(rawMemory[0].evidence, ["player", 0]);
 assert.deepEqual(rawRelationship.changes[0].lineIds, ["player", 0, "earlier"]);
 const missing = mergeLiveReplyProposals(

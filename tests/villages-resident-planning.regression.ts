@@ -138,7 +138,7 @@ assert.equal(effects.state.venues[1].occupancy.residentCharacterId, null, "A req
 assert(
   effects.state.villagers[0].agenda!.routineProfile!.activities.some((row) => row.activity === "Reading by the window"),
 );
-assert.equal(effects.state.chronicle.length, 0);
+assert.equal(effects.state.memories.records.length, 0);
 assert.equal(effects.state.noticeboard.length, 0);
 assert.equal(Object.hasOwn(proposal, "memory"), false);
 const changed = structuredClone(effects.state);
@@ -185,7 +185,7 @@ assert.equal(accepted.social.encounter.semanticVersion, 2);
 assert.deepEqual(accepted.social.encounter.memoryChanges, []);
 social.service.handler.apply(social.state, si, accepted, { retrying: false });
 assert.equal(social.state.socialOutbox!.length, 1);
-assert.equal(social.state.chronicle.length, 0, "Only encounter settlement can create witnessed memory");
+assert.equal(social.state.memories.records.length, 0, "Only encounter settlement can create witnessed memory");
 const invalid = fixture();
 await invalid.service.reconcile(now);
 invalid.payload({});
@@ -209,19 +209,6 @@ Object.assign(legacyRaw, {
     text: "old prose",
   })),
   scheduledEvents: [{ id: "unused" }],
-  chronicle: [
-    {
-      id: "memory",
-      text: "Retained memory",
-      kind: "chat",
-      scope: "private",
-      actors: [{ id: "a", name: "Ada" }],
-      occurredAt: at,
-      dayIndex: 0,
-      clock: "afternoon",
-      timePrecision: "exact",
-    },
-  ],
   socialOutbox: [
     {
       id: "accepted-social",
@@ -250,7 +237,7 @@ assert.deepEqual(
   "Legacy counts use their local calendar across UTC midnight",
 );
 assert(migrated.processedActionIds.includes("accepted-move"));
-assert.equal(migrated.chronicle[0].text, "Retained memory");
+assert.deepEqual(migrated.memories, effects.state.memories);
 assert.equal(migrated.socialOutbox![0].opportunity.id, "original");
 assert.equal(migrated.residences[0].status, "pending");
 assert.equal(migrated.residences[0].proposedVenueId, "home");

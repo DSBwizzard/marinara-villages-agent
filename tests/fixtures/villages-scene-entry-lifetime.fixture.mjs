@@ -61,7 +61,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   function scene(id, revision = 2, status = "active") {
     return {
       id,
-      version: 1,
+      version: 2,
       sceneRevision: revision,
       placeId: "mill",
       placeName: id,

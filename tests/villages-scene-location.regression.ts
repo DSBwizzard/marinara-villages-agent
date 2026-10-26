@@ -11,7 +11,7 @@ import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js
 
 const at = "2026-10-23T12:00:00.000Z";
 const world = coerceVillageState({
-  version: 3,
+  version: 5,
   ...defaultVillageState(),
   seed: "location-regression",
   venues: [
@@ -52,6 +52,7 @@ const world = coerceVillageState({
 });
 const venue = world.venues[0];
 const scene = coerceSession({
+  version: 2,
   id: "location",
   villageSeed: world.seed,
   placeId: venue.id,
@@ -106,13 +107,22 @@ assert.deepEqual(remote.residents, [
 assert.doesNotMatch(JSON.stringify(remote), /HIDDEN|secret-room|hidden/);
 assert.deepEqual(scene, before, "building writing context never repairs or rewrites saved positions");
 
-const moved = coerceSession({ ...scene, activeIds: ["mari"], accompanying: [{ characterId: "mari", zoneId: "bar" }] });
+const moved = coerceSession({
+  version: 2,
+  ...scene,
+  activeIds: ["mari"],
+  accompanying: [{ characterId: "mari", zoneId: "bar" }],
+});
 assert.equal(sceneLocationContext(moved, venue, ["mari"]).residents[0].location, "with player");
 assert.equal(sceneLocationContext(moved, venue, ["mari"]).residents[0].zone?.id, moved.zoneId);
 const reloaded = coerceSession(structuredClone(moved));
 assert.deepEqual(sceneLocationContext(reloaded, venue, ["mari"]), sceneLocationContext(moved, venue, ["mari"]));
 
-const privateScene = coerceSession({ ...scene, accompanying: [{ characterId: "mari", zoneId: "secret-room" }] });
+const privateScene = coerceSession({
+  version: 2,
+  ...scene,
+  accompanying: [{ characterId: "mari", zoneId: "secret-room" }],
+});
 const privateContext = sceneLocationContext(privateScene, venue, ["mari"]);
 assert.equal(privateContext.residents[0].location, "adjacent Zone, apart from player");
 assert.equal(privateContext.residents[0].zone, undefined, "an unseen occupied Zone's identity stays private");

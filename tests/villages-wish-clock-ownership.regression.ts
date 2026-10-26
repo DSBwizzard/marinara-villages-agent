@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -28,7 +30,8 @@ function deferred() {
 }
 function fixture(name: string, stamp: string) {
   const state = coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    version: 5,
     villagers: [
       {
         characterId: "same-resident",
@@ -53,7 +56,7 @@ function fixture(name: string, stamp: string) {
   const scope = createActivationScope();
   const release = scope.run(() =>
     configureVillagesRuntime({
-      persistence: { documents: {} },
+      persistence: { documents: villageFixtureDocuments({}) },
       logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
       isDebugAgentsEnabled: () => false,
     } as any),

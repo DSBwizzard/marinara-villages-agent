@@ -48,7 +48,7 @@ const browser = await chromium.launch({
 function scene(id, submissions = []) {
   return {
     id,
-    version: 1,
+    version: 2,
     sceneRevision: 2,
     placeId: "mill",
     placeName: id,

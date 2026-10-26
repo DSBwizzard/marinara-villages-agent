@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -73,7 +74,11 @@ function fixture(name: string) {
   };
   const service = createInterpretationDiagnostics(ports);
   const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} };
-  const host: any = { persistence: { documents }, isDebugAgentsEnabled: () => false, logger };
+  const host: any = {
+    persistence: { documents: villageFixtureDocuments(documents) },
+    isDebugAgentsEnabled: () => false,
+    logger,
+  };
   return {
     service,
     ports,

@@ -14,10 +14,17 @@ import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);
-  assert.deepEqual(coerceVillageState({ version: 3, wishSystemVersion: 3 }).selectedLorebookIds, []);
   assert.deepEqual(
-    coerceVillageState({ version: 3, wishSystemVersion: 3, selectedLorebookIds: ["world", "world", "missing"] })
-      .selectedLorebookIds,
+    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }).selectedLorebookIds,
+    [],
+  );
+  assert.deepEqual(
+    coerceVillageState({
+      ...defaultVillageState(),
+      version: 5,
+      wishSystemVersion: 3,
+      selectedLorebookIds: ["world", "world", "missing"],
+    }).selectedLorebookIds,
     ["world", "missing"],
   );
   assert.deepEqual(readSelectedLorebookIds([" world ", "world"]), ["world"]);
@@ -27,7 +34,11 @@ async function main() {
   assert.equal(readLoreTokenBudget(0), 0);
   assert.equal(readLoreTokenBudget(100), 100);
   assert.equal(coerceLoreTokenBudget(0), 0);
-  assert.equal(coerceVillageState({ version: 3, wishSystemVersion: 3, loreTokenBudget: 0 }).loreTokenBudget, 0);
+  assert.equal(
+    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, loreTokenBudget: 0 })
+      .loreTokenBudget,
+    0,
+  );
   assert.throws(() => readLoreTokenBudget(-1));
   assert.throws(() => readLoreTokenBudget(1.5));
   assert.throws(() => readLoreTokenBudget(3201));

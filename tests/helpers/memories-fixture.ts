@@ -231,3 +231,49 @@ export function realisticMemoryHistory(count: number): MemoryCollection {
   }
   return { format: 1, revision: count, records };
 }
+import type { ExchangeEffectReceipt } from "../../packages/villages/src/server/domain/models/wish-check-model.js";
+/** Actual-shaped retained native proposals accompany conversational history; no providers. */
+export function realisticMemoryReceipts(collection: MemoryCollection): Record<string, ExchangeEffectReceipt> {
+  return Object.fromEntries(
+    collection.records.map((record) => {
+      const id = record.origin.id + ":turn:memory:" + record.id;
+      return [
+        id,
+        {
+          id,
+          sceneId: record.origin.id,
+          submissionId: "turn",
+          domain: "memories",
+          status: "applied",
+          at: record.occurredAt,
+          committedAt: record.recordedAt,
+          reason: "Cited memory applied",
+          evidenceIds: [...new Set(Object.values(record.knowers).flatMap((k) => k.support.map((e) => e.lineId)))],
+          memoryProposal: {
+            operationId: id,
+            source: record.origin,
+            proposalId: record.id,
+            expectedCollectionRevision: record.createdRevision - 1,
+            action: record.corrects ? "correct" : record.resolves ? "resolve" : "create",
+            kind: record.kind,
+            text: record.text,
+            subjects: record.subjects,
+            learners: Object.fromEntries(
+              Object.entries(record.knowers).map(([knower, learning]) => [
+                knower,
+                {
+                  basis: learning.basis,
+                  ...(learning.attributedTo ? { attributedTo: learning.attributedTo } : {}),
+                  support: learning.support,
+                  ...(learning.disclosed ? { disclosed: learning.disclosed } : {}),
+                },
+              ]),
+            ),
+            ...(record.domainRef ? { domainRef: record.domainRef } : {}),
+            screening: { disposition: "clear", protectedRoots: [], fingerprint: record.origin.fingerprint },
+          },
+        } satisfies ExchangeEffectReceipt,
+      ];
+    }),
+  );
+}

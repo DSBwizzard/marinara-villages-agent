@@ -1,4 +1,4 @@
-/** Final current-format Memories contract. Not connected to the pre-cutover runtime. */
+/** Final current-format Memories contract. Used by the native Village runtime. */
 export type MemoryBasis = "observation" | "report" | "interpretation" | "validated-event";
 export type MemorySource = {
   /** Immutable accepted exchange/event identity, never a whole mutable Scene. */
@@ -104,6 +104,11 @@ export type MemorySceneSnapshot = {
   capturedAt: string;
   audience: string[];
   before: Record<string, MemoryRecord | null>;
+};
+/** Owned with the collection in one Village CAS. Latest own-Scene effects only. */
+export type MemorySceneState = {
+  snapshot: MemorySceneSnapshot;
+  effects: Record<string, MemoryRecord>;
 };
 export type MemoryCandidate = {
   id: string;

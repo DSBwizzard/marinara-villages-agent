@@ -4,7 +4,7 @@ import { useCallback, useEffect } from "react";
 
 export function useResidentInspection(ports: {
   loadAgendas: (signal?: AbortSignal) => Promise<void>;
-  loadMemoryLibrary: (signal?: AbortSignal) => Promise<void>;
+  loadMemoryLibrary: ReturnType<typeof import("./actions.js").useLoadMemoryLibrary>;
   personProfile: import("./villages-dossier.js").DossierNavigation;
   profileInspection: import("./villages-dossier.js").DossierSection;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
@@ -18,7 +18,7 @@ export function useResidentInspection(ports: {
     const controller = new AbortController();
     if (profileInspection === "memories") {
       setMemoryLibrary(null);
-      void loadMemoryLibrary(controller.signal);
+      void loadMemoryLibrary(controller.signal, { characterId: personProfile.actorId });
     }
     if (["wishes", "agenda", "venues"].includes(profileInspection)) {
       setAgendas(null);

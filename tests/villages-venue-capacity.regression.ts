@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -37,9 +38,12 @@ async function main() {
   assert.throws(() => addVillageVenue(fresh, venue(16)), /maximum 16 total/);
   assert.throws(() => assertVillageVenueCapacity(fresh, [...fresh.venues, venue(16)]), /maximum 16/);
   assert.equal(draft.status, "planning");
-  for (const incompatible of [0, 1, 2, 4, undefined])
-    assert.throws(() => coerceVillageState({ ...fresh, version: incompatible }), /Unsupported Village format/);
-  assert.equal(coerceVillageState(null).version, 3);
+  for (const incompatible of [0, 1, 2, 3, undefined])
+    assert.throws(
+      () => coerceVillageState({ ...defaultVillageState(), ...fresh, version: incompatible }),
+      /Unsupported Village format/,
+    );
+  assert.equal(coerceVillageState(null).version, 5);
   const f = fixture();
   await f.mutate((state) => {
     state.venues = Array.from({ length: 15 }, (_, i) => venue(i));
@@ -80,7 +84,7 @@ async function main() {
     },
   };
   const release = configureVillagesRuntime({
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: { listCharacters: async () => [], listPersonas: async () => [] },
     getAgentConfig: async () => ({ connectionId: "capacity-fixture" }),
     isDebugAgentsEnabled: () => false,
@@ -102,12 +106,12 @@ async function main() {
   try {
     const incompatible = { ...fresh, version: 2 };
     records.set("villages-village", { id: "villages-village", kind: "village", data: incompatible, revision: 7 });
-    await assert.rejects(readVillageState(), /Unsupported Village format/);
+    await assert.rejects(readVillageState({ memories: true }), /Unsupported Village format/);
     await assert.rejects(setVillageName("Unadmitted edit"), /Unsupported Village format/);
     assert.equal(records.get("villages-village").revision, 7);
     assert.deepEqual(records.get("villages-village").data, incompatible, "rejected data is never rewritten");
     records.delete("villages-village");
-    assert.equal((await readVillageState()).version, 3);
+    assert.equal((await readVillageState({ memories: true })).version, 5);
     const reset = await resetVillage();
     assert.equal(reset.settings.maxPlaces, 16);
     const bulk = defaultVillageState();
@@ -117,7 +121,7 @@ async function main() {
       setVillageVenues(Array.from({ length: 17 }, (_, i) => venue(i))),
       /After founding, new venues begin as projects/,
     );
-    assert.equal((await readVillageState()).venues.length, 16);
+    assert.equal((await readVillageState({ memories: true })).venues.length, 16);
     records.set("villages-village", {
       id: "villages-village",
       kind: "village",
@@ -125,16 +129,16 @@ async function main() {
       revision: 1,
     });
     await assert.rejects(setVillageVenues(Array.from({ length: 17 }, (_, i) => venue(i))), /maximum 16/);
-    assert.equal((await readVillageState()).venues.length, 0, "bulk admission is atomic");
+    assert.equal((await readVillageState({ memories: true })).venues.length, 0, "bulk admission is atomic");
     const bootstrap = defaultVillageState();
     bootstrap.setting = "An apartment complex.";
     bootstrap.venues = Array.from({ length: 15 }, (_, i) => venue(i));
     records.set("villages-village", { id: "villages-village", kind: "village", data: bootstrap, revision: 1 });
     await runVillageBootstrap();
-    assert.equal((await readVillageState()).venues.length, 16);
+    assert.equal((await readVillageState({ memories: true })).venues.length, 16);
     proposedNames = ["Shared room", "Service room"];
     await assert.rejects(runVillageBootstrap(), /maximum 16/);
-    assert.equal((await readVillageState()).venues.length, 16);
+    assert.equal((await readVillageState({ memories: true })).venues.length, 16);
   } finally {
     release();
   }

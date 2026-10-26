@@ -1,3 +1,14 @@
+import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
+import type {
+  MemoryLibrary,
+  MemoryInspection,
+  MemoryListEntry,
+  MemoryForgetRequest,
+} from "../../../shared/contracts/village.js";
+import type { MemoryCandidate } from "../../domain/models/memories.js";
+import { inspectMemoryCandidates, projectMemories } from "../../domain/rules/memory-views.js";
+import { forgetVillageMemory as applyForget } from "../../domain/rules/village-memories.js";
+import { memoryTerms } from "../../domain/rules/memory-protection.js";
 import { calendarReplay } from "../../domain/rules/clock-recovery.js";
 import {
   advanceVillageClock,
@@ -7,16 +18,10 @@ import {
 } from "../../adapters/time/clock-gate.js";
 import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
-import type {
-  VillageChronicleEntry,
-  VillageChronicleEntryView,
-  VillageSnapshot,
-  VillageVenue,
-} from "../../domain/models/world.js";
-import { asTrimmedString } from "../../domain/rules/coerce.js";
-import { badRequest, notFound } from "../../domain/rules/errors.js";
+import type { VillageSnapshot, VillageVenue } from "../../domain/models/world.js";
+import { badRequest, notFound, conflict } from "../../domain/rules/errors.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
-import { deriveVillageMoment, villageDateLabel } from "../../domain/rules/village-clock.js";
+import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { villagerPlaceView } from "../../domain/rules/village-projections.js";
 import { wishExpired } from "../../domain/rules/wish-definition.js";
 import { asRecord } from "../../domain/rules/coerce.js";
@@ -24,7 +29,6 @@ import { sceneWishProtected, sceneWishProtectionFinished } from "../../domain/ru
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
-import type { listVillagerCards } from "../../adapters/engine/catalog.js";
 import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
 import type { completeVillageResidence, retryResidencePrivateSpaceAdaptation } from "../venues/residences.js";
 import type { backfillAgendas, refreshVillagerRemaps } from "../residents/resident-agendas.js";
@@ -38,6 +42,7 @@ import type { buildVillageSnapshot } from "./snapshot.js";
 import type { readVillageState, mutateVillageState } from "./village-store.js";
 
 export interface WorldCoordinationPorts {
+  readVillageAuthority: typeof import("./village-store.js").readVillageAuthority;
   reconcileDevelopment?: (now: Date) => Promise<void>;
   reconcileResidentPlanning?: (now: Date) => Promise<void>;
   processProjectWishOutbox?: typeof import("../residents/wishes/wish-progress.js").processProjectWishOutbox;
@@ -46,7 +51,6 @@ export interface WorldCoordinationPorts {
   mutateVillageState: typeof mutateVillageState;
   buildVillageSnapshot: typeof buildVillageSnapshot;
   villagesLogger: typeof villagesLogger;
-  listVillagerCards: typeof listVillagerCards;
   outsideVenueOperation: typeof outsideVenueOperation;
   completeVillageResidence: typeof completeVillageResidence;
   retryResidencePrivateSpaceAdaptation: typeof retryResidencePrivateSpaceAdaptation;
@@ -62,6 +66,7 @@ export interface WorldCoordinationPorts {
 
 /** Owns world advancement and history connections. Construction never reads, writes or dispatches work. */
 export function createWorldCoordination({
+  readVillageAuthority,
   reconcileDevelopment,
   reconcileResidentPlanning,
   processProjectWishOutbox,
@@ -70,7 +75,6 @@ export function createWorldCoordination({
   mutateVillageState,
   buildVillageSnapshot,
   villagesLogger,
-  listVillagerCards,
   outsideVenueOperation,
   completeVillageResidence,
   retryResidencePrivateSpaceAdaptation,
@@ -93,9 +97,12 @@ export function createWorldCoordination({
    * "start over" that quietly kept some of it would be worse than not offering it.
    */
   async function resetVillage(): Promise<VillageSnapshot> {
-    await mutateVillageState((state) => {
-      Object.assign(state, defaultVillageState());
-    });
+    await mutateVillageState(
+      (state) => {
+        Object.assign(state, defaultVillageState());
+      },
+      { memories: true },
+    );
     return buildVillageSnapshot();
   }
 
@@ -157,9 +164,19 @@ export function createWorldCoordination({
       }
     }
     if (completedMove) recorded = await readVillageState();
-    await mutateVillageState((state) => {
-      reconcileProjectLifecycles(state, now);
-    });
+    await mutateVillageState(
+      (state) => {
+        reconcileProjectLifecycles(state, now);
+      },
+      {
+        memories: (world) =>
+          world.projects.some(
+            (project) =>
+              project.status === "working" &&
+              Date.parse(project.lifecycle?.workOrder?.completesAt ?? "") <= now.getTime(),
+          ),
+      },
+    );
     await processProjectWishOutbox?.();
     recorded = await readVillageState();
     const moment = deriveVillageMoment({
@@ -186,63 +203,63 @@ export function createWorldCoordination({
       }
     });
     await rollActiveAgendas(now);
-    await mutateVillageState((state) => {
-      const storedMs = Date.parse(state.simulatedThrough);
-      if (!Number.isFinite(storedMs) || currentMs > storedMs) state.simulatedThrough = moment.instant;
-      state.lastKnownTimeZone = moment.timeZone;
-      const discoveries: VillageChronicleEntry[] = [];
-      for (const venue of state.venues) {
-        for (const zone of venueZones(venue)) {
-          const remaining = [] as NonNullable<VillageVenue["state"]["traces"]>;
-          for (const trace of zone.state.traces ?? []) {
-            if (trace.expiresAt && Date.parse(trace.expiresAt) <= currentMs) continue;
-            if (trace.kind === "scene-note") {
-              remaining.push(trace);
-              continue;
-            }
-            const created = Date.parse(trace.createdAt);
-            if (!Number.isFinite(created) || currentMs - created < 60_000) {
-              remaining.push(trace);
-              continue;
-            }
-            const present = state.villagers.filter((villager) => {
-              const destination = villagerPlaceView(state, villager, null, moment.minuteOfDay, now);
-              return destination?.id === venue.id && destination.zoneId === zone.id;
-            });
-            const finders = present.filter((villager) =>
-              trace.kind === "note"
-                ? villager.characterId === trace.recipientId
-                : !(trace.seenBy ?? []).includes(villager.characterId),
-            );
-            for (const finder of finders) {
-              const id = `${trace.id}:found:${finder.characterId}`;
-              if (state.chronicle.some((entry) => entry.id === id)) continue;
-              discoveries.push({
-                id,
-                dayIndex: moment.dayIndex,
-                clock: moment.dayPhase,
-                occurredAt: moment.instant,
-                timePrecision: "exact",
-                scope: "private",
-                actors: [{ id: finder.characterId, name: finder.cardSnapshot.name }],
-                kind: "chat",
-                text:
-                  trace.kind === "note"
-                    ? `${finder.cardSnapshot.name} found a note at ${venue.name}: ${trace.text}`
-                    : `${finder.cardSnapshot.name} noticed ${trace.text} at ${venue.name}.`,
+    await mutateVillageState(
+      (state) => {
+        const storedMs = Date.parse(state.simulatedThrough);
+        if (!Number.isFinite(storedMs) || currentMs > storedMs) state.simulatedThrough = moment.instant;
+        state.lastKnownTimeZone = moment.timeZone;
+        for (const venue of state.venues) {
+          for (const zone of venueZones(venue)) {
+            const remaining = [] as NonNullable<VillageVenue["state"]["traces"]>;
+            for (const trace of zone.state.traces ?? []) {
+              if (trace.expiresAt && Date.parse(trace.expiresAt) <= currentMs) continue;
+              if (trace.kind === "scene-note") {
+                remaining.push(trace);
+                continue;
+              }
+              const created = Date.parse(trace.createdAt);
+              if (!Number.isFinite(created) || currentMs - created < 60_000) {
+                remaining.push(trace);
+                continue;
+              }
+              const present = state.villagers.filter((villager) => {
+                const destination = villagerPlaceView(state, villager, null, moment.minuteOfDay, now);
+                return destination?.id === venue.id && destination.zoneId === zone.id;
               });
+              const finders = present.filter((villager) =>
+                trace.kind === "note"
+                  ? villager.characterId === trace.recipientId
+                  : !(trace.seenBy ?? []).includes(villager.characterId),
+              );
+              for (const finder of finders) {
+                const id = `${trace.id}:found:${finder.characterId}`;
+                rememberDomainFact(state, {
+                  id,
+                  at: moment.instant,
+                  recordedAt: moment.instant,
+                  subjects: [finder.characterId],
+                  knowers: [finder.characterId],
+                  text:
+                    trace.kind === "note"
+                      ? `${finder.cardSnapshot.name} found a note at ${venue.name}: ${trace.text}`
+                      : `${finder.cardSnapshot.name} noticed ${trace.text} at ${venue.name}.`,
+                });
+              }
+              if (trace.kind !== "note" || finders.length === 0)
+                remaining.push({
+                  ...trace,
+                  seenBy: [...new Set([...(trace.seenBy ?? []), ...finders.map((finder) => finder.characterId)])],
+                });
             }
-            if (trace.kind !== "note" || finders.length === 0)
-              remaining.push({
-                ...trace,
-                seenBy: [...new Set([...(trace.seenBy ?? []), ...finders.map((finder) => finder.characterId)])],
-              });
+            zone.state.traces = remaining;
           }
-          zone.state.traces = remaining;
         }
-      }
-      if (discoveries.length) state.chronicle = [...discoveries, ...state.chronicle];
-    });
+      },
+      {
+        memories: (world) =>
+          world.venues.some((venue) => venueZones(venue).some((zone) => !!zone.state.traces?.length)),
+      },
+    );
 
     if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
     // Discover optional paid work only after deterministic advancement has committed.
@@ -277,98 +294,156 @@ export function createWorldCoordination({
    * down — the same rule `projectVillager` and `projectHomes` follow, so a
    * villager's own memory does not go nameless when their card is deleted.
    *
-   * `at` travels untouched. It is shown and never read; see `VillageChronicleEntry`.
+   * `at` travels untouched. It is shown and never read.
    */
-  async function buildVillageStory(): Promise<VillageChronicleEntryView[]> {
-    const [village, cards] = await Promise.all([readVillageState(), listVillagerCards()]);
-    const names = new Map(cards.map((card) => [card.id, card.name]));
-    return village.chronicle.map((entry) => ({
-      ...entry,
-      dateLabel: villageDateLabel(village.foundedAt, entry.dayIndex),
-      actors: entry.actors.map((actor) => ({ ...actor, name: names.get(actor.id) ?? actor.name })),
-    }));
-  }
-
-  /** A player-facing projection of durable, passing, and archived memory layers. */
-  async function buildVillageMemories() {
-    const [village, cards] = await Promise.all([readVillageState(), listVillagerCards()]);
-    const names = new Map(cards.map((card) => [card.id, card.name]));
-    for (const resident of village.villagers) names.set(resident.characterId, resident.cardSnapshot.name);
-    const person = (id: string) => ({ id, name: names.get(id) ?? "Former resident" });
-    const residents = village.villagers.map((resident) => person(resident.characterId));
-    const now = villageNow().getTime();
-    const durable = village.chronicle
-      .filter((entry) => entry.kind !== "tick")
-      .map((entry) => {
-        const knownByIds =
-          entry.scope === "village"
-            ? residents.map((resident) => resident.id)
-            : (entry.knownByCharacterIds ?? entry.actors.map((actor) => actor.id)).filter(Boolean);
-        const subjectIds = (entry.subjectCharacterIds ?? entry.actors.map((actor) => actor.id)).filter(Boolean);
-        return {
-          ...entry,
-          dateLabel: villageDateLabel(village.foundedAt, entry.dayIndex),
-          subjects: [...new Set(subjectIds)].map(person),
-          knownBy: [...new Set(knownByIds)].map(person),
-          evidence: entry.sourceVisitId ? { visitId: entry.sourceVisitId, lineIds: entry.sourceLineIds ?? [] } : null,
-          legacy: !entry.sourceVisitId && !entry.memoryCategory,
-        };
-      });
-    const recollections = village.recollections
-      .filter((entry) => Date.parse(entry.expiresAt) > now)
-      .map((entry) => ({
-        ...entry,
-        subjects: entry.subjectCharacterIds.map(person),
-        knownBy: entry.knownByCharacterIds.map(person),
-      }));
+  type MemoryQuery = {
+    inspection?: boolean;
+    characterId?: string;
+    query?: string;
+    limit?: number;
+    cursor?: { revision: number; afterId: string };
+  };
+  const memoryPerson = (state: import("../../domain/models/world.js").VillageState, id: string) => ({
+    id,
+    name:
+      id === "player"
+        ? state.playerName || "You"
+        : (state.villagers.find((row) => row.characterId === id)?.cardSnapshot.name ?? "Former resident"),
+  });
+  function memoryEntry(
+    state: import("../../domain/models/world.js").VillageState,
+    row: MemoryCandidate,
+  ): MemoryListEntry {
+    const knowledge = Object.values(row.knowers);
     return {
-      generatedAt: new Date(now).toISOString(),
-      residents,
-      durable,
-      recollections,
-      expiredRecollectionCount: village.recollections.length - recollections.length,
+      id: row.id,
+      rootId: row.rootId,
+      revision: row.revision,
+      rootRevision: row.rootRevision,
+      kind: row.kind,
+      text: row.text,
+      occurredAt: row.occurredAt,
+      recordedAt: row.recordedAt,
+      subjects: row.subjects.map((id) => memoryPerson(state, id)),
+      knownBy: Object.keys(row.knowers).map((id) => memoryPerson(state, id)),
+      forgotten: knowledge.some((row) => !!row.forgotten),
+      playerCorrection: knowledge.some((row) => !!row.repair),
     };
   }
-
-  /**
-   * Forget one thing.
-   *
-   * Removed by id rather than by position, unlike a notice: the story tab shows
-   * the list in the order the record holds it, but it is a long list a player
-   * scrolls, and a delete press that landed against a stale render would take out
-   * whichever memory had drifted into that row. The id is what the press was
-   * aimed at.
-   *
-   * Throwing when nothing matched is deliberate — it is how the route answers 404
-   * for a memory that was already removed in another tab, rather than reporting a
-   * success that did nothing.
-   */
-  async function removeChronicleEntry(id: unknown): Promise<void> {
-    const entryId = asTrimmedString(id);
-    if (entryId.length === 0) throw badRequest("That is not a memory of this village.");
-    await mutateVillageState((state) => {
-      const next = state.chronicle.filter((entry) => entry.id !== entryId);
-      if (next.length === state.chronicle.length) throw notFound("That memory is no longer kept here.");
-      state.chronicle = next;
-    });
+  async function buildVillageMemories(input: MemoryQuery = {}): Promise<MemoryLibrary> {
+    const state = await readVillageAuthority();
+    const characterId = input.inspection ? input.characterId || "player" : "player";
+    const limit = input.limit ?? 50,
+      query = (input.query ?? "").trim();
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || query.length > 400)
+      throw badRequest("Invalid memory page.");
+    if (input.cursor && input.cursor.revision !== state.memories.revision)
+      throw conflict("Memories changed. Refresh the list.");
+    const terms = memoryTerms(query);
+    const candidates = input.inspection
+      ? inspectMemoryCandidates(state.memories, characterId)
+      : projectMemories(state.memories, ["player"]);
+    const rows = candidates
+      .filter((row) => {
+        const text = [
+          row.text,
+          row.id,
+          row.rootId,
+          ...row.subjects,
+          ...Object.values(row.knowers).flatMap((knower) => knower.support.map((e) => e.excerpt)),
+        ]
+          .join(" ")
+          .toLocaleLowerCase("en-US");
+        return terms.every((term) => text.includes(term));
+      })
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.id.localeCompare(b.id));
+    const after = input.cursor ? rows.findIndex((row) => row.id === input.cursor!.afterId) : -1;
+    if (input.cursor && after < 0) throw conflict("The memory page changed. Refresh the list.");
+    const selected = rows.slice(after + 1, after + 1 + limit);
+    return {
+      inspection: input.inspection === true,
+      seed: state.seed,
+      revision: state.memories.revision,
+      characterId,
+      query,
+      residents: [memoryPerson(state, "player"), ...state.villagers.map((row) => memoryPerson(state, row.characterId))],
+      entries: selected.map((row) => memoryEntry(state, row)),
+      total: rows.length,
+      next:
+        after + 1 + limit < rows.length ? { revision: state.memories.revision, afterId: selected.at(-1)!.id } : null,
+    };
+  }
+  async function readVillageMemoryEvidence(
+    id: string,
+    inspection = false,
+    characterId = "player",
+  ): Promise<MemoryInspection> {
+    const state = await readVillageAuthority();
+    const audience = inspection ? characterId : "player";
+    const selected = (
+      inspection ? inspectMemoryCandidates(state.memories, audience) : projectMemories(state.memories, ["player"])
+    ).find((row) => row.id === id || row.rootId === id);
+    if (!selected) throw notFound("That memory is unavailable.");
+    const stored = state.memories.records.find((row) => row.id === selected.id)!;
+    const root = state.memories.records.find((row) => row.id === stored.rootId)!;
+    const knowers = inspection ? stored.knowers : selected.knowers;
+    return {
+      entry: memoryEntry(state, selected),
+      knowers: Object.entries(knowers).map(([knower, value]) => ({
+        person: memoryPerson(state, knower),
+        basis: value.basis,
+        ...(value.attributedTo ? { attributedTo: value.attributedTo } : {}),
+        learnedAt: value.learnedAt,
+        reinforcedAt: value.reinforcedAt,
+        forgotten: !!root.knowers[knower]?.forgotten,
+        playerCorrection: !!root.knowers[knower]?.repair,
+        support: value.support.map((e) => ({
+          sourceId: e.source.id,
+          ...(e.source.sceneId ? { sceneId: e.source.sceneId } : {}),
+          lineId: e.lineId,
+          excerpt: e.excerpt,
+        })),
+      })),
+    };
+  }
+  async function forgetMemory(id: string, input: MemoryForgetRequest) {
+    if (
+      !input ||
+      input.target?.id !== id ||
+      !input.operationId ||
+      !Array.isArray(input.knowers) ||
+      !input.knowers.length
+    )
+      throw badRequest("Choose existing memory knowers.");
+    await mutateVillageState(
+      (state) => {
+        if (state.seed !== input.seed) throw conflict("Village identity changed.");
+        try {
+          applyForget(
+            state,
+            {
+              operationId: input.operationId,
+              expectedCollectionRevision: input.expectedCollectionRevision,
+              target: input.target,
+              knowers: input.knowers,
+              action: "forget",
+            },
+            villageNow().toISOString(),
+          );
+        } catch (error) {
+          throw conflict(error instanceof Error ? error.message : "The memory changed.");
+        }
+      },
+      { memories: true },
+    );
   }
 
-  async function removeVillageRecollection(id: unknown): Promise<void> {
-    const entryId = asTrimmedString(id);
-    if (!entryId) throw badRequest("That is not a passing recollection of this village.");
-    await mutateVillageState((state) => {
-      const next = state.recollections.filter((entry) => entry.id !== entryId);
-      if (next.length === state.recollections.length) throw notFound("That recollection is no longer active.");
-      state.recollections = next;
-    });
-  }
   return {
     resetVillage,
     reconcileVillage,
-    buildVillageStory,
     buildVillageMemories,
-    removeChronicleEntry,
-    removeVillageRecollection,
+    readVillageMemoryEvidence,
+    forgetMemory,
   };
 }
 export type WorldCoordination = ReturnType<typeof createWorldCoordination>;

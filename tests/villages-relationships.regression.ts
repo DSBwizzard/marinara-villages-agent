@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { addMemory } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
@@ -157,7 +159,7 @@ async function relationshipConnectionOwnership() {
     };
     const release = scope.run(() =>
       configureVillagesRuntime({
-        persistence: { documents },
+        persistence: { documents: villageFixtureDocuments(documents) },
         getAgentConfig: async () => null,
         logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
       } as any),
@@ -847,7 +849,10 @@ const speechDisclosure = {
   permissions: [],
   disclosures: [{ fromId: "Rosa", toId: "player", kind: "preference", text: "Enjoys sharing stories", lineIds: ["r"] }],
 };
-assert.equal(parseRelationshipReview(speechDisclosure, "speech-disclosure", evidence, village).disclosures.length, 1);
+assert.throws(
+  () => parseRelationshipReview(speechDisclosure, "speech-disclosure", evidence, village),
+  /native memoryChanges/,
+);
 assert.throws(
   () =>
     parseRelationshipReview(
@@ -860,8 +865,8 @@ assert.throws(
       ),
       village,
     ),
-  /villager's own speech/,
-  "A disclosure citing the narration between spoken segments is rejected even when the player witnessed it",
+  /native memoryChanges/,
+  "Relationship reviews cannot write conversational disclosures",
 );
 const knowledge = defaultRelationshipState(village.seed);
 set("Rosa", "player", 50, 50, knowledge);
@@ -881,7 +886,11 @@ assert.equal(
   0,
   "Friendship alone cannot reveal private wishes",
 );
-village.wishKnowledge.Rosa = [{ wishId: "wish", text: "A quiet garden", learnedAt: stamp, lineIds: ["disclosed"] }];
+village.memories = addMemory(village.memories, {
+  text: "A quiet garden",
+  audience: ["player"],
+  patch: { domainRef: { kind: "wish", id: "wish", characterId: "Rosa" }, kind: "information" },
+});
 assert.deepEqual(projectRelationshipProfiles(knowledge, village)[0]!.wishes, ["A quiet garden"]);
 knowledge.edges[relationshipKey("Rosa", "player")]!.trust = 14;
 reconcileRelationships(knowledge, village);
@@ -975,7 +984,7 @@ async function main() {
       },
     },
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_package: string, id: string) {
           return structuredClone(records.get(id) ?? null);
         },
@@ -997,7 +1006,7 @@ async function main() {
           records.set(input.id, structuredClone(next));
           return next;
         },
-      },
+      }),
     },
   } as any);
   failWrite = true;

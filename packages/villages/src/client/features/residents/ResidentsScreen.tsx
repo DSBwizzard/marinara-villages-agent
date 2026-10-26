@@ -1,3 +1,4 @@
+import { VillagerMemoriesPanel } from "./MemoriesPanel.js";
 import { IdentityDescriptionEditor } from "./IdentityDescriptionEditor.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
@@ -5,7 +6,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { agendaMinuteLabel, agendaUpdatePending, remapPlaceName } from "../../shared/presentation.js";
 import type { ResidentsScreenController } from "./screen-contracts.js";
 import { BackgroundWorkPanel } from "../background/BackgroundPanel.js";
-import { AvatarFace, VillagerMemoriesPanel, WishHistory, wishLifetimeLabel } from "./ResidentPanels.js";
+import { AvatarFace, WishHistory, wishLifetimeLabel } from "./ResidentPanels.js";
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
 import { SpriteManager } from "./villages-sprite-manager.js";
 
@@ -45,7 +46,6 @@ export function ResidentsScreen({
     setExploreSheet,
     setFocusedProjectId,
     setFocusedRequestId,
-    setMemoryLibrary,
     setMenuPage,
     setPersonProfile,
     setProfileInspection,
@@ -468,14 +468,10 @@ export function ResidentsScreen({
                 <VillagerMemoriesPanel
                   key={personProfile.actorId}
                   characterId={personProfile.actorId}
-                  now={Date.parse(snapshot?.village?.instant ?? "") || Date.now()}
                   library={memoryLibrary}
                   busy={busy}
-                  onRefresh={() => {
-                    setMemoryLibrary(null);
-                    void loadMemoryLibrary();
-                  }}
-                  onForget={(kind, id) => void forgetMemory(kind, id)}
+                  onQuery={(query, signal) => loadMemoryLibrary(signal, query)}
+                  onForget={(entry, knower) => memoryLibrary && void forgetMemory(entry, [knower], memoryLibrary)}
                 />
               </div>
             ),

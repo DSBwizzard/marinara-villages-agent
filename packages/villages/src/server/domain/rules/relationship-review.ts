@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 export const emptyRelationshipReview = (): RelationshipReview => ({ changes: [], permissions: [], disclosures: [] });
 export const RELATIONSHIP_PERMISSION_INSTRUCTION =
   'Permissions use {controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}; require the controller\'s unconditional, explicit spoken standing invitation (not one visit) or revocation identifying the visitor and exact listed zone. Guest access grants no authority. ';
-export const RELATIONSHIP_REVIEW_INSTRUCTION = `Also return relationshipReview:{changes:[],permissions:[],disclosures:[]}. These decisions are INDEPENDENT of memory promotion. Never create a memory for a relationshipOnly input. Review substantive shared company, warmth, reliability, boundaries, conflict, and candid disclosures. Changes use {fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:["exact evidence ID"],disclosed:boolean}. Ordinary positive company may increase warmth, not trust. Trust needs demonstrated reliability or a meaningful confidence/boundary interaction; promises and player claims alone are not fulfilled deeds. Greetings, filler, mere co-location, and repeated wording give no reward. Do not force a change. Never score the player's feelings. A fromId must have witnessed all evidence. Disclosed means the villager explicitly explained this reason aloud to the player, not that the reviewer inferred it. ${RELATIONSHIP_PERMISSION_INSTRUCTION}Disclosures use {fromId,toId,text,kind:"explanation|preference|boundary",lineIds:[]}; quote or closely paraphrase explicit speech heard by the player. Use "player" as the toId for personal preferences/boundaries. Neither memories nor player knowledge must expose a private reason that was not shared. Use only listed IDs and evidence in this batch.`;
+export const RELATIONSHIP_REVIEW_INSTRUCTION = `Also return relationshipReview:{changes:[],permissions:[],disclosures:[]}. These decisions are independent of memory learning. Review substantive shared company, warmth, reliability, boundaries, conflict, and candid disclosures. Changes use {fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:["exact evidence ID"],disclosed:boolean}. Ordinary positive company may increase warmth, not trust. Trust needs demonstrated reliability or a meaningful confidence/boundary interaction; promises and player claims alone are not fulfilled deeds. Greetings, filler, mere co-location, and repeated wording give no reward. Do not force a change. Never score the player's feelings. A fromId must have witnessed all evidence. Disclosed means the villager explicitly explained this reason aloud to the player, not that the reviewer inferred it. ${RELATIONSHIP_PERMISSION_INSTRUCTION}Return disclosures:[]. Conversational explanations, preferences and boundaries belong only in screened memoryChanges with a relationship domainRef, characterId:fromId, and explicit per-knower learning. Save kind and toId only as actually disclosed fields. Neither memories nor player knowledge must expose a private reason that was not shared. Use only listed IDs and evidence in this batch.`;
 
 function receiptId(sourceId: string, parts: unknown[]): string {
   return `${sourceId}:relationship:${createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24)}`;
@@ -162,35 +162,7 @@ export function parseRelationshipReview(
       lineIds,
     });
   }
-  for (const value of raw.disclosures) {
-    const row = asRecord(value),
-      fromId = String(row.fromId ?? ""),
-      toId = String(row.toId ?? "");
-    if (
-      fromId === "player" ||
-      !ids.has(fromId) ||
-      !ids.has(toId) ||
-      !["explanation", "preference", "boundary"].includes(String(row.kind))
-    )
-      throw new Error("Invalid personal disclosure.");
-    const evidence = evidenceFor(row, fromId);
-    if (
-      evidence.some((line) => line.playerHeard === false) ||
-      !evidence.some((line) => line.speakerId === fromId && line.kind !== "narration")
-    )
-      throw new Error("A disclosure needs the villager's own speech heard by the player.");
-    const text = typeof row.text === "string" ? row.text.trim().slice(0, 320) : "";
-    if (!text) throw new Error("A disclosure needs text.");
-    const lineIds = evidence.map((line) => line.id).sort();
-    result.disclosures.push({
-      id: receiptId(sourceId, [fromId, toId, row.kind, lineIds]),
-      fromId,
-      toId,
-      text,
-      kind: row.kind as "explanation" | "preference" | "boundary",
-      lineIds,
-    });
-  }
+  if (raw.disclosures.length) throw new Error("Conversational disclosures require native memoryChanges");
   return result;
 }
 

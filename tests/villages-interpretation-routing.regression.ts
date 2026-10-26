@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { lifecycle } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import assert from "node:assert/strict";
 import { routeInterpretationChecks } from "../packages/villages/src/server/domain/rules/interpretation-routing.js";
@@ -104,7 +105,7 @@ async function integration() {
   let calls = 0;
   const release = configureVillagesRuntime({
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_p: string, id: string) {
           return records.get(id) ?? null;
         },
@@ -118,7 +119,7 @@ async function integration() {
           records.set(value.id, row);
           return row;
         },
-      },
+      }),
     },
     languageModels: {
       async resolveForRequest() {

@@ -1,10 +1,11 @@
+import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageState, VillageSnapshot } from "../../domain/models/world.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { readVenueRequestCore, type VenueRequestCore } from "../../domain/rules/venue-requests.js";
 import { queueVillageVenueRequest } from "../../domain/rules/venue-request-state.js";
-import { randomVillageSeed, deriveVillageMoment } from "../../domain/rules/village-clock.js";
+import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import type { draftNewVenueProject } from "../projects/project-lifecycle.js";
 import type { queueVenueCounteroffer } from "./venue-mailbox.js";
 
@@ -89,20 +90,14 @@ export function createVenueRequests({
     const text = approved
       ? `The player accepted ${who}'s request to plan ${core.name}. Construction has not begun.`
       : `The player declined ${who}'s request for ${decision.venueDraft.name}.`;
-    state.chronicle = [
-      {
-        id: randomVillageSeed(),
-        dayIndex: moment.dayIndex,
-        clock: moment.dayPhase,
-        occurredAt: moment.instant,
-        timePrecision: "exact",
-        scope: "village",
-        actors: decision.requesterCharacterId ? [{ id: decision.requesterCharacterId, name: who }] : [],
-        kind: "chat",
-        text,
-      },
-      ...state.chronicle,
-    ];
+    rememberDomainFact(state, {
+      id: "venue-decision:" + requestId,
+      at: moment.instant,
+      recordedAt: moment.instant,
+      text,
+      subjects: decision.requesterCharacterId ? [decision.requesterCharacterId] : [],
+      knowers: ["player", ...(decision.requesterCharacterId ? [decision.requesterCharacterId] : [])],
+    });
   }
   return {
     recordVillageVenueRequest,

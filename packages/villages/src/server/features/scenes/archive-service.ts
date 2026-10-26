@@ -1,3 +1,4 @@
+import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
@@ -97,6 +98,9 @@ export function createSceneArchive({
       throw notFound("That Scene is not in the archive.");
     if (!(await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision)))
       throw conflict("The Scene changed while it was being deleted. Try again.");
+    await mutateVillageState((state) => {
+      if (state.seed === before.villageSeed) delete state.memoryScenes[id];
+    });
   }
 
   async function deleteAllVenueVisits(): Promise<void> {
@@ -123,7 +127,6 @@ export function createSceneArchive({
   async function pruneVenueVisits(): Promise<void> {
     const village = await readVillageState();
     const retention = village.visitRetention;
-    if (retention.mode === "forever") return;
     const documents = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
     const eligible = documents
       .map((document) => ({ document, session: coerceSession(document.data) }))
@@ -134,6 +137,10 @@ export function createSceneArchive({
           pendingProgressTurns(session, village.foundedAt).length === 0,
       )
       .sort((a, b) => b.session.startedAt.localeCompare(a.session.startedAt));
+    await mutateVillageState((state) => {
+      for (const { session } of eligible) releaseSceneMemories(state, session);
+    });
+    if (retention.mode === "forever") return;
     const cutoff =
       villageNow().getTime() - Math.max(0, village.clock?.shiftTotalMs ?? 0) - retention.value * 86_400_000;
     const expired =

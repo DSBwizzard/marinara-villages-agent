@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -18,7 +20,8 @@ assert.deepEqual(
 const { activate } = await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
 const now = new Date().toISOString();
 const world = coerceVillageState({
-  version: 3,
+  ...defaultVillageState(),
+  version: 5,
   seed: "founding-http",
   name: "Synthetic place",
   setting: "Shared converted rooms",
@@ -112,7 +115,7 @@ const model = {
   },
 };
 const runtime = {
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   resources: {
     listCharacters: async () => [],
     listPersonas: async () => [],

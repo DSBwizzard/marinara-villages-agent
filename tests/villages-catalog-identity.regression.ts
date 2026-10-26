@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   findVillagerCard,
@@ -58,7 +59,7 @@ const documents = {
   },
 };
 const release = configureVillagesRuntime({
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   resources: {
     async listCharacters(ids?: string[]) {
       reads.push({ kind: "characters", ids });
@@ -119,9 +120,9 @@ try {
   assert.equal(preview.proposed, null);
   assert.equal(preview.current.name, "Adopted resident");
   await assert.rejects(applyVillagerRefresh("requested"), /no longer in your library/);
-  assert.equal((await readVillageState()).villagers[0]!.cardSnapshot.name, "Adopted resident");
+  assert.equal((await readVillageState({ memories: true })).villagers[0]!.cardSnapshot.name, "Adopted resident");
   assert.equal(await refreshPlayerPersona(), true);
-  let state = await readVillageState();
+  let state = await readVillageState({ memories: true });
   assert.equal(state.playerPersonaMissing, true);
   assert.equal(state.playerPersonaName, "Cached player");
   assert.equal(state.playerPersonaIdentity, "Cached private identity");
@@ -137,7 +138,7 @@ try {
     identity: "Selected private identity",
   });
   assert.equal(await refreshPlayerPersona(), true);
-  state = await readVillageState();
+  state = await readVillageState({ memories: true });
   assert.equal(state.playerPersonaMissing, false);
   assert.equal(state.playerPersonaIdentity, "Selected private identity");
   mode = "empty";

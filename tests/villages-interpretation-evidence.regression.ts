@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   boundInterpretationEvidence,
@@ -105,7 +106,7 @@ async function savedContextOwnership() {
     };
     const release = scope.run(() =>
       configureVillagesRuntime({
-        persistence: { documents },
+        persistence: { documents: villageFixtureDocuments(documents) },
         getAgentConfig: async () => null,
         logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
       } as any),
@@ -350,7 +351,7 @@ async function main() {
   const records = new Map<string, any>();
   const release = configureVillagesRuntime({
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_p: string, id: string) {
           return structuredClone(records.get(id) ?? null);
         },
@@ -366,7 +367,7 @@ async function main() {
           records.set(input.id, next);
           return next;
         },
-      },
+      }),
     },
   } as any);
   try {

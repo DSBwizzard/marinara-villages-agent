@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -7,7 +8,7 @@ import { createDocumentMutator } from "../packages/villages/src/server/adapters/
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { selectPromptMemories } from "../packages/villages/src/server/domain/rules/memory-selection.js";
+import { recallMemories } from "../packages/villages/src/server/domain/rules/memory-recall.js";
 import { readSpinoffReview } from "../packages/villages/src/server/domain/rules/spinoff-memory.js";
 import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
 import { createSceneArchive } from "../packages/villages/src/server/features/scenes/archive-service.js";
@@ -44,7 +45,7 @@ function fixture() {
     },
   ] as unknown as typeof village.villagers;
   const scene = coerceSession({
-    version: 1,
+    version: 2,
     id: "source",
     villageSeed: village.seed,
     processingVersion: 1,
@@ -155,7 +156,21 @@ function fixture() {
     memories: [
       {
         text: "At the old shrine, you stayed beside Buster while he spoke about his father.",
-        evidenceIds: ["p1", "b1"],
+        action: "create",
+        kind: "experience",
+        subjects: ["buster"],
+        learners: Object.fromEntries(
+          ["player", "buster"].map((id) => [
+            id,
+            {
+              basis: "observation",
+              support: [
+                { lineId: "p1", excerpt: rows[0].content },
+                { lineId: "b1", excerpt: rows[1].content },
+              ],
+            },
+          ]),
+        ),
       },
     ],
   };
@@ -167,7 +182,7 @@ function fixture() {
     mutateDocument: createDocumentMutator(() => documents),
   });
   const persistence = {
-    documents,
+    documents: villageFixtureDocuments(documents),
     getChat: async () => structuredClone(chat),
     listMessages: async () => structuredClone(rows),
   } as unknown as CapabilityPersistenceHost;
@@ -180,7 +195,15 @@ function fixture() {
       calls++;
       await generationGate?.();
       if (failModel) throw new Error("synthetic provider failure");
-      return { content: JSON.stringify(result), finishReason: "stop" };
+      const response = structuredClone(result) as any;
+      const context = JSON.parse(messages[1].content).memory;
+      for (const memory of response.memories ?? [])
+        memory.screening = {
+          disposition: "clear",
+          protectedRoots: [],
+          fingerprint: context.administrative.fingerprint,
+        };
+      return { content: JSON.stringify(response), finishReason: "stop" };
     },
   };
   const ports: SpinoffPorts = {
@@ -334,7 +357,7 @@ await roundtrip.conclude();
 assert.equal(roundtrip.calls(), 0, "callback makes no model call");
 const proposed = await roundtrip.service().prepare("source");
 assert.equal(proposed.memories.length, 1);
-assert.equal(roundtrip.village().chronicle.length, 0, "nothing saved before review");
+assert.equal(roundtrip.village().memories.records.length, 0, "nothing saved before review");
 await roundtrip.service().resolve(
   "source",
   proposed.memories.map((memory) => memory.id),
@@ -343,15 +366,28 @@ await roundtrip.service().resolve(
   "source",
   proposed.memories.map((memory) => memory.id),
 );
-assert.equal(roundtrip.village().chronicle.length, 1, "double apply creates one memory");
+assert.equal(roundtrip.village().memories.records.length, 1, "double apply creates one memory");
 assert.equal(
   (publicSceneResponse(await roundtrip.repository.readSession("source")) as unknown as SceneView).spinoffPending,
   false,
   "a completed handoff no longer requests recovery",
 );
-const recalled = selectPromptMemories(roundtrip.village().chronicle, ["buster"], "shrine father", 1000);
+const recalled = recallMemories(roundtrip.village().memories, {
+  purpose: "narration",
+  audience: ["buster"],
+  query: "shrine father",
+  budget: 1000,
+}).candidates;
 assert.equal(recalled.length, 1, "accepted shared experience is available to existing resident recall");
-assert.deepEqual(selectPromptMemories(roundtrip.village().chronicle, ["other"], "shrine father", 1000), []);
+assert.deepEqual(
+  recallMemories(roundtrip.village().memories, {
+    purpose: "narration",
+    audience: ["other"],
+    query: "shrine father",
+    budget: 1000,
+  }).candidates,
+  [],
+);
 assert.equal(recalled[0].occurredAt, stamp);
 assert.ok(!JSON.stringify(recalled).includes("RECAP MUST NOT"));
 assert.ok(
@@ -378,7 +414,7 @@ for (const event of [
   assert.equal(result.memories.length, 0);
   await assert.rejects(f.service().resolve("source", ["invented"]));
   await f.service().resolve("source", []);
-  assert.equal(f.village().chronicle.length, 0);
+  assert.equal(f.village().memories.records.length, 0);
 }
 
 for (const kind of ["abandoned", "deleted", "converted"] as const) {
@@ -434,11 +470,11 @@ await interrupted.conclude();
 const offer = await interrupted.service().prepare("source");
 interrupted.failSceneWrite(true);
 await assert.rejects(interrupted.service().resolve("source", [offer.memories[0].id]), /Scene write failure/);
-assert.equal(interrupted.village().chronicle.length, 1);
+assert.equal(interrupted.village().memories.records.length, 1);
 interrupted.failSceneWrite(false);
 interrupted.restart();
 await interrupted.service().resolve("source", [offer.memories[0].id]);
-assert.equal(interrupted.village().chronicle.length, 1, "retry after memory commit does not duplicate it");
+assert.equal(interrupted.village().memories.records.length, 1, "retry after memory commit does not duplicate it");
 
 const malformed = fixture();
 await malformed.start();
@@ -447,10 +483,19 @@ malformed.setResult({
   eligibility: "compatible",
   explanation: "invented citation",
   evidenceIds: [],
-  memories: [{ text: "Unsupported", evidenceIds: ["not-present"] }],
+  memories: [
+    {
+      action: "create",
+      kind: "information",
+      text: "Unsupported",
+      subjects: [],
+      learners: { buster: { basis: "observation", support: [{ lineId: "not-present", excerpt: "unsupported" }] } },
+      screening: { disposition: "clear", protectedRoots: [], fingerprint: "fake" },
+    },
+  ],
 });
-await assert.rejects(malformed.service().prepare("source"), /not supplied/);
-assert.equal(malformed.village().chronicle.length, 0);
+await assert.rejects(malformed.service().prepare("source"), /unsupplied source/);
+assert.equal(malformed.village().memories.records.length, 0);
 assert.throws(
   () =>
     readSpinoffReview(
@@ -462,7 +507,7 @@ assert.throws(
       },
       saved.spinoff!,
     ),
-  /not supplied|ineligible/,
+  /not supplied|ineligible/i,
 );
 
 // A handoff inherits Scene time, not the wall clock when its launch button is pressed.

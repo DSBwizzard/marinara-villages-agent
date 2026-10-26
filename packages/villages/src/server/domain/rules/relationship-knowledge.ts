@@ -1,8 +1,10 @@
+import { projectMemories } from "./memory-views.js";
+import { knownWishes } from "./wish-journal.js";
 import { knownDevelopment } from "./development-knowledge.js";
 import type { RelationshipKnowledge, RelationshipState, StartingTie } from "../models/relationship-types.js";
 import type { VillageState } from "../models/world.js";
 import { agendaBlocksFor } from "./agenda-week.js";
-import { relationshipLabel, relationshipScore } from "./relationship-policy.js";
+import { relationshipLabel } from "./relationship-policy.js";
 import { relationshipFor } from "./relationship-rules.js";
 
 export type RelationshipProfile = {
@@ -52,14 +54,7 @@ export function captureRelationshipKnowledge(
               `${String(Math.floor(block.startMinute / 60)).padStart(2, "0")}:${String(block.startMinute % 60).padStart(2, "0")} · ${block.activity}`,
           )
         : [];
-      knowledge.interests = [
-        resident.agenda?.routineSummary ?? "",
-        ...Object.values(state.disclosures)
-          .filter((entry) => entry.fromId === resident.characterId && entry.kind === "preference")
-          .map((entry) => entry.text),
-      ]
-        .filter(Boolean)
-        .join("; ");
+      knowledge.interests = resident.agenda?.routineSummary ?? "";
     }
     if (edge.close) {
       knowledge.wishes = []; // Wishes require witnessed disclosure, even between close friends.
@@ -88,7 +83,14 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
   return village.villagers.map((resident) => {
     const edge = relationshipFor(state, resident.characterId, "player"),
       known = state.knowledge[resident.characterId];
-    const learned = Object.values(state.disclosures).filter((entry) => entry.fromId === resident.characterId);
+    const learned = projectMemories(village.memories, ["player"])
+      .filter((row) => row.domainRef?.kind === "relationship" && row.domainRef.characterId === resident.characterId)
+      .map((row) => ({
+        text: row.text,
+        kind: String(row.knowers.player!.disclosed?.kind ?? "information"),
+        toId: String(row.knowers.player!.disclosed?.toId ?? "player"),
+        at: row.occurredAt,
+      }));
     return {
       characterId: resident.characterId,
       name: resident.cardSnapshot.name,
@@ -103,26 +105,9 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
       closeKnownAt: known?.closeAt ?? "",
       routine: known?.routine ?? [],
       interests: known?.interests ?? "",
-      wishes: (village.wishKnowledge[resident.characterId] ?? []).map((entry) => entry.text),
+      wishes: knownWishes(village, resident.characterId).map((row) => row.text),
+      knownWishes: knownWishes(village, resident.characterId),
       knownDevelopment: knownDevelopment(village, resident.characterId),
-      knownWishes: (village.wishKnowledge[resident.characterId] ?? []).map((entry) => {
-        const active = resident.agenda?.wishes.some((wish) => wish.id === entry.wishId);
-        const fulfilled = resident.wishLifecycle?.needs.some(
-          (need) => need.aliases.includes(entry.text) && need.state === "fulfilled",
-        );
-        return {
-          ...entry,
-          evidence: undefined,
-          status:
-            entry.status && entry.status !== "active"
-              ? entry.status
-              : active
-                ? "active"
-                : fulfilled
-                  ? "fulfilled"
-                  : "expired",
-        };
-      }),
       ties: (known?.ties ?? []).map((tie) => ({
         ...tie,
         name:
@@ -185,10 +170,7 @@ export function proposeStartingTies(
       ].join("\n");
       const subject = `(?:${escapeName(resident.cardSnapshot.name)}|(?:s?he|they|I))`;
       const name = escapeName(target.name);
-      const shared = [
-        ...lore,
-        ...village.chronicle.filter((entry) => entry.memoryCategory === "relationship").map((entry) => entry.text),
-      ].join("\n");
+      const shared = lore.join("\n");
       const match = (expression: string) =>
         new RegExp(`${subject}\\s+${expression}\\s+${name}(?=\\W|$)`, "iu").test(text) ||
         new RegExp(`${escapeName(resident.cardSnapshot.name)}\\s+${expression}\\s+${name}(?=\\W|$)`, "iu").test(shared);
@@ -216,15 +198,6 @@ export function proposeStartingTies(
       }
       if (match("(?:distrusts?|does not trust|doesn't trust|do not trust|don't trust)")) {
         tie.trust = -50;
-        tie.established = true;
-      }
-      const legacy = village.relationships.find(
-        (edge) =>
-          (edge.firstCharacterId === resident.characterId && edge.secondCharacterId === target.id) ||
-          (edge.secondCharacterId === resident.characterId && edge.firstCharacterId === target.id),
-      );
-      if (legacy && !tie.established) {
-        tie.warmth = relationshipScore(legacy.closeness * 20);
         tie.established = true;
       }
       result.push(tie);

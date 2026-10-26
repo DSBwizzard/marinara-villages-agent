@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import {
   createSceneWriting,
@@ -39,7 +40,8 @@ export async function currentScenePrompt(
     capturedAt: "2026-10-07T12:00:00.000Z",
   };
   const world = coerceVillageState({
-    version: 3,
+    ...defaultVillageState(),
+    version: 5,
     ...state,
     villagers: state.villagers.some((resident) => resident.characterId === card.id)
       ? state.villagers.map((resident) =>
@@ -53,6 +55,7 @@ export async function currentScenePrompt(
     "all supplied residents, including hidden actors, survive current save decoding",
   );
   const session = coerceSession({
+    version: 2,
     id: "prompt-fixture",
     placeId: "common-room",
     placeName: "Common room",

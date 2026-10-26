@@ -1,4 +1,7 @@
+import { readWishGoalJournal } from "../rules/wish-journal.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { readMemoryCollection, memoryObject, memoryRequire } from "../rules/memory-integrity.js";
+import { readMemorySceneStates } from "../rules/village-memories.js";
 import { localDateKey } from "../rules/resident-planning.js";
 import { readDevelopment } from "../rules/development-codec.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
@@ -20,14 +23,10 @@ import { isPrivateInterior, observePrivateInterior, privateInteriorKey } from ".
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
 import type {
   VillageAgenda,
-  VillageChronicleActor,
-  VillageChronicleEntry,
   VillageCompletedWish,
   VillageNotice,
   VillagePendingDecision,
   VillageProject,
-  VillageRecollection,
-  VillageRelationship,
   VillageRemap,
   VillageRemapFailure,
   VillageRemapMove,
@@ -60,7 +59,6 @@ import {
   asTrimmedString,
 } from "../rules/coerce.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
-import { MAX_MEMORY_LENGTH } from "../rules/memory-policy.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "../rules/native-remap.js";
 import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
@@ -74,7 +72,6 @@ import {
   isGlobalGalleryRef,
   isHomeBuildingKind,
   isTownMapFit,
-  MAX_CHRONICLE_LENGTH,
   MAX_PHYSICAL_NARRATION_LENGTH,
   MAX_NOTICE_AUTHOR_LENGTH,
   MAX_NOTICE_LENGTH,
@@ -116,21 +113,21 @@ import {
 } from "../rules/venue-zones.js";
 import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex } from "../rules/village-clock.js";
 import { coerceWishActivities, coerceWishLifecycle } from "../rules/wish-coercion.js";
-import { WISH_SYSTEM_VERSION, wishSize } from "../rules/wish-definition.js";
+import { wishSize } from "../rules/wish-definition.js";
 import { readSemanticWishCriteria } from "../rules/wish-criteria.js";
-import { coerceWishKnowledge, resetLegacyWishRecords } from "../rules/wish-journal.js";
+
 import { shortWishText, wishPolicy, routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 3,
+    version: 5,
+    memories: { format: 1, revision: 0, records: [] },
+    memoryScenes: {},
+    memoryReceipts: {},
     backgroundReceipts: {},
     exchangeReceipts: {},
     noticeSequence: 0,
     dismissedNoticeIds: [],
-    wishSystemVersion: WISH_SYSTEM_VERSION,
-    wishResetPending: [],
-    wishKnowledge: {},
     projectWishOutbox: [],
     wishRefillIntents: {},
     progressEngineVersion: 1,
@@ -182,10 +179,7 @@ export function defaultVillageState(): VillageState {
     // look occupied would be the village inventing its own history.
     noticeboard: [],
     // Memories begin with witnessed experiences and explicit domain outcomes.
-    chronicle: [],
-    recollections: [],
     sceneWishProtections: {},
-    correctedWishMemoryIds: [],
     simulatedThrough: "",
     lastKnownTimeZone: "",
     timeZone: "",
@@ -194,7 +188,6 @@ export function defaultVillageState(): VillageState {
     lastPlanningDate: "",
     planningUsage: { dateKey: "", count: 0 },
     processedActionIds: [],
-    relationships: [],
     projects: [],
     progressTasks: [],
     pendingDecisions: [],
@@ -325,6 +318,7 @@ function coerceWish(value: unknown): VillageWish | null {
     tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
     addedAt: asInstant(raw.addedAt),
     expiresAt: asInstant(raw.expiresAt),
+    goalJournal: readWishGoalJournal(raw.goalJournal),
     size: wishSize(raw.size),
     conditionRevision:
       Number.isSafeInteger(raw.conditionRevision) && (raw.conditionRevision as number) >= 0
@@ -1291,159 +1285,6 @@ function coerceNotices(value: unknown): VillageNotice[] {
     .filter((entry): entry is VillageNotice => entry !== null)
     .slice(0, MAX_NOTICEBOARD_NOTES);
 }
-function legacyOccurrence(
-  foundedAt: string,
-  dayIndex: number,
-  clock: string,
-  exact: unknown,
-): { occurredAt: string; timePrecision: "exact" | "phase" } {
-  const stored = asIsoString(exact);
-  if (stored) return { occurredAt: stored, timePrecision: "exact" };
-  const parsed = new Date(foundedAt);
-  const founded = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-  const midpointHour = clock === "night" ? 2 : clock === "morning" ? 8 : clock === "afternoon" ? 14 : 20;
-  const migrated = new Date(
-    founded.getFullYear(),
-    founded.getMonth(),
-    founded.getDate() + dayIndex,
-    midpointHour,
-    0,
-    0,
-    0,
-  );
-  return { occurredAt: migrated.toISOString(), timePrecision: "phase" };
-}
-function coerceChronicleActor(value: unknown): VillageChronicleActor | null {
-  if (typeof value === "string") {
-    const name = boundText(value, MAX_NOTICE_AUTHOR_LENGTH);
-    return name.length > 0 ? { id: "", name } : null;
-  }
-  const raw = asRecord(value);
-  const name = boundText(raw.name, MAX_NOTICE_AUTHOR_LENGTH);
-  if (name.length === 0) return null;
-  return { id: asTrimmedString(raw.id), name };
-}
-function coerceChronicleEntry(value: unknown, foundedAt: string): VillageChronicleEntry | null {
-  const raw = asRecord(value);
-  const text = boundText(raw.text, MAX_MEMORY_LENGTH);
-  if (text.length === 0) return null;
-  const scope = raw.scope === "private" ? "private" : "village";
-  const actors = Array.isArray(raw.actors)
-    ? raw.actors.map(coerceChronicleActor).filter((entry): entry is VillageChronicleActor => entry !== null)
-    : [];
-  // A private memory is FOR someone, so one with nobody to belong to is dropped
-  // rather than stored: it would never reach a prompt (no villager is named as
-  // its subject) and would only sit in the debug tab looking like a leak.
-  if (scope === "private" && actors.length === 0) return null;
-  const dayIndex =
-    typeof raw.dayIndex === "number" && Number.isFinite(raw.dayIndex) && raw.dayIndex >= 0
-      ? Math.floor(raw.dayIndex)
-      : 0;
-  const clock = asTrimmedString(raw.clock);
-  const occurrence = legacyOccurrence(foundedAt, dayIndex, clock, raw.occurredAt ?? raw.at);
-  return {
-    id: asTrimmedString(raw.id) || randomVillageSeed(),
-    dayIndex,
-    clock: villageClockIndex(clock) >= 0 ? clock : "",
-    ...occurrence,
-    scope,
-    actors,
-    kind: raw.kind === "chat" || raw.kind === "favour" ? raw.kind : "tick",
-    weight: typeof raw.weight === "number" && Number.isFinite(raw.weight) ? raw.weight : undefined,
-    sourceLineIds: Array.isArray(raw.sourceLineIds)
-      ? raw.sourceLineIds.filter((id): id is string => typeof id === "string")
-      : undefined,
-    memoryCategory:
-      raw.memoryCategory === "commitment" ||
-      raw.memoryCategory === "personal-fact" ||
-      raw.memoryCategory === "preference" ||
-      raw.memoryCategory === "relationship" ||
-      raw.memoryCategory === "shared-experience"
-        ? raw.memoryCategory
-        : undefined,
-    subjectCharacterIds: Array.isArray(raw.subjectCharacterIds)
-      ? [...new Set(raw.subjectCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
-      : undefined,
-    knownByCharacterIds: Array.isArray(raw.knownByCharacterIds)
-      ? [...new Set(raw.knownByCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
-      : undefined,
-    sourceVisitId: asTrimmedString(raw.sourceVisitId) || undefined,
-    lastReinforcedAt: asIsoString(raw.lastReinforcedAt) ?? undefined,
-    supersededAt: asIsoString(raw.supersededAt) ?? undefined,
-    supersededBy: asTrimmedString(raw.supersededBy) || undefined,
-    evidenceHistory: Array.isArray(raw.evidenceHistory)
-      ? raw.evidenceHistory
-          .map((value) => {
-            const entry = asRecord(value);
-            return {
-              visitId: asTrimmedString(entry.visitId),
-              submissionId: asTrimmedString(entry.submissionId),
-              lineIds: asStringArray(entry.lineIds),
-            };
-          })
-          .filter((entry) => entry.visitId && entry.submissionId && entry.lineIds.length)
-      : undefined,
-    sourceRecollectionIds: Array.isArray(raw.sourceRecollectionIds)
-      ? [...new Set(raw.sourceRecollectionIds.filter((id): id is string => typeof id === "string" && !!id))]
-      : undefined,
-    text,
-  };
-}
-function coerceChronicle(value: unknown, foundedAt: string): VillageChronicleEntry[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => coerceChronicleEntry(entry, foundedAt))
-    .filter((entry): entry is VillageChronicleEntry => entry !== null);
-}
-function coerceRecollections(value: unknown): VillageRecollection[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((value): VillageRecollection | null => {
-      const raw = asRecord(value);
-      const id = asTrimmedString(raw.id);
-      const visitId = asTrimmedString(raw.visitId);
-      const text = boundText(raw.text, MAX_MEMORY_LENGTH);
-      const occurredAt = asIsoString(raw.occurredAt) ?? "";
-      const expiresAt = asIsoString(raw.expiresAt) ?? "";
-      const subjectCharacterIds = [...new Set(asStringArray(raw.subjectCharacterIds).filter(Boolean))];
-      const knownByCharacterIds = [...new Set(asStringArray(raw.knownByCharacterIds).filter(Boolean))];
-      const sourceLineIds = [...new Set(asStringArray(raw.sourceLineIds).filter(Boolean))];
-      const sourceSubmissionIds = [...new Set(asStringArray(raw.sourceSubmissionIds).filter(Boolean))];
-      const evidence = Array.isArray(raw.evidence)
-        ? raw.evidence
-            .map((value) => {
-              const row = asRecord(value);
-              const sourceVisitId = asTrimmedString(row.visitId);
-              const submissionId = asTrimmedString(row.submissionId);
-              const lineIds = [...new Set(asStringArray(row.lineIds).filter(Boolean))];
-              return sourceVisitId && lineIds.length ? { visitId: sourceVisitId, submissionId, lineIds } : null;
-            })
-            .filter((entry): entry is { visitId: string; submissionId: string; lineIds: string[] } => entry !== null)
-        : [];
-      if (!id || !visitId || !text || !occurredAt || !expiresAt || !knownByCharacterIds.length || !sourceLineIds.length)
-        return null;
-      return {
-        id,
-        visitId,
-        occurredAt,
-        expiresAt,
-        text,
-        subjectCharacterIds,
-        knownByCharacterIds,
-        sourceLineIds,
-        sourceSubmissionIds,
-        evidence: evidence.length
-          ? evidence
-          : [{ visitId, submissionId: sourceSubmissionIds[0] ?? "", lineIds: sourceLineIds }],
-        reinforcementCount:
-          typeof raw.reinforcementCount === "number" && Number.isFinite(raw.reinforcementCount)
-            ? Math.max(0, Math.floor(raw.reinforcementCount))
-            : 0,
-        lastReinforcedAt: asIsoString(raw.lastReinforcedAt) ?? occurredAt,
-      };
-    })
-    .filter((entry): entry is VillageRecollection => entry !== null);
-}
 function coerceRefreshClocks(value: unknown): string[] {
   if (!Array.isArray(value)) return [...VILLAGE_CLOCKS];
   const wanted = new Set<string>();
@@ -1508,28 +1349,6 @@ function coercePlanningUsage(raw: Record<string, unknown>): VillageState["planni
     return !!at && localDateKey(new ZonedDate(at, timeZone)) === dateKey;
   }).length;
   return { dateKey, count: dateKey ? Math.max(1, count) : 0 };
-}
-function coerceRelationships(value: unknown): VillageRelationship[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const raw = asRecord(entry);
-      const firstCharacterId = asTrimmedString(raw.firstCharacterId);
-      const secondCharacterId = asTrimmedString(raw.secondCharacterId);
-      if (!firstCharacterId || !secondCharacterId || firstCharacterId === secondCharacterId) return [];
-      return [
-        {
-          firstCharacterId,
-          secondCharacterId,
-          closeness:
-            typeof raw.closeness === "number" && Number.isFinite(raw.closeness)
-              ? Math.max(-5, Math.min(5, Math.trunc(raw.closeness)))
-              : 0,
-          updatedAt: asIsoString(raw.updatedAt) ?? "",
-        },
-      ];
-    })
-    .slice(0, MAX_SIMULATION_RECORDS);
 }
 function coerceProjects(value: unknown): VillageProject[] {
   if (!Array.isArray(value)) throw new Error("Invalid Project records.");
@@ -1711,7 +1530,7 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
             ? (raw.kind as VillagePendingDecision["kind"])
             : "other",
           title,
-          detail: boundText(raw.detail, MAX_CHRONICLE_LENGTH),
+          detail: boundText(raw.detail, MAX_PHYSICAL_NARRATION_LENGTH),
           proposedAt,
           sourceOpportunityId: asTrimmedString(raw.sourceOpportunityId),
           status:
@@ -1816,9 +1635,19 @@ function coerceVenueMail(value: unknown): VillageVenueMail[] {
     })
     .slice(-256);
 }
+/** Native runtime values and their exact JSON storage representation share one strict schema. */
+function memoryField(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new Error("Invalid saved Memories JSON.");
+  }
+}
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 3) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 5) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
@@ -1829,21 +1658,27 @@ export function coerceVillageState(value: unknown): VillageState {
   const seen = new Set<string>();
 
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
+  const memories = readMemoryCollection(memoryField(raw.memories ?? fallback.memories));
+  const memoryReceipts = raw.memoryReceipts === undefined ? {} : memoryField(raw.memoryReceipts);
+  memoryObject(memoryReceipts);
+  for (const [id, receipt] of Object.entries(memoryReceipts)) {
+    memoryObject(receipt);
+    memoryRequire(receipt.id === id && receipt.domain === "memories", "invalid encoded memory receipt");
+    memoryRequire(!Object.hasOwn(asRecord(raw.exchangeReceipts), id), "duplicate memory receipt");
+  }
   const state: VillageState = {
-    version: 3,
+    version: 5,
+    memories,
+    memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(
       Object.entries(asRecord(raw.backgroundReceipts)).filter(
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     ),
+    memoryReceipts: structuredClone(memoryReceipts) as VillageState["memoryReceipts"],
     exchangeReceipts: structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"],
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
-    wishSystemVersion: raw.wishSystemVersion === WISH_SYSTEM_VERSION ? WISH_SYSTEM_VERSION : 0,
-    wishResetPending: [...new Set(asStringArray(raw.wishResetPending))].filter((id) =>
-      villagers.some((resident) => resident.characterId === id),
-    ),
-    wishKnowledge: coerceWishKnowledge(raw.wishKnowledge),
     projectWishOutbox: Array.isArray(raw.projectWishOutbox)
       ? (raw.projectWishOutbox as VillageState["projectWishOutbox"])
       : [],
@@ -1965,9 +1800,6 @@ export function coerceVillageState(value: unknown): VillageState {
     foundedAt,
     seed: asTrimmedString(raw.seed),
     noticeboard: coerceNotices(raw.noticeboard),
-    chronicle: coerceChronicle(raw.chronicle, foundedAt),
-    recollections: coerceRecollections(raw.recollections),
-    correctedWishMemoryIds: [...new Set(asStringArray(raw.correctedWishMemoryIds).filter(Boolean))],
     simulatedThrough: asIsoString(raw.simulatedThrough) ?? legacySimulatedThrough(foundedAt, raw.lastHappeningKey),
     lastKnownTimeZone: boundText(raw.lastKnownTimeZone, 100),
     timeZone: validTimeZone(raw.timeZone) ? raw.timeZone : "",
@@ -1979,7 +1811,6 @@ export function coerceVillageState(value: unknown): VillageState {
       .map((id) => id.trim())
       .filter(Boolean)
       .slice(-MAX_SIMULATION_RECORDS),
-    relationships: coerceRelationships(raw.relationships),
     ...(raw.semanticRequestReceipts
       ? {
           semanticRequestReceipts: Object.fromEntries(
@@ -2096,6 +1927,6 @@ export function coerceVillageState(value: unknown): VillageState {
         block.zoneId = chooseAgendaZone(venue, villager.characterId, block.activity, block.zoneId, state).id;
     }
   }
-  resetLegacyWishRecords(state);
+
   return state;
 }

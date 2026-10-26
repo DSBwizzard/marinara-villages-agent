@@ -1,6 +1,6 @@
 import type { VillageMoment } from "../rules/village-clock.js";
 import type { VillagerCard } from "./catalog-model.js";
-import type { VillageChatMessage, VillageChronicleEntry, VillageWish } from "./world.js";
+import type { VillageChatMessage, VillageWish } from "./world.js";
 
 export type VillageWishClaimContext = {
   /** The village's name. */
@@ -19,5 +19,5 @@ export type VillageWishClaimContext = {
   /** Current validated venue state, which outranks older descriptions. */
   worldState?: readonly string[];
   /** What this villager already remembers, so a settled thing is already known. */
-  memory: readonly VillageChronicleEntry[];
+  memory: readonly import("./memories.js").MemoryCandidate[];
 };

@@ -2,20 +2,20 @@ import { refreshProjectAgreements } from "../../domain/rules/project-lifecycle-r
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { VillageState } from "../../domain/models/world.js";
-import type { VillageRepository } from "../../domain/models/world-repository.js";
+import type { VillageRepository, VillageMemoryRead, VillageMemoryWrite } from "../../domain/models/world-repository.js";
 import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
 import type { WorldRelationships } from "./world-relationships.js";
 
 /** Owns hydrated reads and relationship effects, separate from raw document storage. */
 export function createVillageStateService(repository: VillageRepository, worldRelationships: () => WorldRelationships) {
-  const readVillageAuthority = async () => {
+  const readVillageAuthority = async (options?: VillageMemoryRead) => {
     await observeVillageClock();
-    return repository.readAuthority();
+    return repository.readAuthority(options);
   };
 
   /** Read-only ledger snapshot for feeds and diagnostics; never applies an outbox. */
-  async function readVillageSnapshot(): Promise<VillageState> {
-    const state = await readVillageAuthority();
+  async function readVillageSnapshot(options?: VillageMemoryRead): Promise<VillageState> {
+    const state = await readVillageAuthority(options);
     refreshProjectAgreements(state);
     if (state.seed) {
       const { readRelationshipState, reconcileRelationships } = worldRelationships();
@@ -25,14 +25,13 @@ export function createVillageStateService(repository: VillageRepository, worldRe
     return state;
   }
 
-  async function readVillageState(): Promise<VillageState> {
-    const state = await readVillageSnapshot();
+  async function readVillageState(options?: VillageMemoryRead): Promise<VillageState> {
+    let state = await readVillageSnapshot(options);
     if (state.seed && !state.clock?.recovery) {
       const { readRelationshipState, reconcileRelationships } = worldRelationships();
       const { projectSocialActivities, processSocialOutbox, reconcileSocialPlans } = worldRelationships();
       if (await processSocialOutbox(state)) {
-        const refreshed = await readVillageAuthority();
-        Object.assign(state, refreshed);
+        state = await readVillageAuthority(options);
         state.relationshipContext = await readRelationshipState(state.seed);
         reconcileRelationships(state.relationshipContext, state, villageNow().getTime());
       }
@@ -51,7 +50,10 @@ export function createVillageStateService(repository: VillageRepository, worldRe
    * alone. That is what makes the derived clock stable — `foundedAt` is written
    * once and never recomputed.
    */
-  async function mutateVillageState(mutate: (state: VillageState) => void): Promise<VillageState> {
+  async function mutateVillageState(
+    mutate: (state: VillageState) => void,
+    options?: VillageMemoryWrite,
+  ): Promise<VillageState> {
     let next = defaultVillageState();
     await repository.mutateAuthority(async (state) => {
       const relationshipSeed = state.seed;
@@ -67,7 +69,7 @@ export function createVillageStateService(repository: VillageRepository, worldRe
       });
 
       next = state;
-    });
+    }, options);
     const { persistRelationshipAuthority } = worldRelationships();
     await persistRelationshipAuthority(next);
     return next;
