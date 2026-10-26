@@ -622,7 +622,7 @@ export function ProjectsPanel({
                         <Facts rows={[["Classes", (venue.classes ?? []).map(titleCase).join(" · ")]]} />
                         <label>
                           Physical design
-                          <textarea aria-label="Physical design" readOnly value={intended} />
+                          <textarea autoComplete="off" aria-label="Physical design" readOnly value={intended} />
                         </label>
                         {venue.classes?.includes("residence") ? (
                           <Facts rows={[["Residence capacity", String(draft.capacity)]]} />

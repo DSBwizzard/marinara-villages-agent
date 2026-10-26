@@ -114,11 +114,11 @@ export function OpeningProjects({
                 <>
                   <label>
                     Design
-                    <textarea readOnly value={selected.description} />
+                    <textarea autoComplete="off" readOnly value={selected.description} />
                   </label>
                   <label>
                     Work
-                    <textarea readOnly value={selected.work} />
+                    <textarea autoComplete="off" readOnly value={selected.work} />
                   </label>
                 </>
               ) : (
