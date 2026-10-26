@@ -59,7 +59,7 @@ export function createResidences(ports: ResidencePorts) {
     const characterId = residenceCharacterId(characterValue);
     const proposedVenueId = residenceVenueId(venueValue);
     await mutateVillageState((state) => {
-      if (sourceKey && state.processedOpportunityIds.includes(sourceKey)) return;
+      if (sourceKey && state.processedActionIds.includes(sourceKey)) return;
       if (!state.villagers.some((villager) => villager.characterId === characterId)) {
         throw notFound("That villager is not in this village.");
       }
@@ -91,7 +91,7 @@ export function createResidences(ports: ResidencePorts) {
       const index = state.residences.findIndex((residence) => residence.characterId === characterId);
       if (index < 0) state.residences.push(next);
       else state.residences[index] = next;
-      if (sourceKey) state.processedOpportunityIds = [...state.processedOpportunityIds, sourceKey].slice(-256);
+      if (sourceKey) state.processedActionIds = [...state.processedActionIds, sourceKey].slice(-256);
     });
     return buildVillageSnapshot();
   }
@@ -146,7 +146,7 @@ export function createResidences(ports: ResidencePorts) {
       if (venueAssignedCount(nextVenue) + reserved >= venueCapacity(nextVenue))
         throw conflict("This Residence has no available bed.");
       assertResidencePrivateDestination(state, nextVenue, characterId, residence.proposedPrivateZoneId);
-      const now = Date.now();
+      const now = villageNow().getTime();
       if (venueResidentIds(nextVenue).some((id) => id !== characterId)) {
         residence.villagerDecision = "approved";
         queueSharedMoveConsent(state, residence, new Date(now));

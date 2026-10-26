@@ -20,29 +20,46 @@ export function normalizeVillageMutation(
   sources: VillageMutationSources = { now: () => new Date(), seed: randomVillageSeed },
 ): void {
   const previousVenues = new Map(state.venues.map((venue) => [venue.id, structuredClone(venue)]));
+  const placementKey = (world: VillageState, id: string) =>
+    JSON.stringify([
+      world.venues
+        .filter((venue) => venue.presentation.mapId === id)
+        .map((venue) => [venue.id, venue.presentation.x, venue.presentation.y]),
+      world.projects
+        .filter(
+          (project) =>
+            project.kind === "new-venue" &&
+            !["complete", "cancelled"].includes(project.status) &&
+            project.venueDraft?.position.mapId === id,
+        )
+        .map((project) => [project.id, project.venueDraft!.position.x, project.venueDraft!.position.y]),
+    ]);
+  const previousMaps = new Map(
+    state.maps.map((map) => [map.id, { revision: map.revision, key: placementKey(state, map.id) }]),
+  );
   const previousCapacity = villageVenueUsage(state);
   mutate(state);
+  for (const map of state.maps) {
+    const prior = previousMaps.get(map.id);
+    if (prior && map.revision === prior.revision && placementKey(state, map.id) !== prior.key) map.revision++;
+  }
+  for (const venue of state.venues) {
+    const prior = previousVenues.get(venue.id);
+    if (prior && venue.presentation.mapId !== prior.presentation.mapId)
+      throw new Error("Moving an existing Venue between maps is not supported.");
+  }
   reconcileOpening(state);
   if (state.seed !== relationshipSeed) delete state.relationshipContext;
   const capacity = villageVenueUsage(state);
   if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)
     assertVillageVenueCapacity(state);
-  for (const resident of state.villagers)
-    for (const entry of state.wishKnowledge[resident.characterId] ?? []) {
-      if (
-        (entry.status && entry.status !== "active") ||
-        resident.agenda?.wishes.some((wish) => wish.id === entry.wishId)
-      )
-        continue;
-      const outcome = resident.wishLifecycle?.pendingOutcomes.find((outcome) => outcome.wish.id === entry.wishId);
-      entry.status = outcome?.kind === "fulfilled" ? "fulfilled" : "expired";
-    }
   // Assign notice order in the same document write as its committed effect.
-  for (const receipt of Object.values(state.exchangeReceipts))
-    if (receipt.notice && !receipt.noticeSequence) {
-      receipt.noticeSequence = ++state.noticeSequence;
-      receipt.committedAt = sources.now().toISOString();
-    }
+  for (const receipt of Object.values(state.exchangeReceipts)) {
+    if (receipt.status === "applied") receipt.committedAt ||= sources.now().toISOString();
+    if (!receipt.notice || receipt.noticeSequence) continue;
+    receipt.noticeSequence = ++state.noticeSequence;
+    receipt.committedAt = sources.now().toISOString();
+  }
   const knownHousing = state.development
     ? Object.fromEntries(
         state.venues.flatMap((venue) => {

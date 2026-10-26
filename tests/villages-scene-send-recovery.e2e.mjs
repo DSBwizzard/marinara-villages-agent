@@ -32,7 +32,7 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     const fixture = structuredClone(snapshot);
     const session = {
-      version: 1,
+      version: 2,
       id: "send-recovery",
       placeId: "mill",
       placeName: "The Mill",
@@ -68,6 +68,7 @@ try {
     let staleRecovery = null;
     let semanticRecovery = null;
     let occupancyUnavailable = false;
+    let heldOutcome = "occupancy-unavailable";
     let loseUnavailableResponse = false;
     let delayUnavailableResponse = false;
     let changeFailureReason = "The suggested memory had no witnessed evidence.";
@@ -137,7 +138,7 @@ try {
         settingsWrites.push(input);
         Object.assign(fixture.settings, input);
         value = fixture;
-      } else if (path.endsWith("/rooms/turn")) {
+      } else if (path.endsWith("/rooms/turn") || path.endsWith("/rooms/leave")) {
         const input = request.postDataJSON();
         turns.push(input);
         if (occupancyUnavailable) {
@@ -146,10 +147,10 @@ try {
             kind: "turn",
             status: "complete",
             error: "",
-            turnOutcome: "occupancy-unavailable",
+            turnOutcome: heldOutcome,
             input: { message: input.message, mode: input.mode, targetId: input.targetId },
           };
-          const result = { session: structuredClone(session), turnOutcome: "occupancy-unavailable", recordEvents: [] };
+          const result = { session: structuredClone(session), turnOutcome: heldOutcome, recordEvents: [] };
           if (loseUnavailableResponse) {
             loseUnavailableResponse = false;
             return abort(route, "failed");
@@ -355,7 +356,7 @@ try {
         const panel = await openSceneErrors(page);
         await expect(panel).toContainText("Reply connection interrupted");
         await expect(panel).toContainText(
-          "The game could not confirm this update from what the residents saw or heard.",
+          "The game could not confirm this world change from what the residents saw or heard.",
         );
         const canvas = page.locator(`.${tag}-chat`);
         const screen = page.locator(`.${tag}-room-screen`);
@@ -452,8 +453,38 @@ try {
     await expect(composer).toBeEnabled();
     await expect(composer).toHaveValue("Newer edit while processing");
     await expect(info).toHaveCount(0);
-    occupancyUnavailable = false;
     delayUnavailableResponse = false;
+    for (const [outcome, notice] of [
+      ["halt-time", "HALT: This turn would skip or change Village time."],
+      ["halt-appointment", "HALT: That appointment's time has passed in the Village."],
+      ["halt-state", "HALT: This turn requires an activity or condition Villages cannot support."],
+      ["halt-world", "HALT: This change conflicts with the current Village."],
+    ]) {
+      heldOutcome = outcome;
+      await page.getByRole("button", { name: /Mode: .*Choose mode/ }).click();
+      await page.getByRole("menuitemradio", { name: "Conclude", exact: true }).click();
+      loseUnavailableResponse = true;
+      const draft = '"Hello." *I sleep for two months*';
+      await composer.fill(draft);
+      await send.click();
+      await expect(info).toBeVisible();
+      await expect(composer).toHaveValue(draft);
+      await info.click();
+      await expect(infoPanel).toContainText(notice);
+      await infoPanel.getByRole("button", { name: "Close Information", exact: true }).click();
+      await load();
+      await expect(composer).toHaveValue(draft);
+      await expect(info).toBeVisible();
+      await composer.fill("I sit down beside the bike.");
+      await expect(info).toHaveCount(0);
+      assert.deepEqual(
+        { lines: session.lines, submissions: session.submissions, revision: session.sceneRevision },
+        savedStory,
+      );
+    }
+    await page.getByRole("button", { name: /Mode: .*Choose mode/ }).click();
+    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
+    occupancyUnavailable = false;
 
     // Reach General settings with no active Scene, then verify persistence.
     active = false;

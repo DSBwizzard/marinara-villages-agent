@@ -17,6 +17,8 @@ export type WishCriteria = {
 };
 export type WishReceipt = VillageVenueEvent & { completedProject?: boolean };
 export type WishInterpretationContext = VillageWishClaimContext & {
+  /** Trusted player perception captured by the server, never a model verdict. */
+  playerEvidenceIds?: string[];
   semanticCriteria?: WishCriteria;
   knowledge?: ReturnType<typeof wishCheckKnowledge>;
   knowledgeByWish?: Record<string, ReturnType<typeof wishCheckKnowledge>>;

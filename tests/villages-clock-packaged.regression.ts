@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { fixture } from "./fixtures/villages-projects.fixture.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import assert from "node:assert/strict";
@@ -28,7 +29,7 @@ await runCase("village-clock-recovery", async () => {
     setupAt: new Date(wall).toISOString(),
     foundedAt: new Date(wall).toISOString(),
     timeZone: "America/Los_Angeles",
-    storyPace: "off",
+    backgroundPace: "off",
     visitMemoryBackfilled: true,
   });
   seed.clock = {
@@ -48,6 +49,7 @@ await runCase("village-clock-recovery", async () => {
   seed.projects = structuredClone(projectFixture.state().projects);
   seed.venues = structuredClone(projectFixture.state().venues);
   seed.villagers = structuredClone(projectFixture.state().villagers);
+  for (const resident of seed.villagers) if (resident.agenda) resident.agenda.personalizationPending = false;
   records.set("villages-village", {
     id: "villages-village",
     packageId: "villages",
@@ -85,7 +87,7 @@ await runCase("village-clock-recovery", async () => {
   };
   const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} };
   const runtime = {
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: {
       async listCharacters() {
         return [];
@@ -188,9 +190,72 @@ await runCase("village-clock-recovery", async () => {
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().clock.paused, false);
     assert.equal(response.json().village.instant, new Date(wall).toISOString());
+    const startAdvance = wall;
+    let totalAdvance = 0;
+    for (const milliseconds of [90 * 60_000, 86_400_000, 7 * 86_400_000, 30 * 86_400_000]) {
+      const clockResponse = await restartApp.inject({ method: "GET", url: "/api/villages/clock" });
+      assert.equal(clockResponse.statusCode, 200, clockResponse.body);
+      const clock = clockResponse.json();
+      const payload = {
+        worldId: clock.worldId,
+        revision: clock.revision,
+        actionId: "advance-" + milliseconds,
+        milliseconds,
+      };
+      const advance = await restartApp.inject({ method: "POST", url: "/api/villages/clock/advance", payload });
+      assert.equal(advance.statusCode, 200, advance.body);
+      totalAdvance += milliseconds;
+      assert.equal(advance.json().village.instant, new Date(startAdvance + totalAdvance).toISOString());
+      assert.equal(
+        records.get("villages-village").data.simulatedThrough,
+        new Date(startAdvance + totalAdvance).toISOString(),
+      );
+      const retry = await restartApp.inject({ method: "POST", url: "/api/villages/clock/advance", payload });
+      assert.equal(retry.statusCode, 200, retry.body);
+      assert.equal(retry.json().clock.advanceMs, totalAdvance, "HTTP retry does not double an advance.");
+      const stale = await restartApp.inject({
+        method: "POST",
+        url: "/api/villages/clock/advance",
+        payload: { ...payload, actionId: "stale" },
+      });
+      assert.equal(stale.statusCode, 409);
+    }
+    assert.equal(
+      records.get("villages-village").data.projects[0].status,
+      "complete",
+      "Normal construction completes during time catch-up.",
+    );
+    const invalid = await restartApp.inject({
+      method: "POST",
+      url: "/api/villages/clock/advance",
+      payload: { milliseconds: -1 },
+    });
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(wall, startAdvance, "Only Village time changes; the operational source is untouched.");
     await stop();
     stop = undefined;
     await restartApp.close();
+    const finalApp = Fastify();
+    stop = await activate({
+      api: {
+        runtime,
+        registerSceneOrigin: () => () => {},
+        registerPrivilegedRoutes: async (routes, options) => {
+          await finalApp.register(routes, options);
+          return async () => {};
+        },
+      },
+    });
+    const persisted = await finalApp.inject({ method: "GET", url: "/api/villages/" });
+    assert.equal(persisted.statusCode, 200, persisted.body);
+    assert.equal(
+      persisted.json().village.instant,
+      new Date(wall + totalAdvance).toISOString(),
+      "Package restart retains the saved advance.",
+    );
+    await stop();
+    stop = undefined;
+    await finalApp.close();
     assert.equal(paid, 0);
     await writeFile(
       ".build-tmp/clock-packaged-acceptance.json",

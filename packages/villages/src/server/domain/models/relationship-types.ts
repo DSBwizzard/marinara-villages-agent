@@ -73,6 +73,7 @@ export type RelationshipDisclosure = {
   text: string;
   kind: "explanation" | "preference" | "boundary" | "routine" | "history" | "connection";
   lineIds: string[];
+  excerpts?: string[];
 };
 export type RelationshipReview = {
   changes: RelationshipChange[];
@@ -122,13 +123,6 @@ export type RelationshipReceipt = {
   lineIds: string[];
   evidence: SocialEvidence[];
 };
-export type RelationshipKnowledge = {
-  fromId: string;
-  at: string;
-  summary: string;
-  routine: string[];
-  interests: string;
-};
 export type StartingTie = {
   fromId: string;
   toId: string;
@@ -155,6 +149,7 @@ export type SocialPlan = {
 export type SocialEncounter = {
   semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
   memoryChanges?: unknown;
+  memoryContexts?: Record<string, import("../rules/scene-memories.js").SceneMemoryContext>;
   rejectedProposals?: import("../rules/relationship-review.js").RelationshipProposalRejection[];
   id: string;
   at: string;
@@ -190,8 +185,7 @@ export type RelationshipState = {
   grants: Record<string, RelationshipGrant>;
   receipts: Record<string, RelationshipReceipt>;
   applied: Record<string, true>;
-  disclosures: Record<string, RelationshipDisclosure & { at: string; sourceId: string; publicationId?: string }>;
-  knowledge: Record<string, RelationshipKnowledge>;
+  disclosureReceipts: Record<string, true>;
   sharedRecords: Record<string, SocialRecord>;
   reviewedActorIds: string[];
   startingTies: StartingTie[];

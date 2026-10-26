@@ -25,7 +25,7 @@ let record = {
   description: "",
   revision: 1,
   data: {
-    version: 1,
+    version: 2,
     sceneRevision: 0,
     id: "browser",
     placeId: "mill",

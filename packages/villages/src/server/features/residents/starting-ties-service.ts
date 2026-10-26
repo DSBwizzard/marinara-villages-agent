@@ -1,3 +1,5 @@
+import { villageNow } from "../../adapters/time/clock-gate.js";
+import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
 import { z } from "zod";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { StartingTie, SocialEvidence } from "../../domain/models/relationship-types.js";
@@ -5,9 +7,9 @@ import type { VillageState } from "../../domain/models/world.js";
 import { semanticHash } from "../../domain/rules/semantic-contract.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { neutralRelationship, relationshipKey } from "../../domain/rules/relationship-rules.js";
-import { captureRelationshipKnowledge } from "../../domain/rules/relationship-knowledge.js";
 
 export interface StartingTiesPorts {
+  withVillageSceneAcceptance?: typeof import("../world/village-store.js").withVillageSceneAcceptance;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   mutateRelationships: typeof import("./relationship-store.js").mutateRelationships;
@@ -127,9 +129,59 @@ export function createStartingTies(ports: StartingTiesPorts) {
     return parsed;
   }
   async function applySaved() {
+    return ports.withVillageSceneAcceptance ? ports.withVillageSceneAcceptance(applySavedLocked) : applySavedLocked();
+  }
+  async function applySavedLocked() {
     const village = await ports.readVillageState(),
       saved = village.semanticStartingTies;
     if (!saved || (saved.stateHash ?? saved.sourceHash) !== semanticHash(source(village))) return;
+    if (village.relationshipContext?.applied["semantic-starting:" + saved.sourceHash]) return;
+    // Publish the native historical knowledge before unlocking first-Scene admission.
+    // A failed private write can replay these stable facts; a failed Memory write unlocks nothing.
+    await ports.mutateVillageState(
+      (state) => {
+        if (
+          state.seed !== village.seed ||
+          state.semanticStartingTies?.sourceHash !== saved.sourceHash ||
+          (saved.stateHash ?? saved.sourceHash) !== semanticHash(source(state))
+        )
+          throw new Error("Starting history source changed.");
+        const pending = village.villagers
+          .map((r) => r.characterId)
+          .filter((id) => !state.relationshipContext?.reviewedActorIds.includes(id));
+        const blocked = new Set((saved.conflicts ?? []).flatMap((r) => r.actorIds));
+        for (const tie of saved.ties) {
+          if (
+            (!pending.includes(tie.fromId) && !pending.includes(tie.toId)) ||
+            blocked.has(tie.fromId) ||
+            blocked.has(tie.toId) ||
+            state.relationshipContext?.edges[relationshipKey(tie.fromId, tie.toId)]?.revision
+          )
+            continue;
+          for (const [index, history] of tie.history.entries()) {
+            const id =
+              "semantic-starting:" +
+              saved.sourceHash +
+              ":" +
+              relationshipKey(tie.fromId, tie.toId) +
+              ":history:" +
+              index;
+            if (history.knownBy.length)
+              rememberDomainFact(state, {
+                id: "starting-social:" + semanticHash(id),
+                at: saved.preparedAt || village.foundedAt || village.setupAt,
+                recordedAt: saved.preparedAt || village.foundedAt || village.setupAt,
+                text: history.text,
+                subjects: [tie.fromId, tie.toId],
+                knowers: history.knownBy,
+                domainRef: { kind: "relationship", id: semanticHash(id), characterId: tie.fromId },
+                disclosed: { kind: "history", toId: tie.toId },
+              });
+          }
+        }
+      },
+      { memories: true },
+    );
     await ports.mutateRelationships(village.seed, (state) => {
       const receipt = "semantic-starting:" + saved.sourceHash;
       if (state.applied[receipt]) return;
@@ -140,7 +192,7 @@ export function createStartingTies(ports: StartingTiesPorts) {
       const blocked = new Set(conflicts.flatMap((row) => row.actorIds));
       state.initializationConflicts = conflicts;
       state.startingActorIds = pending.filter((id) => blocked.has(id));
-      const at = village.foundedAt;
+      const at = saved.preparedAt || village.foundedAt || village.setupAt;
       for (const tie of saved.ties) {
         if (
           (!pending.includes(tie.fromId) && !pending.includes(tie.toId)) ||
@@ -173,18 +225,6 @@ export function createStartingTies(ports: StartingTiesPorts) {
             evidenceIds: history.sourceIds,
             knownBy: history.knownBy,
           };
-          if (history.knownBy.includes("player")) {
-            state.disclosures[recordId] = {
-              id: recordId,
-              fromId: tie.fromId,
-              toId: tie.toId,
-              text: history.text,
-              kind: "history",
-              lineIds: history.sourceIds,
-              sourceId: saved.sourceHash,
-              at,
-            };
-          }
         }
         edge.experiences = [id];
         const used = new Set(tie.history.flatMap((row) => row.sourceIds));
@@ -205,7 +245,6 @@ export function createStartingTies(ports: StartingTiesPorts) {
       }
       state.reviewedActorIds = [...new Set([...state.reviewedActorIds, ...pending.filter((id) => !blocked.has(id))])];
       state.startingTies = [];
-      captureRelationshipKnowledge(state, village);
       state.applied[receipt] = true;
     });
   }
@@ -232,6 +271,7 @@ export function createStartingTies(ports: StartingTiesPorts) {
           content: JSON.stringify({
             source: input.source,
             sources: input.sources,
+            preparedAt: input.admittedAt,
             pending: input.pending,
             establishedPairs: input.establishedPairs,
           }),
@@ -263,6 +303,7 @@ export function createStartingTies(ports: StartingTiesPorts) {
         ties: result.ties as StartingTie[],
         conflicts: result.conflicts,
         sources: input.sources,
+        preparedAt: input.admittedAt,
       };
     },
     afterApply: applySaved,
@@ -299,6 +340,7 @@ export function createStartingTies(ports: StartingTiesPorts) {
         sourceHash,
         stateHash,
         pending,
+        admittedAt: villageNow().toISOString(),
         establishedPairs: Object.values(state.relationshipContext?.edges ?? {})
           .filter((edge) => edge.revision > 0)
           .map((edge) => [edge.fromId, edge.toId]),

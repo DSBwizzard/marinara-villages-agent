@@ -21,7 +21,11 @@ import {
   staleVenueReason,
 } from "./ScenePanel.js";
 import { recordTurnTiming } from "../../shared/turn-timing.js";
-import { OCCUPANCY_UNAVAILABLE_MESSAGE, type SceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
+import {
+  isSceneTurnOutcome,
+  sceneTurnOutcomeMessage,
+  type SceneTurnOutcome,
+} from "../../../shared/contracts/scene-turn-outcome.js";
 import { useTurnRecovery } from "./turn-recovery.js";
 import { sceneResend } from "./villages-venue-send";
 import { useSceneRequestLifetime } from "./request-lifetime.js";
@@ -297,6 +301,7 @@ export function useCloseRoom(ports: {
 }
 
 export function useLeaveRoom(ports: {
+  composerEditVersionRef: React.RefObject<number>;
   isFounded: boolean | undefined;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
@@ -315,6 +320,7 @@ export function useLeaveRoom(ports: {
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomRuling: React.Dispatch<SetStateAction<string>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
   setScreen: React.Dispatch<
@@ -322,6 +328,7 @@ export function useLeaveRoom(ports: {
   >;
 }) {
   const {
+    composerEditVersionRef,
     isFounded,
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -340,6 +347,7 @@ export function useLeaveRoom(ports: {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomRuling,
     setRoomNotices,
     setRoomOpen,
     setScreen,
@@ -365,7 +373,20 @@ export function useLeaveRoom(ports: {
     claim.busy = true;
     setRoomBusy(true);
     setRoomError("");
+    setRoomRuling("");
     setEndFailed(false);
+    const editVersion = composerEditVersionRef.current;
+    const held = (outcome: SceneTurnOutcome) => {
+      setRoomEnded(false);
+      if (composerEditVersionRef.current === editVersion) {
+        setRoomDraft(roomDraft);
+        setRoomRuling(sceneTurnOutcomeMessage(outcome));
+      }
+      roomLeaveSubmissionIdRef.current = null;
+      claim.submission = null;
+      roomCompletionRef.current = null;
+      claim.completion = null;
+    };
     try {
       const { operation } = await request<{ operation: RoomOperation | null }>(
         `/rooms/${encodeURIComponent(room.id)}/operation`,
@@ -377,7 +398,11 @@ export function useLeaveRoom(ports: {
       claim.submission = submissionId;
       roomCompletionRef.current = { roomId: room.id, submissionId };
       claim.completion = roomCompletionRef.current;
-      const answer = await request<{ session: SceneView; recordEvents: RoomRecordEvent[] }>("/rooms/leave", {
+      const answer = await request<{
+        session: SceneView;
+        recordEvents: RoomRecordEvent[];
+        turnOutcome?: SceneTurnOutcome;
+      }>("/rooms/leave", {
         method: "POST",
         body: JSON.stringify({
           sessionId: room.id,
@@ -389,6 +414,10 @@ export function useLeaveRoom(ports: {
       });
       if (!lifetime.owns(claim)) return;
       setRoom(currentRoom(answer.session));
+      if (isSceneTurnOutcome(answer.turnOutcome)) {
+        held(answer.turnOutcome);
+        return;
+      }
       setRoomEnded(true);
       receiveRoomRecordEvents(answer.recordEvents ?? []);
       roomLeaveSubmissionIdRef.current = null;
@@ -399,6 +428,15 @@ export function useLeaveRoom(ports: {
       if (!lifetime.owns(claim)) return;
       const latest = await refreshSceneAfterFailure(room.id, submissionId, () => lifetime.owns(claim));
       if (!lifetime.owns(claim)) return;
+      const { operation } = await request<{ operation: RoomOperation | null }>(
+        `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(submissionId)}`,
+      ).catch(() => ({ operation: null }));
+      if (!lifetime.owns(claim)) return;
+      if (operation?.id === submissionId && isSceneTurnOutcome(operation.turnOutcome)) {
+        if (latest) setRoom(currentRoom(latest));
+        held(operation.turnOutcome);
+        return;
+      }
       const recovered = latest?.submissions?.some((entry) => entry.id === submissionId)
         ? latest
         : await completedRoomAfterFailure(room.id, submissionId, () => lifetime.owns(claim));
@@ -438,6 +476,7 @@ export function useLeaveRoom(ports: {
       if (lifetime.finish(claim)) setRoomBusy(false);
     }
   }, [
+    composerEditVersionRef,
     lifetime,
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -455,6 +494,7 @@ export function useLeaveRoom(ports: {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomRuling,
     setRoomNotices,
     setRoomOpen,
     setScreen,
@@ -653,6 +693,7 @@ export function useMoveRoom(ports: {
 }
 
 export function useSendRoom(ports: {
+  visible?: boolean;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
   composerEditVersionRef?: React.RefObject<number>;
@@ -729,6 +770,7 @@ export function useSendRoom(ports: {
     setBusy: setRoomBusy,
   });
   const recovery = useTurnRecovery({
+    visible: ports.visible,
     room,
     setRoom,
     setRoomEnded,
@@ -849,10 +891,10 @@ export function useSendRoom(ports: {
           claim.completion = null;
         }
         receiveRoomRecordEvents(answer.recordEvents ?? []);
-        if (answer.turnOutcome === "occupancy-unavailable") {
+        if (isSceneTurnOutcome(answer.turnOutcome)) {
           if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
             setRoomDraft(text);
-            setRoomRuling(OCCUPANCY_UNAVAILABLE_MESSAGE);
+            setRoomRuling(sceneTurnOutcomeMessage(answer.turnOutcome));
           }
           roomSubmissionIdRef.current = null;
           claim.submission = null;
@@ -883,12 +925,12 @@ export function useSendRoom(ports: {
           `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(submissionId)}`,
         ).catch(() => ({ operation: null }));
         if (!owns()) return;
-        if (operation?.id === submissionId && operation.turnOutcome === "occupancy-unavailable") {
+        if (operation?.id === submissionId && isSceneTurnOutcome(operation.turnOutcome)) {
           setRoom(currentRoom(latest ?? before));
           setRoomError("");
           if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
             setRoomDraft(text);
-            setRoomRuling(OCCUPANCY_UNAVAILABLE_MESSAGE);
+            setRoomRuling(sceneTurnOutcomeMessage(operation.turnOutcome));
           }
           roomSubmissionIdRef.current = null;
           claim.submission = null;
@@ -1166,37 +1208,36 @@ export function useRetrySavedScene(ports: {
                 ? "/rooms/leave"
                 : "/rooms/turn"
               : "/rooms/end";
-      const answer =
-        operation.turnOutcome === "occupancy-unavailable"
-          ? {
-              session: (await refreshSceneAfterFailure(room.id, operation.id, () => lifetime.owns(claim))) ?? room,
-              turnOutcome: operation.turnOutcome,
-              recordEvents: [],
-            }
-          : await request<{ session: SceneView; turnOutcome?: SceneTurnOutcome; recordEvents?: RoomRecordEvent[] }>(
-              path,
-              {
-                method: "POST",
-                body: JSON.stringify({
-                  ...operation.input,
-                  sessionId: room.id,
-                  submissionId: operation.id,
-                  operationId: operation.id,
-                  expectedSceneRevision: room.sceneRevision ?? 0,
-                  ...(operation.kind === "greet" && operation.recoverable
-                    ? { recovery: true }
-                    : { retryOfAttemptId: operation.attemptId }),
-                }),
-              },
-            );
+      const answer = isSceneTurnOutcome(operation.turnOutcome)
+        ? {
+            session: (await refreshSceneAfterFailure(room.id, operation.id, () => lifetime.owns(claim))) ?? room,
+            turnOutcome: operation.turnOutcome,
+            recordEvents: [],
+          }
+        : await request<{ session: SceneView; turnOutcome?: SceneTurnOutcome; recordEvents?: RoomRecordEvent[] }>(
+            path,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                ...operation.input,
+                sessionId: room.id,
+                submissionId: operation.id,
+                operationId: operation.id,
+                expectedSceneRevision: room.sceneRevision ?? 0,
+                ...(operation.kind === "greet" && operation.recoverable
+                  ? { recovery: true }
+                  : { retryOfAttemptId: operation.attemptId }),
+              }),
+            },
+          );
       if (!lifetime.owns(claim)) return;
       setRoom(currentRoom(answer.session));
       setRoomEnded(answer.session.status === "closed");
       receiveRoomRecordEvents(answer.recordEvents ?? []);
       if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
-        if (answer.turnOutcome === "occupancy-unavailable") {
+        if (isSceneTurnOutcome(answer.turnOutcome)) {
           setRoomDraft(operation.input?.message ?? roomDraft);
-          setRoomRuling(OCCUPANCY_UNAVAILABLE_MESSAGE);
+          setRoomRuling(sceneTurnOutcomeMessage(answer.turnOutcome));
         } else if (roomDraft.trim() === operation.input?.message) setRoomDraft("");
       }
       roomSubmissionIdRef.current = null;
@@ -1387,6 +1428,10 @@ export function useOpenRoom(ports: {
     ) => {
       if (roomBusy) return;
       const zoneOnly = !!(room?.id && room.status === "active" && room.placeId === place.id && zoneId);
+      if (room?.id && room.status !== "closed" && !zoneOnly) {
+        setScreen("room");
+        return;
+      }
       const claim = lifetime.begin(zoneOnly);
       if (!claim) return;
       const owns = () => lifetime.owns(claim);

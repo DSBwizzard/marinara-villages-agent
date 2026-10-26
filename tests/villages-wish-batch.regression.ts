@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { knownWishes } from "../packages/villages/src/server/domain/rules/wish-journal.js";
 import { configureSceneQueries, sceneQueries } from "../packages/villages/src/server/features/scenes/services.js";
 import assert from "node:assert/strict";
 
@@ -51,7 +53,6 @@ async function main() {
       { id: actorId, speakerId: actorId, name: actorId, content: "Saturday works for me.", at, current: true },
     ],
     transcript: [],
-    happenings: [],
     memory: [],
     worldState: [],
   }));
@@ -70,7 +71,7 @@ async function main() {
   records.set("villages-village", { id: "villages-village", kind: "village", data: state, revision: 1 });
   const release = configureVillagesRuntime({
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_p: string, id: string) {
           return structuredClone(records.get(id) ?? null);
         },
@@ -87,7 +88,7 @@ async function main() {
           records.set(value.id, row);
           return row;
         },
-      },
+      }),
     },
     languageModels: {
       async resolveForRequest() {
@@ -309,7 +310,7 @@ async function main() {
     const beforeContinuity = calls;
     await processWishExchange(next, "next-turn");
     await settleBackgroundWork();
-    const completed = await readVillageState();
+    const completed = await readVillageState({ memories: true });
     assert.equal(
       historyObserved,
       true,
@@ -321,8 +322,13 @@ async function main() {
       "Historical gardening plus the current agreement completes the original goal",
     );
     assert.equal(completed.villagers[0].wishLifecycle?.pendingOutcomes.at(-1)?.kind, "fulfilled");
-    assert.equal(completed.chronicle.filter((entry) => entry.kind === "favour").length, 1);
-    assert.equal(completed.wishKnowledge.a?.length ?? 0, 0, "Private proof does not disclose an unrevealed Wish");
+    assert.equal(
+      Object.values(completed.exchangeReceipts).filter(
+        (entry) => entry.domain === "wishes" && entry.wishOutcome === "fulfilled",
+      ).length,
+      1,
+    );
+    assert.equal(knownWishes(completed, "a").length, 0, "Private proof does not disclose an unrevealed Wish");
     assert.equal(calls, beforeContinuity + 1, "Continuity adds storage reads, not another provider stage");
     await processWishExchange(next, "next-turn");
     await settleBackgroundWork();

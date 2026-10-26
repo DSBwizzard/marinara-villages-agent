@@ -25,17 +25,6 @@ export async function proposePublicVenueNames(
   return binding.get().proposePublicVenueNames(...args);
 }
 
-export async function proposeHappenings(
-  ...args: Parameters<VillageBootstrapService["proposeHappenings"]>
-): ReturnType<VillageBootstrapService["proposeHappenings"]> {
-  return binding.get().proposeHappenings(...args);
-}
-
-export async function proposeReaction(
-  ...args: Parameters<VillageBootstrapService["proposeReaction"]>
-): ReturnType<VillageBootstrapService["proposeReaction"]> {
-  return binding.get().proposeReaction(...args);
-}
 export async function interpretSocialSource(
   ...args: Parameters<VillageBootstrapService["interpretSocialSource"]>
 ): ReturnType<VillageBootstrapService["interpretSocialSource"]> {

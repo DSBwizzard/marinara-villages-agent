@@ -1,3 +1,4 @@
+import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
@@ -48,6 +49,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
                 raw = asRecord(entry.proposal.encounter);
               if (accepted) {
                 accepted.memoryChanges = structuredClone(raw.memoryChanges);
+                accepted.memoryContexts = structuredClone(raw.memoryContexts) as SocialEncounter["memoryContexts"];
                 accepted.semanticProvenance = {
                   version: 2,
                   sourceHash: String(raw.semanticSourceHash),
@@ -72,7 +74,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           if (
             plan &&
             !state.applied[`social-plan-date:${plan.dateKey}`] &&
-            current.storyPace !== "off" &&
+            current.backgroundPace !== "off" &&
             socialPlanValid(current, plan)
           ) {
             state.socialPlans.push(plan);
@@ -154,9 +156,10 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
                 at: accepted.at,
                 semanticProvenance: accepted.semanticProvenance,
                 liveProposals: bindLiveProposals(
-                  { memoryChanges: accepted.memoryChanges },
+                  { memoryChanges: accepted.memoryChanges, memoryContexts: accepted.memoryContexts },
                   "",
                   lines.map((line) => line.id),
+                  lines,
                 ),
               },
             ],
@@ -223,7 +226,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
       .object({ requestId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/), reinterpret: z.boolean() })
       .parse(value);
     if (!ports.readVillageSnapshot) throw new Error("Encounter recovery unavailable.");
-    const village = await ports.readVillageSnapshot(),
+    const village = await ports.readVillageSnapshot({ memories: true }),
       entry = village.socialOutbox?.find((row) => row.id === id);
     if (!entry) return;
     if (input.reinterpret) {
@@ -239,6 +242,8 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           entry: structuredClone(entry),
           social: socialContextState(village.relationshipContext, entry.opportunity.actorIds, ""),
           seed: village.seed,
+          admittedAt: villageNow().toISOString(),
+          memory: sceneMemoryContext(village, entry.opportunity.actorIds, (entry.opportunity.facts ?? []).join(" ")),
         },
       });
     } else {
@@ -250,10 +255,20 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
     }
   }
   const handler: Handler = {
-    async generate(input: { entry: SocialOutboxEntry; social: VillageState["relationshipContext"]; seed: string }) {
+    async generate(input: {
+      entry: SocialOutboxEntry;
+      social: VillageState["relationshipContext"];
+      seed: string;
+      admittedAt: string;
+      memory: ReturnType<typeof sceneMemoryContext>;
+    }) {
       if (!ports.interpretSocialSource) throw new Error("Encounter interpretation unavailable.");
       const raw = input.entry.proposal.encounter as Record<string, unknown>;
-      return ports.interpretSocialSource(raw.lines, { state: input.social, candidates: [], relationships: [] }, false);
+      return ports.interpretSocialSource(
+        raw.lines,
+        { state: input.social, candidates: [], relationships: [], at: input.admittedAt, memory: input.memory },
+        false,
+      );
     },
     valid: (state, input) =>
       state.seed === input.seed &&

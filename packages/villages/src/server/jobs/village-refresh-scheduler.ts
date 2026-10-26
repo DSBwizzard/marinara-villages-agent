@@ -1,5 +1,5 @@
 import { copyDate } from "../../shared/helpers/zoned-date.js";
-import { villageNow } from "../adapters/time/clock-gate.js";
+import { onVillageClockAdvance, villageNow } from "../adapters/time/clock-gate.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import type { VillageState } from "../domain/models/world.js";
 import { agendaBlocksFor } from "../domain/rules/agenda-week.js";
@@ -26,13 +26,13 @@ function localMinuteDeadline(now: Date, minute: number): number {
 }
 
 /**
- * Find the next schedule, atmosphere, wish, or planned-event deadline. The
+ * Find the next schedule, atmosphere, Wish or move deadline. The
  * calculation is exact to the stored minute and never replays every minute in
  * between.
  */
 export function villageSchedulerDelayMs(
   now: Date,
-  village?: Pick<VillageState, "villagers" | "scheduledEvents" | "residences" | "venueMail" | "development">,
+  village?: Pick<VillageState, "villagers" | "residences" | "venueMail" | "development">,
 ): number {
   if (!Number.isFinite(now.getTime())) return REFRESH_MAX_DELAY_MS;
   const deadlines = [nextClockChangeAt(now).getTime()];
@@ -45,10 +45,6 @@ export function villageSchedulerDelayMs(
       const expiry = Date.parse(wish.expiresAt);
       if (Number.isFinite(expiry) && expiry > now.getTime()) deadlines.push(expiry);
     }
-  }
-  for (const event of village?.scheduledEvents ?? []) {
-    const occursAt = Date.parse(event.occursAt);
-    if (Number.isFinite(occursAt) && occursAt > now.getTime()) deadlines.push(occursAt);
   }
   for (const residence of village?.residences ?? []) {
     if (residence.status !== "moving") continue;
@@ -78,6 +74,7 @@ export function startVillageRefreshScheduler(
   let stopped = false;
   let running = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let armRevision = 0;
 
   const arm = (delay: number) => {
     if (stopped) return;
@@ -90,12 +87,16 @@ export function startVillageRefreshScheduler(
 
   const armNext = async () => {
     if (stopped) return;
+    const revision = ++armRevision;
+    if (timer) clearTimeout(timer);
+    timer = null;
     try {
       const village = await readVillageState();
+      if (stopped || revision !== armRevision) return;
       arm(delayMs(villageNow(), village));
     } catch (error) {
       villagesLogger().warn("[villages] could not read the next village deadline: %s", String(error));
-      arm(REFRESH_MAX_DELAY_MS);
+      if (!stopped && revision === armRevision) arm(REFRESH_MAX_DELAY_MS);
     }
   };
 
@@ -113,11 +114,15 @@ export function startVillageRefreshScheduler(
     await armNext();
   };
 
+  const unsubscribe = onVillageClockAdvance(() => {
+    void armNext();
+  });
   void armNext();
   villagesLogger().debug("[villages] Continuous village reconciliation started");
 
   return () => {
     stopped = true;
+    unsubscribe();
     if (timer) clearTimeout(timer);
     timer = null;
   };

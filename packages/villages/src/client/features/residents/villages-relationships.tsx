@@ -1,3 +1,4 @@
+import { useVillageActivity } from "../../shared/activity.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useEffect, useRef, useState } from "react";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
@@ -20,6 +21,7 @@ export function VillagesRelationships({
   view?: RelationshipView | null;
   onView?: (view: RelationshipView) => void;
 }) {
+  const { visible, backgroundRevision } = useVillageActivity();
   const [localView, setLocalView] = useState<RelationshipView | null>(null);
   const [debug, setDebug] = useState<RelationshipInspectView | null>(null);
   const [error, setError] = useState("");
@@ -27,6 +29,7 @@ export function VillagesRelationships({
   const recoveryIdentity = useRef<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   useEffect(() => {
+    if (!visible) return;
     const controller = new AbortController();
     const refresh = () => {
       const pending: Promise<unknown>[] = [];
@@ -47,12 +50,8 @@ export function VillagesRelationships({
     };
     if (!inspect) setDebug(null);
     refresh();
-    const timer = window.setInterval(refresh, 30000);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [request, suppliedView, inspect]);
+    return () => controller.abort();
+  }, [request, suppliedView, inspect, visible, backgroundRevision]);
   const view = suppliedView === undefined ? localView : suppliedView;
   return (
     <section className={prefix + "-overlay villages-relationships"} aria-label="Relationships">

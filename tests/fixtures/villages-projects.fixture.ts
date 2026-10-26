@@ -50,7 +50,7 @@ export function venue(id = "cafe", role: "community" | "residence" = "community"
     category: "",
     form: "A building",
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-    presentation: { image: null, x: 0.2, y: 0.2 },
+    presentation: { mapId: "map-projects", image: null, x: 0.2, y: 0.2 },
     capabilities: [],
     state: { condition: "", furniture: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
   };
@@ -62,6 +62,17 @@ export function fixture() {
   let state = defaultVillageState();
   state.seed = "fresh-projects";
   state.setupAt = state.foundedAt = "2026-10-23T12:00:00.000Z";
+  state.maps = [
+    {
+      id: "map-projects",
+      name: "Village",
+      width: 1440,
+      height: 900,
+      revision: 1,
+      view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+      artwork: { id: "map-art", ref: "global-gallery:map-art", url: "/map.png" },
+    },
+  ];
   state.venues = [venue()];
   state.villagers = ["a", "b", "c"].map((id) => ({
     characterId: id,
@@ -98,6 +109,8 @@ export function fixture() {
   const body = (id: string, extra: Record<string, unknown> = {}) => ({
     requestId: randomUUID(),
     expectedRevision: get(id).lifecycle!.revision,
+    mapId: state.maps[0].id,
+    expectedMapRevision: state.maps[0].revision,
     ...extra,
   });
   const agree = async (id: string, lead = "a") =>

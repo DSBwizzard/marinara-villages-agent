@@ -1,3 +1,4 @@
+import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
 import {
   createVenueOperationContext,
@@ -45,6 +46,7 @@ state.venues = [
 ] as any;
 const old = new Date(Date.now() - 3_600_000).toISOString();
 let saved = coerceSession({
+  version: 2,
   id: "gathering",
   placeId: "community",
   placeName: "Meeting Hall",
@@ -197,6 +199,7 @@ console.log(
     },
   };
   const scene = coerceSession({
+    version: 2,
     id: "commitment",
     placeId: "venue",
     status: "active",
@@ -266,6 +269,14 @@ console.log(
       },
     ],
   });
+  for (const turn of scene.submissions)
+    if (turn.liveProposals)
+      turn.liveProposals = bindLiveProposals(
+        turn.liveProposals,
+        turn.liveProposals.playerLineId,
+        turn.liveProposals.replyLineIds,
+        scene.lines,
+      );
   const originalLines = structuredClone(scene.lines),
     originalProposal = structuredClone(scene.submissions[0].projectSpeech),
     originalInvitation = structuredClone(scene.submissions[0].invitationSignal);

@@ -18,9 +18,9 @@ import { queueVillageVenueRequest } from "../packages/villages/src/server/featur
 import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
-  readHousingRequests,
-  type VillageTickContext,
-} from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+  readResidentPlanningProposal,
+  type ResidentPlanningContext,
+} from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
 import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
@@ -93,6 +93,8 @@ assert.equal(
   null,
   "a room participant cannot file another villager's request as their own",
 );
+const readHousingRequests = (value: unknown, context: ResidentPlanningContext) =>
+  readResidentPlanningProposal({ social: null, routineIdea: null, housingRequests: value }, context).housingRequests;
 const housingContext = {
   residents: [{ characterId: "rosa", name: "Rosa" }],
   venues: [
@@ -108,9 +110,9 @@ const housingContext = {
       occupancy: { playerHome: false, residentCharacterId: "someone-else", homeKind: "small-home" },
     },
   ],
-  opportunities: [{ actorIds: ["rosa"] }],
+  opportunity: { actorIds: ["rosa"] },
   pendingHousingCharacterIds: [],
-} as unknown as VillageTickContext;
+} as unknown as ResidentPlanningContext;
 assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], housingContext), [
   { characterId: "rosa", kind: "move", venueId: "open" },
 ]);
@@ -155,7 +157,7 @@ assert.equal(persisted.projects[0]?.status, "planning");
 assert.equal(persisted.projects[0]?.lifecycle?.phase, "planning");
 assert.deepEqual(persisted.projects[0]?.venueDraft?.classes, ["community"]);
 assert.equal(persisted.projects[0]?.venueDraft?.description, "A shared glasshouse for herbs.");
-assert.match(persisted.chronicle[0]?.text ?? "", /accepted Rosa's request to plan/u);
+assert.match(persisted.memories.records[0]?.text ?? "", /accepted Rosa's request to plan/u);
 assert.throws(() => applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse.", new Date(at)));
 assert.equal(coerceVillageState(persisted).projects[0]?.venueDraft?.name, core.name, "the project survives reload");
 
@@ -163,7 +165,7 @@ const denied = persisted.pendingDecisions.find((decision) => decision.venueDraft
 applyVillageVenueDecision(persisted, denied.id, false, null, "", new Date(at));
 assert.equal(denied.status, "denied");
 assert.equal(persisted.venues.length, 0, "denial must leave the map unchanged");
-assert.match(persisted.chronicle[0]?.text ?? "", /declined Rosa's request/u);
+assert.match(persisted.memories.records.at(-1)?.text ?? "", /declined Rosa's request/u);
 
 const competing = defaultVillageState();
 competing.setupAt = competing.foundedAt = at;

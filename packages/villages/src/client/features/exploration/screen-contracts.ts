@@ -7,9 +7,14 @@ import type { MobileMapView } from "./villages-mobile-map.js";
 /** Values and actions used by ExplorationScreen; independent of shell implementation. */
 export type ExplorationScreenController = {
   readonly setMailboxOpen: (open: boolean) => void;
+  readonly selectedMap: import("../../../shared/contracts/village.js").VillageMap | null;
+  readonly setSelectedMapId: (id: string) => void;
+  readonly showAllMaps: boolean;
+  readonly setShowAllMaps: React.Dispatch<React.SetStateAction<boolean>>;
+  readonly room: { status: string } | null;
+  readonly returnToScene: () => void;
   readonly openPlace: (place: VillageVenue) => void;
   readonly busy: boolean;
-  readonly catchingUp: boolean;
   readonly closeExploration: () => void;
   readonly error: string;
   readonly explorationOrigin: React.RefObject<HTMLElement | null>;

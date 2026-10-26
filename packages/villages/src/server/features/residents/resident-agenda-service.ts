@@ -8,7 +8,8 @@ import {
   foundingSlot,
 } from "../../domain/rules/founding-tasks.js";
 import { copyDate, calendarDate } from "../../../shared/helpers/zoned-date.js";
-import { villageNow } from "../../adapters/time/clock-gate.js";
+import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
@@ -71,16 +72,23 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     registerInitialWish,
     correctResidentWish,
   } = ports;
-  async function rollActiveAgendas(now: Date, known?: VillageState): Promise<boolean> {
+  async function rollActiveAgendas(at?: Date, known?: VillageState, clockRevision?: number): Promise<boolean> {
+    const clock = at ? undefined : await observeVillageClock();
+    const now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
+    const revision = clockRevision ?? clock?.revision;
     const village = known ?? (await readVillageState());
     if (village.villagers.every((villager) => villager.agenda?.activeDay?.dateKey === agendaDateKey(now))) return false;
+    let changed = false;
     await mutateVillageState((state) => {
+      changed = false;
+      if (revision !== undefined && state.clock?.revision !== revision) return;
       planRoutineDays(state, now);
       for (const villager of state.villagers) {
         if (villager.agenda?.activeDay?.dateKey !== agendaDateKey(now)) activateVillagerDay(villager, now, state);
       }
+      changed = true;
     });
-    return true;
+    return changed;
   }
   async function readFoundingResidentContext(characterId: string) {
     const village = await readVillageState();
@@ -92,7 +100,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       await mutateVillageState((state) => {
         const resident = state.villagers.find((entry) => entry.characterId === characterId);
         if (!resident) return;
-        resident.agenda ??= unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+        resident.agenda ??= unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name, villageNow());
         resident.agenda.personalizationPending = false;
         resident.agenda.personalizationFailure =
           "Character identity is unavailable. Keep the existing routine and retry deliberately after restoring the card.";
@@ -341,7 +349,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       await mutateVillageState((state) => {
         for (const resident of state.villagers)
           if (!resident.agenda) {
-            resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+            resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name, villageNow());
             resident.agenda.personalizationPending = false;
           }
       });
@@ -361,7 +369,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     await mutateVillageState((state) => {
       for (const resident of state.villagers) {
         if ((only && resident.characterId !== only) || !resident.agenda) continue;
-        const next = deriveInfluence(weeks.get(resident.characterId) ?? null, resident, state);
+        const next = deriveInfluence(weeks.get(resident.characterId) ?? null, resident, state, now);
         if (next.signature !== resident.agenda.scheduleInfluenceSnapshot?.signature) {
           for (const key of Object.keys(resident.agenda.plannedDays ?? {})) {
             if (
@@ -385,7 +393,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const now = villageNow(),
       initial = await readVillageState();
     await refreshVillagerRemaps(initial, now);
-    await rollActiveAgendas(now);
+    await rollActiveAgendas();
     const village = await readVillageState();
     const snapshot = await readNativeScheduleSnapshot(
       now,

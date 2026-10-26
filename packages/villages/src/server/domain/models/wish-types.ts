@@ -31,8 +31,6 @@ export type WishOutcome = VillageCompletedWish & {
 };
 export type WishAttempt = {
   semanticVersion?: 2;
-  /** One finite replacement after the authorized Wish reset, independent of story pace. */
-  resetRefill?: true;
   needComparison?: { matchedNeedId: string; certain: boolean; knownIds: string[] };
   routineIdea?: unknown;
   id: string;

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import {
@@ -37,7 +38,7 @@ function fixture(name: string, decisionsEnabled: boolean) {
   state.clock = { revision: 1, trustedAt: new Date().toISOString(), recovery: null, replayUntilDate: "" };
   const runtime = {
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_package: string, id: string) {
           reads.push(id);
           if (id === "villages-interpretation-settings") {
@@ -55,7 +56,7 @@ function fixture(name: string, decisionsEnabled: boolean) {
         async update() {
           throw new Error("This fixture must not write");
         },
-      },
+      }),
     },
     logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
     isDebugAgentsEnabled: () => false,

@@ -1,3 +1,4 @@
+import { addMemory } from "./helpers/memories-fixture.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import assert from "node:assert/strict";
 import { developmentFixture, elapsed, moveProposal } from "./fixtures/villages-development.fixture.js";
@@ -122,28 +123,20 @@ assert.equal(retries, 2, "Successive failed acknowledgements remain recoverable 
 assert.equal(calls, 2, "Receipt acknowledgements never dispatch a provider request.");
 delete state.backgroundReceipts[slotId];
 previous = { ...previous, status: "completed" };
-state.chronicle = Array.from(
-  { length: 12 },
-  (_, index) =>
-    ({
-      id: `memory-${index}`,
-      text: index === 0 ? "Ada promised the player to discuss any move first." : "An older fact.",
-      occurredAt: elapsed(3 - index / 10),
-      scope: "private",
-      actors: [{ id: "a", name: "Ada" }],
-      knownByCharacterIds: ["a"],
-      kind: "chat",
-      dayIndex: 0,
-      clock: "",
-      timePrecision: "exact",
-    }) as any,
-);
+state.memories = addMemory(state.memories, {
+  audience: ["a"],
+  text: "Ada promised the player to discuss any move first.",
+  sourceId: "commitment",
+});
+const commitment = state.memories.records[0].id;
+for (let index = 0; index < 11; index++)
+  state.memories = addMemory(state.memories, { audience: ["a"], text: "An older weather fact." });
 await service.reconcileDevelopment(new Date(elapsed(8)));
 assert.ok(
   queued
     .at(-1)
     .input.context.residents.find((resident: any) => resident.characterId === "a")
-    .memories.some((memory: any) => memory.id === "memory-0"),
+    .memories.some((memory: any) => memory.id === commitment),
   "The most recent player commitment survives a larger memory history.",
 );
 console.log(

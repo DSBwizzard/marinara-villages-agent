@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   boundedRejectedText,
@@ -12,8 +13,8 @@ import {
 } from "../packages/villages/src/server/jobs/venue-coordinator.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
-import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
+import { proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
 import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
 import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import {
@@ -92,7 +93,7 @@ async function main() {
   };
   const release = configureVillagesRuntime({
     isDebugAgentsEnabled: () => false,
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     languageModels: { resolveForRequest: async () => model },
     getAgentConfig: async () => null,
     logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
@@ -134,10 +135,10 @@ async function main() {
     ).parseStatus,
     "salvaged",
   );
-  const prompt = buildTickMessages(context);
-  assert.match(prompt[1].content, /Generate the supplied opportunity/);
+  const prompt = buildResidentPlanningMessages(context);
+  assert.match(prompt[1].content, /Review the supplied resident choices/);
   assert.ok(!prompt[1].content.includes("What appears in Events?"));
-  assert.match(prompt[0].content, /"opportunityId":"opportunity"/);
+  assert.match(prompt[0].content, /"id":"opportunity"/);
   const stop = startBackgroundWork();
   try {
     await completeWithRoom(model as any, [{ role: "user", content: "JSON" }], 3000, jsonOptions);
@@ -360,7 +361,7 @@ async function main() {
       output = content;
       finishReason = finish;
       const before = calls;
-      await assert.rejects(proposeHappenings(context), (error: any) => {
+      await assert.rejects(proposeResidentChoices(context), (error: any) => {
         assert.ok(error instanceof WorkFailureError, String(error.stack));
         assert.equal(error.failure.cause, cause);
         assert.equal(error.failure.responseDiagnostics.responseLength, content.trim().length);
@@ -372,7 +373,7 @@ async function main() {
     output = "No entries yet — Events is empty.";
     finishReason = "stop";
     registerBackgroundHandler("agenda", {
-      generate: () => proposeHappenings(context),
+      generate: () => proposeResidentChoices(context),
       valid: () => true,
       apply() {
         throw Error("Invalid output cannot apply");
@@ -432,9 +433,8 @@ async function main() {
       lapsed: [{ who: "Ada", wish: "An invented loss" }],
     });
     const beforeValid = calls;
-    const valid = await proposeHappenings(supportedContext);
-    assert.equal(valid.happenings.length, 1);
-    assert.equal(valid.happenings[0].text, "Ada rests beside the gate.");
+    const valid = await proposeResidentChoices(supportedContext);
+    assert.equal(Object.hasOwn(valid, "happenings"), false);
     assert.equal(calls - beforeValid, 1, "supported Events use one completion without repair");
     assert.deepEqual(valid.housingRequests, [{ characterId: "a", kind: "move", venueId: "destination" }]);
     assert.deepEqual(valid.routineIdea, routineIdea);

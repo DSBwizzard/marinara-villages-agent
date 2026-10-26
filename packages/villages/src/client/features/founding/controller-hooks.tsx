@@ -422,6 +422,7 @@ export function useFoundingRosterReconciliation(ports: {
 }
 
 export function useFoundingMapReceipt(ports: {
+  visible: boolean;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
   setSetupMapBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupMapGeneratedKey: React.Dispatch<React.SetStateAction<string>>;
@@ -446,13 +447,19 @@ export function useFoundingMapReceipt(ports: {
     updateSetupMapRequest,
   } = ports;
   useEffect(() => {
-    if (screen !== "setup" || setupMapRequest?.phase !== "waiting") return;
+    if (!ports.visible || screen !== "setup" || setupMapRequest?.phase !== "waiting") return;
     const pending = setupMapRequest;
+    const controller = new AbortController();
     let cancelled = false;
     let timer: number | undefined;
     const poll = async () => {
       try {
-        const receipt = await requestSetupMapReceipt(`/setup/town-map/generation/${encodeURIComponent(pending.id)}`);
+        const receipt = await requestSetupMapReceipt(
+          `/maps/generation/founding-map/${encodeURIComponent(pending.id)}`,
+          {
+            signal: controller.signal,
+          },
+        );
         if (cancelled) return;
         if (receipt.status === "running") {
           timer = window.setTimeout(() => void poll(), 2000);
@@ -491,6 +498,7 @@ export function useFoundingMapReceipt(ports: {
     void poll();
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(timer);
     };
   }, [
@@ -504,6 +512,7 @@ export function useFoundingMapReceipt(ports: {
     setSetupMapSize,
     setupMapRequest,
     updateSetupMapRequest,
+    ports.visible,
   ]);
 }
 
@@ -623,6 +632,8 @@ export function useFoundingSetupBlocker(ports: {
 }
 
 export function useFoundingPreparationPolling(ports: {
+  visible: boolean;
+  status: VillageSnapshot["foundingPreparation"]["status"] | undefined;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
   setPreparationProblem: React.Dispatch<React.SetStateAction<string>>;
   setScreen: React.Dispatch<
@@ -631,25 +642,32 @@ export function useFoundingPreparationPolling(ports: {
   setSnapshot: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillageSnapshot>>;
 }) {
   const { screen, setPreparationProblem, setScreen, setSnapshot } = ports;
+  const status = ports.status;
   useEffect(() => {
-    if (screen !== "preparing") return;
+    if (screen !== "preparing" || !ports.visible || status === "failed") return;
     let cancelled = false;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const next = await request<VillageSnapshot>("/setup/preparation");
+        const next = await request<VillageSnapshot>("/setup/preparation", { signal: controller.signal });
         if (cancelled) return;
         setSnapshot(next);
         setPreparationProblem("");
         if (!next.foundingPreparation || next.foundingPreparation.status === "ready") setScreen("home");
+        else if (next.foundingPreparation.status === "pending") timer = setTimeout(() => void poll(), 2500);
       } catch (cause) {
-        if (!cancelled) setPreparationProblem(messageFrom(cause, "Preparation status could not be read."));
+        if (!cancelled) {
+          setPreparationProblem(messageFrom(cause, "Preparation status could not be read."));
+          timer = setTimeout(() => void poll(), 2500);
+        }
       }
     };
     void poll();
-    const timer = window.setInterval(() => void poll(), 2500);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      controller.abort();
+      clearTimeout(timer);
     };
-  }, [screen, setPreparationProblem, setScreen, setSnapshot]);
+  }, [screen, setPreparationProblem, setScreen, setSnapshot, ports.visible, status]);
 }

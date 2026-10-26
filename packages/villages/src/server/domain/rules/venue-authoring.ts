@@ -162,6 +162,7 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
     description,
     category,
     presentation: {
+      mapId: existing?.presentation.mapId ?? "",
       image: existing?.presentation.image ?? null,
       x: position.x,
       y: position.y,

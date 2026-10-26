@@ -1,9 +1,9 @@
+import { isSceneTurnOutcome, type SceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
 import { readOpeningSignal } from "../rules/opening-project.js";
 import { readSceneLayout } from "../rules/scene-layout.js";
 import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
 import { coerceVillageState } from "./village-codec.js";
 import { coerceRelationshipState } from "../rules/relationship-rules.js";
-import { WISH_SYSTEM_VERSION } from "../rules/wish-definition.js";
 import { savedVenueClassRecord } from "./venue-class-compat.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import type { LiveExchangeProposals } from "../models/memory-model.js";
@@ -12,8 +12,6 @@ import type {
   ActiveVenue,
   SavedAccessEvent,
   VenueLine,
-  VenueMemory,
-  VenueRecollection,
   VenueRecordEvent,
   VenueScene,
   VenueSubmission,
@@ -24,7 +22,6 @@ import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
 import { conflict } from "../rules/errors.js";
 import { coercePendingAttention } from "../rules/scene-attention.js";
 import { coerceProjectSpeech } from "../rules/project-interpretation.js";
-import { MAX_CHRONICLE_LENGTH } from "../rules/prompt-preset.js";
 import { sceneRevision } from "../rules/scene-revision.js";
 import type { ContactIntent, DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
@@ -40,47 +37,37 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   const raw = asRecord(value),
     facts = asRecord(raw.facts);
   if (
-    raw.version !== 1 ||
+    raw.version !== 2 ||
     typeof raw.seed !== "string" ||
     facts.seed !== raw.seed ||
     typeof raw.capturedAt !== "string" ||
     !Number.isFinite(Date.parse(raw.capturedAt)) ||
     !Array.isArray(raw.receiptIds) ||
     raw.receiptIds.some((id) => typeof id !== "string") ||
-    ["villagers", "venues", "residences", "chronicle", "recollections", "venueEvents", "projects"].some(
-      (key) => !Array.isArray(facts[key]),
-    )
+    ["villagers", "venues", "residences", "venueEvents", "projects"].some((key) => !Array.isArray(facts[key]))
   )
     throw conflict("This saved Scene has an unsupported or invalid captured context. Its history is preserved.");
   // This is an already-captured projection, not an old world to migrate.
-  const decoded = coerceVillageState({ ...facts, version: 3, wishSystemVersion: WISH_SYSTEM_VERSION });
+  const decoded = coerceVillageState({
+    ...facts,
+    version: 5,
+    memories: { format: 1, revision: 0, records: [] },
+    memoryScenes: {},
+  });
   if (facts.relationshipContext)
     decoded.relationshipContext = coerceRelationshipState(raw.seed, facts.relationshipContext);
+  const captured = Object.fromEntries(
+    sceneContinuityFields.map((key) => [key, decoded[key]]),
+  ) as SceneContinuity["facts"];
   return {
-    version: 1,
+    version: 2,
     seed: raw.seed,
     capturedAt: raw.capturedAt,
     receiptIds: [...raw.receiptIds] as string[],
-    facts: Object.fromEntries(sceneContinuityFields.map((key) => [key, decoded[key]])) as SceneContinuity["facts"],
+    facts: captured,
   };
 }
-export function coerceVenueRecollection(value: unknown): VenueRecollection | null {
-  const raw = asRecord(value);
-  const id = asTrimmedString(raw.id);
-  const text = asTrimmedString(raw.text).slice(0, MAX_CHRONICLE_LENGTH);
-  const subjectCharacterIds = Array.isArray(raw.subjectCharacterIds)
-    ? [...new Set(raw.subjectCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
-    : [];
-  const knownByCharacterIds = Array.isArray(raw.knownByCharacterIds)
-    ? [...new Set(raw.knownByCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
-    : [];
-  const lineIds = Array.isArray(raw.lineIds)
-    ? [...new Set(raw.lineIds.filter((lineId): lineId is string => typeof lineId === "string" && !!lineId))]
-    : [];
-  return id && text && knownByCharacterIds.length && lineIds.length
-    ? { id, text, subjectCharacterIds, knownByCharacterIds, lineIds }
-    : null;
-}
+
 export function coerceSession(value: unknown): VenueScene {
   const raw = savedVenueClassRecord(value);
   if (
@@ -172,7 +159,7 @@ export function coerceSession(value: unknown): VenueScene {
         .filter((line) => line.id && line.content)
     : [];
   return {
-    version: 1,
+    version: 2,
     ...(raw.spinoff ? { spinoff: structuredClone(raw.spinoff) as VenueScene["spinoff"] } : {}),
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
     ...(raw.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
@@ -191,13 +178,13 @@ export function coerceSession(value: unknown): VenueScene {
               /^[a-f0-9]{64}$/u.test(row.inputHash) &&
               Number.isSafeInteger(row.sceneRevision) &&
               Number(row.sceneRevision) >= 0 &&
-              row.turnOutcome === "occupancy-unavailable",
+              isSceneTurnOutcome(row.turnOutcome),
           )
           .map((row) => ({
             id: String(row.id),
             inputHash: String(row.inputHash),
             sceneRevision: Number(row.sceneRevision),
-            turnOutcome: "occupancy-unavailable" as const,
+            turnOutcome: row.turnOutcome as SceneTurnOutcome,
           }))
       : [],
     navigationReceipts: Array.isArray(raw.navigationReceipts)
@@ -510,7 +497,6 @@ export function coerceSession(value: unknown): VenueScene {
               ...(row.editApprovalSignal
                 ? { editApprovalSignal: row.editApprovalSignal as VenueSubmission["editApprovalSignal"] }
                 : {}),
-              ...(Array.isArray(row.turnMemories) ? { turnMemories: row.turnMemories as VenueMemory[] } : {}),
               ...(row.semanticReady === true ? { semanticReady: true } : {}),
               ...(Array.isArray(row.semanticContinuedDomains)
                 ? {
@@ -548,30 +534,12 @@ export function coerceSession(value: unknown): VenueScene {
               ...(Array.isArray(row.interpretationHistory)
                 ? { interpretationHistory: row.interpretationHistory as VenueSubmission["interpretationHistory"] }
                 : {}),
-              ...(Array.isArray(row.recollections)
-                ? {
-                    recollections: row.recollections
-                      .map(coerceVenueRecollection)
-                      .filter((entry): entry is VenueRecollection => entry !== null),
-                  }
-                : {}),
               ...(Array.isArray(row.recordEvents) ? { recordEvents: row.recordEvents as VenueRecordEvent[] } : {}),
               ...(typeof row.at === "string" ? { at: row.at } : {}),
             };
           })
           .filter((entry) => entry.id)
       : [],
-    memories: Array.isArray(raw.memories)
-      ? raw.memories
-          .map((value) => ({
-            characterId: asTrimmedString(asRecord(value).characterId),
-            text: asTrimmedString(asRecord(value).text),
-            lineIds: Array.isArray(asRecord(value).lineIds)
-              ? (asRecord(value).lineIds as unknown[]).filter((id): id is string => typeof id === "string")
-              : [],
-          }))
-          .filter((entry) => entry.characterId && entry.text)
-      : null,
     recap: asString(raw.recap).slice(0, 600),
   };
 }

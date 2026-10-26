@@ -114,9 +114,7 @@ export function buildVenueResponseContract(context: VenueResponseContext): strin
             )
             .replaceAll('["player",0]', "[0]")
         : VENUE_LIVE_MEMORY_CONTRACT
-      : !context.opening
-        ? 'recollections:[{text,subjectCharacterIds:[],knownByCharacterIds:[],evidence:["player",0]}]: compact contextual events from THIS exchange, consolidating shared events with identical witnesses. Omit greetings, filler and existing world facts. Capture useful continuity without deciding durability or inferring stable traits from temporary behavior.'
-        : "",
+      : "",
     context.liveMemory || !context.opening
       ? context.wishes === false
         ? "Return wishChanges:[]; no existing Wishes are available for updates."

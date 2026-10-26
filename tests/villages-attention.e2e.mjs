@@ -19,7 +19,7 @@ try {
       placeName: "The Mill",
       area: "public",
       zoneId: "hall",
-      version: 1,
+      version: 2,
       sceneRevision: 1,
       status: "active",
       memoryMode: "live",

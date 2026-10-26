@@ -1,18 +1,11 @@
 import type { VenueScene } from "../models/scene-model.js";
-import type {
-  VillageState,
-  VillageWish,
-  VillageChronicleEntry,
-  VillageRecollection,
-  VillageVenueSpace,
-  VillageVenue,
-} from "../models/world.js";
-import type { KnownWish } from "./wish-journal.js";
+import type { VillageState, VillageWish, VillageVenueSpace, VillageVenue } from "../models/world.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
 import { venueZones, resolveVenueZone, legacyZoneId } from "./venue-zones.js";
 import { sceneWishProtected } from "./scene-wish-protection.js";
 import { relationshipKey } from "./relationship-rules.js";
 import { wishExpired } from "./wish-definition.js";
+import { reserveMemoryScene, sceneMemories } from "./village-memories.js";
 import { contactNeighbors, contactPosition } from "./venue-contact.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 
@@ -70,17 +63,15 @@ export const sceneContinuityFields = [
   "venues",
   "residences",
   "development",
-  "chronicle",
-  "recollections",
   "relationshipContext",
-  "wishKnowledge",
   "venueEvents",
   "projects",
+  "opening",
   "promptKnowledge",
 ] as const satisfies readonly (keyof VillageState)[];
 
 export type SceneContinuity = {
-  version: 1;
+  version: 2;
   seed: string;
   capturedAt: string;
   receiptIds: string[];
@@ -91,9 +82,7 @@ export type SceneContinuity = {
 export type SceneEffectFacts = {
   standingPermissions?: import("../models/relationship-types.js").RelationshipReview["permissions"];
   development?: { characterId: string; resident: import("../models/development-model.js").ResidentDevelopment };
-  memories?: VillageChronicleEntry[];
-  recollections?: VillageRecollection[];
-  wish?: { actorId: string; wishId: string; value: VillageWish | null; knowledge: KnownWish | null };
+  wish?: { actorId: string; wishId: string; value: VillageWish | null };
 };
 
 export function captureSceneWishEffect(state: VillageState, actorId: string, wishId: string): SceneEffectFacts {
@@ -104,7 +93,6 @@ export function captureSceneWishEffect(state: VillageState, actorId: string, wis
       value:
         state.villagers.find((row) => row.characterId === actorId)?.agenda?.wishes.find((row) => row.id === wishId) ??
         null,
-      knowledge: state.wishKnowledge[actorId]?.find((row) => row.wishId === wishId) ?? null,
     },
   });
 }
@@ -127,19 +115,20 @@ export function visibleSceneContinuity(scene: VenueScene): string {
 }
 
 export function captureSceneContinuity(state: VillageState, scene: VenueScene, now: number): SceneContinuity {
+  const capturedAt = new Date(scene.sceneAttendance?.capturedAt || scene.startedAt || now).toISOString();
+  reserveMemoryScene(state, scene.id, capturedAt);
   const facts = structuredClone(
     Object.fromEntries(sceneContinuityFields.map((key) => [key, state[key]])),
   ) as SceneContinuity["facts"];
-  facts.recollections = facts.recollections.filter((row) => Date.parse(row.expiresAt) > now);
   for (const resident of facts.villagers)
     if (resident.agenda)
       resident.agenda.wishes = resident.agenda.wishes.filter(
         (wish) => !wishExpired(wish, now) || sceneWishProtected(state, resident.characterId, wish, scene.id),
       );
   return {
-    version: 1,
+    version: 2,
     seed: state.seed,
-    capturedAt: scene.sceneAttendance?.capturedAt || scene.startedAt,
+    capturedAt,
     receiptIds: physicalVenueEvents(state)
       .map((row) => row.id)
       .concat(Object.keys(state.exchangeReceipts)),
@@ -147,22 +136,23 @@ export function captureSceneContinuity(state: VillageState, scene: VenueScene, n
   };
 }
 
-function mergeRows<T extends { id: string }>(base: T[], updates: T[]): T[] {
-  const changed = new Map(updates.map((row) => [row.id, structuredClone(row)]));
-  return [
-    ...updates.filter((row) => !base.some((old) => old.id === row.id)),
-    ...base.map((row) => changed.get(row.id) ?? row),
-  ];
-}
-
 /** Historical presentation plus this Scene's committed evidence; never use for a world write. */
-export function sceneContinuityView(current: VillageState, scene: VenueScene): VillageState {
+export function sceneContinuityView(current: VillageState, scene: VenueScene, includeMemories = true): VillageState {
   const context = scene.continuity;
   if (!context || context.seed !== current.seed || scene.villageSeed !== current.seed) return current;
   const view = {
     ...current,
     ...structuredClone(context.facts),
     development: structuredClone(context.facts.development),
+    ...(includeMemories
+      ? {
+          memories: current.memoryScenes[scene.id]
+            ? sceneMemories(current, scene.id)
+            : scene.status === "closed"
+              ? { format: 1 as const, revision: 0, records: [] }
+              : sceneMemories(current, scene.id),
+        }
+      : {}),
   };
   // Artwork is a presentation setting, not a later fictional event.
   for (const resident of view.villagers) {
@@ -170,6 +160,17 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene): V
     if (live) {
       resident.sprite = structuredClone(live.sprite);
       resident.spriteManager = structuredClone(live.spriteManager);
+    }
+  }
+  // Opening progression is fiction too; only this Scene's saved proofs can advance it.
+  if (view.opening && current.opening?.id === view.opening.id) {
+    for (const proof of current.opening.reveals)
+      if (proof.sceneId === scene.id && !view.opening.reveals.some((row) => row.residentId === proof.residentId))
+        view.opening.reveals.push(structuredClone(proof));
+    if (current.opening.firstUseEvidence?.sceneId === scene.id) {
+      view.opening.firstUseEvidence = structuredClone(current.opening.firstUseEvidence);
+      view.opening.stage = "complete";
+      view.opening.outcome = "First use";
     }
   }
   const baselineReceipts = new Set(context.receiptIds);
@@ -187,20 +188,13 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene): V
       if (!facts) continue;
       if (facts.development && view.development)
         view.development.residents[facts.development.characterId] = structuredClone(facts.development.resident);
-      if (facts.memories) view.chronicle = mergeRows(view.chronicle, facts.memories);
-      if (facts.recollections) view.recollections = mergeRows(view.recollections, facts.recollections);
       if (facts.wish) {
-        const { actorId, wishId, value, knowledge } = structuredClone(facts.wish);
+        const { actorId, wishId, value } = structuredClone(facts.wish);
         const resident = view.villagers.find((row) => row.characterId === actorId);
         if (resident?.agenda)
           resident.agenda.wishes = resident.agenda.wishes.flatMap((wish) =>
             wish.id === wishId ? (value ? [value] : []) : [wish],
           );
-        const rows = view.wishKnowledge[actorId] ?? [];
-        view.wishKnowledge[actorId] = [
-          ...rows.filter((row) => row.wishId !== wishId),
-          ...(knowledge ? [knowledge] : []),
-        ];
       }
     }
   }

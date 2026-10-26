@@ -5,7 +5,7 @@ export type PursuitDecision = "agree" | "refuse" | "conditional";
 export type KnownPursuitSnapshot = {
   at: string;
   text: string;
-  status: PursuitStatus;
+  status?: PursuitStatus;
   title?: string;
   facts?: { at: string; text: string; sceneId: string; lineIds: string[] }[];
   agreements?: { characterId: string; name: string; decision: PursuitDecision; at: string }[];

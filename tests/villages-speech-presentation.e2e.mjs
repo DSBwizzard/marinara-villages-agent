@@ -18,7 +18,7 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       id: "speech-placements",
       placeId: "mill",

@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { foundingDraftDescription } from "../packages/villages/src/client/features/founding/draft-model.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
 import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
@@ -167,7 +169,7 @@ async function main() {
     readVillageState: unexpected,
     mutateVillageState: unexpected,
     buildVillageSnapshot: unexpected,
-    readTownMapSubmission: unexpected,
+    prepareVillageMap: unexpected,
     readVillageConnectionSettings: unexpected,
     validateVillageSetupConnections: unexpected,
     readLinkedPersona: unexpected,
@@ -291,15 +293,15 @@ async function main() {
   }
 
   assert.equal(
-    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
+    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
       .foundingPreparation,
     null,
     "older villages remain ready",
   );
   assert.deepEqual(
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       foundingPreparation: { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     }).foundingPreparation,
@@ -308,8 +310,8 @@ async function main() {
   );
   assert.deepEqual(
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       foundingPreparation: {
         status: "pending",
@@ -338,14 +340,14 @@ async function main() {
     "the active stage and bounded retry count survive a process restart",
   );
   assert.equal(
-    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3 }).foundingGuidance,
+    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }).foundingGuidance,
     "",
     "older villages have no narrative direction",
   );
   assert.equal(
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       foundingGuidance: "Favor quiet bonds.",
     }).foundingGuidance,
@@ -419,8 +421,8 @@ async function main() {
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
   const noMapSetup = createFoundingSetup({
     ...setupPorts,
-    readVillageState: async () => coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3 }),
-    readTownMapSubmission: async () => ({
+    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }),
+    prepareVillageMap: async () => ({
       image: "",
       size: null,
       view: { fit: "cover" as const, focusX: 50, focusY: 50, zoom: 1 },
@@ -677,13 +679,13 @@ async function foundingConnectionOwnership() {
         gate = deferred();
       let held = false;
       const state = coerceVillageState({
-        version: 3,
-        socialContractVersion: 2,
+        ...defaultVillageState(),
+        version: 5,
         wishSystemVersion: 3,
         seed: "equal-founding-seed",
         name: label,
         setting: "Quiet harbor",
-        storyPace: "off",
+        backgroundPace: "off",
         setupAt: new Date().toISOString(),
         foundedAt: new Date().toISOString(),
         selectedLorebookIds: ["visual"],
@@ -839,7 +841,9 @@ async function foundingConnectionOwnership() {
       const release = scope.run(() =>
         configureVillagesRuntime(
           nativePorts<CapabilityRuntimeHost>({
-            persistence: nativePorts<CapabilityRuntimeHost["persistence"]>({ documents }),
+            persistence: nativePorts<CapabilityRuntimeHost["persistence"]>({
+              documents: villageFixtureDocuments(documents),
+            }),
             languageModels: models,
             resources: {
               async listCharacters() {

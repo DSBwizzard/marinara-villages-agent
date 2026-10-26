@@ -1,3 +1,4 @@
+import { useVillageActivity } from "../../shared/activity.js";
 import { useEffect, useRef, useState } from "react";
 
 export type KnownWish = {
@@ -33,13 +34,14 @@ export function VillagerWishJournal({
   wishes?: KnownWish[] | null;
   onWishes?: (wishes: KnownWish[]) => void;
 }) {
+  const { visible, backgroundRevision } = useVillageActivity();
   const [localWishes, setWishes] = useState<KnownWish[] | null>(null);
   const wishes = suppliedWishes === undefined ? localWishes : suppliedWishes;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const root = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (suppliedWishes !== undefined) return;
+    if (!visible || suppliedWishes !== undefined) return;
     const controller = new AbortController();
     const refresh = () =>
       void request<View>("/relationships", { signal: controller.signal })
@@ -55,12 +57,10 @@ export function VillagerWishJournal({
         });
     setWishes(null);
     refresh();
-    const timer = window.setInterval(refresh, 30_000);
     return () => {
       controller.abort();
-      window.clearInterval(timer);
     };
-  }, [request, characterId, suppliedWishes]);
+  }, [request, characterId, suppliedWishes, visible, backgroundRevision]);
   useEffect(() => {
     if (!focusWishId || !wishes) return;
     const target = [...(root.current?.querySelectorAll<HTMLElement>("[data-wish-id]") ?? [])].find(
@@ -100,7 +100,7 @@ export function VillagerWishJournal({
             <p>
               <strong>{wish.text}</strong>
             </p>
-            <small>{wish.status ?? "active"}</small>
+            {wish.status ? <small>{wish.status}</small> : null}
             <h4>What you’ve learned</h4>
             <ul aria-label="Learned facts">
               <li>
@@ -134,7 +134,7 @@ export function VillagerWishJournal({
                 </ul>
               </details>
             ) : null}
-            {!wish.status || wish.status === "active" ? (
+            {wish.status === "active" ? (
               <button
                 type="button"
                 className={`${prefix}-button`}

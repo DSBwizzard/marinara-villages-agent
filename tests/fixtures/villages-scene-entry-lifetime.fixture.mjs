@@ -38,6 +38,7 @@ function Harness(){
   refound:()=>{setFounded(true);setRoom(scene('A',10));state.setRoomEnded(false)},hydrate:()=>setFounded(true),
   revise:()=>setRoom(current=>({...current,sceneRevision:10})),end:()=>state.setRoomEnded(true),
   close:()=>setRoom(scene('A',10,'closed')),
+  conclude:()=>setRoom(current=>({...current,status:'closed'})),
   refs:()=>({flight:state.roomSendInFlightRef.current,completion:state.roomCompletionRef.current,submission:state.roomSubmissionIdRef.current})};
  return <pre id='state'>{JSON.stringify({id:room?.id??null,revision:room?.sceneRevision??null,status:room?.status??null,
   busy:state.roomBusy,error:state.roomError,greetingError:state.roomGreetingError,notice:state.roomGreetingNotice,
@@ -60,7 +61,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   function scene(id, revision = 2, status = "active") {
     return {
       id,
-      version: 1,
+      version: 2,
       sceneRevision: revision,
       placeId: "mill",
       placeName: id,
@@ -183,7 +184,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
       // All three current success paths retain exact request counts, payloads and revision high water.
       for (const kind of ["open", "greet", "zone"]) {
-        const f = await mount(strict, width, { hold: kind });
+        const f = await mount(strict, width, { initial: kind === "open" ? "closed" : "A", hold: kind });
         await f.run(kind);
         await expect.poll(() => f.held.length).toBe(1);
         if (kind !== "open") await f.page.evaluate(() => window.h.revise());
@@ -200,7 +201,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
       // A real B action with no completion marker remains admitted/busy after stale A settles.
       for (const kind of ["open", "greet", "zone"]) {
-        const f = await mount(strict, width, { holdAllPosts: true });
+        const f = await mount(strict, width, { initial: kind === "open" ? "closed" : "A", holdAllPosts: true });
         await f.run(kind);
         await expect.poll(() => f.held.length).toBe(1);
         await f.page.evaluate(() => window.h.select());
@@ -227,11 +228,15 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
       // New B entry and B closing marker also survive old entry completion.
       for (const next of ["open", "close"]) {
-        const f = await mount(strict, width, { holdAllPosts: true });
+        const f = await mount(strict, width, { initial: "closed", holdAllPosts: true });
         await f.run("open");
         await expect.poll(() => f.held.length).toBe(1);
         await f.page.evaluate(() => window.h.select());
         await expect.poll(async () => (await f.state()).busy).toBe(false);
+        if (next === "open") {
+          await f.page.evaluate(() => window.h.conclude());
+          await expect.poll(async () => (await f.state()).status).toBe("closed");
+        }
         await f.run(next);
         await expect.poll(() => f.held.length).toBe(2);
         const before = await f.state(),
@@ -251,7 +256,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
       // Duplicate and competing actions share synchronous admission before React rerenders.
       for (const kind of ["open", "greet", "zone"]) {
-        const f = await mount(strict, width, { holdAllPosts: true });
+        const f = await mount(strict, width, { initial: kind === "open" ? "closed" : "A", holdAllPosts: true });
         await f.page.evaluate((kind) => window.h.cross(kind), kind);
         await expect.poll(() => f.held.length).toBe(1);
         await f.release(0);
@@ -290,7 +295,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
       // Automatic greeting remains under the entry claim and cannot publish after B starts.
       {
-        const f = await mount(strict, width, { openStatus: "opening", holdAllPosts: true });
+        const f = await mount(strict, width, { initial: "closed", openStatus: "opening", holdAllPosts: true });
         await f.run("open");
         await expect.poll(() => f.held.length).toBe(1);
         await f.release(0);
@@ -317,7 +322,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
       // Observed world reset/refounding, closure and foreign blank identities retire pending entry.
       for (const transition of ["reset", "end", "close", "blank"]) {
-        const f = await mount(strict, width, { hold: "open", openStatus: "opening" });
+        const f = await mount(strict, width, { initial: "closed", hold: "open", openStatus: "opening" });
         await f.run("open");
         await expect.poll(() => f.held.length).toBe(1);
         await f.page.evaluate((transition) => window.h[transition]("foreign"), transition);
@@ -335,7 +340,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         await f.finish();
       }
       // Captured callbacks cannot regain authority after observed A -> B -> A or blank -> B -> blank.
-      for (const initial of ["A", "blank"]) {
+      for (const initial of ["closed", "blank"]) {
         const f = await mount(strict, width, { initial });
         await f.page.evaluate(() => window.h.retain("open"));
         await f.page.evaluate(() => window.h.select());
@@ -345,6 +350,10 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           initial,
         );
         await expect.poll(async () => (await f.state()).id).toBe(initial === "blank" ? "" : "A");
+        if (initial === "closed") {
+          await f.page.evaluate(() => window.h.conclude());
+          await expect.poll(async () => (await f.state()).status).toBe("closed");
+        }
         const before = await f.state();
         await f.page.evaluate(() => window.h.old());
         await f.settle(0);
@@ -354,7 +363,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
       // Unknown -> founded hydration is retained, while unmount prevents any late followup.
       {
-        const f = await mount(strict, width, { hydrate: true, hold: "open" });
+        const f = await mount(strict, width, { initial: "closed", hydrate: true, hold: "open" });
         await f.run("open");
         await expect.poll(() => f.held.length).toBe(1);
         await f.page.evaluate(() => window.h.hydrate());
@@ -364,7 +373,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         await f.finish();
       }
       {
-        const f = await mount(strict, width, { hold: "open", openStatus: "opening" });
+        const f = await mount(strict, width, { initial: "closed", hold: "open", openStatus: "opening" });
         await f.run("open");
         await expect.poll(() => f.held.length).toBe(1);
         await f.page.evaluate(() => window.unmount());

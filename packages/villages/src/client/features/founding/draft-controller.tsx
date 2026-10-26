@@ -6,7 +6,7 @@ import { API_PATH } from "../../shared/constants.js";
 import type { useFoundingSetupDraftData } from "./controller-hooks.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingState } from "./useFoundingState.js";
-import { readFoundingDraft, removeFoundingDraft, saveFoundingDraft } from "./villages-founding-draft.js";
+import { readDeviceDraft, removeDeviceDraft, saveDeviceDraft } from "../../shared/device-drafts.js";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import { resumeFoundingVenue } from "./founding-template.js";
 import { useCallback, useEffect } from "react";
@@ -20,7 +20,7 @@ export function useFoundingPersistSetupDraft(ports: {
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setDraftSaving: FoundingState["setDraftSaving"];
   readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
+    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
 }) {
   const {
@@ -41,7 +41,7 @@ export function useFoundingPersistSetupDraft(ports: {
       const pending = draftSaveQueue.current.then(async () => {
         if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open and retry saving.");
         try {
-          const saved = await saveFoundingDraft(API_PATH, data, draftRevision.current);
+          const saved = await saveDeviceDraft(API_PATH, data, draftRevision.current);
           draftRevision.current = saved.revision;
           setSavedSetupDraft(saved);
           setDraftSavedAt(saved.savedAt);
@@ -320,13 +320,13 @@ export function createFoundingNewSetupDraft(ports: {
   readonly draftRevision: FoundingState["draftRevision"];
   readonly draftSaveQueue: FoundingState["draftSaveQueue"];
   readonly openSetup: (fresh: boolean, village: import("../../../shared/contracts/village").VillageSnapshot) => void;
-  readonly savedSetupDraft: import("./villages-founding-draft").SavedFoundingDraft<
+  readonly savedSetupDraft: import("../../shared/device-drafts").SavedDeviceDraft<
     import("./draft-model").SetupDraftData
   >;
   readonly setDraftReady: FoundingState["setDraftReady"];
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
+    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
   readonly setSetupAuthoredFields: FoundingState["setSetupAuthoredFields"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
@@ -370,7 +370,7 @@ export function createFoundingNewSetupDraft(ports: {
     try {
       setDraftReady(false);
       await draftSaveQueue.current;
-      await removeFoundingDraft(API_PATH);
+      await removeDeviceDraft(API_PATH);
       draftRevision.current = 0;
       draftBlocked.current = false;
       setDraftSaveError("");
@@ -400,7 +400,7 @@ export function createFoundingRetrySetupSaving(ports: {
     const { draftBlocked, draftRevision, persistSetupDraft, setDraftReady, setDraftSaveError, setupDraftData } = ports;
 
     try {
-      const saved = await readFoundingDraft<SetupDraftData>(API_PATH);
+      const saved = await readDeviceDraft<SetupDraftData>(API_PATH);
       if ((saved?.revision ?? 0) !== draftRevision.current)
         throw new Error("This draft changed in another tab. Reload to resume the latest saved choices.");
       draftBlocked.current = false;
@@ -420,7 +420,7 @@ export function useFoundingDraftOffer(ports: {
   readonly setDraftSavedAt: FoundingState["setDraftSavedAt"];
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
+    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"menu" | "home" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
@@ -446,7 +446,7 @@ export function useFoundingDraftOffer(ports: {
     if (!snapshot || setupOfferedRef.current) return;
     setupOfferedRef.current = true;
     if (!snapshot.isFounded) {
-      void readFoundingDraft<SetupDraftData>(API_PATH)
+      void readDeviceDraft<SetupDraftData>(API_PATH)
         .then((saved) => {
           if (saved) {
             draftRevision.current = saved.revision;
@@ -465,7 +465,7 @@ export function useFoundingDraftOffer(ports: {
           setDraftSaveError(messageFrom(cause, "Draft storage is unavailable. Keep this tab open."));
         });
     } else {
-      void removeFoundingDraft(API_PATH).catch(() => undefined);
+      void removeDeviceDraft(API_PATH).catch(() => undefined);
       if (snapshot.foundingPreparation && snapshot.foundingPreparation.status !== "ready") setScreen("preparing");
     }
   }, [

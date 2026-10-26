@@ -1,3 +1,8 @@
+import { coerceSession } from "../../domain/decoding/scene-codec.js";
+import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
+import { SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
+import { recallMemories } from "../../domain/rules/memory-recall.js";
+import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { z } from "zod";
 import type { Handler } from "../../domain/models/background-model.js";
@@ -21,7 +26,7 @@ import {
   parseRelationshipReview,
   RELATIONSHIP_REVIEW_INSTRUCTION,
 } from "../../domain/rules/relationship-review.js";
-import { captureRelationshipKnowledge } from "../../domain/rules/relationship-knowledge.js";
+import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
 import {
   accessChangedAfter,
   applyAccessCommand,
@@ -42,6 +47,7 @@ import {
 } from "../../domain/rules/social-mail.js";
 
 export interface SocialMailPorts {
+  processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;
   readVillageSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   mutateRelationships: typeof import("./relationship-store.js").mutateRelationships;
@@ -82,12 +88,6 @@ function admission(village: VillageState, residentId: string): VillageState {
   });
   state.villagers = village.villagers.map((row) => ({ ...row, agenda: undefined }));
   state.venues = structuredClone(village.venues);
-  const thread = village.relationshipContext?.mailThreads[personalThreadId(residentId)];
-  if (thread)
-    social.mailThreads[thread.id] = {
-      ...structuredClone(thread),
-      messages: thread.messages.filter((row) => !!village.relationshipContext?.mailDeliveries[row.id]).slice(-12),
-    };
   state.relationshipContext = structuredClone(social);
   return state;
 }
@@ -129,7 +129,6 @@ export function createSocialMail(ports: SocialMailPorts) {
       resident = state.villagers.find((row) => row.characterId === input.residentId);
     if (!resident) throw new Error("The recipient is unavailable.");
     const ownContext = relationshipWritingPrompt(state, input.residentId);
-    const thread = state.relationshipContext?.mailThreads[input.threadId]?.messages ?? [];
     const text =
       input.mode === "resident"
         ? ""
@@ -153,7 +152,7 @@ export function createSocialMail(ports: SocialMailPorts) {
                       character: resident.cardSnapshot,
                       admission: resident.admission,
                       ownContext,
-                      thread: thread.map((row) => ({ fromId: row.fromId, text: row.text, at: row.at })),
+                      memories: JSON.parse(input.narrationMemories ?? '{"memories":[]}'),
                       incoming: { text: input.sourceText, at: input.sourceAt },
                       now: input.admittedAt ?? input.sourceAt,
                     }),
@@ -191,12 +190,16 @@ export function createSocialMail(ports: SocialMailPorts) {
           role: "system",
           content:
             RELATIONSHIP_REVIEW_INSTRUCTION +
+            " " +
+            SCENE_MEMORY_INSTRUCTION +
+            " Additionally return sourceMemoryChanges:[] and replyMemoryChanges:[] under that native Memory schema, grounded in incoming and reply respectively. These arrays teach ONLY the corresponding resident, never player or another resident. All player learning uses disclosures when read. sourceMemoryChanges cites incoming.id only; replyMemoryChanges must include reply.id as new evidence. Reports name the actual speaker; claims establish no physical outcome. Use the supplied memory.administrative screening fingerprint. Empty arrays are valid for filler, repeated or unimportant correspondence. When sourceDelivered is true, sourceMemoryChanges must be empty. " +
             " Every invitation must include visitAccess: either {accompanied:boolean,outsideHours:boolean} or null. An explicit invitation to enter the resident's authorized non-exterior Zone (for example, 'come on in' in response to a request to visit that room) REQUIRES the visitAccess object when the supplied controllers include the resident. It grants one visit on player acceptance, never standing access. Preserve explicit accompaniment and visitor-hour conditions. Use null for a general meeting suggestion, lack of invitation authority, or unsupported conditions; never infer a ban exception. " +
             " Interpret this correspondence as two separate source bundles. Return JSON {sourceReview:relationshipReview,replyReview:relationshipReview,invitation?:{title,detail,venueId,zoneId,dueAt?,visitAccess:null|{accompanied:boolean,outsideHours:boolean}}}. sourceReview may cite ONLY incoming.id; it establishes the effects of delivering the player's exact text before any reply. replyReview may cite incoming.id and reply.id. Its revisions include sourceReview\'s effects. If mode is resident, incoming is the resident\'s already written message: interpret only sourceReview, return empty replyReview and allow an invitation grounded in incoming instead of a reply. When sourceDelivered is true, sourceReview must be empty and replyReview uses the supplied current live state. sceneAfter and liveAfter coincide for mail. Private stances remain private. Disclosures are saved for local notebook application only when the player opens the delivered reply. Spoken/written physical claims are attributed claims, never verified deeds. A resident invitation must be explicitly communicated in this reply, use an existing Venue and Zone, and remain proposed until a separate explicit player choice. A deadline must be an explicitly proposed future real-time ISO instant; no retroactive appointments. In player mode an empty reply means empty replyReview and no invitation. Only exact supplied source IDs are evidence.",
         },
         {
           role: "user",
           content: JSON.stringify({
+            memory: input.systemMemory?.envelope,
             sourceDelivered: input.sourceDelivered,
             mode: input.mode ?? "player",
             incoming: sourceLine,
@@ -257,7 +260,129 @@ export function createSocialMail(ports: SocialMailPorts) {
       )
         throw new Error("The reply's invitation is unavailable or already expired.");
     }
-    return { source, reply, replyText: text, invitation: invitation as SocialMailInterpretation["invitation"] };
+    const memories = (value: unknown): unknown[] => {
+      if (value === undefined) return [];
+      if (!Array.isArray(value) || value.length > 16) throw new Error("Invalid correspondence Memory proposals.");
+      return value;
+    };
+    return {
+      source,
+      reply,
+      replyText: text,
+      invitation: invitation as SocialMailInterpretation["invitation"],
+      sourceMemoryChanges: input.sourceDelivered ? [] : memories(raw.sourceMemoryChanges),
+      replyMemoryChanges: text ? memories(raw.replyMemoryChanges) : [],
+    };
+  }
+  /** Reuse the native witnessed-memory adapter locally; this never dispatches a model. */
+  async function rememberResidentMail(
+    input: SocialMailInput,
+    result: SocialMailInterpretation,
+    bundle: "source" | "reply",
+  ) {
+    const changes = bundle === "source" ? result.sourceMemoryChanges : result.replyMemoryChanges;
+    if (!changes?.length) return;
+    if (!ports.processLiveMemories || !input.systemMemory)
+      throw new Error("Correspondence Memory settlement is unavailable.");
+    const originalIds = [input.messageId, input.messageId + ":reply"];
+    const ids = originalIds.map((id) => "mail-line:" + semanticHash(id));
+    const lines: (RelationshipEvidenceLine & { name: string; at: string; contactHidden: boolean })[] = [
+      {
+        id: ids[0]!,
+        speakerId: input.mode === "resident" ? input.residentId : "player",
+        role: input.mode === "resident" ? "assistant" : "user",
+        name: input.residentId,
+        at: input.sourceAt,
+        contactHidden: true,
+        content: input.sourceText,
+        kind: "dialogue",
+        heardBy: [input.residentId],
+        playerHeard: false,
+      },
+      ...(bundle === "reply"
+        ? [
+            {
+              id: ids[1]!,
+              speakerId: input.residentId,
+              role: "assistant" as const,
+              name: input.residentId,
+              at: input.sourceAt,
+              contactHidden: true,
+              content: result.replyText,
+              kind: "dialogue",
+              heardBy: [input.residentId],
+              playerHeard: false,
+            },
+          ]
+        : []),
+    ];
+    const scoped = changes.map((raw) => {
+      const row = asRecord(raw),
+        learners = asRecord(row.learners),
+        own = asRecord(learners[input.residentId]);
+      return {
+        ...row,
+        learners: learners[input.residentId]
+          ? {
+              [input.residentId]: {
+                ...own,
+                support: Array.isArray(own.support)
+                  ? own.support.map((raw) => {
+                      const ref = asRecord(raw),
+                        index = originalIds.indexOf(String(ref.lineId));
+                      return {
+                        ...ref,
+                        lineId:
+                          index >= 0
+                            ? ids[index]
+                            : typeof ref.lineId === "number"
+                              ? ids[ref.lineId]
+                              : ref.lineId === "player"
+                                ? ids[0]
+                                : ref.lineId,
+                      };
+                    })
+                  : own.support,
+              },
+            }
+          : {},
+      };
+    });
+    const at = input.sourceAt,
+      submissionId = semanticHash([input.messageId, bundle]).slice(0, 24);
+    const scene = coerceSession({
+      id: "offscreen:mail:" + input.sourceHash.slice(0, 24),
+      villageSeed: input.seed,
+      status: "closed",
+      startedAt: at,
+      activeIds: [input.residentId],
+      participants: [{ characterId: input.residentId, name: input.residentId, doing: "correspondence" }],
+      lines,
+      submissions: [
+        {
+          id: submissionId,
+          at,
+          mode: "chat",
+          message: "",
+          targetId: "",
+          liveProposals: bindLiveProposals(
+            {
+              memoryChanges: scoped,
+              earlierLineIds: bundle === "reply" ? [ids[0]!] : [],
+              memoryContexts: { [input.systemMemory.saved.protection.fingerprint]: input.systemMemory.saved },
+            },
+            "",
+            [bundle === "reply" ? ids[1]! : ids[0]!],
+            lines,
+          ),
+        },
+      ],
+    });
+    const outcome = await ports.processLiveMemories(scene, submissionId, undefined, {
+      [input.residentId]: input.incarnation,
+    });
+    if (outcome.status === "failed" || outcome.status === "pending")
+      throw new Error(outcome.reason || "Correspondence Memory settlement needs recovery.");
   }
   async function settlePermissions(input: SocialMailInput, review: RelationshipReview, at: string) {
     await ports.mutateVillageState((state) => {
@@ -361,6 +486,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         }
       });
     }
+    await rememberResidentMail(input, result, "source");
     current = await ports.readRelationshipState(input.seed);
     const replyId = input.messageId + ":reply";
     if (!current.mailDeliveries[replyId] && result.replyText) {
@@ -414,6 +540,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         message.replyStatus = "complete";
         message.error = undefined;
       });
+    await rememberResidentMail(input, result, "reply");
     await ports.mutateVillageState((state) => {
       if (state.seed === input.seed) {
         state.socialMailOutbox = state.socialMailOutbox?.filter((row) => row.id !== entry.id);
@@ -492,6 +619,12 @@ export function createSocialMail(ports: SocialMailPorts) {
       incarnation,
       admitted: admission({ ...village, relationshipContext: state }, resident.characterId),
       retainedReply,
+      narrationMemories: recallMemories(village.memories, {
+        purpose: "narration",
+        audience: [resident.characterId],
+        query: message.text + " " + resident.characterId,
+      }).serialized,
+      systemMemory: sceneMemoryContext(village, [resident.characterId, "player"], message.text),
       sourceDelivered: !!state.mailDeliveries[message.id],
     };
   }
@@ -504,15 +637,17 @@ export function createSocialMail(ports: SocialMailPorts) {
     return {
       venueMail: village.venueMail,
       recovery: (village.socialMailOutbox ?? [])
-        .filter((row) => !!row.error && row.input.mode === "resident" && !state.mailDeliveries[row.id])
+        .filter((row) => !!row.error)
         .map((row) => ({
           threadId: row.input.threadId,
           messageId: row.id,
-          label: "Automatic message delivery needs recovery.",
+          label: "Saved mail processing needs recovery.",
           reinterpretRequired: !!row.reinterpretRequired,
-          cancellable: ["pending", "cancelled"].includes(
-            state.mailThreads[row.input.threadId]?.messages.find((message) => message.id === row.id)?.status ?? "",
-          ),
+          cancellable:
+            !state.mailDeliveries[row.id] &&
+            ["pending", "cancelled"].includes(
+              state.mailThreads[row.input.threadId]?.messages.find((message) => message.id === row.id)?.status ?? "",
+            ),
         })),
       threads: Object.values(state.mailThreads)
         .filter(
@@ -616,10 +751,46 @@ export function createSocialMail(ports: SocialMailPorts) {
   }
   async function readThread(threadId: string) {
     const village = await ports.readVillageSnapshot();
-    await ports.mutateRelationships(village.seed, (state) => {
-      readPersonalThread(state, threadId, new Date().toISOString());
-      captureRelationshipKnowledge(state, village);
-    });
+    const thread = village.relationshipContext?.mailThreads[threadId];
+    if (!thread || !thread.participantIds.includes("player")) throw badRequest("That thread is unavailable.");
+    const readIds = thread.messages
+      .filter(
+        (message) =>
+          message.toId === "player" && village.relationshipContext!.mailDeliveries[message.id] && !message.readAt,
+      )
+      .map((message) => message.id);
+    const lines: RelationshipEvidenceLine[] = thread.messages
+      .filter((message) => !!village.relationshipContext!.mailDeliveries[message.id])
+      .map((message) => ({
+        id: message.id,
+        speakerId: message.fromId,
+        role: message.fromId === "player" ? "user" : "assistant",
+        content: message.text,
+        heardBy: ["player"],
+        playerHeard: true,
+      }));
+    // Publish first. A failed Memory write leaves the message unread and locally retryable.
+    for (const message of thread.messages) {
+      const delivery = village.relationshipContext!.mailDeliveries[message.id];
+      if (message.toId !== "player" || !delivery || message.readAt) continue;
+      await ports.mutateVillageState(
+        (state) => {
+          if (state.seed !== village.seed) throw conflict("Village identity changed.");
+          publishRelationshipDisclosures(
+            state,
+            message.disclosures ?? [],
+            { kind: "domain", id: "mail:" + semanticHash(message.id), revision: 1, fingerprint: delivery.sourceHash },
+            lines,
+            message.at,
+            new Date().toISOString(),
+          );
+        },
+        { memories: true },
+      );
+    }
+    await ports.mutateRelationships(village.seed, (state) =>
+      readPersonalThread(state, threadId, new Date().toISOString(), readIds),
+    );
     return readMailbox();
   }
   async function cancel(threadId: string, messageId: string) {
@@ -774,6 +945,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     value: unknown,
     opportunityId: string,
     at: string,
+    memory?: ReturnType<typeof sceneMemoryContext>,
   ): SocialMailOutbox {
     const row = z
       .object({
@@ -807,6 +979,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         resident.cardSnapshot.capturedAt,
       ]),
       admitted: captured,
+      systemMemory: memory,
       sourceDelivered: false,
     };
     const sourceLine: RelationshipEvidenceLine = {
@@ -843,7 +1016,19 @@ export function createSocialMail(ports: SocialMailPorts) {
       )
         throw new Error("The automatic invitation is unavailable or expired.");
     }
-    return { id: messageId, input, result: { source, reply: emptyRelationshipReview(), replyText: "", invitation } };
+    return {
+      id: messageId,
+      input,
+      result: {
+        source,
+        reply: emptyRelationshipReview(),
+        replyText: "",
+        invitation,
+        sourceMemoryChanges: Array.isArray(asRecord(value).memoryChanges)
+          ? (asRecord(value).memoryChanges as unknown[])
+          : [],
+      },
+    };
   }
   return { handler, processOutbox, readMailbox, send, readThread, cancel, retry, respond, automaticOutbox };
 }

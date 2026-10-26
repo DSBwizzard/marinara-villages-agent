@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { routineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
 import {
@@ -267,7 +268,7 @@ async function main() {
     isDebugAgentsEnabled: () => false,
     getAgentConfig: async () => ({ connectionId: "flash-class" }),
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         getById: async () => structuredClone(usageDocument),
         create: async (input: any) => {
           assert.equal(usageDocument, null);
@@ -279,7 +280,7 @@ async function main() {
           usageDocument = { ...structuredClone(input), revision: usageDocument.revision + 1 };
           return structuredClone(usageDocument);
         },
-      },
+      }),
     },
     languageModels: {
       resolveForRequest: async () => ({

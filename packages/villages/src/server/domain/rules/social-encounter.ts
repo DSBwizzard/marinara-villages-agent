@@ -1,4 +1,3 @@
-import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { RelationshipEvidenceLine, SocialEncounter } from "../models/relationship-types.js";
 import type { SocialOutboxEntry } from "../models/social-outbox-model.js";
 import type { VillageState } from "../models/world.js";
@@ -6,8 +5,14 @@ import { agendaBlocksFor } from "./agenda-week.js";
 import { asRecord } from "./coerce.js";
 import { parseRelationshipProposals } from "./relationship-review.js";
 import { canEnter } from "./social-rules.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
-export function readEncounter(value: unknown, entry: SocialOutboxEntry, village: VillageState): SocialEncounter | null {
+export function readEncounter(
+  value: unknown,
+  entry: SocialOutboxEntry,
+  village: VillageState,
+  _now = new Date(),
+): SocialEncounter | null {
   const raw = asRecord(value),
     actors = entry.opportunity.actorIds;
   if (
@@ -104,6 +109,7 @@ export function readEncounter(value: unknown, entry: SocialOutboxEntry, village:
     ...(raw.semanticVersion === 2
       ? {
           memoryChanges: raw.memoryChanges,
+          memoryContexts: raw.memoryContexts as SocialEncounter["memoryContexts"],
           semanticProvenance: {
             version: 2 as const,
             sourceHash: String(raw.semanticSourceHash),

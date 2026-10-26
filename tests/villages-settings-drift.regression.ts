@@ -21,8 +21,6 @@ state.playerPersonaId = "persona";
 state.playerPersonaName = "Robin Hale";
 state.playerPersonaIdentity = "PRIVATE-PERSONA-IDENTITY";
 state.zonePictureEpoch = 73;
-state.townMapCanvasWidth = 1024;
-state.townMapCanvasHeight = 768;
 const venue = venueDraft({ name: "Hall", description: "A public hall", classes: ["community"] }, null);
 venue.access = {
   version: 1,
@@ -143,19 +141,16 @@ const publicFields = [
   "setupMinVillagerCount",
   "setupPlaceCount",
   "spriteCardFlipEnabled",
-  "storyPace",
-  "storyPaces",
-  "townMapCanvasHeight",
-  "townMapCanvasWidth",
+  "backgroundPace",
+  "backgroundPaces",
+  "maps",
   "townMapExpectedHeight",
   "townMapExpectedWidth",
   "townMapGenerationHeight",
   "townMapGenerationWidth",
   "townMapImageMaxLength",
-  "townMapImageSetAt",
   "townMapLayoutPrompt",
   "townMapNegativePrompt",
-  "townMapView",
   "townMapZoomMax",
   "townMapZoomMin",
   "townMapZoomStep",
@@ -189,10 +184,8 @@ try {
   assert.equal(initial.scenarioImprint, null);
   assert.equal(initial.sceneryStyleProfileId, null);
   assert.equal(initial.playerPersonaName, "Robin Hale");
-  assert.equal(initial.townMapCanvasWidth, 1024);
-  assert.equal(initial.townMapCanvasHeight, 768);
-  assert.equal(initial.townMapExpectedWidth, 1024);
-  assert.equal(initial.townMapExpectedHeight, 768);
+  assert.equal(initial.townMapExpectedWidth, 2560);
+  assert.equal(initial.townMapExpectedHeight, 1440);
   for (const field of ["automaticZonePictures", "personalizeVenueImagesByDefault", "useVisualLoreByDefault"] as const)
     assert.equal(typeof initial[field], "boolean", field);
   assert.equal(typeof initial.sceneryArtStyle, "string");
@@ -235,7 +228,7 @@ try {
   const updated = await request("PATCH", {
     worldName: "Harbor",
     sendOnEnter: false,
-    storyPace: "quiet",
+    backgroundPace: "quiet",
     sceneryArtStyle: "Watercolor",
     sceneryStyleProfileId: "watercolor",
     automaticZonePictures: false,
@@ -244,7 +237,7 @@ try {
   });
   assert.equal(updated.worldName, "Harbor");
   assert.equal(updated.sendOnEnter, false);
-  assert.equal(updated.storyPace, "quiet");
+  assert.equal(updated.backgroundPace, "quiet");
   assert.equal(updated.sceneryArtStyle, "Watercolor");
   assert.equal(updated.sceneryStyleProfileId, "watercolor");
   assert.equal(updated.automaticZonePictures, false);

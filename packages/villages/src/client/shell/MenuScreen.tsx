@@ -1,6 +1,5 @@
 import { ELEMENT_TAG } from "../shared/constants.js";
-import { FORCE_VILLAGE_UPDATE_NOTICE, MENU_PAGE_TITLES } from "./navigation.js";
-import { renderEventsPage } from "../features/background/EventsPage.js";
+import { MENU_PAGE_TITLES } from "./navigation.js";
 import { renderProgressDebugPage } from "../features/background/ProgressDebugPage.js";
 import { renderProjectsPage } from "../features/projects/ProjectsPage.js";
 import { renderSceneArchivePage } from "../features/scenes/SceneArchivePage.js";
@@ -10,6 +9,7 @@ import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsP
 import { renderMenuIndexPage } from "../features/settings/MenuIndexPage.js";
 import type { MenuScreenController } from "./menu-contracts.js";
 import { VillagesRuntimeDebug } from "../features/settings/RuntimeDebug.js";
+import { VillageTimeControl } from "../features/settings/TimeControl.js";
 import { renderVillageSettingsPage } from "../features/settings/VillageSettingsPage.js";
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
@@ -23,18 +23,14 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     archiveVillagerId,
     backgroundPanel,
     busy,
-    catchingUp,
     debugDiscardEnabled,
     decideVenueRequest,
     generateRequestDescription,
     completeResidenceMove,
     decideResidenceMove,
     deleteArchivedVisits,
-    discardTownMapDraft,
     error,
     projectsController,
-    framingMap,
-    generateReplacementMap,
     goHome,
     insertMacro,
     knowledgeDraft,
@@ -43,10 +39,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     lorebookDraft,
     lorebooks,
     lorebooksError,
-    mapGenerating,
-    mapPinDraft,
-    mapRemoveDraft,
-    mapReplaceOpen,
     menuPage,
     menuSection,
     mobile,
@@ -59,15 +51,11 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     setHousingVenueId,
     openSetup,
     openVisit,
-    panelMapView,
     personaDraft,
     personalizeHomes,
     personas,
-    pickTownMap,
     placeCount,
-    placingMapVenueId,
     progressDebug,
-    reframingMap,
     removeNotice,
     removeVenue,
     requestEdits,
@@ -77,14 +65,12 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     saveScenerySettings,
     saveSendOnEnter,
     saveSettings,
-    saveStoryPace,
-    saveTownMap,
+    saveBackgroundPace,
     saveVenue,
     saveVisitRetention,
     sceneryStyle,
     sceneryStyleProfileId,
     screen,
-    selectedMapVenueId,
     setArchiveOffset,
     setArchiveVenueId,
     setArchiveVillagerId,
@@ -92,28 +78,21 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     setKnowledgeDraft,
     setLoreTokenBudgetDraft,
     setLorebookDraft,
-    setMapPinDraft,
-    setMapRemoveDraft,
     setMenuPage,
     setNoticeDraft,
     setOpenArchivedVisit,
     setPersonaDraft,
     setPersonalizeHomes,
-    setPlacingMapVenueId,
     setPlacingProjectId,
     loadProgressDebug,
-    setReframingMap,
     setRequestEdits,
     setResetArmed,
     setSceneryStyle,
     setSceneryStyleProfileId,
     setScreen,
-    setSelectedMapVenueId,
     setSettingDraft,
     setSiteProjectId,
     setSnapshot,
-    setTownMapDraft,
-    setTownMapPick,
     setVenueEditDraft,
     setVenueSearch,
     setVisualLoreDefault,
@@ -121,22 +100,13 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     settingsError,
     siteProjectId,
     snapshot,
-    startMapReplacement,
     startOver,
     suggestPlaces,
-    townMapAdvice,
-    townMapImage,
-    townMapPick,
-    townMapShape,
-    townMapSrc,
-    townMapZoom,
     venueEditDraft,
     venueSearch,
     venueVisits,
     venuesDraft,
     visualLoreDefault,
-    writeItUpNow,
-    writeUpNote,
   } = controller;
 
   if (screen === "menu" && menuPage === "projects" && snapshot) {
@@ -182,7 +152,13 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             <button
               type="button"
               className={`${ELEMENT_TAG}-button`}
-              onClick={menuPage !== "index" ? () => setMenuPage("index") : goHome}
+              onClick={
+                menuPage !== "index"
+                  ? () => setMenuPage("index")
+                  : room?.id && room.status !== "closed"
+                    ? () => setScreen("room")
+                    : goHome
+              }
             >
               {menuPage !== "index"
                 ? "Back to menu"
@@ -286,8 +262,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
 
         {menuPage === "index" ? (
           renderMenuIndexPage({ backgroundPanel, busy, openMenu, snapshot })
-        ) : menuPage === "events" && snapshot ? (
-          renderEventsPage({ mobile, snapshot })
         ) : !snapshot && menuPage !== "general" ? (
           <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
             {error ? "The village could not be loaded. Return to the village and try again." : "Loading village menu…"}
@@ -299,7 +273,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             resetArmed,
             saveCharacterSpeechColors,
             saveSendOnEnter,
-            saveStoryPace,
+            saveBackgroundPace,
             saveVisitRetention,
             setResetArmed,
             settingsError,
@@ -312,9 +286,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             addVenue,
             backgroundPanel,
             busy: busy,
-            discardTownMapDraft,
-            framingMap,
-            generateReplacementMap,
             insertMacro,
             knowledgeDraft,
             knowledgeRef,
@@ -322,59 +293,35 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             lorebookDraft,
             lorebooks,
             lorebooksError,
-            mapGenerating,
-            mapPinDraft,
-            mapRemoveDraft,
-            mapReplaceOpen,
             mobile,
             nameOfCharacter,
             openPlace,
             openSetup,
-            panelMapView,
             personaDraft,
             personalizeHomes,
             personas,
-            pickTownMap,
             placeCount,
-            placingMapVenueId,
-            reframingMap,
             removeVenue,
             saveScenerySettings,
             saveSettings,
-            saveTownMap,
             saveVenue,
             sceneryStyle,
             sceneryStyleProfileId,
-            selectedMapVenueId,
             setKnowledgeDraft,
             setLoreTokenBudgetDraft,
             setLorebookDraft,
-            setMapPinDraft,
-            setMapRemoveDraft,
             setPersonaDraft,
             setPersonalizeHomes,
-            setPlacingMapVenueId,
-            setReframingMap,
             setSceneryStyle,
             setSceneryStyleProfileId,
-            setSelectedMapVenueId,
             setSettingDraft,
-            setTownMapDraft,
-            setTownMapPick,
             setVenueEditDraft,
             setVenueSearch,
             setVisualLoreDefault,
             settingDraft,
             settingsError,
             snapshot,
-            startMapReplacement,
             suggestPlaces,
-            townMapAdvice,
-            townMapImage,
-            townMapPick,
-            townMapShape,
-            townMapSrc,
-            townMapZoom,
             venueEditDraft,
             venueSearch,
             venuesDraft,
@@ -388,24 +335,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
           <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
             {backgroundPanel}
             {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
-            {menuSection === "debug" ? (
-              <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-debug-action`}>
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={!snapshot || busy || catchingUp}
-                  onClick={() => void writeItUpNow()}
-                >
-                  Force Village Update
-                </button>
-                <p className={`${ELEMENT_TAG}-status`}>{FORCE_VILLAGE_UPDATE_NOTICE}</p>
-                {writeUpNote ? (
-                  <p className={`${ELEMENT_TAG}-status`} role="status">
-                    {writeUpNote}
-                  </p>
-                ) : null}
-              </section>
-            ) : null}
+            {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
             {menuPage === "noticeboard" && snapshot
               ? renderNoticeboardPage({
                   addNotice,

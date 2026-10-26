@@ -15,6 +15,7 @@ for (const mode of ["cancel", "complete", "removed-zone"]) {
   const id = mode === "removed-zone" ? await renovation(f, { zones: [] }) : await f.newProject();
   if (mode !== "removed-zone") await f.service.startProjectConstruction(id, f.body(id), now);
   const scene = coerceSession({
+    version: 2,
     id: "worksite-scene",
     villageSeed: f.state().seed,
     placeId: f.get(id).venueId,

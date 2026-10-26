@@ -1,21 +1,35 @@
 import { createActivationBinding } from "../engine/activation-scope.js";
-import type { VillageClockView } from "../../../shared/contracts/clock.js";
+import type { VillageClockView, VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 export interface VillageClockAuthority {
   observe(): Promise<VillageClockView>;
-  now(): Date;
+  now(advanceMs?: number): Date;
   shiftMs?(): number;
   commit?<T>(work: () => Promise<T>, revision?: number): Promise<T>;
   resolve(revision: number, choice: "accept" | "check"): Promise<VillageClockView>;
+  advance?(request: VillageTimeAdvance): Promise<VillageClockView>;
+  onAdvance?(listener: () => void): () => void;
+  advanceSettled?(): void;
 }
 const binding = createActivationBinding<VillageClockAuthority>("Village clock is not configured.");
 export function configureVillageClock(authority: VillageClockAuthority) {
   return binding.configure(authority);
 }
-export function villageNow(): Date {
-  return binding.maybe()?.now() ?? new Date();
+export function villageNow(advanceMs?: number): Date {
+  return binding.maybe()?.now(advanceMs) ?? new Date(Date.now() + (advanceMs ?? 0));
 }
 export async function observeVillageClock() {
   return binding.maybe()?.observe();
+}
+export function advanceVillageClock(request: VillageTimeAdvance) {
+  const clock = binding.get();
+  if (!clock.advance) throw new Error("Time advancement is unavailable.");
+  return clock.advance(request);
+}
+export function onVillageClockAdvance(listener: () => void): () => void {
+  return binding.maybe()?.onAdvance?.(listener) ?? (() => {});
+}
+export function villageTimeAdvanceSettled(): void {
+  binding.maybe()?.advanceSettled?.();
 }
 // Compatibility adapters for callers built around the former blocking recovery gate.
 // Time changes no longer invalidate work, provider responses or storage commits.

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   readModelJsonObject,
@@ -80,7 +81,7 @@ const documents = {
   },
 };
 const release = configureVillagesRuntime({
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   logger: { info() {}, warn() {}, debug() {}, error() {}, debugOverride() {} },
 } as any);
 try {

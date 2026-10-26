@@ -1,4 +1,5 @@
-import { createVillageBootstrap } from "../packages/villages/src/server/features/founding/village-bootstrap-service.js";
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import assert from "node:assert/strict";
 import {
@@ -240,7 +241,7 @@ console.log(
   "Automatic social Events: historical timezone, retained errors, exact-source memory correction, stale revisions and full invitation terms passed.",
 );
 let automaticCalls = 0;
-const writer = createVillageBootstrap({
+const writer = createResidentPlanning({
   villagesLanguageModels: () => ({
     resolveForRequest: async () => ({
       model: "fixture",
@@ -256,7 +257,7 @@ const writer = createVillageBootstrap({
     content: JSON.stringify(
       ++automaticCalls === 1
         ? {
-            happenings: [],
+            routineIdea: null,
             housingRequests: [],
             social: { mail: { senderId: "a", text: "Hello.", invitation: { title: "Forged invitation" } } },
           }
@@ -264,19 +265,24 @@ const writer = createVillageBootstrap({
     ),
   }),
 } as any);
-const proposed = await writer.proposeHappenings({
-  semanticVersion: 2,
-  village: "Preview",
-  setting: "A quiet cafe",
-  moment: deriveVillageMoment({ foundedAt: at, seed: "events", now: new ZonedDate(at, village.timeZone) }),
-  residents: [],
-  recent: [],
-  venues: [],
-  opportunities: [{ ...entry.opportunity, facts: [] }],
-  forced: false,
-  lastSimulatedAt: at,
-  social: { state: social, candidates: [], relationships: [] },
-} as any);
+const proposed = (await writer.handler.generate({
+  context: {
+    version: 1,
+    village: "Preview",
+    setting: "A quiet cafe",
+    moment: deriveVillageMoment({ foundedAt: at, seed: "events", now: new ZonedDate(at, village.timeZone) }),
+    residents: [],
+    recent: [],
+    venues: [],
+    opportunities: [{ ...entry.opportunity, facts: [] }],
+    forced: false,
+    lastSimulatedAt: at,
+    opportunity: { ...entry.opportunity, facts: [] },
+    memory: sceneMemoryContext(village, ["a"], "Hello"),
+    pendingHousingCharacterIds: [],
+    social: { state: social, candidates: [], relationships: [] },
+  },
+} as any)) as any;
 assert.equal(automaticCalls, 2);
 assert.equal(
   (proposed.social!.mail as any).invitation,

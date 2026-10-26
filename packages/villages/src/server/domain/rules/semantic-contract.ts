@@ -9,12 +9,12 @@ import { venueZones, zoneControllerIds } from "./venue-zones.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { zoneEventHearingContext } from "./zone-events.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
-import { memoryVersion } from "./live-exchange.js";
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { badGateway } from "./errors.js";
-import { selectPromptMemories } from "./memory-selection.js";
+import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
 import { wishCheckKnowledge } from "./wish-journal.js";
 import { accessManagementPrompt } from "./access-speech.js";
+import { capturedSceneCalendar } from "./scene-halt.js";
 
 export { readSemanticWishCriteria } from "./wish-criteria.js";
 
@@ -42,6 +42,7 @@ export function semanticContext(
   compact = false,
   accessTopology = false,
   presentation = state,
+  narration = "",
 ) {
   const authority = state;
   state = presentation;
@@ -50,16 +51,8 @@ export function semanticContext(
   ];
   const venue = state.venues.find((row) => row.id === scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
-  // Audit remains in saved state; fresh compact packets need current authority, not past command fingerprints.
-  const liveVenue = authority.venues.find((row) => row.id === scene.placeId);
   const { receipts: _receipts, changes: _changes, ...accessRules } = venue?.access ?? {};
-  const memories = selectPromptMemories(state.chronicle, actors, query, 1800);
-  const audience = (row: VillageState["chronicle"][number]) =>
-    row.scope === "village" ? actors : (row.knownByCharacterIds ?? row.actors.map((actor) => actor.id));
-  const available = state.chronicle.filter(
-    (row) => row.kind !== "tick" && !row.supersededBy && audience(row).some((id) => actors.includes(id)),
-  );
-  const catalog = available.slice(-64);
+  const memory = sceneMemoryContext(authority, ["player", ...actors], query, narration);
   const recentHistory = scene.lines
     .filter((row) => !row.contactReport && actors.some((id) => row.heardBy.includes(id)))
     .slice(-18);
@@ -71,6 +64,17 @@ export function semanticContext(
     history.unshift(row);
   }
   return {
+    ...(scene.operation?.input.preservationVersion === 1
+      ? {
+          preservation: {
+            version: 1 as const,
+            sceneAt: scene.continuity?.capturedAt ?? scene.sceneAttendance?.capturedAt ?? scene.startedAt,
+            chosenAt: String(scene.operation.input.chosenAt),
+            timeZone: authority.timeZone,
+            calendar: capturedSceneCalendar(scene, authority.timeZone),
+          },
+        }
+      : {}),
     ...(scene.continuity
       ? {
           time: {
@@ -90,6 +94,22 @@ export function semanticContext(
     },
     worldFacts: state.worldFacts,
     sceneId: scene.id,
+    possibleMemoryEffects: scene.operation?.input.submissionId
+      ? {
+          physical: {
+            id: `venue-chat:${scene.id}:${scene.operation.input.submissionId}`,
+            domainRef: { kind: "physical", id: scene.placeId },
+          },
+          wishes: state.villagers.flatMap((resident) =>
+            (resident.agenda?.wishes ?? []).flatMap((wish) =>
+              ["check", "progress"].map((intent) => ({
+                id: `wish-change:${scene.id}:${scene.operation!.input.submissionId}:${wish.id}:${intent}`,
+                domainRef: { kind: "wish", id: wish.id, characterId: resident.characterId },
+              })),
+            ),
+          ),
+        }
+      : undefined,
     revision: scene.sceneRevision,
     social: {
       capturedAndScene: socialContextState(state.relationshipContext, actors, query),
@@ -143,23 +163,8 @@ export function semanticContext(
       id: characterId,
       name: cardSnapshot.name,
     })),
-    memories: memories.map((row) => ({
-      id: row.id,
-      text: row.text,
-      audience: audience(row),
-      version: memoryVersion(row),
-    })),
-    retrieval: {
-      complete: catalog.length === available.length,
-      totalAvailable: available.length,
-      // Hints locate sources only; incomplete snippets cannot support a verdict.
-      catalog: catalog.map((row) => ({
-        id: row.id,
-        version: memoryVersion(row),
-        audience: audience(row),
-        hint: row.text.slice(0, 160),
-      })),
-    },
+    memory: memory.envelope,
+    _memoryWrite: memory.saved,
     history,
     ...(compact ? { historyBounded: history.length < recentHistory.length } : {}),
     reach: layout ? zoneEventHearingContext(scene, layout) : "",
@@ -174,17 +179,17 @@ export function semanticContext(
         }))
       : [],
 
-    projects: projectSpeechPrompt(authority, projectSpeechContexts(authority, actors, "", query, scene.placeId)),
+    projects: projectSpeechPrompt(state, projectSpeechContexts(state, actors, "", query, scene.placeId)),
     requests: {
-      venues: authority.venues.map((row) => ({
+      venues: state.venues.map((row) => ({
         id: row.id,
         name: row.name,
         classes: row.classes,
         occupancy: row.occupancy,
         constructionStatus: row.constructionStatus,
       })),
-      residences: authority.residences.filter((row) => row.status === "pending"),
-      edits: liveVenue?.editProposals?.filter((row) => !row.declined),
+      residences: state.residences.filter((row) => row.status === "pending"),
+      edits: venue?.editProposals?.filter((row) => !row.declined),
     },
   };
 }
@@ -273,6 +278,7 @@ export function readSemanticEffects(raw: unknown, hash: string): Record<string, 
 
 /** Stable effect identity excludes model text/order; a reworded retry cannot re-award evidence. */
 export function semanticUnit(domain: string, value: unknown): string {
+  if (domain === "memory") return sceneMemoryUnit(value);
   const row = asRecord(value);
   return semanticHash([
     domain,
@@ -281,9 +287,6 @@ export function semanticUnit(domain: string, value: unknown): string {
     row.fromId,
     row.toId,
     row.dimension,
-    Array.isArray(row.memoryIds) ? [...row.memoryIds].sort() : row.memoryIds,
-    Array.isArray(row.subjectCharacterIds) ? [...row.subjectCharacterIds].sort() : row.subjectCharacterIds,
-    Array.isArray(row.knownByCharacterIds) ? [...row.knownByCharacterIds].sort() : row.knownByCharacterIds,
     [
       ...new Set(
         (Array.isArray(row.evidence) ? row.evidence : Array.isArray(row.lineIds) ? row.lineIds : []) as unknown[],

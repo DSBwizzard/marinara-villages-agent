@@ -1,3 +1,4 @@
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 
@@ -16,7 +17,6 @@ import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { coerceResponseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { sceneProcessingSummary } from "../../domain/rules/scene-public.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
-import { knownWish } from "../../domain/rules/wish-journal.js";
 import { workFailureSummary } from "../../domain/rules/work-failure.js";
 export interface SceneChangesPorts {
   finishSemanticScene?(id: string): Promise<void>;
@@ -47,6 +47,7 @@ export function createSceneChanges({
   async function readSceneChanges(id: string, cursor = "", limit = 20) {
     const scene = await readSession(id);
     const village = await readVillageSnapshot();
+    const presentation = sceneContinuityView(village, scene);
     if (scene.villageSeed && scene.villageSeed !== village.seed)
       throw conflict("This Scene belongs to a previous village.");
     const parts = (cursor || "0:0").split(":").map(Number);
@@ -60,7 +61,7 @@ export function createSceneChanges({
       .filter((entry) => entry.sequence > afterScene)
       .sort((a, b) => a.sequence - b.sequence);
     const turns = changed.slice(0, size);
-    const effects = Object.values(village.exchangeReceipts);
+    const effects = [...Object.values(village.exchangeReceipts), ...Object.values(village.memoryReceipts)];
     const effectsBySubmission = new Map<string, typeof effects>();
     for (const receipt of effects)
       if (receipt.sceneId === id) {
@@ -74,6 +75,7 @@ export function createSceneChanges({
     const notices = effects
       .filter(
         (receipt) =>
+          receipt.sceneId === id &&
           receipt.notice &&
           (receipt.noticeSequence ?? 0) > afterNotice &&
           !village.dismissedNoticeIds.includes(receipt.id),
@@ -82,13 +84,19 @@ export function createSceneChanges({
     const page = notices.slice(0, size);
     const relationshipState = village.relationshipContext;
     const relationshipReceipts = Object.values(relationshipState?.receipts ?? {})
-      .filter((receipt) => (receipt.noticeSequence ?? 0) > afterRelationship)
+      .filter(
+        (receipt) =>
+          (receipt.sceneId === id || (!receipt.sceneId && receipt.sourceId === id)) &&
+          (receipt.noticeSequence ?? 0) > afterRelationship,
+      )
       .sort((a, b) => a.noticeSequence! - b.noticeSequence!);
     const relationshipPage = relationshipReceipts.slice(0, size);
     const relationshipNotices = relationshipState
-      ? relationshipChangeNotices(relationshipPage, relationshipState, village).filter(
-          (event) => !village.dismissedNoticeIds.includes(event.id),
-        )
+      ? relationshipChangeNotices(
+          relationshipPage,
+          presentation.relationshipContext ?? relationshipState,
+          presentation,
+        ).filter((event) => !village.dismissedNoticeIds.includes(event.id))
       : [];
     const relationshipCursor =
       relationshipReceipts.length > relationshipPage.length
@@ -100,7 +108,14 @@ export function createSceneChanges({
         (job) =>
           job.seed === village.seed &&
           job.kind === "wish-check" &&
-          (asRecord(job.input).sceneId === id || String(job.subjectId).startsWith(`wish-change:${id}:`)),
+          (asRecord(job.input).sceneId === id ||
+            String(job.subjectId).startsWith(`wish-change:${id}:`) ||
+            String(job.subjectId).startsWith(`wish-batch:${id}:`)),
+      )
+      .sort(
+        (a, b) =>
+          Number(["queued", "running"].includes(String(b.status))) -
+          Number(["queued", "running"].includes(String(a.status))),
       )
       .slice(0, 50)
       .map((job) => ({
@@ -145,23 +160,16 @@ export function createSceneChanges({
           projects: (turn.processing?.domains.projects.receiptIds ?? []).flatMap((id) =>
             projectReceiptIndex.has(id) ? [projectReceiptIndex.get(id)!] : [],
           ),
-          memories: village.chronicle.filter(
-            (memory) =>
-              memory.sourceVisitId === id &&
-              memory.sourceLineIds?.some((lineId) => turn.processing?.lineIds.includes(lineId)),
+          memories: village.memories.records.filter(
+            (row) => row.origin.sceneId === id && row.origin.id === id + ":" + turn.id,
           ),
         },
         requests: turn.requestMetrics ?? null,
         responseDiagnostics: coerceResponseDiagnostics(turn.liveProposals?.responseDiagnostics) ?? null,
         interpretationHistory: turn.interpretationHistory ?? [],
-        notices: filterRelationshipNotices(turn.recordEvents ?? [], village.relationshipContext)
-          .filter(
-            (event) =>
-              event.kind !== "wish" ||
-              (!!event.wishUpdate &&
-                village.villagers.some((person) => knownWish(village, person.characterId, event.wishUpdate!.wishId))),
-          )
-          .filter((event) => !village.dismissedNoticeIds.includes(event.id)),
+        notices: filterRelationshipNotices(turn.recordEvents ?? [], presentation.relationshipContext).filter(
+          (event) => !village.dismissedNoticeIds.includes(event.id),
+        ),
         evidence: scene.lines.filter(
           (line) => turn.processing?.lineIds.includes(line.id) || turn.liveProposals?.earlierLineIds.includes(line.id),
         ),
@@ -173,12 +181,12 @@ export function createSceneChanges({
           memory: turn.liveProposals?.memoryChanges,
           relationship: turn.liveProposals?.relationshipChanges,
           wishes: turn.wishProposals,
-          memoryVersions: turn.liveProposals?.memoryVersions,
+          memoryContexts: turn.liveProposals?.memoryContexts,
         },
       })),
       notices: filterRelationshipNotices(
         [...page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])), ...relationshipNotices],
-        village.relationshipContext,
+        presentation.relationshipContext,
       ),
       dismissedNoticeIds: village.dismissedNoticeIds,
       unresolved: scene.submissions
@@ -203,9 +211,9 @@ export function createSceneChanges({
                     ? workFailureSummary(result.failure)
                     : result.status === "rejected"
                       ? /evidence|witness|heard/iu.test(result.reason ?? "")
-                        ? "The proposed update cited words or events that were not witnessed by everyone it would affect. It wasn’t saved; the conversation remains in the transcript."
-                        : "The proposed update did not meet the requirements for saving. The conversation remains in the transcript; saved diagnostics contain the validation result."
-                      : "Saved changes could not be applied. Replay saved work first; inspect saved diagnostics if it persists.",
+                        ? "The proposed world change cited speech or actions that were not witnessed by everyone it would affect. It wasn’t saved; the conversation remains in the transcript."
+                        : "The proposed world change did not meet the requirements for saving. The conversation remains in the transcript; saved diagnostics contain the validation result."
+                      : "World changes could not be applied. Replay saved work first; inspect saved diagnostics if it persists.",
             })),
         )
         .sort((left, right) => {

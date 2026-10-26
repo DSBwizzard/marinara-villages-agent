@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { assertMailboxOwnership } from "./fixtures/villages-mailbox-owner.fixture.js";
 import {
@@ -31,8 +32,8 @@ function deferred() {
 }
 function fixture(name: string) {
   const state = coerceVillageState({
-    version: 3,
-    socialContractVersion: 2,
+    ...defaultVillageState(),
+    version: 5,
     name,
     setupAt: stamp,
     foundedAt: stamp,

@@ -1,11 +1,11 @@
+import { z } from "zod";
 import type { InterpretationEvidence } from "../models/interpretation-check-model.js";
 import type { VenueLine } from "../models/scene-model.js";
 import type { VillageState, VillageWish } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { WISH_SYSTEM_VERSION } from "./wish-definition.js";
 import { createHash } from "node:crypto";
-
-export type WishFactKind = "preference" | "concern" | "possibility" | "condition" | "result";
+import { projectMemories } from "./memory-views.js";
+export type WishFactKind = "goal" | "condition" | "result";
 export type WishFactCandidate = {
   semanticVersion?: 2;
   kind: WishFactKind;
@@ -22,135 +22,115 @@ export type WishJournalFact = WishFactCandidate & {
   supersededBy?: string;
   conditionRevision?: number;
 };
+/** Goal-affecting owner statements and exact completion proof belong to the Wish authority. */
+export type WishGoalJournal = { facts: WishJournalFact[]; evidence: WishJournalEvidence[] };
 export type KnownWish = {
   wishId: string;
   text: string;
   learnedAt: string;
   lineIds: string[];
   status?: "active" | "fulfilled" | "expired" | "retired";
-  facts?: WishJournalFact[];
-  evidence?: WishJournalEvidence[];
+  facts?: { id: string; kind: string; quote: string; at: string; sceneId: string; lineIds: string[] }[];
 };
-const factKinds = ["preference", "concern", "possibility", "condition", "result"];
-const strings = (value: unknown) =>
-  Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-export function coerceWishKnowledge(value: unknown): VillageState["wishKnowledge"] {
-  return Object.fromEntries(
-    Object.entries(asRecord(value)).map(([actorId, rows]) => [
-      actorId,
-      (Array.isArray(rows) ? rows : []).flatMap((value): KnownWish[] => {
-        const row = asRecord(value);
-        if (!asTrimmedString(row.wishId) || !asTrimmedString(row.text)) return [];
-        return [
-          {
-            wishId: asTrimmedString(row.wishId),
-            text: asTrimmedString(row.text),
-            learnedAt: asTrimmedString(row.learnedAt),
-            lineIds: strings(row.lineIds),
-            status: ["fulfilled", "expired", "retired"].includes(String(row.status))
-              ? (row.status as KnownWish["status"])
-              : "active",
-            facts: (Array.isArray(row.facts) ? row.facts : []).flatMap((value): WishJournalFact[] => {
-              const fact = asRecord(value);
-              if (
-                !asTrimmedString(fact.id) ||
-                !factKinds.includes(String(fact.kind)) ||
-                !asTrimmedString(fact.quote) ||
-                !strings(fact.lineIds).length
-              )
-                return [];
-              return [
-                {
-                  id: asTrimmedString(fact.id),
-                  kind: fact.kind as WishFactKind,
-                  quote: asTrimmedString(fact.quote).slice(0, 320),
-                  lineIds: strings(fact.lineIds),
-                  at: asTrimmedString(fact.at),
-                  sceneId: asTrimmedString(fact.sceneId),
-                  submissionId: asTrimmedString(fact.submissionId),
-                  ...(Number.isSafeInteger(fact.conditionRevision)
-                    ? { conditionRevision: Number(fact.conditionRevision) }
-                    : {}),
-                  ...(typeof fact.supersedes === "string" ? { supersedes: fact.supersedes } : {}),
-                  ...(typeof fact.supersededBy === "string" ? { supersededBy: fact.supersededBy } : {}),
-                },
-              ];
-            }),
-            evidence: (Array.isArray(row.evidence) ? row.evidence : []).flatMap((value): WishJournalEvidence[] => {
-              const evidence = asRecord(value);
-              if (
-                !asTrimmedString(evidence.id) ||
-                !asTrimmedString(evidence.content) ||
-                !asTrimmedString(evidence.sceneId)
-              )
-                return [];
-              return [
-                {
-                  id: asTrimmedString(evidence.id),
-                  speakerId: asTrimmedString(evidence.speakerId),
-                  name: asTrimmedString(evidence.name),
-                  content: asTrimmedString(evidence.content).slice(0, 1200),
-                  kind: asTrimmedString(evidence.kind),
-                  at: asTrimmedString(evidence.at),
-                  sceneId: asTrimmedString(evidence.sceneId),
-                  submissionId: asTrimmedString(evidence.submissionId),
-                  current: false,
-                },
-              ];
-            }),
-          },
-        ];
-      }),
-    ]),
-  );
+const journalTime = z.string().refine((value) => Number.isFinite(Date.parse(value)));
+const journalText = z.string().min(1),
+  journalFact = z
+    .object({
+      semanticVersion: z.literal(2).optional(),
+      kind: z.enum(["goal", "condition", "result"]),
+      quote: z.string().min(1).max(320),
+      lineIds: z.array(journalText),
+      supersedes: journalText.optional(),
+      id: journalText,
+      at: journalTime,
+      sceneId: journalText,
+      submissionId: journalText,
+      supersededBy: journalText.optional(),
+      conditionRevision: z.number().int().nonnegative().optional(),
+    })
+    .strict();
+const journalProof = z
+  .object({
+    id: journalText,
+    speakerId: z.string(),
+    name: z.string(),
+    content: z.string().min(1).max(1200),
+    kind: z.string().optional(),
+    current: z.boolean().optional(),
+    at: journalTime.optional(),
+    sceneId: journalText,
+    submissionId: journalText,
+  })
+  .strict();
+export function readWishGoalJournal(value: unknown): WishGoalJournal | undefined {
+  return value === undefined
+    ? undefined
+    : z
+        .object({ facts: z.array(journalFact), evidence: z.array(journalProof) })
+        .strict()
+        .parse(value);
 }
-export function knownWish(state: VillageState, actorId: string, wishId: string): KnownWish | undefined {
-  return state.wishKnowledge[actorId]?.find((entry) => entry.wishId === wishId);
+const factKinds = ["goal", "condition", "result"];
+export function wishJournal(state: VillageState, actorId: string, wishId: string): WishGoalJournal | undefined {
+  const resident = state.villagers.find((row) => row.characterId === actorId);
+  const wish =
+    resident?.agenda?.wishes.find((row) => row.id === wishId) ??
+    resident?.completedWishes?.find((row) => row.wish.id === wishId)?.wish ??
+    resident?.wishLifecycle?.pendingOutcomes.find((row) => row.wish.id === wishId)?.wish;
+  return wish?.goalJournal;
 }
-export function discloseWish(
-  state: VillageState,
-  actorId: string,
-  wish: VillageWish,
-  at: string,
-  lineIds: string[],
-): KnownWish {
-  wish.learnedAt ||= at;
-  wish.learnedLineIds = [...new Set([...(wish.learnedLineIds ?? []), ...lineIds])];
-  const rows = (state.wishKnowledge[actorId] ??= []);
-  let entry = knownWish(state, actorId, wish.id);
-  if (!entry) {
-    entry = {
-      wishId: wish.id,
-      text: wish.wish,
-      learnedAt: wish.learnedAt,
-      lineIds: [...lineIds],
-      status: "active",
-      facts: [],
-      evidence: [],
-    };
-    rows.push(entry);
+/** Public history comes solely from independently eligible player Memories. */
+export function knownWishes(state: VillageState, actorId: string): KnownWish[] {
+  const grouped = new Map<string, KnownWish>();
+  const titles = new Map<string, string>();
+  for (const row of projectMemories(state.memories, ["player"])
+    .filter((row) => row.domainRef?.kind === "wish" && row.domainRef.characterId === actorId)
+    .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id))) {
+    const fields = row.knowers.player!.disclosed;
+    const prior = grouped.get(row.domainRef!.id);
+    const status = fields?.status;
+    if (typeof fields?.title === "string") titles.set(row.domainRef!.id, fields.title);
+    grouped.set(row.domainRef!.id, {
+      wishId: row.domainRef!.id,
+      text: titles.get(row.domainRef!.id) ?? row.text,
+      learnedAt: row.knowers.player!.learnedAt,
+      lineIds: [],
+      ...(prior?.status ? { status: prior.status } : {}),
+      ...(["active", "fulfilled", "expired", "retired"].includes(String(status))
+        ? { status: status as KnownWish["status"] }
+        : {}),
+      facts: [
+        ...(prior?.facts ?? []),
+        {
+          id: row.id,
+          kind: String(row.knowers[actorId]?.disclosed?.kind ?? row.kind),
+          quote: row.text,
+          at: row.occurredAt,
+          sceneId: "",
+          lineIds: [],
+        },
+      ],
+    });
   }
-  entry.lineIds = [...new Set([...entry.lineIds, ...lineIds])];
-  return entry;
+  return [...grouped.values()];
 }
-/** Captured witnessed excerpts survive Scene boundaries. They are facts, never future tasks. */
+export function knownWish(state: VillageState, actorId: string, wishId: string) {
+  return knownWishes(state, actorId).find((row) => row.wishId === wishId);
+}
 export function rememberWishEvidence(
-  entry: KnownWish,
+  entry: WishGoalJournal,
   evidence: InterpretationEvidence[],
   sceneId: string,
   submissionId: string,
 ): void {
-  const rows = (entry.evidence ??= []);
-  for (const line of evidence) {
+  for (const line of evidence)
     if (
-      line.kind === "claim" ||
-      line.kind === "receipt" ||
-      !line.content ||
-      rows.some((old) => old.id === line.id && old.sceneId === sceneId)
+      line.kind !== "claim" &&
+      line.kind !== "receipt" &&
+      line.content &&
+      !entry.evidence.some((old) => old.id === line.id && old.sceneId === sceneId)
     )
-      continue;
-    rows.push({ ...line, content: line.content.slice(0, 1200), current: false, sceneId, submissionId });
-  }
+      entry.evidence.push({ ...line, content: line.content.slice(0, 1200), current: false, sceneId, submissionId });
 }
 /** Only exact resident speech can establish personal preferences or conditions. */
 export function bindWishFacts(
@@ -218,8 +198,8 @@ export function addWishFacts(
   submissionId: string,
   at: string,
 ): number {
-  const entry = knownWish(state, actorId, wish.id);
-  if (!entry || !wish.learnedAt || (entry.status && entry.status !== "active")) return 0;
+  const entry = (wish.goalJournal ??= { facts: [], evidence: [] });
+  if (!entry) return 0;
   let added = 0;
   const facts = (entry.facts ??= []);
   for (const candidate of candidates) {
@@ -245,32 +225,23 @@ export function addWishFacts(
     const fact: WishJournalFact = { ...candidate, id, sceneId, submissionId, at };
     facts.push(fact);
     if (prior) prior.supersededBy = id;
-    if (candidate.kind === "condition" || prior?.kind === "condition")
+    if (["goal", "condition"].includes(candidate.kind) || (prior && ["goal", "condition"].includes(prior.kind)))
       fact.conditionRevision = wish.conditionRevision = (wish.conditionRevision ?? 0) + 1;
     added++;
   }
   return added;
 }
-export function setWishJournalStatus(
-  state: VillageState,
-  actorId: string,
-  wishId: string,
-  status: KnownWish["status"],
-): void {
-  const entry = knownWish(state, actorId, wishId);
-  if (entry) entry.status = status;
-}
 export function wishConditionRevision(state: VillageState, actorId: string, wish: VillageWish, asOf?: string): number {
   if (!asOf) return wish.conditionRevision ?? 0;
   return Math.max(
     0,
-    ...(knownWish(state, actorId, wish.id)?.facts ?? [])
+    ...(wishJournal(state, actorId, wish.id)?.facts ?? [])
       .filter((fact) => fact.at <= asOf)
       .map((fact) => fact.conditionRevision ?? 0),
   );
 }
 export function wishCheckKnowledge(state: VillageState, actorId: string, wishId: string, asOf?: string) {
-  const entry = knownWish(state, actorId, wishId);
+  const entry = wishJournal(state, actorId, wishId);
   const active =
     entry?.facts?.filter(
       (fact) =>
@@ -287,36 +258,23 @@ export function wishCheckKnowledge(state: VillageState, actorId: string, wishId:
     conditions: active
       .filter((fact) => fact.kind === "condition")
       .map(({ id, quote, at, lineIds, submissionId }) => ({ id, quote, at, lineIds, submissionId })),
-    discoveries: active
-      .filter((fact) => fact.kind !== "condition")
-      .slice(-8)
-      .map(({ kind, quote, at }) => ({ kind, quote, at })),
+    discoveries: [
+      ...active
+        .filter((fact) => fact.kind === "goal")
+        .map((fact) => ({ kind: fact.kind, quote: fact.quote, at: fact.at })),
+      ...projectMemories(state.memories, [actorId])
+        .filter(
+          (row) => row.domainRef?.kind === "wish" && row.domainRef.id === wishId && (!asOf || row.occurredAt <= asOf),
+        )
+        .map((row) => ({
+          kind: String(row.knowers[actorId]?.disclosed?.kind ?? row.kind),
+          quote: row.text,
+          at: row.occurredAt,
+        })),
+    ],
     evidence: (entry?.evidence ?? [])
       .filter((line) => !asOf || (!!line.at && line.at <= asOf))
       .slice(-16)
       .map((line) => ({ ...line, current: false })),
   };
-}
-/** Authorized one-time reset; physical receipts and all real world consequences remain intact. */
-export function resetLegacyWishRecords(state: VillageState): void {
-  if (state.wishSystemVersion === WISH_SYSTEM_VERSION) return;
-  state.wishSystemVersion = WISH_SYSTEM_VERSION;
-  state.wishResetPending = state.villagers
-    .filter((resident) => !!resident.agenda?.generatedAt && !resident.agenda.personalizationPending)
-    .map((resident) => resident.characterId);
-  state.wishKnowledge = {};
-  state.wishRefillIntents = {};
-  state.projectWishOutbox = [];
-  state.correctedWishMemoryIds = [];
-  state.progressTasks = state.progressTasks.filter((task) => task.definition.owner.kind !== "wish");
-  for (const [id, receipt] of Object.entries(state.exchangeReceipts))
-    if (receipt.domain === "wishes") delete state.exchangeReceipts[id];
-  for (const resident of state.villagers) {
-    resident.completedWishes = [];
-    resident.wishLifecycle = undefined;
-    if (resident.agenda) {
-      resident.agenda.wishes = [];
-      resident.agenda.wishActivities = [];
-    }
-  }
 }

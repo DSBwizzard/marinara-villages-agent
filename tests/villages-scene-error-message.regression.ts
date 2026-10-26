@@ -66,7 +66,7 @@ assert.match(
   sceneErrorMessage(
     "The proposed update cited words or events that were not witnessed by everyone it would affect. It wasn’t saved; the conversation remains in the transcript.",
   ),
-  /update wasn’t saved; the conversation is still in the transcript/u,
+  /world change wasn’t saved; the conversation is still in the transcript/u,
 );
 const http = "Request failed. The request conflicts with the current saved state. Reload before trying again.";
 assert.equal(sceneErrorMessage(http + " (HTTP 409; POST /api/villages/rooms/turn)"), http);

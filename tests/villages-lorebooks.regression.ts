@@ -15,13 +15,13 @@ import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);
   assert.deepEqual(
-    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3 }).selectedLorebookIds,
+    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }).selectedLorebookIds,
     [],
   );
   assert.deepEqual(
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       selectedLorebookIds: ["world", "world", "missing"],
     }).selectedLorebookIds,
@@ -35,7 +35,7 @@ async function main() {
   assert.equal(readLoreTokenBudget(100), 100);
   assert.equal(coerceLoreTokenBudget(0), 0);
   assert.equal(
-    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, loreTokenBudget: 0 })
+    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, loreTokenBudget: 0 })
       .loreTokenBudget,
     0,
   );

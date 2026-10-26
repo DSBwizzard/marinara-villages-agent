@@ -91,15 +91,22 @@ export function completeMailDelivery(
   thread.revision++;
 }
 /** Reading applies already interpreted information, never a model call or a fictional read receipt. */
-export function readPersonalThread(state: RelationshipState, threadId: string, at: string): void {
+export function readPersonalThread(
+  state: RelationshipState,
+  threadId: string,
+  at: string,
+  messageIds?: readonly string[],
+): void {
   const thread = state.mailThreads[threadId];
   if (!thread || !thread.participantIds.includes("player")) throw badRequest("That thread is unavailable.");
   for (const message of thread.messages) {
-    if (message.toId !== "player" || !state.mailDeliveries[message.id] || message.readAt) continue;
-    for (const disclosure of message.disclosures ?? []) {
-      state.disclosures[disclosure.id] = { ...disclosure, at: message.at, sourceId: message.id };
-      state.applied[disclosure.id] = true;
-    }
+    if (
+      message.toId !== "player" ||
+      !state.mailDeliveries[message.id] ||
+      message.readAt ||
+      (messageIds && !messageIds.includes(message.id))
+    )
+      continue;
     message.readAt = at;
   }
 }

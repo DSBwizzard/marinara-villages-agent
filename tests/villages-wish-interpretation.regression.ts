@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
 import {
@@ -38,7 +39,7 @@ let preparations = 0,
 let nativeOutcome = "fulfilled";
 const release = configureVillagesRuntime({
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_package: string, id: string) {
         return structuredClone(records.get(id) ?? null);
       },
@@ -54,7 +55,7 @@ const release = configureVillagesRuntime({
         records.set(input.id, next);
         return next;
       },
-    },
+    }),
   },
   async getAgentConfig() {
     return null;
@@ -117,7 +118,6 @@ const context: WishInterpretationContext = {
   wishes: [{ id: "physical", wish: "Have Pat give me a cupcake", tell: "", intensity: 1, addedAt: at, expiresAt: "" }],
   claim: "I gave you a cupcake.",
   transcript: [],
-  happenings: [],
   memory: [],
   worldState: [],
   receipts: [],
@@ -244,7 +244,7 @@ async function wishConnectionOwnership() {
     };
     const releaseOwned = scope.run(() =>
       configureVillagesRuntime({
-        persistence: { documents },
+        persistence: { documents: villageFixtureDocuments(documents) },
         getAgentConfig: async () => null,
         logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
         languageModels: {

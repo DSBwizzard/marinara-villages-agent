@@ -36,7 +36,7 @@ export function createRelationships(ports: RelationshipPorts) {
         .filter((row) => !!row.error)
         .map((row) => ({ id: row.id, message: row.error!, reinterpretRequired: !!row.reinterpretRequired })),
       processing: ((await ports.backgroundWorkSummaries?.()) ?? [])
-        .filter((row) => ["starting-ties", "story", "personal-mail", "social-recovery"].includes(row.kind))
+        .filter((row) => ["starting-ties", "resident-planning", "personal-mail", "social-recovery"].includes(row.kind))
         .map((row) => ({
           id: row.id,
           attempt: row.attempt,

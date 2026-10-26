@@ -1,3 +1,4 @@
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import assert from "node:assert/strict";
 import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";
 import { createScheduleInfluence } from "../packages/villages/src/server/features/residents/schedule-influence-service.js";
@@ -17,6 +18,7 @@ import { semanticContinuationKey } from "../packages/villages/src/server/domain/
 
 const state = defaultVillageState();
 state.seed = "semantic-lifecycle";
+state.foundedAt = new Date().toISOString();
 state.playerBackground = "I have been a friend of a for years.";
 state.villagers = ["a", "b"].map((id) => ({
   characterId: id,
@@ -27,10 +29,21 @@ const relationships = defaultRelationshipState(state.seed);
 state.relationshipContext = relationships;
 let calls = 0,
   queued: any,
-  failApply = false;
+  failApply = false,
+  failMemory = false,
+  changeSourceAtAdmission = false;
 const saved = new Map<string, unknown>();
 const service = createStartingTies({
   readVillageState: async () => state,
+  mutateVillageState: async (update: any) => {
+    if (failMemory) throw Error("Memory storage unavailable");
+    if (changeSourceAtAdmission) {
+      changeSourceAtAdmission = false;
+      state.playerBackground = "Interleaved new source";
+    }
+    update(state);
+    return state;
+  },
   mutateRelationships: async (_seed: any, update: any) => {
     if (failApply) throw Error("Relationship storage unavailable");
     update(relationships);
@@ -143,8 +156,17 @@ assert.equal(
   "player backstory is part of the frozen relationship source",
 );
 state.playerBackground = originalBackground;
+failMemory = true;
+await assert.rejects(service.prepare(), /Memory storage unavailable/);
+assert.deepEqual(relationships.reviewedActorIds, [], "A failed Memory publication cannot unlock first Scene admission");
+assert.equal(calls, 1);
+failMemory = false;
+changeSourceAtAdmission = true;
+await assert.rejects(service.applySaved(), /Starting history source changed/);
+assert.deepEqual(relationships.reviewedActorIds, []);
+state.playerBackground = originalBackground;
 failApply = true;
-await assert.rejects(service.prepare(), /storage unavailable/);
+await assert.rejects(service.applySaved(), /storage unavailable/);
 assert.equal(calls, 1);
 assert(state.semanticStartingTies, "The interpreted result survives failed relationship application");
 failApply = false;
@@ -241,17 +263,26 @@ const encounter = {
     },
   ],
   review: { changes: [], permissions: [], disclosures: [] },
-  memoryChanges: [
-    {
-      kind: "passing",
-      text: "They discussed comparing sketches tomorrow.",
-      category: "commitment",
-      subjectCharacterIds: ["a", "b"],
-      knownByCharacterIds: ["a", "b"],
-      evidence: [0, 1],
-    },
-  ],
+  memoryChanges: [] as any[],
+  memoryContexts: {} as any,
 };
+const screen = sceneMemoryContext(state, ["a", "b"], "sketches");
+encounter.memoryContexts[screen.saved.protection.fingerprint] = screen.saved;
+encounter.memoryChanges = [
+  {
+    action: "create",
+    kind: "open-matter",
+    text: "They discussed comparing sketches tomorrow.",
+    subjects: ["a", "b"],
+    learners: Object.fromEntries(
+      ["a", "b"].map((id) => [
+        id,
+        { basis: "report", attributedTo: "a", support: [{ lineId: 0, excerpt: encounter.lines[0].content }] },
+      ]),
+    ),
+    screening: { disposition: "clear", protectedRoots: [], fingerprint: screen.saved.protection.fingerprint },
+  },
+];
 relationships.socialEncounters.push(encounter);
 relationships.applied[encounter.id] = true;
 state.relationshipContext = relationships;
@@ -301,29 +332,29 @@ assert.equal(state.socialOutbox.length, 1, "A failed memory domain retains the a
 failedMemory = false;
 state.socialOutbox[0]!.error = undefined;
 await social.processSocialOutbox(state);
-assert(state.recollections.some((row) => row.text === encounter.memoryChanges[0]!.text));
+assert(state.memories.records.some((row) => row.text === encounter.memoryChanges[0]!.text));
 assert(
   Object.values(state.exchangeReceipts).every((row) => !row.notice),
   "Offscreen memories produce no player notice",
 );
 assert.equal(state.socialOutbox.length, 0, "Acknowledge only after private memory application");
-const savedMemories = state.recollections.length;
+const savedMemories = state.memories.records.length;
 const duplicate = structuredClone(privateScene);
 duplicate.submissions[0].liveProposals.memoryChanges = [
   encounter.memoryChanges[0],
   { ...encounter.memoryChanges[0], text: "Another fact about the same evidence" },
 ];
-await assert.rejects(memory.processLiveMemories(duplicate, encounter.id), /Duplicate memory units/);
-assert.equal(state.recollections.length, savedMemories, "Ambiguous duplicate units fail before any write");
+await memory.processLiveMemories(duplicate, encounter.id);
+assert.equal(state.memories.records.length, savedMemories, "Repeated source units cannot duplicate stored knowledge");
 await social.processSocialOutbox(state);
-assert.equal(state.recollections.length, savedMemories);
+assert.equal(state.memories.records.length, savedMemories);
 state.semanticContinuations = { [semanticContinuationKey(privateScene.id, encounter.id)]: ["memories"] };
 privateScene.submissions[0].liveProposals.memoryChanges = [
-  { ...encounter.memoryChanges[0], kind: "durable", text: "LATE UPDATE MUST NOT APPLY" },
+  { ...encounter.memoryChanges[0], kind: "information", text: "LATE UPDATE MUST NOT APPLY" },
 ];
 await memory.processLiveMemories(privateScene, encounter.id);
 assert(
-  !state.chronicle.some((row) => row.text === "LATE UPDATE MUST NOT APPLY"),
+  !state.memories.records.some((row) => row.text === "LATE UPDATE MUST NOT APPLY"),
   "A saved continuation fences late domain writers",
 );
 assert.equal(calls, 1, "Offscreen saved application and recovery cannot dispatch providers");

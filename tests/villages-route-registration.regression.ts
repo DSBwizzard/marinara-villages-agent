@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
@@ -161,7 +162,7 @@ async function currentSceneAndWritingHttp() {
     },
   };
   const host = {
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: {},
     languageModels: {
       async resolveForRequest() {

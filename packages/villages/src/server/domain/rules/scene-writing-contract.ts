@@ -28,7 +28,14 @@ export function normalizeSceneEffectReferences(raw: Record<string, unknown>, ear
         if (Array.isArray(row[key])) row[key] = row[key].map(reference);
       }
   };
-  rows(result.memoryChanges, "evidence");
+  if (Array.isArray(result.memoryChanges))
+    for (const value of result.memoryChanges)
+      for (const learner of Object.values(asRecord(asRecord(value).learners)))
+        if (Array.isArray(asRecord(learner).support))
+          for (const citation of asRecord(learner).support as unknown[]) {
+            const row = asRecord(citation);
+            row.lineId = reference(row.lineId);
+          }
   rows(result.wishChanges, "evidence");
   const relationships = asRecord(result.relationshipChanges);
   for (const key of ["changes", "permissions", "disclosures"]) rows(relationships[key], "lineIds");
@@ -305,15 +312,8 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
           return true;
         });
       };
-      if (
-        domain === "memories" &&
-        malformed(
-          normalized.memoryChanges,
-          ["kind", "text", "category"],
-          ["subjectCharacterIds", "knownByCharacterIds", "evidence"],
-        )
-      )
-        throw new Error("Malformed memory proposal: " + malformedDetail);
+      if (domain === "memories" && (!Array.isArray(normalized.memoryChanges) || normalized.memoryChanges.length > 16))
+        throw new Error("Malformed memory proposal array");
       if (domain === "wishes" && malformed(normalized.wishChanges, ["actorId", "wishId", "intent"], ["evidence"]))
         throw new Error("Malformed Wish proposal: " + malformedDetail);
       if (domain === "relationships") {

@@ -1,5 +1,6 @@
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageState } from "../models/world.js";
-import { storyAllowance } from "./world-story.js";
+import { localDateKey, planningAllowance } from "./resident-planning.js";
 
 export type EventAttemptLedger = {
   highWaterDate: string;
@@ -10,8 +11,13 @@ export const emptyEventAttempts = (): EventAttemptLedger => ({ highWaterDate: ""
 export function eventAttemptAvailable(state: VillageState, date: string, now: number): boolean {
   const ledger = state.eventAttempts ?? emptyEventAttempts();
   return (
+    date ===
+      localDateKey(
+        new ZonedDate(new Date(now).toISOString(), state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+      ) &&
     date >= ledger.highWaterDate &&
-    storyAllowance(state.storyPace, state.seed, date) > ledger.attempts.filter((row) => row.date === date).length &&
+    planningAllowance(state.backgroundPace, state.seed, date) >
+      ledger.attempts.filter((row) => row.date === date).length &&
     (!ledger.lastAttemptAt || now - Date.parse(ledger.lastAttemptAt) >= 15 * 60_000)
   );
 }
@@ -19,7 +25,7 @@ export function eventAttemptAvailable(state: VillageState, date: string, now: nu
 export function reserveEventAttempt(state: VillageState, id: string, date: string, now: number): void {
   const ledger = (state.eventAttempts ??= emptyEventAttempts());
   if (ledger.attempts.some((row) => row.id === id)) return;
-  if (!eventAttemptAvailable(state, date, now)) throw new Error("Automatic Events budget is unavailable.");
+  if (!eventAttemptAvailable(state, date, now)) throw new Error("Automatic resident activity budget is unavailable.");
   ledger.highWaterDate = date;
   ledger.lastAttemptAt = new Date(now).toISOString();
   ledger.attempts.push({ id, date, at: ledger.lastAttemptAt });

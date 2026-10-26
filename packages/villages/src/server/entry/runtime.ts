@@ -1,3 +1,4 @@
+import { createResidentPlanning } from "../features/residents/resident-planning-service.js";
 import { backgroundJobSnapshot, backgroundLegacyFounding, retireLegacyFounding } from "../jobs/background-work.js";
 import { readFoundingResidentContext, adoptFoundingRoutine } from "../features/residents/resident-agendas.js";
 import { queueFoundingWish } from "../features/residents/wishes/wish-lifecycle.js";
@@ -138,10 +139,9 @@ import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive } from "../features/scenes/archive.js";
 import { processSavedProgressSubmission } from "../features/scenes/progress.js";
 import { removeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
-import { relationshipWritingPrompt } from "../domain/rules/relationship-presentation.js";
 import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
 import { configureFoundingSetup } from "../features/founding/founding-setup.js";
-import { readTownMapSubmission } from "../features/media/town-map-review.js";
+import { prepareVillageMap } from "../features/media/town-map-review.js";
 import {
   configureConnectionSettings,
   readVillageConnectionSettings,
@@ -153,9 +153,7 @@ import {
   proposeVillage,
   proposePublicVenueNames,
   draftVillageVenueDescriptions,
-  proposeHappenings,
   interpretSocialSource,
-  proposeReaction,
 } from "../features/founding/village-bootstrap.js";
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
 import { configureTownMapReview } from "../features/media/town-map-review.js";
@@ -314,10 +312,14 @@ import {
 } from "../features/residents/wishes/wish-attempt-clocks.js";
 import {
   configureVillageStateService,
+  withVillageSceneAcceptance,
   mutateVillageState,
-  readVillageSnapshot,
   readVillageState,
   readVillageAuthority,
+  readVillageMemoryState,
+  readVillageMemoryAuthority,
+  mutateVillageMemoryState,
+  readVillageMemorySnapshot,
 } from "../features/world/village-store.js";
 import { configureFoundingSuggestions } from "../features/founding/founding-suggestions.js";
 import { createFoundingSuggestions } from "../features/founding/founding-suggestions-service.js";
@@ -397,8 +399,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseSpinoffs = configureSpinoffs(
     createSpinoffs({
       repository: sceneRepository,
-      readVillageState,
-      mutateVillageState,
+      readVillageState: readVillageMemoryState,
+      mutateVillageState: mutateVillageMemoryState,
       persistence: () => requireHost().persistence,
       models: villagesLanguageModels,
       connectionId: () => villagesConnectionIdFor("narration"),
@@ -446,8 +448,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseUsagePreview = configureUsagePreview(
     createUsagePreview({
-      VILLAGES_PACKAGE_ID,
-      villagesDocuments,
+      readVillageAuthority: () => villageRepository.readAuthority(),
       villagesLanguageModels,
       quoteUsageRate,
       previewBackgroundJobs,
@@ -580,15 +581,16 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     mutateVillageState,
     mutateRelationships,
     processLiveMemories,
-    readVillageSnapshot,
+    readVillageSnapshot: readVillageMemorySnapshot,
     queueBackgroundJob,
     interpretSocialSource,
   });
   const releaseRelationshipSocial = configureRelationshipSocial(relationshipSocial);
   const startingTies = createStartingTies({
+    withVillageSceneAcceptance,
     readVillageLore,
     readVillageState,
-    mutateVillageState,
+    mutateVillageState: mutateVillageMemoryState,
     mutateRelationships,
     queueBackgroundJob,
     settleBackgroundWork,
@@ -597,8 +599,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const personalMail = createSocialMail({
-    readVillageSnapshot,
-    mutateVillageState,
+    processLiveMemories,
+    readVillageSnapshot: readVillageMemorySnapshot,
+    mutateVillageState: mutateVillageMemoryState,
     mutateRelationships,
     readRelationshipState,
     queueBackgroundJob,
@@ -612,7 +615,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseRelationshipViews = configureRelationships(
     createRelationships({
       readVillageLore,
-      readVillageState,
+      readVillageState: readVillageMemoryState,
       mutateRelationships,
       prepareStartingTies: startingTies.prepare,
       clarifyStartingTies: startingTies.clarify,
@@ -621,7 +624,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseLiveMemory = configureLiveMemory(
-    createLiveMemory({ mutateVillageState, readVillageAuthority, readVillageState, mutateRelationships }),
+    createLiveMemory({
+      mutateVillageState: mutateVillageMemoryState,
+      readVillageAuthority: readVillageMemoryAuthority,
+      readVillageState: readVillageMemoryState,
+      mutateRelationships,
+    }),
   );
   const releaseRelationships = configureWorldRelationships({
     readRelationshipState,
@@ -632,7 +640,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     projectSocialActivities,
     reconcileSocialPlans,
   });
-  const villageRepository = createVillageRepository(villagesDocuments);
+  const villageRepository = createVillageRepository(villagesDocuments, (message) => villagesLogger().warn(message));
   const releaseClock = configureVillageClock(createVillageClock(villageRepository));
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(villageRepository, worldRelationships),
@@ -641,7 +649,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createFoundingProgress({ readVillageState, mutateVillageState }),
   );
   const releaseWishArchive = configureWishArchive(
-    createWishArchive({ VILLAGES_PACKAGE_ID, villagesDocuments, readVillageState, mutateVillageState }),
+    createWishArchive({
+      VILLAGES_PACKAGE_ID,
+      villagesDocuments,
+      readVillageState,
+      mutateVillageState,
+    }),
   );
   const releaseWishLifecycle = configureWishLifecycle(
     createWishLifecycle({
@@ -678,7 +691,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       queueBackgroundJob,
       writeInterpretationDiagnostics,
       sceneQueries,
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       readVillageState,
       cachedWishCriteria,
       interpretWishBatch,
@@ -686,7 +699,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseProjectLifecycle = configureProjectLifecycle(
     createProjectLifecycle({
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       villagesDebugAgentsEnabled,
       outsideVenueOperation: operations.outsideVenueOperation,
       preparePrivateSpaces,
@@ -715,8 +728,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       changeSession,
       clearActivePointer,
       hasVenueOperation,
-      readVillageState,
-      mutateVillageState,
+      readVillageState: readVillageMemoryState,
+      mutateVillageState: mutateVillageMemoryState,
     }),
   );
   const semantic = createSemanticService({
@@ -725,7 +738,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     readVillageLore,
     venueSavedCheckpoint,
     rejectVenueCompletion,
-    readVillageState,
+    readVillageState: readVillageMemoryState,
     villagesLanguageModels,
     villagesConnectionIdFor,
     completeWithRoom,
@@ -751,12 +764,14 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       completeWithRoom,
       wishFingerprint,
       villagesConnectionIdFor,
-      readVillageState,
+      readVillageState: readVillageMemoryState,
       interpretRoomReply,
     }),
   );
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      applySavedStartingTies: startingTies.applySaved,
+      withVillageSceneAcceptance,
       semantic,
       interpretRoomDraft,
       generate,
@@ -812,19 +827,19 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       WISH_PROPOSAL_INSTRUCTION,
       villagesConnectionIdFor,
       recordVillagerVenueImprovement,
-      mutateVillageState,
-      readVillageSnapshot,
-      readVillageState,
+      mutateVillageState: mutateVillageMemoryState,
+      readVillageSnapshot: readVillageMemorySnapshot,
+      readVillageState: readVillageMemoryState,
       queueVillageVenueRequest,
       applyResidenceEditApproval,
     }),
   );
   const releaseSceneProgress = configureSceneProgress(
     createSceneProgress({
-      readVillageState,
+      readVillageState: readVillageMemoryState,
       readSession,
       processProjectSpeechTurn,
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       changeSession,
       measurePipeline,
       createLiveEvidenceContext,
@@ -845,9 +860,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateRelationships,
       changeSession,
       readSession,
-      readVillageSnapshot,
-      readVillageState,
-      mutateVillageState,
+      readVillageSnapshot: readVillageMemorySnapshot,
+      readVillageState: readVillageMemoryState,
+      mutateVillageState: mutateVillageMemoryState,
       villagesDocuments,
       processSavedExchange,
       venueRequestMetrics: operations.venueRequestMetrics,
@@ -859,7 +874,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readActive,
       readSession,
       readVillageState,
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       processSavedProgressSubmission,
       removeInterpretationDiagnostics,
     }),
@@ -872,8 +887,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseProjectChecks = configureProjectChecks(
     createProjectChecks({
-      readVillageState,
-      mutateVillageState,
+      readVillageState: readVillageMemoryState,
+      mutateVillageState: mutateVillageMemoryState,
       sceneQueries,
       pipelineSignal,
       contextualChecks,
@@ -886,7 +901,11 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseProjectEvidence = configureProjectEvidence(
-    createProjectEvidence({ readVillageState, mutateVillageState, sceneQueries }),
+    createProjectEvidence({
+      readVillageState: readVillageMemoryState,
+      mutateVillageState: mutateVillageMemoryState,
+      sceneQueries,
+    }),
   );
   const releaseVillageSnapshot = configureVillageSnapshot(
     createVillageSnapshot({
@@ -965,14 +984,20 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseVenueRequests = configureVenueRequests(
     createVenueRequests({
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       buildVillageSnapshot,
       draftNewVenueProject,
       queueVenueCounteroffer,
     }),
   );
   const releaseTownMapReview = configureTownMapReview(
-    createTownMapReview({ readVillageState, mutateVillageState, buildVillageSnapshot, inspectVillageImage }),
+    createTownMapReview({
+      readVillageState,
+      mutateVillageState,
+      buildVillageSnapshot,
+      inspectVillageImage,
+      uploadVillageGalleryImage,
+    }),
   );
   const spriteManagerService = createSpriteManager({
     readVillageState,
@@ -1016,9 +1041,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createFoundingSetup({
       preparedSpriteManager,
       readVillageState,
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       buildVillageSnapshot,
-      readTownMapSubmission,
+      prepareVillageMap,
       readVillageConnectionSettings,
       validateVillageSetupConnections,
       readLinkedPersona,
@@ -1088,7 +1113,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const development = createDevelopment({
     readVillageState,
-    mutateVillageState,
+    mutateVillageState: mutateVillageMemoryState,
     backgroundJobSnapshot,
     retryBackgroundJob,
     queueBackgroundJob,
@@ -1097,29 +1122,39 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const releaseDevelopment = configureDevelopment(development);
+  const residentPlanning = createResidentPlanning({
+    applySavedStartingTies: startingTies.applySaved,
+    automaticMail: personalMail.automaticOutbox,
+    readVillageState,
+    readEffectiveVillagerCard,
+    queueBackgroundJob,
+    backgroundJobSnapshot,
+    villagesLanguageModels,
+    villagesConnectionIdFor,
+    completeWithRoom,
+  });
   const worldCoordination = createWorldCoordination({
+    // Memory pages/evidence depend only on saved knowledge; reading them must not
+    // observe/write the clock or decode the same large authority record twice.
+    readVillageAuthority: () => villageRepository.readAuthority({ memories: true }),
+    // Manual history edits preserve current mechanics and do not reconcile the world.
+    mutateMemoryAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
+    reconcileResidentPlanning: residentPlanning.reconcile,
     reconcileDevelopment,
     processProjectWishOutbox,
-    automaticMail: personalMail.automaticOutbox,
     readScene: readSession,
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot,
     villagesLogger,
-    listVillagerCards,
-    readEffectiveVillagerCard,
     outsideVenueOperation: operations.outsideVenueOperation,
     completeVillageResidence,
     retryResidencePrivateSpaceAdaptation,
     backfillAgendas,
     refreshVillagerRemaps,
-    queueBackgroundJob,
     preparePrivateSpaces,
-    proposeHappenings,
-    proposeReaction,
     reconcileProjectLifecycles,
     rollActiveAgendas,
-    relationshipWritingPrompt,
     expireResidentWishes,
     reconcileWishLifecycle,
     respondDueVenueMail,
@@ -1130,7 +1165,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesDocuments,
       villagesLogger,
       readVillageState,
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       withUsagePurpose,
       measurePipeline,
       runtimeDebug,
@@ -1145,7 +1180,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["social-recovery", relationshipSocial.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
-        ["story", bindActivationService(worldCoordination.storyBackgroundHandler)],
+        ["resident-planning", bindActivationService(residentPlanning.handler)],
         ["development", bindActivationService(development.handler)],
       ],
     }),
@@ -1173,7 +1208,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       adoptFoundingRoutine,
       queueFoundingWish,
       readVillageState,
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       buildVillageSnapshot,
       villagesLogger,
       seedFoundingVenueDetails,

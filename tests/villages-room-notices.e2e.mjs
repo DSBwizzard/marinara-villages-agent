@@ -36,20 +36,19 @@ const snapshot = {
   projects: [],
   venueRequests: [],
   residences: [],
-  happenings: [],
   villagers: [],
-  recap: null,
   settings: {
     venues: [],
     visitRetention: { mode: "forever", value: 0 },
-    townMapImageSetAt: "",
+    maps: [],
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
-    storyPaces: [],
+    backgroundPaces: [],
     macros: [],
   },
 };
 
 const session = {
+  version: 2,
   id: "live",
   memoryMode: "live",
   sceneRevision: 1,
@@ -132,6 +131,9 @@ const api = async (route) => {
 };
 const html =
   "<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>";
+async function refresh(tab = page) {
+  await tab.evaluate(() => window.dispatchEvent(new Event("focus")));
+}
 async function mount(tab) {
   await tab.route("**/api/villages**", api);
   await tab.route("http://villages.test/", (route) =>
@@ -143,8 +145,8 @@ async function mount(tab) {
 try {
   await mount(page);
   const composer = page.getByRole("textbox", { name: "Message at The Park" });
-  const tray = page.getByRole("button", { name: /village notice/ });
-  const stack = page.locator("[aria-label='Village events']");
+  const tray = page.getByRole("button", { name: /World changes?/ });
+  const stack = page.locator("[aria-label='World changes']");
   await composer.waitFor();
   await composer.focus();
   await expect(page.getByRole("button", { name: /^\d+ Scene errors?$/ })).toHaveCount(0);
@@ -156,6 +158,7 @@ try {
     wishUpdate: { wishId: "garden", state: "revealed" },
   };
   notices.push(shared);
+  await refresh();
   await expect(tray).toHaveAttribute("aria-expanded", "true");
   await expect(stack).toContainText(shared.text);
   await expect(composer).toBeFocused();
@@ -177,12 +180,15 @@ try {
     wishUpdate: { wishId: "garden", state: "progress" },
   });
   pending = false;
+  await refresh();
   await expect(stack).toContainText("Wish progressed · Bob");
   notices.push({ id: "heart", kind: "relationship-up", text: "Bob's warmth toward you increased." });
   notices.push({ id: "memory", kind: "memory", text: "A memory was forged.", detail: "Saturday planting." });
+  await refresh();
   await expect(stack).toContainText("♥");
   await expect(stack).toContainText("★");
   notices.push(shared);
+  await refresh();
   await expect(page.locator(".marinara-capability-villages-room-star")).toHaveCount(4);
   await page.getByRole("button", { name: "Dismiss " + shared.text }).click();
   await expect.poll(() => dismissed.has(shared.id)).toBe(true);
@@ -198,12 +204,15 @@ try {
     wishUpdate: { wishId: "garden", state: "fulfilled" },
   };
   notices.push(fulfilled);
+  await refresh();
   await expect(stack).toContainText(fulfilled.text);
   const second = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await mount(second);
-  await expect(second.locator("[aria-label='Village events']")).toContainText(fulfilled.text);
+  await expect(second.locator("[aria-label='World changes']")).toContainText(fulfilled.text);
   await page.getByRole("button", { name: "Dismiss " + fulfilled.text }).click();
-  await expect(second.locator("[aria-label='Village events']")).not.toContainText(fulfilled.text);
+  await expect.poll(() => dismissed.has(fulfilled.id)).toBe(true);
+  await refresh(second);
+  await expect(second.locator("[aria-label='World changes']")).not.toContainText(fulfilled.text);
   await second.close();
   assert.equal(interpretations, 0, "Wish display, polling, refresh and dismissal add no interpretation requests");
   assert.equal(closingReviews, 0);
@@ -212,11 +221,14 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: "artifacts/live-wish-chips-desktop.png" });
   failed = true;
+  await refresh();
   const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
   await chip.click();
   const status = page.getByRole("region", { name: "Scene errors" });
-  await status.locator("summary").filter({ hasText: "memories update failed" }).click();
-  await expect(status).toContainText("The game could not confirm this update from what the residents saw or heard.");
+  await status.locator("summary").filter({ hasText: "World change failed · memories" }).click();
+  await expect(status).toContainText(
+    "The game could not confirm this world change from what the residents saw or heard.",
+  );
   await expect(status.getByRole("button", { name: "Retry memories" })).toBeVisible();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
@@ -229,9 +241,10 @@ try {
   await expect.poll(() => interpretations).toBe(1);
   failedDomain = "projects";
   failed = true;
+  await refresh();
   await expect(chip).toBeVisible();
   if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
-  await status.locator("summary").filter({ hasText: "projects update failed" }).click();
+  await status.locator("summary").filter({ hasText: "World change failed · projects" }).click();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/project-recovery-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });

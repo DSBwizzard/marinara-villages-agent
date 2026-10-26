@@ -10,10 +10,10 @@ import {createRoot} from 'react-dom/client';
 import {useTurnRecovery} from './packages/villages/src/client/features/scenes/turn-recovery.js';
 function Harness(){
  const [room,setRoom]=useState(window.initial),[draft,setDraft]=useState('sent'),[error,setError]=useState(''),[ended,setEnded]=useState(false);
- const submission=useRef('submission'),editVersion=useRef(0);
- const recovery=useTurnRecovery({room,setRoom,setRoomEnded:setEnded,setRoomError:setError,setRoomDraft:setDraft,submission,editVersion});
+ const submission=useRef('submission'),editVersion=useRef(0),[visible,setVisible]=useState(true);
+ const recovery=useTurnRecovery({visible,room,setRoom,setRoomEnded:setEnded,setRoomError:setError,setRoomDraft:setDraft,submission,editVersion});
  window.h={begin:()=>recovery.begin('submission','sent',0),check:recovery.check,select:()=>setRoom({...room,id:'B'}),
- edit:(value)=>{editVersion.current++;setDraft(value)}};
+ visible:setVisible,edit:(value)=>{editVersion.current++;setDraft(value)}};
  return <pre id='state'>{JSON.stringify({room,draft,error,ended,status:recovery.status,pending:recovery.pending,submission:submission.current})}</pre>;
 }createRoot(document.getElementById('root')).render(<Harness/>);
 `,
@@ -40,6 +40,7 @@ try {
       "same-draft",
       "selection",
       "unknown",
+      "hidden-return",
     ]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       await mockEngineLookups(page);
@@ -68,7 +69,7 @@ try {
       await page.evaluate((value) => (window.initial = value), initial);
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       await expect(page.locator("#state")).toContainText('"pending":false');
-      if (mode === "unknown") await page.clock.install();
+      if (mode === "unknown" || mode === "hidden-return") await page.clock.install();
       await page.evaluate(() => window.h.begin());
       await expect(page.locator("#state")).toContainText("Reconnecting");
       if (mode === "draft") await page.evaluate(() => window.h.edit("new draft"));
@@ -77,6 +78,10 @@ try {
       if (mode === "unknown") {
         await page.clock.fastForward(65000);
         await expect(page.locator("#state")).toContainText("outcome unknown");
+      }
+      if (mode === "hidden-return") {
+        await page.evaluate(() => window.h.visible(false));
+        await page.clock.fastForward(65_000);
       }
       unavailable = false;
       scene = { ...initial, sceneRevision: 2 };
@@ -105,7 +110,8 @@ try {
         scene.attentionClarification = undefined;
         scene.submissions = [{ id: "submission" }];
       }
-      await page.evaluate(() => window.h.check());
+      if (mode === "hidden-return") await page.evaluate(() => window.h.visible(true));
+      else await page.evaluate(() => window.h.check());
       if (mode === "selection") {
         await expect(page.locator("#state")).toContainText('"id":"B"');
       } else {

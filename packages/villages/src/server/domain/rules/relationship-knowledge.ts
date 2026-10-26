@@ -1,84 +1,42 @@
+import { projectMemories } from "./memory-views.js";
+import { knownWishes } from "./wish-journal.js";
 import { knownDevelopment } from "./development-knowledge.js";
 import type { RelationshipState } from "../models/relationship-types.js";
 import type { VillageState } from "../models/world.js";
 import type { RelationshipProfile } from "../../../shared/contracts/relationships.js";
 export type { RelationshipProfile } from "../../../shared/contracts/relationships.js";
 
-/** Only saved, witnessed disclosures can change the notebook. No hidden thresholds or schedule copying. */
-export function captureRelationshipKnowledge(
-  state: RelationshipState,
-  _village: VillageState,
-  _now = new Date(),
-): void {
-  for (const entry of Object.values(state.disclosures)) {
-    if (entry.publicationId && !_village.socialPublications?.[entry.publicationId]) continue;
-    const known = (state.knowledge[entry.fromId] ??= {
-      fromId: entry.fromId,
-      at: "",
-      summary: "",
-      routine: [],
-      interests: "",
-    });
-    if (entry.kind === "routine" && !known.routine.includes(entry.text)) known.routine.push(entry.text);
-    if (entry.kind === "preference" && !known.interests.includes(entry.text))
-      known.interests = [known.interests, entry.text].filter(Boolean).join("; ");
-    const latestConnection = Object.values(state.disclosures)
-      .filter(
-        (row) =>
-          row.fromId === entry.fromId &&
-          row.toId === "player" &&
-          row.kind === "connection" &&
-          (!row.publicationId || _village.socialPublications?.[row.publicationId]),
-      )
-      .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
-    known.summary = latestConnection?.text ?? "";
-    if (!known.at || Date.parse(entry.at) > Date.parse(known.at)) known.at = entry.at;
-  }
-}
+/** Learned values are saved disclosures, never a projection of private social authority. */
 export function projectRelationshipProfiles(state: RelationshipState, village: VillageState): RelationshipProfile[] {
-  state = structuredClone(state);
-  state.knowledge = {};
-  captureRelationshipKnowledge(state, village);
   const name = (id: string) =>
     id === "player"
       ? "You"
-      : (village.villagers.find((person) => person.characterId === id)?.cardSnapshot.name ?? "Former resident");
+      : (village.villagers.find((p) => p.characterId === id)?.cardSnapshot.name ?? "Former resident");
+  const memories = projectMemories(village.memories, ["player"]);
   return village.villagers.map((resident) => {
-    const known = state.knowledge[resident.characterId];
+    const learned = memories
+      .filter((row) => row.domainRef?.kind === "relationship" && row.domainRef.characterId === resident.characterId)
+      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id))
+      .map((row) => ({
+        text: row.text,
+        kind: String(row.knowers.player!.disclosed?.kind ?? "information"),
+        toId: String(row.knowers.player!.disclosed?.toId ?? "player"),
+        at: row.occurredAt,
+      }));
     return {
       characterId: resident.characterId,
       name: resident.cardSnapshot.name,
-      summary: known?.summary ?? "",
-      knownAt: known?.at ?? "",
-      routine: known?.routine ?? [],
-      interests: known?.interests ?? "",
-      wishes: (village.wishKnowledge[resident.characterId] ?? []).map((entry) => entry.text),
+      summary: learned.filter((row) => row.kind === "connection" && row.toId === "player").at(-1)?.text ?? "",
+      knownAt: learned.at(-1)?.at ?? "",
+      routine: learned.filter((row) => row.kind === "routine").map((row) => row.text),
+      interests: learned
+        .filter((row) => row.kind === "preference")
+        .map((row) => row.text)
+        .join("; "),
+      wishes: knownWishes(village, resident.characterId).map((row) => row.text),
+      knownWishes: knownWishes(village, resident.characterId),
       knownDevelopment: knownDevelopment(village, resident.characterId),
-      knownWishes: (village.wishKnowledge[resident.characterId] ?? []).map((entry) => {
-        const active = resident.agenda?.wishes.some((wish) => wish.id === entry.wishId);
-        const fulfilled = resident.wishLifecycle?.needs.some(
-          (need) => need.aliases.includes(entry.text) && need.state === "fulfilled",
-        );
-        const { evidence: _evidence, ...publicEntry } = entry;
-        return {
-          ...publicEntry,
-          status:
-            entry.status && entry.status !== "active"
-              ? entry.status
-              : active
-                ? "active"
-                : fulfilled
-                  ? "fulfilled"
-                  : "expired",
-        };
-      }),
-      learned: Object.values(state.disclosures)
-        .filter(
-          (entry) =>
-            entry.fromId === resident.characterId &&
-            (!entry.publicationId || village.socialPublications?.[entry.publicationId]),
-        )
-        .map(({ text, kind, at, toId }) => ({ text, kind, at, aboutName: name(toId) })),
+      learned: learned.map(({ toId, ...row }) => ({ ...row, aboutName: name(toId) })),
       access: Object.values(state.grants)
         .filter(
           (grant) => grant.controllerId === resident.characterId && grant.visitorId === "player" && !grant.revoked,
@@ -88,8 +46,8 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
           zoneId: grant.zoneId,
           active: grant.active,
           name:
-            village.venues.find((place) => place.id === grant.venueId)?.zones?.find((zone) => zone.id === grant.zoneId)
-              ?.name ?? "Zone",
+            village.venues.find((v) => v.id === grant.venueId)?.zones?.find((z) => z.id === grant.zoneId)?.name ??
+            "Zone",
         })),
     };
   });

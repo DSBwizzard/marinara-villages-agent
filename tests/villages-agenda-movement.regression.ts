@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { flexibleAgendaInterval } from "../packages/villages/src/server/domain/rules/agenda-week.js";
@@ -203,8 +204,8 @@ const overnight = scheduleInformedWeek(
 assert.equal(overnight.Monday?.at(-1)?.activity, "Keeping watch");
 assert.equal(overnight.Tuesday?.[0]?.endMinute, 360, "an overnight source continues into the next day");
 const recovered = coerceVillageState({
-  version: 3,
-  socialContractVersion: 2,
+  ...defaultVillageState(),
+  version: 5,
   wishSystemVersion: 3,
   villagers: [
     {
@@ -290,6 +291,7 @@ agenda.activeDay = {
 };
 const captured = captureSceneAttendance(village, "square", beforeSeven);
 const scene = coerceSession({
+  version: 2,
   id: "clock-scene",
   placeId: "square",
   status: "active",

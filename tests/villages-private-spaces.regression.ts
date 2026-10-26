@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
 import {
@@ -187,7 +188,7 @@ const restore = configureVillagesRuntime({
     },
   },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_p: string, id: string) {
         if (id.startsWith("villages-relationships-") && !records.has(id)) {
           const world = records.get("villages-village").data;
@@ -215,7 +216,7 @@ const restore = configureVillagesRuntime({
       async remove(_p: string, id: string) {
         return records.delete(id);
       },
-    },
+    }),
   },
   languageModels: {
     async resolveForRequest() {
@@ -251,7 +252,7 @@ const restore = configureVillagesRuntime({
 async function main() {
   try {
     await mutateVillageState((current) => Object.assign(current, migrated));
-    const before = await readVillageState();
+    const before = await readVillageState({ memories: true });
     const key = sceneryImageKey(before, before.venues[1]!);
     await mutateVillageState((current) => {
       current.sceneryArtStyle = "Pixel art";
@@ -260,11 +261,11 @@ async function main() {
       () => setVillageVenueImage("own", null, undefined, "", false, undefined, key),
       /scenery changed/,
     );
-    assert.equal((await readVillageState()).venues[1]!.privateSpaces![0]!.image!.id, "art");
+    assert.equal((await readVillageState({ memories: true })).venues[1]!.privateSpaces![0]!.image!.id, "art");
     await Promise.all([preparePrivateSpaces(), preparePrivateSpaces()]);
     assert.equal(calls, 5, "concurrent preparation coalesces; one request per private space");
     assert.ok(inputs.every((input) => input.rooms.length === 1));
-    let saved = await readVillageState();
+    let saved = await readVillageState({ memories: true });
     assert.ok(saved.venues.every((v) => v.zones!.every((z) => !z.preparation || z.preparation.status === "ready")));
     assert.equal(resolveVenueZone(saved.venues[2]!, "staff")!.name, "Bank vault");
     assert.equal(
@@ -289,7 +290,7 @@ async function main() {
       ];
     });
     assert.equal(
-      (await readVillageState()).venues[4]!.playerInvitations!.length,
+      (await readVillageState({ memories: true })).venues[4]!.playerInvitations!.length,
       1,
       "community controllers can issue saved room invitations",
     );
@@ -316,14 +317,20 @@ async function main() {
       ];
     });
     assert.equal(
-      (await readVillageState()).venues[2]!.editProposals!.length,
+      (await readVillageState({ memories: true })).venues[2]!.editProposals!.length,
       1,
       "worker proposals survive persistence",
     );
     await applyResidenceEditApproval("bank", "proposal", "a", true);
-    assert.notEqual(resolveVenueZone((await readVillageState()).venues[2]!, "staff")!.description, "Approved edit");
+    assert.notEqual(
+      resolveVenueZone((await readVillageState({ memories: true })).venues[2]!, "staff")!.description,
+      "Approved edit",
+    );
     await applyResidenceEditApproval("bank", "proposal", "b", true);
-    assert.equal(resolveVenueZone((await readVillageState()).venues[2]!, "staff")!.description, "Approved edit");
+    assert.equal(
+      resolveVenueZone((await readVillageState({ memories: true })).venues[2]!, "staff")!.description,
+      "Approved edit",
+    );
     await mutateVillageState((current) => {
       const bank = current.venues[2]!;
       const room = resolveVenueZone(bank, "staff")!;
@@ -344,16 +351,17 @@ async function main() {
       ];
       bank.workerIds = ["b"];
     });
-    assert.deepEqual((await readVillageState()).venues[2]!.playerInvitations, []);
+    assert.deepEqual((await readVillageState({ memories: true })).venues[2]!.playerInvitations, []);
     await applyResidenceEditApproval("bank", "revoked", "a", true);
-    assert.equal((await readVillageState()).venues[2]!.editProposals![0]!.declined, true);
+    assert.equal((await readVillageState({ memories: true })).venues[2]!.editProposals![0]!.declined, true);
     fail = true;
     await mutateVillageState((current) => {
       resolveVenueZone(current.venues[4]!, "restricted:greenhouse")!.preparation = { status: "pending" };
     });
     await assert.rejects(() => preparePrivateSpaces(), /Offline/);
     assert.equal(
-      resolveVenueZone((await readVillageState()).venues[4]!, "restricted:greenhouse")!.preparation!.status,
+      resolveVenueZone((await readVillageState({ memories: true })).venues[4]!, "restricted:greenhouse")!.preparation!
+        .status,
       "failed",
     );
     const oldCalls = calls;
@@ -362,7 +370,8 @@ async function main() {
     fail = false;
     await retryPrivateSpaces();
     assert.equal(
-      resolveVenueZone((await readVillageState()).venues[4]!, "restricted:greenhouse")!.preparation!.status,
+      resolveVenueZone((await readVillageState({ memories: true })).venues[4]!, "restricted:greenhouse")!.preparation!
+        .status,
       "ready",
     );
     const originalFetch = globalThis.fetch;
@@ -393,7 +402,7 @@ async function main() {
         generateFirstPrivateSpaceImage("bank", "staff"),
         generateFirstPrivateSpaceImage("bank", "staff"),
       ]);
-      saved = await readVillageState();
+      saved = await readVillageState({ memories: true });
       assert.ok(resolveVenueZone(saved.venues[2]!, "staff")!.initialImageAttemptedAt);
       for (let retry = 0; draws === 0 && retry < 100; retry++) await new Promise((resolve) => setTimeout(resolve, 10));
       assert.ok(draws > 0, "first invited entry reaches the image service");
@@ -410,7 +419,7 @@ async function main() {
       );
       await assert.rejects(() => assertVenueImageAccess("bank", undefined, "", "staff"), /current invitation/);
       assert.equal(
-        resolveVenueZone((await readVillageState()).venues[2], "staff").seen,
+        resolveVenueZone((await readVillageState({ memories: true })).venues[2], "staff").seen,
         true,
         "previous discovery remains known",
       );

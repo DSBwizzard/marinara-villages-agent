@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -128,7 +129,6 @@ async function main() {
     claim: "Check witnessed agreement",
     receipts: [],
     transcript: [],
-    happenings: [],
     memory: [],
     worldState: [],
     wishes: [
@@ -185,7 +185,7 @@ async function main() {
   const release = configureVillagesRuntime({
     logger: { info() {}, debug() {}, debugOverride() {}, warn() {}, error() {} },
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_p: string, id: string) {
           return structuredClone(records.get(id) ?? null);
         },
@@ -227,7 +227,7 @@ async function main() {
         async remove(_p: string, id: string) {
           return records.delete(id);
         },
-      },
+      }),
     },
     languageModels: {
       async resolveForRequest() {

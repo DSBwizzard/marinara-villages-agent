@@ -1,6 +1,6 @@
 import type { SavedSettingsDraft } from "./draft-session.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
-import type { VillageSettings, VillageSnapshot, VillageStoryPace } from "../../../shared/contracts/village.js";
+import type { VillageSettings, VillageSnapshot, VillageBackgroundPace } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { type SetStateAction, useCallback } from "react";
 
@@ -169,7 +169,7 @@ export function useSaveSpriteCardFlip(ports: {
   );
 }
 
-export function useSaveStoryPace(ports: {
+export function useSaveBackgroundPace(ports: {
   snapshot: VillageSnapshot | null;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
@@ -180,7 +180,7 @@ export function useSaveStoryPace(ports: {
   const { setBusy, setSettingsError, setSnapshot } = ports;
   const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
-    async (storyPace: VillageStoryPace) => {
+    async (backgroundPace: VillageBackgroundPace) => {
       const claim = lifetime.begin();
       if (!claim) return;
       setBusy(true);
@@ -188,7 +188,7 @@ export function useSaveStoryPace(ports: {
       try {
         const saved = await request<VillageSnapshot>("/settings", {
           method: "PATCH",
-          body: JSON.stringify({ storyPace }),
+          body: JSON.stringify({ backgroundPace }),
         });
         if (lifetime.owns(claim)) setSnapshot(saved);
       } catch (cause) {

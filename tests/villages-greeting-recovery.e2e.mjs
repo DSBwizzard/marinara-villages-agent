@@ -25,7 +25,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
   const archived = new Map();
   function opening(id) {
     return {
-      version: 1,
+      version: 2,
       sceneRevision: 0,
       id,
       placeId: "mill",

@@ -33,7 +33,7 @@ try {
       fixture.settings.venues[0].occupancy.playerHome = home;
       fixture.settings.venues[0].classes = home ? ["residence"] : ["workplace"];
       const session = {
-        version: 1,
+        version: 2,
         stagingVersion: 1,
         id: "scene-controls",
         placeId: "mill",

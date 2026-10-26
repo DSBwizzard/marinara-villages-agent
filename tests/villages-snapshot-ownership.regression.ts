@@ -1,3 +1,5 @@
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import assert from "node:assert/strict";
 import {
   createVillageSnapshot,
@@ -31,8 +33,7 @@ function deferred() {
 }
 function fixture(label: string, missingColors = false) {
   const world = coerceVillageState({
-    version: 3,
-    socialContractVersion: 2,
+    version: 5,
     ...defaultVillageState(),
     seed: "same-seed",
     name: label,
@@ -87,6 +88,7 @@ function fixture(label: string, missingColors = false) {
     assert.equal(scopedActivation(), owner);
     if (stage === failure) throw exact;
   }
+  let activeScene: VenueScene | null = null;
   const ports: VillageSnapshotPorts = {
     readVillageState: async () => {
       await touch("world");
@@ -115,7 +117,7 @@ function fixture(label: string, missingColors = false) {
       return {
         activeVenueSession: async () => {
           await touch("scene");
-          return null;
+          return activeScene;
         },
       };
     },
@@ -128,6 +130,9 @@ function fixture(label: string, missingColors = false) {
   const service = createVillageSnapshot(ports);
   return {
     world,
+    setScene: (scene: VenueScene) => {
+      activeScene = scene;
+    },
     card,
     calls,
     owners,
@@ -149,6 +154,39 @@ function fixture(label: string, missingColors = false) {
 
 async function main() {
   await assert.rejects(buildVillageSnapshot(now), /not configured/);
+  const marker = fixture("marker");
+  const scene = coerceSession({
+    version: 2,
+    id: "active",
+    villageSeed: marker.world.seed,
+    status: "active",
+    startedAt: stamp,
+    placeId: "square",
+    participants: [],
+    activeIds: [],
+    lines: [],
+    submissions: [],
+  });
+  scene.submissions.push({ id: "late", changeSequence: 1, semanticReady: false } as any);
+  marker.setScene(scene);
+  const revision = (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision;
+  assert.equal(
+    (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,
+    revision,
+    "idle snapshots do not restart the feed",
+  );
+  scene.submissions[0]!.semanticReady = true;
+  const ready = (await marker.service.buildVillageSnapshot(now)).sceneChanges!;
+  assert.equal(ready.sceneId, scene.id);
+  assert.notEqual(ready.revision, revision, "late readiness reopens delivery without a processing sequence change");
+  marker.world.exchangeReceipts.foreign = { id: "foreign", sceneId: "elsewhere", noticeSequence: 1 } as any;
+  assert.equal((await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision, ready.revision);
+  marker.world.exchangeReceipts.own = { id: "own", sceneId: scene.id, noticeSequence: 2 } as any;
+  assert.notEqual(
+    (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,
+    ready.revision,
+    "late own-Scene notice is delivered through shared refresh",
+  );
   const plain = fixture("plain");
   assert.deepEqual(plain.calls, [], "construction must not read, mutate, load a catalog or start background work");
   const snapshot = await plain.service.buildVillageSnapshot(now);
@@ -177,9 +215,9 @@ async function main() {
   oldRead.world.visitMemoryBackfilled = false;
   await oldRead.service.buildVillageSnapshot(now);
   assert.deepEqual(
-    oldRead.calls.slice(0, 3),
-    ["world", "world", "roll"],
-    "the existing hydrated reread stays before Agenda work",
+    oldRead.calls.slice(0, 2),
+    ["world", "roll"],
+    "Snapshot reads do not backfill retired memory stores",
   );
   const colors = fixture("colors", true);
   const painted = await colors.service.buildVillageSnapshot(now);

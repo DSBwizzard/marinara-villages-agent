@@ -22,7 +22,7 @@ import { calendarReplay } from "../packages/villages/src/server/domain/rules/clo
 import { ZonedDate, calendarDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import type { VillageRepository } from "../packages/villages/src/server/domain/models/world-repository.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
-// Test cases: village-clock-recovery, founding-timezone
+// Test cases: village-clock-recovery, village-time-advance, founding-timezone
 const DAY = 86_400_000;
 function fixture() {
   let wall = Date.parse("2026-10-15T02:30:00Z"),
@@ -244,6 +244,140 @@ async function main() {
 }
 async function verify() {
   await runCase("village-clock-recovery", main);
+  await runCase("village-time-advance", async () => {
+    const f = fixture();
+    await f.repository.mutateAuthority((state) => {
+      state.seed = "time-test";
+      state.foundedAt = state.setupAt;
+    });
+    const original = await f.clock.observe();
+    const deadline = f.state.projects[0]!.lifecycle!.workOrder!.completesAt;
+    const request = {
+      worldId: original.worldId!,
+      revision: original.revision,
+      actionId: "advance-one",
+      milliseconds: 90 * 60_000,
+    };
+    let notifications = 0;
+    const unsubscribe = f.clock.onAdvance!(() => notifications++);
+    await f.clock.advance!(request);
+    assert.equal(f.clock.now().getTime(), f.wall + request.milliseconds);
+    assert.equal(f.state.clock!.advanceMs, request.milliseconds);
+    assert.equal(f.state.clock!.shiftTotalMs, 0, "Development time never rebases legacy recovery timers.");
+    assert.equal(f.state.projects[0]!.lifecycle!.workOrder!.completesAt, deadline);
+    await f.clock.advance!(request);
+    assert.equal(f.state.clock!.advanceMs, request.milliseconds, "A lost response cannot double the advance.");
+    assert.equal(notifications, 1);
+    await assert.rejects(f.clock.advance!({ ...request, milliseconds: DAY }), /another duration/);
+    await assert.rejects(f.clock.advance!({ ...request, actionId: "stale" }), /already changed/);
+    const current = await f.clock.observe();
+    const results = await Promise.allSettled(
+      ["race-a", "race-b"].map((actionId) =>
+        f.clock.advance!({ ...request, revision: current.revision, actionId, milliseconds: DAY }),
+      ),
+    );
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    assert.equal(f.state.clock!.advanceMs, request.milliseconds + DAY);
+    assert.deepEqual(
+      coerceVillageState({ ...defaultVillageState(), ...JSON.parse(JSON.stringify(f.state)), projects: [] }).clock,
+      f.state.clock,
+    );
+    f.jump(3 * 3_600_000);
+    const restarted = createVillageClock(f.repository, f.sources);
+    await restarted.observe();
+    assert.equal(
+      restarted.now().getTime(),
+      f.wall + request.milliseconds + DAY,
+      "Restart retains the advance and ordinary downtime.",
+    );
+    for (const milliseconds of [
+      0,
+      -1,
+      0.5,
+      NaN,
+      Infinity,
+      Number.MAX_SAFE_INTEGER,
+      Date.parse("9999-12-31T12:00:00Z") - f.wall,
+    ]) {
+      const view = await restarted.observe();
+      await assert.rejects(
+        restarted.advance!({ ...request, revision: view.revision, actionId: "invalid", milliseconds }),
+      );
+    }
+    assert.equal(f.state.clock!.advanceMs, request.milliseconds + DAY);
+    await f.repository.mutateAuthority((state) => {
+      state.seed = "replacement";
+      state.clock = null;
+    });
+    await assert.rejects(restarted.advance!(request), /Village changed/);
+    assert.equal(
+      restarted.now().getTime(),
+      f.wall,
+      "A replacement world cannot inherit another world's cached offset.",
+    );
+    assert.throws(
+      () =>
+        coerceVillageState({
+          ...defaultVillageState(),
+          ...f.state,
+          clock: { ...original, trustedAt: f.state.setupAt, replayUntilDate: "", advanceMs: -1 },
+        }),
+      /saved Village time/,
+    );
+    unsubscribe();
+    const g = fixture();
+    await g.repository.mutateAuthority((state) => {
+      state.seed = "in-flight";
+      state.foundedAt = state.setupAt;
+    });
+    let view = await g.clock.observe();
+    await g.clock.advance!({ worldId: view.worldId!, revision: view.revision, actionId: "first", milliseconds: DAY });
+    let pause = false;
+    let resume!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((done) => {
+      resume = done;
+    });
+    const blocked = new Promise<void>((done) => {
+      entered = done;
+    });
+    const slowClock = createVillageClock(
+      {
+        async readAuthority() {
+          if (pause) {
+            pause = false;
+            entered();
+            await gate;
+          }
+          return g.repository.readAuthority();
+        },
+        async mutateAuthority(update) {
+          await g.repository.mutateAuthority(async (state) => {
+            const revision = state.clock?.revision;
+            const result = await update(state);
+            if (state.clock?.revision !== revision) pause = true;
+            return result;
+          });
+        },
+      },
+      g.sources,
+    );
+    view = await slowClock.observe();
+    const pending = slowClock.advance!({
+      worldId: view.worldId!,
+      revision: view.revision,
+      actionId: "second",
+      milliseconds: 7 * DAY,
+    });
+    await blocked;
+    assert.equal(
+      slowClock.now().getTime(),
+      g.wall + 8 * DAY,
+      "In-flight callbacks retain committed Village time while post-save reads are pending.",
+    );
+    resume();
+    await pending;
+  });
   await runCase("founding-timezone", async () => {
     const summer = new ZonedDate("2026-07-01T12:00:00Z", "America/Los_Angeles");
     const winter = new ZonedDate("2026-12-01T12:00:00Z", "America/Los_Angeles");
@@ -257,7 +391,7 @@ async function verify() {
     const repeat = calendarDate(summer, 2026, 10, 1, 1, 30);
     assert.equal(repeat.toISOString(), "2026-11-01T08:30:00.000Z");
     assert.throws(
-      () => coerceVillageState({ version: 3, ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
+      () => coerceVillageState({ version: 5, ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
       /saved village clock/,
     );
     assert.equal(winter.getTimezoneOffset(), 480);
@@ -265,7 +399,7 @@ async function verify() {
     assert.equal(new ZonedDate("2026-11-01T08:30:00Z", "America/Los_Angeles").getHours(), 1);
     assert.equal(new ZonedDate("2026-11-01T09:30:00Z", "America/Los_Angeles").getHours(), 1);
     assert.equal(
-      coerceVillageState({ version: 3, ...defaultVillageState(), clock: fixture().state.clock }).clock,
+      coerceVillageState({ version: 5, ...defaultVillageState(), clock: fixture().state.clock }).clock,
       null,
     );
 

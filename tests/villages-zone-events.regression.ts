@@ -1,3 +1,4 @@
+import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { sceneEvidencePerception } from "../packages/villages/src/server/domain/rules/scene-evidence-perception.js";
 import assert from "node:assert/strict";
 import { normalizeSparseSceneReply } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
@@ -55,6 +56,7 @@ world.villagers = ["local", "near", "far"].map((id) => ({
 const village = coerceVillageState(world);
 const venue = village.venues[0];
 const base = coerceSession({
+  version: 2,
   id: "events",
   villageSeed: world.seed,
   placeId: "house",
@@ -167,6 +169,7 @@ for (const delivery of ["ordinary", "whisper", "shout"] as const) {
       "visible bubbles anchor to visible moments, never hidden player speech",
     );
     const restored = coerceSession({
+      version: 2,
       ...base,
       lines: reply.lines.map((item, index) => ({ ...item, id: String(index), at, name: "" })),
     });
@@ -287,11 +290,19 @@ assert.match(heardLines(restored, "far")[0].content, /indistinct/);
 const publicView = publicSceneResponse(restored);
 assert.doesNotMatch(JSON.stringify(publicView), /PRIVATE DISTANT WORDS|soundOnly|heardHistory|heardBy|"far"/);
 assert.match(JSON.stringify(publicView), /indistinct/);
-const evidence = liveEvidence(restored, {
-  playerLineId: "none",
-  replyLineIds: restored.lines.map((line) => line.id),
-  earlierLineIds: [],
-} as any);
+const evidence = liveEvidence(
+  restored,
+  bindLiveProposals(
+    {
+      playerLineId: "none",
+      replyLineIds: restored.lines.map((line) => line.id),
+      earlierLineIds: [],
+    } as any,
+    "none",
+    restored.lines.map((line) => line.id),
+    restored.lines,
+  ),
+);
 assert.equal(evidence[2].playerHeard, false, "a distant voice cannot establish player-heard words or permission");
 assert(!evidence[0].heardBy.includes("far"), "a loud player call gives far listeners no word evidence");
 
@@ -354,11 +365,19 @@ const embeddedPublic = JSON.stringify(publicSceneResponse(embeddedRestored));
 assert(embeddedPublic.includes(prose));
 assert(!embeddedPublic.includes(cue), "routing text is not a duplicate public paragraph");
 assert.doesNotMatch(embeddedPublic, /sourceId|soundOnly/);
-const embeddedEvidence = liveEvidence(embeddedRestored, {
-  playerLineId: "none",
-  replyLineIds: ["embedded-0", "embedded-1"],
-  earlierLineIds: [],
-} as any);
+const embeddedEvidence = liveEvidence(
+  embeddedRestored,
+  bindLiveProposals(
+    {
+      playerLineId: "none",
+      replyLineIds: ["embedded-0", "embedded-1"],
+      earlierLineIds: [],
+    } as any,
+    "none",
+    ["embedded-0", "embedded-1"],
+    embeddedRestored.lines,
+  ),
+);
 assert.deepEqual(embeddedEvidence[0].heardBy, ["local"], "remote sound is not evidence of a handoff");
 
 // Ambient narration has no actor position; even a narrator-tagged loud cue stays local.
@@ -382,6 +401,7 @@ for (const loud of [false, true]) {
 }
 const emptyScene = zoneEventScene(
   coerceSession({
+    version: 2,
     ...base,
     activeIds: [],
     participants: [],
@@ -590,11 +610,8 @@ let allowRejection = false;
 let completions = 0;
 let sentPrompt = "";
 let memoryProposals: unknown[] = [];
-let verificationStatus: unknown = "supported";
-let verificationFinish = "stop";
 let checkCalls = 0;
 let proposedRelationships: unknown[] = [];
-let lastVerificationPayload: any;
 const writing = createSceneWriting({
   refreshZoneParticipants: async () => scene,
   readEffectiveVillagerCard: (resident: any) => resident.cardSnapshot,
@@ -627,12 +644,7 @@ const writing = createSceneWriting({
     if (messages[0].content.startsWith("Verify consequential Scene proposals")) {
       checkCalls++;
       assert.equal(options.reasoningEffort, "low");
-      lastVerificationPayload = JSON.parse(messages[1].content);
-      const { proposals } = lastVerificationPayload;
-      return {
-        finishReason: verificationFinish,
-        content: JSON.stringify({ results: proposals.map((row: any) => ({ id: row.id, status: verificationStatus })) }),
-      };
+      assert.fail("An additional memory verification call is forbidden");
     }
     sentPrompt = messages.map((item) => item.content).join("\n");
     return {
@@ -699,59 +711,19 @@ assert.doesNotMatch(withoutWishes, /heardPlayerBy and segments FIRST|Segments:.*
 assert.match(withoutWishes, /Every knower must witness every citation/);
 assert.match(withoutWishes, /Conditional willingness is not unconditional commitment/);
 
-const memoryProposal = {
-  kind: "durable",
-  text: "Local is permanently timid.",
-  category: "personal-fact",
-  subjectCharacterIds: ["local"],
-  knownByCharacterIds: ["local"],
-  evidence: [1],
-  memoryIds: [],
-  systemVerification: "supported",
-};
-for (const [status, finish, expected] of [
-  ["rejected", "stop", "rejected"],
-  [["rejected"], "stop", "unresolved"],
-  ["supported", "length", "unresolved"],
-  ["supported", "stop", "supported"],
-] as const) {
-  memoryProposals = [{ ...memoryProposal }];
-  verificationStatus = status;
-  verificationFinish = finish;
-  const before = checkCalls;
-  const checked = await writing.generate(scene, message, "chat", "", null);
-  assert.equal((checked.memoryChanges as any[])[0].systemVerification, expected);
-  assert.equal(checkCalls, before + 1, "consequential proposals use one batched check");
-}
-memoryProposals = [{ ...memoryProposal, kind: "passing" }];
-const beforePassing = checkCalls;
-const passing = await writing.generate(scene, message, "chat", "", null);
-assert.equal(checkCalls, beforePassing, "passing recollections require no System call");
-assert.equal((passing.memoryChanges as any[])[0].systemVerification, undefined, "Narration cannot forge verification");
-
-memoryProposals = [];
-proposedRelationships = [
+memoryProposals = [
   {
-    fromId: "local",
-    toId: "player",
-    dimension: "trust",
-    strength: "major",
-    direction: "decrease",
-    ordinary: false,
-    reason: "Boundary violation",
-    lineIds: [2],
-    evidence: [1],
+    action: "create",
+    kind: "information",
+    text: "Local said they were nervous.",
+    subjects: ["local"],
+    learners: { local: { basis: "report", attributedTo: "local", support: [{ lineId: 1, excerpt: "nervous" }] } },
+    screening: { disposition: "uncertain", protectedRoots: [], fingerprint: "unavailable" },
   },
 ];
+const beforeReview = checkCalls;
 await writing.generate(scene, message, "chat", "", null);
-assert.equal(
-  lastVerificationPayload.proposals[0].evidence[0].id,
-  2,
-  "relationship verification uses exactly settlement lineIds",
-);
-assert.equal(lastVerificationPayload.proposals[0].evidence[0].content, "I'm right here, what happened?");
-assert.equal(lastVerificationPayload.proposals[0].evidence[0].playerPerception, "full");
-assert(!lastVerificationPayload.proposals[0].evidence[0].heardBy.includes("player"));
+assert.equal(checkCalls, beforeReview, "Narration never starts an additional memory verification call");
 
 // Actual v2 writer: a complete sparse reply gains defaults, while failed or corrupt output never does.
 writingVersion = 2;

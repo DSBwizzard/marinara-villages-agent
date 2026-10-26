@@ -1,4 +1,7 @@
+import { sceneEvidencePerception } from "../../../domain/rules/scene-evidence-perception.js";
+import { fillCommittedWishMemories, pendingWishMemories } from "../../../domain/rules/wish-memories.js";
 import { projectPhysicalDesign } from "../../../../shared/helpers/project-design.js";
+import { villageNow } from "../../../adapters/time/clock-gate.js";
 import type { Handler } from "../../../domain/models/background-model.js";
 import { captureSceneWishEffect } from "../../../domain/rules/scene-continuity.js";
 import type { readEffectiveVillagerCard } from "../../../adapters/engine/catalog.js";
@@ -21,8 +24,7 @@ import { readPlayerIdentity } from "../../../domain/rules/village-projections.js
 import { localWishRequirements, wishEvidenceAdmission } from "../../../domain/rules/wish-admission.js";
 import {
   addWishFacts,
-  discloseWish,
-  knownWish,
+  wishJournal,
   rememberWishEvidence,
   wishCheckKnowledge,
   wishConditionRevision,
@@ -88,7 +90,7 @@ export function createWishProgress(ports: WishProgressPorts) {
     valid: (state, input: WishCheckInput | WishBatchInput) =>
       state.seed === input.seed &&
       !semanticContinued(state, input.sceneId, input.submissionId, "wishes") &&
-      batchItems(input).some((item) => !!currentWish(state, item.proposal, Date.now(), item.sceneId)),
+      batchItems(input).some((item) => !!currentWish(state, item.proposal, villageNow().getTime(), item.sceneId)),
     async generate(input: WishCheckInput | WishBatchInput): Promise<PreparedWishVerdict | PreparedWishBatch> {
       const compact = input.contractVersion === 2 || input.contractVersion === 3;
       const all = batchItems(input);
@@ -99,7 +101,7 @@ export function createWishProgress(ports: WishProgressPorts) {
               .filter(
                 (item) =>
                   !state.exchangeReceipts[effectId(item.sceneId, item.submissionId, item.proposal)] &&
-                  currentWish(state, item.proposal, Date.now(), item.sceneId),
+                  currentWish(state, item.proposal, villageNow().getTime(), item.sceneId),
               )
               .map((item) => effectId(item.sceneId, item.submissionId, item.proposal)),
           )
@@ -163,7 +165,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             ? result.items.find((entry) => entry.id === effectId(item.sceneId, item.submissionId, item.proposal))
                 ?.verdict
             : result;
-        if (verdict) applyPreparedWishVerdict(state, item, verdict);
+        if (verdict) applyPreparedWishVerdict(state, item, verdict, villageNow().getTime());
       }
       if ("items" in result && result.failures?.length) {
         const active = result.failures.filter((failure) =>
@@ -171,7 +173,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             batchItems(input).some(
               (item) =>
                 effectId(item.sceneId, item.submissionId, item.proposal) === id &&
-                currentWish(state, item.proposal, Date.now(), item.sceneId) &&
+                currentWish(state, item.proposal, villageNow().getTime(), item.sceneId) &&
                 !state.exchangeReceipts[id],
             ),
           ),
@@ -186,9 +188,18 @@ export function createWishProgress(ports: WishProgressPorts) {
       }
     },
     async afterApply(input: WishCheckInput | WishBatchInput) {
+      try {
+        if (!input.sceneId.startsWith("project:"))
+          await sceneQueries().processSavedExchange(input.sceneId, input.submissionId);
+      } finally {
+        const current = await readVillageState({ memories: true });
+        if (current.seed === input.seed && pendingWishMemories(current, input.sceneId, input.submissionId).length)
+          await mutateVillageState((state) => {
+            if (state.seed === input.seed)
+              fillCommittedWishMemories(state, input.sceneId, input.submissionId, villageNow().toISOString());
+          });
+      }
       if (input.sceneId.startsWith("project:")) return;
-      const { processSavedExchange } = sceneQueries();
-      await processSavedExchange(input.sceneId, input.submissionId);
       if (batchItems(input).some((item) => item.proposal.semanticCriteria?.semanticVersion === 2))
         await ports.finishSemanticScene?.(input.sceneId);
     },
@@ -268,7 +279,6 @@ export function createWishProgress(ports: WishProgressPorts) {
               evidence: [],
               receipts: [receipt],
               transcript: [],
-              happenings: [],
               memory: [],
               worldState: [],
             };
@@ -307,7 +317,7 @@ export function createWishProgress(ports: WishProgressPorts) {
 
   async function processWishExchange(scene: VenueScene, submissionId: string): Promise<Partial<DomainProcessing>> {
     const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
-    let state = await readVillageState();
+    let state = await readVillageState({ memories: true });
     if (state.seed !== scene.villageSeed) return { status: "rejected", reason: "Village identity changed" };
     if (semanticContinued(state, scene.id, submissionId, "wishes"))
       return { status: "rejected", reason: "Continued without this failed update" };
@@ -376,7 +386,7 @@ export function createWishProgress(ports: WishProgressPorts) {
         receiptIds.push(id);
         continue;
       }
-      const wish = currentWish(state, proposal, Date.now(), scene.id);
+      const wish = currentWish(state, proposal, villageNow().getTime(), scene.id);
       if (!wish) continue;
       const cited = proposal.lineIds.flatMap((id) => (lineIndex.has(id) ? [lineIndex.get(id)!] : []));
       if (
@@ -388,7 +398,7 @@ export function createWishProgress(ports: WishProgressPorts) {
       const resident = state.villagers.find((resident) => resident.characterId === proposal.actorId)!;
       if (turn.semanticProvenance?.version === 2 && proposal.semanticCriteria && !wish.semanticCriteria) {
         await mutateVillageState((live) => {
-          const current = currentWish(live, proposal, Date.now(), scene.id);
+          const current = currentWish(live, proposal, villageNow().getTime(), scene.id);
           if (current && !semanticContinued(live, scene.id, turn.id, "wishes"))
             current.semanticCriteria = proposal.semanticCriteria;
         });
@@ -396,13 +406,14 @@ export function createWishProgress(ports: WishProgressPorts) {
       if (proposal.intent === "reveal") {
         await mutateVillageState((live) => {
           if (semanticContinued(live, scene.id, turn.id, "wishes")) return;
-          const current = currentWish(live, proposal, Date.now(), scene.id);
+          const current = currentWish(live, proposal, villageNow().getTime(), scene.id);
           if (live.seed !== scene.villageSeed || !current || live.exchangeReceipts[id]) return;
           const fresh = !current.learnedAt;
-          discloseWish(live, proposal.actorId, current, turn.at!, proposal.lineIds);
+          current.learnedAt ||= turn.at!;
+          current.learnedLineIds = [...new Set([...(current.learnedLineIds ?? []), ...proposal.lineIds])];
           addWishFacts(live, proposal.actorId, current, proposal.facts ?? [], scene.id, turn.id, turn.at!);
           rememberWishEvidence(
-            knownWish(live, proposal.actorId, current.id)!,
+            wishJournal(live, proposal.actorId, current.id)!,
             cited.map((line) => ({
               id: line.id,
               speakerId: line.speakerId,
@@ -428,6 +439,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             at: turn.at!,
             evidenceIds: proposal.lineIds,
             reason: "Wish disclosed through witnessed speech",
+            wishDisclosure: true,
             ...(fresh
               ? {
                   notice: {
@@ -439,13 +451,13 @@ export function createWishProgress(ports: WishProgressPorts) {
           };
         });
         receiptIds.push(id);
-        state = await readVillageState();
+        state = await readVillageState({ memories: true });
         continue;
       }
       if (proposal.intent === "journal") {
         await mutateVillageState((live) => {
           if (semanticContinued(live, scene.id, turn.id, "wishes")) return;
-          const current = currentWish(live, proposal, Date.now(), scene.id);
+          const current = currentWish(live, proposal, villageNow().getTime(), scene.id);
           if (!current || live.exchangeReceipts[id] || !current.learnedAt) return;
           const added = addWishFacts(
             live,
@@ -456,7 +468,7 @@ export function createWishProgress(ports: WishProgressPorts) {
             turn.id,
             turn.at!,
           );
-          const entry = knownWish(live, proposal.actorId, current.id);
+          const entry = wishJournal(live, proposal.actorId, current.id);
           if (added && entry)
             rememberWishEvidence(
               entry,
@@ -496,10 +508,10 @@ export function createWishProgress(ports: WishProgressPorts) {
           };
         });
         receiptIds.push(id);
-        state = await readVillageState();
+        state = await readVillageState({ memories: true });
         continue;
       }
-      const current = currentWish(state, proposal, Date.now(), scene.id);
+      const current = currentWish(state, proposal, villageNow().getTime(), scene.id);
       if (!current) continue;
       // Recovery uses the already admitted evidence. Only a new admission may read historical archives.
       const legacyStatus = await backgroundStatus("wish-check", id);
@@ -599,6 +611,18 @@ export function createWishProgress(ports: WishProgressPorts) {
         .slice(-16);
 
       const context: WishInterpretationContext = {
+        playerEvidenceIds: [
+          ...scene.lines
+            .filter((line) => sceneEvidencePerception(line).playerPerception === "full")
+            .map((line) => line.id),
+          ...receipts
+            .filter(
+              (receipt) =>
+                receipt.id.startsWith(`venue-chat:${scene.id}:`) &&
+                scene.submissions.some((row) => row.id === receipt.actionReceipt?.submissionId && row.action?.happened),
+            )
+            .map((receipt) => "receipt:" + receipt.id),
+        ],
         knowledge,
         ...(proposal.semanticCriteria ? { semanticCriteria: proposal.semanticCriteria } : {}),
         actorId: proposal.actorId,
@@ -625,7 +649,6 @@ export function createWishProgress(ports: WishProgressPorts) {
         receipts,
         currentReceiptIds: newReceipts.map((receipt) => receipt.id),
         transcript: [],
-        happenings: [],
         memory: [],
         worldState: [],
       };
@@ -646,14 +669,19 @@ export function createWishProgress(ports: WishProgressPorts) {
       );
       if (!admission.admitted) {
         await mutateVillageState((live) =>
-          applyPreparedWishVerdict(live, input, {
-            criteria: admission.criteria,
-            outcome: "none",
-            evidenceIds: [],
-            reason: admission.reason,
-            memory: "",
-            receiptIds: [],
-          }),
+          applyPreparedWishVerdict(
+            live,
+            input,
+            {
+              criteria: admission.criteria,
+              outcome: "none",
+              evidenceIds: [],
+              reason: admission.reason,
+              memory: "",
+              receiptIds: [],
+            },
+            villageNow().getTime(),
+          ),
         );
         receiptIds.push(id);
         continue;
@@ -675,12 +703,17 @@ export function createWishProgress(ports: WishProgressPorts) {
         )
           throw new WorkFailureError(metadataFailure("The saved System Wish verdict lacks valid current evidence."));
         await mutateVillageState((live) =>
-          applyPreparedWishVerdict(live, input, {
-            ...verdict,
-            criteria: asRecord(check.facts).criteria as WishCriteria,
-            memory: "",
-            receiptIds: [],
-          }),
+          applyPreparedWishVerdict(
+            live,
+            input,
+            {
+              ...verdict,
+              criteria: asRecord(check.facts).criteria as WishCriteria,
+              memory: "",
+              receiptIds: [],
+            },
+            villageNow().getTime(),
+          ),
         );
         receiptIds.push(id);
         continue;
@@ -731,7 +764,7 @@ export function createWishProgress(ports: WishProgressPorts) {
       if (!missing) failure.cause = "invalid_citation";
       return { status: "failed", receiptIds, reason, failure };
     }
-    const committed = await readVillageState();
+    const committed = await readVillageState({ memories: true });
     const rejected = receiptIds
       .map((id) => committed.exchangeReceipts[id])
       .filter((receipt) => receipt?.status === "rejected");

@@ -35,6 +35,7 @@ function deferred() {
 }
 function scene(id: string, startedAt = stamp, status: VenueScene["status"] = "closed") {
   return coerceSession({
+    version: 2,
     id,
     placeId: "venue",
     placeName: "Venue",
@@ -205,6 +206,7 @@ function fixture(name: string) {
 function progressScene(id: string) {
   const s = scene(id);
   s.submissions = coerceSession({
+    version: 2,
     submissions: [
       { id: "first", at: stamp },
       { id: "second", at: stamp },
@@ -215,6 +217,7 @@ function progressScene(id: string) {
 function unfinishedScene(id: string) {
   const s = scene(id);
   s.submissions = coerceSession({
+    version: 2,
     submissions: [
       {
         id: "pending",
@@ -277,7 +280,7 @@ async function main() {
   assert.deepEqual(validation.calls, [], "invalid retention never selects connections");
   await validation.service.setVenueVisitRetention({ mode: "forever", value: 22 });
   assert.deepEqual(validation.state.visitRetention, { mode: "forever", value: 0 });
-  assert.deepEqual(validation.calls, ["world:write", "world:read"]);
+  assert.deepEqual(validation.calls, ["world:write", "world:read", "documents", "list", "world:write"]);
   const pending = fixture("pending");
   pending.put(unfinishedScene("unfinished"));
   await assert.rejects(pending.service.deleteVenueVisit("unfinished"), /unfinished saved changes/);
@@ -294,6 +297,7 @@ async function main() {
     "get:" + SESSION_PREFIX + "recover",
     "documents",
     "remove:" + SESSION_PREFIX + "recover:3",
+    "world:write",
   ]);
   assert(!recovered.records.size);
   assert(

@@ -122,6 +122,9 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-content > .${P}-dossier-sheet:has(.villages-wish-journal), .${P}-dossier-content .villages-wish-journal { display:contents; }
 .${P}-dossier-content .villages-wish-journal > style { display:none; }
 .${P}-dossier-root .${P}-memory-toolbar { display:flex; flex-wrap:wrap; padding:0; }
+.${P}-dossier-root .${P}-memory-toolbar select { min-width:0; max-width:100%; }
+.${P}-dossier-root .${P}-memory-card-top { flex-wrap:wrap; }
+.${P}-dossier-root .${P}-memory-evidence :is(small,blockquote) { overflow-wrap:anywhere; min-width:0; }
 .${P}-dossier-root .${P}-memory-stats { flex-wrap:wrap; }
 .${P}-dossier-root .${P}-memory-grid { grid-template-columns:minmax(0,1fr); gap:16px; }
 .${P}-dossier-root .${P}-memory-card { border-bottom:1px solid var(--dossier-line); padding:12px 0; }

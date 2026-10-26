@@ -2,7 +2,7 @@ import { resetVillage } from "../world/village.js";
 import { fail, SETTINGS_BODY_LIMIT, VENUE_IMAGE_BODY_LIMIT } from "../../adapters/http/route-support.js";
 import { requestFoundingSuggestions, readFoundingSuggestions } from "./founding-suggestions.js";
 import { readTownMapGeneration, requestTownMapGeneration } from "../../jobs/town-map-generation.js";
-import { generateVillageTownMap } from "../media/town-map-image.js";
+
 import { resetVenueSessions } from "../scenes/archive.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
@@ -87,13 +87,16 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       return fail(reply, error, "suggesting starting spaces");
     }
   });
-  app.get<{ Params: { actionId: string } }>("/setup/venues/suggestions/:actionId", async (request, reply) => {
-    try {
-      return await readFoundingSuggestions(request.params.actionId);
-    } catch (error) {
-      return fail(reply, error, "retrieving Venue suggestions");
-    }
-  });
+  app.get<{ Params: { actionId: string; targetId: string } }>(
+    "/setup/venues/suggestions/:actionId",
+    async (request, reply) => {
+      try {
+        return await readFoundingSuggestions(request.params.actionId);
+      } catch (error) {
+        return fail(reply, error, "retrieving Venue suggestions");
+      }
+    },
+  );
   app.post<{
     Body: {
       structure?: unknown;
@@ -108,23 +111,26 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       useVisualLore?: unknown;
       scenarioImprint?: unknown;
       actionId?: unknown;
+      targetId?: unknown;
       sourceKey?: unknown;
     };
-  }>("/setup/town-map/generate", async (request, reply) => {
+  }>("/maps/generate", async (request, reply) => {
     try {
-      if (request.body?.actionId !== undefined) return await requestTownMapGeneration(request.body);
-      return await generateVillageTownMap(request.body ?? {});
+      return await requestTownMapGeneration(request.body);
     } catch (error) {
       return fail(reply, error, "drawing the village map");
     }
   });
-  app.get<{ Params: { actionId: string } }>("/setup/town-map/generation/:actionId", async (request, reply) => {
-    try {
-      return await readTownMapGeneration(request.params.actionId);
-    } catch (error) {
-      return fail(reply, error, "retrieving the requested village map");
-    }
-  });
+  app.get<{ Params: { actionId: string; targetId: string } }>(
+    "/maps/generation/:targetId/:actionId",
+    async (request, reply) => {
+      try {
+        return await readTownMapGeneration(request.params.actionId, request.params.targetId);
+      } catch (error) {
+        return fail(reply, error, "retrieving the requested village map");
+      }
+    },
+  );
   app.post("/setup/reset", async (_request, reply) => {
     try {
       await resetVenueSessions();

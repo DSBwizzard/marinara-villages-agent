@@ -184,8 +184,8 @@ assert(queueFailure.state.villagers[0]!.agenda!.activeDay!.blocks.length > 0);
 const departed = fixture("Departed");
 await departed.service.addVillager("same");
 const home = coerceVillageState({
-  version: 3,
-  socialContractVersion: 2,
+  ...defaultVillageState(),
+  version: 5,
   venues: [
     parsePlace(
       {

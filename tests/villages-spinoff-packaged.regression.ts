@@ -1,3 +1,5 @@
+import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -21,8 +23,7 @@ Object.assign(village, {
   seed: "packaged-spinoff",
   foundedAt: at,
   setupAt: at,
-  storyPace: "off",
-  visitMemoryBackfilled: true,
+  backgroundPace: "off",
   timeZone: "America/Los_Angeles",
   playerPersonaId: "persona",
   playerPersonaName: "Player",
@@ -45,6 +46,7 @@ village.villagers = [
   },
 ] as unknown as typeof village.villagers;
 const scene = coerceSession({
+  version: 2,
   id: "source",
   placeId: "market",
   placeName: "Market",
@@ -110,7 +112,7 @@ const model = {
   maxContext: 32000,
   maxOutputTokens: 4000,
   fitContext: (messages: unknown[]) => ({ messages, trimmed: false }),
-  chatComplete: async () => {
+  chatComplete: async (messages: any[]) => {
     modelCalls++;
     return {
       content: JSON.stringify({
@@ -118,7 +120,29 @@ const model = {
         explanation: "The whole outing fits the encounter.",
         evidenceIds: [],
         memories: [
-          { text: "You and Buster enjoyed choosing apples at the market.", evidenceIds: ["player", "resident"] },
+          {
+            action: "create",
+            kind: "experience",
+            subjects: ["buster"],
+            text: "You and Buster enjoyed choosing apples at the market.",
+            learners: Object.fromEntries(
+              ["player", "buster"].map((id) => [
+                id,
+                {
+                  basis: "observation",
+                  support: [
+                    { lineId: "player-source", excerpt: "Let us choose apples together." },
+                    { lineId: "resident", excerpt: "I enjoyed this outing with you." },
+                  ],
+                },
+              ]),
+            ),
+            screening: {
+              disposition: "clear",
+              protectedRoots: [],
+              fingerprint: JSON.parse(messages[1].content).memory.administrative.fingerprint,
+            },
+          },
         ],
       }),
       finishReason: "stop",
@@ -128,7 +152,7 @@ const model = {
 };
 const runtime = {
   persistence: {
-    documents,
+    documents: villageFixtureDocuments(documents),
     getChat: async () => ({
       id: "engine",
       personaId: "persona",
@@ -136,7 +160,7 @@ const runtime = {
       metadata: { sceneStatus: "active" },
     }),
     listMessages: async () => [
-      { id: "player", role: "user", characterId: null, content: "Let us choose apples together.", extra: "{}" },
+      { id: "player-source", role: "user", characterId: null, content: "Let us choose apples together.", extra: "{}" },
       {
         id: "resident",
         role: "assistant",
@@ -248,7 +272,7 @@ try {
     url: "/api/villages/reconcile",
     payload: { forceStory: true, actionId: "forced", expectedAttempt: 0 },
   });
-  assert.equal(forced.statusCode, 409, "read-only browsing cannot request another Village story event");
+  assert.equal(forced.statusCode, 409, "read-only browsing blocks the retired force action");
   const presence = await app.inject({
     method: "POST",
     url: "/api/villages/background/presence",
@@ -271,8 +295,38 @@ try {
   assert.equal(prepared.spinoff.memories.length, 1);
   await post("/spinoffs/resolve", { sessionId: "source", acceptedIds: [prepared.spinoff.memories[0].id] });
   assert.equal((await readScene()).spinoffPending, false, "the built Scene API stops recovery after resolution");
-  const saved = records.get("villages-village")!.data as typeof village;
-  assert.equal(saved.chronicle.filter((row) => row.id === prepared.spinoff.memories[0].id).length, 1);
+  const saved = fixtureVillageState(records.get("villages-village")!.data, records);
+  assert.equal(saved.memories.records.filter((row) => row.text === prepared.spinoff.memories[0].text).length, 1);
+  // Knowledge reads remain inert even when the world clock needs reconciliation.
+  const worldRecord = records.get("villages-village")!;
+  const raw = worldRecord.data as any,
+    originalClock = clone(raw.clock);
+  raw.clock.trustedAt = "2000-01-01T00:00:00.000Z";
+  const heldClock = clone(raw.clock),
+    heldRevision = worldRecord.revision;
+  try {
+    const library = await app.inject({ method: "GET", url: "/api/villages/memories" });
+    assert.equal(library.statusCode, 200, library.body);
+    const id = library.json().entries[0].id;
+    for (const path of [
+      "/memories/inspect?characterId=buster",
+      "/memories/" + id + "/evidence",
+      "/memories/inspect/" + id + "?characterId=player",
+    ]) {
+      const result = await app.inject({ method: "GET", url: "/api/villages" + path });
+      assert.equal(result.statusCode, 200, result.body);
+    }
+    assert.equal(records.get("villages-village")!.revision, heldRevision, "Memory reads never write the Village clock");
+    assert.deepEqual((records.get("villages-village")!.data as any).clock, heldClock);
+    const observed = await app.inject({ method: "GET", url: "/api/villages/clock" });
+    assert.equal(observed.statusCode, 200, observed.body);
+    assert.ok(
+      records.get("villages-village")!.revision > heldRevision,
+      "Clock-dependent routes retain their normal observation guard",
+    );
+  } finally {
+    (records.get("villages-village")!.data as any).clock = originalClock;
+  }
   console.log(
     "Archive-identical packaged HTTP spinoff: registration, resolved connection, ownership, conclusion callback, explicit synthetic interpretation and reviewed memory import passed.",
   );

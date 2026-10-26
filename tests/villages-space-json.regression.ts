@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { createPrivateSpacePreparation } from "../packages/villages/src/server/jobs/private-space-service.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -6,13 +7,13 @@ import { createDocumentMutator } from "../packages/villages/src/server/adapters/
 
 async function main() {
   const world = coerceVillageState({
-    version: 3,
-    socialContractVersion: 2,
+    ...defaultVillageState(),
+    version: 5,
     seed: "fixture",
     name: "Test",
     setting: "Test",
     wishSystemVersion: 3,
-    storyPace: "off",
+    backgroundPace: "off",
     villagers: [],
     venues: [
       {

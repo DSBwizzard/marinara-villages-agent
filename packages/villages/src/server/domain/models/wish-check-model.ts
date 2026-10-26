@@ -6,6 +6,11 @@ import type { WishCriteria, WishInterpretationContext } from "./wish-interpretat
 import type { VillageWish } from "./world.js";
 
 export type ExchangeEffectReceipt = {
+  wishOutcome?: "fulfilled" | "corrected";
+  wishGoal?: string;
+  wishAudience?: string[];
+  wishDisclosure?: true;
+  memoryProposal?: import("./memories.js").MemoryProposal;
   committedAt?: string;
   noticeSequence?: number;
   status?: "applied" | "rejected";

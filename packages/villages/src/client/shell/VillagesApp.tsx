@@ -225,7 +225,9 @@ function VillageScreen({ controller }: { controller: ReturnType<typeof Controlle
         <div key="retained-scene" hidden={screen !== "room"} style={{ height: "100%" }}>
           <SceneScreen controller={controller} />
         </div>
-        {screen === "venue" ? (
+        {screen === "home" ? (
+          <ExplorationScreen controller={controller} />
+        ) : screen === "venue" ? (
           <VenueScreen controller={controller} />
         ) : screen === "menu" ? (
           menuPage === "villagers" ? (

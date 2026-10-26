@@ -1,3 +1,6 @@
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import { addMemory } from "./helpers/memories-fixture.js";
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { lifecycle } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
   initialOpening,
@@ -99,6 +102,7 @@ async function main() {
       staging: { prose: "render-only ".repeat(80) },
     }));
     const historyScene = {
+      version: 2,
       id: "supper",
       activeIds: ["a", "b", "c"],
       lines: rows,
@@ -129,9 +133,7 @@ async function main() {
     );
   }
 
-  // Enforce JSON-mode compatibility using actual Events and offscreen review prompts.
-  const { createVillageBootstrap } =
-    await import("../packages/villages/src/server/features/founding/village-bootstrap-service.js");
+  // Enforce JSON-mode compatibility using actual resident planning and offscreen review prompts.
   const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const eventMoment = deriveVillageMoment({
     foundedAt: "2026-10-16T00:00:00.000Z",
@@ -155,20 +157,18 @@ async function main() {
     maxOutputTokens: 4096,
     fitContext: (messages: unknown, options: any) => ({ messages, ...options, trimmed: false }),
   };
-  const events = createVillageBootstrap({
+  const planning = createResidentPlanning({
+    readVillageState: async () => defaultVillageState(),
     villagesLanguageModels: () => ({ resolveForRequest: async () => fakeSystem }),
     villagesConnectionIdFor: async () => "system",
-    backgroundCalls: { getStore: () => undefined },
-    villagesDebugAgentsEnabled: () => false,
-    villagesLogger: () => ({ debugOverride: () => {} }),
     completeWithRoom: async (_model: unknown, messages: any[], _tokens: number, options: any) => {
       assert.equal(options.responseFormat?.type, "json_object");
       assert(
         messages.some((message) => message.role === "system" && /\bjson\b/i.test(message.content)),
         "Strict provider rejects JSON mode without application-authored JSON instruction",
       );
-      const review = messages[0].content.includes("Independently interpret");
-      jsonCalls.push(review ? "review" : "events");
+      const review = messages[0].content.startsWith("Independently interpret");
+      jsonCalls.push(review ? "review" : "planning");
       if (review)
         assert.deepEqual(JSON.parse(messages[1].content).lines, spokenLines, "Review preserves supplied speech");
       return {
@@ -187,33 +187,40 @@ async function main() {
                   },
                 ],
                 housingRequests: [],
+                routineIdea: null,
                 social: { encounter: { lines: spokenLines } },
               },
         ),
       };
     },
   } as any);
-  const eventResult = await events.proposeHappenings({
-    semanticVersion: 2,
-    village: "Test",
-    setting: "A quiet village",
-    moment: eventMoment,
-    residents: [],
-    recent: [],
-    venues: [],
-    opportunities: [opportunity],
-    lastSimulatedAt: eventMoment.instant,
-    forced: false,
-    social: { candidates: [], relationships: [] },
+  const choices = await planning.handler.generate({
+    context: {
+      version: 1,
+      memory: sceneMemoryContext(defaultVillageState(), [], ""),
+      worldFacts: [],
+      pendingHousingCharacterIds: [],
+      village: "Test",
+      setting: "A quiet village",
+      moment: eventMoment,
+      residents: [],
+      recent: [],
+      venues: [],
+      opportunity,
+      lastSimulatedAt: eventMoment.instant,
+      forced: false,
+      social: { candidates: [], relationships: [] },
+    },
   } as any);
-  assert.deepEqual(jsonCalls, ["events", "review"]);
-  assert.equal(eventResult.happenings.length, 1);
-  assert.equal((eventResult.social?.encounter as any).semanticVersion, 2);
-  assert.deepEqual((eventResult.social?.encounter as any).lines, spokenLines);
+  assert.deepEqual(jsonCalls, ["planning", "review"]);
+  assert.equal(Object.hasOwn(choices, "happenings"), false);
+  assert.equal((choices.social?.encounter as any).semanticVersion, 2);
+  assert.deepEqual((choices.social?.encounter as any).lines, spokenLines);
 
   const state = defaultVillageState();
   state.seed = "synthetic-semantic";
   const scene = coerceSession({
+    version: 2,
     id: "scene",
     placeId: "none",
     status: "active",
@@ -603,31 +610,31 @@ async function main() {
   accessRows = [];
   state.venues = [];
   scene.activeIds = ["host"];
-  state.chronicle = [
-    {
-      id: "needed-memory",
-      kind: "event",
-      scope: "private",
-      text: "The exact condition is only after supper.",
-      knownByCharacterIds: ["host"],
-      actors: [{ id: "host" }],
-      at: scene.startedAt,
-    },
-  ] as any;
+  state.memories = addMemory(state.memories, { text: "The exact condition is only after supper.", audience: ["host"] });
   behavior = "needs-context";
   const beforeContext = calls.length;
-  await assert.rejects(service.intent(scene, "Need historical context"), /Additional System context is saved/);
+  await assert.rejects(service.intent(scene, "Need historical context supper condition"), /no expansion call/);
   assert.equal(calls.length, beforeContext + 1, "Context requests never automatically dispatch a second inference");
   behavior = "valid";
-  await service.intent(scene, "Need historical context");
+  explicitRetry = true;
+  await service.intent(scene, "Need historical context supper condition");
+  explicitRetry = false;
   assert.equal(calls.length, beforeContext + 2);
-  assert.equal(lastPacket.input.context.expandedContext, true);
-  assert(lastPacket.input.context.memories.some((row: any) => row.text === state.chronicle[0].text));
+  assert.equal(lastPacket.input.context.expandedContext, undefined);
+  assert(lastPacket.input.context.memory.memories.some((row: any) => row.text === state.memories.records[0].text));
   scene.activeIds = [];
-  state.chronicle = [];
+  state.memories = { format: 1, revision: 0, records: [] };
   assert.equal(
-    semanticUnit("memory", { kind: "passing", text: "one", evidence: [2, 1] }),
-    semanticUnit("memory", { kind: "passing", text: "two", evidence: [1, 2] }),
+    semanticUnit("memory", {
+      action: "create",
+      text: "one",
+      learners: { host: { support: [{ lineId: 2 }, { lineId: 1 }] } },
+    }),
+    semanticUnit("memory", {
+      action: "create",
+      text: "two",
+      learners: { host: { support: [{ lineId: 1 }, { lineId: 2 }] } },
+    }),
   );
   behavior = "valid";
   checkpoints.clear();
@@ -726,6 +733,7 @@ async function main() {
     "Code retains exact saved speech without asking the checker to reconstruct the pitch",
   );
   const savedIndexed = coerceSession({
+    version: 2,
     ...scene,
     submissions: [
       {
@@ -1181,7 +1189,7 @@ async function main() {
   assert.throws(() => continueSemanticDomain(turn, "wishes"), /Only a failed/);
   assert.equal(semanticBlocker(pendingScene), "Updates pending.");
   assert.equal(
-    coerceSession({ ...scene, semanticVersion: undefined }).semanticVersion,
+    coerceSession({ version: 2, ...scene, semanticVersion: undefined }).semanticVersion,
     undefined,
     "legacy Scenes are not upgraded on read",
   );
@@ -1800,11 +1808,7 @@ async function main() {
   assert(systemPrompt.includes("within the player's already occupied public Zone do not change access"));
   assert(systemPrompt.includes("Inspect each context.actors entry's wishes independently using actor.id and wish.id."));
   assert(systemPrompt.includes("Opening pitches are reported in openingSignal, not projectSpeech."));
-  assert(
-    systemPrompt.includes(
-      "Memory subjectCharacterIds and knownByCharacterIds contain resident IDs only, never player.",
-    ),
-  );
+  assert(systemPrompt.includes('Include literal "player" as a learner ONLY'));
   assert(systemPrompt.includes("Never use an opening proposal, its name, or a newly spoken desire as a Wish ID."));
   assert.doesNotMatch(systemPrompt, /lineIds:\["player",0\]/);
   assert.doesNotMatch(systemPrompt, /evidence:\["player",0\]/);
@@ -1865,6 +1869,7 @@ async function main() {
   calls.length = 0;
   await actionWriter.generate(actionScene, "A quiet conversation", "chat", "", null);
   const decodedReceipt = coerceSession({
+    version: 2,
     ...actionScene,
     submissions: [{ id: "saved", residentActionReceipt: actionResult.residentActionReceipt }],
   }).submissions[0]!.residentActionReceipt;
@@ -1954,22 +1959,20 @@ async function main() {
   const currentContextScene = { ...actionScene, activeIds: ["host"] };
   behavior = "needs-context";
   const beforeCurrentContext = calls.length;
-  await assert.rejects(
-    service.exchange(currentContextScene, "Current verdict", [], null, []),
-    /did not finish the current Scene verdict/,
-  );
+  await assert.rejects(service.exchange(currentContextScene, "Current verdict", [], null, []), /no expansion call/);
   assert.equal(calls.length, beforeCurrentContext + 1, "Current-scene retrieval refusal adds no call");
   assert(![...checkpoints.keys()].some((key) => key.endsWith(":retrieval")));
   const oldPolicySnapshot = [...checkpoints].find(([key]) => key.endsWith(":input"))![1] as any;
   delete oldPolicySnapshot.currentEvidenceOnly;
   delete oldPolicySnapshot.systemPrompt;
-  await assert.rejects(
-    service.exchange(currentContextScene, "Current verdict", [], null, []),
-    /Additional System context is saved/,
+  await assert.rejects(service.exchange(currentContextScene, "Current verdict", [], null, []), /no expansion call/);
+  assert.equal(
+    calls.length,
+    beforeCurrentContext + 2,
+    "Each explicit request stays within one inference and never expands history",
   );
-  assert.equal(calls.length, beforeCurrentContext + 2, "Older frozen v2 policy retains explicit retrieval behavior");
   behavior = "valid";
-  state.chronicle = [];
+  state.memories = { format: 1, revision: 0, records: [] };
   state.venues = [venue];
   const checksBefore = calls.length;
   const accessScene = { ...actionScene, placeId: venue.id };
@@ -2199,6 +2202,7 @@ async function main() {
       },
     ] as any;
     const requestScene = coerceSession({
+      version: 2,
       id: "request-roster",
       placeId: "house",
       placeName: "House",

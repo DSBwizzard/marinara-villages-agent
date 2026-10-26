@@ -56,7 +56,7 @@ const place = (id, x, y) => ({
   category: "destination",
   description: "A village place.",
   capabilities: [],
-  presentation: { image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id }, x, y },
+  presentation: { mapId: "map-house", image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id }, x, y },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   state: { condition: "sound", furniture: [], publicFacts: [], updatedAt: now },
 });
@@ -84,14 +84,12 @@ const snapshot = {
   venueRequests: [],
   projects: [],
   residences: [],
-  happenings: [],
   villagers: residents,
-  recap: null,
   settings: {
     promptKnowledge: "",
     defaultPromptKnowledge: "",
     promptBoxMaxLength: 1000,
-    storyPace: "normal",
+    backgroundPace: "normal",
     venues: [place("mill", 0.04, 0.08), place("harbour", 0.96, 0.92), place("market", 0.5, 0.5)],
     homeBuildingNames: {},
     homeBuildings: [],
@@ -111,11 +109,21 @@ const snapshot = {
     maxVenueImageBytes: 1000000,
     villageGalleryFolderName: "QA Village",
     visitRetention: { mode: "forever", value: 0 },
-    townMapImageSetAt: now,
+    maps: [
+      {
+        id: "map-house",
+        name: "QA Village",
+        artwork: { id: "map-art", ref: "map-art", url: mapImage },
+        width: 1500,
+        height: 1000,
+        view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+        revision: 1,
+      },
+    ],
     townMapExpectedWidth: 1500,
     townMapExpectedHeight: 1000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
-    storyPaces: [],
+    backgroundPaces: [],
     macros: [],
   },
 };
@@ -155,7 +163,11 @@ try {
     fixture.settings.venues = [
       { ...place("market", 0.5, 0.5), name: "Village Market" },
       { ...place("crowded", 0.51, 0.51), name: "A nearby venue with a very long readable name" },
-      { ...place("unplaced", null, null), name: "Unplaced Venue", presentation: { image: null, x: null, y: null } },
+      {
+        ...place("unplaced", null, null),
+        name: "Unplaced Venue",
+        presentation: { mapId: "map-house", image: null, x: null, y: null },
+      },
       { ...place("worksite", 0.8, 0.2), name: "New Mill" },
       { ...place("edge", 0.5, 0.01), name: "Edge Venue" },
       { ...place("left-edge", 0.01, 0.5), name: "Left Edge Venue" },
@@ -175,7 +187,6 @@ try {
       ...resident,
       place: index === 3 ? null : { id: "market", name: "Village Market" },
     }));
-    fixture.happenings = [{ id: "event-1", text: "The market opened this morning.", at: now }];
     let servedImage = mapImage;
     let session = null;
     await page.route("**/api/characters/summaries", (route) =>
@@ -196,7 +207,7 @@ try {
       else if (path.endsWith("/rooms") && route.request().method() === "POST") {
         sceneRequests.push(route.request().postDataJSON());
         session = {
-          version: 1,
+          version: 2,
           id: "visit-1",
           placeId: "market",
           placeName: "Village Market",
@@ -287,8 +298,7 @@ try {
         b.height >= (mobile ? 48 : 40) && b.x >= 0 && b.x + b.width <= width + 1 && b.y + b.height <= height + 1,
       );
     }
-    if (!mobile) await expect(navigator).toBeVisible();
-    else await expect(navigator).toHaveCount(0);
+    await expect(navigator).toHaveCount(0);
     await showPlaces();
     await expect(navigator).toHaveAttribute("data-layout", mobile ? "navigator-sheet" : "navigator-rail");
     await navigator.getByRole("searchbox").fill("unPLACED");
@@ -316,7 +326,16 @@ try {
       "true",
     );
     const marker = home.locator('[data-pin-id="market"]');
-    await expect(marker).toBeInViewport({ ratio: 1 });
+    await expect(
+      marker,
+      JSON.stringify({
+        width,
+        height,
+        marker: await marker.boundingBox(),
+        canvas: await canvas.boundingBox(),
+        navigator: await navigator.boundingBox(),
+      }),
+    ).toBeInViewport({ ratio: 1 });
     const markerBox = await marker.boundingBox();
     assert.ok(markerBox.width >= 44 && markerBox.height >= 44, "location targets remain touch sized");
     if (mobile) {
@@ -352,7 +371,7 @@ try {
       ["crowded", "A nearby venue with a very long readable name"],
     ]) {
       await select(name);
-      if (mobile) await navigator.getByRole("button", { name: "Close places" }).click();
+      await navigator.getByRole("button", { name: /^(Close|Collapse) places$/ }).click();
       await settleLayout();
       const beforeTap = await cameraGeometry();
       await home
@@ -423,7 +442,7 @@ try {
         Math.abs(moved.width - before.width) < 1,
       `drag starts at the selected camera rather than an old gesture: ${JSON.stringify({ width, before, moved, box })}`,
     );
-    if (mobile) await navigator.getByRole("button", { name: "Close places" }).click();
+    await navigator.getByRole("button", { name: /^(Close|Collapse) places$/ }).click();
     await settleLayout();
     const retained = await geometry();
     await nav.getByRole("button", { name: "More", exact: true }).click();

@@ -36,7 +36,7 @@ export function legacyVenueZones(venue: VillageVenue): VillageVenueZone[] {
     },
     ...venueSpaces({
       ...venue,
-      presentation: venue.presentation ?? { image: null, x: null, y: null },
+      presentation: venue.presentation ?? { mapId: "", image: null, x: null, y: null },
       state: { condition: "", furniture: [], publicFacts: [], updatedAt: "", ...venue.state },
     }).map((space) => ({
       ...space,

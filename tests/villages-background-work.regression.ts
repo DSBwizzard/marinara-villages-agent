@@ -1,4 +1,5 @@
-import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
 import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
@@ -108,7 +109,7 @@ const model = {
   },
 };
 const release = configureVillagesRuntime({
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   languageModels: {
     async resolveForRequest() {
       return model;
@@ -155,9 +156,9 @@ registerBackgroundHandler("translation", {
     state.setting = "translated-" + result.moves.length;
   },
 });
-registerBackgroundHandler("story", {
+registerBackgroundHandler("resident-planning", {
   async generate(input) {
-    const opening = await completeWithRoom(model as any, buildTickMessages(input.context), 100, {
+    const opening = await completeWithRoom(model as any, buildResidentPlanningMessages(input.context), 100, {
       temperature: 0,
       debugMode: false,
     });
@@ -281,7 +282,7 @@ async function main() {
     failStep = "story-followup";
     failure = "503 Service Unavailable";
     await queueBackgroundJob({
-      kind: "story",
+      kind: "resident-planning",
       subjectId: "saved-story",
       seed: "fixture",
       revision: "legacy-story",
@@ -292,11 +293,7 @@ async function main() {
     await settleBackgroundWork();
     const story = await summary("saved-story");
     assert.equal(calls.length, 2);
-    assert.equal(
-      calls[0].includes(frozenStory.setting),
-      false,
-      "the pre-upgrade story context uses its original bounded description",
-    );
+    assert.equal(calls[0].includes(frozenStory.setting), true, "planning keeps complete authored context");
     stop();
     stop = startBackgroundWork({ now: () => now });
     await settleBackgroundWork();
@@ -432,6 +429,19 @@ async function main() {
     assert.equal(hasVillagePresence(), false, "a late visible heartbeat cannot overwrite a newer hidden message");
 
     await reset();
+    let catchUps = 0;
+    const beforeResume = async () => {
+      catchUps++;
+    };
+    await villageBackgroundPresence("renewal-a", true, { beforeResume });
+    await villageBackgroundPresence("renewal-a", true, { beforeResume });
+    await villageBackgroundPresence("renewal-b", true, { beforeResume });
+    assert.equal(catchUps, 1, "Live heartbeat renewal and another visible tab do not repeat full catch-up.");
+    now += 90_001;
+    await villageBackgroundPresence("renewal-a", true, { beforeResume });
+    assert.equal(catchUps, 2, "Expired presence must catch up before admitting recurring work again.");
+
+    await reset();
     await queueBackgroundJob(work("recurring", ["visible1", "visible2"], false));
     await settleBackgroundWork();
     assert.equal(calls.length, 0);
@@ -482,7 +492,7 @@ async function main() {
     });
     providerGate!();
     await settleBackgroundWork();
-    assert.equal((await readVillageState()).setting, "");
+    assert.equal((await readVillageState({ memories: true })).setting, "");
     assert.equal((await summary("reset"))?.status, undefined, "old village work is hidden and cleaned");
 
     await reset();
@@ -492,7 +502,7 @@ async function main() {
     stop();
     providerGate!();
     await settleBackgroundWork();
-    assert.equal((await readVillageState()).setting, "");
+    assert.equal((await readVillageState({ memories: true })).setting, "");
     blockStep = "";
     stop = startBackgroundWork({ now: () => now });
     await tick();
@@ -587,7 +597,7 @@ async function main() {
     await settleBackgroundWork();
     assert.deepEqual(calls, ["unapplied"]);
     assert.deepEqual(effects, ["unapplied"], "persisted generation is applied without another paid request");
-    assert.equal((await readVillageState()).setting, "recovered-local-result");
+    assert.equal((await readVillageState({ memories: true })).setting, "recovered-local-result");
 
     await reset();
     blockStep = "old-input";
@@ -598,7 +608,7 @@ async function main() {
     await settleBackgroundWork();
     assert.deepEqual(calls, ["old-input", "new-input"], "replacement drops remaining obsolete paid stages");
     assert.deepEqual(effects, ["replace"]);
-    assert.equal((await readVillageState()).setting, "new-input");
+    assert.equal((await readVillageState({ memories: true })).setting, "new-input");
 
     await reset();
     await queueBackgroundJob(work("invalid", ["invalid"]));

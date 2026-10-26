@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
 import {
   venueSavedCheckpoint,
@@ -14,6 +15,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { quietContactReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
   venueOperationSignal,
+  venueOperationInput,
   venueRequestMetrics,
 } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { mock } from "node:test";
@@ -57,7 +59,7 @@ const documents = {
   },
 };
 const release = configureVillagesRuntime({
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   logger: { info() {}, warn() {}, debug() {}, error() {}, debugOverride() {} },
 } as any);
 const row = (id: string) => records.get(`villages-venue-visit-${id}`);
@@ -278,7 +280,7 @@ async function main() {
     }
 
     seed("slow-greeting");
-    row("slow-greeting").data = coerceSession({ ...row("slow-greeting").data, status: "opening" });
+    row("slow-greeting").data = coerceSession({ version: 2, ...row("slow-greeting").data, status: "opening" });
     const world = defaultVillageState();
     const greetingWork = createSceneWork();
     let stage = deferred<void>();
@@ -298,6 +300,7 @@ async function main() {
       coordinateVenue,
       venueCheckpoint,
       venueOperationSignal,
+      venueOperationInput,
       venueRequestMetrics,
       cancelVenueOperation,
       hasVenueOperation: () => true,
@@ -375,7 +378,7 @@ async function main() {
     } as any);
     await retryCommands.greetVenue("v3-opening-retry", "saved-opening-attempt");
     seed("v3-replay");
-    row("v3-replay").data = coerceSession({ ...row("v3-replay").data, semanticVersion: 2 });
+    row("v3-replay").data = coerceSession({ version: 2, ...row("v3-replay").data, semanticVersion: 2 });
     const replayCommands = createSceneCommands({
       runtimeDebug() {},
       readSession,
@@ -1142,6 +1145,7 @@ async function main() {
     assert.deepEqual(row("abandon").data.operation.checkpoints["abandoned-request"], failed);
     seed("typed-review");
     row("typed-review").data = coerceSession({
+      version: 2,
       ...row("typed-review").data,
       semanticVersion: 2,
       processingVersion: 1,

@@ -1,18 +1,5 @@
-import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { useEffect } from "react";
-
-export function useMapNavigationReset(ports: {
-  explorationMapKey: string;
-  setExploreSheet: React.Dispatch<React.SetStateAction<import("./villages-exploration.js").ExplorationSheet>>;
-  setNavigationView: React.Dispatch<React.SetStateAction<import("./villages-mobile-map.js").MobileMapView>>;
-}) {
-  const { explorationMapKey, setExploreSheet, setNavigationView } = ports;
-  useEffect(() => {
-    setNavigationView(null);
-    setExploreSheet(null);
-  }, [explorationMapKey, setExploreSheet, setNavigationView]);
-}
 
 export function useExplorationOutsideClick(ports: {
   closeExploration: () => void;
@@ -74,26 +61,4 @@ export function useRemovedVenueNavigation(ports: {
     if (openPlaceId && snapshot && !snapshot.settings.venues.some((venue) => venue.id === openPlaceId))
       closeExploration();
   }, [closeExploration, openPlaceId, snapshot]);
-}
-
-export function useTownMapImage(ports: {
-  setTownMapImage: React.Dispatch<React.SetStateAction<string>>;
-  townMapSetAt: string;
-}) {
-  const { setTownMapImage, townMapSetAt } = ports;
-  useEffect(() => {
-    if (townMapSetAt === null) return;
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        const loaded = await request<{ image: string }>("/town-map", { signal: controller.signal });
-        setTownMapImage(loaded.image);
-      } catch {
-        // Treated as "no map": a failed fetch is not worth an alert on a page
-        // whose main job is the village itself, and the panel says what to do.
-        if (!controller.signal.aborted) setTownMapImage("");
-      }
-    })();
-    return () => controller.abort();
-  }, [townMapSetAt, setTownMapImage]);
 }

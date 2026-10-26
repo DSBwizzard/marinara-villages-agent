@@ -1,3 +1,5 @@
+import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -15,10 +17,9 @@ import { captureSceneLayout } from "../packages/villages/src/server/domain/rules
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 
 // Archive-identical server and actual HTTP handlers, with synthetic storage/models only.
-// Clock checkpoints must not race assertions about a rejected turn's world effects.
-mock.timers.enable({ apis: ["Date"], now: Date.now() });
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8"));
 const zip = new AdmZip(receipt.retainedArchivePath ?? receipt.archivePath ?? receipt.archive);
 assert.deepEqual(
@@ -29,14 +30,16 @@ assert.deepEqual(
   await readFile("packages/villages/server.mjs"),
 );
 const { activate } = await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
+// Define the archive's Date subclasses before Node replaces Date: MockDate's constructor
+// does not preserve subclass prototypes. Freeze only the running clock, not class creation.
+mock.timers.enable({ apis: ["Date"], now: Date.now() });
 const now = new Date().toISOString();
 const world = defaultVillageState();
 Object.assign(world, {
   seed: "packaged-zone-events",
   foundedAt: now,
   setupAt: now,
-  storyPace: "off",
-  visitMemoryBackfilled: true,
+  backgroundPace: "off",
   timeZone: "America/Los_Angeles",
   playerPersonaId: "persona",
   playerPersonaName: "Player",
@@ -98,6 +101,7 @@ world.venues = [
 ] as typeof world.venues;
 const village = coerceVillageState(world);
 const scene = coerceSession({
+  version: 2,
   id: "harbour-scene",
   placeId: "harbour",
   placeName: "The Harbour Terrace",
@@ -177,7 +181,6 @@ const documents = {
 };
 let modelCalls = 0;
 let answer: any;
-let verificationStatus: unknown = "supported";
 let captureRecoveryAnswers: unknown[] = [];
 let domainRecoveryAnswer: unknown;
 let closeCoreBeforeEffects = false;
@@ -219,8 +222,20 @@ const model = {
       }
       const response = intent
         ? semanticIntentAnswer
-        : { immediateResidentMoves: [], ...semanticExchangeAnswer, intent: semanticIntentAnswer };
+        : {
+            halt: { reason: "none", quote: "", appointments: [] },
+            immediateResidentMoves: [],
+            ...semanticExchangeAnswer,
+            intent: semanticIntentAnswer,
+          };
       assert(response, "A labeled System response is required");
+      if (!intent && Array.isArray((response as any).memoryChanges))
+        for (const row of (response as any).memoryChanges)
+          row.screening = {
+            disposition: "clear",
+            protectedRoots: [],
+            fingerprint: packet.input.context.memory.administrative.fingerprint,
+          };
       // The fixture supplies meaning explicitly; System discovers these omitted Narration actions.
       const accessActions = ((response as any).access ?? []).map(({ evidence, ...row }: any, index: number) => ({
         ...row,
@@ -273,14 +288,6 @@ const model = {
         usage: { promptTokens: 10, completionTokens: 10 },
       };
     }
-    if (messages[0].content.startsWith("Verify consequential Scene proposals")) {
-      const { proposals } = JSON.parse(messages[1].content);
-      return {
-        content: JSON.stringify({ results: proposals.map((row: any) => ({ id: row.id, status: verificationStatus })) }),
-        finishReason: "stop",
-        usage: { inputTokens: 10, outputTokens: 10 },
-      };
-    }
     if (messages[0].content.includes("Recover ONLY capture metadata")) {
       assert(captureRecoveryAnswers.length, "explicit capture recovery answer required");
       return { content: JSON.stringify(captureRecoveryAnswers.shift()), finishReason: "stop" };
@@ -308,7 +315,7 @@ const model = {
   },
 };
 const runtime = {
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   resources: {
     listCharacters: async () =>
       people.map(({ id, name }) => ({ id, revision: 1, data: { id, name, description: "An authored resident." } })),
@@ -354,7 +361,7 @@ async function turn(
   segments: any[],
   extra: any = {},
   effects: any = {},
-  expectedChecks?: number,
+  _expectedChecks?: number,
 ) {
   const captured = segments.flatMap((row, index) =>
     row.speakerId === "player"
@@ -366,10 +373,7 @@ async function turn(
     ...effects,
     segments,
   };
-  const expectedCalls =
-    state().semanticVersion === 2
-      ? 2
-      : 1 + (expectedChecks ?? (Array.isArray(effects.memoryChanges) && effects.memoryChanges.length ? 1 : 0));
+  const expectedCalls = state().semanticVersion === 2 ? 2 : 1;
   const payload = {
     sessionId: scene.id,
     submissionId: id,
@@ -382,7 +386,8 @@ async function turn(
   const before = modelCalls;
   const response = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
   assert.equal(response.statusCode, 200, response.body);
-  assert.equal(modelCalls, before + expectedCalls, "one writer plus only eligible consequential verification");
+  assert.equal(response.json().turnOutcome, undefined, response.body);
+  assert.equal(modelCalls, before + expectedCalls, "Narration plus the existing combined System stage only");
   assert.equal(state().operation.input.interactionScopeVersion, 6);
   assert.equal(state().operation.input.writingContractVersion, 3);
   assert.equal(typeof state().operation.input.writingCapabilities.movement, "boolean");
@@ -632,7 +637,12 @@ try {
     {},
     { memoryChanges: [durable] },
   );
-  assert(records.get("villages-village").data.chronicle.some((row: any) => row.text === durable.text));
+  assert(
+    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
+      (row: any) => row.text === durable.text,
+    ),
+    "Narration alone has no fresh System write screen",
+  );
   assert.doesNotMatch(JSON.stringify(checked), /systemVerification/, "internal check markers remain private");
   // Numeric-string references must bind before captured player speech shifts segment indexes.
   const passingText = "Aqua and the visitor exchanged a greeting beside the harbour.";
@@ -656,12 +666,24 @@ try {
     },
   );
   const canonicalTurn = state().submissions.find((row: any) => row.id === "quoted-index-memory");
-  assert.equal(canonicalTurn.processing.domains.memories.status, "applied");
+  assert.equal(canonicalTurn.processing.domains.memories.status, "rejected");
   assert.equal(canonicalTurn.processing.domains.relationships.status, "applied");
-  assert.deepEqual(canonicalTurn.liveProposals.memoryChanges[0].evidence, [1, 0]);
-  assert(records.get("villages-village").data.recollections.some((row: any) => row.text === passingText));
+  assert.deepEqual(
+    canonicalTurn.liveProposals.memoryChanges[0].evidence,
+    ["0", 0],
+    "Retired metadata has no memory reader",
+  );
+  assert(
+    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
+      (row: any) => row.text === passingText,
+    ),
+  );
   assert.doesNotMatch(JSON.stringify(canonical), /systemVerification|PRIVATE/);
-  assert.equal(canonicalTurn.liveProposals.memoryChanges[0].systemVerificationFailure, undefined);
+  assert.equal(
+    canonicalTurn.liveProposals.memoryChanges[0].systemVerificationFailure.message,
+    "PRIVATE",
+    "Untrusted saved metadata remains private and cannot authorize a write",
+  );
 
   const malformedRelationship = {
     fromId: "aqua",
@@ -695,9 +717,8 @@ try {
   const citationDiagnostics = await app.inject({ method: "GET", url: "/api/villages/rooms/" + scene.id + "/changes" });
   assert.match(
     citationDiagnostics.json().unresolved.find((row: any) => row.submissionId === "unavailable-memory-citation").reason,
-    /citation is unavailable or was not witnessed/,
+    /did not meet the requirements for saving/,
   );
-  verificationStatus = ["rejected"];
   const rejectedText = "Aqua is permanently timid.";
   await turn(
     "durable-unresolved",
@@ -707,10 +728,12 @@ try {
     { memoryChanges: [{ ...durable, text: rejectedText }] },
   );
   const pending = state().submissions.find((row: any) => row.id === "durable-unresolved");
-  assert.equal(pending.processing.domains.memories.status, "failed");
-  assert.equal(pending.processing.domains.memories.failure.cause, "missing_result");
-  assert.equal(pending.processing.domains.memories.failure.stage, "proposal-result");
-  assert(!records.get("villages-village").data.chronicle.some((row: any) => row.text === rejectedText));
+  assert.equal(pending.processing.domains.memories.status, "rejected");
+  assert(
+    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
+      (row: any) => row.text === rejectedText,
+    ),
+  );
   const boundary = "Please ask me before reading my private letters.";
   await turn(
     "source-disclosure",
@@ -777,7 +800,6 @@ try {
   assert.equal(asideLine.presentation, "aside");
   assert.equal(asideLine.delivery, "ordinary");
   assert(asideLine.heardBy.includes("neighbor"), "aside shorthand never acquires whisper privacy");
-  verificationStatus = "supported";
   for (const [field, domain] of [
     ["memoryChanges", "memories"],
     ["relationshipChanges", "relationships"],
@@ -822,7 +844,6 @@ try {
     assert.deepEqual(state().lines, beforeLines);
     assert.equal(state().submissions.find((row: any) => row.id === id).processing.domains[domain].status, "applied");
   }
-  verificationStatus = "rejected";
   const denial = "You never told me which tea you liked.";
   const falseFact = "The player never shared a tea preference.";
   await turn(
@@ -847,9 +868,12 @@ try {
     state().lines.some((line: any) => line.content === denial),
     "forgetful/bluffing character dialogue remains intact",
   );
-  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "failed");
-  assert(!records.get("villages-village").data.recollections.some((row: any) => row.text === falseFact));
-  verificationStatus = "supported";
+  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "rejected");
+  assert(
+    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
+      (row: any) => row.text === falseFact,
+    ),
+  );
   await turn("continue-after-effects", "*nods*", [
     { kind: "dialogue", speakerId: "aqua", text: "We can keep talking." },
   ]);
@@ -931,7 +955,6 @@ try {
   assert(playerSource.speechSource?.spans.length);
   assert.deepEqual(playerSource.heardBy, ["aqua", "feddy", "neighbor"]);
   assert.doesNotMatch(recovered.body, /speechSource|effectFailures|writing-completion/);
-  verificationStatus = "supported";
   const compact = await turn(
     "compact-preference",
     '"Mint is my favourite, only hot."',
@@ -951,7 +974,7 @@ try {
       ],
     },
   );
-  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "applied");
+  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "rejected");
   assert(
     state().lines.some((line: any) => line.attentionEvidence && line.content === "Mint is my favourite, only hot."),
   );
@@ -1171,6 +1194,7 @@ try {
   assert.equal(state().pictureEvaluatedZoneIds.filter((id: string) => id === "kitchen").length, 1);
   // A fresh v2 Scene exercises the archive-identical server and real HTTP application owners.
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
+    version: 2,
     ...clone(scene),
     semanticVersion: 2,
     lines: [],
@@ -1193,12 +1217,17 @@ try {
     events: { moves: [], departures: [], contactEnd: [] },
     memoryChanges: [
       {
-        kind: "passing",
+        action: "create",
+        kind: "open-matter",
+        subjects: ["aqua"],
         text: "Aqua suggested discussing the harbour tomorrow.",
-        category: "commitment",
-        subjectCharacterIds: ["aqua"],
-        knownByCharacterIds: ["aqua"],
-        evidence: [1],
+        learners: {
+          aqua: {
+            basis: "report",
+            attributedTo: "aqua",
+            support: [{ lineId: 1, excerpt: "Then let us talk about the harbour tomorrow." }],
+          },
+        },
       },
     ],
     relationshipChanges: { changes: [], permissions: [], disclosures: [] },
@@ -1222,11 +1251,15 @@ try {
   assert.equal(state().submissions.at(-1).semanticReady, true);
   assert.equal(state().submissions.at(-1).processing.domains.memories.status, "applied");
   assert(
-    records
-      .get("villages-village")
-      .data.recollections.some((row: any) => row.text === "Aqua suggested discussing the harbour tomorrow."),
+    fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
+      (row: any) => row.text === "Aqua suggested discussing the harbour tomorrow.",
+    ),
   );
-  assert(!JSON.stringify(records.get("villages-village").data.chronicle).includes("FORGED NARRATOR AUTHORITY"));
+  assert(
+    !JSON.stringify(fixtureVillageState(records.get("villages-village").data, records).memories.records).includes(
+      "FORGED NARRATOR AUTHORITY",
+    ),
+  );
   const beforeSemanticRead = modelCalls;
   const semanticPublic = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
   assert.doesNotMatch(
@@ -1473,6 +1506,7 @@ try {
     personalizationPending: false,
     source: "village",
   };
+  state().continuity.facts.villagers = clone(liveWorld.villagers);
   semanticIntentAnswer.timeline = [{ kind: "speech", text: "Let us discuss the harbour." }];
   semanticExchangeAnswer.wishChanges = [
     {
@@ -1510,6 +1544,7 @@ try {
   initializeVenueAccess(canonicalVenue);
   canonicalVenue.access.managerIds = ["aqua"];
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
+    version: 2,
     ...clone(scene),
     semanticVersion: 2,
     status: "opening",
@@ -1714,7 +1749,7 @@ try {
     const retained = clone(records),
       oldIntent = clone(semanticIntentAnswer),
       oldExchange = clone(semanticExchangeAnswer);
-    const blocked = coerceSession({ ...clone(scene), semanticVersion: 2, sceneRevision: 0 });
+    const blocked = coerceSession({ version: 2, ...clone(scene), semanticVersion: 2, sceneRevision: 0 });
     blocked.sceneAttendance!.occupants.find((row) => row.characterId === "distant")!.zoneId = "kitchen";
     records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen = true;
     records.get("villages-venue-visit-" + scene.id).data = blocked;
@@ -1891,6 +1926,239 @@ try {
     semanticExchangeAnswer = oldExchange;
   }
 
+  // Preservation boundaries use the real packaged admission, storage and recovery owners.
+  {
+    const retained = clone(records),
+      oldIntent = clone(semanticIntentAnswer),
+      oldExchange = clone(semanticExchangeAnswer);
+    const message = '"Hello." *I sleep for two months*';
+    let sourceLines: unknown[] = [];
+    const reset = async () => {
+      beforeSemanticResponse = undefined;
+      records.clear();
+      for (const [key, record] of retained) records.set(key, clone(record));
+      const preserved = coerceSession({
+        ...clone(scene),
+        version: 2,
+        semanticVersion: 2,
+        sceneRevision: 0,
+        startedAt: "2026-10-12T14:00:00.000Z",
+        sceneAttendance: { ...clone(scene.sceneAttendance), capturedAt: "2026-10-12T14:00:00.000Z" },
+        lines: [],
+        submissions: [],
+      });
+      preserved.continuity = captureSceneContinuity(
+        fixtureVillageState(records.get("villages-village").data, records),
+        preserved,
+        Date.parse(preserved.startedAt),
+      );
+      records.get("villages-venue-visit-" + scene.id).data = preserved;
+      semanticIntentAnswer = {
+        status: "resolved",
+        instructions: "Ordinary speech",
+        action: null,
+        movement: null,
+        timeline: [
+          { kind: "speech", text: "Hello." },
+          { kind: "action", text: "*I sleep for two months*" },
+        ],
+      };
+      semanticExchangeAnswer = {
+        consistent: true,
+        authority: { physical: false, access: false, projects: false, standing: false },
+        action: null,
+        access: [],
+        events: { moves: [], departures: [], contactEnd: [] },
+        memoryChanges: [],
+        relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+        wishChanges: [],
+        projectSpeech: [],
+      };
+      answer = {
+        playerSpeechCapture: {
+          status: "captured",
+          segments: [{ segment: 0, sources: [{ text: "Hello.", occurrence: 1 }] }],
+        },
+        segments: [
+          { speakerId: "player", text: "Hello." },
+          { speakerId: "aqua", text: "Hello back." },
+        ],
+      };
+      await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+      sourceLines = clone(state().lines);
+    };
+    for (const [reason, expected] of [
+      ["time", "halt-time"],
+      ["activity", "halt-time"],
+      ["condition", "halt-state"],
+      ["world", "halt-world"],
+      ["appointment", "halt-appointment"],
+    ]) {
+      await reset();
+      semanticExchangeAnswer.halt =
+        reason === "appointment"
+          ? { reason: "none", quote: "", appointments: [{ date: "2026-10-13", minute: 780, quote: "Hello." }] }
+          : { reason, quote: "two months" };
+      const before = clone(state()),
+        worldBefore = clone(records.get("villages-village").data),
+        calls = modelCalls;
+      const payload = {
+        sessionId: scene.id,
+        submissionId: "halt-" + reason,
+        message,
+        mode: "act",
+        targetId: "",
+        expectedSceneRevision: state().sceneRevision,
+      };
+      const result = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+      assert.equal(result.statusCode, 200, result.body);
+      assert.equal(result.json().turnOutcome, expected);
+      for (const key of ["lines", "submissions", "heardHistory", "sceneAttendance", "activeIds", "sceneRevision"])
+        assert.deepEqual(state()[key], before[key], key);
+      assert.deepEqual(records.get("villages-village").data, worldBefore, "held turns have no world or memory effects");
+      assert.equal(state().operation.input.message, message);
+      assert.equal(state().operation.input.chosenAt, now);
+      assert.equal(lastSemanticInput.context.preservation.sceneAt, "2026-10-12T14:00:00.000Z");
+      assert.deepEqual(lastSemanticInput.context.preservation.calendar, {
+        instant: "2026-10-12T14:00:00.000Z",
+        date: "2026-10-12",
+        weekday: "Monday",
+        time: "07:00",
+        timeZone: "America/Los_Angeles",
+      });
+      assert.equal(modelCalls, calls + 2, "HALT adds no provider calls");
+      await stop?.();
+      await app.close();
+      app = Fastify();
+      await start();
+      const recovered = await app.inject({
+        method: "GET",
+        url: `/api/villages/rooms/${scene.id}/operations/${payload.submissionId}`,
+      });
+      assert.equal(recovered.json().operation.turnOutcome, expected, "restart preserves the held result");
+      assert.equal(recovered.json().operation.input.message, message);
+      const retry = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+      assert.equal(retry.json().turnOutcome, expected);
+      assert.equal(modelCalls, calls + 2, "replay does not regenerate");
+    }
+    await reset();
+    semanticExchangeAnswer.halt = { reason: "time", quote: "two months" };
+    const farewell = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/leave",
+      payload: {
+        sessionId: scene.id,
+        submissionId: "halt-farewell",
+        message,
+        expectedSceneRevision: state().sceneRevision,
+      },
+    });
+    assert.equal(farewell.statusCode, 200, farewell.body);
+    assert.equal(farewell.json().turnOutcome, "halt-time");
+    assert.equal(state().status, "active", "a held farewell does not conclude the Scene");
+    assert.deepEqual(state().lines, sourceLines);
+    await reset();
+    const death = "I start walking away before I slip, hit my head, and die";
+    semanticExchangeAnswer.halt = { reason: "condition", quote: "hit my head, and die" };
+    answer = {
+      playerSpeechCapture: { status: "silent", segments: [] },
+      segments: [{ speakerId: "aqua", text: "Go steady." }],
+    };
+    const deathResult = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/leave",
+      payload: {
+        sessionId: scene.id,
+        submissionId: "halt-death-farewell",
+        message: death,
+        expectedSceneRevision: state().sceneRevision,
+      },
+    });
+    assert.equal(deathResult.statusCode, 200, deathResult.body);
+    assert.equal(deathResult.json().turnOutcome, "halt-state");
+    assert.equal(state().status, "active");
+    assert.equal(state().operation.input.message, death);
+    assert.deepEqual(state().lines, sourceLines, "the safe farewell cannot replace an unsupported death input");
+    await reset();
+    const zone = () => records.get("villages-village").data.venues[0].zones.find((row: any) => row.id === "terrace");
+    const action = {
+      happened: true,
+      segment: 0,
+      narration: "You fold the cloth.",
+      conditionBefore: zone().state.condition,
+      conditionAfter: "The cloth is folded.",
+      sceneNote: "A neat folded cloth.",
+    };
+    semanticIntentAnswer = {
+      status: "resolved",
+      instructions: "Fold the cloth.",
+      action,
+      movement: null,
+      timeline: [{ kind: "action", text: "*folds the cloth*" }],
+    };
+    semanticExchangeAnswer.action = action;
+    semanticExchangeAnswer.authority = {
+      physical: true,
+      access: false,
+      projects: false,
+      standing: false,
+      social: false,
+    };
+    answer = { playerSpeechCapture: { status: "silent", segments: [] }, segments: [{ text: "You fold the cloth." }] };
+    beforeSemanticResponse = () => {
+      zone().state.condition = "The cloth was removed elsewhere.";
+    };
+    const changed = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: scene.id,
+        submissionId: "halt-changed-target",
+        message: "*folds the cloth*",
+        mode: "chat",
+        targetId: "",
+        expectedSceneRevision: state().sceneRevision,
+      },
+    });
+    assert.equal(changed.statusCode, 200, changed.body);
+    assert.equal(changed.json().turnOutcome, "halt-world");
+    assert.deepEqual(state().lines, sourceLines);
+    assert.equal(zone().state.condition, "The cloth was removed elsewhere.");
+    zone().state.condition = action.conditionBefore;
+    await turn("preserved-physical", "*folds the cloth*", [{ text: "You fold the cloth." }]);
+    assert.equal(zone().state.updatedAt, now, "authority stamps use application time");
+    assert.equal(zone().state.traces.at(-1).createdAt, now);
+    assert.equal(zone().state.traces.at(-1).expiresAt, new Date(Date.parse(now) + 3 * 86_400_000).toISOString());
+    const physicalEvent =
+      records.get("villages-village").data.exchangeReceipts[`venue-chat:${scene.id}:preserved-physical`];
+    assert.equal(physicalEvent.at, "2026-10-12T14:00:00.000Z");
+    assert.equal(physicalEvent.committedAt, now);
+    await reset();
+    const acceptedText = "Aqua likes blue bicycles.";
+    semanticExchangeAnswer.memoryChanges = [
+      {
+        action: "create",
+        kind: "open-matter",
+        subjects: ["aqua"],
+        text: acceptedText,
+        learners: { aqua: { basis: "report", attributedTo: "aqua", support: [{ lineId: 0, excerpt: acceptedText }] } },
+      },
+    ];
+    semanticIntentAnswer.timeline = [{ kind: "speech", text: "Tell me about bicycles." }];
+    await turn("preserved-memory", '"Tell me about bicycles."', [{ speakerId: "aqua", text: acceptedText }]);
+    assert.equal(state().submissions.at(-1).at, "2026-10-12T14:00:00.000Z");
+    const memory = fixtureVillageState(records.get("villages-village").data, records).memories.records.find(
+      (row) => row.text === acceptedText,
+    )!;
+    assert(memory, "a supported rewrite can be accepted in an old Scene");
+    assert.equal(memory.occurredAt, "2026-10-12T14:00:00.000Z");
+    assert.equal(memory.recordedAt, now, "recording does not invent intervening days");
+    records.clear();
+    for (const [key, record] of retained) records.set(key, record);
+    semanticIntentAnswer = oldIntent;
+    semanticExchangeAnswer = oldExchange;
+  }
+
   const afterMovePhysical = {
     ...physical,
     segment: 1,
@@ -1940,7 +2208,7 @@ try {
   semanticExchangeAnswer.events = { moves: [], departures: [], contactEnd: [], sceneEnded: { source: 0 } };
   delete semanticExchangeAnswer.memoryChanges;
   await turn("semantic-conclusion-recovery", "*waits*", [{ speakerId: "feddy", text: "I'll see you next time." }]);
-  assert.equal(state().status, "closed", "Optional memory failure does not delay a natural conclusion");
+  assert.equal(state().status, "active", "An NPC goodbye cannot end the preserved encounter; Conclude is explicit");
   assert.equal(state().submissions.at(-1).processing.domains.memories.status, "failed");
   const beforeConcludeRead = modelCalls;
   await app.inject({ method: "GET", url: "/api/villages/rooms/active" });

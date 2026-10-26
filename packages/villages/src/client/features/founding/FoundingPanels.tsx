@@ -45,7 +45,7 @@ export function newSetupVenue(
 
     description: "",
     category: venueClass === "community" ? "public-center" : "",
-    presentation: { image: null, x, y },
+    presentation: { mapId: "", image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     capabilities: [],
     state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
@@ -63,7 +63,10 @@ export async function requestSetupMapReceipt(path: string, init?: RequestInit): 
   // Admission is small; a completed receipt can carry several MB over a phone connection.
   const timer = window.setTimeout(() => controller.abort(), init?.method === "POST" ? 30_000 : 120_000);
   try {
-    return await request<SetupMapReceipt>(path, { ...init, signal: controller.signal });
+    return await request<SetupMapReceipt>(path, {
+      ...init,
+      signal: init?.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal,
+    });
   } finally {
     window.clearTimeout(timer);
   }

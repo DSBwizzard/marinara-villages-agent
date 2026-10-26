@@ -18,8 +18,6 @@ export const serverFeatureInterfaces = Object.freeze({
     "draftVillageVenueDescriptions",
     "proposeVillage",
     "proposePublicVenueNames",
-    "proposeHappenings",
-    "proposeReaction",
   ],
   "generation/interpretation-diagnostics.ts": [
     "readInterpretationDiagnostics",
@@ -43,7 +41,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "storeVillageVenueImage",
   ],
   "media/town-map-image.ts": ["generateVillageTownMap"],
-  "media/town-map-review.ts": ["replaceVillageTownMap", "readTownMapSubmission", "readVillageTownMapImage"],
+  "media/town-map-review.ts": ["prepareVillageMap", "createVillageMap", "updateVillageMap"],
   "media/sprite-setup.ts": ["preparedSpriteManager"],
   "projects/project-checks.ts": ["interpretProjectDraft", "finalizeProjectDiagnostics"],
   "projects/project-evidence.ts": [
@@ -118,7 +116,7 @@ export const serverFeatureInterfaces = Object.freeze({
   "settings/village-settings.ts": [
     "setVillagePromptKnowledge",
     "setVillageLoreSettings",
-    "setVillageStoryPace",
+    "setVillageBackgroundPace",
     "setVillageSpriteCardFlipEnabled",
     "setVillageSendOnEnter",
     "setVillageCharacterSpeechColors",
@@ -164,15 +162,19 @@ export const serverFeatureInterfaces = Object.freeze({
   "venues/zone-edits.ts": ["updateVillageZone", "proposeResidenceSpaceEdit", "applyResidenceEditApproval"],
   "world/development.ts": ["inspectDevelopment", "setDevelopment", "reconcileDevelopment"],
   "world/snapshot.ts": ["buildVillageSnapshot"],
-  "world/village-store.ts": ["readVillageAuthority", "readVillageSnapshot", "readVillageState", "mutateVillageState"],
+  "world/village-store.ts": [
+    "readVillageAuthority",
+    "readVillageSnapshot",
+    "readVillageState",
+    "mutateVillageState",
+    "withVillageSceneAcceptance",
+  ],
   "world/village.ts": [
     "resetVillage",
     "reconcileVillage",
-    "runVillageReaction",
-    "buildVillageStory",
     "buildVillageMemories",
-    "removeChronicleEntry",
-    "removeVillageRecollection",
+    "readVillageMemoryEvidence",
+    "forgetMemory",
   ],
 });
 

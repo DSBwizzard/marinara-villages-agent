@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   readVillagerCard,
@@ -11,7 +12,7 @@ import {
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
-import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   previewVillagerRefresh,
@@ -79,7 +80,7 @@ const release = configureVillagesRuntime({
   getAgentConfig: async () => ({ connectionId: "fixture" }),
   resources: { listCharacters: async () => [source], listLorebooks: async () => [] },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       getById: async (_p: any, id: string) => (id === row.id ? row : null),
       list: async () => [],
       update: async (input: any) => {
@@ -87,13 +88,14 @@ const release = configureVillagesRuntime({
         return row;
       },
       create: async (input: any) => input,
-    },
+    }),
   },
   languageModels: { resolveForRequest: async () => model },
 } as any);
 async function run() {
   try {
     const session: any = {
+      version: 2,
       id: "fixture",
       placeId: "camp",
       placeName: "Camp",
@@ -179,7 +181,7 @@ async function run() {
         );
       } else assert.match(outsidePrompt, /do not describe them entering an interior/);
     }
-    const background = buildTickMessages({
+    const background = buildResidentPlanningMessages({
       village: "Camp",
       setting: "Clearing",
       moment: deriveVillageMoment({ foundedAt: stamp, seed: state.seed, now: new Date(stamp) }),
@@ -204,8 +206,8 @@ async function run() {
     assert.ok(!String(background[0].content).includes("SCRIPTED TELL SECRET"));
     assert.equal(paidCalls, 0);
     const legacy = coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       ...state,
       villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],

@@ -22,7 +22,7 @@ const bundle = await build({
       const openSetup=useCallback(()=>setOpened(true),[]);
       const startOver=useFoundingStartOver({draftRevision,draftSaveQueue,openSetup,setBusy,setCatalog:()=>{},setDraftReady,setResetArmed,setSavedSetupDraft,setSettingsError,setSnapshot});
       return <>{renderGeneralSettingsPage({backgroundPanel:null,busy,resetArmed,setResetArmed,settingsError,snapshot,startOver,
-        saveCharacterSpeechColors:async()=>{},saveSendOnEnter:async()=>{},saveStoryPace:async()=>{},saveVisitRetention:async()=>{}})}
+        saveCharacterSpeechColors:async()=>{},saveSendOnEnter:async()=>{},saveBackgroundPace:async()=>{},saveVisitRetention:async()=>{}})}
         <pre id='state'>{JSON.stringify({founded:snapshot.isFounded,busy,opened,draftReady,savedDraft,revision:draftRevision.current})}</pre></>;
     }
     createRoot(document.getElementById('root')).render(<Harness/>);
@@ -82,7 +82,7 @@ try {
     await page.goto("http://reset.test/");
     await page.evaluate(async (initial) => {
       window.initialSnapshot = initial;
-      for (const name of ["villages-founding-v3", "villages-founding-v2"]) {
+      for (const name of ["villages-drafts-v4", "villages-founding-v2"]) {
         const db = await new Promise((resolve) => {
           const open = indexedDB.open(name, 1);
           open.onupgradeneeded = () => open.result.createObjectStore("drafts");
@@ -98,7 +98,7 @@ try {
     }, structuredClone(fixture));
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const state = () => page.locator("#state").textContent().then(JSON.parse);
-    const stored = (name = "villages-founding-v3") =>
+    const stored = (name = "villages-drafts-v4") =>
       page.evaluate(async (databaseName) => {
         const db = await new Promise((resolve) => {
           const open = indexedDB.open(databaseName, 1);

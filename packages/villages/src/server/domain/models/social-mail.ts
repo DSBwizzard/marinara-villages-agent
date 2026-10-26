@@ -53,6 +53,8 @@ export type SocialMailInterpretation = {
   source: RelationshipReview;
   reply: RelationshipReview;
   replyText: string;
+  sourceMemoryChanges?: unknown[];
+  replyMemoryChanges?: unknown[];
   invitation?: SocialInvitation["terms"];
 };
 export type SocialMailInput = {
@@ -68,6 +70,8 @@ export type SocialMailInput = {
   incarnation: string;
   admitted: import("./world.js").VillageState;
   retainedReply?: string;
+  narrationMemories?: string;
+  systemMemory?: ReturnType<typeof import("../rules/scene-memories.js").sceneMemoryContext>;
   sourceDelivered: boolean;
 };
 export type SocialMailOutbox = {

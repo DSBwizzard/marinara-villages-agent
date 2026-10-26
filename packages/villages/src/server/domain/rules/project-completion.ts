@@ -1,3 +1,4 @@
+import { rememberDomainFact } from "./domain-memories.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { venueDesignHash } from "./project-structure.js";
 import type { VillageState, VillageProject, VillageVenue, VillageVenueZone } from "../models/world.js";
@@ -100,6 +101,16 @@ export function completeProject(state: VillageState, project: VillageProject, at
   project.progress = 100;
   project.updatedAt = at;
   state.projectWishOutbox.push({ projectId: project.id, at });
+  rememberDomainFact(state, {
+    id: "project-complete:" + project.id,
+    at,
+    recordedAt: at,
+    text: project.title + " was completed.",
+    subjects: flow.builderId ? [flow.builderId] : [],
+    knowers: flow.builderId ? [flow.builderId] : [],
+    domainRef: { kind: "project", id: project.id },
+    event: true,
+  });
 }
 export function readProjectPlan(value: unknown, venue: VillageVenue): NonNullable<VillageProject["plan"]> {
   const row = asRecord(value);

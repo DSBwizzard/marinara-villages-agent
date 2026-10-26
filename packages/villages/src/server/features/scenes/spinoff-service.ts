@@ -1,3 +1,4 @@
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { randomUUID } from "node:crypto";
 import type {
@@ -13,8 +14,16 @@ import { spinoffLocksScene } from "../../domain/models/spinoff-model.js";
 import { conflict, badRequest } from "../../domain/rules/errors.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
-import { selectPromptMemories } from "../../domain/rules/memory-selection.js";
-import { SPINOFF_REVIEW_INSTRUCTION, readSpinoffReview, publicSpinoff } from "../../domain/rules/spinoff-memory.js";
+import { recallMemories } from "../../domain/rules/memory-recall.js";
+import { sceneMemoryContext, bindSceneMemorySuggestion } from "../../domain/rules/scene-memories.js";
+import { memoryHash } from "../../domain/rules/memory-integrity.js";
+import { applyVillageMemory } from "../../domain/rules/village-memories.js";
+import {
+  SPINOFF_REVIEW_INSTRUCTION,
+  readSpinoffReview,
+  publicSpinoff,
+  spinoffMemoryLines,
+} from "../../domain/rules/spinoff-memory.js";
 
 export type SpinoffPorts = {
   repository: SceneRepository;
@@ -84,17 +93,25 @@ export function createSpinoffs(ports: SpinoffPorts) {
       )
     )
       throw conflict("Finish or resolve the Scene's saved work before starting a spinoff.");
-    const resident = village.villagers.find((person) => person.characterId === residentId);
-    if (!resident || !scene.activeIds.includes(residentId)) throw conflict("Choose a resident in your current Zone.");
+    const presentation = sceneContinuityView(village, scene);
+    if (presentation.playerPersonaId !== village.playerPersonaId)
+      throw conflict("The linked player Persona changed. Start a new Scene before starting a spinoff.");
+    const resident = presentation.villagers.find((person) => person.characterId === residentId);
+    if (
+      !resident ||
+      !village.villagers.some((person) => person.characterId === residentId) ||
+      !scene.activeIds.includes(residentId)
+    )
+      throw conflict("Choose a resident in your current Zone.");
     const model = await ports.models().resolve(await ports.connectionId());
     const at = new Date(scene.sceneAttendance?.capturedAt || scene.startedAt);
     if (!Number.isFinite(at.getTime()))
       throw conflict("The original Scene time is unavailable. Start a new Scene first.");
     const moment = deriveVillageMoment({
-      foundedAt: village.foundedAt,
+      foundedAt: presentation.foundedAt,
       seed: village.seed,
       now: at,
-      timeZone: village.timeZone,
+      timeZone: presentation.timeZone,
     });
     const transcript = scene.lines
       .filter(
@@ -109,43 +126,25 @@ export function createSpinoffs(ports: SpinoffPorts) {
       )
       .slice(-30)
       .map((line) => ({
-        speaker: line.role === "user" ? village.playerPersonaName : resident.cardSnapshot.name,
+        speaker: line.role === "user" ? presentation.playerPersonaName : resident.cardSnapshot.name,
         content: line.content.slice(0, 2000),
       }));
-    const sharedIds = new Set(
-      scene.lines
-        .filter(
-          (line) =>
-            !line.contactHidden &&
-            !line.contactReport &&
-            !line.asideFor &&
-            line.kind !== "whisper" &&
-            line.kind !== "side" &&
-            line.heardBy.includes(residentId),
-        )
-        .map((line) => line.id),
-    );
-    const memories = selectPromptMemories(
-      village.chronicle.filter(
-        (memory) =>
-          memory.sourceVisitId === scene.id &&
-          memory.sourceLineIds?.length &&
-          memory.sourceLineIds.every((id) => sharedIds.has(id)),
-      ),
-      [residentId],
-      scene.placeName,
-      1000,
-    );
+    const memories = recallMemories(presentation.memories, {
+      purpose: "narration",
+      audience: ["player", residentId],
+      query: scene.placeName,
+      budget: 1000,
+    }).candidates;
     const context = JSON.stringify({
-      setting: village.setting,
-      worldFacts: village.worldFacts,
-      origin: village.scenarioImprint?.origin,
+      setting: presentation.setting,
+      worldFacts: presentation.worldFacts,
+      origin: presentation.scenarioImprint?.origin,
       date: moment.dateLabel,
       time: moment.localTime,
       timeZone: moment.timeZone,
       place: scene.placeName,
       activity: scene.participants.find((person) => person.characterId === residentId)?.doing,
-      player: { name: village.playerPersonaName, identity: village.playerPersonaIdentity },
+      player: { name: presentation.playerPersonaName, identity: presentation.playerPersonaIdentity },
       resident: { name: resident.cardSnapshot.name, description: resident.cardSnapshot.description },
       // Only timing bounds leave Villages; private wishes, activities and other Zone attendance do not.
       commitmentBoundaries: (resident.agenda?.activeDay?.blocks ?? resident.agenda?.day ?? []).map((block) => ({
@@ -169,7 +168,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
       capturedRevision: revision,
       context,
       transcript,
-      lorebookIds: [...village.selectedLorebookIds],
+      lorebookIds: [...presentation.selectedLorebookIds],
       chatId: null,
       status: "prepared",
       summary: "",
@@ -360,6 +359,19 @@ export function createSpinoffs(ports: SpinoffPorts) {
       await change(sessionId, value.id, (draft) => {
         draft.evidence = evidence;
       });
+      const nativeMemory = sceneMemoryContext(
+        await ports.readVillageState(),
+        ["player", value.residentId],
+        "",
+        evidence.map((row) => row.content).join("\n"),
+      );
+      const memorySource = {
+        kind: "scene" as const,
+        id: "spinoff:" + value.id,
+        revision: 1,
+        fingerprint: memoryHash(evidence),
+        sceneId: value.sessionId,
+      };
       const model = await ports.models().resolve(value.connectionId);
       const messages = [
         { role: "system" as const, content: SPINOFF_REVIEW_INSTRUCTION },
@@ -369,6 +381,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
             capturedContext: value.context,
             originalConversation: value.transcript,
             transcript: evidence,
+            memory: nativeMemory.envelope,
           }),
         },
       ];
@@ -383,12 +396,17 @@ export function createSpinoffs(ports: SpinoffPorts) {
       });
       if (["length", "max_tokens"].includes(result.finishReason))
         throw conflict("Memory preparation ran out of output space. No memories were accepted.");
-      const review = readSpinoffReview(extractModelJsonObject(result), { ...value, evidence });
+      const review = readSpinoffReview(extractModelJsonObject(result), {
+        ...value,
+        evidence,
+        memoryContext: nativeMemory.saved,
+        memorySource,
+      });
       await current(sessionId); // Revalidate village/persona/resident after generation.
       const saved = await change(sessionId, value.id, (draft) => {
         if (draft.status !== "returned" || draft.interpretationAttempt !== attempt || draft.selectionIds !== undefined)
           throw conflict("This memory preparation is stale.");
-        Object.assign(draft, review);
+        Object.assign(draft, review, { memoryContext: nativeMemory.saved, memorySource });
       });
       return publicSpinoff(saved.spinoff!);
     } finally {
@@ -448,45 +466,70 @@ export function createSpinoffs(ports: SpinoffPorts) {
         createdAt: stamp,
         updatedAt: stamp,
       });
-    if (acceptedIds.length)
-      await ports.mutateVillageState((village) => {
+    let appliedIds: string[] = [];
+    if (acceptedIds.length) {
+      const settled = await ports.mutateVillageState((village) => {
         if (
           village.seed !== value.villageSeed ||
           village.playerPersonaId !== value.personaId ||
           !village.villagers.some((resident) => resident.characterId === value.residentId)
         )
           throw conflict("Village identity changed. No spinoff memories were imported.");
-        const moment = deriveVillageMoment({
-          foundedAt: village.foundedAt,
-          seed: village.seed,
-          now: new Date(value.anchoredAt),
-          timeZone: village.timeZone,
-        });
+        if (
+          !value.memoryContext ||
+          !value.memorySource ||
+          value.memorySource.fingerprint !== memoryHash(value.evidence)
+        )
+          throw conflict("Prepared spinoff source changed");
         for (const memory of value.memories.filter((row) => acceptedIds.includes(row.id))) {
-          if (village.chronicle.some((row) => row.id === memory.id)) continue;
-          village.chronicle.unshift({
+          if (village.memoryReceipts[memory.id]) continue;
+          let reason = "",
+            proposal;
+          try {
+            const bound = bindSceneMemorySuggestion(value.memorySuggestions?.[memory.id], {
+              source: value.memorySource,
+              operationId: memory.id,
+              proposalId: memory.id,
+              collectionRevision: village.memories.revision,
+              lines: spinoffMemoryLines(value),
+              playerLineId: "",
+              replyLineIds: [],
+              residentIds: [value.residentId],
+            });
+            proposal = bound.proposal;
+            applyVillageMemory(village, proposal, {
+              source: value.memorySource,
+              evidence: bound.evidence,
+              recall: value.memoryContext.recall,
+              protection: value.memoryContext.protection,
+              committedEffects: [],
+              occurredAt: value.anchoredAt,
+              recordedAt: stamp,
+            });
+          } catch (error) {
+            reason = error instanceof Error ? error.message : "Spinoff memory rejected";
+          }
+          village.memoryReceipts[memory.id] = {
             id: memory.id,
-            text: memory.text,
-            kind: "chat",
-            memoryCategory: "shared-experience",
-            scope: "private",
-            occurredAt: value.anchoredAt,
-            timePrecision: "exact",
-            dayIndex: moment.dayIndex,
-            clock: moment.dayPhase,
-            actors: [{ id: value.residentId, name: value.residentName }],
-            knownByCharacterIds: [value.residentId],
-            subjectCharacterIds: [value.residentId],
-            sourceVisitId: value.sessionId,
-            sourceLineIds: memory.evidence.map((line) => line.id),
-            evidenceHistory: [
-              { visitId: evidenceId, submissionId: value.id, lineIds: memory.evidence.map((line) => line.id) },
-            ],
-          });
+            sceneId: value.sessionId,
+            submissionId: value.id,
+            domain: "memories",
+            at: stamp,
+            committedAt: stamp,
+            status: reason ? "rejected" : "applied",
+            reason: reason || "Reviewed spinoff memory",
+            evidenceIds: memory.evidence.map((row) => row.id),
+            ...(proposal ? { memoryProposal: proposal } : {}),
+          };
         }
       });
+      appliedIds = acceptedIds.filter((id) => settled.memoryReceipts[id]?.status === "applied");
+    }
     await change(sessionId, value.id, (draft) => {
-      draft.acceptedIds = acceptedIds;
+      draft.acceptedIds = appliedIds;
+      if (appliedIds.length < acceptedIds.length)
+        draft.explanation +=
+          "\nSome selected memories were rejected because their saved evidence or protection changed.";
       draft.status = "resolved";
     });
     await resume(sessionId, value.id);

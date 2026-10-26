@@ -123,7 +123,7 @@ export function Mailbox({
                 )
               }
             >
-              {row.reinterpretRequired ? "Reinterpret saved message" : "Replay delivery"}
+              {row.reinterpretRequired ? "Reinterpret saved message" : "Replay saved work"}
             </button>
             {row.cancellable ? (
               <button

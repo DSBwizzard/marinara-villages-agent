@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { observeHousing } from "../../domain/rules/resident-development.js";
 import { foundingCompletedIds } from "../../domain/rules/founding-tasks.js";
 import { openingView } from "../../domain/rules/opening-project.js";
@@ -40,18 +41,13 @@ export function createVillageSnapshot({
   privatePreparationRooms,
 }: VillageSnapshotPorts) {
   /** The village as the tab draws it: live library labels and adopted card colors. */
-  async function buildVillageSnapshot(
-    now: Date = villageNow(),
-    observeCurrentHousing = false,
-  ): Promise<VillageSnapshot> {
+  async function buildVillageSnapshot(at?: Date, observeCurrentHousing = false): Promise<VillageSnapshot> {
     let village = await readVillageState();
-    if (!village.visitMemoryBackfilled && (village.setupAt || village.foundedAt)) {
-      village = await readVillageState();
-    }
     const clock = await observeVillageClock();
+    let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     if (clock?.paused) now = villageNow();
     else if (clock) now = new ZonedDate(now, clock.timeZone);
-    if (!clock?.paused && (await rollActiveAgendas(now, village))) village = await readVillageState();
+    if (!clock?.paused && (await rollActiveAgendas(now, village, clock?.revision))) village = await readVillageState();
     const residentIds = village.villagers.map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));
@@ -86,7 +82,7 @@ export function createVillageSnapshot({
     const player = readPlayerIdentity(village);
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();
-    const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess) : village;
+    const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess, false) : village;
     const capturedVenue = residenceAccess && sceneWorld.venues.find((venue) => venue.id === residenceAccess.placeId);
     // ONE schedule read for the whole village, so every villager's pin and their
     // own drawer's plate are resolved off the same answer. Null when the Engine
@@ -158,7 +154,7 @@ export function createVillageSnapshot({
         destination,
       );
     });
-    return {
+    const snapshot: VillageSnapshot = {
       status: "ready",
       clock,
       progressEngineVersion: village.progressEngineVersion,
@@ -214,7 +210,6 @@ export function createVillageSnapshot({
       residences: village.residences,
       venueMail: village.venueMail,
       noticeboard: village.noticeboard,
-      happenings: village.happenings,
       villagers,
       relationshipStartingPending: village.villagers.some(
         (person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId),
@@ -225,6 +220,7 @@ export function createVillageSnapshot({
         player,
         residenceAccess,
         residenceAccess ? sceneAccessContext(residenceAccess, village) : undefined,
+        now,
       ),
       ...(residenceAccess && capturedVenue
         ? {
@@ -235,13 +231,47 @@ export function createVillageSnapshot({
                 player,
                 residenceAccess,
                 sceneAccessContext(residenceAccess, sceneWorld),
+                now,
               ).venues.find((venue) => venue.id === capturedVenue.id)!,
             },
           }
         : {}),
-      recap: null,
+      ...(residenceAccess
+        ? {
+            sceneChanges: {
+              sceneId: residenceAccess.id,
+              revision: createHash("sha256")
+                .update(
+                  JSON.stringify([
+                    residenceAccess.status,
+                    residenceAccess.changeSequence,
+                    residenceAccess.submissions.map((turn) => [
+                      turn.id,
+                      turn.changeSequence,
+                      turn.semanticReady,
+                      turn.processing,
+                    ]),
+                    Object.values(village.exchangeReceipts)
+                      .filter((receipt) => receipt.sceneId === residenceAccess.id)
+                      .map((receipt) => [receipt.id, receipt.noticeSequence]),
+                    Object.values(village.relationshipContext?.receipts ?? {})
+                      .filter(
+                        (receipt) =>
+                          receipt.sceneId === residenceAccess.id ||
+                          (!receipt.sceneId && receipt.sourceId === residenceAccess.id),
+                      )
+                      .map((receipt) => [receipt.id, receipt.noticeSequence]),
+                  ]),
+                )
+                .digest("hex"),
+            },
+          }
+        : {}),
       backgroundWork: await backgroundWorkSummaries(),
     };
+    if (clock && (await observeVillageClock())?.revision !== clock.revision)
+      return buildVillageSnapshot(undefined, observeCurrentHousing);
+    return snapshot;
   }
 
   return { buildVillageSnapshot };

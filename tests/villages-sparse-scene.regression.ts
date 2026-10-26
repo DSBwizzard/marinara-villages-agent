@@ -22,13 +22,27 @@ import { workFailureSummary } from "../packages/villages/src/server/domain/rules
     assert.deepEqual(result.raw.relationshipChanges, { changes: [], permissions: [], disclosures: [] });
   }
   const refs = ["0", "utterance:0", "saved-line", "01", "-1", "0.0", " 0", "99"];
-  const wire = { ...core, memoryChanges: [{ evidence: refs }], relationshipChanges: { changes: [{ lineIds: refs }] } };
+  const wire = {
+    ...core,
+    memoryChanges: [{ learners: { rosa: { support: refs.map((lineId) => ({ lineId, excerpt: "tea" })) } } }],
+    relationshipChanges: { changes: [{ lineIds: refs }] },
+  };
   const canonical = normalizeSceneEffectReferences(wire);
   const expanded = materializePlayerSpeech(canonical, "Hello.");
-  assert.deepEqual((expanded.memoryChanges as any)[0].evidence, [1, 0, ...refs.slice(2)]);
+  assert.deepEqual(
+    (expanded.memoryChanges as any)[0].learners.rosa.support.map((row: any) => row.lineId),
+    [1, 0, ...refs.slice(2)],
+  );
   assert.deepEqual((expanded.relationshipChanges as any).changes[0].lineIds, [1, 0, ...refs.slice(2)]);
-  assert.deepEqual((wire.memoryChanges as any)[0].evidence, refs, "normalization never mutates saved input");
-  assert.equal((normalizeSceneEffectReferences(wire, ["0"]).memoryChanges as any)[0].evidence[0], "0");
+  assert.deepEqual(
+    (wire.memoryChanges as any)[0].learners.rosa.support.map((row: any) => row.lineId),
+    refs,
+    "normalization never mutates saved input",
+  );
+  assert.equal(
+    (normalizeSceneEffectReferences(wire, ["0"]).memoryChanges as any)[0].learners.rosa.support[0].lineId,
+    "0",
+  );
   const change = {
     fromId: "rosa",
     toId: "player",

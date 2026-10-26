@@ -1,37 +1,13 @@
 import type { RelationshipState, SocialRecord } from "../models/relationship-types.js";
-import type { VillageChronicleEntry } from "../models/world.js";
 import { defaultRelationshipState } from "./relationship-rules.js";
-import { selectPromptMemories } from "./memory-selection.js";
+/** Active terms are authority; remembered history is recalled from native Memories. */
 export function selectSocialRecords(
   records: SocialRecord[],
-  actors: string[],
-  query: string,
-  budget = 1200,
+  _actors: string[],
+  _query: string,
+  _budget = 1200,
 ): SocialRecord[] {
-  const essential = records.filter((row) => row.kind !== "history" && !["fulfilled", "cancelled"].includes(row.status));
-  const historical = records.filter((row) => !essential.includes(row));
-  const selected = new Set(
-    selectPromptMemories(
-      historical.map(
-        (row) =>
-          ({
-            id: row.id,
-            text: row.text,
-            scope: "private",
-            kind: "chat",
-            actors: row.participants.map((id) => ({ id, name: id })),
-            knownByCharacterIds: row.participants,
-            occurredAt: "",
-            dayIndex: 0,
-            clock: "",
-          }) as VillageChronicleEntry,
-      ),
-      actors,
-      query,
-      budget,
-    ).map((row) => row.id),
-  );
-  return [...essential, ...historical.filter((row) => selected.has(row.id))];
+  return records.filter((row) => row.kind !== "history" && !["fulfilled", "cancelled"].includes(row.status));
 }
 /** Bounded projection for an admitted model request; the complete saved ledger remains intact. */
 export function socialContextState(
@@ -66,7 +42,12 @@ export function socialContextState(
     ),
   );
   packet.invitations = Object.fromEntries(
-    Object.entries(state.invitations).filter(([, row]) => row.participantIds.some((id) => actors.includes(id))),
+    Object.entries(state.invitations).filter(
+      ([, row]) =>
+        row.participantIds.some((id) => actors.includes(id)) &&
+        (row.status === "proposed" ||
+          (row.status === "accepted" && state.sharedRecords[row.id]?.status === "accepted")),
+    ),
   );
   for (const actor of actors) {
     packet.intentions[actor] = structuredClone(state.intentions[actor] ?? []);

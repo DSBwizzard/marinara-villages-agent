@@ -26,11 +26,6 @@ export function relationshipWritingPrompt(village: VillageState, fromId: string)
           [edge.connection, ...edge.concerns, ...edge.expectations].join(" "),
           600,
         ),
-        definingExperiences: edge.experiences
-          .slice(-4)
-          .flatMap((id) =>
-            state?.receipts[id] ? [{ at: state.receipts[id]!.at, reason: state.receipts[id]!.reason }] : [],
-          ),
       }),
     ),
     "Your current social intentions: " + JSON.stringify(state?.intentions[fromId] ?? []),

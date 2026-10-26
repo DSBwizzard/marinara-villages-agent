@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -54,7 +55,7 @@ function fixture(name: string) {
       events.push("snapshot");
       return {
         village: { name: state.name },
-        settings: { sendOnEnter: state.sendOnEnter, storyPace: state.storyPace },
+        settings: { sendOnEnter: state.sendOnEnter, backgroundPace: state.backgroundPace },
         noticeboard: structuredClone(state.noticeboard),
       } as VillageSnapshot;
     },
@@ -108,7 +109,7 @@ async function main() {
   await a.service.setVillageName("  New name  ");
   await a.service.setVillagePromptKnowledge("Public knowledge");
   await a.service.setVillageLoreSettings([" book ", "book"], 800);
-  await a.service.setVillageStoryPace("quiet");
+  await a.service.setVillageBackgroundPace("quiet");
   await a.service.setVillageSendOnEnter(true);
   await a.service.setVillageSpriteCardFlipEnabled(true);
   await a.service.setVillageCharacterSpeechColors(false);
@@ -130,7 +131,7 @@ async function main() {
   assert.equal(a.bootstrapCalls, 0);
   for (const invalid of [
     () => a.service.setVillageName(""),
-    () => a.service.setVillageStoryPace("normal"),
+    () => a.service.setVillageBackgroundPace("normal"),
     () => a.service.setVillageSendOnEnter("true"),
     () => a.service.setVillageSpriteCardFlipEnabled(1),
     () => a.service.setVillageCharacterSpeechColors(null),
@@ -259,7 +260,7 @@ async function main() {
     },
   };
   const releaseRuntime = configureVillagesRuntime({
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: { listCharacters: async () => [] },
     logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
     isDebugAgentsEnabled: () => false,
@@ -275,7 +276,7 @@ async function main() {
         name: "Routed name",
         promptKnowledge: "Known",
         setting: "New setting",
-        storyPace: "balanced",
+        backgroundPace: "balanced",
         sendOnEnter: true,
         characterSpeechColors: true,
       },

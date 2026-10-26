@@ -1,4 +1,5 @@
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import { fixtureLocalAttention, fixtureAcousticModel } from "./fixtures/villages-attention.fixture.js";
 import assert from "node:assert/strict";
@@ -157,7 +158,7 @@ const release = configureVillagesRuntime({
     },
   },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_p: string, id: string) {
         if (id.startsWith("villages-relationships-") && !records.has(id)) {
           const world = records.get("villages-village").data,
@@ -195,7 +196,7 @@ const release = configureVillagesRuntime({
       async remove(_p: string, id: string) {
         return records.delete(id);
       },
-    },
+    }),
   },
   languageModels: {
     async resolveForRequest() {

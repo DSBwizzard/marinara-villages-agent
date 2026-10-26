@@ -1,9 +1,10 @@
+import { useFocusRevision, useVillageActivity, useVisibleInterval } from "../../shared/activity.js";
 import type {
   ResidentSignature,
   ResidentSignatureImage,
   ResidentSignatureView,
 } from "../../../shared/helpers/resident-signature.js";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const P = "marinara-capability-villages";
 const flourishes = [
@@ -34,26 +35,30 @@ export function VillagerSignature({
   const [refresh, setRefresh] = useState(0);
   const path = `/villagers/${encodeURIComponent(actorId)}/signature`;
   const running = view?.status === "running";
-  useEffect(() => {
-    const controller = new AbortController();
-    const read = async () => {
+  const { visible } = useVillageActivity();
+  const focusRevision = useFocusRevision(visible);
+  const savedRevision = JSON.stringify([signature, saved]);
+  const read = useCallback(
+    async (signal: AbortSignal) => {
       try {
-        const result = await request<ResidentSignatureView>(path, { signal: controller.signal });
-        if (!controller.signal.aborted) {
+        const result = await request<ResidentSignatureView>(path, { signal });
+        if (!signal.aborted) {
           setView(result);
+          setError("");
         }
       } catch (cause) {
-        if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Signature could not be read.");
+        if (!signal.aborted) setError(cause instanceof Error ? cause.message : "Signature could not be read.");
       }
-    };
-    void read();
-    const timer = window.setInterval(() => void read(), running ? 2_000 : 30_000);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [path, request, refresh, running, signature, saved]);
+    },
+    [path, request],
+  );
+  useEffect(() => {
+    if (!visible) return;
+    const controller = new AbortController();
+    void read(controller.signal);
+    return () => controller.abort();
+  }, [visible, read, refresh, savedRevision, focusRevision]);
+  useVisibleInterval((signal) => read(signal), running ? 2_000 : null);
   const local = view?.fallback ?? signature ?? { name, hand: "flowing", slant: 0, spacing: 0, flourish: 0 };
   const image = view?.saved ?? saved;
   const url = image?.image.url;

@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import { creativeOpportunity } from "../packages/villages/src/server/domain/rules/world-story.js";
-import { coerceOpportunityHappenings } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { residentPlanningOpportunity } from "../packages/villages/src/server/domain/rules/resident-planning.js";
 
 const state = defaultVillageState();
 state.seed = "social-opportunity";
@@ -14,7 +13,7 @@ state.villagers = ["ada", "ben"].map((characterId) => ({
 })) as any;
 const now = new Date("2026-10-26T17:00:00.000Z");
 const moment = deriveVillageMoment({ foundedAt: now.toISOString(), seed: state.seed, now });
-const opportunity = () => creativeOpportunity(state, new Map(), moment, now.toISOString())!;
+const opportunity = () => residentPlanningOpportunity(state, moment, now.toISOString())!;
 assert.equal(
   opportunity().kind,
   "routine",
@@ -33,26 +32,7 @@ assert.deepEqual(
 );
 assert.equal(opportunity().kind, "routine", "Different residents are never asserted to share a Zone");
 assert.equal(opportunity().venueId, "", "No current location is invented for an available correspondent");
-const contact = opportunity();
-assert.deepEqual(
-  coerceOpportunityHappenings(
-    [
-      {
-        opportunityId: contact.id,
-        kind: contact.kind,
-        actorIds: contact.actorIds,
-        venueId: "",
-        narration: "A resident does something in their private home.",
-      },
-    ],
-    new Set(),
-    moment,
-    [contact],
-  ),
-  [],
-  "Contact-only opportunities cannot publish unseen private activity",
-);
 state.villagers = [];
 state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
-assert.equal(opportunity().kind, "weather", "Weather remains explicitly identifiable for automatic admission to skip");
+assert.equal(opportunity(), null, "Weather alone does not admit paid resident activity");
 console.log("Resident fallback opportunities, rotation and weather-only classification passed.");

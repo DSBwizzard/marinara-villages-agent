@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { createHash } from "node:crypto";
 import {
   previousSignaturePrompt,
@@ -27,8 +29,8 @@ import {
 
 const now = "2026-10-04T12:00:00.000Z";
 const village = coerceVillageState({
-  version: 3,
-  socialContractVersion: 2,
+  ...defaultVillageState(),
+  version: 5,
   wishSystemVersion: 3,
   seed: "signature-fixture",
   name: "Signature Village",
@@ -217,7 +219,7 @@ const host = {
   isDebugAgentsEnabled: () => false,
   logger: { warn() {}, error() {}, info() {}, debug() {}, debugOverride() {} },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       getById: async (_pkg: string, id: string) => structuredClone(records.get(id) ?? null),
       list: async () => [],
       create: async (input: any) => {
@@ -234,7 +236,7 @@ const host = {
         records.set(input.id, row);
         return row;
       },
-    },
+    }),
   },
 };
 const release = configureVillagesRuntime(host as any);

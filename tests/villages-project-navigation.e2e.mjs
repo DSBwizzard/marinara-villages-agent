@@ -6,13 +6,175 @@ const { readBaseVenueLayout, validateLayoutZones } = await tsImport(
 );
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { openProjectPage, currentProject, projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
+import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 const output = process.env.VILLAGES_VISUAL_OUTPUT;
 if (output) await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
+async function checkMapPlacement(width, activeScene = false) {
+  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 700 });
+  await mockEngineLookups(page);
+  const snapshot = projectSnapshot();
+  delete snapshot.projects[0].venueDraft.position;
+  const placements = [];
+  let heldPlacement;
+  const session = activeScene
+    ? {
+        id: "project-scene",
+        version: 2,
+        sceneRevision: 0,
+        placeId: "mill",
+        placeName: "The Mill",
+        zoneId: "exterior",
+        area: "public",
+        status: "active",
+        activeIds: [],
+        participants: [],
+        lines: [],
+        submissions: [],
+        startedAt: snapshot.village.instant,
+        lastActivityAt: snapshot.village.instant,
+        endedAt: "",
+      }
+    : null;
+  if (session) {
+    snapshot.foundingPreparation = { status: "ready" };
+    snapshot.sceneVenue = { sceneId: session.id, venue: structuredClone(snapshot.settings.venues[0]) };
+    snapshot.sceneVenue.venue.zones[1].name = "Captured workshop";
+    snapshot.opening = {
+      id: "opening",
+      version: 2,
+      stage: "project",
+      projectId: "canvas",
+      communityVenueId: "mill",
+      residentIds: ["mara"],
+      heardIds: ["mara"],
+      declinedIds: [],
+      gatheringSceneId: "",
+      action: "Choose the design, agreements and lead",
+      outcome: "",
+      proposals: [],
+    };
+  }
+  const originalSession = structuredClone(session);
+  const originalVenue = structuredClone(snapshot.sceneVenue);
+  await page.route("**/api/villages**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    assert(!(route.request().method() !== "GET" && /\/rooms(?:\/|$)/.test(path)), "placement never mutates the Scene");
+    let value = snapshot;
+    if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+    else if (path.endsWith("/town-map")) value = { image: mapImage };
+    else if (path.endsWith("/projects/canvas/place")) {
+      const body = route.request().postDataJSON();
+      placements.push(body);
+      assert.equal(body.expectedRevision, snapshot.projects[0].lifecycle.revision);
+      assert(body.requestId);
+      snapshot.projects[0].venueDraft.position = { x: body.x, y: body.y };
+      snapshot.projects[0].lifecycle.revision++;
+      snapshot.settings.venues[0].zones[1].name = "Changed live workshop";
+      if (activeScene) {
+        heldPlacement = route;
+        return;
+      }
+    }
+    await fulfill(route, { json: value });
+  });
+  await page.route("http://project-placement.test/", (route) =>
+    fulfill(route, {
+      contentType: "text/html",
+      body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+    }),
+  );
+  await page.goto("http://project-placement.test/");
+  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  const openSite = async () => {
+    await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
+    const projects = page.getByRole("navigation", { name: "Projects", exact: true });
+    if (await projects.isVisible()) await projects.getByRole("button", { name: /Canvas Tent/ }).click();
+    await page.getByRole("tab", { name: "Site", exact: true }).click();
+  };
+  if (activeScene) {
+    await expect(
+      page.getByRole("button", { name: "Choose the design, agreements and lead", exact: true }),
+    ).toBeVisible();
+    const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
+    await composer.fill("An unsent Scene draft.");
+    await composer.evaluate((node) => {
+      window.retainedComposer = node;
+    });
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
+    await page.getByRole("button", { name: /^Projects \(/ }).click();
+  }
+  await openSite();
+  await page.getByRole("button", { name: "Choose map position", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Cancel placement", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel placement", exact: true }).click();
+  await openSite();
+  assert.equal(placements.length, 0, "cancelling returns to the Project without saving a position");
+  if (activeScene) {
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Message at The Mill", exact: true })).toHaveValue(
+      "An unsent Scene draft.",
+    );
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
+    await openSite();
+  }
+  await page.getByRole("button", { name: "Choose map position", exact: true }).click();
+  const canvas = page.getByRole("group", { name: "Map navigation" });
+  await expect(canvas).toHaveAttribute("data-placing", "true");
+  await expect(page.getByRole("button", { name: "Choose the design, agreements and lead", exact: true })).toHaveCount(
+    0,
+  );
+  const art = canvas.locator("img").first();
+  await expect(art).toHaveJSProperty("naturalWidth", 1500);
+  await expect(page.locator(".marinara-capability-villages-stage")).toHaveAttribute("data-picture-width", /[1-9]/);
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await expect(page.locator('.marinara-capability-villages-stage [data-kind="person"]')).toHaveCount(0);
+  if (output)
+    await page.screenshot({ path: resolve(output, "projects-map-placement-" + width + ".png"), fullPage: true });
+  const box = await canvas.boundingBox();
+  const point = { x: box.x + box.width * 0.2, y: box.y + box.height * 0.75 };
+  if (width < 700) await page.touchscreen.tap(point.x, point.y);
+  else await page.mouse.click(point.x, point.y);
+  if (activeScene) {
+    await expect.poll(() => !!heldPlacement).toBe(true);
+    await expect(page.getByRole("button", { name: "Cancel placement", exact: true })).toBeDisabled();
+    await page.mouse.click(point.x, point.y);
+    assert.equal(placements.length, 1, "a pending placement cannot admit a second map click");
+    await fulfill(heldPlacement, { json: snapshot });
+  }
+  await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
+  assert.equal(placements.length, 1, "a map click or tap places the Project exactly once");
+  assert(placements[0].x >= 0.03 && placements[0].x <= 0.97);
+  assert(placements[0].y >= 0.03 && placements[0].y <= 0.97);
+  await page.getByRole("tab", { name: "Site", exact: true }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("Marked on the village map");
+  await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeEnabled();
+  if (output) await page.screenshot({ path: resolve(output, "projects-placed-" + width + ".png"), fullPage: true });
+  if (activeScene) {
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
+    await expect(composer).toHaveValue("An unsent Scene draft.");
+    assert(await composer.evaluate((node) => node === window.retainedComposer), "the original Scene stays mounted");
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
+    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Move to Zone" }).locator('option[value="work"]')).toHaveText(
+      "Captured workshop",
+    );
+  }
+  assert.deepEqual(session, originalSession, "placement and cancellation preserve the Scene's captured state");
+  assert.deepEqual(snapshot.sceneVenue, originalVenue);
+  await page.close();
+}
 try {
   for (const width of [1280, 390]) {
+    await checkMapPlacement(width);
+    await checkMapPlacement(width, true);
     const f = await openProjectPage(browser, width, undefined, async (path, body, snapshot) => {
       if (path === "/projects") {
         const project = currentProject("created");
@@ -84,6 +246,10 @@ try {
     assert(selectedContrast >= 4.5, "a hovered selected tab retains readable contrast");
     await page.getByLabel("Physical design", { exact: true }).fill("An edited pavilion");
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
+    await page.getByRole("tab", { name: "Site", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeDisabled();
+    await expect(page.getByRole("tabpanel")).toContainText("Save design to choose a map position.");
+    await page.getByRole("tab", { name: "Design", exact: true }).click();
     // Keyboard navigation changes tabs, never the design or server.
     await page.getByRole("tab", { name: "Design", exact: true }).press("ArrowRight");
     await expect(page.getByRole("tab", { name: "Zones", exact: true })).toBeFocused();

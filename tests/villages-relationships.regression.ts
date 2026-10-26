@@ -1,3 +1,5 @@
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { publishRelationshipDisclosures } from "../packages/villages/src/server/domain/rules/relationship-memories.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -176,6 +178,7 @@ captured.relationshipContext!.edges[relationshipKey("ada", "player")] = {
   connection: "Partners",
 };
 scene.continuity = captureSceneContinuity(captured, scene, Date.parse(village.foundedAt));
+village.memoryScenes = structuredClone(captured.memoryScenes);
 const dual = proposal("Former partners", 2);
 dual.sceneAfter = after("Partners");
 dual.liveAfter = after("Former partners");
@@ -282,37 +285,38 @@ badHistory.liveAfter = after("Family", [historic]);
 assert.throws(() => review(badHistory), /History cannot/);
 
 // Only source-published, actually shared information belongs in the notebook.
-state.disclosures.hidden = {
-  id: "hidden",
-  fromId: "ada",
-  toId: "player",
-  text: "Unpublished private change",
-  kind: "connection",
-  lineIds: ["a"],
-  sourceId: "hidden",
-  at: "2026-10-29T00:00:00Z",
-  publicationId: "unpublished",
-};
-state.disclosures.routine = {
-  id: "routine",
-  fromId: "ada",
-  toId: "player",
-  text: "I visit the garden.",
-  kind: "routine",
-  lineIds: ["a"],
-  sourceId: "routine",
-  at: "2026-10-28T00:00:00Z",
-};
-state.disclosures.connection = {
-  id: "connection",
-  fromId: "ada",
-  toId: "player",
-  text: "I consider you my friend.",
-  kind: "connection",
-  lineIds: ["a"],
-  sourceId: "connection",
-  at: "2026-10-27T00:00:00Z",
-};
+assert.equal(
+  projectRelationshipProfiles(state, village)[0]!.learned.length,
+  0,
+  "Private authority does not teach the player",
+);
+const disclosures = [
+  {
+    id: "routine",
+    fromId: "ada",
+    toId: "player",
+    text: "I visit the garden.",
+    kind: "routine" as const,
+    lineIds: ["routine"],
+  },
+  {
+    id: "connection",
+    fromId: "ada",
+    toId: "player",
+    text: "I consider you my friend.",
+    kind: "connection" as const,
+    lineIds: ["connection"],
+  },
+];
+for (const row of disclosures)
+  publishRelationshipDisclosures(
+    village,
+    [row],
+    { kind: "domain", id: row.id, revision: 1, fingerprint: memoryHash(row.id) },
+    [{ id: row.id, speakerId: "ada", role: "assistant", content: row.text, heardBy: ["player"], playerHeard: true }],
+    row.id === "routine" ? "2026-10-28T00:00:00Z" : "2026-10-27T00:00:00Z",
+    "2026-10-29T00:00:00Z",
+  );
 const publicProfile = projectRelationshipProfiles(state, village)[0]!;
 assert.equal(
   publicProfile.summary,
@@ -390,12 +394,29 @@ const incoming = {
 };
 thread.messages.push(incoming);
 state.mailDeliveries.incoming = { messageId: "incoming", at: mail.at, sourceHash: "incoming-hash" };
-assert.equal(state.disclosures["read-only"], undefined);
+const countBeforeRead = village.memories.records.length;
+publishRelationshipDisclosures(
+  village,
+  incoming.disclosures,
+  { kind: "domain", id: "mail-incoming", revision: 1, fingerprint: memoryHash("incoming-hash") },
+  [
+    {
+      id: incoming.id,
+      speakerId: "ada",
+      role: "assistant",
+      content: incoming.text,
+      heardBy: ["player"],
+      playerHeard: true,
+    },
+  ],
+  incoming.at,
+  "2026-10-22T13:05:00Z",
+);
 readPersonalThread(state, thread.id, "2026-10-22T13:05:00Z");
-assert.equal(state.disclosures["read-only"]!.text, "I enjoy gardening.");
-const readOnce = structuredClone(state.disclosures);
+assert.equal(village.memories.records.length, countBeforeRead + 1);
+const readOnce = structuredClone(village.memories);
 readPersonalThread(state, thread.id, "2026-10-22T13:06:00Z");
-assert.deepEqual(state.disclosures, readOnce);
+assert.deepEqual(village.memories, readOnce);
 state.invitations.invite = {
   id: "invite",
   threadId: thread.id,
@@ -426,7 +447,12 @@ assert.throws(() => respondSocialInvitation(state, "expired", 1, true, "2026-10-
 
 // Shared Events budget counts admitted attempts, including failed, empty and uncertain calls.
 const budget = defaultVillageState();
-budget.storyPace = "balanced";
+budget.backgroundPace = "balanced";
+assert.equal(
+  eventAttemptAvailable(budget, "2026-10-21", Date.parse("2026-10-22T12:00:00Z")),
+  false,
+  "An unspent prior day cannot generate catch-up requests",
+);
 const instant = Date.parse("2026-10-22T12:00:00Z");
 for (let index = 0; index < 3; index++) {
   assert.equal(eventAttemptAvailable(budget, "2026-10-22", instant + index * 900000), true);
@@ -439,7 +465,7 @@ const restored = structuredClone(budget);
 assert.equal(eventAttemptAvailable(restored, "2026-10-22", instant + 2700000), false, "Restart preserves attempts");
 assert.equal(eventAttemptAvailable(restored, "2026-10-21", instant + 86400000), false, "No calendar replay");
 assert.equal(eventAttemptAvailable(restored, "2026-10-23", instant + 86400000), true);
-restored.storyPace = "off";
+restored.backgroundPace = "off";
 assert.equal(eventAttemptAvailable(restored, "2026-10-23", instant + 86400000), false);
 
 // Raw contract rejection precedes fallback coercion and startup workers; reads never invoke preparation.

@@ -13,7 +13,7 @@ export async function verifyVenueMutationLifetimes(browser) {
       contents: `
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useSaveVenue,useRemoveVenue,useDecideVenueRequest} from './packages/villages/src/client/features/venues/actions.js';
-import {useSaveStoryPace,useSaveSettings} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveBackgroundPace,useSaveSettings} from './packages/villages/src/client/features/settings/actions.js';
 function Harness(){
  const [snapshot,rawSnapshot]=useState(window.seed),[busy,rawBusy]=useState(false),[error,rawError]=useState(''),
  [venueEditDraft,rawEditor]=useState(window.draft),[venuesDraft,rawRows]=useState(window.initialRows),
@@ -23,7 +23,7 @@ function Harness(){
  setVenuesDraft=useCallback(v=>{window.calls.rows++;rawRows(v)},[]),setRequestEdits=useCallback(v=>{window.calls.edits++;rawEdits(v)},[]),
  openMenu=useCallback(v=>{window.calls.menu++;rawMenu(v)},[]);
  const ports={snapshot,setSnapshot,setBusy,setSettingsError,setVenueEditDraft,setVenuesDraft,requestEdits,setRequestEdits,openMenu};
- const save=useSaveVenue(ports),remove=useRemoveVenue(ports),decide=useDecideVenueRequest(ports),pace=useSaveStoryPace(ports),settings=useSaveSettings({...ports,
+ const save=useSaveVenue(ports),remove=useRemoveVenue(ports),decide=useDecideVenueRequest(ports),pace=useSaveBackgroundPace(ports),settings=useSaveSettings({...ports,
  knowledgeDraft:'',personaDraft:'',settingDraft:'',lorebookDraft:[],loreTokenBudgetDraft:1600,acceptSavedSettings:()=>window.acks++});
  const commands={save:()=>save(venueEditDraft),remove:()=>remove(window.targetId),approve:()=>decide(window.entry,true),deny:()=>decide(window.entry,false),pace:()=>pace('quiet'),settings};
  const launch=fn=>{window.pending.push(fn());return window.pending.length-1},run=kind=>launch(commands[kind]);

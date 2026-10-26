@@ -1,3 +1,9 @@
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
+import {
+  correctVillageMemory,
+  forgetVillageMemory,
+} from "../packages/villages/src/server/domain/rules/village-memories.js";
 import assert from "node:assert/strict";
 import { createSocialMail } from "../packages/villages/src/server/features/residents/social-mail-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -34,7 +40,9 @@ let calls = 0,
   failCleanup = false,
   truncateMeaning = false,
   sourceOnlyReply = false;
-let failInvitationWrite = false;
+let failNativeWrite = "";
+let failInvitationWrite = false,
+  failMemoryWrite = false;
 const snapshot = async () => ({ ...structuredClone(village), relationshipContext: structuredClone(social) });
 const projection = (connection: string) => ({
   connection,
@@ -55,6 +63,18 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
 let active: SocialMailInput;
 const promptHistory: string[] = [];
 const service = createSocialMail({
+  processLiveMemories: async (scene: any, id: string, evidence: any, incarnations: any) => {
+    if (failNativeWrite === (scene.lines.length === 1 ? "source" : "reply")) {
+      failNativeWrite = "";
+      throw Error("Native Memory storage unavailable");
+    }
+    return createLiveMemory({
+      mutateVillageState: async (fn: any) => {
+        fn(village);
+        return snapshot();
+      },
+    } as any).processLiveMemories(scene, id, evidence, incarnations);
+  },
   readVillageSnapshot: snapshot,
   readRelationshipState: async () => structuredClone(social),
   mutateRelationships: async (_seed: string, mutate: (state: RelationshipState) => void) => {
@@ -75,6 +95,10 @@ const service = createSocialMail({
   mutateVillageState: async (mutate: any) => {
     const next = { ...structuredClone(village), relationshipContext: structuredClone(social) };
     mutate(next);
+    if (failMemoryWrite && next.memories.records.length > village.memories.records.length) {
+      failMemoryWrite = false;
+      throw Error("Memory publication unavailable");
+    }
     if (failInvitationWrite && next.venues.some((venue) => venue.access?.permissions.length)) {
       failInvitationWrite = false;
       throw Error("Invitation permission storage unavailable");
@@ -119,6 +143,50 @@ const service = createSocialMail({
     if (sourceOnlyReply) replyChange.lineIds = [active.messageId];
     return {
       content: JSON.stringify({
+        replyMemoryChanges: active.sourceText.startsWith("MEMORY:")
+          ? [
+              {
+                action: "create",
+                kind: "information",
+                text: "Ada wants to stay friends.",
+                subjects: ["ada"],
+                learners: {
+                  ada: {
+                    basis: "report",
+                    attributedTo: "ada",
+                    support: [{ lineId: active.messageId + ":reply", excerpt: "I'd like to stay friends." }],
+                  },
+                },
+                screening: {
+                  disposition: "clear",
+                  protectedRoots: [],
+                  fingerprint: active.systemMemory!.saved.protection.fingerprint,
+                },
+              },
+            ]
+          : [],
+        sourceMemoryChanges: active.sourceText.startsWith("MEMORY:")
+          ? [
+              {
+                action: "create",
+                kind: "information",
+                text: "The player collects amber fossils.",
+                subjects: ["player"],
+                learners: {
+                  ada: {
+                    basis: "report",
+                    attributedTo: "player",
+                    support: [{ lineId: active.messageId, excerpt: active.sourceText }],
+                  },
+                },
+                screening: {
+                  disposition: "clear",
+                  protectedRoots: [],
+                  fingerprint: active.systemMemory!.saved.protection.fingerprint,
+                },
+              },
+            ]
+          : [],
         sourceReview: active.sourceDelivered
           ? emptyRelationshipReview()
           : {
@@ -211,10 +279,21 @@ assert.equal(relationshipFor(social, "ada", "player").revision, 2);
 view = await service.readMailbox();
 assert.equal(view.threads[0]!.messages.filter((row) => row.replyPending).length, 0);
 assert.equal(view.threads[0]!.messages.filter((row) => row.fromId === "ada").length, 1);
-assert.equal(Object.values(social.disclosures).length, 0, "Unread mail has not added notebook knowledge");
+assert.equal(
+  village.memories.records.filter((r) => !!r.knowers.player).length,
+  0,
+  "Unread mail has not added notebook knowledge",
+);
+failMemoryWrite = true;
+await assert.rejects(() => service.readThread(active.threadId), /Memory publication unavailable/);
+assert.equal(
+  social.mailThreads[active.threadId]!.messages.find((m) => m.id === active.messageId + ":reply")!.readAt,
+  undefined,
+  "A lost Memory write never marks mail read",
+);
 await service.readThread(active.threadId);
 await service.readThread(active.threadId);
-assert.equal(Object.values(social.disclosures).length, 1);
+assert.equal(village.memories.records.filter((r) => !!r.knowers.player).length, 1);
 assert.equal(calls, beforeRetryCalls, "Reading and polling buy no model calls");
 await assert.rejects(() => service.cancel(active.threadId, active.messageId), /already been delivered/);
 await assert.rejects(
@@ -249,9 +328,9 @@ assert.equal(
   queued.some((job) => job.subjectId === "opportunity:mail"),
   false,
 );
-assert.equal(Object.values(social.disclosures).length, 1);
+assert.equal(village.memories.records.filter((r) => !!r.knowers.player).length, 1);
 await service.readThread("personal:ada");
-assert.equal(Object.values(social.disclosures).length, 2);
+assert.equal(village.memories.records.filter((r) => !!r.knowers.player).length, 2);
 await assert.rejects(() => service.send({ residentId: "ada", requestId: "two:reply", text: "Collision" }));
 await service.send({ residentId: "ada", requestId: "cleanup", text: "Keep the original source." });
 active = queued.at(-1).input;
@@ -511,6 +590,112 @@ assert.equal(
   "Re-admission preserves the exact unsent source",
 );
 assert.equal(calls, beforeAccessRecovery, "Re-admission only queues deliberate work");
+await service.cancel(obsoleteInput.threadId, obsoleteInput.messageId);
+await service.send({ residentId: "ada", requestId: "native-learning", text: "MEMORY: I collect amber fossils." });
+failNativeWrite = "source";
+await generateAndSave();
+const nativeSource = active;
+const recovery = (await service.readMailbox()).recovery!.find((r) => r.messageId === nativeSource.messageId)!;
+assert(
+  recovery && !recovery.cancellable && !recovery.reinterpretRequired,
+  "Delivered-source Memory failures expose local replay",
+);
+assert(social.mailDeliveries[nativeSource.messageId]);
+const paidBeforeReplay = calls;
+failNativeWrite = "reply";
+await service.retry(nativeSource.threadId, nativeSource.messageId, "native-replay-source");
+assert(
+  (await service.readMailbox()).recovery!.some((r) => r.messageId === nativeSource.messageId),
+  "Reply Memory failures remain recoverable after reply delivery",
+);
+assert(social.mailDeliveries[nativeSource.messageId + ":reply"]);
+await service.retry(nativeSource.threadId, nativeSource.messageId, "native-replay-reply");
+assert.equal(calls, paidBeforeReplay);
+const native = village.memories.records.find((row) => row.text === "The player collects amber fossils.")!;
+assert(native?.knowers.ada, "Delivery teaches the actual resident through native Memory in the existing System call");
+assert.equal(native.knowers.player, undefined, "Resident Memory application never teaches the player early");
+correctVillageMemory(
+  village,
+  {
+    operationId: "mail-correct",
+    action: "repair",
+    expectedCollectionRevision: village.memories.revision,
+    target: { id: native.id, revision: native.revision, rootRevision: native.revision },
+    knowers: ["ada"],
+    text: "The player collects silver fossils.",
+  },
+  new Date().toISOString(),
+);
+await service.send({ residentId: "ada", requestId: "native-recall", text: "What do you remember about my fossils?" });
+const frozen = queued.at(-1).input as SocialMailInput;
+assert(frozen.narrationMemories!.includes("silver fossils"));
+assert(
+  !frozen.narrationMemories!.includes("amber fossils"),
+  "Repaired prior prose never comes back from the thread ledger",
+);
+const repaired = village.memories.records.find((row) => row.id === native.id)!;
+forgetVillageMemory(
+  village,
+  {
+    operationId: "mail-forget",
+    action: "forget",
+    expectedCollectionRevision: village.memories.revision,
+    target: { id: repaired.id, revision: repaired.revision, rootRevision: repaired.revision },
+    knowers: ["ada"],
+  },
+  new Date().toISOString(),
+);
+assert(frozen.narrationMemories!.includes("silver fossils"), "An admitted request retains its frozen recall on replay");
+await service.cancel(frozen.threadId, frozen.messageId);
+await service.send({
+  residentId: "ada",
+  requestId: "native-forgotten",
+  text: "What do you remember about my fossils?",
+});
+assert(!queued.at(-1).input.narrationMemories.includes("silver fossils"));
+await service.cancel(queued.at(-1).input.threadId, queued.at(-1).input.messageId);
+const messageText = "I remember the hidden observatory.";
+const capturedMemory = sceneMemoryContext(village, ["ada"], messageText);
+const obsoleteNative = service.automaticOutbox(
+  await snapshot(),
+  social,
+  {
+    senderId: "ada",
+    text: messageText,
+    relationshipReview: emptyRelationshipReview(),
+    memoryChanges: [
+      {
+        action: "create",
+        kind: "information",
+        text: "OLD INCARNATION ONLY",
+        subjects: ["ada"],
+        learners: { ada: { basis: "report", attributedTo: "ada", support: [{ lineId: 0, excerpt: messageText }] } },
+        screening: {
+          disposition: "clear",
+          protectedRoots: [],
+          fingerprint: capturedMemory.saved.protection.fingerprint,
+        },
+      },
+    ],
+  },
+  "obsolete-native",
+  new Date().toISOString(),
+  capturedMemory,
+);
+village.socialMailOutbox = [obsoleteNative];
+failNativeWrite = "source";
+await service.processOutbox(await snapshot());
+assert(social.mailDeliveries[obsoleteNative.id]);
+const deliveredOnce = structuredClone(social.mailDeliveries[obsoleteNative.id]);
+village.villagers[0]!.cardSnapshot.capturedAt = "replacement";
+await service.retry(obsoleteNative.input.threadId, obsoleteNative.id, "obsolete-native-local");
+assert.deepEqual(social.mailDeliveries[obsoleteNative.id], deliveredOnce);
+assert(!village.memories.records.some((row) => row.text === "OLD INCARNATION ONLY"));
+assert(
+  Object.values(village.memoryReceipts).some((row) => /correspondent changed/.test(row.reason)),
+  "A replaced correspondent rejects optional old learning locally",
+);
+assert.equal(village.socialMailOutbox!.length, 0, "Obsolete learning does not permanently block resident activity");
 console.log(
   "Personal mail: exact outbox, failed delivery, failed reply, local replay, read privacy and automatic delivery passed.",
 );

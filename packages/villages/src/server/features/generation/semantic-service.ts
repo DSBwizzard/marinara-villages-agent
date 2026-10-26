@@ -1,3 +1,4 @@
+import { readSceneHalt, SCENE_HALT_INSTRUCTION } from "../../domain/rules/scene-halt.js";
 import { readDevelopmentSceneProposals } from "../../domain/rules/development-scene.js";
 import { DEVELOPMENT_SCENE_INSTRUCTION } from "../../domain/rules/development-knowledge.js";
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
@@ -45,7 +46,6 @@ import {
 } from "../../domain/rules/semantic-contract.js";
 import { LIVE_MEMORY_INSTRUCTION } from "../../domain/rules/live-exchange.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../../domain/rules/wish-progress-rules.js";
-import { memoryVersion } from "../../domain/rules/live-exchange.js";
 
 export interface SemanticPorts {
   readVillageState: typeof import("../world/village-store.js").readVillageState;
@@ -67,7 +67,7 @@ const SYSTEM_BASE =
   "No invented witnesses, consent, access, stock or capabilities. Explicit game rules constrain outcomes; ordinary meaning does not require special phrases. " +
   RESIDENT_CONTINUITY_RULE;
 const SYSTEM_RETRIEVAL =
-  "The supplied history/memories are bounded retrieval, never proof of absence. Catalog hints locate sources only, not evidence. If more context is necessary, return {sourceHash,needsContext:[up to 8 exact catalog memory IDs],reason} instead of an outcome. Only one expansion is available, on an explicit new attempt; after expandedContext, insufficient/omitted scope must remain unresolved. No guessing from missing context. ";
+  "Supplied history and memories are bounded local retrieval, never proof of absence. Ambiguous references require clarification or no update. Never request context expansion or infer a historical target from missing scope. Administrative memory constraints are not new character knowledge. ";
 const SYSTEM_CURRENT_SCENE =
   "Adjudicate the current input, draft and residentActions using supplied evidence, policy and authoritative accessScopes. An invitation enables a later player choice; it requires no completed entry. Visit scope remains visit unless current evidence explicitly grants standing permission. Do not request memories to confirm mechanical policy or reread supplied draft:N evidence. Return the complete exchange JSON, never needsContext. If essential current facts are missing, use an unresolved intent/action disposition or consistent:false with a reason. Omit unsupported optional historical enrichment; it cannot block an otherwise supported current decision. Supplied history is bounded, never proof of absence. ";
 
@@ -78,7 +78,7 @@ export function createSemanticService(ports: SemanticPorts) {
     instruction: string,
     validate: (raw: Record<string, unknown>, hash: string, savedInput: Input) => Result,
     currentEvidenceOnly = false,
-    scene?: VenueScene,
+    _scene?: VenueScene,
   ): Promise<Result> {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = stage === "intent" ? 4096 : asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
@@ -131,27 +131,16 @@ export function createSemanticService(ports: SemanticPorts) {
               }))
             ).output
           : snapshot.output);
-      const hash = semanticHash(snapshot.input);
-      const expansion = ports.venueSavedCheckpoint?.<{ sourceHash: string; memories: unknown[] }>(key + ":retrieval");
-      const savedMemories = asRecord(asRecord(snapshot.input).context).memories;
-      const effectiveInput =
-        expansion?.sourceHash === hash
-          ? ({
-              ...asRecord(snapshot.input),
-              context: {
-                ...asRecord(asRecord(snapshot.input).context),
-                memories: [...(Array.isArray(savedMemories) ? savedMemories : []), ...expansion.memories],
-                expandedContext: true,
-              },
-            } as Input)
-          : snapshot.input;
+      const effectiveInput = snapshot.input;
+      const { _memoryWrite: _privateMemoryWrite, ...promptContext } = asRecord(asRecord(effectiveInput).context);
+      const promptInput = { ...asRecord(effectiveInput), context: promptContext };
       const effectiveHash = semanticHash(effectiveInput);
       const messages = [
         {
           role: "system" as const,
           content: snapshot.systemPrompt ?? SYSTEM_BASE + SYSTEM_RETRIEVAL + (snapshot.instruction ?? instruction),
         },
-        { role: "user" as const, content: JSON.stringify({ sourceHash: effectiveHash, input: effectiveInput }) },
+        { role: "user" as const, content: JSON.stringify({ sourceHash: effectiveHash, input: promptInput }) },
       ];
       if (output < 1024) throw badGateway("System interpretation needs more context allowance; no request was made.");
       const fitted = model.fitContext(messages, { maxTokens: output });
@@ -176,42 +165,10 @@ export function createSemanticService(ports: SemanticPorts) {
         const raw = extractModelJsonObject(answer);
         if (!raw || raw.sourceHash !== effectiveHash)
           throw badGateway("System interpretation is incomplete or cites a different source. Explicit retry required.");
-        if (raw.needsContext !== undefined) {
-          if (snapshot.currentEvidenceOnly)
-            throw badGateway(
-              "System did not finish the current Scene verdict. Saved draft retained; no outcome was applied.",
-            );
-          if (
-            expansion ||
-            !ports.venueSavedCheckpoint ||
-            !Array.isArray(raw.needsContext) ||
-            !raw.needsContext.length ||
-            raw.needsContext.length > 8 ||
-            new Set(raw.needsContext).size !== raw.needsContext.length
-          )
-            throw badGateway("System context remains insufficient. No outcome was applied.");
-          const rawCatalog = asRecord(asRecord(asRecord(snapshot.input).context).retrieval).catalog;
-          const catalog = Array.isArray(rawCatalog) ? rawCatalog : [];
-          const live = await ports.readVillageState();
-          const state = scene ? sceneContinuityView(live, scene) : live;
-          const requested = raw.needsContext.map((id) => {
-            const reference = catalog.find((row: any) => row.id === id);
-            const memory = state.chronicle.find((row) => row.id === id && !row.supersededBy);
-            if (
-              !reference ||
-              !memory ||
-              memoryVersion(memory) !== reference.version ||
-              (memory.scope !== "village" &&
-                !reference.audience.some((actor: string) =>
-                  (memory.knownByCharacterIds ?? memory.actors.map((row) => row.id)).includes(actor),
-                ))
-            )
-              throw badGateway("Requested System context is unavailable or changed. No outcome was applied.");
-            return { id: memory.id, text: memory.text, audience: reference.audience, version: reference.version };
-          });
-          await ports.venueCheckpoint(key + ":retrieval", async () => ({ sourceHash: hash, memories: requested }));
-          throw badGateway("Additional System context is saved. Explicitly retry this stage to interpret it.");
-        }
+        if (raw.needsContext !== undefined)
+          throw badGateway(
+            "Historical context is unresolved. The saved draft is retained; no expansion call is available.",
+          );
         const result = validate(raw, effectiveHash, effectiveInput);
         const receipt = asRecord(asRecord(result).effects).residentActionReceipt;
         if (receipt) asRecord(receipt).systemResponse = answer.content;
@@ -379,6 +336,7 @@ export function createSemanticService(ports: SemanticPorts) {
       combined,
       actionContractV2,
       sceneContinuityView(state, scene),
+      lines.map((line) => line.content).join("\n"),
     );
     return ask(
       "exchange",
@@ -416,6 +374,7 @@ export function createSemanticService(ports: SemanticPorts) {
         (combined
           ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
           : "") +
+        (context.preservation ? 'halt:{reason:"none",quote:"",appointments:[]},' : "") +
         "consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
         (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
         "}. Return exactly one JSON object. " +
@@ -425,8 +384,11 @@ export function createSemanticService(ports: SemanticPorts) {
         (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
         "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
         "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
-        "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures, contactEnd and sceneEnded sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact; ending an in-person visit is sceneEnded with exact resident farewell speech, or omit the event when unsupported. " +
-        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], sceneEnded:{source}, residenceRequest:{source,venueId}, residenceDecision:{source,approved}, renovationRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
+        "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures and contactEnd sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact. " +
+        (context.preservation
+          ? "Only the player's Conclude ends this Scene; never return sceneEnded. "
+          : "Ending an in-person visit is sceneEnded:{source} with exact resident farewell speech, or omit the event when unsupported. ") +
+        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,approved}, renovationRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
         (actionContractV2
           ? ""
           : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
@@ -438,18 +400,41 @@ export function createSemanticService(ports: SemanticPorts) {
         )
           .replaceAll('evidence:["player",0]', "evidence:[0]")
           .replaceAll('lineIds:["player",0]', "lineIds:[0]")
+          .replace(
+            'lineId is "player", current zero-based segment index, or',
+            "lineId is a current zero-based segment index or",
+          )
           .replace('"player" means the latest player line.', "Captured player speech uses its numeric segment index.")
           .replace('"player" for the current player line, or ', "") +
         " " +
         " Inspect each context.actors entry's wishes independently using actor.id and wish.id. Natural player-heard disclosure of the listed desire supports reveal without the word wish. Actual new evidence toward that listed goal supports progress/check, including a goal first disclosed and achieved in this exchange. Evaluate the supplied semanticCriteria and witnessed current plus supplied earlier evidence; do not require a separate player claim or a Narration proposal. " +
         WISH_PROPOSAL_INSTRUCTION.replace('evidence:["player",0]', "evidence:[0]") +
         ' Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".' +
-        " Memory subjectCharacterIds and knownByCharacterIds contain resident IDs only, never player. Never use an opening proposal, its name, or a newly spoken desire as a Wish ID. If there is no matching supplied Wish ID, return no Wish proposal. Use numeric indexes matching evidence draft:N for current memory evidence/relationship lineIds/Wish evidence. Consolidate memory facts sharing kind, category, subject IDs, knower IDs and evidence IDs into one row; never repeat a unit. Do not emit systemVerification fields. Every knower must witness ALL support and meaning-bearing context. Temporary seating/company may be passing, never automatically trust. " +
-        'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist. Set social authority true for expressed bond transitions, concrete commitments, consequential boundaries and permissions. These effects settle before publication. Private attitude/intention enrichment alone may be delayed. Claims are not fulfilled physical deeds.' +
+        " Never use an opening proposal, its name, or a newly spoken desire as a Wish ID. If there is no matching supplied Wish ID, return no Wish proposal. Use numeric indexes matching evidence draft:N for current memory evidence/relationship lineIds/Wish evidence. Keep independent learners and their basis in each memoryChanges row; never repeat a source unit. Do not emit systemVerification fields. Every knower must witness ALL support and meaning-bearing context. Temporary company never automatically establishes trust. " +
+        'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist.' +
         (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
         " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
-        (scene.operation?.input.developmentVersion === 1 ? DEVELOPMENT_SCENE_INSTRUCTION : ""),
+        (scene.operation?.input.developmentVersion === 1 ? DEVELOPMENT_SCENE_INSTRUCTION : "") +
+        (context.preservation ? SCENE_HALT_INSTRUCTION : ""),
       (raw, hash, savedInput): SemanticExchange => {
+        if (savedInput.context.preservation) {
+          const outcome = readSceneHalt(
+            raw.halt,
+            savedInput.context.preservation,
+            savedInput.message,
+            savedInput.evidence,
+          );
+          if (outcome)
+            return {
+              version: 2,
+              sourceHash: hash,
+              checkpointKey: "",
+              turnOutcome: outcome,
+              authority: { physical: false, access: false, projects: false, standing: false },
+              effects: {},
+              access: null,
+            };
+        }
         const interpretedIntent = combined
           ? readIntent(asRecord(raw.intent), hash, savedInput, state, scene)
           : undefined;
@@ -600,7 +585,9 @@ export function createSemanticService(ports: SemanticPorts) {
           throw new IncompleteOpeningPitch();
         Object.assign(effects, immediate);
         effects.sceneChange = raw.action ?? null;
-        effects.memoryVersions = Object.fromEntries(savedInput.context.memories.map((row) => [row.id, row.version]));
+        effects.memoryContexts = {
+          [savedInput.context._memoryWrite.protection.fingerprint]: savedInput.context._memoryWrite,
+        };
         effects.earlierLineIds = savedInput.context.history.map((row) => row.id);
         const access: InterpretationBatch = {
           checks: [],

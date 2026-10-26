@@ -37,7 +37,7 @@ try {
       window.sceneViewport = viewport;
     });
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       memoryMode: "live",
       id: "reading-pages",
@@ -113,7 +113,7 @@ try {
     const previous = page.getByRole("button", { name: "Previous paragraph" });
     const draft = page.getByRole("textbox", { name: "Message at The Mill" });
     const dock = page.locator(`.${tag}-chat-vn`);
-    const tray = page.getByRole("button", { name: /village notice/ });
+    const tray = page.getByRole("button", { name: /World changes?/ });
     const visitVenueAndReturn = async () => {
       await page.getByRole("button", { name: "Venue actions" }).click();
       await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
@@ -135,9 +135,10 @@ try {
       );
     }
     await expect(tray).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByLabel("Village events")).toBeVisible();
+    await expect(page.getByLabel("World changes", { exact: true })).toBeVisible();
     events.push({ id: "memory", kind: "memory", text: "Mara remembered the exchange." });
-    await expect(tray).toHaveAccessibleName("2 village notices");
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(tray).toHaveAccessibleName("2 World changes");
     await expect(tray).toHaveAttribute("aria-expanded", "true");
     await tray.click();
     await expect(tray).toHaveAttribute("aria-expanded", "false");
@@ -160,8 +161,9 @@ try {
       detail: { text: "Wish update" },
       wishUpdate: { actorId: "mara", wishId: "swim" },
     });
-    await expect(tray).toHaveAccessibleName("3 village notices");
-    await expect(page.getByLabel("Village events")).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(tray).toHaveAccessibleName("3 World changes");
+    await expect(page.getByLabel("World changes", { exact: true })).toBeVisible();
     // Exercise navigation independently of the mobile dialogue overlay's pointer layout.
     await page.getByRole("button", { name: /View .*Inspect Mara's wish/ }).evaluate((button) => button.click());
     await expect(page.getByRole("region", { name: "Mara profile", exact: true })).toBeVisible();
@@ -290,9 +292,6 @@ try {
     await page.screenshot({ path: `artifacts/compact-scene-ended-${width}x${height}.png` });
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Scene settings" }).click();
-    await expect(page.getByRole("dialog", { name: "Scene settings" })).toContainText(
-      "Ending the Scene does not run another review",
-    );
     assert.deepEqual(errors, []);
     await page.close();
   }

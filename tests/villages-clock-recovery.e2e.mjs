@@ -37,6 +37,8 @@ try {
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/background/presence"))
+        return fulfill(route, { json: { status: "ready", snapshot: state() } });
       let value = state();
       const status = 200;
       if (path.endsWith("/clock/recover")) {
@@ -90,7 +92,7 @@ try {
           page.evaluate(
             () =>
               new Promise((resolve, reject) => {
-                const open = indexedDB.open("villages-founding-v3", 1);
+                const open = indexedDB.open("villages-drafts-v4", 1);
                 open.onsuccess = () => {
                   const req = open.result.transaction("drafts").objectStore("drafts").get("/api/villages");
                   req.onsuccess = () => resolve(req.result?.data?.timeZone);

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 
@@ -37,7 +38,10 @@ async function main() {
   const release = configureVillagesRuntime({
     isDebugAgentsEnabled: () => false,
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
+        async list(_pkg: string, kind: string) {
+          return [...records.values()].filter((row) => row.kind === kind).map((row) => structuredClone(row));
+        },
         async getById(_packageId: string, id: string) {
           return structuredClone(records.get(id) ?? null);
         },
@@ -46,7 +50,7 @@ async function main() {
           records.set(input.id, row);
           return structuredClone(row);
         },
-      },
+      }),
     },
     languageModels: {
       async resolveForRequest() {

@@ -1,6 +1,6 @@
+import { addMemory, memoryRepair } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 import {
-  bindActivationService,
   createActivationScope,
   installDefaultActivation,
   scopedActivation,
@@ -10,16 +10,9 @@ import {
   readEffectiveVillagerCard,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type {
-  VillageChronicleEntry,
-  VillageHappening,
-  VillageSnapshot,
-  VillageState,
-} from "../packages/villages/src/server/domain/models/world.js";
+import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
-import type { VillageTickContext } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { villageDateLabel } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { expireResidentWishes } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
 import {
   createWorldCoordination,
@@ -29,11 +22,8 @@ import {
   configureWorldCoordination,
   resetVillage,
   reconcileVillage,
-  runVillageReaction,
-  buildVillageStory,
   buildVillageMemories,
-  removeChronicleEntry,
-  removeVillageRecollection,
+  forgetMemory,
 } from "../packages/villages/src/server/features/world/village.js";
 
 const stamp = "2026-10-06T12:00:00.000Z";
@@ -43,39 +33,6 @@ function deferred() {
     resolve = done;
   });
   return { promise, resolve };
-}
-function event(text: string, id = text): VillageHappening {
-  return {
-    id,
-    text,
-    narration: text,
-    kind: "routine",
-    actorIds: [],
-    venueId: "",
-    dayIndex: 0,
-    clock: "afternoon",
-    occurredAt: stamp,
-    timePrecision: "exact",
-    sourceOpportunityId: "",
-  };
-}
-function memory(id: string, name: string): VillageChronicleEntry {
-  return {
-    id,
-    text: name,
-    dayIndex: 0,
-    clock: "afternoon",
-    occurredAt: stamp,
-    timePrecision: "exact",
-    kind: "chat",
-    scope: "private",
-    actors: [{ id: "same", name }],
-    knownByCharacterIds: ["same"],
-    subjectCharacterIds: ["same"],
-    sourceVisitId: "visit",
-    sourceLineIds: ["line"],
-    memoryCategory: "shared-experience",
-  };
 }
 function fixture(name: string) {
   const state = defaultVillageState();
@@ -87,30 +44,40 @@ function fixture(name: string) {
     queued: BackgroundInput[] = [];
   const entered = deferred(),
     gate = deferred(),
-    modelEntered = deferred(),
-    modelGate = deferred();
+    _modelEntered = deferred(),
+    _modelGate = deferred();
   let pauseRead = false,
-    pauseModel = false,
     fault: Error | undefined,
     retry: ((s: VillageState) => void) | undefined;
-  let reaction = [event(`${name} reaction`)],
-    story = [event(`${name} story`)];
   function note(call: string) {
     calls.push(call);
     owners.push(scopedActivation());
     if (scopedActivation()?.active === false) throw Error("Original world is unavailable.");
   }
-  const modelPause = async () => {
-    if (pauseModel) {
-      pauseModel = false;
-      modelEntered.resolve();
-      await modelGate.promise;
-      note("model-resumed");
-    }
-    if (fault) throw fault;
-  };
   const service = createWorldCoordination({
+    async mutateMemoryAuthority(update) {
+      note("mutate-memory");
+      const first = structuredClone(state);
+      update(first);
+      if (retry) {
+        retry(state);
+        retry = undefined;
+        const next = structuredClone(state);
+        update(next);
+        Object.assign(state, next);
+      } else Object.assign(state, first);
+    },
     async readVillageState() {
+      note("read");
+      if (pauseRead) {
+        pauseRead = false;
+        entered.resolve();
+        await gate.promise;
+        note("read-resumed");
+      }
+      return structuredClone(state);
+    },
+    async readVillageAuthority() {
       note("read");
       if (pauseRead) {
         pauseRead = false;
@@ -136,7 +103,7 @@ function fixture(name: string) {
     async buildVillageSnapshot(now) {
       note("snapshot");
       if (now) times.push(now);
-      return { village: { name: state.name }, happenings: state.happenings } as VillageSnapshot;
+      return { village: { name: state.name } } as VillageSnapshot;
     },
     villagesLogger() {
       note("logger");
@@ -178,20 +145,6 @@ function fixture(name: string) {
     async preparePrivateSpaces() {
       note("prepare");
     },
-    async proposeHappenings(context) {
-      note(`story:${context.village}`);
-      await modelPause();
-      return {
-        happenings: story,
-        housingRequests: [],
-        model: name,
-      };
-    },
-    async proposeReaction(context) {
-      note(`reaction:${context.deed}`);
-      await modelPause();
-      return { happenings: reaction, model: name };
-    },
     reconcileProjectLifecycles(_candidate, now) {
       note("projects");
       times.push(now);
@@ -228,13 +181,8 @@ function fixture(name: string) {
     service,
     entered,
     gate,
-    modelEntered,
-    modelGate,
     pauseRead: () => {
       pauseRead = true;
-    },
-    pauseModel: () => {
-      pauseModel = true;
     },
     fail: (error: Error) => {
       fault = error;
@@ -242,19 +190,12 @@ function fixture(name: string) {
     retry: (edit: (s: VillageState) => void) => {
       retry = edit;
     },
-    setReaction: (value: VillageHappening[]) => {
-      reaction = value;
-    },
-    setStory: (value: VillageHappening[]) => {
-      story = value;
-    },
   };
 }
 function install(f: ReturnType<typeof fixture>) {
   const scope = createActivationScope();
   const release = scope.run(() => configureWorldCoordination(f.service));
-  const handler = scope.run(() => bindActivationService(f.service.storyBackgroundHandler));
-  return { scope, release, handler };
+  return { scope, release };
 }
 
 const a = fixture("A"),
@@ -268,7 +209,7 @@ assert.deepEqual(a.calls, ["read", "snapshot"], "an unfounded world performs no 
 a.calls.length = 0;
 a.times.length = 0;
 a.state.setupAt = a.state.foundedAt = a.state.simulatedThrough = stamp;
-a.state.storyPace = "off";
+a.state.backgroundPace = "off";
 const now = new Date("2026-10-07T12:00:00.000Z");
 await reconcileVillage({ now });
 assert.equal(a.state.simulatedThrough, now.toISOString());
@@ -295,196 +236,73 @@ assert(
 await reconcileVillage({ now: new Date(stamp) });
 assert.equal(a.state.simulatedThrough, now.toISOString(), "backward clocks do not rewind the durable cursor");
 
-// Read projections use their own world and library even with equal character IDs.
-a.state.chronicle = [
-  memory("same", "remembered A"),
-  { ...memory("former", "Former"), actors: [{ id: "gone", name: "Former" }] },
-];
-b.state.foundedAt = stamp;
-b.state.chronicle = [memory("same", "remembered B")];
-assert.equal((await buildVillageStory())[0].actors[0].name, "A library");
-assert.equal((await buildVillageStory())[1].actors[0].name, "Former");
-assert.equal((await buildVillageStory())[0].dateLabel, villageDateLabel(stamp, 0));
-assert.equal((await B.scope.run(buildVillageStory))[0].actors[0].name, "B library");
-a.state.villagers = [
-  {
-    characterId: "same",
-    cardSnapshot: snapshotFromCard(a.card, 1),
-    addedAt: stamp,
-    completedWishes: [],
-    agenda: null,
-    remap: null,
-    remapFailure: null,
-  },
-];
-await reconcileVillage({ now, forceStory: true, actionId: "owned-story", expectedAttempt: 4 });
-assert.equal(a.queued.length, 1);
-assert.equal(a.queued[0].kind, "story");
-assert.equal(a.queued[0].finite, true);
-assert.equal(a.queued[0].revision, "manual:owned-story");
-assert.equal(a.queued[0].expectedAttempt, 4);
-const queuedContext = (a.queued[0].input as { context: VillageTickContext }).context;
-assert.equal(queuedContext.village, a.state.name);
-for (const field of ["lore", "foundedAt", "at", "memory", "noticeboard", "pendingVenueNames"])
-  assert(!Object.hasOwn(queuedContext, field), "unused private/world data is not persisted in Events work");
-for (const field of ["tags", "status", "routine", "today", "week", "remembered"])
-  assert(!Object.hasOwn(queuedContext.residents[0], field), "unused resident data is not persisted in Events work");
-assert(!a.calls.includes("lore"), "Events admission has no discarded lore read");
-assert.equal(queuedContext.residents[0].name, "A library");
-assert(!a.calls.some((call) => call.startsWith("story:")), "reconciliation admits work without calling its provider");
-a.state.recollections = [
-  {
-    id: "transient",
-    visitId: "visit",
-    occurredAt: stamp,
-    expiresAt: new Date(Date.now() + 3600000).toISOString(),
-    text: "A transient",
-    subjectCharacterIds: ["same"],
-    knownByCharacterIds: ["same"],
-    sourceLineIds: ["line"],
-    sourceSubmissionIds: ["submission"],
-    evidence: [],
-    reinforcementCount: 0,
-    lastReinforcedAt: stamp,
-  },
-];
-const memories = await buildVillageMemories();
-assert.equal(memories.durable[0].knownBy[0].name, "A library");
-assert.deepEqual(memories.durable[0].evidence, { visitId: "visit", lineIds: ["line"] });
-assert.equal(memories.recollections.length, 1);
-const saves = a.calls.filter((x) => x === "mutate").length;
-await assert.rejects(removeChronicleEntry(""), /not a memory/);
-assert.equal(a.calls.filter((x) => x === "mutate").length, saves, "invalid deletion fails before mutation");
+// Native pages remain owned, scoped and read-only across equal actor IDs.
+for (const f of [a, b]) {
+  f.state.villagers = [
+    {
+      characterId: "same",
+      cardSnapshot: snapshotFromCard(f.card, 1),
+      addedAt: stamp,
+      completedWishes: [],
+      agenda: null,
+      remap: null,
+      remapFailure: null,
+    },
+  ];
+  f.state.memories = addMemory(f.state.memories, {
+    text: "remembered " + f.state.name,
+    audience: ["player", "same"],
+    sourceId: "owned",
+  });
+}
+const memories = await buildVillageMemories({ inspection: true, characterId: "same" });
+assert.equal(memories.entries[0].knownBy[0].name, "A library");
+assert.match((await B.scope.run(() => buildVillageMemories())).entries[0].text, /remembered B/);
+const selected = memories.entries[0],
+  operation = memoryRepair(a.state.memories, "forget", ["same"], undefined, selected.id);
 a.retry((state) => {
   state.name = "Concurrent A";
 });
-await removeChronicleEntry("same");
+await forgetMemory(selected.id, { ...operation, seed: a.state.seed });
 assert.equal(a.state.name, "Concurrent A");
-assert.equal(a.state.chronicle.length, 1);
-assert.equal(b.state.chronicle.length, 1);
-await assert.rejects(removeChronicleEntry("same"), /no longer kept/);
-await removeVillageRecollection("transient");
-await assert.rejects(removeVillageRecollection("transient"), /no longer active/);
-await assert.rejects(removeVillageRecollection(""), /not a passing recollection/);
-
-// Reactions retain diff-only/dedup behavior and do not advance time.
-const cursor = a.state.simulatedThrough;
-const beforeEmpty = a.calls.length;
-await runVillageReaction({ villagerName: "A", playerName: "Player", deed: " " });
-assert.equal(a.calls.length, beforeEmpty);
-a.setReaction([event("Existing"), event("Fresh"), event("fresh")]);
-a.state.happenings = [event("existing")];
-await runVillageReaction({ villagerName: "A", playerName: "Player", deed: "Helped a neighbour." });
-assert.deepEqual(
-  a.state.happenings.map((e) => e.text),
-  ["Fresh", "existing"],
+assert.equal((await buildVillageMemories({ inspection: true, characterId: "same" })).entries[0].forgotten, true);
+assert.equal(
+  (await B.scope.run(() => buildVillageMemories({ inspection: true, characterId: "same" }))).entries[0].forgotten,
+  false,
 );
-assert.equal(a.state.simulatedThrough, cursor);
-const failure = Error("Originating provider failed");
-a.fail(failure);
-await assert.rejects(
-  runVillageReaction({ villagerName: "A", playerName: "Player", deed: "Failed deed" }),
-  (e) => e === failure,
-);
-assert.equal(a.calls.filter((x) => x === "reaction:Failed deed").length, 1, "no automatic provider retry");
 
 // A direct call binds before the first await; B cannot supply its final snapshot.
 const delayed = fixture("Delayed A"),
   D = install(delayed);
 removeDefault();
 removeDefault = installDefaultActivation(D.scope, () => {});
-delayed.state.chronicle = [memory("same", "Remembered")];
+delayed.state.memories = addMemory(delayed.state.memories, {
+  text: "Remembered",
+  audience: ["player"],
+  sourceId: "delayed",
+});
 delayed.pauseRead();
-const pending = buildVillageStory();
+const pending = buildVillageMemories();
 await delayed.entered.promise;
 removeDefault();
 removeDefault = installDefaultActivation(B.scope, () => {});
 delayed.gate.resolve();
-assert.equal((await pending)[0].actors[0].name, "Delayed A library");
+assert.equal((await pending).entries[0].text, "Remembered");
 assert(delayed.owners.every((owner) => owner === D.scope));
 D.release();
-assert.equal((await buildVillageStory())[0].actors[0].name, "B library", "old cleanup cannot unregister B");
-
-// Nested handler callbacks are bound explicitly by entry and retain A's model connections.
-const background = fixture("Background A"),
-  C = install(background);
-background.pauseModel();
-const generated = C.handler.generate({ context: { village: "background context" } });
-await background.modelEntered.promise;
-assert.equal(scopedActivation(), undefined);
-background.modelGate.resolve();
-const proposal = (await generated) as Awaited<ReturnType<typeof background.service.storyBackgroundHandler.generate>>;
-assert.deepEqual((proposal as { happenings: VillageHappening[] }).happenings, [event("Background A story")]);
-assert(background.owners.every((owner) => owner === C.scope));
-assert(!b.calls.some((call) => call.startsWith("story:")));
-
-const retired = fixture("Retired A"),
-  R = install(retired);
-retired.pauseModel();
-const retiring = R.scope.run(() =>
-  runVillageReaction({ villagerName: "A", playerName: "Player", deed: "Retired deed" }),
-);
-await retired.modelEntered.promise;
-R.release();
-R.scope.dispose();
-retired.modelGate.resolve();
-await assert.rejects(retiring, /Original world is unavailable/);
-assert.deepEqual(retired.state.happenings, []);
-assert.deepEqual(b.state.happenings, []);
-
-// Reset/founding identity must fence responses from the former world within
-// one still-active application, including replacement during a save retry.
-for (const replacement of ["reset", "new-world", "save-retry"] as const) {
-  const race = fixture(`Reset race ${replacement}`),
-    owner = install(race);
-  race.state.setupAt = race.state.foundedAt = stamp;
-  race.pauseModel();
-  const oldReaction = owner.scope.run(() =>
-    runVillageReaction({ villagerName: "A", playerName: "Player", deed: "Old world deed" }),
-  );
-  await race.modelEntered.promise;
-  const replace = (state: VillageState) => {
-    Object.assign(state, defaultVillageState());
-    if (replacement !== "reset") {
-      state.seed = "new-world";
-      state.name = "New world";
-      state.setupAt = state.foundedAt = "2026-10-07T12:00:00.000Z";
-      state.happenings = [event("New world's own event")];
-    }
-  };
-  if (replacement === "save-retry") race.retry(replace);
-  else if (replacement === "reset") await owner.scope.run(resetVillage);
-  else replace(race.state);
-  race.modelGate.resolve();
-  await oldReaction;
-  assert.deepEqual(
-    race.state.happenings.map((e) => e.text),
-    replacement === "reset" ? [] : ["New world's own event"],
-    `${replacement} cannot receive an old world's reaction`,
-  );
-  assert.equal(
-    race.calls.filter((call) => call === "reaction:Old world deed").length,
-    1,
-    "reset discards a reply without repeating provider work",
-  );
-  owner.release();
-  owner.scope.dispose();
-}
+assert.match((await buildVillageMemories()).entries[0].text, /remembered B/, "old cleanup cannot unregister B");
 
 // Explicit reset operates only on its selected owner and returns that owner's snapshot.
 await B.scope.run(resetVillage);
 assert.deepEqual(b.state, defaultVillageState());
-assert.equal(delayed.state.chronicle.length, 1);
+assert.equal(delayed.state.memories.records.length, 1);
 const missing = createActivationScope();
-await assert.rejects(missing.run(buildVillageStory), /not configured/);
-C.release();
-await assert.rejects(C.scope.run(buildVillageStory), /not configured/);
+await assert.rejects(missing.run(buildVillageMemories), /not configured/);
 B.scope.dispose();
-await assert.rejects(buildVillageStory(), /not configured/);
+await assert.rejects(buildVillageMemories(), /not configured/);
 removeDefault();
 A.release();
 A.scope.dispose();
 D.scope.dispose();
-C.scope.dispose();
 missing.dispose();
 console.log("World coordination owns projections, clocks, mutations and originating callbacks.");

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
 import {
@@ -263,7 +264,11 @@ async function ownedInterpretationConnections() {
     });
     assert.deepEqual(events, [], "constructing both interpretation factories is inert");
     const releaseRuntime = scope.run(() =>
-      configureVillagesRuntime({ persistence: { documents }, logger, getAgentConfig: async () => null } as any),
+      configureVillagesRuntime({
+        persistence: { documents: villageFixtureDocuments(documents) },
+        logger,
+        getAgentConfig: async () => null,
+      } as any),
     );
     const releaseInterfaces = scope.run(() => [
       configureSystemInterpretation(system),
@@ -451,7 +456,7 @@ let systemCalls = 0;
 const nativeOutcome = "invite-now";
 const frozenInputs: unknown[] = [];
 const release = configureVillagesRuntime({
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   logger: { debug() {}, debugOverride() {}, warn() {}, error() {}, info() {} },
   async getAgentConfig() {
     return null;
@@ -650,6 +655,7 @@ async function main() {
     };
     village.venues = [venue];
     const scene: any = {
+      version: 2,
       id: "same-scene",
       placeId: "home",
       zoneId: "bedroom",

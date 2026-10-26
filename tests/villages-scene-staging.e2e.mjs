@@ -77,7 +77,7 @@ try {
         })),
       };
       let session = {
-        version: 1,
+        version: 2,
         stagingVersion: 1,
         id: `staging-${count}`,
         placeId: "mill",
@@ -110,6 +110,8 @@ try {
       let failSpriteSave = false;
       const api = async (route) => {
         const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/background/presence"))
+          return fulfill(route, { json: { status: "ready", snapshot: fixture } });
         let value = fixture;
         if (path.endsWith("/settings") && route.request().method() === "PATCH") {
           if (failSpriteSave)
@@ -640,7 +642,7 @@ try {
       })),
     };
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       id: "attention-views",
       placeId: "mill",

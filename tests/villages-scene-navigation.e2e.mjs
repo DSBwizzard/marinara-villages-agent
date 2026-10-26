@@ -19,7 +19,7 @@ try {
         reads = 0;
       const session = {
         id: "navigation",
-        version: 1,
+        version: 2,
         sceneRevision: 0,
         placeId: "mill",
         placeName: "The Mill",
@@ -126,7 +126,7 @@ try {
   await mockEngineLookups(page);
   const session = {
     id: "guard",
-    version: 1,
+    version: 2,
     sceneRevision: 0,
     placeId: "mill",
     placeName: "The Mill",
@@ -159,11 +159,11 @@ try {
   await expect(page.locator("#screen")).toHaveText("room");
   for (const status of ["opening", "active", "closing"]) {
     await page.evaluate((status) => window.navigation.setRoom((current) => ({ ...current, status })), status);
-    for (const destination of ["home", "setup", "resume", "preparing"]) {
+    for (const destination of ["setup", "resume", "preparing"]) {
       await page.evaluate((destination) => window.navigation.setScreen(destination), destination);
       await expect(page.locator("#screen")).toHaveText("room");
     }
-    for (const destination of ["menu", "venue"]) {
+    for (const destination of ["home", "menu", "venue"]) {
       await page.evaluate((destination) => window.navigation.setScreen(destination), destination);
       await expect(page.locator("#screen")).toHaveText(destination);
     }
@@ -197,7 +197,7 @@ try {
   await page.evaluate(() =>
     window.navigation.setRoom({
       id: "",
-      version: 1,
+      version: 2,
       placeId: "mill",
       placeName: "The Mill",
       status: "opening",
@@ -208,7 +208,7 @@ try {
       endedAt: "",
     }),
   );
-  await expect(page.locator("#screen")).toHaveText("room");
+  await expect(page.locator("#screen")).toHaveText("home");
   await page.evaluate(() => window.navigation.closeRoom());
   await expect(page.locator("#screen")).toHaveText("checking");
   await expect.poll(() => !!guardRead).toBe(true);

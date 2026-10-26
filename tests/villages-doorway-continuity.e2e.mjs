@@ -41,6 +41,7 @@ try {
       ...extra,
     });
     const session = {
+      version: 2,
       id: "doorway-browser",
       placeId: "mill",
       placeName: "The Mill",
@@ -103,7 +104,7 @@ try {
     await expect(chip).toBeVisible();
     await expect(page.getByText("not witnessed by everyone", { exact: false })).toHaveCount(0);
     let status = await openSceneErrors(page);
-    await expect(status).toContainText("memories update not saved");
+    await expect(status).toContainText("World change not saved · memories");
     await expect(status).toContainText("Not saved");
     await expect(status).toContainText("residents saw or heard");
     await expect(status).toContainText("conversation is still in the transcript");
@@ -144,18 +145,20 @@ try {
       },
     ];
     summary = { pending: 1, failed: 1, rejected: 1 };
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(page.getByRole("button", { name: "2 Scene errors", exact: true })).toBeVisible();
     status = await openSceneErrors(page);
-    await expect(status).toContainText("relationships update failed");
-    await expect(status).not.toContainText("wishes update failed");
+    await expect(status).toContainText("World change failed · relationships");
+    await expect(status).not.toContainText("World change failed · wishes");
     await expect(status.getByRole("button", { name: /Retry relationships/ })).toBeVisible();
     await expect(status.getByRole("button", { name: /Retry memories/ })).toHaveCount(0);
     await expect(status.getByRole("button", { name: /Retry wishes/ })).toHaveCount(0);
     issues = [];
     summary = { pending: 0, failed: 0, rejected: 1 };
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await closeSceneErrors(page);
     status = await openSceneErrors(page);
-    await expect(status).toContainText("saved diagnostics for the remaining results");
+    await expect(status).toContainText("World change diagnostics for details");
     assert.equal(mutatingRequests, 0, "reading feedback never retries interpretation or replays saved work");
     assert.deepEqual(errors, []);
     await page.close();

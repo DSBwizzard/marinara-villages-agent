@@ -1,5 +1,5 @@
 {
-  "baseline": "9e12f23be71c137c2e5017375641f72ec45b38b3",
+  "baseline": "native-memories",
   "routes": [
     {
       "method": "get",
@@ -159,12 +159,13 @@
       "path": "/image-style-profiles"
     },
     {
-      "method": "get",
-      "path": "/town-map"
+      "method": "post",
+      "path": "/maps",
+      "bodyLimit": 8065536
     },
     {
       "method": "put",
-      "path": "/town-map",
+      "path": "/maps/:id",
       "bodyLimit": 8065536
     },
     {
@@ -385,11 +386,11 @@
     },
     {
       "method": "post",
-      "path": "/setup/town-map/generate"
+      "path": "/maps/generate"
     },
     {
       "method": "get",
-      "path": "/setup/town-map/generation/:actionId"
+      "path": "/maps/generation/:targetId/:actionId"
     },
     {
       "method": "post",
@@ -571,6 +572,14 @@
     },
     {
       "method": "get",
+      "path": "/clock"
+    },
+    {
+      "method": "post",
+      "path": "/clock/advance"
+    },
+    {
+      "method": "get",
       "path": "/development"
     },
     {
@@ -607,23 +616,27 @@
     },
     {
       "method": "get",
-      "path": "/story"
-    },
-    {
-      "method": "get",
       "path": "/memories"
     },
     {
-      "method": "delete",
-      "path": "/memories/durable/:id"
+      "method": "get",
+      "path": "/memories/inspect"
     },
     {
-      "method": "delete",
-      "path": "/memories/recollections/:id"
+      "method": "get",
+      "path": "/memories/:id/evidence"
     },
     {
-      "method": "delete",
-      "path": "/story/:id"
+      "method": "get",
+      "path": "/memories/inspect/:id"
+    },
+    {
+      "method": "post",
+      "path": "/memories/:id/forget"
+    },
+    {
+      "method": "post",
+      "path": "/memories/:id/correct"
     },
     {
       "method": "get",

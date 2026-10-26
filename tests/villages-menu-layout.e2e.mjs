@@ -32,10 +32,8 @@ const snapshot = {
   projects: [],
   residences: [],
   venueMail: [],
-  happenings: [],
   villagers: [],
   foundingPreparation: null,
-  recap: null,
   settings: {
     characterSpeechColors: false,
     visitRetention: { mode: "forever", value: 0 },
@@ -43,8 +41,8 @@ const snapshot = {
     defaultPromptKnowledge: "",
     promptBoxMaxLength: 2000,
     macros: [],
-    storyPace: "off",
-    storyPaces: ["off"],
+    backgroundPace: "off",
+    backgroundPaces: ["off"],
     villageNameMaxLength: 80,
     playerPersonaId: "",
     playerPersonaName: "",
@@ -81,7 +79,7 @@ const snapshot = {
     setupPlaceCount: 5,
     setupMinVillagerCount: 0,
     setupMaxVillagerCount: 3,
-    townMapImageSetAt: "",
+    maps: [],
     townMapImageMaxLength: 100000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     townMapExpectedWidth: 1280,
@@ -193,6 +191,8 @@ try {
     await page.getByRole("button", { name: "More" }).click();
     await expect(root).toBeVisible();
     await expect(root.locator(`.${tag}-menu-welcome`)).toBeVisible();
+    await expect(root.getByRole("button", { name: "Events", exact: true })).toHaveCount(0);
+    await expect(root.getByRole("button", { name: "Force Village Update", exact: true })).toHaveCount(0);
     const nav = root.getByRole("navigation", { name: "Village menu pages" });
     const main = root.locator(`.${tag}-menu-content`);
     await expect(nav).toBeVisible();
@@ -220,6 +220,12 @@ try {
       }
       await expect(root).toHaveAttribute("data-page", key);
       await expect(main).toBeVisible();
+      if (key === "general") {
+        await expect(main.getByRole("combobox", { name: "Resident activity and Wishes" })).toBeVisible();
+      }
+      if (key === "chatlogs") {
+        await expect(root.getByRole("button", { name: "Force Village Update", exact: true })).toHaveCount(0);
+      }
       if (key === "village") {
         await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toBeVisible();
         await expect(nav.getByRole("button", { name: "DEBUG: Villager reply guidance" })).toHaveCount(0);

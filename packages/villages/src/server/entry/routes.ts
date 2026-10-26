@@ -55,20 +55,31 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return "Your spinoff is still pending. You can browse Villages, but finish or discard it before changing Village state.";
     return null;
   };
-  const surface = publicSceneRoutes(engine, guard, async (request, result) => {
-    if (request.headers?.["x-villages-housing-view"] !== "current" || !result || typeof result !== "object")
-      return result;
-    const value = result as Record<string, unknown>;
-    const snapshot = Array.isArray(value.villagers) && value.settings ? value : asRecord(value.snapshot);
-    if (!Array.isArray(snapshot.villagers) || !snapshot.settings || !(await readVillageState()).development)
-      return result;
-    // Rebuild from the exact state atomically marked as delivered; this also covers mutation and visible polling responses.
-    const delivered = {
-      ...(await buildVillageSnapshot(undefined, true)),
-      ...(snapshot.recap ? { recap: snapshot.recap } : {}),
-    };
-    return snapshot === value ? delivered : { ...value, snapshot: delivered };
-  });
+  const surface = publicSceneRoutes(
+    engine,
+    guard,
+    async (request, result) => {
+      if (request.headers?.["x-villages-housing-view"] !== "current" || !result || typeof result !== "object")
+        return result;
+      const value = result as Record<string, unknown>;
+      const snapshot = Array.isArray(value.villagers) && value.settings ? value : asRecord(value.snapshot);
+      if (!Array.isArray(snapshot.villagers) || !snapshot.settings || !(await readVillageState()).development)
+        return result;
+      // Rebuild from the exact state atomically marked as delivered; this also covers mutation and visible polling responses.
+      const delivered = {
+        ...(await buildVillageSnapshot(undefined, true)),
+      };
+      return snapshot === value ? delivered : { ...value, snapshot: delivered };
+    },
+    [
+      "get /memories",
+      "get /memories/inspect",
+      "get /memories/:id/evidence",
+      "get /memories/inspect/:id",
+      "post /memories/:id/forget",
+      "post /memories/:id/correct",
+    ],
+  );
   registerInterpretationRoutes(surface);
   registerRelationshipRoutes(surface);
   registerSpriteManagerRoutes(surface);

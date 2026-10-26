@@ -3,6 +3,10 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  "tests/villages-scene-halt.regression.ts",
+  // Pure Memories rules and deterministic process-local histories; no runtime or saved worlds.
+  "tests/villages-memories-core.regression.ts",
+  "tests/villages-memories-scale.regression.ts",
   // Independent temporary runner copies/artifacts and browser contexts.
   "tests/villages-ci-diagnostics.regression.mjs",
   "tests/villages-browser-diagnostics.e2e.mjs",
@@ -26,6 +30,8 @@ export const isolatedTests = new Set([
   "tests/villages-attention-sources.regression.ts",
   "tests/villages-attention.regression.ts",
   "tests/villages-clock-recovery.regression.ts",
+  "tests/villages-time-advance.regression.ts",
+  "tests/villages-time-advance.e2e.mjs",
   "tests/villages-interpretation.regression.ts",
   "tests/villages-project-interpretation.regression.ts",
   "tests/villages-wish-interpretation.regression.ts",
@@ -117,7 +123,7 @@ export const isolatedTests = new Set([
   "tests/villages-progress-projects.regression.ts",
   "tests/villages-project-checks.regression.ts",
   "tests/villages-project-navigation.e2e.mjs",
-  "tests/villages-prose-event-authority.regression.ts",
+  "tests/villages-resident-planning.regression.ts",
   "tests/villages-reading-pages.e2e.mjs",
   "tests/villages-reading-pages.regression.ts",
   "tests/villages-relationships.regression.ts",

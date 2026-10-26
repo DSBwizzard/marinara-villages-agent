@@ -1,16 +1,33 @@
 import type { LiveEvidenceContext, LiveExchangeProposals } from "../models/memory-model.js";
 import type { RelationshipEvidenceLine } from "../models/relationship-types.js";
 import type { VenueScene } from "../models/scene-model.js";
-import type { VillageChronicleEntry } from "../models/world.js";
+import type { VenueLine } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
 import { RELATIONSHIP_REVIEW_INSTRUCTION } from "./relationship-review.js";
 import { coerceResponseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
-import { EVENT_MEMORY_GUIDANCE } from "./venue-writing.js";
-import { createHash } from "node:crypto";
+import { SCENE_MEMORY_INSTRUCTION } from "./scene-memories.js";
+import { memoryHash } from "./memory-integrity.js";
+
+type MemorySourceLine = Omit<VenueLine, "kind"> & { kind?: string };
+const memoryEvidenceFingerprint = (line: MemorySourceLine) =>
+  memoryHash([
+    line.id,
+    line.content,
+    line.speakerId,
+    line.role,
+    line.kind,
+    line.delivery,
+    line.targetId,
+    line.heardBy,
+    line.soundOnly,
+    line.contactHidden,
+    line.attentionEvidence,
+    line.contactReport,
+  ]);
 
 // Saved reviews have exact line IDs; a reply being written has only segment
 // indexes. Keep the same policy without importing the review's conflicting example.
-const LIVE_RELATIONSHIP_INSTRUCTION = RELATIONSHIP_REVIEW_INSTRUCTION.replace(
+export const LIVE_RELATIONSHIP_INSTRUCTION = RELATIONSHIP_REVIEW_INSTRUCTION.replace(
   "Return relationshipReview:",
   "For relationshipChanges use:",
 )
@@ -20,41 +37,37 @@ const LIVE_RELATIONSHIP_INSTRUCTION = RELATIONSHIP_REVIEW_INSTRUCTION.replace(
     'Use only listed character and Zone IDs. In every relationship lineIds array, use numeric zero-based indexes for current segments, "player" for the current player line, or exact supplied earlier evidence IDs. Do not quote numeric indexes (0 is valid; "0" is not), invent future saved line IDs, or cite unsupplied history.',
   );
 
-export const LIVE_MEMORY_INSTRUCTION = `Return memoryChanges:[] and relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]} even when empty. Memory proposals use {kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:["player",0],memoryIds:[]}. Numeric evidence is a zero-based segment index in this reply; "player" means the latest player line. You may also cite exact earlier evidence IDs listed below. Recaps are context, never evidence. Every knower must directly witness EVERY cited line. In acoustic Scenes the complete player line is local-only; remote speech must cite its supplied attention fragment ID. A speaker knows their own words, not unseen accompanying narration. Use passing for useful temporary continuity (24 hours); durable only for commitments, stable personal facts, meaningful preferences/boundaries, relationship changes, or significant shared experiences. Omit greetings, filler, weak inference, transient mood, repetition and facts already represented in world state. There is NO promotion quota. For reinforcement or a correction, cite only a supplied existing durable memory ID in memoryIds; passing entries provide temporary context, not durable correction targets. Cite the durable ID with new witnessed evidence; supersede replaces an obsolete fact, reinforce preserves its text. A memory does not prove a physical action or grant authority. ${EVENT_MEMORY_GUIDANCE} Relationship proposals are independent of memories. Use evidence references in relationship lineIds in the same format as memory evidence. ${LIVE_RELATIONSHIP_INSTRUCTION}`;
+export const LIVE_MEMORY_INSTRUCTION =
+  SCENE_MEMORY_INSTRUCTION +
+  " Return relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]} even when empty. Relationship proposals are independent of memories. " +
+  LIVE_RELATIONSHIP_INSTRUCTION;
 
-export function memoryVersion(memory: VillageChronicleEntry): string {
-  return createHash("sha256")
-    .update(
-      JSON.stringify([
-        memory.id,
-        memory.text,
-        memory.knownByCharacterIds,
-        memory.supersededBy,
-        memory.lastReinforcedAt,
-      ]),
-    )
-    .digest("hex");
-}
 export function bindLiveProposals(
   reply: {
+    memoryContexts?: Record<string, import("./scene-memories.js").SceneMemoryContext>;
     responseDiagnostics?: ResponseDiagnostics;
     evidenceFingerprints?: Record<string, string>;
     memoryChanges?: unknown;
     relationshipChanges?: unknown;
     earlierLineIds?: string[];
-    memoryVersions?: Record<string, string>;
   },
   playerLineId: string,
   replyLineIds: string[],
+  lines: readonly MemorySourceLine[],
 ): LiveExchangeProposals {
+  const allowed = new Set([playerLineId, ...replyLineIds, ...(reply.earlierLineIds ?? [])]);
+  const fingerprints = Object.fromEntries(
+    lines.filter((row) => allowed.has(row.id)).map((row) => [row.id, memoryEvidenceFingerprint(row)]),
+  );
   return {
     version: 1,
-    ...(reply.evidenceFingerprints ? { evidenceFingerprints: reply.evidenceFingerprints } : {}),
+    sourceFingerprint: memoryHash(fingerprints),
+    ...(reply.memoryContexts ? { memoryContexts: structuredClone(reply.memoryContexts) } : {}),
+    evidenceFingerprints: fingerprints,
     ...(reply.responseDiagnostics ? { responseDiagnostics: coerceResponseDiagnostics(reply.responseDiagnostics) } : {}),
     memoryChanges: reply.memoryChanges,
     relationshipChanges: reply.relationshipChanges,
     earlierLineIds: reply.earlierLineIds ?? [],
-    memoryVersions: reply.memoryVersions ?? {},
     playerLineId,
     replyLineIds,
   };
@@ -73,7 +86,23 @@ export function mergeLiveReplyProposals(
     Array.isArray(first.memoryChanges) && Array.isArray(second.memoryChanges)
       ? [
           ...first.memoryChanges,
-          ...second.memoryChanges.map((value) => ({ ...asRecord(value), evidence: remap(asRecord(value).evidence) })),
+          ...second.memoryChanges.map((value) => ({
+            ...asRecord(value),
+            learners: Object.fromEntries(
+              Object.entries(asRecord(asRecord(value).learners)).map(([id, raw]) => [
+                id,
+                {
+                  ...asRecord(raw),
+                  support: Array.isArray(asRecord(raw).support)
+                    ? (asRecord(raw).support as unknown[]).map((citation) => ({
+                        ...asRecord(citation),
+                        lineId: (remap([asRecord(citation).lineId]) as unknown[])[0],
+                      }))
+                    : undefined,
+                },
+              ]),
+            ),
+          })),
         ]
       : undefined;
   const a = asRecord(first.relationshipChanges),
@@ -90,22 +119,22 @@ export function mergeLiveReplyProposals(
       ]),
     ),
     earlierLineIds: [...new Set([...(first.earlierLineIds ?? []), ...(second.earlierLineIds ?? [])])],
-    memoryVersions: { ...first.memoryVersions, ...second.memoryVersions },
+    memoryContexts: { ...first.memoryContexts, ...second.memoryContexts },
   };
 }
 export function liveEvidence(scene: VenueScene, proposals: LiveExchangeProposals): RelationshipEvidenceLine[] {
   const allowed = new Set([...proposals.earlierLineIds, proposals.playerLineId, ...proposals.replyLineIds]);
-  return scene.lines
-    .filter((line) => allowed.has(line.id) && !line.contactReport)
+  const selected = scene.lines.filter((line) => allowed.has(line.id));
+  if (
+    proposals.sourceFingerprint !==
+    memoryHash(Object.fromEntries(selected.map((line) => [line.id, memoryEvidenceFingerprint(line)])))
+  )
+    throw new Error("Saved Scene source identity changed; recover saved data before replay.");
+  return selected
+    .filter((line) => !line.contactReport)
     .map((line) => {
       const expected = proposals.evidenceFingerprints?.[line.id];
-      if (
-        expected &&
-        expected !==
-          createHash("sha256")
-            .update(JSON.stringify([line.id, line.content, line.heardBy, line.soundOnly]))
-            .digest("hex")
-      )
+      if (!expected || expected !== memoryEvidenceFingerprint(line))
         throw new Error("Saved Scene evidence fingerprint changed; recover saved data before replay.");
       return line;
     })

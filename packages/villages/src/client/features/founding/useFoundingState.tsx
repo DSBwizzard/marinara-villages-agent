@@ -3,7 +3,7 @@ import type { SetupMapRequest, VillageLorebookOption } from "../../../shared/con
 import type { ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import type { SetupDraftData } from "./draft-model.js";
-import type { SavedFoundingDraft } from "./villages-founding-draft.js";
+import type { SavedDeviceDraft } from "../../shared/device-drafts.js";
 import { type AreaDraftCache } from "./villages-founding-editor";
 import { emptyFoundingWorkspace, type FoundingIssue } from "./villages-founding-workspace-state";
 import { DEFAULT_PLAYER_BACKGROUND } from "./villages-player-background.js";
@@ -11,7 +11,7 @@ import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useFoundingState() {
-  const [savedSetupDraft, setSavedSetupDraft] = useState<SavedFoundingDraft<SetupDraftData> | null>(null);
+  const [savedSetupDraft, setSavedSetupDraft] = useState<SavedDeviceDraft<SetupDraftData> | null>(null);
   const [lorebooks, setLorebooks] = useState<VillageLorebookOption[] | null>(null);
   const [lorebooksError, setLorebooksError] = useState("");
   const pendingDraftSaves = useRef(0);

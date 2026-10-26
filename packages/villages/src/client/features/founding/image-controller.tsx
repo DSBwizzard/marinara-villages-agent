@@ -75,10 +75,11 @@ export function useFoundingGenerateSetupTownMap(ports: {
       // Keep the receipt ID before the paid request, so a reload only retrieves it.
       await persistSetupDraft({ ...setupDraftData, mapRequest: pending, mapProblem: "", interruptedGeneration: false });
       dispatched = true;
-      const receipt = await requestSetupMapReceipt("/setup/town-map/generate", {
+      const receipt = await requestSetupMapReceipt("/maps/generate", {
         method: "POST",
         body: JSON.stringify({
           actionId: pending.id,
+          targetId: "founding-map",
           sourceKey: pending.sourceKey,
           structure: setupMapPrompt === snapshot?.settings.townMapLayoutPrompt ? undefined : setupMapPrompt,
           negative:

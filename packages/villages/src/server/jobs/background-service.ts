@@ -1,3 +1,6 @@
+import { localDateKey } from "../domain/rules/resident-planning.js";
+import { ZonedDate } from "../../shared/helpers/zoned-date.js";
+import { villageNow } from "../adapters/time/clock-gate.js";
 import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import { connectionFailureKind } from "../domain/rules/connection-failure.js";
@@ -80,6 +83,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     apply: () => {},
   });
   for (const [kind, handler] of ports.handlers) registerBackgroundHandler(kind, handler);
+  registerBackgroundHandler("story", {
+    generate: async () => {
+      throw new Obsolete("The former feed generator is retired.");
+    },
+    valid: () => false,
+    apply: () => {},
+  });
   let owner = randomUUID();
   let stopped = false;
   let recoveryReady: Promise<void> = Promise.resolve();
@@ -308,6 +318,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     for (const [id, expiry] of sessions) if (expiry <= now) sessions.delete(id);
     return sessions.size > 0;
   }
+  let resumingPresence: Promise<unknown> | null = null;
   async function villageBackgroundPresence<T = void>(
     sessionId: string,
     visible: boolean,
@@ -319,9 +330,25 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       pendingPresence.delete(sessionId);
       return;
     }
+    if (hasVillagePresence()) {
+      // Live sessions already passed resume catch-up. The deadline scheduler
+      // advances ongoing mechanics; a heartbeat only renews spending permission.
+      pendingPresence.delete(sessionId);
+      sessions.set(sessionId, presenceNow() + 90_000);
+      await recoverBackgroundWork();
+      return;
+    }
     const token = Symbol();
     pendingPresence.set(sessionId, token);
-    const advanced = await options.beforeResume?.();
+    if (!resumingPresence) {
+      const task: Promise<unknown> = Promise.resolve()
+        .then(() => options.beforeResume?.())
+        .finally(() => {
+          if (resumingPresence === task) resumingPresence = null;
+        });
+      resumingPresence = task;
+    }
+    const advanced = (await resumingPresence) as T | undefined;
     // A hidden message can overtake a slow catch-up. Never restore that stale permission.
     if (pendingPresence.get(sessionId) !== token) return advanced;
     pendingPresence.delete(sessionId);
@@ -416,8 +443,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           return previous;
         }
         if (work.expectedAttempt !== undefined && work.expectedAttempt !== (previous?.attempt ?? 0))
-          throw conflict("Background work changed. Refresh before requesting another event.");
-        if (work.kind === "story" && running.has(id) && previous) return previous;
+          throw conflict("Background work changed. Refresh before requesting more resident activity.");
+        if (work.kind === "resident-planning" && running.has(id) && previous) return previous;
         if (
           ["personal-mail", "social-recovery"].includes(work.kind) &&
           previous?.seed === work.seed &&
@@ -425,7 +452,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         )
           return previous;
         if (
-          work.kind === "story" &&
+          ["story", "resident-planning"].includes(work.kind) &&
           work.automaticDate &&
           previous?.seed === work.seed &&
           ["failed", "interrupted"].includes(previous.status)
@@ -433,7 +460,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           return previous;
         if (
           work.automaticDate &&
-          work.kind !== "story" &&
+          !["story", "resident-planning"].includes(work.kind) &&
           previous?.seed === work.seed &&
           previous?.highWaterDate &&
           work.automaticDate <= previous.highWaterDate
@@ -469,6 +496,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         error: "Legacy schedule translation and detailed Agenda generation are retired.",
         replacement: undefined,
       }));
+      return;
+    }
+    if (job?.kind === "story") {
+      await retireStory(id);
       return;
     }
     if (!job || stopped || ["failed", "interrupted", "completed", "obsolete"].includes(job.status)) return;
@@ -551,11 +582,18 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Paused("This connection is paused. Retry an affected job to resume it.");
         }
         checkCurrent(job!, await readVillageState());
-        if (job!.kind === "story" && job!.automaticDate && !job!.retrying) {
-          if (job!.requests >= 2) throw new Error("An automatic Event may make at most two principal requests.");
+        if (job!.kind === "resident-planning" && job!.automaticDate && !job!.retrying) {
+          if (job!.requests >= 2)
+            throw new Error("Automatic resident activity may make at most two principal requests.");
           await mutateVillageState((state) => {
             if (state.seed !== job!.seed) throw new Obsolete("Village identity changed.");
-            reserveEventAttempt(state, job!.id, job!.automaticDate!, Date.now());
+            const actual = new ZonedDate(
+              villageNow().toISOString(),
+              state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+            );
+            if (!job!.requests && localDateKey(actual) !== job!.automaticDate)
+              throw new Obsolete("Automatic resident opportunity belongs to an earlier day.");
+            reserveEventAttempt(state, job!.id, job!.automaticDate!, villageNow().getTime());
           });
         }
         job = await changeJob(id, (current) => {
@@ -993,6 +1031,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     // A newer validator may understand a previously rejected, purchased reply.
     // Recovery is pure and deliberate; an invalid reply still uses the normal retry path.
     const foundPrior = await readJob(id);
+    if (foundPrior?.kind === "story") {
+      await retireStory(id);
+      throw conflict("The former feed generator is retired. This work cannot be retried.");
+    }
     const savedPrior = foundPrior && !running.has(id) ? await adoptLateResponses(id, foundPrior) : foundPrior;
     let recovered: { result: unknown } | undefined;
     if (
@@ -1079,6 +1121,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     });
     launch(id);
   }
+  async function retireStory(id: string): Promise<void> {
+    await changeJob(id, (job) => {
+      if (!job || job.kind !== "story" || job.status === "obsolete") return job;
+      return { ...job, status: "obsolete", error: "The former feed generator is retired.", replacement: undefined };
+    });
+  }
   async function recoverBackgroundWork(): Promise<void> {
     if (stopped) return;
     const recoveryOwner = owner;
@@ -1091,6 +1139,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     for (const record of records) {
       if (stopped || owner !== recoveryOwner) return;
       const job = await adoptLateResponses(record.id, record.data as Job);
+      if (job.kind === "story") {
+        await retireStory(record.id);
+        continue;
+      }
       if (job.kind === "translation" && !["completed", "obsolete"].includes(job.status)) {
         await changeJob(record.id, (current) => ({
           ...current!,
@@ -1234,6 +1286,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           : job?.kind === "mail"
             ? !state.venueMail.some((mail) => mail.id === job.subjectId)
             : job?.kind !== "development" &&
+              job?.kind !== "resident-planning" &&
               job?.kind !== "story" &&
               job?.kind !== "starting-ties" &&
               job?.kind !== "personal-mail" &&
@@ -1253,6 +1306,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                 : job?.kind === "mail"
                   ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
                   : job?.kind !== "development" &&
+                    job?.kind !== "resident-planning" &&
                     job?.kind !== "story" &&
                     job?.kind !== "personal-mail" &&
                     job?.kind !== "social-recovery" &&
@@ -1261,6 +1315,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           }
         continue;
       }
+      if (job.kind === "story") continue; // Hide retired work after the existing retention/reset cleanup.
       summaries.push({
         id: record.id,
         kind: job.kind,

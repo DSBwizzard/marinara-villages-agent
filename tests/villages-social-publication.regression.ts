@@ -1,3 +1,6 @@
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
 import assert from "node:assert/strict";
 import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
 import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
@@ -48,7 +51,49 @@ scene.lines = [
   { id: "disclose", speakerId: "a", kind: "dialogue", content: "I want to move to Bram's home.", heardBy: ["a", "b"] },
   { id: "refuse", speakerId: "b", kind: "dialogue", content: "I no longer agree to this move.", heardBy: ["a", "b"] },
 ] as any;
+village.relationshipContext = defaultRelationshipState(village.seed);
+scene.lines = scene.lines.map((line) => ({ ...line, role: "assistant", playerHeard: true }));
 const turn = scene.submissions[0]!;
+const native = sceneMemoryContext(village, ["player"], "move");
+turn.liveProposals = bindLiveProposals(
+  {
+    memoryContexts: { [native.saved.protection.fingerprint]: native.saved },
+    memoryChanges: [
+      {
+        action: "create",
+        kind: "information",
+        text: "Bram refused Ada's proposed move.",
+        subjects: ["a", "b"],
+        learners: {
+          player: {
+            basis: "report",
+            attributedTo: "b",
+            support: [{ lineId: 1, excerpt: scene.lines[1]!.content }],
+            disclosed: {
+              title: "Move to Bram’s home",
+              status: "stalled",
+              agreementActorId: "b",
+              agreementName: "Bram",
+              decision: "refuse",
+            },
+          },
+        },
+        domainRef: { kind: "pursuit", id: pursuit.id, characterId: "a" },
+        screening: { disposition: "clear", protectedRoots: [], fingerprint: native.saved.protection.fingerprint },
+      },
+    ],
+    relationshipChanges: {
+      changes: [],
+      permissions: [],
+      disclosures: [
+        { fromId: "a", toId: "player", text: "I want to move to Bram’s home.", kind: "preference", lineIds: [0] },
+      ],
+    },
+  },
+  "",
+  scene.lines.map((l) => l.id),
+  scene.lines,
+);
 turn.developmentChanges = [
   {
     pursuitId: pursuit.id,
@@ -86,6 +131,7 @@ assert.equal(pursuit.status, "stalled");
 assert.deepEqual(knownDevelopment(village, "a"), [], "A held source cannot disclose Pursuits through the notebook");
 let failScene = true,
   failWorld = false,
+  failMemoryAck = false,
   worldWrites = 0;
 const read = async () => structuredClone(village),
   readSession = async () => structuredClone(scene);
@@ -100,6 +146,17 @@ const mutate = async (update: any) => {
   worldWrites++;
   return read();
 };
+const localMemory = createLiveMemory({
+  mutateVillageState: async (fn: any) => {
+    fn(village);
+    return read();
+  },
+} as any);
+Object.assign(turn.processing!.domains.memories, await localMemory.processLiveMemories(scene, turn.id));
+assert(
+  !village.memories.records.some((row) => row.knowers.player),
+  "Held sources cannot teach native player Memories before publication",
+);
 const commands = createSceneCommands({
   readSession,
   readVillageState: read,
@@ -111,6 +168,10 @@ const commands = createSceneCommands({
     }
     const next = structuredClone(scene);
     update(next);
+    if (failMemoryAck && next.submissions[0]!.processing!.domains.memories.status !== "pending") {
+      failMemoryAck = false;
+      throw Error("Memory acknowledgement failed");
+    }
     scene = next;
     return readSession();
   },
@@ -136,18 +197,38 @@ const changes = createSceneChanges({
   readVillageState: read,
   mutateVillageState: mutate,
   finishSemanticScene: commands.finishSemanticScene,
-  processSavedExchange: () => assert.fail("Already-applied effects must not replay"),
+  processSavedExchange: async (_id: string, submissionId: string) => {
+    const target = scene.submissions.find((row) => row.id === submissionId)!;
+    Object.assign(target.processing!.domains.memories, await localMemory.processLiveMemories(scene, submissionId));
+  },
   villagesDocuments: () => ({ list: async () => [] }),
   venueRequestMetrics: () => [],
 } as any);
+failMemoryAck = true;
+await assert.rejects(() => changes.replaySceneChanges(scene.id), /Memory acknowledgement failed/);
+assert.equal(village.socialPublications?.["scene:source"], true);
+assert.equal(scene.submissions[0]!.processing!.domains.memories.status, "pending");
 await changes.replaySceneChanges(scene.id);
+assert.equal(
+  scene.submissions[0]!.processing!.domains.memories.status,
+  "applied",
+  "Replay repairs lost native Memory metadata acknowledgment without re-inference",
+);
 assert.equal(
   village.socialPublications?.["scene:source"],
   true,
   "Explicit replay repairs a lost knowledge acknowledgement after the source is ready",
 );
-assert.equal(knownDevelopment(village, "a")[0]!.agreements![0]!.decision, "refuse");
-assert.equal(knownDevelopment(village, "a")[0]!.status, "stalled");
+assert.equal(
+  projectRelationshipProfiles(village.relationshipContext!, village).find((p) => p.characterId === "a")!.learned.length,
+  1,
+  "Acknowledgment publishes the source into native Memories",
+);
+assert.equal(
+  knownDevelopment(village, "a")[0]!.status,
+  "stalled",
+  "Native Pursuit learning publishes atomically with the accepted source",
+);
 const after = worldWrites;
 await changes.replaySceneChanges(scene.id);
 assert.equal(worldWrites, after, "Published source replay is a read-only no-op");
@@ -255,6 +336,7 @@ assert.equal(worldWrites, after, "Published source replay is a read-only no-op")
         },
       },
     };
+    source.liveProposals = bindLiveProposals(source.liveProposals, "", [lineId], current.lines);
     source.processing = createExchangeProcessing({
       seed: world.seed,
       sceneId: current.id,

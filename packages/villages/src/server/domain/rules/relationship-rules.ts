@@ -43,8 +43,7 @@ export function defaultRelationshipState(seed: string): RelationshipState {
     grants: {},
     receipts: {},
     applied: {},
-    disclosures: {},
-    knowledge: {},
+    disclosureReceipts: {},
     sharedRecords: {},
     reviewedActorIds: [],
     startingTies: [],
@@ -247,9 +246,10 @@ export function applyRelationshipReview(
   }
   for (const disclosure of review.disclosures) {
     if (state.applied[disclosure.id]) continue;
-    state.disclosures[disclosure.id] = { ...disclosure, at, sourceId };
+    // Disclosure prose is published in native Memories only after source acknowledgment.
     state.applied[disclosure.id] = true;
   }
+  // Conversational disclosures are written only through screened memoryChanges.
   for (const permission of review.permissions) {
     if (state.applied[permission.id]) continue;
     const venue = village.venues.find((place) => place.id === permission.venueId);

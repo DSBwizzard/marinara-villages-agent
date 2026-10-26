@@ -9,7 +9,7 @@ import {
 } from "../../adapters/http/route-support.js";
 import { imageTarget } from "../venues/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
-import { readVillageTownMapImage, replaceVillageTownMap } from "./town-map-review.js";
+import { createVillageMap, updateVillageMap } from "./town-map-review.js";
 import { setVillageVenueImage } from "../venues/services.js";
 import {
   generateVillageLocationImage,
@@ -113,20 +113,24 @@ export function registerTownMapRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading Engine image styles");
     }
   });
-  app.get("/town-map", async (_request, reply) => {
+  app.post<{ Body: unknown }>("/maps", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
     try {
-      return await readVillageTownMapImage();
+      return await createVillageMap(request.body);
     } catch (error) {
-      return fail(reply, error, "reading the town map");
+      return fail(reply, error, "adding a map");
     }
   });
-  app.put<{ Body: unknown }>("/town-map", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
-    try {
-      return await replaceVillageTownMap(request.body);
-    } catch (error) {
-      return fail(reply, error, "replacing the village map");
-    }
-  });
+  app.put<{ Params: { id: string }; Body: unknown }>(
+    "/maps/:id",
+    { bodyLimit: SETTINGS_BODY_LIMIT },
+    async (request, reply) => {
+      try {
+        return await updateVillageMap(request.params.id, request.body);
+      } catch (error) {
+        return fail(reply, error, "editing a map");
+      }
+    },
+  );
 }
 export function registerVenueImageRoutes(engine: FastifyInstance) {
   const app = engine;

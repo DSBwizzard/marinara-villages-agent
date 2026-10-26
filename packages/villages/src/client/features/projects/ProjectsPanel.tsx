@@ -36,6 +36,8 @@ export function ProjectsPanel({
   onVenue,
   onMap,
   onClose = onMap,
+  room,
+  onReturn,
   debugEnabled = false,
 }: {
   snapshot: VillageSnapshot;
@@ -65,6 +67,8 @@ export function ProjectsPanel({
   const person = (id: string) => people.find((person) => person.id === id)?.name ?? id;
   const editable = project?.status === "planning",
     resumable = project?.status === "paused";
+  const sceneActive = !!room && room.status !== "closed";
+  const placementBlocked = draft.dirty ? "Save design to choose a map position." : "";
   const missing =
     flow?.affectedIds.filter((id) => !flow.approvals.some((approval) => approval.residentId === id)) ?? [];
   const stale = draft.dirty && (!editable || draft.revision !== flow?.revision);
@@ -550,11 +554,18 @@ export function ProjectsPanel({
                       <div className="vp-actions">
                         <button
                           type="button"
-                          disabled={draft.busy || draft.dirty}
+                          disabled={draft.busy || !!placementBlocked}
+                          aria-describedby={placementBlocked ? tabId + "-placement-blocked" : undefined}
                           onClick={() => onPlaceOnMap(project.id)}
                         >
                           {project.venueDraft?.position?.x == null ? "Choose map position" : "Change map position"}
                         </button>
+                        {sceneActive ? (
+                          <button type="button" onClick={onReturn}>
+                            Return to Scene
+                          </button>
+                        ) : null}
+                        {placementBlocked ? <p id={tabId + "-placement-blocked"}>{placementBlocked}</p> : null}
                       </div>
                     ) : null}
                     {venue ? (

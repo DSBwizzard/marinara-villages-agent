@@ -98,7 +98,7 @@ export function socialPlanValid(
 export function socialPlanCandidates(village: VillageState, now = new Date()): SocialPlan[] {
   const state = village.relationshipContext,
     dateKey = agendaDateKey(now);
-  if (!state || village.storyPace === "off" || state.applied["social-plan-date:" + dateKey]) return [];
+  if (!state || village.backgroundPace === "off" || state.applied["social-plan-date:" + dateKey]) return [];
   const minute = now.getHours() * 60 + now.getMinutes(),
     result: SocialPlan[] = [];
   const residents = village.villagers.filter(
@@ -162,7 +162,7 @@ export function projectSocialActivities(village: VillageState, now = new Date())
   for (const plan of village.relationshipContext?.socialPlans ?? []) {
     if (
       !socialPlanValid(village, plan.status === "completed" ? { ...plan, status: "planned" } : plan, now, false) ||
-      village.storyPace === "off"
+      village.backgroundPace === "off"
     )
       continue;
     for (const actorId of plan.actorIds) {
@@ -182,7 +182,7 @@ export function reconcileSocialPlans(village: VillageState, now = new Date()): v
     if (
       plan.dateKey !== agendaDateKey(now) ||
       plan.endMinute <= minute ||
-      village.storyPace === "off" ||
+      village.backgroundPace === "off" ||
       !socialPlanValid(village, plan, now, false)
     )
       plan.status = "cancelled";

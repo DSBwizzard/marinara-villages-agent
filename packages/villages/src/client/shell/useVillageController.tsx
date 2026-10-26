@@ -6,33 +6,17 @@ import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
 import { useProgressDiagnostics } from "../features/background/useProgressDiagnostics.js";
 import {
   useCloseExploration,
-  useDiscardTownMapDraft,
   useDrawPlaceImage,
   useDropPlaceImage,
-  useGenerateReplacementMap,
   useKeepPlaceImage,
   useOpenPlace,
-  usePickTownMap,
-  useSaveTownMap,
-  useStartMapReplacement,
 } from "../features/exploration/actions.js";
 import {
-  calculateFramingMap,
-  calculatePanelMapView,
   calculateSavedPins,
   calculateSavedTownMapShape,
   calculateSavedTownMapView,
-  calculateTownMapAdvice,
-  calculateTownMapShape,
-  calculateTownMapSrc,
-  calculateTownMapZoom,
 } from "../features/exploration/calculations.js";
-import {
-  useExplorationOutsideClick,
-  useMapNavigationReset,
-  useRemovedVenueNavigation,
-  useTownMapImage,
-} from "../features/exploration/controller-hooks.js";
+import { useExplorationOutsideClick, useRemovedVenueNavigation } from "../features/exploration/controller-hooks.js";
 import { useExplorationState } from "../features/exploration/useExplorationState.js";
 import { createVenueExplorationActions } from "../features/exploration/venue-actions.js";
 import { useExplorationViewport } from "../features/exploration/villages-exploration";
@@ -162,7 +146,7 @@ import {
   useSaveSendOnEnter,
   useSaveSettings,
   useSaveSpriteCardFlip,
-  useSaveStoryPace,
+  useSaveBackgroundPace,
   useSaveVisitRetention,
 } from "../features/settings/actions.js";
 import { useSettingsState } from "../features/settings/useSettingsState.js";
@@ -185,21 +169,19 @@ import {
   useLoadPersonas,
   useLoadVillageSnapshot,
   usePendingWorkPolling,
-  useReconcileVillage,
   useSnapshotReference,
-  useVillagePolling,
   useVillagePresence,
-  useVillageTransitions,
-  useWriteVillageEvent,
   useVillageSnapshot,
 } from "../shared/data-controller.js";
-import type { MapFrameShape, MapPin, MapZoomRange, MenuPage } from "../shared/types.js";
+import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
+import type { MapFrameShape, MapPin, MenuPage } from "../shared/types.js";
 import { useScenesOpenMenu } from "./navigation-actions.js";
 import { useNavigationGoHome, useNavigationOpenPerson } from "./navigation-controller.js";
 import { menuCategory } from "./navigation.js";
 import { useLayoutEffect, useRef, useState } from "react";
 
 export function useVillageController({ element }: { element: HTMLElement }) {
+  const visible = useCapabilityVisibility(element);
   const [mobile, setMobile] = useState(false);
 
   useLayoutEffect(() => {
@@ -328,8 +310,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomGreetingNotice,
     roomEnded,
     setRoomEnded,
-    writeUpNote,
-    setWriteUpNote,
   } = useScenesState(snapshot?.isFounded);
 
   // The menu is its own screen. The homepage never carries the villager
@@ -350,19 +330,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person"
   >("home");
 
-  const screen = sceneNavigationScreen(requestedScreen, !!room && room.status !== "closed");
-  useLayoutEffect(() => {
-    // Returning from a menu must not leave a map request waiting behind the Scene.
-    if (requestedScreen !== screen) setScreen(screen);
-  }, [requestedScreen, screen]);
-
-  useLayoutEffect(() => {
-    element.dataset.housingView = ["home", "venue", "person"].includes(screen) ? "current" : "none";
-    return () => {
-      delete element.dataset.housingView;
-    };
-  }, [element, screen]);
-  useSceneViewport(element, screen === "room");
   const {
     focusedProjectId,
     projectFocusRequest,
@@ -374,6 +341,19 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     siteProjectId,
     setSiteProjectId,
   } = useProjectsState();
+  const screen = sceneNavigationScreen(requestedScreen, !!room && room.status !== "closed", !!placingProjectId);
+  useLayoutEffect(() => {
+    // Ordinary exploration requests must not wait behind the Scene; Project placement is an editor.
+    if (requestedScreen !== screen) setScreen(screen);
+  }, [requestedScreen, screen]);
+
+  useLayoutEffect(() => {
+    element.dataset.housingView = ["home", "venue", "person"].includes(screen) ? "current" : "none";
+    return () => {
+      delete element.dataset.housingView;
+    };
+  }, [element, screen]);
+  useSceneViewport(element, screen === "room");
   const projectsController = useProjectsController({
     snapshot,
     onSnapshot: setSnapshot,
@@ -432,44 +412,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     navigationView,
     setNavigationView,
     explorationOrigin,
-    selectedMapVenueId,
-    setSelectedMapVenueId,
-    placingMapVenueId,
-    setPlacingMapVenueId,
-    mapReplaceOpen,
-    setMapReplaceOpen,
-    mapRemoveDraft,
-    setMapRemoveDraft,
-    mapGenerating,
-    setMapGenerating,
-    mapExpectedSetAt,
-    setMapExpectedSetAt,
-    mapBasePositions,
-    setMapBasePositions,
-    mapPinDraft,
-    setMapPinDraft,
-    townMapImage,
-    setTownMapImage,
-    townMapPick,
-    setTownMapPick,
-    townMapDraft,
-    setTownMapDraft,
-    reframingMap,
-    setReframingMap,
-  } = useExplorationState();
+    selectedMap,
+    setSelectedMapId,
+    showAllMaps,
+    setShowAllMaps,
+  } = useExplorationState(snapshot);
+  const townMapImage = selectedMap?.artwork.url ?? "";
 
   useExplorationViewport(element, mobile && screen === "home");
-
-  const explorationMapKey = snapshot
-    ? JSON.stringify([
-        snapshot.isFounded,
-        snapshot.settings.townMapImageSetAt,
-        snapshot.settings.townMapExpectedWidth,
-        snapshot.settings.townMapExpectedHeight,
-      ])
-    : "";
-
-  useMapNavigationReset({ explorationMapKey, setExploreSheet, setNavigationView });
 
   const closeExploration = useCloseExploration({
     element,
@@ -716,16 +666,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * The framing the village has saved. The map is drawn with this everywhere
    * except in the panel's own preview, which draws the draft being tried out.
    */
-  const savedTownMapView: TownMapView = calculateSavedTownMapView({ snapshot });
+  const savedTownMapView: TownMapView = calculateSavedTownMapView({ snapshot, selectedMap });
 
   /**
    * The shape a map is drawn at, as the settings give it. This is the one place
    * that answers "how big is a map", so the frame the picture is drawn in, the
    * advice beside the file box and the server all agree about it.
    */
-  const savedTownMapShape: MapFrameShape | null = calculateSavedTownMapShape({ snapshot });
-
-  const townMapShape: MapFrameShape | null = calculateTownMapShape({ savedTownMapShape, townMapPick });
+  const savedTownMapShape: MapFrameShape | null = calculateSavedTownMapShape({ snapshot, selectedMap });
 
   const setupMapShape: MapFrameShape | null = calculateSetupMapShape({
     setupMapImageSource,
@@ -735,13 +683,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   /** How far the picture may be magnified in the panel, and how far one press moves it. */
-  const townMapZoom: MapZoomRange = calculateTownMapZoom({ snapshot });
 
   /**
    * The map as it is drawn: the picture being previewed in the panel, or the
    * village's own picture, or the one the package ships.
    */
-  const townMapSrc = calculateTownMapSrc({ mapRemoveDraft, townMapImage, townMapPick });
 
   const setupMapSrc = calculateSetupMapSrc({ setupMapImage, setupMapImageSource, setupMapSource, townMapImage });
 
@@ -913,7 +859,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // Roster changes reconcile only the required graph; existing authored Venues survive.
   useFoundingRosterReconciliation({ catalog, draftReady, screen, setSetupVenues, setupFoundingVillagerIds, snapshot });
 
+  const suggestionSignal = useActivitySignal(visible && screen === "setup");
   const suggestSetupVenues = createFoundingSuggestSetupVenues({
+    signal: suggestionSignal,
     setupWorkspace,
     setSetupWorkspace,
     persistSetupDraft,
@@ -941,17 +889,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   /** Whether the panel is framing a picture: one just picked, or the saved one under revision. */
-  const framingMap = calculateFramingMap({ reframingMap, townMapPick });
 
   /**
    * The framing the panel draws. Everywhere else draws the saved one, so the
    * draft never leaks out of the panel and the village is never seen wearing a
    * framing that has not been agreed to.
    */
-  const panelMapView: TownMapView = calculatePanelMapView({ framingMap, savedTownMapView, townMapDraft });
 
   /** What is true of the picture being previewed, if the panel is holding one. */
-  const townMapAdvice = calculateTownMapAdvice({ townMapPick });
 
   const [busy, setBusy] = useState(false);
 
@@ -963,6 +908,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   useSceneChangesPolling({
+    visible,
+    viewing: screen === "room",
+    busy: roomBusy,
+    snapshot,
     dismissedRoomEventIdsRef,
     receiveRoomRecordEvents,
     room,
@@ -979,121 +928,22 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomNotices,
   });
 
-  /**
-   * The next exact transition the server reported for schedules or atmosphere.
-   *
-   * A ref rather than state, because the poll reads and writes it on a timer and
-   * storing it in state would resubscribe the timer every time it noticed
-   * something. Empty until the first read, so opening the tab immediately asks
-   * the server to reconcile any elapsed time.
-   */
-  const transitionRef = useRef("");
-
-  /** Stops a second village write-up starting while one is already running. */
-  const reconcilingRef = useRef(false);
-
-  /**
-   * True while a write-up the tab has asked for is still running.
-   *
-   * Only ever set after `SHOW_CATCHING_UP_AFTER_MS`, so a quick reconciliation
-   * never flickers it. Opening a village that has been
-   * unread for hours is the case it exists for: the tab is asking the village
-   * to write about all of that time, which takes a while, and a player looking
-   * at an unchanged map deserves to know it is being worked on rather than
-   * broken.
-   */
-  const [catchingUp, setCatchingUp] = useState(false);
-
   useKnowledgeCaret({ knowledgeDraft, knowledgeRef, pendingCaretRef });
 
-  /**
-   * Ask the village to write down whatever has happened since it last did.
-   *
-   * Safe to call whenever: the server advances from its exact high-water mark,
-   * deduplicates stable opportunity ids, and spends no generation when there is
-   * no eligible creative work.
-   *
-   * Called whenever the next exact transition changes. The package scheduler
-   * uses the same endpoint while Marinara is running; reopening Marinara uses
-   * this call to reconstruct elapsed time since the stored high-water mark.
-   *
-   * `force` is passed through untouched and is only ever true from the debug
-   * menu; see `writeItUpNow`. An ordinary call sends no body at all, so the
-   * request the tab makes on its own is exactly the request it made before
-   * anything could force one.
-   *
-   * It returns the snapshot it read, or null when the call failed, because the
-   * one caller that forces has to be able to say what actually happened rather
-   * than assume it worked.
-   */
   const currentSnapshotRef = useRef(snapshot);
 
   useSnapshotReference({ currentSnapshotRef, snapshot });
 
-  const storyActionRef = useRef<{ id: string; expectedAttempt: number } | null>(null);
-
-  const reconcile = useReconcileVillage({
-    currentSnapshotRef,
-    reconcilingRef,
-    setCatchingUp,
-    beginSnapshotRead,
-    storyActionRef,
-  });
-
-  /**
-   * Ask for one creative village event right now, whatever Background events and wishes says.
-   *
-   * This debug action spends at most one model call and bypasses the daily pace
-   * gate. The event must still fit a fact-backed opportunity and pass the same
-   * validation as an automatic creative event.
-   *
-   * It reports what actually happened rather than that it finished. A forced
-   * creative pass over already-covered facts may have nothing to add —
-   * the window is deduped against, so it can only write what is genuinely new —
-   * and a button that always said "done" would leave the player wondering
-   * whether the feature was broken or the village was simply quiet.
-   */
-  const writeItUpNow = useWriteVillageEvent({ reconcile, setWriteUpNote, snapshot });
-
-  /**
-   * Read the village.
-   *
-   * `quiet` is the whole of the difference between the two callers. Opening the
-   * tab has nothing to fall back on, so a failure there clears the village and
-   * says so; a stumble in a read that runs every minute leaves the last good
-   * reading on screen instead of blanking a village that is working perfectly
-   * well.
-   */
   const loadSnapshot = useLoadVillageSnapshot({ setError, beginSnapshotRead });
 
   const presenceSession = useRef("");
 
-  useVillagePresence({ element, loadSnapshot, presenceSession, reconcile, beginSnapshotRead, snapshot });
+  useVillagePresence({ visible, presenceSession, beginSnapshotRead, snapshot });
 
   const backgroundPending =
     snapshot?.backgroundWork?.some((job) => ["queued", "running"].includes(job.status)) ?? false;
 
-  usePendingWorkPolling({ backgroundPending, loadSnapshot });
-
-  /*
-    Reconcile whenever the server's next meaningful transition changes.
-
-    Watching the snapshot rather than hanging off each read means this covers
-    every way the tab can learn the time — the opening read, the minute-by-minute
-    poll, founding the village, coming back to a tab that was hidden — without
-    any of them having to remember to ask. The ref is what makes it happen once
-    per exact transition rather than once per snapshot: nearly every snapshot
-    carries the same transition timestamp, and the ones that do end right here.
-
-    The ref starts empty, so the very first snapshot the tab ever sees always
-    looks like a transition. That is the point of it: opening the tab on a
-    village that has been sitting unread for a week reconciles that week then,
-    instead of waiting for the next scheduled transition.
-
-    An unfounded village is shown and not reconciled. There is no durable village
-    state to advance before founding.
-  */
-  useVillageTransitions({ reconcile, snapshot, transitionRef });
+  usePendingWorkPolling({ visible, backgroundPending, loadSnapshot });
 
   const loadCatalog = useResidentsLoadCatalog({ setCatalog, setError });
 
@@ -1117,15 +967,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   useResidentInspection({
     loadAgendas,
-    loadMemoryLibrary,
     personProfile,
     profileInspection,
     screen,
     setAgendas,
-    setMemoryLibrary,
   });
 
-  useResidentAgendaPolling({ agendas, loadAgendas, personProfile, profileInspection, screen });
+  useResidentAgendaPolling({ visible, agendas, loadAgendas, personProfile, profileInspection, screen });
 
   /**
    * Ask the village to work one villager out again.
@@ -1158,23 +1006,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const setAgendaScheduleIngestion = useSetAgendaScheduleIngestion({ setAgendas, setBusy, setError });
 
-  useInitialVillageLoad({ loadSnapshot });
-
-  /*
-    Keep the tab in step with the village for as long as it is open.
-
-    A capability package gets no timer and no background loop, so nothing can
-    advance a village whose tab is closed — which is why the catch-up matters
-    more than the poll. Once a minute is far finer than the thing being watched
-    (four parts to a day), so nearly every one of these reads finds the same
-    moment and stops at the first question, and the whole arrangement costs
-    about as much as the clock in the corner.
-
-    A hidden tab is skipped rather than ticked, since nobody is looking at it.
-    The read on the way back covers the time it was away in one batch, because
-    that is what the server makes of a moment it has fallen behind on.
-  */
-  useVillagePolling({ loadSnapshot, reconcilingRef });
+  useInitialVillageLoad({ visible: visible && !snapshot?.isFounded, loadSnapshot });
 
   useSceneSelectionReset({
     loadSnapshot,
@@ -1198,8 +1030,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // authoritative read can recover it even when the original fetch and its
   // recovery read failed; a delayed failure must not revive the old warning.
   useSceneOpeningWarning({ room, roomGreetingError, setRoomGreetingError });
-
-  useSceneOperationPolling({ room, roomBusy, setRoom, setRoomEnded, setRoomError });
 
   useSceneInterruptedSubmission({
     composerEditVersionRef,
@@ -1258,9 +1088,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // Kept as its own effect, keyed on the stamp: the picture is fetched once and
   // re-fetched only when the server says the map changed, so the homepage never
   // holds a stale copy and the snapshot never carries a megabyte of base64.
-  const townMapSetAt = snapshot ? snapshot.settings.townMapImageSetAt : null;
-
-  useTownMapImage({ setTownMapImage, townMapSetAt });
 
   const addVillager = useAddVillager({ loadCatalog, setBusy, setError, setSnapshot });
 
@@ -1341,6 +1168,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const leaveRoom = useLeaveRoom({
+    composerEditVersionRef,
     isFounded: snapshot?.isFounded,
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -1359,6 +1187,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomRuling,
     setRoomNotices,
     setRoomOpen,
     setScreen,
@@ -1410,6 +1239,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const { sendRoom, turnRecovery, checkSavedReply, replyPending } = useSendRoom({
+    visible: visible && screen === "room",
     composerEditVersionRef,
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -1451,6 +1281,17 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * home is what an hour that named nowhere resolves to. So one lookup answers
    * both questions and no place has to be asked twice.
    */
+  useSceneOperationPolling({
+    visible,
+    viewing: screen === "room",
+    recoveryPending: replyPending,
+    room,
+    roomBusy,
+    setRoom,
+    setRoomEnded,
+    setRoomError,
+  });
+
   const standingAt = useResidentsStandingAt({ snapshot });
 
   /**
@@ -1637,7 +1478,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSpriteFlipSaving,
   });
 
-  const saveStoryPace = useSaveStoryPace({ setBusy, setSettingsError, setSnapshot, snapshot });
+  const saveBackgroundPace = useSaveBackgroundPace({ setBusy, setSettingsError, setSnapshot, snapshot });
 
   const saveSendOnEnter = useSaveSendOnEnter({ setBusy, setSettingsError, setSnapshot, snapshot });
 
@@ -1661,6 +1502,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   // ── Town map ───────────────────────────────────────────────────────────────
   useFoundingMapReceipt({
+    visible,
     screen,
     setSetupMapBusy,
     setSetupMapGeneratedKey,
@@ -1710,71 +1552,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // one down to fit would be the same mistake as truncating an over-long prompt
   // box, so a file that will not fit is refused with both sizes in the message
   // instead.
-  const startMapReplacement = useStartMapReplacement({
-    setMapBasePositions,
-    setMapExpectedSetAt,
-    setMapPinDraft,
-    setMapRemoveDraft,
-    setMapReplaceOpen,
-    setReframingMap,
-    setSelectedMapVenueId,
-    setSettingsError,
-    setTownMapDraft,
-    setTownMapPick,
-    snapshot,
-  });
-
-  const generateReplacementMap = useGenerateReplacementMap({
-    setMapGenerating,
-    setMapRemoveDraft,
-    setSettingsError,
-    setTownMapDraft,
-    setTownMapPick,
-    snapshot,
-  });
-
-  const pickTownMap = usePickTownMap({
-    setBusy,
-    setMapRemoveDraft,
-    setSettingsError,
-    setTownMapDraft,
-    setTownMapPick,
-    snapshot,
-  });
-
-  const saveTownMap = useSaveTownMap({
-    mapBasePositions,
-    mapExpectedSetAt,
-    mapPinDraft,
-    mapRemoveDraft,
-    mapReplaceOpen,
-    setBusy,
-    setMapRemoveDraft,
-    setMapReplaceOpen,
-    setPlacingMapVenueId,
-    setReframingMap,
-    setSettingsError,
-    setSnapshot,
-    setTownMapDraft,
-    setTownMapImage,
-    setTownMapPick,
-    snapshot,
-    townMapDraft,
-    townMapImage,
-    townMapPick,
-  });
-
-  /** Put the panel back the way it was: nothing picked, nothing changed. */
-  const discardTownMapDraft = useDiscardTownMapDraft({
-    setMapRemoveDraft,
-    setMapReplaceOpen,
-    setPlacingMapVenueId,
-    setReframingMap,
-    setSettingsError,
-    setTownMapDraft,
-    setTownMapPick,
-  });
-
   // ── Pictures of the places ─────────────────────────────────────────────────
   // These handlers serve player-requested draws, uploads, and removal. First
   // entry to a private space can also start one background draw on the server.
@@ -2090,7 +1867,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     snapshot,
   });
 
-  useFoundingPreparationPolling({ screen, setPreparationProblem, setScreen, setSnapshot });
+  useFoundingPreparationPolling({
+    visible,
+    status: snapshot?.foundingPreparation?.status,
+    screen,
+    setPreparationProblem,
+    setScreen,
+    setSnapshot,
+  });
 
   const retryPreparation = useRetryPreparation({ setPreparationProblem, setSnapshot });
 
@@ -2255,7 +2039,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     snapshot,
   });
 
-  const savedPins: MapPin[] = calculateSavedPins({ mobile, nameOfCharacter, openPlaceId, openVenue, snapshot });
+  const savedPins: MapPin[] = calculateSavedPins({
+    mapId: selectedMap?.id,
+    mobile,
+    nameOfCharacter,
+    openPlaceId,
+    openVenue,
+    snapshot,
+  });
 
   const draftPins: MapPin[] = calculateDraftPins({
     selectedSetupVenueId,
@@ -2271,11 +2062,17 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupZoneDrafts,
   });
   return {
+    selectedMap,
+    setSelectedMapId,
+    showAllMaps,
+    setShowAllMaps,
+    returnToScene: () => setScreen("room"),
     setupSpriteRevisions,
     setSetupSpriteRevisions,
     sceneRestoration,
     ...venueScreenCommands,
     element,
+    visible,
     addNotice,
     addVenue,
     addVillager,
@@ -2289,7 +2086,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     backgroundPanel,
     busy,
     catalog,
-    catchingUp,
 
     closeExploration,
     closeRoom,
@@ -2304,7 +2100,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     decideResidenceMove,
     deleteArchivedVisits,
     discardRoomDebug,
-    discardTownMapDraft,
     dismissRoomNotice,
     draftPins,
     draftSaveError,
@@ -2322,8 +2117,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     projectsController,
     forgetMemory,
     foundVillage,
-    framingMap,
-    generateReplacementMap,
     generateSetupImage,
     generateSetupTownMap,
     goHome,
@@ -2344,10 +2137,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     lorebooks,
     lorebooksError,
     mailboxOpen,
-    mapGenerating,
-    mapPinDraft,
-    mapRemoveDraft,
-    mapReplaceOpen,
     mapVisualLore,
     memoryLibrary,
     menuPage,
@@ -2370,7 +2159,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     openSetup,
     openVenue,
     openVisit,
-    panelMapView,
     patchSetupVenue,
     personProfile,
     personaDraft,
@@ -2378,13 +2166,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     personalizeHomes,
     personas,
     pickSetupTownMap,
-    pickTownMap,
     pickerOpen,
     placeBusyId,
     placeCount,
     placeProblem,
     placeSetupPin,
-    placingMapVenueId,
     placingProjectId,
     playerMovePrivateZoneId,
     portraits,
@@ -2392,7 +2178,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     previewVillagerRefresh,
     profileOrigin,
     progressDebug,
-    reframingMap,
     refreshBusyId,
     refreshPreviews,
     removeNotice,
@@ -2433,8 +2218,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     saveSendOnEnter,
     saveSettings,
     saveSpriteCardFlip,
-    saveStoryPace,
-    saveTownMap,
+    saveBackgroundPace,
     saveVenue,
     saveVisitRetention,
     savedPins,
@@ -2445,7 +2229,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     sceneryStyleProfileId,
     screen,
     search,
-    selectedMapVenueId,
     selectedResidentAdmissions,
     selectedSetupVenueId,
     sendRoom,
@@ -2467,8 +2250,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setLoreTokenBudgetDraft,
     setLorebookDraft,
     setMailboxOpen,
-    setMapPinDraft,
-    setMapRemoveDraft,
     setMapVisualLore,
     setMemoryLibrary,
     setMenuPage,
@@ -2484,12 +2265,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setPersonalizeHomes,
     setPickerOpen,
     setPlaceProblem,
-    setPlacingMapVenueId,
     setPlacingProjectId,
     setPlayerMovePrivateZoneId,
     setProfileInspection,
     loadProgressDebug,
-    setReframingMap,
     setRequestEdits,
     setResetArmed,
     setRoom,
@@ -2506,7 +2285,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSceneryStyleProfileId,
     setScreen,
     setSearch,
-    setSelectedMapVenueId,
     setSelectedSetupVenueId,
     setSettingDraft,
     setSettingsError,
@@ -2539,8 +2317,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSiteProjectId,
     setSnapshot,
     setSpriteManagerId,
-    setTownMapDraft,
-    setTownMapPick,
     setVenueEditBusy,
     setVenueEditDraft,
     setVenueEditError,
@@ -2603,16 +2379,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     spriteManagerId,
     spriteProfileScroll,
     standingAt,
-    startMapReplacement,
     startOver,
     suggestPlaces,
     suggestSetupVenues,
-    townMapAdvice,
     townMapImage,
-    townMapPick,
-    townMapShape,
-    townMapSrc,
-    townMapZoom,
     updateSetupMapRequest,
     uploadSetupImage,
     venueEditBusy,
@@ -2644,7 +2414,5 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venuesDraft,
     visibleCatalog,
     visualLoreDefault,
-    writeItUpNow,
-    writeUpNote,
   };
 }

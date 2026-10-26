@@ -1,3 +1,9 @@
+import { memoryProposal, memoryRepair } from "./helpers/memories-fixture.js";
+import {
+  applyVillageMemory,
+  forgetVillageMemory,
+} from "../packages/villages/src/server/domain/rules/village-memories.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -24,20 +30,19 @@ import {
   neutralRelationship,
   relationshipKey,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
 import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
 import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
 import { createWorldCoordination } from "../packages/villages/src/server/features/world/village-service.js";
 import { notFound } from "../packages/villages/src/server/domain/rules/errors.js";
-import type { VillageChronicleEntry, VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 
 const day = 86400000;
 const start = Date.now() - 3 * day,
   at = new Date(start).toISOString();
 function fixture() {
   const state = coerceVillageState({
-    version: 3,
-    socialContractVersion: 2,
+    ...defaultVillageState(),
+    version: 5,
     seed: "time-world",
     foundedAt: new Date(start - day).toISOString(),
     timeZone: "America/Los_Angeles",
@@ -69,6 +74,7 @@ function fixture() {
     connection: "Friends",
   };
   const scene = coerceSession({
+    version: 2,
     id: "morning",
     processingVersion: 1,
     villageSeed: state.seed,
@@ -99,18 +105,12 @@ function fixture() {
   });
   return { state, scene, resident, wish: resident.agenda.wishes[0]! };
 }
-const memory = (id: string, text: string): VillageChronicleEntry => ({
-  id,
-  text,
-  scope: "private",
-  kind: "chat",
-  dayIndex: 0,
-  clock: "morning",
-  actors: [{ id: "a", name: "Ada" }],
-  knownByCharacterIds: ["a"],
-  occurredAt: at,
-  timePrecision: "exact",
-});
+function learn(state: VillageState, text: string, sceneId?: string) {
+  const next = memoryProposal(state.memories, { text, audience: ["a"], patch: { kind: "information" } });
+  if (sceneId) next.proposal.source.sceneId = sceneId;
+  applyVillageMemory(state, next.proposal, next.context);
+  return state.memories.records.at(-1)!;
+}
 
 {
   const { state, scene } = fixture();
@@ -165,7 +165,7 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
 {
   const { state, scene, resident, wish } = fixture();
   state.setupAt = state.foundedAt;
-  state.storyPace = "off";
+  state.backgroundPace = "off";
   protectSceneWishes(state, scene, start);
   let readFailure: "unknown" | "missing" | "" = "";
   const world = createWorldCoordination({
@@ -252,18 +252,33 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
 
 {
   const { state, scene } = fixture();
-  state.chronicle = [memory("old", "Ada likes the morning market")];
+  const oldMemory = learn(state, "Ada likes the morning market");
   scene.continuity = captureSceneContinuity(state, scene, start);
   const privateSnapshot = structuredClone(scene.continuity);
-  state.chronicle.unshift(memory("later", "Ada opened a new shop during the three days"));
+  state.playerPersonaName = "Future player identity";
+  state.venues[0]!.name = "Future venue name";
+  state.venues[0]!.occupancy.residentCharacterId = "a";
+  state.residences.push({ id: "future-move", characterId: "a", status: "pending", proposedVenueId: "square" } as any);
+  state.venues[0]!.editProposals = [{ id: "future-edit", declined: false }] as any;
+  const laterMemory = learn(state, "Ada opened a new shop during the three days");
   state.villagers[0]!.agenda!.wishes = [];
   state.relationshipContext!.edges[relationshipKey("a", "player")]!.connection = "Former friends";
   state.simulatedThrough = new Date().toISOString();
   resolveVenueZone(state.venues[0]!, "community")!.state.condition = "A changed Village";
-  const packet = semanticContext(scene, state, "I hop on", false, false, sceneContinuityView(state, scene));
-  assert(packet.memories.some((row) => row.id === "old"));
-  assert(!packet.memories.some((row) => row.id === "later"));
+  const packet = semanticContext(scene, state, "market shop", false, false, sceneContinuityView(state, scene));
+  assert(
+    packet.memory.memories.some((row) => row.id === laterMemory.id),
+    "System sees fresh memory for write screening",
+  );
+  const frozen = sceneContinuityView(state, scene).memories;
+  assert(frozen.records.some((row) => row.id === oldMemory.id));
+  assert(!frozen.records.some((row) => row.id === laterMemory.id));
   assert.equal(packet.actors[0]!.wishes[0]!.id, "ride");
+  assert.equal(packet.requests.residences.length, 0, "background housing is outside the Scene snapshot");
+  assert.equal(packet.requests.venues[0]!.name, "Square");
+  assert.equal(packet.requests.venues[0]!.occupancy.residentCharacterId, null);
+  assert(!packet.requests.edits?.length, "background edit requests cannot enter dialogue context");
+  assert.notEqual((publicSceneResponse(scene) as any).playerName, "Future player identity");
   assert.equal(packet.time!.capturedAt, at);
   assert.equal(
     sceneContinuityView(state, scene).relationshipContext!.edges[relationshipKey("a", "player")]!.connection,
@@ -278,11 +293,11 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
   assert.equal((publicSceneResponse(scene) as any).continuity, undefined);
   const restored = coerceSession(JSON.parse(JSON.stringify(scene))).continuity!;
   assert.equal(restored.capturedAt, at, "capture survives a restart");
-  assert.equal(restored.facts.chronicle[0]!.text, scene.continuity.facts.chronicle[0]!.text);
+  assert(!("memories" in restored.facts), "A Scene never copies the memory collection");
   assert.equal(restored.facts.villagers[0]!.agenda!.wishes[0]!.id, "ride");
   assert.equal(restored.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.connection, "Friends");
   assert.throws(
-    () => coerceSession({ ...scene, continuity: { ...scene.continuity, version: 99 } }),
+    () => coerceSession({ version: 2, ...scene, continuity: { ...scene.continuity, version: 99 } }),
     /captured context/,
   );
 }
@@ -354,7 +369,6 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
   protectSceneWishes(state, scene, start);
   scene.continuity = captureSceneContinuity(state, scene, start);
   wish.learnedAt = new Date().toISOString();
-  state.wishKnowledge.a = [{ wishId: wish.id, text: wish.wish, learnedAt: wish.learnedAt, lineIds: ["said"] }];
   const facts = captureSceneWishEffect(state, "a", wish.id);
   state.exchangeReceipts.reveal = {
     id: "reveal",
@@ -370,86 +384,103 @@ const memory = (id: string, text: string): VillageChronicleEntry => ({
     sceneFacts: facts,
   };
   scene.submissions.push({ id: "reveal" } as any);
-  state.wishKnowledge.a[0]!.text = "Later private correction";
   wish.wish = "A later different Wish";
   const view = sceneContinuityView(state, scene);
-  assert.equal(view.wishKnowledge.a![0]!.text, "Show the player my motorcycle");
   assert.equal(view.villagers[0]!.agenda!.wishes[0]!.wish, "Show the player my motorcycle");
 }
 
 {
   const { state, scene } = fixture();
   scene.continuity = captureSceneContinuity(state, scene, start);
-  scene.lines = [
-    {
-      id: "said",
-      role: "assistant",
-      speakerId: "a",
-      name: "Ada",
-      kind: "dialogue",
-      content: "Hop on my motorcycle!",
-      at,
-      heardBy: ["a"],
-    },
-  ];
-  scene.submissions.push({
-    id: "memory",
-    at,
-    liveProposals: {
-      version: 1,
-      memoryChanges: [
-        {
-          kind: "passing",
-          text: "Ada is showing her motorcycle",
-          subjectCharacterIds: ["a"],
-          knownByCharacterIds: ["a"],
-          evidence: [0],
-        },
-        {
-          kind: "durable",
-          text: "Ada enjoys sharing her motorcycle",
-          category: "preference",
-          subjectCharacterIds: ["a"],
-          knownByCharacterIds: ["a"],
-          evidence: [0],
-        },
-      ],
-      relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-      playerLineId: "",
-      replyLineIds: ["said"],
-      earlierLineIds: [],
-      memoryVersions: {},
-    },
-  } as any);
-  const service = createLiveMemory({
-    readVillageState: async () => state,
-    readVillageAuthority: async () => state,
-    mutateVillageState: async (change: (state: VillageState) => void) => {
-      change(state);
-      return state;
-    },
-    mutateRelationships: async () => assert.fail("No relationship writes"),
-  } as any);
-  assert.equal((await service.processLiveMemories(scene, "memory")).status, "applied");
-  assert.equal(state.recollections.length, 0, "overdue passing context is not revived in live Village retention");
-  const own = state.chronicle[0]!;
-  own.text = "Later outside correction";
-  own.supersededBy = "later";
-  const view = sceneContinuityView(state, scene);
-  assert.equal(
-    view.recollections[0]!.text,
-    "Ada is showing her motorcycle",
-    "the same Scene retains its temporary context through delayed recovery",
+  const own = learn(state, "Ada enjoys sharing her motorcycle", scene.id);
+  forgetVillageMemory(
+    state,
+    memoryRepair(state.memories, "forget", ["a"], undefined, own.id),
+    new Date().toISOString(),
   );
   assert.equal(
-    view.chronicle[0]!.text,
+    sceneContinuityView(state, scene).memories.records[0].text,
     "Ada enjoys sharing her motorcycle",
-    "later mutable memory versions cannot replace accepted Scene context",
+    "External Forget does not rewrite this Scene",
   );
-  assert.equal(view.chronicle[0]!.supersededBy, undefined);
-  const receipts = structuredClone(state.exchangeReceipts);
-  await service.processLiveMemories(scene, "memory");
-  assert.deepEqual(state.exchangeReceipts, receipts, "recovery reuses the exact accepted context");
+}
+
+{
+  const { state, scene } = fixture();
+  scene.continuity = captureSceneContinuity(state, scene, start);
+  const rel = state.relationshipContext!;
+  const future = { ...neutralRelationship("a", "player"), connection: "Partners", stance: "FUTURE", revision: 2 };
+  rel.edges[relationshipKey("a", "player")] = future;
+  assert.equal(
+    sceneContinuityView(state, scene).relationshipContext!.edges[relationshipKey("a", "player")]!.connection,
+    "Friends",
+    "Later global perspectives cannot rewrite a captured Scene",
+  );
+  const local = { ...neutralRelationship("a", "player"), connection: "Friends", stance: "Said here", revision: 1 };
+  rel.receipts.local = {
+    id: "local",
+    sceneId: scene.id,
+    submissionId: "own-turn",
+    sourceId: "local",
+    fromId: "a",
+    toId: "player",
+    beforeRevision: 0,
+    sceneAfter: local,
+    liveAfter: future,
+    reason: "Shared here",
+    at,
+    lineIds: [],
+    evidence: [],
+  };
+  scene.submissions.push({ id: "own-turn" } as any);
+  const known = sceneContinuityView(state, scene).relationshipContext!;
+  assert.equal(
+    known.edges[relationshipKey("a", "player")]!.connection,
+    "Friends",
+    "This Scene's own social evidence advances its captured perspective",
+  );
+  assert.equal(known.edges[relationshipKey("a", "player")]!.stance, "Said here");
+}
+
+{
+  const { state, scene } = fixture();
+  state.opening = {
+    id: "opening",
+    version: 2,
+    stage: "project",
+    projectId: "opening-project",
+    reveals: [],
+    residentIds: ["a"],
+    proposals: [],
+    declinedIds: [],
+    outcome: "",
+    communityVenueId: "square",
+    gatheringSceneId: "gathering",
+  };
+  scene.continuity = captureSceneContinuity(state, scene, start);
+  state.opening.stage = "first-use";
+  assert.equal(
+    semanticContext(scene, state, "hello", false, false, sceneContinuityView(state, scene)).opening!.stage,
+    "project",
+    "background completion cannot advance an old Scene's opening context",
+  );
+  const legacy = JSON.parse(JSON.stringify(scene));
+  delete legacy.continuity.facts.opening;
+  const restoredLegacy = coerceSession(legacy);
+  assert.equal(restoredLegacy.continuity!.facts.opening, undefined);
+  assert.equal(
+    sceneContinuityView(state, restoredLegacy).opening,
+    undefined,
+    "Missing captured opening context cannot import future background guidance",
+  );
+  state.opening.reveals.push({
+    residentId: "a",
+    sceneId: scene.id,
+    submissionId: "pitch",
+    lineId: "spoken",
+    quote: "Our idea",
+  });
+  assert.equal(sceneContinuityView(state, scene).opening!.reveals.length, 1, "own spoken pitch remains established");
 }
 
 console.log("PASS persistent Scene time, exact context, expiry holds, restart safety, live authority and privacy");

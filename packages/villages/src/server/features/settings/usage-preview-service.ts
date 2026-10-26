@@ -1,8 +1,8 @@
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
-import type { villagesDocuments } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { quoteUsageRate } from "../../adapters/models/usage-ledger.js";
-import { coerceVillageState } from "../../domain/decoding/village-codec.js";
+import { coerceVillageState, defaultVillageState } from "../../domain/decoding/village-codec.js";
+import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { agendaRequestCount, remainingRequests, translationBatchSize } from "../../domain/rules/generation-budgets.js";
@@ -23,8 +23,7 @@ export type BurstPreviewResult = {
 };
 
 export interface UsagePreviewPorts {
-  VILLAGES_PACKAGE_ID: string;
-  villagesDocuments(): Pick<ReturnType<typeof villagesDocuments>, "getById">;
+  readVillageAuthority(): Promise<VillageState>;
   villagesLanguageModels(): Pick<ReturnType<typeof villagesLanguageModels>, "resolveForRequest">;
   quoteUsageRate: typeof quoteUsageRate;
   previewBackgroundJobs: typeof previewBackgroundJobs;
@@ -34,8 +33,7 @@ export interface UsagePreviewPorts {
 
 /** Current settings composition owns explicit ports; construction starts no work. */
 export function createUsagePreview({
-  VILLAGES_PACKAGE_ID,
-  villagesDocuments,
+  readVillageAuthority,
   villagesLanguageModels,
   quoteUsageRate,
   previewBackgroundJobs,
@@ -48,9 +46,15 @@ export function createUsagePreview({
       action = String(args.action);
     if (!["agenda", "translation", "influence", "change", "images", "retry", "founding"].includes(action))
       throw badRequest("Choose a supported generation preview.");
-    const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, "villages-village");
-    const original = coerceVillageState(record?.data);
-    const state = coerceVillageState(structuredClone(original));
+    // This inert estimator uses mechanical settings, never conversational history.
+    const snapshot = await readVillageAuthority();
+    const original = coerceVillageState({
+      ...snapshot,
+      memories: defaultVillageState().memories,
+      memoryScenes: {},
+      memoryReceipts: {},
+    });
+    const state = structuredClone(original);
     if (action === "change") {
       const patch = asRecord(args.settings);
       for (const key of ["setting", "selectedLorebookIds", "loreTokenBudget"] as const)

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { villagesLogger } from "../packages/villages/src/server/adapters/engine/runtime-host.js";
@@ -35,7 +36,7 @@ const host = {
     },
   },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_package: string, id: string) {
         return records.get(id) ?? null;
       },
@@ -51,7 +52,7 @@ const host = {
         records.set(input.id, next);
         return next;
       },
-    },
+    }),
   },
 };
 let release = configureVillagesRuntime(host as Parameters<typeof configureVillagesRuntime>[0]);

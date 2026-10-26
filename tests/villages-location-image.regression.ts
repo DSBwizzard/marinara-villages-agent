@@ -1,3 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
 import { clientImplementation } from "./client-source.js";
@@ -195,12 +197,12 @@ async function main() {
     nextTransitionAt: "2026-09-11T16:31:00.000Z",
   };
   const setting = "A mill town at the foot of a ridge.";
-  const village = coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, setting });
+  const village = coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, setting });
   const exteriorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
     }).venues[0]!,
@@ -213,8 +215,8 @@ async function main() {
   const interiorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "grain", description: "A timbered room" }],
     }).venues[0]!,
@@ -238,8 +240,8 @@ async function main() {
     buildLocationPrompt(
       village,
       coerceVillageState({
-        version: 3,
-        socialContractVersion: 2,
+        ...defaultVillageState(),
+        version: 5,
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "" }],
       }).venues[0]!,
@@ -251,16 +253,16 @@ async function main() {
   );
   const factual = buildLocationPrompt(
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       setting,
       foundingDetails: "Built beside the ridge",
       venues: [{ id: "square", name: "market square", form: "trade" }],
     }),
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       venues: [
         {
@@ -298,8 +300,8 @@ async function main() {
   const occupiedExterior = buildLocationPrompt(
     village,
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       venues: [
         {
@@ -325,8 +327,8 @@ async function main() {
     buildLocationPrompt(
       village,
       coerceVillageState({
-        version: 3,
-        socialContractVersion: 2,
+        ...defaultVillageState(),
+        version: 5,
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "   " }],
       }).venues[0]!,
@@ -337,14 +339,14 @@ async function main() {
   );
   const chatty = buildLocationPrompt(
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       setting: "y".repeat(MAX_SETTING_LENGTH + 200),
     }),
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "" }],
     }).venues[0]!,
@@ -364,8 +366,8 @@ async function main() {
   const picture = { ref: "global-gallery:abc123", url: "/api/global-gallery/file/abc123.png", id: "abc123" };
   const venuesWith = (image: unknown) =>
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", presentation: { image } }],
     }).venues;
@@ -410,8 +412,8 @@ async function main() {
   // A place with no name is still not a place, picture or no picture.
   assert.deepEqual(
     coerceVillageState({
-      version: 3,
-      socialContractVersion: 2,
+      ...defaultVillageState(),
+      version: 5,
       wishSystemVersion: 3,
       venues: [{ name: "  ", presentation: { image: picture } }],
     }).venues,
@@ -427,7 +429,7 @@ async function main() {
   // name is not a place at all — its name is the whole of what the translation
   // list can say about it.
   const placesOf = (entries: unknown[]) =>
-    coerceVillageState({ version: 3, socialContractVersion: 2, wishSystemVersion: 3, venues: entries }).venues;
+    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, venues: entries }).venues;
   const house = (id: string, characterId: string | null, extra: Record<string, unknown> = {}) => ({
     id,
     name: "",
@@ -767,7 +769,7 @@ async function main() {
       runtime: {
         logger: { debugOverride() {}, error() {}, info() {}, warn() {}, debug() {} },
         persistence: {
-          documents,
+          documents: villageFixtureDocuments(documents),
           async listChats() {
             return [];
           },
@@ -937,7 +939,7 @@ async function main() {
     "founding creates exactly one public venue",
   );
   assert.equal(draws().length, 0, "founding a village does not spend the player's money on a picture");
-  assert.equal(galleryCalls(UPLOAD_PATH).length, 0, "and it puts nothing in their gallery either");
+  assert.equal(galleryCalls(UPLOAD_PATH).length, 1, "founding stores the uploaded first map in the gallery");
   const editedHome = await put("/api/villages/locations/venue/player-home", {
     description: "A snug home overlooking the square.",
   });
@@ -1009,12 +1011,12 @@ async function main() {
       .json()
       .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
       .map((venue: any) => venue.presentation.image),
-    [{ ref: "global-gallery:gallery-1", url: "/api/global-gallery/file/gallery-1.png", id: "gallery-1" }, null],
+    [{ ref: "global-gallery:gallery-2", url: "/api/global-gallery/file/gallery-2.png", id: "gallery-2" }, null],
     "the picture is kept as a reference and no other place is touched",
   );
   assert.equal(draws().length, 0, "choosing a picture the player already has never asks the Engine to draw");
 
-  const firstUpload = galleryCalls(UPLOAD_PATH)[0]!;
+  const firstUpload = galleryCalls(UPLOAD_PATH)[1]!;
   assert.equal(firstUpload.method, "POST");
   assert.equal(firstUpload.search, "", "a folder that cannot be found costs tidiness and nothing else");
   assert.equal(firstUpload.form?.provider, "villages", "the gallery entry says who put the picture there");
@@ -1029,17 +1031,17 @@ async function main() {
   assert.equal(second.statusCode, 200, second.body);
   assert.equal(
     second.json().settings.venues.find((venue: any) => venue.id === "ridge").presentation.image.ref,
-    "global-gallery:gallery-2",
+    "global-gallery:gallery-3",
   );
   assert.deepEqual(
     galleryCalls(FOLDERS_PATH)
-      .slice(0, 3)
+      .slice(1, 4)
       .map((call) => call.method),
     ["GET", "GET", "POST"],
     "the folder is looked for, looked for again once the lookup heals, and then made",
   );
-  assert.equal(galleryCalls(FOLDERS_PATH)[2]!.body?.name, "Villages");
-  assert.equal(galleryCalls(UPLOAD_PATH)[1]!.search, "?folderId=folder-villages", "and then everything is filed in it");
+  assert.equal(galleryCalls(FOLDERS_PATH)[3]!.body?.name, "Villages");
+  assert.equal(galleryCalls(UPLOAD_PATH)[2]!.search, "?folderId=folder-villages", "and then everything is filed in it");
 
   // ── Drawing one ───────────────────────────────────────────────────────────
   // Which connection is used is a three-step chain the connections regression
@@ -1149,7 +1151,7 @@ async function main() {
   assert.equal(drawnUpload.form?.width, "1216");
   assert.equal(drawnUpload.form?.height, "832");
   assert.ok(String(drawnUpload.form?.prompt).includes("the mill pond"), "the gallery entry keeps what was asked for");
-  assert.deepEqual(galleryCalls(FOLDERS_PATH).length, 3, "the folder is not looked for again once it is known");
+  assert.deepEqual(galleryCalls(FOLDERS_PATH).length, 4, "the folder is not looked for again once it is known");
 
   const stored = kept.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image;
   const drawn = await get("/api/villages");
@@ -1378,12 +1380,11 @@ async function main() {
     assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
     assert.doesNotMatch(draws().at(-1).body.appearance, /Painted background art|watercolor illustration/i);
   }
-  const styledMap = await post("/api/villages/setup/town-map/generate", {
+  await generateVillageTownMap({
     setting: "Misty cliffs",
     sceneryArtStyle: "Pixel art with a restrained sea-green palette",
     useVisualLore: false,
   });
-  assert.equal(styledMap.statusCode, 200, styledMap.body);
   assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
   assert.ok(draws().at(-1).body.appearance.length <= 4000);
 
@@ -1459,8 +1460,8 @@ async function mediaConnectionOwnership() {
         gate = deferred();
       let held = false;
       const state = coerceVillageState({
-        version: 3,
-        socialContractVersion: 2,
+        ...defaultVillageState(),
+        version: 5,
         wishSystemVersion: 3,
         seed: "equal-media-seed",
         timeZone: "UTC",
@@ -1469,7 +1470,7 @@ async function mediaConnectionOwnership() {
         setting: "Quiet harbor",
         setupAt: new Date().toISOString(),
         foundedAt: new Date().toISOString(),
-        storyPace: "off",
+        backgroundPace: "off",
         selectedLorebookIds: ["visual"],
         useVisualLoreByDefault: true,
         venues: [
@@ -1553,7 +1554,9 @@ async function mediaConnectionOwnership() {
       const release = scope.run(() =>
         configureVillagesRuntime(
           nativePorts<CapabilityRuntimeHost>({
-            persistence: nativePorts<CapabilityRuntimeHost["persistence"]>({ documents }),
+            persistence: nativePorts<CapabilityRuntimeHost["persistence"]>({
+              documents: villageFixtureDocuments(documents),
+            }),
             resources: {
               async listCharacters() {
                 return [];

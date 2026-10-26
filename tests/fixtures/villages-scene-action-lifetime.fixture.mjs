@@ -86,7 +86,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   function scene(id, operationId, closed = false, revision = 2) {
     return {
       id,
-      version: 1,
+      version: 2,
       sceneRevision: revision,
       placeId: "mill",
       zoneId: "private-" + id,
@@ -413,7 +413,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       ["close", "active", { fail: true }],
       ["close", "archive", { fail: true, archive: true }],
       ["leave", "leave", {}],
-      ["leave", "recovery-operation", { fail: true }],
       ["leave", "active", { fail: true }],
       ["leave", "archive", { fail: true, archive: true }],
       ["leave", "archive", { fail: true, archive: true, holdOrdinal: 2 }],
@@ -625,7 +624,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       const after = await recovery.snapshot();
       assert.deepEqual(
         recovery.requests.map((item) => item.kind),
-        ["preflight", "leave", "recovery-operation", "active", "archive"],
+        ["preflight", "leave", "active", "recovery-operation", "archive"],
       );
       assert.equal(
         after.state.revision,
@@ -851,7 +850,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           }
         }
 
-        for (const stage of ["zone", "recovery-operation", "active", "archive"]) {
+        for (const stage of ["zone", "active", "archive"]) {
           const f = await mount(strict, width, { hold: stage, fail: stage !== "zone", archive: stage === "archive" });
           try {
             const index = await f.launch("move");

@@ -10,6 +10,9 @@ export type VillageSpinoff = SpinoffView & {
   transcript: { speaker: string; content: string }[];
   lorebookIds: string[];
   evidence: SpinoffEvidence[];
+  memorySuggestions?: Record<string, import("../rules/scene-memories.js").SceneMemorySuggestion>;
+  memoryContext?: import("../rules/scene-memories.js").SceneMemoryContext;
+  memorySource?: import("./memories.js").MemorySource;
   interpretationAttempt?: string;
   outcome?: "concluded" | "abandoned" | "deleted" | "converted";
   capturedRevision: number;

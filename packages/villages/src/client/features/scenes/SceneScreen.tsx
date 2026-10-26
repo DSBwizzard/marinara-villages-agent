@@ -1,6 +1,10 @@
 import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { useCallback, useState, useRef } from "react";
-import { OCCUPANCY_UNAVAILABLE_MESSAGE } from "../../../shared/contracts/scene-turn-outcome.js";
+import {
+  isSceneTurnOutcome,
+  isSceneTurnOutcomeMessage,
+  sceneTurnOutcomeMessage,
+} from "../../../shared/contracts/scene-turn-outcome.js";
 import type { RoomOperation } from "../../../shared/contracts/village.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -31,7 +35,9 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   const sceneVenues =
     controller.snapshot?.sceneVenue && controller.snapshot.sceneVenue.sceneId === sceneId
       ? [controller.snapshot.sceneVenue.venue]
-      : (controller.snapshot?.settings.venues ?? []);
+      : controller.room?.capturedContext
+        ? []
+        : (controller.snapshot?.settings.venues ?? []);
   const reportSettingsError = useCallback(
     (id: string, title: string, message: string) => {
       if (!sceneId) return;
@@ -60,11 +66,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   useEffect(() => {
     const operation = currentOperation;
     const key = `${sceneId}:${operation?.id}`;
-    if (operation?.turnOutcome !== "occupancy-unavailable" || restoredInformation.current === key) return;
+    if (!operation || !isSceneTurnOutcome(operation.turnOutcome) || restoredInformation.current === key) return;
     restoredInformation.current = key;
     if (editVersionRef.current !== 0) return;
     restoreRoomDraft((current) => current || operation.input?.message || "");
-    showInformation(OCCUPANCY_UNAVAILABLE_MESSAGE);
+    showInformation(sceneTurnOutcomeMessage(operation.turnOutcome));
   }, [sceneId, currentOperation, editVersionRef, showInformation, restoreRoomDraft]);
   useEffect(() => {
     if (clarificationId && clarificationMessage) restoreRoomDraft((current) => current || clarificationMessage);
@@ -248,21 +254,21 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           ruling={roomRuling}
           open={roomOpen}
           ended={roomEnded}
-          playerName={playerDisplayName(snapshot)}
+          playerName={room.playerName ?? playerDisplayName(snapshot)}
           playerPortrait={personaPortrait ?? undefined}
           portraits={portraits}
           sprites={Object.fromEntries(
             (snapshot?.villagers ?? []).map((villager) => [villager.characterId, villager.sprite]),
           )}
           onDraft={(value) => {
-            if (roomRuling === OCCUPANCY_UNAVAILABLE_MESSAGE) controller.setRoomRuling("");
+            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             roomLeaveSubmissionIdRef.current = null;
             setRoomDraft(value);
           }}
           onMode={(value) => {
-            if (roomRuling === OCCUPANCY_UNAVAILABLE_MESSAGE) controller.setRoomRuling("");
+            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             setRoomMode(value);
@@ -273,7 +279,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           onTarget={(value) => {
             composerEditVersionRef.current++;
-            if (roomRuling === OCCUPANCY_UNAVAILABLE_MESSAGE) setRoomRuling("");
+            if (isSceneTurnOutcomeMessage(roomRuling)) setRoomRuling("");
             roomSubmissionIdRef.current = null;
             setRoomTargetId(value);
           }}
@@ -329,7 +335,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onReplayChanges={() => {
             if (!room?.id) return;
             void request(`/rooms/${encodeURIComponent(room.id)}/changes/replay`, { method: "POST" }).catch((cause) =>
-              setRoomError(messageFrom(cause, "Saved changes could not be replayed.")),
+              setRoomError(messageFrom(cause, "World changes could not be replayed.")),
             );
           }}
           debugDiscardEnabled={debugDiscardEnabled}
@@ -345,7 +351,17 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onContinueWithoutGreeting={() => {
             if (room.id) void continueRoomWithoutGreeting(room.id);
           }}
-          onUseMailbox={() => setMailboxOpen(true)}
+          onUseMailbox={
+            snapshot?.settings.venues.some(
+              (venue) =>
+                venue.id === room.placeId &&
+                venue.occupancy.playerHome &&
+                (!room.spaceClass || room.spaceClass === "residence"),
+            )
+              ? () => setMailboxOpen(true)
+              : undefined
+          }
+          onMap={goHome}
           onProjects={() => openMenu("projects")}
           onProposals={() => openMenu("venueRequests")}
           spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}

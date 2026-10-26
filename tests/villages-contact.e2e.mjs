@@ -21,6 +21,7 @@ try {
       { id: "private:mara", kind: "private-residence", venueClass: "residence", name: "Secret bedroom", seen: false },
     ];
     let session = {
+      version: 2,
       id: "contact-browser",
       placeId: "mill",
       placeName: "The Mill",
@@ -166,6 +167,7 @@ try {
     await page.getByRole("textbox", { name: "Message at The Mill", exact: true }).fill("Thanks. How are you?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => submissions.length).toBe(3);
+    await expect(composer).toHaveValue("");
     assert.equal(submitted.mode, "contact");
     assert.equal(submitted.targetId, "");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);

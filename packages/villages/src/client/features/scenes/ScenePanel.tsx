@@ -19,7 +19,7 @@ import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } f
 import type { Portrait, PortraitMap, RoomStep, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import { SceneErrorChip, SceneInformationChip, type SceneErrorItem } from "./scene-errors.js";
-import { OCCUPANCY_UNAVAILABLE_MESSAGE } from "../../../shared/contracts/scene-turn-outcome.js";
+import { isSceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";
 import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene.js";
@@ -91,20 +91,10 @@ export async function completedGreetingAfterFailure(sessionId: string, owns = ()
 
 export async function refreshSceneAfterFailure(
   sessionId: string,
-  submissionId?: string,
+  _submissionId?: string,
   owns = () => true,
 ): Promise<SceneView | null> {
   try {
-    if (!owns()) return null;
-    if (submissionId)
-      try {
-        await request(`/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`, {
-          signal: AbortSignal.timeout(5_000),
-        });
-      } catch {
-        // Operation diagnostics can be missing or unavailable after a lost POST.
-        // The saved Scene and submission receipt still establish completion.
-      }
     if (!owns()) return null;
     const { session } = await request<{ session: SceneView | null }>("/rooms/active", {
       signal: AbortSignal.timeout(5_000),
@@ -247,6 +237,7 @@ export function RoomPanel({
   debugDiscardEnabled,
   onDebugDiscard,
   onUseMailbox,
+  onMap,
   onProjects,
   onProposals,
   sceneSettings,
@@ -307,6 +298,7 @@ export function RoomPanel({
   debugDiscardEnabled: boolean;
   onDebugDiscard: () => void;
   onUseMailbox?: () => void;
+  onMap?: () => void;
   onProjects?: () => void;
   onProposals?: () => void;
   sceneSettings: ReactNode;
@@ -490,13 +482,13 @@ export function RoomPanel({
     if (change.status === "pending") continue;
     errorItems.push({
       id: change.submissionId + ":" + change.domain,
-      title: change.domain + (change.status === "rejected" ? " update not saved" : " update failed"),
-      message: change.reason ?? "Update could not be saved.",
+      title: "World change" + (change.status === "rejected" ? " not saved" : " failed") + " · " + change.domain,
+      message: change.reason ?? "World change could not be saved.",
       fields: [
         { label: "Scene", value: room.placeName },
         { label: "Scene ID", value: room.id },
         { label: "Message ID", value: change.submissionId },
-        { label: "World update", value: change.domain },
+        { label: "World change", value: change.domain },
         { label: "Result", value: change.status === "rejected" ? "Not saved" : "Needs attention" },
         ...(change.at ? [{ label: "Time", value: new Date(change.at).toLocaleString() }] : []),
       ],
@@ -543,9 +535,9 @@ export function RoomPanel({
   )
     errorItems.push({
       id: "other-world-updates",
-      title: "Other world updates need attention",
+      title: "Other World changes need attention",
       message:
-        "Some proposed world changes weren’t saved or could not be processed. See this Scene’s saved diagnostics for the remaining results.",
+        "Some proposed world changes weren’t saved or could not be processed. See World change diagnostics for details.",
       fields: [
         { label: "Failed", value: String(changeStatus.failed) },
         { label: "Not saved", value: String(changeStatus.rejected) },
@@ -802,45 +794,6 @@ export function RoomPanel({
    * to in the settings, so the sentence that carries the information here is that
    * the room is answering at all, and that it may take one call or several.
    */
-  const [progress, setProgress] = useState("");
-  useEffect(() => {
-    if (!busy || !room.id) {
-      setProgress("");
-      return;
-    }
-    let stopped = false;
-    let reading = false;
-    const poll = async () => {
-      if (stopped || reading || document.hidden) return;
-      reading = true;
-      try {
-        const { operation } = await request<{
-          operation: import("../../../shared/contracts/village.js").RoomOperation | null;
-        }>("/rooms/" + encodeURIComponent(room.id) + "/operation", { signal: AbortSignal.timeout(5000) });
-        if (!stopped)
-          setProgress(
-            operation?.status === "running"
-              ? /routing|attention|acoustic/.test(operation.stage ?? "")
-                ? "Working out who can hear…"
-                : /interpret/.test(operation.stage ?? "")
-                  ? "Checking the reply and its effects…"
-                  : /reply|response/.test(operation.stage ?? "")
-                    ? "Writing the reply…"
-                    : "Processing the Scene…"
-              : "",
-          );
-      } catch {
-        /* Progress is optional; never replace the request's result. */
-      } finally {
-        reading = false;
-      }
-    };
-    const timer = window.setInterval(() => void poll(), 1500);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
-  }, [room.id, busy]);
   const waiting = (
     <p className={`${ELEMENT_TAG}-chat-pending`} role="status">
       <span className={`${ELEMENT_TAG}-chat-spinner ${ELEMENT_TAG}-spin`} aria-hidden="true" />
@@ -851,7 +804,7 @@ export function RoomPanel({
             ? "Saving this Scene…"
             : mode === "move"
               ? "Moving…"
-              : progress || "This Scene is responding. Your draft stays here."}
+              : "This Scene is responding. Your draft stays here."}
       </span>
     </p>
   );
@@ -944,6 +897,18 @@ export function RoomPanel({
                   }}
                 >
                   Start a spinoff
+                </button>
+              ) : null}
+              {onMap ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onMap();
+                  }}
+                >
+                  Map
                 </button>
               ) : null}
               {onProjects ? (
@@ -1067,10 +1032,6 @@ export function RoomPanel({
                 ×
               </button>
             </div>
-            <p className={ELEMENT_TAG + "-hint"} role="status">
-              Changes and Wish updates are saved during replies. Ending the Scene does not run another review. See saved
-              changes below for pending or failed work.
-            </p>
             <div className={`${ELEMENT_TAG}-scene-modal-errors`}>
               <SceneErrorChip items={errorItems} open={errorsOpen} onOpen={setErrorsOpen} />
             </div>
@@ -1087,9 +1048,7 @@ export function RoomPanel({
       ) : null}
       <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
         <SceneInformationChip
-          items={
-            ruling === OCCUPANCY_UNAVAILABLE_MESSAGE ? [{ id: "occupancy", title: "Information", message: ruling }] : []
-          }
+          items={isSceneTurnOutcomeMessage(ruling) ? [{ id: "held-turn", title: "Information", message: ruling }] : []}
           open={informationOpen}
           onOpen={(value) => {
             setInformationOpen(value);
@@ -1121,12 +1080,12 @@ export function RoomPanel({
                 setInformationOpen(false);
               }}
               aria-expanded={noticesOpen}
-              aria-label={`${notices.length} village ${notices.length === 1 ? "notice" : "notices"}`}
+              aria-label={`${notices.length} ${notices.length === 1 ? "World change" : "World changes"}`}
             >
               ✦ {notices.length}
             </button>
             {noticesOpen ? (
-              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
+              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="World changes">
                 {notices.map((notice) => (
                   <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
                     <span aria-hidden="true">{roomNoticeIcon(notice.kind)}</span>
@@ -1590,7 +1549,7 @@ export function RoomPanel({
             </span>
           </div>
         </div>
-        {ruling && ruling !== OCCUPANCY_UNAVAILABLE_MESSAGE ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
+        {ruling && !isSceneTurnOutcomeMessage(ruling) ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
         {canCompose && mode === "fulfill" && activeParticipants.length === 0 ? (

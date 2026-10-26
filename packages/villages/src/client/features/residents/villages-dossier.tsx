@@ -1,3 +1,4 @@
+import { useFocusRevision, useVillageActivity } from "../../shared/activity.js";
 import { PeopleBook } from "./PeopleBook.js";
 import { PursuitsPanel } from "./PursuitsPanel.js";
 import type { ResidentSignature, ResidentSignatureImage } from "../../../shared/helpers/resident-signature.js";
@@ -156,6 +157,9 @@ export function VillagerDossier({
   onVenue: (id: string) => void;
   error?: string;
 }) {
+  const { visible, backgroundRevision } = useVillageActivity();
+  const focusRevision = useFocusRevision(visible);
+  const showingSprites = !!spriteManager;
   const [section, setSection] = useState<DossierSection>(
     navigation.section ?? (navigation.wishId ? "wishes" : "overview"),
   );
@@ -169,6 +173,7 @@ export function VillagerDossier({
   const profile = relationships?.profiles?.find((person) => person.characterId === navigation.actorId);
   const name = villager?.name ?? "Former villager";
   useEffect(() => {
+    if (!visible || showingSprites) return;
     const controller = new AbortController();
     const refresh = async () => {
       try {
@@ -183,12 +188,10 @@ export function VillagerDossier({
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 30_000);
     return () => {
       controller.abort();
-      window.clearInterval(timer);
     };
-  }, [request, navigation.actorId, revision]);
+  }, [request, navigation.actorId, revision, visible, showingSprites, backgroundRevision, focusRevision]);
   useEffect(() => {
     onInspectSection(inspect ? section : null);
     return () => onInspectSection(null);

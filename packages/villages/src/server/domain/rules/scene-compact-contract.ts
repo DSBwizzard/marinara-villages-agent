@@ -1,3 +1,5 @@
+import { LIVE_RELATIONSHIP_INSTRUCTION } from "./live-exchange.js";
+import { SCENE_MEMORY_INSTRUCTION } from "./scene-memories.js";
 import { ZONE_SOUND_CONTRACT } from "./zone-events.js";
 import { conflict } from "./errors.js";
 import type { VillageState } from "../models/world.js";
@@ -8,7 +10,7 @@ import type { VenueResponseContext } from "./venue-response-contract.js";
 
 // System owns the complete social interpretation; writing metadata is only a nomination.
 const SOCIAL_WRITING_CONTRACT =
-  'relationshipChanges:{changes:[{fromId,toId,expectedRevision,sceneAfter:{connection,stance,expectations:[],concerns:[],records:[]},liveAfter:{connection,stance,expectations:[],concerns:[],records:[]},reason,lineIds:[]}],disclosures:[{fromId,toId,text,kind:"explanation|preference|boundary|routine|history|connection",lineIds:[]}],permissions:[{controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}],intentions:[]}. Qualitative resident-owned perspectives; no scores or player feelings. Preserve captured Scene history in sceneAfter and later live developments in liveAfter. Disclosures need the resident’s player-heard speech; standing permissions need explicit authority for the exact visitor/Zone. System independently reviews all effects.';
+  'relationshipChanges:{changes:[{fromId,toId,expectedRevision,sceneAfter:{connection,stance,expectations:[],concerns:[],records:[]},liveAfter:{connection,stance,expectations:[],concerns:[],records:[]},reason,lineIds:[]}],disclosures:[{fromId,toId,text,kind:"explanation|preference|boundary|routine|history|connection",lineIds:[]}],permissions:[{controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}],intentions:[]}. Resident perspectives only; never player feelings. Preserve Scene/live history separately. Disclosures need player-heard speech; standing permissions need exact visitor/Zone authority. System reviews.';
 export type SceneWritingCapabilities = {
   management: boolean;
   movement: boolean;
@@ -26,8 +28,8 @@ ACTION-BASED SOUND. ${ZONE_SOUND_CONTRACT}`
       : c.acousticContract ||
         `Use heardPlayerBy and each segment's heardBy for actual resident witnesses. ${c.opening ? "Opening heardPlayerBy is empty." : ""}`,
     `Effects cite numeric zero-based indexes of ALL segments (player speech included), or supplied earlier evidence IDs. Never cite recaps, imagined speech or unfiltered player input in Zone-event Scenes. Every knower must witness every citation. Speech signals cite that resident's own speech. Conditional willingness, a promise and a completed deed are distinct. Proposals cannot grant authority or prove physical outcomes.`,
-    `Optional memoryChanges:[{kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:[],memoryIds?:[]}]. IDs are residents, never player. Record useful contextual events; durable only for stable facts/preferences/boundaries, commitments or significant experiences. Passing lasts 24 hours. Omit filler, transient mood, weak inference and existing facts. Reinforce/supersede cite supplied durable memoryIds plus new evidence; reinforce preserves the text, supersede corrects it. No promotion quota.`,
-    "Optional " + SOCIAL_WRITING_CONTRACT,
+    SCENE_MEMORY_INSTRUCTION,
+    LIVE_RELATIONSHIP_INSTRUCTION,
     capabilities.movement
       ? `contactMoves records only crossing into a DIFFERENT listed destination Zone, never walking within the current Zone. A step toward someone, crossing a courtyard or changing seats within one Zone needs no contactMoves. For a real Zone crossing use the exact full narration quote or omit quote to reference its segment.`
       : "",
@@ -103,19 +105,23 @@ export function readSceneWritingCapabilities(value: unknown): SceneWritingCapabi
   return value as SceneWritingCapabilities;
 }
 
+const reliableMemories =
+  'memoryChanges:[{action:"create|reinforce|correct|resolve",kind?:"experience|information|open-matter",text?,subjects?:[],target?:{id,revision,rootRevision},learners:{id:{basis:"observation|report|interpretation|validated-event",attributedTo?,support:[{lineId,excerpt}],disclosed?}},domainRef?:{kind,id,characterId?},effectId?,screening:{disposition:"clear|conflict|uncertain",protectedRoots:[],fingerprint}}]. Text<=600 UTF-8 bytes;1-2 exact supports/learner,<=320 bytes each. player learns only seen/heard material; subjects never learn automatically. Reports name speaker. Event fact:validated-event+committed receipt/domainRef; no drafts/promises. Reinforce preserves content; correct:root; resolve:open matter. Targets:supplied/guarded/unambiguous. Screen each row against System protection. Changed/conflict/uncertain/incomplete:reject affected row,keep dialogue/independent effects. No forgotten restoration,private defaults,filler or expansion calls.';
+const reliableRelationships = SOCIAL_WRITING_CONTRACT;
+
 /** v3 uses reference-only metadata and one concise copy of each mechanical rule. */
 export function reliableSceneContract(c: VenueResponseContext, capabilities: SceneWritingCapabilities): string[] {
   return [
-    'ONE complete JSON object: playerSpeechCapture first,segments second,effects inside SAME object. Escape strings; omit unused optional fields. No outside prose/Markdown. segments:{speakerId,text} speech and {text} visible narration; code infers kind. Defaults:ordinary/main. Optional delivery:"whisper|shout",presentation:"aside"; whispers require local targetId. Max24 segments,2000 chars each. Metadata:references only.',
+    'ONE complete JSON object: playerSpeechCapture first,segments second,effects inside SAME object. Escape strings; omit unused fields. No outside prose/Markdown. segments:{speakerId,text} speech and {text} visible narration; code infers kind. Defaults:ordinary/main. Optional delivery:"whisper|shout",presentation:"aside"; whispers require local targetId. Max24 segments,2000 chars each. Metadata:references only.',
     c.zoneEventContract
       ? `ZONE EVENTS. Player speech uses playerSpeechCapture. Code owns witnesses; no listener lists. Ordinary words reach source/adjacent Zones; whispers reach local target; shouts alert Venue but distant listeners hear indistinct noise. Permissions neither block sound nor grant entry. Use captured positions/movement order and each actor’s preceding perceptible evidence. Offstage people stay offstage; never reveal unseen causes, identities, gestures, activity, interiors or explanations of silence. Natural reachable events need no forced reactions. ACTION-BASED SOUND. ${ZONE_SOUND_CONTRACT}`
       : c.acousticContract ||
         `Use heardPlayerBy and segment heardBy for actual resident witnesses.${c.opening ? " Opening heardPlayerBy: []." : ""}`,
-    'Effects cite returned-segment numbers (0,1,...), "utterance:N" for captured player words; older evidence uses supplied IDs. Never invent "segments:1"/"aqua:1" aliases. Every knower witnesses EVERY citation. No recaps, imagined speech or raw input evidence. Speech signals cite their speaker. Conditions/promises/deeds differ; proposals grant no authority or physical results.',
-    'memoryChanges:[{kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:[],memoryIds?:[]}]. Resident IDs only, never player. Passing:24h contextual events; durable:stable facts/preferences/boundaries, commitments or significant experiences. Omit filler, transient mood, weak inference, existing facts; no quota. Reinforce preserves supplied durable text; supersede corrects it; both need supplied memoryIds/new evidence.',
-    SOCIAL_WRITING_CONTRACT,
+    'Effects cite returned-segment numbers (0,1,...), "utterance:N" for captured player words; older evidence uses supplied IDs. Never invent "segments:1"/"aqua:1" aliases. Every knower witnesses EVERY citation. No recap/imagined/raw-input evidence. Speech signals cite speaker. Conditions/promises/deeds differ; proposals grant no authority or physical results.',
+    reliableMemories,
+    reliableRelationships,
     capabilities.movement
-      ? "contactMoves:[{characterId,zoneId,segment}]. Only completed crossings to a DIFFERENT listed Zone. Current-Zone walking/seating/gates need no row. segment cites narration naming the actor and completed crossing,not intention/conditions. One voluntary move/actor; code supplies quote. Door opening is no crossing. Later speech uses new positions,no retroactive witnesses/unseen journeys/interiors."
+      ? "contactMoves:[{characterId,zoneId,segment}]:completed crossing to DIFFERENT listed Zone only; local walking/seating/doors need no row. segment:narration naming actor/completed crossing,never intent/condition. One voluntary move/actor; code owns quote. Later speech uses new positions,never retroactive witnesses/unseen journeys/interiors."
       : "",
     c.wishes !== false
       ? 'wishChanges:[{actorId,wishId,intent:"reveal|progress|check",evidence:[]}],listed Wishes only. Reveal needs actor disclosure; progress/check needs meaningful new witnessed evidence. No filler, promises, conditional/quoted claims, invented/fulfilled Wishes; physical results need receipts.'
@@ -127,7 +133,7 @@ export function reliableSceneContract(c: VenueResponseContext, capabilities: Sce
       ? 'roomEvents may include {kind:"manage-access",actorId,venueId,evidence:[],command:{action,zoneId,...}} for explicit management speech. Actions:zone-policy(complete policy),venue-policy(managerIds/visitorHours),lift-ban(banId),exception(permissionId/banIds),revoke(permissionId),destinations(visitorId,home/sleep/work Zone IDs). Listed authority/IDs only; retain unchanged fields; zoneId:null means Venue. No operationId/expectedRevision/sceneId. Guest entry/suggestions change no policy.'
       : "",
     c.conversational
-      ? "Resolve local physical attempts now. Lasting results need sceneChange:{happened:true,narration,conditionBefore,conditionAfter,featureId,featureText,publicFactBefore,publicFactAfter,resolveTraceId,addItem,removeItem,transferTo,traceKind,traceText,recipientId,sceneNote}. Replacements need exact old IDs/values; conditionAfter is complete. Pickup/handoff removes listed inventory; transferTo:player/physically local resident. recipientId:notes only,known recipient. New traces need kind/text; sceneNote:temporary layout,never repair. Locks persist. No invented supplies/consent,elsewhere deeds,promises-as-results or lasting changes without metadata. Failure:narration only." +
+      ? "Resolve local physical attempts now. Lasting results need sceneChange:{happened:true,narration,conditionBefore,conditionAfter,featureId,featureText,publicFactBefore,publicFactAfter,resolveTraceId,addItem,removeItem,transferTo,traceKind,traceText,recipientId,sceneNote}. Exact old IDs/preconditions; complete conditionAfter. Pickup/handoff removes stock; transferTo:player/local resident. recipientId:notes only. New trace needs kind/text; sceneNote:temporary layout,never repair. Preserve locks. No invented supplies/consent/elsewhere deeds/promises. Unsupported attempt=failure narration,no change." +
         (c.residentControlled
           ? " Residence edits need every required resident’s explicit approval of exact proposal; entry is not approval."
           : "")
