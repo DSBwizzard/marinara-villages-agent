@@ -1354,6 +1354,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomGreetingError,
     setRoomRuling,
     setRoomMode,
     setRoomMoveZoneId,
