@@ -18,6 +18,7 @@ import { semanticContinuationKey } from "../packages/villages/src/server/domain/
 
 const state = defaultVillageState();
 state.seed = "semantic-lifecycle";
+state.foundedAt = new Date().toISOString();
 state.playerBackground = "I have been a friend of a for years.";
 state.villagers = ["a", "b"].map((id) => ({
   characterId: id,
@@ -25,12 +26,24 @@ state.villagers = ["a", "b"].map((id) => ({
   completedWishes: [],
 })) as any;
 const relationships = defaultRelationshipState(state.seed);
+state.relationshipContext = relationships;
 let calls = 0,
   queued: any,
-  failApply = false;
+  failApply = false,
+  failMemory = false,
+  changeSourceAtAdmission = false;
 const saved = new Map<string, unknown>();
 const service = createStartingTies({
   readVillageState: async () => state,
+  mutateVillageState: async (update: any) => {
+    if (failMemory) throw Error("Memory storage unavailable");
+    if (changeSourceAtAdmission) {
+      changeSourceAtAdmission = false;
+      state.playerBackground = "Interleaved new source";
+    }
+    update(state);
+    return state;
+  },
   mutateRelationships: async (_seed: any, update: any) => {
     if (failApply) throw Error("Relationship storage unavailable");
     update(relationships);
@@ -59,17 +72,31 @@ const service = createStartingTies({
         model: "fake",
         connectionId: "configured-system",
         maxOutputTokens: 2400,
-        fitContext: (messages: any, options: any) => ({ messages, ...options }),
+        fitContext: (messages: any, options: any) => ({ messages, ...options, estimatedTokensBefore: 13000 }),
         chatComplete: () => assert.fail("Real providers are forbidden"),
       };
     },
   }),
   completeWithRoom: async (_model: any, _messages: any, _limit: any, options: any) => {
     calls++;
+    assert.equal(_limit, 2400, "Starting history respects the configured model's output ceiling");
     assert.equal(options.retryEmpty, false);
     return {
       finishReason: "stop",
-      content: JSON.stringify({ ties: [{ fromId: "a", toId: "b", warmth: 25, trust: -20, established: true }] }),
+      content: JSON.stringify({
+        ties: [
+          {
+            fromId: "a",
+            toId: "b",
+            connection: "Old friends",
+            stance: "Fond but cautious",
+            expectations: [],
+            concerns: [],
+            history: [{ text: "Authored context", sourceIds: ["card:a:description"], knownBy: ["a"] }],
+          },
+        ],
+        conflicts: [],
+      }),
     };
   },
 } as any);
@@ -79,6 +106,48 @@ await service.queue();
 assert.equal(calls, 0, "Admission queues finite preparation without dispatching inline");
 assert(queued);
 assert.equal(queued.input.source.playerBackground, state.playerBackground);
+assert.equal(queued.input.source.playerId, "player", "The captured source separates the player ID from display text");
+const longerConnection =
+  "Two musicians sharing a city: one knows the other's small but growing public profile; nothing establishes that the other knows she exists.";
+const purchased = {
+  ties: [
+    {
+      fromId: "a",
+      toId: "b",
+      connection: longerConnection,
+      stance: "Aware of their public work",
+      expectations: [],
+      concerns: [],
+      history: [],
+    },
+  ],
+  conflicts: [],
+};
+const recover = (value: unknown, finishReason = "stop", key = "starting-ties:" + queued.input.sourceHash) =>
+  service.handler.recoverSavedResult!(queued.input, [
+    { key, fingerprint: "saved", status: "completed", response: { finishReason, content: JSON.stringify(value) } },
+  ]);
+assert(longerConnection.length > 120);
+assert.equal((recover(purchased) as any).ties[0].connection, longerConnection, "Local recovery retains the full text");
+assert.equal(calls, 0, "Revalidating a purchased response cannot dispatch another request");
+assert.equal(recover(purchased, "stop", "another-checkpoint"), undefined);
+assert.throws(() => recover(purchased, "length"), /output-token limit/);
+assert.throws(
+  () => recover({ ...purchased, ties: [{ ...purchased.ties[0], connection: "x".repeat(401) }] }),
+  /invalid ties · connection.*maximum 400 characters/,
+);
+for (const tie of [
+  { ...purchased.ties[0], fromId: "player" },
+  { ...purchased.ties[0], toId: "unknown" },
+  { ...purchased.ties[0], history: [{ text: "Invalid", sourceIds: ["unknown"], knownBy: ["a"] }] },
+  { ...purchased.ties[0], history: [{ text: "Invalid", sourceIds: ["card:a:description"], knownBy: ["unknown"] }] },
+])
+  assert.throws(() => recover({ ...purchased, ties: [tie] }), /identity or source/);
+assert.throws(() => recover({ ...purchased, ties: [purchased.ties[0], purchased.ties[0]] }), /identity or source/);
+assert.throws(
+  () => recover({ ties: [], conflicts: [{ actorIds: ["player"], question: "Invalid", sourceIds: ["x", "y"] }] }),
+  /Invalid authored relationship conflict/,
+);
 const originalBackground = state.playerBackground;
 state.playerBackground = "Changed starting relationship";
 assert.equal(
@@ -87,19 +156,32 @@ assert.equal(
   "player backstory is part of the frozen relationship source",
 );
 state.playerBackground = originalBackground;
+failMemory = true;
+await assert.rejects(service.prepare(), /Memory storage unavailable/);
+assert.deepEqual(relationships.reviewedActorIds, [], "A failed Memory publication cannot unlock first Scene admission");
+assert.equal(calls, 1);
+failMemory = false;
+changeSourceAtAdmission = true;
+await assert.rejects(service.applySaved(), /Starting history source changed/);
+assert.deepEqual(relationships.reviewedActorIds, []);
+state.playerBackground = originalBackground;
 failApply = true;
-await assert.rejects(service.prepare(), /storage unavailable/);
+await assert.rejects(service.applySaved(), /storage unavailable/);
 assert.equal(calls, 1);
 assert(state.semanticStartingTies, "The interpreted result survives failed relationship application");
 failApply = false;
 await service.applySaved();
-assert.equal(relationships.startingTies[0]?.warmth, 25);
-relationships.startingTies[0]!.warmth = 12;
+assert.equal(Object.values(relationships.edges)[0]?.connection, "Old friends");
+Object.values(relationships.edges)[0]!.stance = "Later changed perspective";
 await service.applySaved();
-assert.equal(relationships.startingTies[0]?.warmth, 12, "Reading again preserves the user's proposal edits");
+assert.equal(
+  Object.values(relationships.edges)[0]?.stance,
+  "Later changed perspective",
+  "Reading never overwrites played developments",
+);
 await service.prepare();
 assert.equal(calls, 1, "The finite saved preparation replays without dispatch");
-assert.equal(relationships.startingTies[0]?.warmth, 12);
+assert.equal(Object.values(relationships.edges)[0]?.stance, "Later changed perspective");
 state.villagers[0]!.cardSnapshot.description = "Changed source";
 assert.equal(service.handler.valid(state, queued.input), false, "A changed source cannot receive the old preparation");
 await service.applySaved();
@@ -243,9 +325,12 @@ const social = createRelationshipSocial({
     return memory.processLiveMemories(scene, id);
   },
 } as any);
-await assert.rejects(social.processSocialOutbox(state), /Injected memory metadata failure/);
+await social.processSocialOutbox(state);
+assert.match(state.socialOutbox[0]!.error!, /Injected memory metadata failure/);
+assert.equal(await social.processSocialOutbox(state), false, "Ordinary reads skip retained failures");
 assert.equal(state.socialOutbox.length, 1, "A failed memory domain retains the accepted outbox for recovery");
 failedMemory = false;
+state.socialOutbox[0]!.error = undefined;
 await social.processSocialOutbox(state);
 assert(state.memories.records.some((row) => row.text === encounter.memoryChanges[0]!.text));
 assert(
@@ -289,7 +374,7 @@ const influence = createScheduleInfluence({
     resolveForRequest: async () => ({
       model: "fake",
       maxOutputTokens: 2400,
-      fitContext: (messages: any) => ({ messages, estimatedTokensBefore: 1000 }),
+      fitContext: (messages: any) => ({ messages, estimatedTokensBefore: 13000 }),
     }),
   }),
   completeWithRoom: async () => {

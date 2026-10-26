@@ -98,6 +98,8 @@ export type BackgroundWork = {
     | "wish"
     | "wish-check"
     | "mail"
+    | "personal-mail"
+    | "social-recovery"
     | "adaptation"
     | "starting-ties"
     | "schedule-influence";

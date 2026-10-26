@@ -688,12 +688,8 @@ try {
   const malformedRelationship = {
     fromId: "aqua",
     toId: "player",
-    dimension: "warmth",
-    strength: "minor",
-    direction: "increase",
-    ordinary: "PRIVATE EXPLANATION",
+    expectedRevision: "PRIVATE EXPLANATION",
     lineIds: ["0"],
-    disclosed: false,
   };
   await turn(
     "missing-relationship-reason",
@@ -1215,7 +1211,7 @@ try {
   };
   semanticExchangeAnswer = {
     consistent: true,
-    authority: { physical: false, access: false, projects: false, standing: false },
+    authority: { physical: false, access: false, projects: false, standing: false, social: false },
     action: null,
     access: [],
     events: { moves: [], departures: [], contactEnd: [] },
@@ -1569,7 +1565,7 @@ try {
   };
   semanticExchangeAnswer = {
     consistent: true,
-    authority: { physical: false, access: true, projects: false, standing: false },
+    authority: { physical: false, access: true, projects: false, standing: false, social: false },
     action: null,
     access: [invitation],
     events: { moves: [], departures: [], contactEnd: [] },
@@ -1633,7 +1629,7 @@ try {
   };
   semanticExchangeAnswer.action = physical;
   semanticExchangeAnswer.access = [];
-  semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false };
+  semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false, social: false };
   await turn("semantic-physical", "*straightens the cloth*", [{ text: "You straighten the cloth." }]);
   assert.equal(state().submissions.at(-1).semanticReady, true);
   assert.equal(
@@ -1660,7 +1656,13 @@ try {
     ],
   };
   semanticExchangeAnswer.action = null;
-  semanticExchangeAnswer.authority = { physical: false, access: false, projects: false, standing: false };
+  semanticExchangeAnswer.authority = {
+    physical: false,
+    access: false,
+    projects: false,
+    standing: false,
+    social: false,
+  };
   semanticExchangeAnswer.events = {
     moves: [],
     playerMoves: [
@@ -1963,7 +1965,7 @@ try {
       };
       semanticExchangeAnswer = {
         consistent: true,
-        authority: { physical: false, access: false, projects: false, standing: false },
+        authority: { physical: false, access: false, projects: false, standing: false, social: false },
         action: null,
         access: [],
         events: { moves: [], departures: [], contactEnd: [] },
@@ -2095,7 +2097,13 @@ try {
       timeline: [{ kind: "action", text: "*folds the cloth*" }],
     };
     semanticExchangeAnswer.action = action;
-    semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false };
+    semanticExchangeAnswer.authority = {
+      physical: true,
+      access: false,
+      projects: false,
+      standing: false,
+      social: false,
+    };
     answer = { playerSpeechCapture: { status: "silent", segments: [] }, segments: [{ text: "You fold the cloth." }] };
     beforeSemanticResponse = () => {
       zone().state.condition = "The cloth was removed elsewhere.";
@@ -2165,7 +2173,7 @@ try {
     timeline: [{ kind: "action", text: "*folds the cloth*" }],
   };
   semanticExchangeAnswer.action = afterMovePhysical;
-  semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false };
+  semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false, social: false };
   semanticExchangeAnswer.events = {
     moves: [{ characterId: "aqua", zoneId: "kitchen", segment: 0 }],
     departures: [],
@@ -2190,7 +2198,13 @@ try {
     timeline: [{ kind: "action", text: "*waits*" }],
   };
   semanticExchangeAnswer.action = null;
-  semanticExchangeAnswer.authority = { physical: false, access: false, projects: false, standing: false };
+  semanticExchangeAnswer.authority = {
+    physical: false,
+    access: false,
+    projects: false,
+    standing: false,
+    social: false,
+  };
   semanticExchangeAnswer.events = { moves: [], departures: [], contactEnd: [], sceneEnded: { source: 0 } };
   delete semanticExchangeAnswer.memoryChanges;
   await turn("semantic-conclusion-recovery", "*waits*", [{ speakerId: "feddy", text: "I'll see you next time." }]);

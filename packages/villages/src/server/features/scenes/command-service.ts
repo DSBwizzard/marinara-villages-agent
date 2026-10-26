@@ -1,10 +1,16 @@
+import { applyLiveMemories } from "../../domain/rules/live-memory-application.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
 import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
 import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
 import { sceneMemoryContext, SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
 import { bindDevelopmentChanges, applyDevelopmentScene } from "../../domain/rules/development-scene.js";
+import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
+import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
+import { createLiveEvidenceContext } from "../../domain/rules/live-exchange.js";
 import { observeHousing } from "../../domain/rules/resident-development.js";
 import { shape as projectZoneShape } from "../../domain/rules/project-structure.js";
+import { semanticContext } from "../../domain/rules/semantic-contract.js";
 import { releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
 import { openingPresence } from "../../domain/rules/opening-presence.js";
 import { openingActive, gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
@@ -80,6 +86,7 @@ import {
   evaluateZoneAccess,
   managesAccess,
   readAccessCommand,
+  settleStandingAccess,
 } from "../../domain/rules/venue-access.js";
 import {
   contactCanEnter,
@@ -119,6 +126,7 @@ import { filterRelationshipNotices, relationshipChangeNotices } from "../../doma
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash, randomUUID } from "node:crypto";
 export interface SceneCommandPorts {
+  applySavedStartingTies?: () => Promise<void>;
   withVillageSceneAcceptance?: typeof import("../world/village-store.js").withVillageSceneAcceptance;
   semantic?: import("../../domain/models/semantic-model.js").SemanticInterpreter;
   interpretRoomDraft: typeof import("./writing.js").interpretRoomDraft;
@@ -207,6 +215,7 @@ export interface SceneCommandPorts {
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
+  applySavedStartingTies,
   withVillageSceneAcceptance,
   interpretRoomDraft,
   generate,
@@ -364,7 +373,7 @@ export function createSceneCommands({
       let messages: CapabilityLanguageModelMessage[] = [
         {
           role: "system",
-          content: `Interpret ONLY the supplied saved exchange for ${domain}. Do not rewrite narration, change physical state, or invent evidence. ${domain === "wishes" ? WISH_PROPOSAL_INSTRUCTION : domain === "projects" ? 'Return projectSpeech:[{projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{lineId,quote}]}]. Judge only supplied Projects and revisions against the full saved exchange. Distinguish unconditional consent and personal commitment to lead from capability, conditional willingness and refusal. One exchange can support approval and volunteering. Cite exact current saved speaker words. No speech starts or completes construction. Omit unsupported rows.' : domain === "relationships" ? 'Return relationshipChanges:{changes:[],permissions:[],disclosures:[]}. Changes use fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"brief grounded reason",lineIds:[],disclosed:boolean. Trust needs demonstrated reliability or confidence/boundary interaction. Permissions require explicit unconditional standing authority; disclosures require actual heard speech. No rewards for mere co-location.' : SCENE_MEMORY_INSTRUCTION} Use exact saved evidence IDs, not numeric indexes. Return JSON only.`,
+          content: `Interpret ONLY the supplied saved exchange for ${domain}. Do not rewrite narration, change physical state, or invent evidence. ${domain === "wishes" ? WISH_PROPOSAL_INSTRUCTION : domain === "projects" ? 'Return projectSpeech:[{projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{lineId,quote}]}]. Judge only supplied Projects and revisions against the full saved exchange. Distinguish unconditional consent and personal commitment to lead from capability, conditional willingness and refusal. One exchange can support approval and volunteering. Cite exact current saved speaker words. No speech starts or completes construction. Omit unsupported rows.' : domain === "relationships" ? RELATIONSHIP_REVIEW_INSTRUCTION.replace("Return relationshipReview:", "Return relationshipChanges:") : SCENE_MEMORY_INSTRUCTION} Use exact saved evidence IDs, not numeric indexes. Return JSON only.`,
         },
         {
           role: "user",
@@ -398,6 +407,7 @@ export function createSceneCommands({
               : {}),
             ...(domain === "relationships"
               ? {
+                  social: semanticContext(scene, village, "", true, false, sceneContinuityView(village, scene)).social,
                   zones: village.venues.map((venue) => ({ id: venue.id, zones: venueZones(venue) })),
                   zoneControllers: village.venues.flatMap((venue) =>
                     venueZones(venue).map((zone) => ({
@@ -413,8 +423,8 @@ export function createSceneCommands({
       ];
       if (turn.semanticProvenance?.version === 2)
         messages[0].content +=
-          ' This is a v2 System-owned event. Interpret paraphrases and contextual short answers without phrase tests. Wish check/progress rows require criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} for the ORIGINAL goal. Relationship changes require contact:boolean for actual substantive shared contact. No model-authored provenance or verification flags.';
-      const output = turn.semanticProvenance?.version === 2 ? 2400 : VENUE_REPLY_MAX_TOKENS;
+          ' This is a v2 System-owned event. Interpret paraphrases and contextual short answers without phrase tests. Wish check/progress rows require criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} for the ORIGINAL goal. No model-authored provenance or verification flags.';
+      const output = turn.semanticProvenance?.version === 2 ? 4096 : VENUE_REPLY_MAX_TOKENS;
       const request = await venueCheckpoint("change-interpretation:input", async () => ({
         messages,
         connectionId: model.connectionId,
@@ -1029,11 +1039,21 @@ export function createSceneCommands({
     if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
       throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another Zone.");
     const existing = await activeVenueSession();
-    if (!existing) await rollActiveAgendas();
+    if (!existing) {
+      await applySavedStartingTies?.();
+      await rollActiveAgendas();
+    }
     const live = await readVillageState();
     let village = existing ? sceneContinuityView(live, existing) : live;
     const place = village.venues.find((entry) => entry.id === placeId);
     if (!place) throw notFound("That place is not in this village.");
+    if (
+      !existing &&
+      village.villagers.some((person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId))
+    )
+      throw conflict(
+        "Starting relationship history is not ready. Open Inspect → Relationships to check preparation, retry failed work, or clarify history before opening a Scene.",
+      );
     const classes = venueClasses(place),
       spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
     if (!classes.includes(spaceClass) && !requestedZoneId) throw badRequest("That Venue has no such space.");
@@ -1121,6 +1141,12 @@ export function createSceneCommands({
           doing: "at the Community gathering",
           zoneId: zone.id,
         }));
+    if (
+      sceneAttendance.occupants.some(
+        (person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId),
+      )
+    )
+      throw conflict("Starting relationship history needs preparation or clarification before a Scene can begin.");
     const entryAccessContext = {
       sceneId: id,
       at: new Date(sceneAttendance.capturedAt),
@@ -3486,7 +3512,94 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   }
 
   async function settleSemanticAuthority(scene: VenueScene, turn: VenueSubmission, allowProjectRecovery = true) {
-    if (turn.semanticProvenance?.version !== 2 || turn.semanticReady) return;
+    if (turn.semanticProvenance?.version !== 2) return;
+    const retainStandingAccess = async () => {
+      const authority = await readVillageState();
+      const receipts = Object.values(authority.exchangeReceipts).filter(
+        (receipt) =>
+          receipt.sceneId === scene.id &&
+          receipt.submissionId === turn.id &&
+          receipt.status === "applied" &&
+          receipt.sceneFacts?.standingPermissions?.length,
+      );
+      if (!receipts.length) return;
+      await changeSceneVenues(scene, (view) => {
+        for (const receipt of receipts)
+          for (const permission of receipt.sceneFacts!.standingPermissions!) {
+            const liveVenue = authority.venues.find((v) => v.id === permission.venueId);
+            const capturedVenue = view.venues.find((v) => v.id === permission.venueId);
+            if (
+              !liveVenue?.access?.receipts[permission.id] ||
+              liveVenue.access.receipts[permission.id]?.outcome === "rejected" ||
+              !capturedVenue?.access
+            )
+              throw conflict("The saved standing permission needs recovery.");
+            settleStandingAccess(capturedVenue, permission, receipt.at, [
+              "player",
+              ...view.villagers.map((v) => v.characterId),
+            ]);
+            if (
+              !capturedVenue.access.receipts[permission.id] ||
+              capturedVenue.access.receipts[permission.id]?.outcome === "rejected"
+            )
+              throw conflict("The captured standing permission needs recovery.");
+          }
+      });
+    };
+    const publish = async () => {
+      let memoryResult: Partial<import("../../domain/models/exchange-model.js").DomainProcessing> | undefined;
+      await mutateVillageState((state) => {
+        if (state.seed !== scene.villageSeed) throw conflict("Village identity changed during source publication.");
+        const saved = turn.liveProposals;
+        if (Array.isArray(saved?.memoryChanges) && saved.memoryChanges.length)
+          memoryResult = applyLiveMemories(state, scene, turn.id, villageNow());
+        if (saved) {
+          const lines = createLiveEvidenceContext(scene, saved).lines;
+          const parsed = parseRelationshipProposals(
+            saved.relationshipChanges,
+            scene.id + ":" + turn.id,
+            lines,
+            state,
+            (row) => ({
+              ...row,
+              lineIds: (row.lineIds as unknown[]).map((ref) =>
+                ref === "player" ? saved.playerLineId : typeof ref === "number" ? saved.replyLineIds[ref] : ref,
+              ),
+            }),
+            true,
+            sceneContinuityView(state, scene).relationshipContext,
+          );
+          // Settlement already checked private revisions; only its witnessed disclosures publish here.
+          publishRelationshipDisclosures(
+            state,
+            parsed.review.disclosures,
+            {
+              kind: "scene",
+              id: scene.id + ":" + turn.id,
+              sceneId: scene.id,
+              revision: 1,
+              fingerprint: saved.sourceFingerprint,
+            },
+            lines,
+            turn.at,
+            villageNow().toISOString(),
+          );
+        }
+        (state.socialPublications ??= {})[scene.id + ":" + turn.id] = true;
+      });
+      if (memoryResult)
+        await changeSession(scene.id, (current) => {
+          const target = current.submissions.find((row) => row.id === turn.id);
+          if (target) {
+            if (target.processing) Object.assign(target.processing.domains.memories, memoryResult);
+          }
+        });
+    };
+    if (turn.semanticReady) {
+      await retainStandingAccess();
+      await publish();
+      return;
+    }
     if (allowProjectRecovery) await recoverProjectMetadata(scene, turn);
     const currentScene = await readSession(scene.id);
     const currentTurn = currentScene.submissions.find((row) => row.id === turn.id);
@@ -3503,8 +3616,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       throw conflict("The saved immediate outcome needs recovery.");
     if (semanticAuthorityDomain(turn, "relationships")) {
       const result = currentTurn?.processing?.domains.relationships;
-      if (result?.status !== "applied" || result.rejectedProposals?.some((row) => row.kind === "permissions"))
-        throw conflict("The saved standing permission needs recovery.");
+      if (result?.status !== "applied" || result.rejectedProposals?.length)
+        throw conflict("The saved social outcome needs recovery.");
     }
     if (turn.accessEvents?.length) {
       const state = sceneContinuityView(await readVillageState(), currentScene);
@@ -3532,10 +3645,12 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       )
         throw conflict("The saved physical outcome could not commit. Recover the saved request.");
     }
+    await retainStandingAccess();
     await changeSession(scene.id, (saved) => {
       const entry = saved.submissions.find((row) => row.id === turn.id);
       if (entry?.semanticProvenance?.sourceHash === turn.semanticProvenance?.sourceHash) entry.semanticReady = true;
     });
+    await publish();
   }
   async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmission): Promise<void> {
     if (!submission.sceneChange) return;
@@ -3901,7 +4016,11 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   /** Only saved local results can finish a deferred natural conclusion. */
   async function finishSemanticScene(id: string): Promise<void> {
     let scene = await readSession(id);
-    for (const turn of scene.submissions.filter((row) => row.semanticProvenance?.version === 2 && !row.semanticReady)) {
+    const semanticTurns = scene.submissions.filter((row) => row.semanticProvenance?.version === 2);
+    const authority = semanticTurns.length ? await readVillageState() : undefined;
+    for (const turn of semanticTurns.filter(
+      (row) => !row.semanticReady || !authority?.socialPublications?.[scene.id + ":" + row.id],
+    )) {
       try {
         await settleSemanticAuthority(scene, turn, false);
       } catch (error) {

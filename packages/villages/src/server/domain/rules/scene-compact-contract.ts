@@ -8,6 +8,9 @@ import { accessManagementPrompt } from "./access-speech.js";
 import { venueZones } from "./venue-zones.js";
 import type { VenueResponseContext } from "./venue-response-contract.js";
 
+// System owns the complete social interpretation; writing metadata is only a nomination.
+const SOCIAL_WRITING_CONTRACT =
+  'relationshipChanges:{changes:[{fromId,toId,expectedRevision,sceneAfter:{connection,stance,expectations:[],concerns:[],records:[]},liveAfter:{connection,stance,expectations:[],concerns:[],records:[]},reason,lineIds:[]}],disclosures:[{fromId,toId,text,kind:"explanation|preference|boundary|routine|history|connection",lineIds:[]}],permissions:[{controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}],intentions:[]}. Resident perspectives only; never player feelings. Preserve Scene/live history separately. Disclosures need player-heard speech; standing permissions need exact visitor/Zone authority. System reviews.';
 export type SceneWritingCapabilities = {
   management: boolean;
   movement: boolean;
@@ -104,8 +107,7 @@ export function readSceneWritingCapabilities(value: unknown): SceneWritingCapabi
 
 const reliableMemories =
   'memoryChanges:[{action:"create|reinforce|correct|resolve",kind?:"experience|information|open-matter",text?,subjects?:[],target?:{id,revision,rootRevision},learners:{id:{basis:"observation|report|interpretation|validated-event",attributedTo?,support:[{lineId,excerpt}],disclosed?}},domainRef?:{kind,id,characterId?},effectId?,screening:{disposition:"clear|conflict|uncertain",protectedRoots:[],fingerprint}}]. Text<=600 UTF-8 bytes;1-2 exact supports/learner,<=320 bytes each. player learns only seen/heard material; subjects never learn automatically. Reports name speaker. Event fact:validated-event+committed receipt/domainRef; no drafts/promises. Reinforce preserves content; correct:root; resolve:open matter. Targets:supplied/guarded/unambiguous. Screen each row against System protection. Changed/conflict/uncertain/incomplete:reject affected row,keep dialogue/independent effects. No forgotten restoration,private defaults,filler or expansion calls.';
-const reliableRelationships =
-  'relationshipChanges:{changes:[{fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason,lineIds:[],disclosed:boolean}],permissions:[{controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}],disclosures:[]}. Company:minor warmth; trust:reliability/confidence/boundaries. No greetings/repetition/co-location/player-feelings. disclosed:reason explained aloud; otherwise private. Standing grant/revoke needs controller’s unconditional speech naming visitor/exact Zone; one visit differs. Conversational disclosures:screened memoryChanges only.';
+const reliableRelationships = SOCIAL_WRITING_CONTRACT;
 
 /** v3 uses reference-only metadata and one concise copy of each mechanical rule. */
 export function reliableSceneContract(c: VenueResponseContext, capabilities: SceneWritingCapabilities): string[] {

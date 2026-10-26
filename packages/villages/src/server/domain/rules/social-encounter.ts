@@ -1,9 +1,9 @@
 import type { RelationshipEvidenceLine, SocialEncounter } from "../models/relationship-types.js";
 import type { SocialOutboxEntry } from "../models/social-outbox-model.js";
 import type { VillageState } from "../models/world.js";
-import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
+import { agendaBlocksFor } from "./agenda-week.js";
 import { asRecord } from "./coerce.js";
-import { parseRelationshipProposals, substantiveContact } from "./relationship-review.js";
+import { parseRelationshipProposals } from "./relationship-review.js";
 import { canEnter } from "./social-rules.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
@@ -11,7 +11,7 @@ export function readEncounter(
   value: unknown,
   entry: SocialOutboxEntry,
   village: VillageState,
-  now = new Date(),
+  _now = new Date(),
 ): SocialEncounter | null {
   const raw = asRecord(value),
     actors = entry.opportunity.actorIds;
@@ -25,12 +25,25 @@ export function readEncounter(
     raw.lines.length > 8
   )
     return null;
+  const liveVillage = village;
+  village = { ...village, ...entry.admitted };
   const venue = village.venues.find((place) => place.id === entry.opportunity.venueId),
     zoneId = entry.opportunity.zoneId ?? "exterior";
-  const at = village.timeZone ? new ZonedDate(entry.at, village.timeZone) : new Date(entry.at),
+  if (
+    !venue ||
+    !actors.every((actorId) =>
+      canEnter(
+        village,
+        venue.id,
+        zoneId,
+        actorId,
+        new ZonedDate(entry.at, village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+      ),
+    )
+  )
+    return null;
+  const at = new ZonedDate(entry.at, village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
     minute = at.getHours() * 60 + at.getMinutes();
-  if (!venue || !actors.every((actorId) => canEnter(village, venue.id, zoneId, actorId, at))) return null;
-  if (agendaDateKey(at) !== agendaDateKey(now) || now.getTime() - at.getTime() > 15 * 60_000) return null;
   if (
     !actors.every((actorId) => {
       const person = village.villagers.find((resident) => resident.characterId === actorId);
@@ -71,7 +84,7 @@ export function readEncounter(
     proposed,
     entry.id,
     lines,
-    village,
+    { ...village, relationshipContext: entry.relationshipSnapshot ?? liveVillage.relationshipContext },
     (row, kind) => {
       if (kind === "disclosures") throw new Error("Offscreen encounters cannot disclose information to the player.");
       if (kind === "changes" && (!actors.includes(String(row.fromId)) || !actors.includes(String(row.toId))))
@@ -81,7 +94,7 @@ export function readEncounter(
         (!actors.includes(String(row.controllerId)) || !actors.includes(String(row.visitorId)))
       )
         throw new Error("An offscreen encounter cannot involve an absent actor.");
-      const indices = Array.isArray(row.evidence) ? row.evidence : [];
+      const indices = Array.isArray(row.lineIds) ? row.lineIds : [];
       if (
         !indices.length ||
         indices.some((index) => !Number.isInteger(index) || Number(index) < 0 || Number(index) >= lines.length)
@@ -91,21 +104,7 @@ export function readEncounter(
     },
     raw.semanticVersion === 2,
   );
-  for (const fromId of actors)
-    for (const toId of actors)
-      if (raw.semanticVersion !== 2 && fromId !== toId && substantiveContact(lines, fromId, toId))
-        review.changes.push({
-          id: entry.id + ":contact:" + fromId + ":" + toId,
-          fromId,
-          toId,
-          dimension: "warmth",
-          amount: 0,
-          ordinary: true,
-          reason: "Shared substantive contact.",
-          lineIds: lines.map((line) => line.id),
-          disclosed: false,
-          contact: true,
-        });
+  if (rejections.length) throw new Error(rejections.map((row) => JSON.stringify(row)).join("; "));
   return {
     ...(raw.semanticVersion === 2
       ? {

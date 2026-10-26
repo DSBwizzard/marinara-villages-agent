@@ -7,7 +7,21 @@ import {
   type DevelopmentPorts,
 } from "../packages/villages/src/server/features/world/development-service.js";
 import { developmentReview } from "../packages/villages/src/server/domain/rules/resident-development.js";
+import {
+  defaultRelationshipState,
+  neutralRelationship,
+  relationshipKey,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 const state = developmentFixture();
+state.relationshipContext = defaultRelationshipState(state.seed);
+state.relationshipContext.edges[relationshipKey("a", "b")] = {
+  ...neutralRelationship("a", "b"),
+  stance: "I ended this partnership and do not want to share a home.",
+};
+state.relationshipContext.edges[relationshipKey("b", "a")] = {
+  ...neutralRelationship("b", "a"),
+  stance: "Bram privately hopes to reconcile.",
+};
 const queued: any[] = [];
 let previous: any = null,
   calls = 0,
@@ -67,6 +81,9 @@ assert.equal(queued.length, 0);
 await service.reconcileDevelopment(new Date(elapsed(4)));
 assert.equal(queued.length, 1);
 const first = queued[0];
+const ada = first.input.context.residents.find((r: any) => r.characterId === "a");
+assert.match(ada.relationships, /ended this partnership/);
+assert(!ada.relationships.includes("Bram privately hopes"), "Each resident owns only their own social perspective");
 assert.equal(first.kind, "development");
 assert.equal(first.subjectId, "village");
 assert.equal(first.finite, false);

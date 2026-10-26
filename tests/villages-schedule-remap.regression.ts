@@ -1346,6 +1346,7 @@ async function main() {
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     version: 5,
+    socialContractVersion: 2,
     wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",
     villagers: [
@@ -1371,6 +1372,7 @@ async function main() {
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     version: 5,
+    socialContractVersion: 2,
     wishSystemVersion: 3,
     villagers: [
       {
@@ -1429,6 +1431,7 @@ async function main() {
       memories: { format: 1, revision: 0, records: [] },
       memoryScenes: {},
       version: 5,
+      socialContractVersion: 2,
       wishSystemVersion: 3,
       villagers: [{ characterId: "a", cardSnapshot: cardSnapshot("a", "A"), addedAt: "", agenda: null, remap: null }],
     }).villagers[0]!.remapFailure,
@@ -1561,6 +1564,7 @@ async function main() {
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     version: 5,
+    socialContractVersion: 2,
     wishSystemVersion: 3,
     villagers: [
       {

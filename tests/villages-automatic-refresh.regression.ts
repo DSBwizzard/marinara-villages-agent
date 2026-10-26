@@ -245,6 +245,9 @@ async function main() {
     },
   } as any);
 
+  const realNow = Date.now;
+  const wallOffset = 0;
+  Date.now = () => realNow() + wallOffset;
   const stopWork = startBackgroundWork();
   await villageBackgroundPresence("visible-story-fixture", true);
   try {
@@ -532,6 +535,7 @@ async function main() {
       "normal reconciliation completes a villager-requested move after 24 hours",
     );
   } finally {
+    Date.now = realNow;
     stopWork();
     await settleBackgroundWork();
     release();

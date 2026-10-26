@@ -11,7 +11,8 @@ export function releaseSceneMemories(state: VillageState, scene: VenueScene) {
     scene.submissions.some(
       (turn) =>
         (turn.processing && unfinishedExchange(turn.processing)) ||
-        (turn.semanticProvenance?.version === 2 && !turn.semanticReady),
+        (turn.semanticProvenance?.version === 2 &&
+          (!turn.semanticReady || !state.socialPublications?.[scene.id + ":" + turn.id])),
     ) ||
     pendingProgressTurns(scene, state.foundedAt).length
   )

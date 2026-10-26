@@ -119,6 +119,9 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         </span>
         {!mobile && !placingProjectId ? navigation : null}
         <span className={`${ELEMENT_TAG}-home-bar-actions`}>
+          <button type="button" className={ELEMENT_TAG + "-button"} onClick={() => controller.setMailboxOpen(true)}>
+            Mailbox
+          </button>
           {!placingProjectId ? (
             <NoticesButton
               count={snapshot?.noticeboard.length ?? 0}

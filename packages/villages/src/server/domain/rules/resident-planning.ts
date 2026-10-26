@@ -26,12 +26,11 @@ export function localDateKey(now: Date): string {
     String(now.getDate()).padStart(2, "0")
   );
 }
-export function planningAllowance(pace: VillageBackgroundPace, seed: string, date: string): number {
+export function planningAllowance(pace: VillageBackgroundPace, _seed: string, _date: string): number {
   if (pace === "off") return 0;
   if (pace === "quiet") return 1;
-  if (pace === "lively") return 3;
-  // Keep the established seeded allowance when upgrading an existing Village.
-  return 1 + (hashString(seed + "|" + date + "|creative-allowance") % 3);
+  if (pace === "lively") return 6;
+  return 3;
 }
 /** Current shared space supports an encounter. A lone resident still has routine/housing choices. */
 export function residentPlanningOpportunity(
@@ -56,7 +55,8 @@ export function residentPlanningOpportunity(
   }
   const overlap = [...currentPlaces].find(([, ids]) => ids.length >= 2);
   const wishing = residents.find((r) => r.agenda?.wishes.length);
-  const actorIds = overlap?.[1].slice(0, 4) ?? [(wishing ?? residents[0]).characterId];
+  const rotation = (village.eventAttempts?.attempts.length ?? 0) % residents.length;
+  const actorIds = overlap?.[1].slice(0, 4) ?? [(wishing ?? residents[rotation]!).characterId];
   const destination = overlap?.[0] ?? [...currentPlaces].find(([, ids]) => ids.includes(actorIds[0]))?.[0];
   const [venueId, zoneId] = destination ? (JSON.parse(destination) as [string, string]) : ["", "exterior"];
   const kind = overlap ? "encounter" : "routine";
@@ -88,12 +88,18 @@ export type ResidentPlanningContext = {
   venues: readonly VillageVenue[];
   pendingHousingCharacterIds: string[];
   opportunity: ResidentPlanningOpportunity;
-  social: { candidates: SocialPlan[]; relationships: string[] };
+  social: {
+    candidates: SocialPlan[];
+    relationships: string[];
+    state?: import("../models/relationship-types.js").RelationshipState;
+  };
+  narrationMemories?: Record<string, string>;
+  memory?: ReturnType<typeof import("./scene-memories.js").sceneMemoryContext>;
 };
 export type ResidentPlanningProposal = {
   routineIdea?: { characterId?: unknown; activity?: unknown; venueId?: unknown; zoneId?: unknown; flexible?: unknown };
   housingRequests: { characterId: string; kind: "move"; venueId: string }[];
-  social?: { planId?: unknown; encounter?: unknown };
+  social?: { planId?: unknown; encounter?: unknown; mail?: unknown };
 };
 export function buildResidentPlanningMessages(context: ResidentPlanningContext): CapabilityLanguageModelMessage[] {
   const offered = context.opportunity;
@@ -127,11 +133,14 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
           ". Private wishes: " +
           (r.agenda?.wishes ?? []).map((w) => w.wish).join("; "),
       ),
+    "Prior memories by resident (only each resident’s own knowers are their knowledge): " +
+      JSON.stringify(context.narrationMemories ?? {}),
     "Participants' own relationship context: " + context.social.relationships.join("\n"),
     "Optional future plans offered by code: " +
       JSON.stringify(context.social.candidates) +
       ". Select one exact offered ID with social.planId, or none. Availability is not preference or consent.",
     "A CURRENT encounter opportunity with at least two actors in one Zone may have social.encounter:{opportunityId,lines:[{speakerId,text}],relationshipReview:{changes:[],permissions:[],disclosures:[]}}. Write two to eight short spoken lines by offered actors only. Never invent player actions, past history, secrets, possessions, injury or physical effects. Omit the encounter if nothing fits. A separate System check interprets its consequences.",
+    "Instead of an encounter, social.mail may be {senderId,text} from one offered actor to player, at most 2000 characters: a personal message, question or invitation grounded in their own intentions. No player consent, unseen deeds, or invented contact details. Choose at most one encounter or mail. Private/unknown locations permit mail only.",
     "Housing choices: " +
       JSON.stringify(housing) +
       ". housingRequests accepts at most one {who:exact resident ID,kind:move,venueId:offered destination ID}. It is a pending request, never a completed move. Usually empty; choose only a move the resident independently wants.",

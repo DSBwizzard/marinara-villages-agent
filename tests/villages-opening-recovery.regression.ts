@@ -312,6 +312,10 @@ console.log(
     coordinateVenue: async (_id, _request, _kind, _input, _revision, _attempt, work) => work(),
     readSession: async () => scene,
     readVillageState: async () => village,
+    mutateVillageState: async (update: any) => {
+      update(village);
+      return village;
+    },
     changeSession: async (_id, update) => {
       if (
         failPersistence &&

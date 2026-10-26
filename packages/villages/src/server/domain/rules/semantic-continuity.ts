@@ -5,11 +5,21 @@ import { asRecord } from "./coerce.js";
 import { conflict } from "./errors.js";
 
 export function semanticAuthorityDomain(turn: VenueSubmission, domain: ExchangeDomain): boolean {
-  const permissions = asRecord(turn.liveProposals?.relationshipChanges).permissions;
+  const social = asRecord(turn.liveProposals?.relationshipChanges);
+  const permissions = social.permissions;
+  const consequential =
+    Array.isArray(social.changes) &&
+    social.changes.some((value) => {
+      const after = asRecord(asRecord(value).liveAfter);
+      return !!after.connection || (Array.isArray(after.records) && after.records.length > 0);
+    });
   return domain === "projects"
     ? !!turn.semanticProvenance?.authority?.projects || !!turn.projectSpeech?.length || !!turn.action?.happened
     : domain === "relationships"
-      ? !!turn.semanticProvenance?.authority?.standing || (Array.isArray(permissions) && permissions.length > 0)
+      ? consequential ||
+        !!turn.semanticProvenance?.authority?.social ||
+        !!turn.semanticProvenance?.authority?.standing ||
+        (Array.isArray(permissions) && permissions.length > 0)
       : false;
 }
 

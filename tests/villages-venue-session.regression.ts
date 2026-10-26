@@ -7,6 +7,7 @@ import { fixtureLocalAttention, fixtureAcousticModel } from "./fixtures/villages
 import { setVillageSendOnEnter } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import assert from "node:assert/strict";
 import { wishReceiptRecords } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
 import { physicalVenueEvents } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
@@ -139,6 +140,12 @@ let documentWriteCalls = 0,
   providerResolves = 0;
 const documents = {
   async getById(packageId: string, id: string) {
+    if (id.startsWith("villages-relationships-") && !records.has(key(packageId, id))) {
+      const world = records.get(key(packageId, "villages-village")).data,
+        social = defaultRelationshipState(world.seed);
+      social.reviewedActorIds = world.villagers.map((person: any) => person.characterId);
+      records.set(key(packageId, id), { id, packageId, kind: "relationships", data: social, revision: 1 });
+    }
     return records.get(key(packageId, id)) ?? null;
   },
   async list(packageId: string, kind: string) {

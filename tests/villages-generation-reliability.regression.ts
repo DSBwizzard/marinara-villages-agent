@@ -127,7 +127,7 @@ try {
   const request = completions().completeWithRoom(late, messages, 1024, options("late"));
   const rejected = assert.rejects(request, /timed out/);
   await started;
-  mock.timers.tick(30_000);
+  mock.timers.tick(120_000);
   await rejected;
   await assert.rejects(completions().completeWithRoom(model, messages, 1024, options("late")), /Retry explicitly/);
   finish({ content: "retained late response", finishReason: "stop" });

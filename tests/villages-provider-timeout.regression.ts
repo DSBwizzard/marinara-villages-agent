@@ -7,7 +7,7 @@ import {
 } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
 
 async function main() {
-  assert.equal(PROVIDER_REQUEST_TIMEOUT_MS, 30_000);
+  assert.equal(PROVIDER_REQUEST_TIMEOUT_MS, 120_000);
   mock.timers.enable({ apis: ["setTimeout"] });
   try {
     let calls = 0;
@@ -30,9 +30,9 @@ async function main() {
         settled = true;
       },
     );
-    const rejected = assert.rejects(pending, /timed out after 30 seconds.*may have been billed.*explicitly retry/);
+    const rejected = assert.rejects(pending, /timed out after 120 seconds.*may have been billed.*explicitly retry/);
     await Promise.resolve();
-    mock.timers.tick(29_999);
+    mock.timers.tick(119_999);
     await Promise.resolve();
     assert.equal(settled, false);
     mock.timers.tick(1);
@@ -88,9 +88,9 @@ async function main() {
       secondSignal = s;
       return new Promise<never>(() => {});
     });
-    const secondFailure = assert.rejects(second, /30 seconds/);
+    const secondFailure = assert.rejects(second, /120 seconds/);
     await Promise.resolve();
-    mock.timers.tick(29_999);
+    mock.timers.tick(119_999);
     assert.equal(secondSignal.aborted, false);
     mock.timers.tick(1);
     await secondFailure;
@@ -99,7 +99,7 @@ async function main() {
     assert.equal(getEventListeners(completeParent.signal, "abort").length, 0);
     mock.timers.tick(60_000);
     console.log(
-      "Provider deadline: firm 30 seconds, ignored abort, late completion, independent requests, cancellation and cleanup passed; fake providers only.",
+      "Provider deadline: firm 120 seconds, ignored abort, late completion, independent requests, cancellation and cleanup passed; fake providers only.",
     );
   } finally {
     mock.timers.reset();

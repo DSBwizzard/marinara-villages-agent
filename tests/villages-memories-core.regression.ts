@@ -500,15 +500,12 @@ await runCase("memories/consolidation", () => {
     warmth: 90,
     trust: 90,
   };
-  relationships.knowledge.ella = {
-    fromId: "ella",
-    at: memoryTime(1),
-    closeAt: memoryTime(1),
-    routine: ["09:00 Bakery"],
-    interests: "Reading",
-    wishes: [],
-    ties: [{ toId: "gidget", warmth: 10, trust: 20 }],
-  };
+  village.memories = addMemory(village.memories, {
+    text: "09:00 Bakery",
+    audience: ["player"],
+    patch: { kind: "information", domainRef: { kind: "relationship", id: "routine", characterId: "ella" } },
+  });
+  village.memories.records.at(-1)!.knowers.player.disclosed = { kind: "routine", toId: "player" };
   relationships.grants.door = {
     controllerId: "ella",
     visitorId: "player",
@@ -519,7 +516,7 @@ await runCase("memories/consolidation", () => {
   } as any;
   const profile = projectRelationshipProfiles(relationships, village)[0];
   assert.deepEqual(profile.routine, ["09:00 Bakery"]);
-  assert.equal(profile.ties[0].warmth, 10);
+  assert.equal("ties" in profile, false, "Private social authority is not notebook knowledge");
   assert.equal(profile.access[0].active, true, "An established permission has its own mechanical authority.");
   // Characterize the observable contract PR 2 must preserve across domain-store removal.
   const domain = {

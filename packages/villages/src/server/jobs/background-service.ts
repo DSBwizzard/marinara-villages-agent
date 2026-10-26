@@ -1,3 +1,6 @@
+import { localDateKey } from "../domain/rules/resident-planning.js";
+import { ZonedDate } from "../../shared/helpers/zoned-date.js";
+import { villageNow } from "../adapters/time/clock-gate.js";
 import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import { connectionFailureKind } from "../domain/rules/connection-failure.js";
@@ -8,6 +11,7 @@ import {
   clockAdministration,
 } from "../adapters/time/clock-gate.js";
 import { backgroundRevision } from "../domain/rules/background-revision.js";
+import { reserveEventAttempt } from "../domain/rules/event-attempts.js";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import type { withUsagePurpose } from "../adapters/models/usage-ledger.js";
@@ -442,7 +446,21 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw conflict("Background work changed. Refresh before requesting more resident activity.");
         if (work.kind === "resident-planning" && running.has(id) && previous) return previous;
         if (
+          ["personal-mail", "social-recovery"].includes(work.kind) &&
+          previous?.seed === work.seed &&
+          ["queued", "running"].includes(previous.status)
+        )
+          return previous;
+        if (
+          ["story", "resident-planning"].includes(work.kind) &&
           work.automaticDate &&
+          previous?.seed === work.seed &&
+          ["failed", "interrupted"].includes(previous.status)
+        )
+          return previous;
+        if (
+          work.automaticDate &&
+          !["story", "resident-planning"].includes(work.kind) &&
           previous?.seed === work.seed &&
           previous?.highWaterDate &&
           work.automaticDate <= previous.highWaterDate
@@ -564,6 +582,20 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Paused("This connection is paused. Retry an affected job to resume it.");
         }
         checkCurrent(job!, await readVillageState());
+        if (job!.kind === "resident-planning" && job!.automaticDate && !job!.retrying) {
+          if (job!.requests >= 2)
+            throw new Error("Automatic resident activity may make at most two principal requests.");
+          await mutateVillageState((state) => {
+            if (state.seed !== job!.seed) throw new Obsolete("Village identity changed.");
+            const actual = new ZonedDate(
+              villageNow().toISOString(),
+              state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+            );
+            if (!job!.requests && localDateKey(actual) !== job!.automaticDate)
+              throw new Obsolete("Automatic resident opportunity belongs to an earlier day.");
+            reserveEventAttempt(state, job!.id, job!.automaticDate!, villageNow().getTime());
+          });
+        }
         job = await changeJob(id, (current) => {
           if (current?.id !== job!.id || superseded.has(current.id)) throw new Obsolete("This job was replaced.");
           if (current.steps[index]?.status === "running") throw new Paused("This request is already reserved.");
@@ -1257,6 +1289,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               job?.kind !== "resident-planning" &&
               job?.kind !== "story" &&
               job?.kind !== "starting-ties" &&
+              job?.kind !== "personal-mail" &&
+              job?.kind !== "social-recovery" &&
               !state.villagers.some((resident) => resident.characterId === job?.subjectId);
       if (
         !job ||
@@ -1274,6 +1308,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                   : job?.kind !== "development" &&
                     job?.kind !== "resident-planning" &&
                     job?.kind !== "story" &&
+                    job?.kind !== "personal-mail" &&
+                    job?.kind !== "social-recovery" &&
                     !state.villagers.some((resident) => resident.characterId === job?.subjectId);
             if (subjectGone || job?.seed !== state.seed) discardedReceipts.push(record.id);
           }

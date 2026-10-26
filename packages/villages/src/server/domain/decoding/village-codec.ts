@@ -128,6 +128,7 @@ export function defaultVillageState(): VillageState {
     exchangeReceipts: {},
     noticeSequence: 0,
     dismissedNoticeIds: [],
+    socialContractVersion: 2,
     projectWishOutbox: [],
     wishRefillIntents: {},
     progressEngineVersion: 1,
@@ -1648,6 +1649,10 @@ export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
   if (value != null && raw.version !== 5) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
+  if (raw.foundedAt && raw.socialContractVersion !== 2)
+    throw new Error(
+      "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
+    );
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
@@ -1679,6 +1684,19 @@ export function coerceVillageState(value: unknown): VillageState {
     exchangeReceipts: structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"],
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
+    socialContractVersion: 2,
+    socialMailOutbox: Array.isArray(raw.socialMailOutbox)
+      ? (structuredClone(raw.socialMailOutbox) as VillageState["socialMailOutbox"])
+      : [],
+    socialClarifications: Array.isArray(raw.socialClarifications)
+      ? (raw.socialClarifications as VillageState["socialClarifications"])
+      : [],
+    socialPublications: raw.socialPublications
+      ? (structuredClone(raw.socialPublications) as VillageState["socialPublications"])
+      : {},
+    eventAttempts: raw.eventAttempts
+      ? (structuredClone(raw.eventAttempts) as VillageState["eventAttempts"])
+      : undefined,
     projectWishOutbox: Array.isArray(raw.projectWishOutbox)
       ? (raw.projectWishOutbox as VillageState["projectWishOutbox"])
       : [],

@@ -28,7 +28,7 @@ const memoryEvidenceFingerprint = (line: MemorySourceLine) =>
 // Saved reviews have exact line IDs; a reply being written has only segment
 // indexes. Keep the same policy without importing the review's conflicting example.
 export const LIVE_RELATIONSHIP_INSTRUCTION = RELATIONSHIP_REVIEW_INSTRUCTION.replace(
-  "Also return relationshipReview:",
+  "Return relationshipReview:",
   "For relationshipChanges use:",
 )
   .replace('lineIds:["exact evidence ID"]', 'lineIds:["player",0]')
@@ -39,7 +39,7 @@ export const LIVE_RELATIONSHIP_INSTRUCTION = RELATIONSHIP_REVIEW_INSTRUCTION.rep
 
 export const LIVE_MEMORY_INSTRUCTION =
   SCENE_MEMORY_INSTRUCTION +
-  " Return relationshipChanges:{changes:[],permissions:[],disclosures:[]} even when empty. Relationship proposals are independent of memories. " +
+  " Return relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]} even when empty. Relationship proposals are independent of memories. " +
   LIVE_RELATIONSHIP_INSTRUCTION;
 
 export function bindLiveProposals(
@@ -111,7 +111,7 @@ export function mergeLiveReplyProposals(
     responseDiagnostics: second.responseDiagnostics ?? first.responseDiagnostics,
     memoryChanges: memories,
     relationshipChanges: Object.fromEntries(
-      ["changes", "permissions", "disclosures"].map((key) => [
+      ["changes", "permissions", "disclosures", "intentions"].map((key) => [
         key,
         Array.isArray(a[key]) && Array.isArray(b[key])
           ? [...a[key], ...b[key].map((value) => ({ ...asRecord(value), lineIds: remap(asRecord(value).lineIds) }))]
@@ -140,6 +140,7 @@ export function liveEvidence(scene: VenueScene, proposals: LiveExchangeProposals
     })
     .map((line) => ({
       ...line,
+      speakerId: line.role === "user" ? "player" : line.speakerId,
       playerHeard:
         (!line.contactHidden || line.attentionEvidence === true) &&
         (line.kind !== "whisper" || line.targetId === "player"),

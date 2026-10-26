@@ -6,6 +6,7 @@ import type { MobileMapView } from "./villages-mobile-map.js";
 
 /** Values and actions used by ExplorationScreen; independent of shell implementation. */
 export type ExplorationScreenController = {
+  readonly setMailboxOpen: (open: boolean) => void;
   readonly selectedMap: import("../../../shared/contracts/village.js").VillageMap | null;
   readonly setSelectedMapId: (id: string) => void;
   readonly showAllMaps: boolean;

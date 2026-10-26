@@ -68,10 +68,10 @@ function fixture() {
     },
   ];
   state.relationshipContext = defaultRelationshipState(state.seed);
+  state.relationshipContext.reviewedActorIds = ["a"];
   state.relationshipContext.edges[relationshipKey("a", "player")] = {
     ...neutralRelationship("a", "player"),
-    warmth: 25,
-    familiarity: 1,
+    connection: "Friends",
   };
   const scene = coerceSession({
     version: 2,
@@ -149,16 +149,16 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   await live.requireLiveVenueSession(scene.id);
   assert.equal(raw.relationshipContext, undefined, "world DTO remains separate from relationship authority");
   assert.equal(
-    scene.continuity!.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.warmth,
-    25,
+    scene.continuity!.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.connection,
+    "Friends",
     "actual Scene setup captures hydrated relationships before world normalization strips them",
   );
-  relationships.edges[relationshipKey("a", "player")]!.warmth = -20;
+  relationships.edges[relationshipKey("a", "player")]!.connection = "Former friends";
   assert.equal(
     sceneContinuityView(await world.readVillageState(), scene).relationshipContext!.edges[
       relationshipKey("a", "player")
-    ]!.warmth,
-    25,
+    ]!.connection,
+    "Friends",
   );
 }
 
@@ -262,7 +262,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   state.venues[0]!.editProposals = [{ id: "future-edit", declined: false }] as any;
   const laterMemory = learn(state, "Ada opened a new shop during the three days");
   state.villagers[0]!.agenda!.wishes = [];
-  state.relationshipContext!.edges[relationshipKey("a", "player")]!.warmth = -20;
+  state.relationshipContext!.edges[relationshipKey("a", "player")]!.connection = "Former friends";
   state.simulatedThrough = new Date().toISOString();
   resolveVenueZone(state.venues[0]!, "community")!.state.condition = "A changed Village";
   const packet = semanticContext(scene, state, "market shop", false, false, sceneContinuityView(state, scene));
@@ -281,8 +281,8 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   assert.notEqual((publicSceneResponse(scene) as any).playerName, "Future player identity");
   assert.equal(packet.time!.capturedAt, at);
   assert.equal(
-    sceneContinuityView(state, scene).relationshipContext!.edges[relationshipKey("a", "player")]!.warmth,
-    25,
+    sceneContinuityView(state, scene).relationshipContext!.edges[relationshipKey("a", "player")]!.connection,
+    "Friends",
   );
   assert.equal(
     sceneContinuityView(state, scene).simulatedThrough,
@@ -295,7 +295,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   assert.equal(restored.capturedAt, at, "capture survives a restart");
   assert(!("memories" in restored.facts), "A Scene never copies the memory collection");
   assert.equal(restored.facts.villagers[0]!.agenda!.wishes[0]!.id, "ride");
-  assert.equal(restored.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.warmth, 25);
+  assert.equal(restored.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.connection, "Friends");
   assert.throws(
     () => coerceSession({ version: 2, ...scene, continuity: { ...scene.continuity, version: 99 } }),
     /captured context/,
@@ -409,45 +409,37 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   const { state, scene } = fixture();
   scene.continuity = captureSceneContinuity(state, scene, start);
   const rel = state.relationshipContext!;
-  rel.edges[relationshipKey("a", "player")] = {
-    ...neutralRelationship("a", "player"),
-    warmth: 90,
-    trust: 90,
-    close: true,
-  };
-  rel.knowledge.a = { fromId: "a", at, closeAt: at, routine: [], interests: "FUTURE", wishes: [], ties: [] };
+  const future = { ...neutralRelationship("a", "player"), connection: "Partners", stance: "FUTURE", revision: 2 };
+  rel.edges[relationshipKey("a", "player")] = future;
   assert.equal(
-    sceneContinuityView(state, scene).relationshipContext!.knowledge.a,
-    undefined,
-    "later global closeness cannot grant Scene knowledge",
+    sceneContinuityView(state, scene).relationshipContext!.edges[relationshipKey("a", "player")]!.connection,
+    "Friends",
+    "Later global perspectives cannot rewrite a captured Scene",
   );
-  for (const [id, dimension, before, after] of [
-    ["warm", "warmth", 25, 90],
-    ["trust", "trust", 0, 90],
-  ] as const)
-    rel.receipts[id] = {
-      id,
-      sceneId: scene.id,
-      sourceId: scene.id,
-      fromId: "a",
-      toId: "player",
-      dimension,
-      before,
-      after,
-      reason: "Shared here",
-      at,
-      lineIds: [],
-    };
-  rel.applied[`${scene.id}:contact:${relationshipKey("a", "player")}`] = true;
-  rel.disclosureReceipts.warm = true;
+  const local = { ...neutralRelationship("a", "player"), connection: "Friends", stance: "Said here", revision: 1 };
+  rel.receipts.local = {
+    id: "local",
+    sceneId: scene.id,
+    submissionId: "own-turn",
+    sourceId: "local",
+    fromId: "a",
+    toId: "player",
+    beforeRevision: 0,
+    sceneAfter: local,
+    liveAfter: future,
+    reason: "Shared here",
+    at,
+    lineIds: [],
+    evidence: [],
+  };
+  scene.submissions.push({ id: "own-turn" } as any);
   const known = sceneContinuityView(state, scene).relationshipContext!;
-  assert(known.knowledge.a!.closeAt, "accepted contact can establish close knowledge within the Scene");
-  assert(
-    !known.knowledge.a!.interests.includes("Said here"),
-    "Relationship snapshots do not copy conversational preferences",
+  assert.equal(
+    known.edges[relationshipKey("a", "player")]!.connection,
+    "Friends",
+    "This Scene's own social evidence advances its captured perspective",
   );
-  assert(!JSON.stringify(known.knowledge).includes("FUTURE"));
-  assert.equal(known.disclosureReceipts.future, undefined);
+  assert.equal(known.edges[relationshipKey("a", "player")]!.stance, "Said here");
 }
 
 {

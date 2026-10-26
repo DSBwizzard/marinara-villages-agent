@@ -242,7 +242,7 @@ export function reconcileResidentActions(
     const actionIds = (c.actionIds as string[]).filter((id) => redundantNarration(c, id));
     return actionIds.length ? [{ segment: Number(c.segment), actionIds }] : [];
   });
-  const scopes = new Map<string, string>();
+  const scopes = new Map<string, { meaning: string; action: ResidentAccessAction }[]>();
   for (const action of actions) {
     const scope = JSON.stringify([action.venueId, action.zoneId]);
     const meaning = JSON.stringify([
@@ -252,9 +252,19 @@ export function reconcileResidentActions(
       action.accompanies,
       action.command ?? null,
     ]);
-    if (scopes.has(scope) && scopes.get(scope) !== meaning)
-      return fail("Conflicting resident actions need clarification.");
-    scopes.set(scope, meaning);
+    const previous = scopes.get(scope) ?? [];
+    for (const entry of previous) {
+      // Ending a visit and withdrawing future permission are compatible effects.
+      const withdrawal = [entry.action, action].find(
+        (row) => row.outcome === "revoke-standing" && row.duration === "standing",
+      );
+      const refusal = [entry.action, action].find(
+        (row) => row.duration === "visit" && ["refuse", "dismiss", "ban-zone", "ban-venue"].includes(row.outcome),
+      );
+      if (entry.meaning !== meaning && !(withdrawal && refusal))
+        return fail("Conflicting resident actions need clarification.");
+    }
+    scopes.set(scope, [...previous, { meaning, action }]);
   }
   const access: Record<string, unknown>[] = [],
     permissions: Record<string, unknown>[] = [];

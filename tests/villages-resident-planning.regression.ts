@@ -1,3 +1,5 @@
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -57,6 +59,8 @@ function fixture() {
       },
     },
   ] as any;
+  state.relationshipContext = defaultRelationshipState(state.seed);
+  state.relationshipContext.reviewedActorIds = ["a"];
   const queued: any[] = [],
     calls: any[] = [];
   let payload: any = { social: null, routineIdea: null, housingRequests: [] },
@@ -109,11 +113,12 @@ const quiet: any = await f.service.handler.generate(input);
 assert.equal(f.calls.length, 1);
 assert.deepEqual(quiet, { housingRequests: [], routineIdea: undefined, social: undefined });
 assert.equal(f.service.handler.valid(f.state, input), true);
+reserveEventAttempt(f.state, f.queued[0].revision, dateKey, now.getTime());
 f.service.handler.apply(f.state, input, quiet, { retrying: false });
 assert.equal(f.state.lastPlanningDate, dateKey);
 assert.equal(f.state.planningUsage.count, 1);
 await f.service.reconcile(now);
-assert.equal(f.queued.length, 1, "A quiet result consumes the daily initial review");
+assert.equal(f.queued.length, 1, "A quiet result retains the 15 minute spacing");
 f.service.handler.apply(f.state, input, quiet, { retrying: true });
 assert.equal(f.state.planningUsage.count, 1, "Replay cannot spend or apply the allowance twice");
 assert.equal(Object.hasOwn(f.state, "happenings"), false);

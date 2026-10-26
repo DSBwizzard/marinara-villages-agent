@@ -350,9 +350,22 @@ async function main() {
   relationships.world.relationshipContext = state;
   const change = (id: string, amount: number): RelationshipChange => ({
     id,
-    amount,
-    dimension: "warmth",
-    ordinary: false,
+    expectedRevision: Object.values(state.edges)[0]?.revision ?? 0,
+    sceneAfter: {
+      connection: amount ? "Friends" : "Acquaintances",
+      stance: "Private",
+      expectations: [],
+      concerns: [],
+      records: [],
+    },
+    liveAfter: {
+      connection: amount ? "Friends" : "Acquaintances",
+      stance: "Private",
+      expectations: [],
+      concerns: [],
+      records: [],
+    },
+    evidence: [],
     fromId: "mara",
     toId: "player",
     reason: "Shared experience",
@@ -386,7 +399,7 @@ async function main() {
   assert.equal(invisible.nextCursor, "50:0:1");
   assert.equal(invisible.hasMore, true);
   const visible = await relationships.service.readSceneChanges("same", invisible.nextCursor, 1);
-  assert.equal(visible.notices.length, 1);
+  assert.equal(visible.notices.length, 0, "Private perspective changes never create player notices");
   assert.equal(visible.nextCursor, "50:0:2");
   assert.equal(visible.hasMore, false);
 
@@ -395,7 +408,6 @@ async function main() {
   privacy.scene.continuity = captureSceneContinuity(privacy.world, privacy.scene, Date.parse(stamp));
   const later = privacy.world.relationshipContext;
   later.edges['["mara","player"]'] = { fromId: "mara", toId: "player", close: true, warmth: 90, trust: 90 } as any;
-  later.knowledge.mara = { closeAt: stamp } as any;
   later.receipts.private = {
     id: "private",
     sceneId: "same",

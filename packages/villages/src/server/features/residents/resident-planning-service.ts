@@ -1,3 +1,7 @@
+import { recallMemories } from "../../domain/rules/memory-recall.js";
+import { eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
+import { socialContextState } from "../../domain/rules/social-context.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import { sceneMemoryContext, SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
 import { createHash } from "node:crypto";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -25,6 +29,8 @@ import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js"
 import { villageNow } from "../../adapters/time/clock-gate.js";
 
 export type ResidentPlanningPorts = {
+  applySavedStartingTies?: () => Promise<void>;
+  automaticMail?: import("./social-mail-service.js").SocialMailService["automaticOutbox"];
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   readEffectiveVillagerCard: typeof import("../../adapters/engine/catalog.js").readEffectiveVillagerCard;
   queueBackgroundJob: typeof import("../../jobs/background-work.js").queueBackgroundJob;
@@ -45,17 +51,25 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     completeWithRoom,
   } = ports;
   async function reconcile(now: Date): Promise<void> {
-    const village = await readVillageState();
+    await ports.applySavedStartingTies?.();
+    const village = await readVillageState({ memories: true });
     const dateKey = localDateKey(now),
       allowance = planningAllowance(village.backgroundPace, village.seed, dateKey);
-    if (!allowance) return;
+    if (
+      !allowance ||
+      !eventAttemptAvailable(village, dateKey, now.getTime()) ||
+      village.villagers.some((r) => !village.relationshipContext?.reviewedActorIds.includes(r.characterId)) ||
+      village.socialOutbox?.some((r) => !!r.error) ||
+      village.socialMailOutbox?.some((r) => !!r.error)
+    )
+      return;
     const moment = deriveVillageMoment({
       foundedAt: village.foundedAt,
       seed: village.seed,
       timeZone: village.timeZone || undefined,
       now,
     });
-    const used = village.planningUsage.dateKey === dateKey ? village.planningUsage.count : 0;
+    const used = village.eventAttempts?.attempts.filter((r) => r.date === dateKey).length ?? 0;
     const activePlan =
       used < allowance
         ? village.relationshipContext?.socialPlans.find(
@@ -67,8 +81,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               plan.endMinute > moment.minuteOfDay,
           )
         : undefined;
-    if (!activePlan && village.lastPlanningDate >= dateKey) return;
     const subjectId = activePlan ? "social:" + activePlan.id : "village";
+    const prior = await backgroundJobSnapshot("resident-planning", subjectId);
+    if (prior?.seed === village.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(prior.status))
+      return;
     // A renamed job must not reopen a failed or interrupted paid attempt from this date.
     const legacy = await backgroundJobSnapshot("story", subjectId);
     if (legacy?.seed === village.seed && legacy.highWaterDate >= dateKey) return;
@@ -106,16 +122,28 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       venues: village.venues,
       pendingHousingCharacterIds: village.residences.filter((r) => r.status !== "current").map((r) => r.characterId),
       opportunity,
+      narrationMemories: Object.fromEntries(
+        opportunity.actorIds.map((id) => [
+          id,
+          recallMemories(village.memories, {
+            purpose: "narration",
+            audience: [id],
+            query: opportunity.facts.join(" ") + " " + id,
+          }).serialized,
+        ]),
+      ),
+      memory: sceneMemoryContext(village, opportunity.actorIds, opportunity.facts.join(" ")),
       social: {
         candidates: !activePlan && allowance > 1 ? socialPlanCandidates(village, now) : [],
         relationships: opportunity.actorIds.map((id) => relationshipWritingPrompt(village, id)),
+        state: socialContextState(village.relationshipContext, opportunity.actorIds, opportunity.facts.join(" ")),
       },
     };
     await queueBackgroundJob({
       kind: "resident-planning",
       subjectId,
       seed: village.seed,
-      revision: dateKey,
+      revision: dateKey + ":" + used,
       finite: false,
       label: "Resident activity",
       automaticDate: dateKey,
@@ -126,6 +154,13 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         now: now.toISOString(),
         socialPlanId: activePlan?.id,
         socialPlan: activePlan,
+        admitted: structuredClone({
+          villagers: village.villagers,
+          venues: village.venues,
+          residences: village.residences,
+          projects: village.projects,
+          timeZone: village.timeZone,
+        }),
         actorIncarnations: Object.fromEntries(
           opportunity.actorIds.map((id) => [
             id,
@@ -173,42 +208,62 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? 3000, payload),
       });
     }
-    const encounter = proposal.social?.encounter;
-    if (encounter && typeof encounter === "object") {
-      delete (encounter as Record<string, unknown>).semanticVersion;
-      delete (encounter as Record<string, unknown>).semanticSourceHash;
-      delete (encounter as Record<string, unknown>).memoryChanges;
-      delete (encounter as Record<string, unknown>).memoryContexts;
-    }
+    const encounter = proposal.social?.encounter,
+      mail = proposal.social?.mail;
+    if (encounter && mail) throw new Error("Choose one automatic social interaction per attempt.");
     if (
-      context.version === 1 &&
-      encounter &&
-      typeof encounter === "object" &&
-      Array.isArray((encounter as Record<string, unknown>).lines)
-    ) {
-      const record = encounter as Record<string, unknown>;
-      const nativeMemory = sceneMemoryContext(
-        await readVillageState({ memories: true }),
-        context.opportunity.actorIds,
-        context.opportunity.facts.join(" "),
-        JSON.stringify(record.lines),
-      );
+      mail &&
+      (typeof mail !== "object" ||
+        !context.opportunity.actorIds.includes(String((mail as Record<string, unknown>).senderId)) ||
+        typeof (mail as Record<string, unknown>).text !== "string" ||
+        String((mail as Record<string, unknown>).text).length > 2000)
+    )
+      throw new Error("Invalid automatic correspondent or message.");
+    for (const raw of [encounter, mail])
+      if (raw && typeof raw === "object")
+        for (const key of [
+          "semanticVersion",
+          "semanticSourceHash",
+          "memoryChanges",
+          "memoryContexts",
+          "relationshipReview",
+          "invitation",
+        ])
+          delete (raw as Record<string, unknown>)[key];
+    if (encounter || mail) {
+      const record = (encounter ?? mail) as Record<string, unknown>;
+      const lines = mail ? [{ speakerId: record.senderId, text: record.text }] : record.lines;
+      if (!Array.isArray(lines)) throw new Error("Automatic social source has no lines.");
+      const nativeMemory = context.memory;
+      if (!nativeMemory) throw new Error("Automatic social Memory context is missing.");
       const reviewMessages = [
         {
           role: "system" as const,
           content:
-            "Independently interpret these current offscreen spoken lines. Return one JSON object: {memoryChanges:[],relationshipReview:{changes:[],permissions:[],disclosures:[]}}. Changes use fromId,toId,dimension:warmth|trust,strength:minor|meaningful|major|none,direction:increase|decrease,ordinary:boolean,contact:boolean,reason,evidence:[line indexes]. contact is actual substantive shared contact. Contact/significance is semantic; greetings alone imply no score change. Trust needs demonstrated reliability/boundary interaction, never an unverified promise. Permissions require explicit standing authority from a listed controller to a present visitor. Disclosures must be empty: the player is absent. " +
+            "Independently interpret these exact automatic social lines. Return one complete JSON object. " +
+            RELATIONSHIP_REVIEW_INSTRUCTION +
+            (mail
+              ? " The recipient is player; disclosures wait for reading. An explicit invitation may return invitation:{title,detail,venueId,zoneId,dueAt?,visitAccess:null|{accompanied:boolean,outsideHours:boolean}} using current authorized Zones only. A visit is not standing access or accepted commitment."
+              : " The player is absent: disclosures must be empty.") +
+            " Use numeric zero-based lineIds. context.state is both captured and live social baseline. sceneAfter/liveAfter coincide. Return memoryChanges:[] under the native Memory contract. " +
             SCENE_MEMORY_INSTRUCTION,
         },
         {
           role: "user" as const,
-          content: JSON.stringify({ lines: record.lines, context: context.social, memory: nativeMemory.envelope }),
+          content: JSON.stringify({
+            lines,
+            mode: mail ? "mail" : "encounter",
+            context: context.social,
+            memory: nativeMemory.envelope,
+            now: context.moment.instant,
+            zones: context.venues,
+          }),
         },
       ];
-      const fittedReview = model.fitContext(reviewMessages, { maxTokens: 2400 });
+      const fittedReview = model.fitContext(reviewMessages, { maxTokens: 16384 });
       if (JSON.stringify(fittedReview.messages) !== JSON.stringify(reviewMessages))
         throw new Error("Offscreen semantic evidence does not fit System context.");
-      const judged = await completeWithRoom(model, reviewMessages, Math.min(fittedReview.maxTokens ?? 2400, 2400), {
+      const judged = await completeWithRoom(model, reviewMessages, Math.min(fittedReview.maxTokens ?? 16384, 16384), {
         responseFormat: { type: "json_object" },
         retryEmpty: false,
         temperature: 0.1,
@@ -227,6 +282,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       )
         throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
       record.relationshipReview = review;
+      if (mail) record.invitation = interpreted?.invitation;
       record.semanticVersion = 2;
       record.memoryChanges = interpreted!.memoryChanges;
       record.memoryContexts = { [nativeMemory.saved.protection.fingerprint]: nativeMemory.saved };
@@ -245,22 +301,28 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         state.villagers.some((r) => r.characterId === id && r.cardSnapshot.capturedAt === input.actorIncarnations[id]),
       ) &&
       (!input.opportunity.venueId || state.venues.some((v) => v.id === input.opportunity.venueId)) &&
-      (state.lastPlanningDate < input.dateKey ||
-        (input.socialPlanId && socialContinuationValid(state, input.socialPlanId, input.socialPlan, villageNow()))) &&
+      (!input.socialPlanId || socialContinuationValid(state, input.socialPlanId, input.socialPlan, villageNow())) &&
       localDateKey(
         new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
       ) <= input.dateKey,
     apply(state, input, proposal) {
       const { dateKey, opportunity } = input;
-      if (
-        state.backgroundPace === "off" ||
-        (!input.socialPlanId && state.lastPlanningDate >= dateKey) ||
-        state.processedActionIds.includes(opportunity.id)
-      )
-        return;
+      if (state.backgroundPace === "off" || state.processedActionIds.includes(opportunity.id)) return;
       const used = state.planningUsage.dateKey === dateKey ? state.planningUsage.count : 0;
-      if (input.socialPlanId && used >= planningAllowance(state.backgroundPace, state.seed, dateKey)) return;
-      if (proposal.social) {
+      if (proposal.social?.mail) {
+        if (!ports.automaticMail) throw new Error("Automatic personal mail unavailable.");
+        const entry = ports.automaticMail(
+          { ...state, ...input.admitted },
+          input.context.social.state,
+          proposal.social.mail,
+          opportunity.id,
+          input.now,
+          input.context.memory,
+        );
+        state.socialMailOutbox ??= [];
+        if (!state.socialMailOutbox.some((r) => r.id === entry.id)) state.socialMailOutbox.push(entry);
+      }
+      if (proposal.social && !proposal.social.mail) {
         const id = opportunity.id + ":social";
         state.socialOutbox ??= [];
         if (!state.socialOutbox.some((entry) => entry.id === id))
@@ -272,6 +334,9 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             candidates: input.context.social.candidates,
             proposal: proposal.social,
             requiredPlanId: input.socialPlanId,
+            requiredPlan: input.socialPlan,
+            relationshipSnapshot: input.context.social.state,
+            admitted: input.admitted,
           });
       }
       if (proposal.routineIdea) {

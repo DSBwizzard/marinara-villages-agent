@@ -1,73 +1,17 @@
 import { useVillageActivity } from "../../shared/activity.js";
-import { useEffect, useState } from "react";
-
-export type RelationshipProfile = {
-  characterId: string;
-  name: string;
-  warmth: number;
-  trust: number;
-  warmthLabel: string;
-  trustLabel: string;
-  familiarity: number;
-  friend: boolean;
-  close: boolean;
-  knownAt: string;
-  closeKnownAt: string;
-  routine: string[];
-  interests: string;
-  wishes: string[];
-  knownDevelopment?: import("../../../shared/contracts/pursuits.js").KnownPursuit[];
-  knownWishes?: import("./villages-wish-journal.js").KnownWish[];
-  ties: { toId: string; name: string; warmth: number; trust: number; reasons: string[] }[];
-  learned: { text: string; kind: string; at: string }[];
-  access: { venueId: string; zoneId: string; active: boolean; name: string }[];
-};
-type CreatorTie = {
-  fromId: string;
-  toId: string;
-  fromName: string;
-  toName: string;
-  warmth: number;
-  trust: number;
-  proposed: boolean;
-};
-export type RelationshipView = {
-  profiles: RelationshipProfile[];
-  starting: {
-    pending: boolean;
-    spoilers: boolean;
-    summaries: { fromId: string; toId: string; fromName: string; toName: string; status: string }[];
-    values?: CreatorTie[];
-  };
-};
+import { createVillagesClientId } from "../../shared/request-id.js";
+import { useEffect, useRef, useState } from "react";
+import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
+export type { RelationshipProfile, RelationshipView } from "../../../shared/contracts/relationships.js";
 type Request = <T>(path: string, options?: RequestInit) => Promise<T>;
-const date = (value: string) => (value ? new Date(value).toLocaleString() : "Not yet learned");
-
-function Feeling({ name, value, label }: { name: string; value: number; label?: string }) {
-  return (
-    <label className="villages-relationship-meter">
-      <span>
-        {name}{" "}
-        <strong>
-          {value > 0 ? "+" : ""}
-          {value}
-        </strong>
-        {label ? ` · ${label}` : ""}
-      </span>
-      <meter min={-100} max={100} value={value} aria-label={`${name}: ${value}${label ? `, ${label}` : ""}`} />
-    </label>
-  );
-}
-
-/** Ordinary profiles receive only the server's earned/last-known projection. */
+const date = (at: string) => (at ? new Date(at).toLocaleString() : "");
 export function VillagesRelationships({
   request,
   prefix,
   onVenue,
   characterId,
-  inspect = true,
+  inspect = false,
   view: suppliedView,
-  onView,
 }: {
   request: Request;
   prefix: string;
@@ -79,315 +23,311 @@ export function VillagesRelationships({
 }) {
   const { visible, backgroundRevision } = useVillageActivity();
   const [localView, setLocalView] = useState<RelationshipView | null>(null);
-  const view = suppliedView === undefined ? localView : suppliedView;
+  const [debug, setDebug] = useState<RelationshipInspectView | null>(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [acknowledge, setAcknowledge] = useState(false);
-  const [selected, setSelected] = useState("");
+  const [clarifications, setClarifications] = useState<Record<number, string>>({});
+  const recoveryIdentity = useRef<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   useEffect(() => {
-    if (!visible || suppliedView !== undefined) return;
+    if (!visible) return;
     const controller = new AbortController();
     const refresh = () => {
-      void request<RelationshipView>("/relationships", { signal: controller.signal })
-        .then((next) => {
-          if (!controller.signal.aborted) {
-            setLocalView(next);
-            setError("");
-          }
+      const pending: Promise<unknown>[] = [];
+      if (suppliedView === undefined)
+        pending.push(request<RelationshipView>("/relationships", { signal: controller.signal }).then(setLocalView));
+      if (inspect)
+        pending.push(
+          request<RelationshipInspectView>("/relationships/inspect", { signal: controller.signal }).then(setDebug),
+        );
+      void Promise.all(pending)
+        .then(() => {
+          if (!controller.signal.aborted) setError("");
         })
         .catch((cause) => {
           if (!controller.signal.aborted)
             setError(cause instanceof Error ? cause.message : "Relationships could not be read.");
         });
     };
+    if (!inspect) setDebug(null);
     refresh();
-    return () => {
-      controller.abort();
-    };
-  }, [request, suppliedView, visible, backgroundRevision]);
-  const action = async (body: Record<string, unknown>) => {
-    setBusy(true);
-    setError("");
-    try {
-      const next = await request<RelationshipView>("/relationships/creator", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      setLocalView(next);
-      onView?.(next);
-      setAcknowledge(false);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Relationships could not be saved.");
-    } finally {
-      setBusy(false);
-    }
-  };
-  const button = `${prefix}-button`;
+    return () => controller.abort();
+  }, [request, suppliedView, inspect, visible, backgroundRevision]);
+  const view = suppliedView === undefined ? localView : suppliedView;
   return (
-    <section className={`${prefix}-overlay villages-relationships`} aria-label="Villager relationships">
+    <section className={prefix + "-overlay villages-relationships"} aria-label="Relationships">
       <style>{`
-      .villages-relationships { display:grid; gap:1rem; }
-      .villages-relationship-card, .villages-relationship-setup { background:linear-gradient(135deg,#122545,#192c51); border:1px solid #405580; border-radius:1rem; padding:1rem; color:#e5eaff; }
-      .villages-relationship-card h3 { margin:0 0 .75rem; }
-      .villages-relationship-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr)); gap:1rem; }
-      .villages-relationship-meter { display:grid; gap:.35rem; margin:.75rem 0; }
-      .villages-relationship-meter meter { width:100%; height:1rem; accent-color:#b2a0ff; }
-      .villages-relationships details { border-top:1px solid #405580; padding:.75rem 0; }
-      .villages-relationships summary { cursor:pointer; font-weight:600; }
-      .villages-relationships p { line-height:1.5; }
-      .villages-relationship-tie { padding:.6rem 0; border-bottom:1px solid #405580; }
-      .villages-relationship-editor { display:flex; flex-wrap:wrap; gap:.75rem; align-items:end; }
-      .villages-relationship-editor label { display:grid; gap:.35rem; }
-      .villages-relationship-editor input, .villages-relationships select { background:#0d1b33; color:#e5eaff; border:1px solid #7286b0; border-radius:.4rem; padding:.5rem; max-width:100%; }
-      .villages-relationship-editor input { width:7rem; }
-      .villages-relationships button:focus-visible, .villages-relationships summary:focus-visible { outline:2px solid #bbabff; outline-offset:3px; }
+      .villages-relationships {display:grid;gap:1rem;min-width:0}
+      .villages-relationships article {padding:1rem;border:1px solid #65708966;border-radius:.7rem;min-width:0;overflow-wrap:anywhere}
+      .villages-relationships h3,.villages-relationships h4 {margin:.4rem 0}
+      .villages-relationships p {white-space:pre-wrap;line-height:1.5}
+      .villages-relationships blockquote {margin:.5rem 0;padding-left:.75rem;border-left:2px solid #8c90b0}
+      .villages-relationships details {margin:.75rem 0}
+      .villages-relationships summary {cursor:pointer}
+      .villages-relationships pre {white-space:pre-wrap;font-size:.8rem}
     `}</style>
-      <header>
-        <h2>Relationships</h2>
-      </header>
       {error ? <p role="alert">{error}</p> : null}
+      {view?.starting.pending ? (
+        <p role="status">Starting history is not ready. Check preparation in Inspect → Relationships.</p>
+      ) : null}
       {!view ? (
         <p role="status">Reading relationships…</p>
       ) : (
-        <>
-          {inspect && view.starting ? (
-            <details className="villages-relationship-setup" open={view.starting.pending || undefined}>
-              <summary>{view.starting.pending ? "Review starting ties" : "Relationship creator"}</summary>
-              {view.starting.pending ? (
-                <>
-                  <div className="villages-relationship-grid">
-                    {view.starting.summaries
-                      .filter((tie) => tie.status !== "No established history")
-                      .map((tie) => (
-                        <p key={`${tie.fromId}:${tie.toId}`}>
-                          {tie.fromName} → {tie.toName}: <strong>{tie.status}</strong>
-                        </p>
-                      ))}
-                  </div>
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={busy}
-                    onClick={() => void action({ action: "prepare" })}
-                  >
-                    Interpret
-                  </button>
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={busy}
-                    onClick={() => void action({ action: "accept" })}
-                  >
-                    Accept
-                  </button>{" "}
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={busy}
-                    onClick={() => void action({ action: "neutral" })}
-                  >
-                    Start neutral
-                  </button>
-                </>
-              ) : null}
-              {!view.starting.spoilers ? (
-                <>
-                  <p>
-                    Revealing values exposes relationships you have not discovered in gameplay and allows editing them.
-                  </p>
-                  <label>
-                    <input
-                      autoComplete="off"
-                      type="checkbox"
-                      checked={acknowledge}
-                      onChange={(event) => setAcknowledge(event.target.checked)}
-                    />{" "}
-                    I understand this reveals gameplay spoilers.
-                  </label>
-                  <p>
-                    <button
-                      type="button"
-                      className={button}
-                      disabled={!acknowledge || busy}
-                      onClick={() => void action({ action: "acknowledge", spoilerAcknowledged: true })}
-                    >
-                      Reveal and edit relationship values
-                    </button>
-                  </p>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={busy}
-                    onClick={() => void action({ action: "hide" })}
-                  >
-                    Hide spoiler values
-                  </button>
-                  <p>
-                    <select
-                      aria-label="Directional relationship to edit"
-                      value={selected}
-                      onChange={(event) => setSelected(event.target.value)}
-                    >
-                      <option value="">Choose a direction…</option>
-                      {view.starting.values
-                        ?.filter((tie) => !characterId || tie.fromId === characterId || tie.toId === characterId)
-                        .map((tie) => (
-                          <option key={`${tie.fromId}:${tie.toId}`} value={`${tie.fromId}:${tie.toId}`}>
-                            {tie.fromName} → {tie.toName}
-                            {tie.proposed ? " · proposed" : ""}
-                          </option>
-                        ))}
-                    </select>
-                  </p>
-                  {view.starting.values
-                    ?.filter((tie) => `${tie.fromId}:${tie.toId}` === selected)
-                    .map((tie) => (
-                      <form
-                        autoComplete="off"
-                        key={`${selected}:${tie.warmth}:${tie.trust}`}
-                        className="villages-relationship-editor"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          const values = new FormData(event.currentTarget);
-                          void action({
-                            action: "edit",
-                            fromId: tie.fromId,
-                            toId: tie.toId,
-                            warmth: Number(values.get("warmth")),
-                            trust: Number(values.get("trust")),
-                          });
-                        }}
-                      >
-                        <label>
-                          Warmth
-                          <input
-                            autoComplete="off"
-                            name="warmth"
-                            type="number"
-                            min={-100}
-                            max={100}
-                            step={1}
-                            required
-                            defaultValue={tie.warmth}
-                          />
-                        </label>
-                        <label>
-                          Trust
-                          <input
-                            autoComplete="off"
-                            name="trust"
-                            type="number"
-                            min={-100}
-                            max={100}
-                            step={1}
-                            required
-                            defaultValue={tie.trust}
-                          />
-                        </label>
-                        <button type="submit" className={button} disabled={busy}>
-                          Save {tie.proposed ? "suggestion" : "values"}
+        view.profiles
+          .filter((person) => !characterId || person.characterId === characterId)
+          .map((person) => (
+            <article key={person.characterId}>
+              <h3>{person.name}</h3>
+              <p>{person.summary || "No relationship has been expressed yet."}</p>
+              {person.learned.map((entry, index) => (
+                <p key={index}>
+                  <strong>{entry.kind === "history" ? "Known history" : person.name + " shared"}:</strong> {entry.text}
+                  <small> · {date(entry.at)}</small>
+                </p>
+              ))}
+              {person.access.map((access) => (
+                <button key={access.venueId + access.zoneId} type="button" onClick={() => onVenue(access.venueId)}>
+                  {access.name} · {access.active ? "Standing invitation" : "Unavailable"}
+                </button>
+              ))}
+            </article>
+          ))
+      )}
+      {inspect ? (
+        <section aria-label="Relationship inspection">
+          <h3>Inspect relationships</h3>
+          {!debug ? (
+            <p role="status">Reading saved social state…</p>
+          ) : (
+            <>
+              {debug.processing?.length ? (
+                <section aria-label="Social processing">
+                  <h4>Processing</h4>
+                  {debug.processing.map((work, index) => (
+                    <p key={index}>
+                      <strong>{work.label}:</strong> {work.status}
+                      {work.message ? <> · {work.message}</> : null}
+                      <small>
+                        {" "}
+                        · {work.requests} requests
+                        {work.tokens !== null ? " · " + work.tokens.toLocaleString() + " tokens" : ""}
+                      </small>
+                      {["failed", "interrupted", "paused"].includes(work.status) ? (
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={async () => {
+                            const key = work.id + ":" + work.attempt;
+                            recoveryIdentity.current[key] ??= createVillagesClientId();
+                            setSaving(true);
+                            setError("");
+                            try {
+                              await request("/background/retry", {
+                                method: "POST",
+                                body: JSON.stringify({
+                                  id: work.id,
+                                  expectedAttempt: work.attempt,
+                                  actionId: recoveryIdentity.current[key],
+                                }),
+                              });
+                              delete recoveryIdentity.current[key];
+                              setDebug(await request<RelationshipInspectView>("/relationships/inspect"));
+                            } catch (cause) {
+                              setError(cause instanceof Error ? cause.message : "Preparation retry failed.");
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                        >
+                          Retry unfinished work
                         </button>
-                      </form>
-                    ))}
-                </>
-              )}
-            </details>
-          ) : null}
-          <div className="villages-relationship-grid">
-            {view.profiles
-              .filter((profile) => !characterId || profile.characterId === characterId)
-              .map((profile) => (
-                <article key={profile.characterId} className="villages-relationship-card">
-                  <h3>{profile.name}</h3>
-                  <p>{profile.familiarity ? "You have established familiarity." : "No established familiarity yet."}</p>
-                  <Feeling name="Warmth toward you" value={profile.warmth} label={profile.warmthLabel} />
-                  <Feeling name="Trust toward you" value={profile.trust} label={profile.trustLabel} />
+                      ) : null}
+                    </p>
+                  ))}
+                </section>
+              ) : null}
+              {debug.recovery?.map((row) => (
+                <article key={row.id}>
+                  <h4>Encounter needs recovery</h4>
+                  <p>{row.message}</p>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={async () => {
+                      const key = row.id + ":" + row.reinterpretRequired;
+                      recoveryIdentity.current[key] ??= createVillagesClientId();
+                      setSaving(true);
+                      try {
+                        setDebug(
+                          await request<RelationshipInspectView>(
+                            "/relationships/outbox/" + encodeURIComponent(row.id) + "/recovery",
+                            {
+                              method: "POST",
+                              body: JSON.stringify({
+                                requestId: recoveryIdentity.current[key],
+                                reinterpret: row.reinterpretRequired,
+                              }),
+                            },
+                          ),
+                        );
+                        delete recoveryIdentity.current[key];
+                      } catch (cause) {
+                        setError(cause instanceof Error ? cause.message : "Recovery failed.");
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                  >
+                    {row.reinterpretRequired ? "Reinterpret saved encounter" : "Replay delivery"}
+                  </button>
                   <details>
-                    <summary>Personal life</summary>
-                    {!profile.knownAt ? (
-                      <p>Friendship reveals more of their routine and interests.</p>
-                    ) : (
-                      <>
-                        <p>
-                          {profile.friend ? "Current shared information" : "Last known information"} ·{" "}
-                          {date(profile.knownAt)}
-                        </p>
-                        <ul>
-                          {profile.routine.map((line, index) => (
-                            <li key={index}>{line}</li>
-                          ))}
-                        </ul>
-                        <p>Interests: {profile.interests || "Not yet shared."}</p>
-                      </>
-                    )}
-                    {profile.wishes?.length ? (
-                      <>
-                        <p>Known wishes</p>
-                        <ul>
-                          {profile.wishes.map((wish, index) => (
-                            <li key={index}>{wish}</li>
-                          ))}
-                        </ul>
-                        {!profile.wishes.length ? <p>No current wish recorded.</p> : null}
-                      </>
-                    ) : (
-                      <p>No wishes shared yet.</p>
-                    )}
-                    {profile.learned?.map((entry, index) => (
-                      <p key={index}>
-                        {entry.kind}: {entry.text} <small>· {date(entry.at)}</small>
-                      </p>
-                    ))}
-                  </details>
-                  <details>
-                    <summary>Feelings toward other villagers</summary>
-                    {!profile.closeKnownAt ? (
-                      <p>A close, trusted friendship reveals these meters. Reasons must be shared separately.</p>
-                    ) : (
-                      <>
-                        <p>
-                          {profile.close ? "Current feelings" : "Last known feelings"} · {date(profile.closeKnownAt)}
-                        </p>
-                        {profile.ties?.map((tie) => (
-                          <div className="villages-relationship-tie" key={tie.toId}>
-                            <strong>
-                              {profile.name} → {tie.name}
-                            </strong>
-                            <Feeling name="Warmth" value={tie.warmth} />
-                            <Feeling name="Trust" value={tie.trust} />
-                            <p>Why: {tie.reasons.length ? tie.reasons.join(" ") : "Not yet shared."}</p>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </details>
-                  <details>
-                    <summary>Ongoing access</summary>
-                    {profile.access?.length ? (
-                      profile.access.map((access) => (
-                        <p key={`${access.venueId}:${access.zoneId}`}>
-                          <strong>{access.name}</strong> ·{" "}
-                          {access.active ? "Available" : "Suspended until your relationship recovers"}{" "}
-                          <button type="button" className={button} onClick={() => onVenue(access.venueId)}>
-                            View Venue
-                          </button>
-                        </p>
-                      ))
-                    ) : (
-                      <p>
-                        Friendship can earn shared-home access. Personal and work areas need an explicit standing
-                        invitation.
-                      </p>
-                    )}
+                    <summary>Source</summary>
+                    <code>{row.id}</code>
                   </details>
                 </article>
               ))}
-          </div>
-        </>
-      )}
+              {debug.conflicts.map((conflict, index) => (
+                <article key={index}>
+                  <h4>History needs clarification</h4>
+                  <p>{conflict.question}</p>
+                  <p>{conflict.residents.join(", ")}</p>
+                  <form
+                    autoComplete="off"
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      setSaving(true);
+                      setError("");
+                      try {
+                        setDebug(
+                          await request<RelationshipInspectView>("/relationships/clarifications", {
+                            method: "POST",
+                            body: JSON.stringify({
+                              sourceHash: conflict.sourceHash,
+                              actorIds: conflict.actorIds,
+                              text: clarifications[index] ?? "",
+                            }),
+                          }),
+                        );
+                      } catch (cause) {
+                        setError(cause instanceof Error ? cause.message : "History clarification could not be saved.");
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                  >
+                    <label>
+                      Clarification
+                      <textarea
+                        autoComplete="off"
+                        maxLength={4000}
+                        value={clarifications[index] ?? ""}
+                        onChange={(event) =>
+                          setClarifications((current) => ({ ...current, [index]: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <button type="submit" disabled={saving || !clarifications[index]?.trim()}>
+                      Use this history
+                    </button>
+                  </form>
+                  <details>
+                    <summary>Source details</summary>
+                    <pre>{conflict.sourceIds.join("\n")}</pre>
+                  </details>
+                </article>
+              ))}
+              {debug.residents
+                .filter((person) => !characterId || person.characterId === characterId)
+                .map((person) => (
+                  <article key={person.characterId}>
+                    <h4>
+                      {person.name} · {person.initialized ? "History prepared" : "History pending"}
+                    </h4>
+                    {person.intentions.length ? (
+                      <>
+                        <h4>Social intentions</h4>
+                        {person.intentions.map((intention, index) => (
+                          <div key={index}>
+                            <p>
+                              {intention.text} · {intention.status}
+                            </p>
+                            <p>{intention.reason}</p>
+                            <small>{intention.targets.join(", ")}</small>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <p>No saved social intention.</p>
+                    )}
+                    {person.perspectives.map((perspective, index) => (
+                      <details key={index} open={perspective.technical.toId === "player" || undefined}>
+                        <summary>
+                          About {perspective.aboutName} · {perspective.connection || "Unestablished"}
+                        </summary>
+                        <p>{perspective.stance || "No private stance recorded."}</p>
+                        {perspective.expectations.length ? (
+                          <>
+                            <h4>Expectations</h4>
+                            <ul>
+                              {perspective.expectations.map((text, i) => (
+                                <li key={i}>{text}</li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                        {perspective.concerns.length ? (
+                          <>
+                            <h4>Unresolved concerns</h4>
+                            <ul>
+                              {perspective.concerns.map((text, i) => (
+                                <li key={i}>{text}</li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                        {perspective.records.map((record, i) => (
+                          <p key={i}>
+                            <strong>
+                              {record.kind} · {record.status}:
+                            </strong>{" "}
+                            {record.text}
+                            {record.currentStatus && record.currentStatus !== record.status ? (
+                              <small> · Current shared terms: {record.currentStatus}</small>
+                            ) : null}
+                            {record.dueAt ? <> · Due {date(record.dueAt)}</> : null}
+                          </p>
+                        ))}
+                        <h4>Defining experiences</h4>
+                        {perspective.experiences.map((experience, i) => (
+                          <details key={i}>
+                            <summary>
+                              {experience.reason} · {date(experience.at)}
+                            </summary>
+                            {experience.evidence.map((evidence, j) => (
+                              <blockquote key={j}>
+                                <strong>{evidence.speaker}:</strong> {evidence.text}
+                              </blockquote>
+                            ))}
+                            <details>
+                              <summary>Source ID</summary>
+                              <pre>{experience.sourceId}</pre>
+                            </details>
+                          </details>
+                        ))}
+                        <small>
+                          Updated {date(perspective.updatedAt)} · Revision {perspective.revision}
+                        </small>
+                        <details>
+                          <summary>Technical details</summary>
+                          <pre>{JSON.stringify(perspective.technical, null, 2)}</pre>
+                        </details>
+                      </details>
+                    ))}
+                  </article>
+                ))}
+            </>
+          )}
+        </section>
+      ) : null}
     </section>
   );
 }

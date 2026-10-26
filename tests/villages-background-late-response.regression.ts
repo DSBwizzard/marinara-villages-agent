@@ -12,6 +12,9 @@ import {
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";
+import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
 const records = new Map<string, any>();
 const documents = {
   getById: async (_p: string, id: string) => structuredClone(records.get(id) ?? null),
@@ -86,7 +89,7 @@ try {
     input: {},
   });
   await started;
-  mock.timers.tick(30_000);
+  mock.timers.tick(120_000);
   await settleBackgroundWork();
   assert.equal(applied, 0);
   finish({ content: '{"ok":true}', finishReason: "stop" });
@@ -120,7 +123,7 @@ try {
     input: {},
   });
   await secondStarted;
-  mock.timers.tick(30_000);
+  mock.timers.tick(120_000);
   await settleBackgroundWork();
   finish({ content: "invalid JSON", finishReason: "stop" });
   await new Promise((resolve) => setImmediate(resolve));
@@ -138,7 +141,7 @@ try {
   began = thirdStarted;
   await retryBackgroundJob(invalid.id, records.get(invalid.id).data.attempt, "replace-invalid");
   await third;
-  mock.timers.tick(30_000);
+  mock.timers.tick(120_000);
   await settleBackgroundWork();
   finish({ content: '{"ok":true}', finishReason: "stop" });
   await new Promise((resolve) => setImmediate(resolve));
@@ -148,6 +151,72 @@ try {
   await settleBackgroundWork();
   assert.equal(calls, 3);
   assert.equal(applied, 2);
+  await mutateVillageState((state) => {
+    state.villagers = ["a", "b"].map((characterId) => ({
+      characterId,
+      cardSnapshot: {
+        id: characterId,
+        name: characterId,
+        description: "Authored context",
+        revision: 1,
+        sourceStatus: "available",
+        capturedAt: new Date().toISOString(),
+      },
+      completedWishes: [],
+    })) as any;
+  });
+  const connection = "Aware of their public work without having met them. ".repeat(3).trim();
+  const starting = createStartingTies({
+    readVillageState,
+    mutateVillageState,
+    mutateRelationships,
+    queueBackgroundJob,
+    settleBackgroundWork,
+    completeWithRoom,
+    villagesConnectionIdFor: async () => "fake",
+    villagesLanguageModels: () => ({
+      resolveForRequest: async () => ({
+        model: "fake",
+        connectionId: "fake",
+        fitContext: (messages: any, options: any) => ({ messages, ...options }),
+        chatComplete: async () => {
+          calls++;
+          return {
+            finishReason: "stop",
+            content: JSON.stringify({
+              ties: [
+                { fromId: "a", toId: "b", connection, stance: "Curious", expectations: [], concerns: [], history: [] },
+              ],
+              conflicts: [],
+            }),
+          };
+        },
+      }),
+    }),
+  } as any);
+  registerBackgroundHandler("starting-ties", {
+    ...starting.handler,
+    generate: async (input) => {
+      await starting.handler.generate(input);
+      throw Error("Old validator rejected a connection longer than 120 characters");
+    },
+  });
+  await starting.queue();
+  await settleBackgroundWork();
+  const history = [...records.values()].find((row) => row.data?.kind === "starting-ties");
+  assert.equal(history.data.status, "failed");
+  assert.equal(history.data.steps[0].status, "completed");
+  assert.equal(calls, 4);
+  registerBackgroundHandler("starting-ties", starting.handler);
+  await retryBackgroundJob(history.id, history.data.attempt, "recover-purchased-history");
+  await settleBackgroundWork();
+  assert.equal(records.get(history.id).data.status, "completed");
+  assert.equal(calls, 4, "A newer history validator reuses the purchased response without another request");
+  const prepared = await readVillageState();
+  assert.deepEqual(prepared.relationshipContext?.reviewedActorIds, ["a", "b"]);
+  assert.equal(Object.values(prepared.relationshipContext!.edges)[0].connection, connection);
+  await retryBackgroundJob(history.id, history.data.attempt, "recover-purchased-history");
+  assert.equal(calls, 4, "Duplicate retry is idempotent");
   console.log(
     "Background late response: durable evidence, restart, saved response reuse and exactly-once effect passed.",
   );

@@ -1,10 +1,4 @@
-import type { MemoryProposal, MemorySource } from "../../domain/models/memories.js";
-import {
-  bindSceneMemorySuggestion,
-  committedSceneMemoryEffects,
-  sceneMemoryUnit,
-} from "../../domain/rules/scene-memories.js";
-import { applyVillageMemory } from "../../domain/rules/village-memories.js";
+import { applyLiveMemories } from "../../domain/rules/live-memory-application.js";
 import { semanticContinued, semanticContinuationKey } from "../../domain/rules/semantic-continuity.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { DomainProcessing } from "../../domain/models/exchange-model.js";
@@ -17,7 +11,7 @@ import { asRecord } from "../../domain/rules/coerce.js";
 
 import { createLiveEvidenceContext } from "../../domain/rules/live-exchange.js";
 
-import { parseRelationshipProposals, substantiveContact } from "../../domain/rules/relationship-review.js";
+import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
 
 import { applyRelationshipReview } from "../../domain/rules/relationship-rules.js";
 
@@ -25,7 +19,7 @@ import { settleStandingAccess } from "../../domain/rules/venue-access.js";
 
 import { metadataFailure, WorkFailureError, coerceWorkFailure } from "../../domain/rules/work-failure.js";
 
-import { captureRelationshipKnowledge } from "../../domain/rules/relationship-knowledge.js";
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 
 import type { mutateVillageState, readVillageAuthority, readVillageState } from "../world/village-store.js";
 import type { mutateRelationships } from "./relationship-store.js";
@@ -64,125 +58,54 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
     scene: VenueScene,
     submissionId: string,
     evidenceContext?: LiveEvidenceContext,
+    expectedIncarnations?: Record<string, string>,
   ): Promise<Partial<DomainProcessing>> {
     const turn = scene.submissions.find((row) => row.id === submissionId);
-    if (!turn || !turn.liveProposals || !Array.isArray(turn.liveProposals.memoryChanges))
+    if (!Array.isArray(turn?.liveProposals?.memoryChanges))
       throw new WorkFailureError(
         metadataFailure("Memory interpretation is incomplete; the saved dialogue is retained."),
       );
-    const saved = turn.liveProposals;
-    const changes = saved.memoryChanges as unknown[];
-    if (!changes.length) return { reason: "No meaningful memory changes", receiptIds: [] };
-    if (changes.length > 16) throw new WorkFailureError(metadataFailure("Too many memory proposals"));
-    const lines = (evidenceContext ?? createLiveEvidenceContext(scene, saved)).lines;
-    const source: MemorySource = {
-      kind: scene.id.startsWith("offscreen:") ? "offscreen" : "scene",
-      id: scene.id + ":" + turn.id,
-      sceneId: scene.id,
-      revision: 1,
-      fingerprint: saved.sourceFingerprint,
-    };
-    const receiptIds: string[] = [],
-      rejections: { kind: string; index: number; reason: string }[] = [];
-    let waiting = false;
+    let result: Partial<DomainProcessing> = { status: "applied", receiptIds: [] };
     await mutateVillageState((state) => {
-      if (state.seed !== scene.villageSeed) throw new Error("Village identity changed");
-      if (semanticContinued(state, scene.id, turn.id, "memories")) return;
-      receiptIds.length = 0;
-      rejections.length = 0;
-      waiting = false;
-      const effects = committedSceneMemoryEffects(state, scene.id, turn.id, source, turn.at!);
-      changes.forEach((value, index) => {
-        const unit = sceneMemoryUnit(value, (ref) =>
-            ref === "player" ? saved.playerLineId : typeof ref === "number" ? saved.replyLineIds[ref] : ref,
-          ),
-          id = scene.id + ":" + turn.id + ":memory:" + unit;
-        receiptIds.push(id);
-        const prior = state.memoryReceipts[id];
-        if (prior) {
-          if (prior.status === "rejected") rejections.push({ kind: "memory", index, reason: prior.reason });
-          return;
-        }
-        let proposal: MemoryProposal | undefined;
-        try {
-          const screening = asRecord(asRecord(value).screening);
-          const context = saved.memoryContexts?.[String(screening.fingerprint)];
-          if (!context) throw new Error("Saved memory screening context is missing");
-          const bound = bindSceneMemorySuggestion(value, {
-            source,
-            operationId: id,
-            proposalId: unit,
-            collectionRevision: state.memories.revision,
-            lines,
-            playerLineId: saved.playerLineId,
-            replyLineIds: saved.replyLineIds,
-            residentIds: state.villagers.map((row) => row.characterId),
-          });
-          proposal = bound.proposal;
-          const expectedEffects = [
-            ...(turn.physicalOutcomeVersion === 1 ? [`venue-chat:${scene.id}:${turn.id}`] : []),
-            ...(turn.wishProposals ?? []).map(
-              (wish) => `wish-change:${scene.id}:${turn.id}:${wish.wishId}:${wish.intent}`,
-            ),
-          ];
-          if (
-            proposal.effectId &&
-            expectedEffects.includes(proposal.effectId) &&
-            !state.exchangeReceipts[proposal.effectId]
-          ) {
-            waiting = true;
-            return;
-          }
-          if (!bound.evidence.some((e) => e.lineId === saved.playerLineId || saved.replyLineIds.includes(e.lineId)))
-            throw new Error("Memory has no new exchange evidence");
-          applyVillageMemory(state, proposal, {
-            source,
-            occurredAt: turn.at!,
-            recordedAt: now().toISOString(),
-            evidence: bound.evidence,
-            committedEffects: effects,
-            ...context,
-          });
-          state.memoryReceipts[id] = {
-            id,
-            sceneId: scene.id,
-            submissionId: turn.id,
-            domain: "memories",
-            status: "applied",
-            at: turn.at!,
-            committedAt: now().toISOString(),
-            evidenceIds: [...new Set(bound.evidence.map((e) => e.lineId))],
-            reason: "Cited memory applied",
-            memoryProposal: proposal,
-          };
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          rejections.push({ kind: "memory", index, reason });
-          state.memoryReceipts[id] = {
-            id,
-            sceneId: scene.id,
-            submissionId: turn.id,
-            domain: "memories",
-            status: "rejected",
-            at: turn.at!,
-            committedAt: now().toISOString(),
-            evidenceIds: [],
-            reason,
-            ...(proposal ? { memoryProposal: proposal } : {}),
-          };
-        }
-      });
+      if (
+        expectedIncarnations &&
+        Object.entries(expectedIncarnations).some(
+          ([id, at]) => state.villagers.find((r) => r.characterId === id)?.cardSnapshot.capturedAt !== at,
+        )
+      ) {
+        const id = scene.id + ":" + submissionId + ":incarnation";
+        state.memoryReceipts[id] ??= {
+          id,
+          sceneId: scene.id,
+          submissionId,
+          domain: "memories",
+          status: "rejected",
+          at: turn.at,
+          committedAt: now().toISOString(),
+          evidenceIds: [],
+          reason: "The correspondent changed before optional Memory learning.",
+        };
+        result = { status: "rejected", receiptIds: [id], reason: state.memoryReceipts[id]!.reason };
+        return;
+      }
+      if (
+        !scene.id.startsWith("offscreen:") &&
+        turn.semanticProvenance?.version === 2 &&
+        !state.socialPublications?.[scene.id + ":" + turn.id]
+      ) {
+        result = {
+          status:
+            Array.isArray(turn.liveProposals.memoryChanges) && turn.liveProposals.memoryChanges.length
+              ? "pending"
+              : "applied",
+          receiptIds: [],
+          reason: "Saved Memory interpretation waits for source publication.",
+        };
+        return;
+      }
+      result = applyLiveMemories(state, scene, submissionId, now(), evidenceContext);
     });
-    return {
-      status: waiting ? "pending" : rejections.length ? "rejected" : "applied",
-      receiptIds,
-      rejectedProposals: rejections,
-      reason: waiting
-        ? "Waiting for the corresponding effect receipt to commit"
-        : rejections.length
-          ? "Affected memory proposals rejected; dialogue and independent effects retained"
-          : "Cited memories applied",
-    };
+    return result;
   }
 
   async function processLiveRelationships(
@@ -235,35 +158,15 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         lineIds: refs(row.lineIds, proposals),
       }),
       turn.semanticProvenance?.version === 2,
+      sceneContinuityView(village, scene).relationshipContext,
     );
-    const actors = [...new Set(lines.map((line) => (line.role === "user" ? "player" : line.speakerId)))].filter(
-      (id) => id === "player" || village.villagers.some((person) => person.characterId === id),
-    );
-    for (const fromId of actors.filter((id) => id !== "player"))
-      for (const toId of actors) {
-        if (turn.semanticProvenance?.version === 2 || fromId === toId || !substantiveContact(lines, fromId, toId))
-          continue;
-        review.changes.push({
-          id: `${scene.id}:${turn.id}:contact:${fromId}:${toId}`,
-          fromId,
-          toId,
-          dimension: "warmth",
-          amount: 0,
-          ordinary: true,
-          reason: "Shared substantive contact.",
-          lineIds: lines.filter((line) => line.heardBy.includes(fromId)).map((line) => line.id),
-          disclosed: false,
-          contact: true,
-          contactOnly: true,
-        });
-      }
+    if (rejections.length)
+      throw new Error("Social interpretation needs correction: " + rejections.map((row) => row.reason).join("; "));
     const receiptIds = [...review.changes, ...review.permissions, ...review.disclosures].map((row) => row.id);
-    if (!receiptIds.length)
+    if (!receiptIds.length && !review.intentions?.length)
       return {
         status: rejections.length ? (turn.semanticProvenance?.version === 2 ? "failed" : "rejected") : "applied",
-        reason: rejections.length
-          ? "Relationship proposals rejected"
-          : "No relationship changes or substantive contact",
+        reason: rejections.length ? "Relationship proposals rejected" : "No social changes",
         receiptIds,
         rejectedProposals: rejections,
       };
@@ -279,14 +182,30 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           lineIds: refs(row.lineIds, proposals),
         }),
         turn.semanticProvenance?.version === 2,
+        sceneContinuityView(authority, scene).relationshipContext,
       );
+      if (fresh.rejections.length) throw new Error("Social authority changed before settlement.");
       for (const permission of fresh.review.permissions) {
         const venue = authority.venues.find((row) => row.id === permission.venueId);
-        if (venue?.access)
+        if (venue?.access) {
           settleStandingAccess(venue, permission, turn.at, [
             "player",
             ...authority.villagers.map((person) => person.characterId),
           ]);
+          if (!venue.access.receipts[permission.id] || venue.access.receipts[permission.id]?.outcome === "rejected")
+            throw new Error("Standing permission needs recovery before this source can be published.");
+          authority.exchangeReceipts[permission.id] ??= {
+            id: permission.id,
+            sceneId: scene.id,
+            submissionId: turn.id,
+            domain: "relationships",
+            at: turn.at,
+            evidenceIds: permission.lineIds,
+            status: "applied",
+            reason: "Witnessed standing permission.",
+            sceneFacts: { standingPermissions: [structuredClone(permission)] },
+          };
+        }
       }
     });
     await mutateRelationships(village.seed, async (state) => {
@@ -294,6 +213,7 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
       const authority = await readVillageAuthority();
       if (semanticContinued(authority, scene.id, turn.id, "relationships")) return;
       if (authority.seed !== village.seed) throw new Error("Village identity changed");
+      authority.relationshipContext = state;
       const fresh = parseRelationshipProposals(
         raw,
         scene.id + ":" + turn.id,
@@ -304,22 +224,24 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           lineIds: refs(row.lineIds, proposals),
         }),
         turn.semanticProvenance?.version === 2,
+        sceneContinuityView(authority, scene).relationshipContext,
       );
-      fresh.review.changes.push(
-        ...review.changes.filter(
-          (change) =>
-            change.contactOnly &&
-            authority.villagers.some((person) => person.characterId === change.fromId) &&
-            (change.toId === "player" || authority.villagers.some((person) => person.characterId === change.toId)),
-        ),
-      );
+      if (fresh.rejections.length) throw new Error("Social authority changed before settlement.");
       rejections.splice(0, rejections.length, ...fresh.rejections);
       receiptIds.splice(
         0,
         receiptIds.length,
         ...[...fresh.review.changes, ...fresh.review.permissions, ...fresh.review.disclosures].map((row) => row.id),
       );
-      applyRelationshipReview(state, fresh.review, authority, scene.id, turn.at, now().getTime());
+      applyRelationshipReview(
+        state,
+        fresh.review,
+        authority,
+        scene.id + ":" + turn.id,
+        turn.at,
+        villageNow().getTime(),
+        sceneContinuityView({ ...authority, relationshipContext: state }, scene).relationshipContext,
+      );
       for (const id of receiptIds) {
         const receipt = state.receipts[id];
         if (!receipt || receipt.noticeSequence) continue;
@@ -328,7 +250,13 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         receipt.committedAt = now().toISOString();
         receipt.noticeSequence = ++state.noticeSequence;
       }
-      captureRelationshipKnowledge(state, authority, now());
+      for (const item of fresh.review.intentions ?? []) {
+        const receipt = state.intentionReceipts[scene.id + ":" + turn.id + ":intentions:" + item.actorId];
+        if (receipt) {
+          receipt.sceneId = scene.id;
+          receipt.submissionId = turn.id;
+        }
+      }
     });
     return {
       status:

@@ -1,90 +1,22 @@
 import { projectMemories } from "./memory-views.js";
 import { knownWishes } from "./wish-journal.js";
 import { knownDevelopment } from "./development-knowledge.js";
-import type { RelationshipKnowledge, RelationshipState, StartingTie } from "../models/relationship-types.js";
+import type { RelationshipState } from "../models/relationship-types.js";
 import type { VillageState } from "../models/world.js";
-import { agendaBlocksFor } from "./agenda-week.js";
-import { relationshipLabel } from "./relationship-policy.js";
-import { relationshipFor } from "./relationship-rules.js";
+import type { RelationshipProfile } from "../../../shared/contracts/relationships.js";
+export type { RelationshipProfile } from "../../../shared/contracts/relationships.js";
 
-export type RelationshipProfile = {
-  characterId: string;
-  name: string;
-  warmth: number;
-  trust: number;
-  warmthLabel: string;
-  trustLabel: string;
-  familiarity: number;
-  friend: boolean;
-  close: boolean;
-  knownAt: string;
-  closeKnownAt: string;
-  routine: string[];
-  interests: string;
-  wishes: string[];
-  knownDevelopment: ReturnType<typeof import("./development-knowledge.js").knownDevelopment>;
-  knownWishes: import("../../domain/rules/wish-journal.js").KnownWish[];
-  ties: { toId: string; name: string; warmth: number; trust: number; reasons: string[] }[];
-  learned: { text: string; kind: string; at: string }[];
-  access: { venueId: string; zoneId: string; active: boolean; name: string }[];
-};
-
-export function captureRelationshipKnowledge(
-  state: RelationshipState,
-  village: VillageState,
-  now = new Date(),
-  actorIds?: readonly string[],
-): void {
-  for (const resident of village.villagers) {
-    if (actorIds && !actorIds.includes(resident.characterId)) continue;
-    const edge = relationshipFor(state, resident.characterId, "player");
-    const old = state.knowledge[resident.characterId];
-    if ((!edge.friend && !edge.close) || !edge.playerContactAt || edge.knowledgeBlockedUntilContact) continue;
-    const knowledge: RelationshipKnowledge = old
-      ? structuredClone(old)
-      : { fromId: resident.characterId, at: "", closeAt: "", routine: [], interests: "", wishes: [], ties: [] };
-    if (edge.friend) {
-      knowledge.routine = resident.agenda
-        ? agendaBlocksFor(
-            { ...resident.agenda, wishActivities: [], socialActivities: [] },
-            resident.ingestSchedule !== false,
-            now,
-          ).map(
-            (block) =>
-              `${String(Math.floor(block.startMinute / 60)).padStart(2, "0")}:${String(block.startMinute % 60).padStart(2, "0")} · ${block.activity}`,
-          )
-        : [];
-      knowledge.interests = resident.agenda?.routineSummary ?? "";
-    }
-    if (edge.close) {
-      knowledge.wishes = []; // Wishes require witnessed disclosure, even between close friends.
-      knowledge.ties = village.villagers
-        .filter((person) => person.characterId !== resident.characterId)
-        .map((person) => {
-          const tie = relationshipFor(state, resident.characterId, person.characterId);
-          return { toId: person.characterId, warmth: tie.warmth, trust: tie.trust };
-        });
-    }
-    if (
-      !old ||
-      JSON.stringify([old.routine, old.interests]) !== JSON.stringify([knowledge.routine, knowledge.interests])
-    )
-      knowledge.at = now.toISOString();
-    if (
-      edge.close &&
-      (!old || JSON.stringify([old.wishes, old.ties]) !== JSON.stringify([knowledge.wishes, knowledge.ties]))
-    )
-      knowledge.closeAt = now.toISOString();
-    state.knowledge[resident.characterId] = knowledge;
-  }
-}
-
+/** Learned values are saved disclosures, never a projection of private social authority. */
 export function projectRelationshipProfiles(state: RelationshipState, village: VillageState): RelationshipProfile[] {
+  const name = (id: string) =>
+    id === "player"
+      ? "You"
+      : (village.villagers.find((p) => p.characterId === id)?.cardSnapshot.name ?? "Former resident");
+  const memories = projectMemories(village.memories, ["player"]);
   return village.villagers.map((resident) => {
-    const edge = relationshipFor(state, resident.characterId, "player"),
-      known = state.knowledge[resident.characterId];
-    const learned = projectMemories(village.memories, ["player"])
+    const learned = memories
       .filter((row) => row.domainRef?.kind === "relationship" && row.domainRef.characterId === resident.characterId)
+      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id))
       .map((row) => ({
         text: row.text,
         kind: String(row.knowers.player!.disclosed?.kind ?? "information"),
@@ -94,31 +26,17 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
     return {
       characterId: resident.characterId,
       name: resident.cardSnapshot.name,
-      warmth: edge.warmth,
-      trust: edge.trust,
-      warmthLabel: relationshipLabel(edge.warmth, "warmth"),
-      trustLabel: relationshipLabel(edge.trust, "trust"),
-      familiarity: edge.familiarity,
-      friend: edge.friend && !edge.knowledgeBlockedUntilContact,
-      close: edge.close && !edge.knowledgeBlockedUntilContact,
-      knownAt: known?.at ?? "",
-      closeKnownAt: known?.closeAt ?? "",
-      routine: known?.routine ?? [],
-      interests: known?.interests ?? "",
+      summary: learned.filter((row) => row.kind === "connection" && row.toId === "player").at(-1)?.text ?? "",
+      knownAt: learned.at(-1)?.at ?? "",
+      routine: learned.filter((row) => row.kind === "routine").map((row) => row.text),
+      interests: learned
+        .filter((row) => row.kind === "preference")
+        .map((row) => row.text)
+        .join("; "),
       wishes: knownWishes(village, resident.characterId).map((row) => row.text),
       knownWishes: knownWishes(village, resident.characterId),
       knownDevelopment: knownDevelopment(village, resident.characterId),
-      ties: (known?.ties ?? []).map((tie) => ({
-        ...tie,
-        name:
-          village.villagers.find((person) => person.characterId === tie.toId)?.cardSnapshot.name ?? "Former resident",
-        reasons: learned
-          .filter((entry) => entry.kind === "explanation" && entry.toId === tie.toId)
-          .map((entry) => entry.text),
-      })),
-      learned: learned
-        .filter((entry) => entry.kind !== "explanation")
-        .map(({ text, kind, at }) => ({ text, kind, at })),
+      learned: learned.map(({ toId, ...row }) => ({ ...row, aboutName: name(toId) })),
       access: Object.values(state.grants)
         .filter(
           (grant) => grant.controllerId === resident.characterId && grant.visitorId === "player" && !grant.revoked,
@@ -128,79 +46,9 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
           zoneId: grant.zoneId,
           active: grant.active,
           name:
-            village.venues.find((place) => place.id === grant.venueId)?.zones?.find((zone) => zone.id === grant.zoneId)
-              ?.name ?? "Zone",
+            village.venues.find((v) => v.id === grant.venueId)?.zones?.find((z) => z.id === grant.zoneId)?.name ??
+            "Zone",
         })),
     };
   });
-}
-
-const escapeName = (name: string) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-
-export function proposeStartingTies(
-  village: VillageState,
-  state: RelationshipState,
-  lore: readonly string[] = [],
-): StartingTie[] {
-  const pending = new Set(
-    village.villagers
-      .filter((person) => !state.reviewedActorIds.includes(person.characterId))
-      .map((person) => person.characterId),
-  );
-  const targets = [
-    { id: "player", name: village.playerPersonaName || village.playerName || "the player" },
-    ...village.villagers.map((person) => ({ id: person.characterId, name: person.cardSnapshot.name })),
-  ];
-  const result: StartingTie[] = [];
-  for (const resident of village.villagers)
-    for (const target of targets) {
-      if (resident.characterId === target.id || (!pending.has(resident.characterId) && !pending.has(target.id)))
-        continue;
-      const tie: StartingTie = {
-        fromId: resident.characterId,
-        toId: target.id,
-        warmth: 0,
-        trust: 0,
-        established: false,
-      };
-      const text = [
-        resident.cardSnapshot.description,
-        resident.cardSnapshot.personality,
-        resident.cardSnapshot.backstory,
-      ].join("\n");
-      const subject = `(?:${escapeName(resident.cardSnapshot.name)}|(?:s?he|they|I))`;
-      const name = escapeName(target.name);
-      const shared = lore.join("\n");
-      const match = (expression: string) =>
-        new RegExp(`${subject}\\s+${expression}\\s+${name}(?=\\W|$)`, "iu").test(text) ||
-        new RegExp(`${escapeName(resident.cardSnapshot.name)}\\s+${expression}\\s+${name}(?=\\W|$)`, "iu").test(shared);
-      if (match("(?:is|are|am) best friends? with")) {
-        tie.warmth = 75;
-        tie.trust = 50;
-        tie.established = true;
-      } else if (match("(?:is|are|am) friends? with")) {
-        tie.warmth = 50;
-        tie.trust = 25;
-        tie.established = true;
-      } else if (match("(?:likes?|is fond of)")) {
-        tie.warmth = 25;
-        tie.established = true;
-      } else if (match("(?:hates?|despises?)")) {
-        tie.warmth = -75;
-        tie.established = true;
-      } else if (match("(?:dislikes?)")) {
-        tie.warmth = -25;
-        tie.established = true;
-      }
-      if (match("(?:trusts?)")) {
-        tie.trust = 50;
-        tie.established = true;
-      }
-      if (match("(?:distrusts?|does not trust|doesn't trust|do not trust|don't trust)")) {
-        tie.trust = -50;
-        tie.established = true;
-      }
-      result.push(tie);
-    }
-  return result;
 }

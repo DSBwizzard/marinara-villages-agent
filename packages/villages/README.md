@@ -96,7 +96,11 @@ A Scene keeps the time, attendance, and situation it began with. A morning conve
 
 Profiles show what you have learned about a resident: relationships, shared Wishes, known routines, and discovered history. **Back to Villagers** keeps your directory search and reading position. **Inspect** reveals spoilers only when you deliberately open it; inspecting does not teach your Persona or the residents anything.
 
-Warmth and trust are directional, from **−100 to +100**. Familiarity distinguishes a stranger from a neutral acquaintance. Positive contact has a daily limit, and trust needs supporting experience. Friendship alone does not establish attraction, permission, or knowledge of a secret. Your absence does not lower a resident's warmth or trust toward you.
+Each resident has their own perspective: their connection with you, expectations, concerns, and particular shared history. A boundary, a mutual agreement, and a concrete commitment mean different things. You author your Persona’s feelings. Serious choices can end a friendship or partnership; reconciliation is possible and never guaranteed. Time away creates no automatic penalty, and friendship grants neither access nor secrets.
+
+Starting history honors the resident cards, your backstory, and selected lore. Conflicting authored facts ask for a specific clarification in Inspect. Preparing this history does not invent your consent.
+
+**Mailbox** keeps personal correspondence and invitations. Exact outgoing words are saved before generation. Reading and replaying saved processing make no model request. A proposed meeting stays optional until you accept; an explicit authorized invitation can grant one visit when accepted. It does not move your Persona or create standing access. Failed processing retains recovery controls even when the original message was already delivered.
 
 Residents follow routines, and their availability changes through the day. You can admit more library characters later through **Move in**. Canceling setup leaves the roster unchanged; accepted sprite copies and your original library cards stay separate.
 
@@ -143,6 +147,8 @@ Sprite setup lets you choose expressions, facing, inclusion, defaults, and frami
 Time, schedules, construction, approved moves, and expiry can advance without model requests. Recurring creative activity runs while Villages is visible and pauses before its next request after you leave. Work you already requested can finish while you are away.
 
 Set **Resident activity and Wishes → Off** to pause automatic social planning, routine suggestions, housing proposals, and new Wishes. This leaves local time, construction, approved moves, and existing Wish expiry running.
+
+Quiet, Balanced, and Lively permit at most 1, 3, and 6 automatic resident attempts per local day, at least fifteen minutes apart, with no missed-day catch-up. Each attempt uses at most two principal model requests; quiet outcomes, failures, and unknown outcomes still count. Residents may initiate private encounters or personal mail. Weather alone does not start an automatic request.
 
 Background work shows progress, failures, and provider-reported usage where available. A quiet result can be valid; the game does not need to invent an event for every interval.
 

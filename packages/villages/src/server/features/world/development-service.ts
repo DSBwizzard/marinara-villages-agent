@@ -12,6 +12,7 @@ import {
 } from "../../domain/rules/resident-development.js";
 import { readDevelopmentProposal } from "../../domain/rules/development-codec.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
+import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
@@ -117,6 +118,7 @@ export function createDevelopment(ports: DevelopmentPorts) {
         backstory: r.cardSnapshot.backstory,
       },
       pursuits: state.development?.residents[r.characterId]?.pursuits ?? [],
+      relationships: relationshipWritingPrompt(state, r.characterId),
       home: state.venues.find((v) => venueResidentIds(v).includes(r.characterId))?.id ?? "",
       memories: promptMemoryCandidates(
         recallMemories(state.memories, {

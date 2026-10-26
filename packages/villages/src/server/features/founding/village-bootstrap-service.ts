@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
+import { SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
 import type { villagesDebugAgentsEnabled, villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { backgroundCalls } from "../../adapters/operations/background-context.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../../domain/rules/narrative-grounding.js";
@@ -166,6 +169,65 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     return names;
   }
 
-  return { draftVillageVenueDescriptions, proposeVillage, proposePublicVenueNames };
+  async function interpretSocialSource(
+    lines: unknown,
+    context: {
+      state?: import("../../domain/models/relationship-types.js").RelationshipState;
+      candidates: unknown[];
+      relationships: string[];
+      memory?: ReturnType<typeof import("../../domain/rules/scene-memories.js").sceneMemoryContext>;
+      at: string;
+    },
+    mail: boolean,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const model = await villagesLanguageModels().resolveForRequest({
+      connectionId: await villagesConnectionIdFor("system"),
+    });
+    const reviewMessages = [
+      {
+        role: "system" as const,
+        content:
+          RELATIONSHIP_REVIEW_INSTRUCTION +
+          " Return JSON only. Independently interpret these supplied exact lines. Also return memoryChanges:[] using the native Memory contract supplied below, grounded only in actual witnessed dialogue. Use zero-based numeric lineIds into lines for social citations. For an encounter the player is absent: disclosures must be empty. For personal mail the recipient is player; save its disclosures for reading. The captured and live social baseline is context.state; absent pair revisions are 0. sceneAfter and liveAfter coincide for this automatic source. You may additionally return invitation:{title,detail,venueId,zoneId,dueAt?} only for an explicit personal-mail invitation in these exact words. A proposed invitation is not an accepted commitment. Its optional deadline must be explicitly proposed and in the future. Do not invent physical deeds or player consent. Private reasons and intentions remain private. " +
+          SCENE_MEMORY_INSTRUCTION,
+      },
+      {
+        role: "user" as const,
+        content: JSON.stringify({ lines, mode: mail ? "mail" : "encounter", context, now: context.at }),
+      },
+    ];
+    const fittedReview = model.fitContext(reviewMessages, { maxTokens: 4096 });
+    if (fittedReview.trimmed || JSON.stringify(fittedReview.messages) !== JSON.stringify(reviewMessages))
+      throw new Error("Offscreen semantic evidence does not fit System context.");
+    const judged = await completeWithRoom(model, reviewMessages, Math.min(fittedReview.maxTokens ?? 4096, 4096), {
+      responseFormat: { type: "json_object" },
+      retryEmpty: false,
+      temperature: 0.1,
+      reasoningEffort: "low",
+      debugMode: false,
+      usagePurpose: "checks",
+      signal: options.signal,
+    });
+    const interpreted = extractModelJsonObject(judged);
+    const review = interpreted?.relationshipReview as Record<string, unknown> | undefined;
+    if (
+      judged.finishReason === "length" ||
+      !review ||
+      !Array.isArray(interpreted?.memoryChanges) ||
+      interpreted.memoryChanges.length > 16 ||
+      !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
+    )
+      throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
+    const record: Record<string, unknown> = { relationshipReview: review };
+    if (mail) record.invitation = interpreted?.invitation;
+    if (context.memory) record.memoryContexts = { [context.memory.saved.protection.fingerprint]: context.memory.saved };
+    record.semanticVersion = 2;
+    record.memoryChanges = interpreted!.memoryChanges;
+    record.semanticSourceHash = createHash("sha256").update(JSON.stringify(reviewMessages)).digest("hex");
+    return record;
+  }
+
+  return { draftVillageVenueDescriptions, proposeVillage, proposePublicVenueNames, interpretSocialSource };
 }
 export type VillageBootstrapService = ReturnType<typeof createVillageBootstrap>;

@@ -1030,13 +1030,21 @@ export type VillageState = {
   memoryScenes: Record<string, import("./memories.js").MemorySceneState>;
   memoryReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
   development?: import("./development-model.js").DevelopmentState;
+  socialContractVersion: 2;
+  socialMailOutbox?: import("./social-mail.js").SocialMailOutbox[];
+  socialPublications?: Record<string, true>;
+  eventAttempts?: import("../rules/event-attempts.js").EventAttemptLedger;
+  socialClarifications?: { id: string; actorIds: string[]; text: string; at: string }[];
   opening?: import("../rules/opening-project.js").OpeningRecord;
   semanticRequestReceipts?: Record<string, string>;
   semanticContinuations?: Record<string, import("./exchange-model.js").ExchangeDomain[]>;
   semanticStartingTies?: {
+    preparedAt?: string;
     sourceHash: string;
     stateHash?: string;
     ties: import("./relationship-types.js").StartingTie[];
+    conflicts?: { actorIds: string[]; question: string; sourceIds: string[] }[];
+    sources?: import("./relationship-types.js").SocialEvidence[];
   };
   /** Prepared residents awaiting their one-time, finite post-reset Wish attempt. */
   exchangeReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;

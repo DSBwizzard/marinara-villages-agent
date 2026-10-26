@@ -100,36 +100,37 @@ for (const id of ["outgoing", "reserved"]) {
 assert.deepEqual(state.relationshipContext, original, "Writing rendering does not change relationship state");
 state.relationshipContext.edges[relationshipKey("outgoing", "player")] = {
   ...neutralRelationship("outgoing", "player"),
-  warmth: 60,
-  trust: 55,
-  familiarity: 3,
+  connection: "Friends",
+  stance: "Values the player's reliability",
+  revision: 1,
+  experiences: ["trust"],
 };
 state.relationshipContext.edges[relationshipKey("reserved", "player")] = {
   ...neutralRelationship("reserved", "player"),
-  warmth: -35,
-  trust: -55,
-  familiarity: 3,
+  connection: "Strained acquaintances",
+  stance: "Distrustful after a broken promise",
+  revision: 1,
 };
+const after = structuredClone(state.relationshipContext.edges[relationshipKey("outgoing", "player")]!);
 state.relationshipContext.receipts.trust = {
   id: "trust",
   fromId: "outgoing",
   toId: "player",
-  dimension: "trust",
-  before: 50,
-  after: 55,
+  beforeRevision: 0,
+  sceneAfter: after,
+  liveAfter: after,
   at: stamp,
   reason: "Returned the borrowed camera intact",
   sourceId: "earlier",
   lineIds: ["earlier"],
-  disclosed: false,
+  evidence: [],
 };
-assert.ok(!relationshipWritingPrompt(state, "outgoing").includes("Returned the borrowed camera intact"));
-assert.ok(relationshipWritingPrompt(state, "reserved").includes("unfriendly"));
-assert.ok(relationshipWritingPrompt(state, "reserved").includes("distrustful"));
 assert.ok(
-  relationshipPrompt(state, "outgoing").includes("trust 55"),
-  "Review/scoring context keeps its numeric interface",
+  !relationshipWritingPrompt(state, "outgoing").includes("Returned the borrowed camera intact"),
+  "Historical receipts cannot bypass Memory recall or player repair",
 );
+assert.ok(relationshipWritingPrompt(state, "reserved").includes("Distrustful after a broken promise"));
+assert.ok(relationshipPrompt(state, "outgoing").includes("Values the player's reliability"));
 
 let paidCalls = 0;
 let shrink = false;
@@ -261,11 +262,9 @@ async function run() {
     assert.ok(prompt.includes("Targeting is intent, not isolation"));
     assert.ok(prompt.includes("Never narrate a lasting change without a valid sceneChange"));
     assert.ok(prompt.includes("Every knower must directly witness EVERY cited line"));
-    assert.ok(prompt.includes('lineIds:["player",0]'));
-    assert.ok(prompt.includes('0 is valid; "0" is not'));
-    assert.ok(!prompt.includes('lineIds:["exact evidence ID"]'));
-    assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes('lineIds:["exact evidence ID"]'));
-    assert.ok(prompt.includes("Existing accepted commitments remain binding"));
+    assert.ok(prompt.includes("sceneAfter"));
+    assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes("liveAfter"));
+    assert.ok(prompt.includes("accepted"));
     const playerGuard = "The player controls their own speech, decisions, actions, thoughts, feelings, and consent";
     assert.ok(prompt.includes(playerGuard));
     scene.memoryMode = "live";

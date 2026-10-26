@@ -204,9 +204,22 @@ async function main() {
           id: "fresh-contact",
           fromId: "mara",
           toId: "player",
-          dimension: "warmth",
-          amount: 5,
-          ordinary: false,
+          expectedRevision: 0,
+          sceneAfter: {
+            connection: "Acquaintances",
+            stance: "Enjoyed the conversation",
+            expectations: [],
+            concerns: [],
+            records: [],
+          },
+          liveAfter: {
+            connection: "Acquaintances",
+            stance: "Enjoyed the conversation",
+            expectations: [],
+            concerns: [],
+            records: [],
+          },
+          evidence: [],
           reason: "Fresh conversation",
           lineIds: ["new-line"],
           disclosed: false,
@@ -220,8 +233,8 @@ async function main() {
     contactVillage.wall,
   );
   assert.equal(
-    relationshipFor(feelings, "mara", "player").warmth,
-    5,
+    relationshipFor(feelings, "mara", "player").connection,
+    "Acquaintances",
     "future calendar history cannot erase a fresh contact",
   );
 

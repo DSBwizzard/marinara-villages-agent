@@ -24,3 +24,9 @@ export async function proposePublicVenueNames(
 ): ReturnType<VillageBootstrapService["proposePublicVenueNames"]> {
   return binding.get().proposePublicVenueNames(...args);
 }
+
+export async function interpretSocialSource(
+  ...args: Parameters<VillageBootstrapService["interpretSocialSource"]>
+): ReturnType<VillageBootstrapService["interpretSocialSource"]> {
+  return binding.get().interpretSocialSource(...args);
+}

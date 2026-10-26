@@ -1,3 +1,4 @@
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
@@ -8,6 +9,7 @@ import {
   initializeVenueAccess,
   evaluateZoneAccess,
   readVenueAccess,
+  settleStandingAccess,
   claimVisitPermission,
   reconcileVenueAccess,
   withinVisitorHours,
@@ -169,25 +171,22 @@ const standing = command({
 assert.equal(decide("office").reason, "accompaniment-required");
 assert.equal(decide("office", "player", { positions: { jim: "office" } }).allowed, true);
 assert.equal(decide("office", "player", { positions: { jim: "living" } }).allowed, false);
-command({
-  action: "zone-policy",
-  zoneId: "living",
-  policy: {
-    ...zone("living").access!,
-    regularVisitors: [{ inviterId: "jim", relationship: "friend", accompanied: false }],
-  },
-} as any);
 assert.equal(
-  decide("living", "player", { relationships: { edges: { [JSON.stringify(["jim", "player"])]: { friend: true } } } })
-    .allowed,
-  true,
-);
-assert.equal(
-  decide("living", "player", { relationships: { edges: { [JSON.stringify(["player", "jim"])]: { friend: true } } } })
-    .allowed,
+  decide("living", "player", {
+    relationships: { edges: { [JSON.stringify(["jim", "player"])]: { connection: "Friends" } } },
+  }).allowed,
   false,
-  "Social rules are directional.",
+  "Friendship never grants access",
 );
+command({
+  action: "invite",
+  zoneId: "living",
+  visitorId: "player",
+  duration: "standing",
+  accompanied: false,
+  outsideHours: false,
+} as any);
+assert.equal(decide("living", "player").allowed, true, "Explicit standing permission permits entry");
 const ban = command({ action: "ban", zoneId: null, visitorId: "player" } as any);
 assert.equal(decide("exterior").allowed, true);
 assert.equal(decide("bedroom").reason, "banned");
@@ -248,6 +247,27 @@ assert.deepEqual(
   "The authoritative ledger reloads without dropping receipts.",
 );
 const reloaded = coerceVillageState(state).venues[0]!;
+const longReceiptVenue = structuredClone(venue);
+const longGrant = longReceiptVenue.access!.permissions.find((grant) => grant.duration === "standing")!;
+longGrant.id = "g".repeat(180);
+longGrant.revoked = false;
+const visitGrant = { ...longGrant, id: "visit-stays", duration: "visit" as const };
+longReceiptVenue.access!.permissions.push(visitGrant);
+const revoke = {
+  id: "r".repeat(180),
+  controllerId: longGrant.issuerId,
+  visitorId: longGrant.visitorId,
+  zoneId: longGrant.zoneId,
+  action: "revoke" as const,
+  lineIds: ["withdrawal-speech"],
+};
+settleStandingAccess(longReceiptVenue, revoke, "2099-01-01T00:00:00.000Z", known);
+assert.equal(longGrant.revoked, true);
+assert.equal(visitGrant.revoked, false, "Withdrawing standing permission alone does not end an invited visit");
+const settledRevision = longReceiptVenue.access!.revision;
+assert.deepEqual(readVenueAccess(JSON.parse(JSON.stringify(longReceiptVenue.access))), longReceiptVenue.access);
+settleStandingAccess(longReceiptVenue, revoke, "2099-01-01T00:00:00.000Z", known);
+assert.equal(longReceiptVenue.access!.revision, settledRevision, "Withdrawal retries retain bounded stable receipts");
 assert.equal(
   reloaded.zones!.filter((zone) => zone.ownerId === "jim").length,
   2,
@@ -509,6 +529,12 @@ const release = configureVillagesRuntime({
   persistence: {
     documents: villageFixtureDocuments({
       async getById(_p: string, id: string) {
+        if (id.startsWith("villages-relationships-") && !records.has(id)) {
+          const world = records.get("villages-village").data,
+            social = defaultRelationshipState(world.seed);
+          social.reviewedActorIds = [...known];
+          records.set(id, { id, kind: "relationships", data: social, revision: 1 });
+        }
         return records.get(id) ?? null;
       },
       async list(_p: string, kind: string) {
@@ -881,7 +907,10 @@ async function main() {
         known,
       );
     });
-    await processLiveRelationships(staleStanding, "old-standing-turn");
+    await assert.rejects(
+      () => processLiveRelationships(staleStanding, "old-standing-turn"),
+      /Standing permission needs recovery/,
+    );
     assert.equal(
       (await readVillageState({ memories: true })).venues[0].access!.permissions.filter(
         (grant) => grant.duration === "standing",
@@ -922,17 +951,28 @@ async function main() {
         baseRevision: "fixture",
       },
     ];
-    friendWorld.venues[0].zones!.find((zone) => zone.id === "living")!.access!.regularVisitors = [
-      { inviterId: "jim", relationship: "friend", accompanied: false },
-    ];
+    applyAccessCommand(
+      friendWorld.venues[0],
+      {
+        action: "invite",
+        operationId: "visitor-standing",
+        expectedRevision: friendWorld.venues[0].access!.revision,
+        zoneId: "living",
+        visitorId: "visitor",
+        duration: "standing",
+        accompanied: false,
+        outsideHours: false,
+      } as any,
+      "jim",
+      stamp,
+      known,
+    );
     friendWorld.venues[0].zones!.find((zone) => zone.id === "living")!.access!.visitorHours = "always";
     records.set("villages-village", { id: "villages-village", kind: "village", data: friendWorld, revision: 140 });
     await mutateRelationships(friendWorld.seed, (ties) => {
       ties.edges[relationshipKey("jim", "visitor")] = {
         ...neutralRelationship("jim", "visitor"),
-        warmth: 50,
-        trust: 50,
-        friend: true,
+        connection: "Friends",
       };
     });
     assert.equal(
@@ -948,7 +988,7 @@ async function main() {
       (await readVillageState({ memories: true })).villagers.find((resident) => resident.characterId === "visitor")!
         .agenda!.wishActivities!.length,
       1,
-      "An unrelated save preserves a future friend-only activity using fresh relationship authority.",
+      "An unrelated save preserves a future visit using explicit standing permission.",
     );
     assert.equal(
       records.get("villages-village").data.relationshipContext,
@@ -1321,7 +1361,7 @@ async function main() {
                   venueId: "home",
                   zoneId: "living",
                   action: "grant",
-                  evidence: [0],
+                  lineIds: [0],
                 },
               ],
             },
@@ -1331,8 +1371,13 @@ async function main() {
     ];
     records.set("villages-village", { id: "villages-village", kind: "village", data: socialWorld, revision: 180 });
     failAccessWrite = true;
-    await assert.rejects(() => processSocialOutbox(socialWorld), /fixture access write failed/);
-    await processSocialOutbox(await readVillageState({ memories: true }));
+    await processSocialOutbox(socialWorld);
+    const failedSocial = await readVillageState();
+    assert.match(failedSocial.socialOutbox![0]!.error!, /fixture access write failed/);
+    await mutateVillageState((current) => {
+      current.socialOutbox![0]!.error = undefined;
+    });
+    await processSocialOutbox(await readVillageState());
     assert.ok(
       (await readVillageState({ memories: true })).venues[0].access!.permissions.some(
         (grant) =>

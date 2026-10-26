@@ -237,16 +237,19 @@ export function VillagerDossier({
     ) : (
       <p>No relevant Venues recorded.</p>
     );
+  const personalMail = links.find((link) => link.id === "personal-mail");
   const related = (
     <div className={`${P}-dossier-links`}>
       {links.length ? (
-        links.map((link) => (
-          <button key={link.id} type="button" onClick={link.onOpen}>
-            <strong>{link.title}</strong>
-            <small>{link.detail}</small>
-            <span aria-hidden="true">›</span>
-          </button>
-        ))
+        links
+          .filter((link) => link.id !== "personal-mail")
+          .map((link) => (
+            <button key={link.id} type="button" onClick={link.onOpen}>
+              <strong>{link.title}</strong>
+              <small>{link.detail}</small>
+              <span aria-hidden="true">›</span>
+            </button>
+          ))
       ) : (
         <p>No related Projects or Venue Requests.</p>
       )}
@@ -303,6 +306,11 @@ export function VillagerDossier({
             <div className={`${P}-dossier-journal-content`}>
               <div className={`${P}-dossier-portrait`}>{portrait}</div>
               <h1>{name}</h1>
+              {personalMail ? (
+                <button type="button" onClick={personalMail.onOpen}>
+                  Message
+                </button>
+              ) : null}
               <div className={`${P}-dossier-biography`}>
                 {villager?.summary ? <p>{villager.summary}</p> : null}
                 {villager?.missing ? (
@@ -433,10 +441,7 @@ export function VillagerDossier({
                     <Sheet title="Known routine" icon="agenda">
                       {profile?.knownAt ? (
                         <>
-                          <p>
-                            {profile.friend ? "Current shared information" : "Last known information"} ·{" "}
-                            {new Date(profile.knownAt).toLocaleString()}
-                          </p>
+                          <p>Last shared information · {new Date(profile.knownAt).toLocaleString()}</p>
                           <ul>
                             {profile.routine?.map((line, index) => (
                               <li key={index}>{line}</li>

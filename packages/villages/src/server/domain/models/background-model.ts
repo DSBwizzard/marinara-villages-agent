@@ -14,6 +14,8 @@ export type BackgroundKind =
   | "wish"
   | "wish-check"
   | "mail"
+  | "personal-mail"
+  | "social-recovery"
   | "adaptation";
 export type BackgroundStatus = "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
 export type BackgroundSummary = {

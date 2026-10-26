@@ -13,6 +13,7 @@ import {
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   canOccupyZone,
@@ -189,6 +190,12 @@ const restore = configureVillagesRuntime({
   persistence: {
     documents: villageFixtureDocuments({
       async getById(_p: string, id: string) {
+        if (id.startsWith("villages-relationships-") && !records.has(id)) {
+          const world = records.get("villages-village").data;
+          const social = defaultRelationshipState(world.seed);
+          social.reviewedActorIds = world.villagers.map((person: any) => person.characterId);
+          records.set(id, { id, kind: "relationships", data: social, revision: 1 });
+        }
         return records.get(id) ?? null;
       },
       async list(_p: string, kind: string) {

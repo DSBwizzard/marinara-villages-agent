@@ -88,7 +88,9 @@ try {
           interpretationReads.settings++;
         if (path.includes("/interpretation-diagnostics/")) interpretationReads.diagnostics++;
         let value = fixture;
-        if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+        if (path.endsWith("/mailbox"))
+          value = { threads: [], invitations: [], recovery: [], venueMail: fixture.venueMail ?? [] };
+        else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
         else if (
           path.endsWith("/interpretation-settings") &&
           route.request().method() === "PATCH" &&
@@ -176,7 +178,7 @@ try {
       await page.getByRole("button", { name: "Venue actions" }).click();
       await expect(page.getByRole("menuitem", { name: "Projects", exact: true })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "Proposals", exact: true })).toBeVisible();
-      await expect(page.getByRole("menuitem", { name: "View Mailbox" })).toHaveCount(home ? 1 : 0);
+      await expect(page.getByRole("menuitem", { name: "View Mailbox" })).toHaveCount(1);
       assert.equal(await dock.getByRole("button", { name: /Mailbox|Projects|Proposals/ }).count(), 0);
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
       await expect(page.getByRole("switch", { name: "Use Decisions" })).toBeVisible();
@@ -218,12 +220,13 @@ try {
       }
       await venueProfile.getByRole("button", { name: "Back to Scene", exact: true }).click();
       await expect(composer).toHaveValue(draftBeforeVenue);
-      if (home) {
+      {
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "View Mailbox" }).click();
         const mailbox = page.getByRole("dialog", { name: "Mailbox", exact: true });
+        await mailbox.getByText("Venue decisions", { exact: true }).click();
         await expect(mailbox.getByRole("button", { name: "Review request" })).toBeEnabled();
-        await mailbox.getByRole("button", { name: "Close", exact: true }).click();
+        await mailbox.getByRole("button", { name: "Close Mailbox", exact: true }).click();
       }
 
       for (const menu of ["Projects", "Proposals"]) {

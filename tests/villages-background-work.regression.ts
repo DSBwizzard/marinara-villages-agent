@@ -649,6 +649,30 @@ async function main() {
     await queueBackgroundJob({ ...work("cycle", ["cycle-39"]), revision: "39" });
     await settleBackgroundWork();
     assert.equal(calls.length, beforePrune, "compact receipt protects a live subject after payload record pruning");
+    for (const kind of ["personal-mail", "social-recovery"] as const) {
+      registerBackgroundHandler(kind, {
+        valid: () => true,
+        generate: async () => {
+          throw Error("Retained social failure");
+        },
+        apply: () => {},
+      });
+      await queueBackgroundJob({
+        kind,
+        subjectId: kind + ":message-source",
+        seed: (await readVillageState()).seed,
+        revision: "source",
+        finite: true,
+        label: "Social recovery",
+        input: {},
+      });
+      await settleBackgroundWork();
+      for (let read = 0; read < 2; read++) {
+        const retained = (await backgroundWorkSummaries()).find((job) => job.kind === kind);
+        assert.equal(retained?.status, "failed", "A social message/encounter source is not a resident ID");
+        assert(rows.has(retained!.id), "Inspect polling preserves failed work for deliberate recovery");
+      }
+    }
     console.log(
       "villages-background-work: concurrency, checkpoint retry, fairness, presence, recovery, stale results, bounded storage ok",
     );

@@ -593,7 +593,7 @@ assert.throws(
   assert.deepEqual(saved.continuity, before, "recovery reuses the Scene permission receipt");
 }
 
-// A witnessed relationship change can establish regular-visitor access in this same Scene.
+// Qualitative social developments never establish regular-visitor access by themselves.
 {
   const { state, ids } = fixture(4),
     venue = state.venues[0];
@@ -605,8 +605,7 @@ assert.throws(
   state.relationshipContext = defaultRelationshipState(state.seed);
   state.relationshipContext.edges[relationshipKey(ids[0], "player")] = {
     ...neutralRelationship(ids[0], "player"),
-    warmth: 24,
-    trust: 30,
+    connection: "Friends",
   };
   const saved = coerceSession({ version: 2, ...scene, id: "friendship", status: "active", continuity: undefined });
   saved.continuity = captureSceneContinuity(state, saved, at.getTime());
@@ -616,12 +615,12 @@ assert.throws(
     sceneId: saved.id,
     fromId: ids[0],
     toId: "player",
-    dimension: "warmth",
-    before: 24,
-    after: 26,
+    beforeRevision: 0,
+    sceneAfter: { ...neutralRelationship(ids[0], "player"), connection: "Close friends", revision: 1 },
+    liveAfter: { ...neutralRelationship(ids[0], "player"), connection: "Close friends", revision: 1 },
     at: stamp,
   } as any;
-  assert.equal(contactCanEnter(state, venue, "b", "player", saved), true);
+  assert.equal(contactCanEnter(state, venue, "b", "player", saved), false, "Entry still requires explicit permission");
 }
 
 // A forced departure from a full Exterior chooses a real free destination and retains it privately.
