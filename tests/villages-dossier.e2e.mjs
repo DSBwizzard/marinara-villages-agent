@@ -322,7 +322,7 @@ try {
           ],
         };
       else if (path.endsWith("/relationships")) value = relationships;
-      else if (path.endsWith("/memories")) {
+      else if (path.endsWith("/memories/inspect")) {
         if (failMemories)
           return fulfill(route, {
             status: 503,
