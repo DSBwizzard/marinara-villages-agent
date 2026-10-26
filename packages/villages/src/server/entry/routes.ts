@@ -71,7 +71,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
       };
       return snapshot === value ? delivered : { ...value, snapshot: delivered };
     },
-    ["/memories", "/memories/inspect", "/memories/:id/evidence", "/memories/inspect/:id"],
+    [
+      "get /memories",
+      "get /memories/inspect",
+      "get /memories/:id/evidence",
+      "get /memories/inspect/:id",
+      "post /memories/:id/forget",
+      "post /memories/:id/correct",
+    ],
   );
   registerInterpretationRoutes(surface);
   registerRelationshipRoutes(surface);

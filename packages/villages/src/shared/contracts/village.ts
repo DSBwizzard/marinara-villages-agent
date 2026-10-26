@@ -917,6 +917,8 @@ export type MemoryLibrary = {
   next: MemoryCursor | null;
 };
 export type MemoryInspection = {
+  seed: string;
+  revision: number;
   entry: MemoryListEntry;
   knowers: {
     person: MemoryPerson;
@@ -926,6 +928,7 @@ export type MemoryInspection = {
     reinforcedAt: string;
     forgotten: boolean;
     playerCorrection: boolean;
+    text: string;
     support: { sourceId: string; sceneId?: string; lineId: string; excerpt: string }[];
   }[];
 };
@@ -936,6 +939,7 @@ export type MemoryForgetRequest = {
   target: { id: string; revision: number; rootRevision: number };
   knowers: string[];
 };
+export type MemoryCorrectRequest = MemoryForgetRequest & { text: string };
 
 export /**
  * One thing a villager privately wishes for, as the debug panel shows it.

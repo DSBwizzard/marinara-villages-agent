@@ -967,12 +967,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   useResidentInspection({
     loadAgendas,
-    loadMemoryLibrary,
     personProfile,
     profileInspection,
     screen,
     setAgendas,
-    setMemoryLibrary,
   });
 
   useResidentAgendaPolling({ visible, agendas, loadAgendas, personProfile, profileInspection, screen });
