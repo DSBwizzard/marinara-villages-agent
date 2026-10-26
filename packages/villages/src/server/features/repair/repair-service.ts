@@ -147,6 +147,7 @@ function recordChanges(before: RepairRecord[], after: RepairRecord[], selectedId
     affected: string[] = [],
     prior = new Map(before.map((r) => [r.id, r]));
   for (const row of after) {
+    const rowStart = changes.length;
     const old = prior.get(row.id);
     prior.delete(row.id);
     if (old?.token === row.token) continue;
@@ -169,9 +170,15 @@ function recordChanges(before: RepairRecord[], after: RepairRecord[], selectedId
           after: person.forgotten ? "Forgotten" : person.text,
         });
     }
-    if (old && old.summary !== row.summary)
+    const alreadyShown = (before: string, after: string) =>
+      changes.slice(rowStart).some((change) => change.before === before && change.after === after);
+    if (old && old.summary !== row.summary && !alreadyShown(old.summary, row.summary))
       changes.push({ label: `${row.title} · status`, before: old.summary, after: row.summary });
-    if (old && old.source.join("\n") !== row.source.join("\n"))
+    if (
+      old &&
+      old.source.join("\n") !== row.source.join("\n") &&
+      !alreadyShown(old.source.join("\n"), row.source.join("\n"))
+    )
       changes.push({ label: `${row.title} · context`, before: old.source.join("\n"), after: row.source.join("\n") });
   }
   for (const removed of prior.values()) {

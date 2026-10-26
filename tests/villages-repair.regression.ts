@@ -127,6 +127,12 @@ const edit = (recordId: string, values: RepairRequest["values"], operationId = "
 await runCase("repair/review", async () => {
   const f = await fixture(),
     id = repairId("world");
+  const nameReview = await f.prepare(edit(id, { name: "Clear comparison" }, "name-comparison"));
+  assert.equal(
+    nameReview.changes.filter((change) => change.after === "Clear comparison").length,
+    1,
+    "Derived summary/source must not repeat the same field change",
+  );
   const before = await f.read();
   const review = await f.prepare(
     edit(id, { name: "Willowmere", setting: "Corrected setting", worldName: "", worldFacts: "" }),
