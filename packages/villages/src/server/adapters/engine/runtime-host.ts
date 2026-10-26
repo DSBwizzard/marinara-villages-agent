@@ -1,6 +1,6 @@
-import { withVillageClockCommit } from "../time/clock-gate.js";
 import { createActivationBinding } from "./activation-scope.js";
 import { pipelineStorage } from "../observability/metrics-context.js";
+import { createRepairGate, configureRepairGate } from "../storage/repair-gate.js";
 import type {
   CapabilityDocumentStore,
   CapabilityResourceHost,
@@ -10,7 +10,6 @@ import type {
 
 export const VILLAGES_PACKAGE_ID = "villages";
 let registration = 0;
-const measuredDocuments = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
 const fallbackLogger: CapabilityRuntimeLogger = {
   debug: (message, ...args) => console.debug(message, ...args),
   info: (message, ...args) => console.info(message, ...args),
@@ -64,6 +63,21 @@ function safeLogger(target: CapabilityRuntimeLogger): CapabilityRuntimeLogger {
 export function createRuntimeConnections(next: CapabilityRuntimeHost) {
   const token = ++registration;
   let active = true;
+  const measuredStore = next.persistence?.documents
+    ? new Proxy(next.persistence.documents, {
+        get(target, key) {
+          const value = Reflect.get(target, key);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            requireHost();
+            if (key === "getById" || key === "list") pipelineStorage("reads");
+            if (key === "create" || key === "update") pipelineStorage("writes");
+            return Reflect.apply(value, target, args);
+          };
+        },
+      })
+    : null;
+  const repair = measuredStore ? createRepairGate(measuredStore) : null;
   function requireHost(): CapabilityRuntimeHost {
     if (!active) throw new Error("The Villages package runtime is not configured.");
     return next;
@@ -75,28 +89,7 @@ export function createRuntimeConnections(next: CapabilityRuntimeHost) {
         "This Engine version did not provide the package document store, so Villages cannot remember anything.",
       );
     }
-    let measured = measuredDocuments.get(documents);
-    if (!measured) {
-      measured = new Proxy(documents, {
-        get(target, key) {
-          const value = Reflect.get(target, key);
-          if (typeof value !== "function") return value;
-          return (...args: unknown[]) => {
-            if (key === "getById" || key === "list") pipelineStorage("reads");
-            if (key === "create" || key === "update") pipelineStorage("writes");
-            const input = args[0] as { id?: string } | undefined;
-            if (
-              (key === "create" || key === "update" || key === "delete" || key === "remove") &&
-              input?.id !== "villages-ai-usage"
-            )
-              return withVillageClockCommit(() => value.apply(target, args));
-            return value.apply(target, args);
-          };
-        },
-      });
-      measuredDocuments.set(documents, measured);
-    }
-    return measured;
+    return repair!.documents;
   }
   function villagesResources(): CapabilityResourceHost {
     const resources = requireHost().resources;
@@ -118,9 +111,11 @@ export function createRuntimeConnections(next: CapabilityRuntimeHost) {
     villagesResources,
     villagesLogger,
     villagesDebugAgentsEnabled,
+    repair,
     epoch: () => (active ? token : null),
     dispose: () => {
       active = false;
+      repair?.dispose();
     },
   };
 }
@@ -129,7 +124,9 @@ const connections = createActivationBinding<RuntimeConnections>("The Villages pa
 export function configureRuntimeHost(next: CapabilityRuntimeHost): () => void {
   const runtime = createRuntimeConnections(next);
   const release = connections.configure(runtime);
+  const releaseRepair = runtime.repair ? configureRepairGate(runtime.repair) : () => {};
   return () => {
+    releaseRepair();
     runtime.dispose();
     release();
   };

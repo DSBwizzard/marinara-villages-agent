@@ -8,6 +8,9 @@ export function renderMenuIndexPage(ports: MenuIndexPagePorts) {
       {backgroundPanel}
       <h2 className={`${ELEMENT_TAG}-venue-kicker`}>Village</h2>
       <div className={`${ELEMENT_TAG}-menu-quick-links`}>
+        <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("repair")}>
+          REPAIR
+        </button>
         <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("villagers")}>
           Villagers
         </button>

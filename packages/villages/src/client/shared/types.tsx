@@ -315,4 +315,4 @@ export type RoomStep = {
 type MenuTab =
   "villagers" | "noticeboard" | "venueRequests" | "projects" | "village" | "general" | "chatlogs" | "progress";
 
-export type MenuPage = "index" | MenuTab;
+export type MenuPage = "index" | "repair" | MenuTab;

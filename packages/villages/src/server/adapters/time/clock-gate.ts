@@ -1,4 +1,5 @@
 import { createActivationBinding } from "../engine/activation-scope.js";
+import { withRepairWork, assertRepairGeneration } from "../storage/repair-gate.js";
 import type { VillageClockView, VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 export interface VillageClockAuthority {
   observe(): Promise<VillageClockView>;
@@ -38,11 +39,14 @@ export function clockAdministration<T>(callback: () => T): T {
 }
 export async function assertVillageClockWrite() {}
 export async function withVillageClockWork<T>(callback: () => Promise<T>, _readOnly = false): Promise<T> {
-  await observeVillageClock();
-  return callback();
+  return withRepairWork(async () => {
+    await observeVillageClock();
+    return callback();
+  });
 }
 export async function guardedClockGeneration<T>(callback: () => Promise<T>): Promise<T> {
-  return callback();
+  assertRepairGeneration();
+  return withRepairWork(callback);
 }
 export async function resolveVillageClock(revision: number, choice: "accept" | "check") {
   return binding.get().resolve(revision, choice);
