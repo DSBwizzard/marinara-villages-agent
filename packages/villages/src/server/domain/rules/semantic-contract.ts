@@ -13,6 +13,7 @@ import { badGateway } from "./errors.js";
 import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
 import { wishCheckKnowledge } from "./wish-journal.js";
 import { accessManagementPrompt } from "./access-speech.js";
+import { capturedSceneCalendar } from "./scene-halt.js";
 
 export { readSemanticWishCriteria } from "./wish-criteria.js";
 
@@ -62,6 +63,17 @@ export function semanticContext(
     history.unshift(row);
   }
   return {
+    ...(scene.operation?.input.preservationVersion === 1
+      ? {
+          preservation: {
+            version: 1 as const,
+            sceneAt: scene.continuity?.capturedAt ?? scene.sceneAttendance?.capturedAt ?? scene.startedAt,
+            chosenAt: String(scene.operation.input.chosenAt),
+            timeZone: authority.timeZone,
+            calendar: capturedSceneCalendar(scene, authority.timeZone),
+          },
+        }
+      : {}),
     ...(scene.continuity
       ? {
           time: {

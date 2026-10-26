@@ -309,6 +309,7 @@ import {
 } from "../features/residents/wishes/wish-attempt-clocks.js";
 import {
   configureVillageStateService,
+  withVillageSceneAcceptance,
   mutateVillageState,
   readVillageState,
   readVillageAuthority,
@@ -742,6 +743,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      withVillageSceneAcceptance,
       semantic,
       interpretRoomDraft,
       generate,

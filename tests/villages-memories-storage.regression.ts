@@ -63,6 +63,7 @@ function fixture() {
     reads,
     warnings,
     repository,
+    external: createVillageRepository(() => store),
     hook: (h: typeof hook) => {
       hook = h;
     },
@@ -294,7 +295,7 @@ await runCase("memories-storage/active-preparation", async () => {
     { memories: true },
   );
   await waiting;
-  await f.repository.mutateAuthority((s) => {
+  await f.external.mutateAuthority((s) => {
     s.name = "Concurrent world update";
   });
   release();
@@ -370,7 +371,7 @@ await runCase("memories-storage/late-payload", async () => {
       (error) => error,
     );
     await waiting;
-    await f.repository.mutateAuthority((state) => {
+    await f.external.mutateAuthority((state) => {
       state.name = "Fenced before payload creation";
     });
     assert.equal(f.intents().length, 1, "A preparing intent survives until its absent payload is created.");

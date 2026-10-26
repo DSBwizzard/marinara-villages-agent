@@ -19,7 +19,7 @@ import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } f
 import type { Portrait, PortraitMap, RoomStep, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import { SceneErrorChip, SceneInformationChip, type SceneErrorItem } from "./scene-errors.js";
-import { OCCUPANCY_UNAVAILABLE_MESSAGE } from "../../../shared/contracts/scene-turn-outcome.js";
+import { isSceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";
 import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene.js";
@@ -1048,9 +1048,7 @@ export function RoomPanel({
       ) : null}
       <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
         <SceneInformationChip
-          items={
-            ruling === OCCUPANCY_UNAVAILABLE_MESSAGE ? [{ id: "occupancy", title: "Information", message: ruling }] : []
-          }
+          items={isSceneTurnOutcomeMessage(ruling) ? [{ id: "held-turn", title: "Information", message: ruling }] : []}
           open={informationOpen}
           onOpen={(value) => {
             setInformationOpen(value);
@@ -1551,7 +1549,7 @@ export function RoomPanel({
             </span>
           </div>
         </div>
-        {ruling && ruling !== OCCUPANCY_UNAVAILABLE_MESSAGE ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
+        {ruling && !isSceneTurnOutcomeMessage(ruling) ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
         {canCompose && mode === "fulfill" && activeParticipants.length === 0 ? (

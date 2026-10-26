@@ -5,6 +5,8 @@ export type VillageMemoryWrite = { memories?: boolean | ((state: VillageState) =
 
 /** Raw saved authority; relationship hydration and side effects belong to its service. */
 export interface VillageRepository {
+  /** Short, provider-free acceptance window shared with all authority mutations. */
+  withAuthorityLock?<T>(work: () => Promise<T>): Promise<T>;
   readAuthority(options?: VillageMemoryRead): Promise<VillageState>;
   mutateAuthority(
     update: (state: VillageState) => void | false | Promise<void | false>,

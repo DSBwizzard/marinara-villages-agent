@@ -28,9 +28,6 @@ const root = () => ({
 let record = root(),
   conflicts = 0;
 const rows = new Map<string, any>();
-let preferredStatus = "",
-  preferredCommit = Promise.resolve(),
-  releasePreferred = () => {};
 const documents = {
   getById: async (_pkg: string, id: string) => structuredClone(id === record.id ? record : (rows.get(id) ?? null)),
   list: async (_pkg: string, kind: string) =>
@@ -53,16 +50,13 @@ const documents = {
       rows.set(input.id, row);
       return structuredClone(row);
     }
-    const status = input.data.projects.find((project: any) => project.id === ids[0])?.status;
-    // Control the actual CAS ordering, independently of payload preparation latency.
-    if (preferredStatus && ["complete", "cancelled"].includes(status) && status !== preferredStatus)
-      await preferredCommit;
+    // A write outside this process can still win the CAS despite local serialization.
+    if (conflicts === 0) record.revision++;
     if (input.expectedRevision !== record.revision) {
       conflicts++;
       return null;
     }
     record = { ...record, data: structuredClone(input.data), revision: record.revision + 1 };
-    if (status === preferredStatus) releasePreferred();
     return structuredClone(record);
   },
 };
@@ -98,10 +92,6 @@ for (const completeFirst of [false, true]) {
   record = root();
   rows.clear();
   await service.startProjectConstruction(ids[0], commands[0].body, now);
-  preferredStatus = completeFirst ? "complete" : "cancelled";
-  preferredCommit = new Promise<void>((resolve) => {
-    releasePreferred = resolve;
-  });
   const complete = () =>
     repository.mutateAuthority(
       (state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)),
@@ -122,6 +112,5 @@ for (const completeFirst of [false, true]) {
       "late cancellation cannot undo completed work",
     );
   else assert.equal(record.data.projectWishOutbox.length, 0, "cancelled work emits no completion benefit");
-  preferredStatus = "";
 }
 console.log("Concurrent starts, CAS retries, request payload binding and cancellation/completion races passed.");

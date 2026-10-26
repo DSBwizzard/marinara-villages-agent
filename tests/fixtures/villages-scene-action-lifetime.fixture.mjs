@@ -624,7 +624,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       const after = await recovery.snapshot();
       assert.deepEqual(
         recovery.requests.map((item) => item.kind),
-        ["preflight", "leave", "active", "archive"],
+        ["preflight", "leave", "active", "recovery-operation", "archive"],
       );
       assert.equal(
         after.state.revision,

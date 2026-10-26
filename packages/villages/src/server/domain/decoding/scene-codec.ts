@@ -1,3 +1,4 @@
+import { isSceneTurnOutcome, type SceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
 import { readOpeningSignal } from "../rules/opening-project.js";
 import { readSceneLayout } from "../rules/scene-layout.js";
 import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
@@ -177,13 +178,13 @@ export function coerceSession(value: unknown): VenueScene {
               /^[a-f0-9]{64}$/u.test(row.inputHash) &&
               Number.isSafeInteger(row.sceneRevision) &&
               Number(row.sceneRevision) >= 0 &&
-              row.turnOutcome === "occupancy-unavailable",
+              isSceneTurnOutcome(row.turnOutcome),
           )
           .map((row) => ({
             id: String(row.id),
             inputHash: String(row.inputHash),
             sceneRevision: Number(row.sceneRevision),
-            turnOutcome: "occupancy-unavailable" as const,
+            turnOutcome: row.turnOutcome as SceneTurnOutcome,
           }))
       : [],
     navigationReceipts: Array.isArray(raw.navigationReceipts)

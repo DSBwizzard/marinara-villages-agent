@@ -1168,6 +1168,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const leaveRoom = useLeaveRoom({
+    composerEditVersionRef,
     isFounded: snapshot?.isFounded,
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -1186,6 +1187,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomRuling,
     setRoomNotices,
     setRoomOpen,
     setScreen,

@@ -22,6 +22,12 @@ export function mutateVillageState(...args: Parameters<VillageStateService["muta
   return villageStateService().mutateVillageState(...args);
 }
 
+export function withVillageSceneAcceptance<T>(
+  work: (state: import("../../domain/models/world.js").VillageState) => Promise<T>,
+) {
+  return villageStateService().withVillageSceneAcceptance(work);
+}
+
 /** Explicit history access for recall, disclosures, Scene capture and learning. */
 export function readVillageMemoryState() {
   return villageStateService().readVillageState({ memories: true });

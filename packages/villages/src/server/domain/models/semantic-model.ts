@@ -47,6 +47,8 @@ export type SemanticExchange = {
 };
 
 export type SemanticProvenance = {
+  preservationVersion?: 1;
+  occurrenceVersion?: 1;
   developmentVersion?: 1;
   turnPolicyVersion?: 1;
   pipelineVersion?: 3;

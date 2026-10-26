@@ -52,6 +52,8 @@ export function createSceneQueryService({ readSession, readVillageState, village
       sessionId,
       villageSeed: session.villageSeed,
       semanticVersion: submission.semanticProvenance?.version,
+      preservationVersion: submission.semanticProvenance?.preservationVersion,
+      occurrenceVersion: submission.semanticProvenance?.occurrenceVersion,
       venueId: session.placeId,
       zoneId,
       submissionId,
