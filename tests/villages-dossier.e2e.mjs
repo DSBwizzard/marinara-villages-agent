@@ -688,6 +688,7 @@ try {
     await expect(correction.getByRole("textbox")).toBeDisabled();
     await tabs.getByRole("button", { name: "Overview", exact: true }).click();
     await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
     await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("eli");
     await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
     const readsBeforeRelease = reads.filter((path) => path.endsWith("/memories/inspect")).length;

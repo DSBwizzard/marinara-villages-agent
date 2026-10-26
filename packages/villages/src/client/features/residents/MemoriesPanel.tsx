@@ -37,15 +37,19 @@ export function VillagerMemoriesPanel({
   const [error, setError] = useState("");
   const evidenceRequest = useRef<AbortController | null>(null);
   const pageRequest = useRef<AbortController | null>(null);
+  const queryReader = useRef(onQuery);
+  queryReader.current = onQuery;
   const people = useRef(library?.residents);
   if (library?.residents) people.current = library.residents;
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    pageRequest.current = controller;
+    void queryReader.current({ characterId }, controller.signal);
+    return () => {
       evidenceRequest.current?.abort();
       pageRequest.current?.abort();
-    },
-    [],
-  );
+    };
+  }, [characterId]);
   const load = (next: MemoryCursor | undefined, audience = knower) => {
     evidenceRequest.current?.abort();
     setEvidence(null);
@@ -99,7 +103,7 @@ export function VillagerMemoriesPanel({
       >
         <select
           aria-label="Memory knower"
-          disabled={busy}
+          disabled={busy || !library}
           value={knower}
           onChange={(event) => {
             const value = event.target.value;

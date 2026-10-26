@@ -71,6 +71,7 @@ export function MemoryCorrectionForm({
   };
   return (
     <form
+      autoComplete="off"
       className={`${ELEMENT_TAG}-memory-correction`}
       aria-label="Correct memory"
       onSubmit={(event) => {
@@ -81,6 +82,7 @@ export function MemoryCorrectionForm({
       <label>
         Corrected memory
         <textarea
+          autoComplete="off"
           autoFocus
           rows={4}
           value={text}
@@ -96,6 +98,7 @@ export function MemoryCorrectionForm({
         {inspection.knowers.map((known) => (
           <label key={known.person.id}>
             <input
+              autoComplete="off"
               type="checkbox"
               checked={knowers.includes(known.person.id)}
               disabled={known.forgotten}
