@@ -1143,6 +1143,7 @@ export function useRetrySavedScene(ports: {
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
   setRoomRuling: React.Dispatch<SetStateAction<string>>;
   setRoomMode: React.Dispatch<SetStateAction<SceneComposerMode>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
@@ -1169,6 +1170,7 @@ export function useRetrySavedScene(ports: {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomGreetingError,
     setRoomRuling,
     setRoomMode,
     setRoomMoveZoneId,
@@ -1198,6 +1200,16 @@ export function useRetrySavedScene(ports: {
         `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
       );
       if (!lifetime.owns(claim)) return;
+      if (
+        room.operation.kind === "greet" &&
+        (!operation ||
+          operation.id !== room.operation.id ||
+          operation.kind !== room.operation.kind ||
+          operation.attemptId !== room.operation.attemptId ||
+          operation.status !== room.operation.status ||
+          !!operation.recoverable !== !!room.operation.recoverable)
+      )
+        throw new Error("The opening request changed. Review the current Scene before retrying.");
       const path =
         operation.kind === "move"
           ? "/rooms/zone"
@@ -1245,6 +1257,8 @@ export function useRetrySavedScene(ports: {
       roomCompletionRef.current = null;
       claim.completion = null;
       setRoomError("");
+      if (operation.kind === "greet")
+        setRoomGreetingError((current) => (current?.sessionId === room.id ? null : current));
       if (operation.kind === "move") {
         setRoomMode("chat");
         setRoomMoveZoneId("");
@@ -1284,6 +1298,7 @@ export function useRetrySavedScene(ports: {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomGreetingError,
     setRoomRuling,
     setRoomMode,
     setRoomMoveZoneId,
