@@ -17,11 +17,14 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
   page.on("pageerror", (error) => errors.push(error.message));
   let session = restored ? opening("visit-1") : null;
   let greetingCalls = 0;
+  const greetingBodies = [];
   let recoveryPending = false;
   let releaseRecovery = null;
   let recoverySettled = false;
   let failActiveReads = false;
   let nextFailure = "";
+  let changeAttemptOnRead = false;
+  let succeedNextGreeting = false;
   const archived = new Map();
   function opening(id) {
     return {
@@ -69,6 +72,12 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
       });
     if (path.endsWith("/rooms/greet")) {
       greetingCalls++;
+      const body = route.request().postDataJSON();
+      greetingBodies.push(body);
+      if (body.retryOfAttemptId === "failed-attempt" || body.recovery === true || succeedNextGreeting) {
+        complete();
+        return fulfill(route, { json: { session } });
+      }
       recoveryPending = true;
       if (recovery === "immediate") complete();
       if (nextFailure)
@@ -103,8 +112,10 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
       session = opening("visit-" + (greetingCalls + 1));
       value = { session };
     } else if (path.includes("/rooms/archive/")) value = { visit: archived.get(path.split("/").at(-1)) || session };
-    else if (path.includes("/operations/")) value = { operation: session?.operation || null };
-    else if (path.endsWith("/town-map")) value = { image: mapImage };
+    else if (path.includes("/operations/")) {
+      if (changeAttemptOnRead) session.operation.attemptId = "newer-attempt";
+      value = { operation: session?.operation || null };
+    } else if (path.endsWith("/town-map")) value = { image: mapImage };
     else if (path.startsWith("/api/villages"))
       value = {
         ...snapshot,
@@ -144,6 +155,26 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
     start,
     focus,
     complete,
+    setTerminalFailure({ recoverable = false } = {}) {
+      session.operation = {
+        id: "greeting",
+        kind: "greet",
+        status: recoverable ? "interrupted" : "complete",
+        recoverable,
+        attemptId: "failed-attempt",
+        error: "The Scene reply failed validation (invalid-json). Your draft is preserved; explicitly retry.",
+        input: {},
+      };
+    },
+    get bodies() {
+      return greetingBodies;
+    },
+    changeAttemptOnRead() {
+      changeAttemptOnRead = true;
+    },
+    succeedNextGreeting() {
+      succeedNextGreeting = true;
+    },
     allowReads() {
       failActiveReads = false;
     },
@@ -203,6 +234,61 @@ try {
     assert.equal(f.calls, 1, "immediate recovery reads rather than retries");
     await f.page.close();
   }
+  const unsaved = await fixture();
+  await expectSceneError(unsaved.page, "The connection was interrupted. Check the saved reply before sending again.");
+  unsaved.succeedNextGreeting();
+  await openSceneErrors(unsaved.page);
+  await unsaved.page.getByRole("button", { name: "Retry opening", exact: true }).first().click();
+  await expect(unsaved.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
+  assert.equal(
+    unsaved.bodies[1].retryOfAttemptId,
+    undefined,
+    "an opening without a saved operation uses a fresh greeting",
+  );
+  await unsaved.page.close();
+
+  const terminal = await fixture();
+  await expectSceneError(terminal.page, "The connection was interrupted. Check the saved reply before sending again.");
+  terminal.setTerminalFailure();
+  terminal.allowReads();
+  await terminal.focus();
+  await expectSceneError(terminal.page, "The AI reply was incomplete or could not be read.");
+  await openSceneErrors(terminal.page);
+  await terminal.page.getByRole("button", { name: "Retry opening", exact: true }).first().click();
+  await expect(terminal.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
+  await expect(terminal.page.getByRole("button", { name: /Scene errors?/ })).toHaveCount(0);
+  assert.equal(terminal.calls, 2, "the explicit retry makes exactly one new greeting request");
+  assert.equal(terminal.bodies[1].retryOfAttemptId, "failed-attempt", "the retry acknowledges the saved attempt");
+  await terminal.page.close();
+
+  const recoverable = await fixture();
+  await expectSceneError(
+    recoverable.page,
+    "The connection was interrupted. Check the saved reply before sending again.",
+  );
+  recoverable.setTerminalFailure({ recoverable: true });
+  recoverable.allowReads();
+  await recoverable.focus();
+  await openSceneErrors(recoverable.page);
+  await recoverable.page.getByRole("button", { name: "Recover saved opening", exact: true }).first().click();
+  await expect(recoverable.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
+  assert.equal(recoverable.bodies[1].recovery, true, "a saved greeting uses recovery rather than a paid retry");
+  assert.equal(recoverable.bodies[1].retryOfAttemptId, undefined);
+  await recoverable.page.close();
+
+  const changed = await fixture();
+  await expectSceneError(changed.page, "The connection was interrupted. Check the saved reply before sending again.");
+  changed.setTerminalFailure();
+  changed.allowReads();
+  await changed.focus();
+  await expectSceneError(changed.page, "The AI reply was incomplete or could not be read.");
+  await openSceneErrors(changed.page);
+  changed.changeAttemptOnRead();
+  await changed.page.getByRole("button", { name: "Retry opening", exact: true }).first().click();
+  await expectSceneError(changed.page, "The opening request changed. Review the current Scene before retrying.");
+  assert.equal(changed.calls, 1, "a different saved attempt is never retried without a fresh click");
+  await changed.page.close();
+
   const late = await fixture({ recovery: "delayed" });
   await expect.poll(() => late.held).toBe(true);
   late.complete();
