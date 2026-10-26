@@ -1086,7 +1086,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const worldCoordination = createWorldCoordination({
-    readVillageAuthority,
+    // Memory pages/evidence depend only on saved knowledge; reading them must not
+    // observe/write the clock or decode the same large authority record twice.
+    readVillageAuthority: villageRepository.readAuthority,
     reconcileResidentPlanning: residentPlanning.reconcile,
     reconcileDevelopment,
     processProjectWishOutbox,

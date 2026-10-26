@@ -296,6 +296,36 @@ try {
   assert.equal((await readScene()).spinoffPending, false, "the built Scene API stops recovery after resolution");
   const saved = coerceVillageState(records.get("villages-village")!.data);
   assert.equal(saved.memories.records.filter((row) => row.text === prepared.spinoff.memories[0].text).length, 1);
+  // Knowledge reads remain inert even when the world clock needs reconciliation.
+  const worldRecord = records.get("villages-village")!;
+  const raw = worldRecord.data as any,
+    originalClock = clone(raw.clock);
+  raw.clock.trustedAt = "2000-01-01T00:00:00.000Z";
+  const heldClock = clone(raw.clock),
+    heldRevision = worldRecord.revision;
+  try {
+    const library = await app.inject({ method: "GET", url: "/api/villages/memories" });
+    assert.equal(library.statusCode, 200, library.body);
+    const id = library.json().entries[0].id;
+    for (const path of [
+      "/memories/inspect?characterId=buster",
+      "/memories/" + id + "/evidence",
+      "/memories/inspect/" + id + "?characterId=player",
+    ]) {
+      const result = await app.inject({ method: "GET", url: "/api/villages" + path });
+      assert.equal(result.statusCode, 200, result.body);
+    }
+    assert.equal(records.get("villages-village")!.revision, heldRevision, "Memory reads never write the Village clock");
+    assert.deepEqual((records.get("villages-village")!.data as any).clock, heldClock);
+    const observed = await app.inject({ method: "GET", url: "/api/villages/clock" });
+    assert.equal(observed.statusCode, 200, observed.body);
+    assert.ok(
+      records.get("villages-village")!.revision > heldRevision,
+      "Clock-dependent routes retain their normal observation guard",
+    );
+  } finally {
+    (records.get("villages-village")!.data as any).clock = originalClock;
+  }
   console.log(
     "Archive-identical packaged HTTP spinoff: registration, resolved connection, ownership, conclusion callback, explicit synthetic interpretation and reviewed memory import passed.",
   );
