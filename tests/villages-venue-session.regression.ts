@@ -690,7 +690,7 @@ const release = configureVillagesRuntime({
                 finishReason: "stop",
               };
             }
-            if (system.includes("Write a brief visual Events update")) {
+            if (user.startsWith("Generate the supplied opportunity as one Events JSON object")) {
               assert.match(system, /In Villages, a Village is a shared place/u);
               lastEventsSystem = system;
               assert.match(system, /Do not give them a new turn in an Event/u);

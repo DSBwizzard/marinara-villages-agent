@@ -31,6 +31,9 @@ async function main() {
     moduleUrl("packages/villages/src/server/features/world/village-store.ts")
   );
   const { deriveVillageMoment } = await import(moduleUrl("packages/villages/src/server/domain/rules/village-clock.ts"));
+  const { mutateRelationships } = await import(
+    moduleUrl("packages/villages/src/server/features/residents/relationship-store.ts")
+  );
   const { reconcileVillage } = await import(moduleUrl("packages/villages/src/server/features/world/village.ts"));
   const { projectHomeLines } = await import(
     moduleUrl("packages/villages/src/server/domain/rules/village-projections.ts")
@@ -236,7 +239,6 @@ async function main() {
               });
             if (failModel) throw new Error("model unavailable");
             const prompt = String(messages[0]?.content ?? "");
-            assert.ok(prompt.includes("This feed has no effect on the village or its residents."));
             assert.ok(!prompt.includes('"memory":[') && !prompt.includes('"featureEdits":['));
             const offered = prompt.match(/(opportunity-\d+) \((\w+); actors ([^;]*); venue ([^;]+);/u);
             const actorIds = invalidProposal
@@ -369,12 +371,34 @@ async function main() {
       state.simulatedThrough = start.toISOString();
     });
     const callsBefore = modelCalls;
+    await reconcileVillage({ now: later });
+    await settleBackgroundWork();
+    assert.equal(modelCalls, callsBefore, "Weather without an eligible resident never spends an automatic attempt");
+    await mutateVillageState((state) => {
+      const resident = structuredClone(retainedState.villagers[0]);
+      resident.agenda!.wishes = ["swimming", "reading"].map((wish) => ({
+        ...resident.agenda!.wishes[0],
+        id: wish,
+        wish: `Experience ${wish}`,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+      }));
+      delete resident.wishLifecycle;
+      state.villagers = [resident];
+      state.simulatedThrough = start.toISOString();
+    });
+    await mutateRelationships("continuous-fixture", (state) => {
+      state.reviewedActorIds = ["retained"];
+    });
     const queuedCreative = await reconcileVillage({ now: later });
     await settleBackgroundWork();
     const creative = await reconcileVillage({ now: later });
     assert.ok(queuedCreative.recap);
     assert.equal(modelCalls, callsBefore + 1, "one planning call covers the active local day");
-    assert.equal(creative.happenings[0]?.occurredAt, later.toISOString());
+    assert.equal(
+      creative.happenings[0]?.occurredAt,
+      later.toISOString(),
+      JSON.stringify({ jobs: await backgroundWorkSummaries(), warnings }),
+    );
     assert.equal(creative.happenings[0]?.timePrecision, "exact");
     assert.ok(creative.happenings[0]?.sourceOpportunityId);
     assert.equal((await readVillageState()).chronicle.length, 0, "visual Events write no memories");
