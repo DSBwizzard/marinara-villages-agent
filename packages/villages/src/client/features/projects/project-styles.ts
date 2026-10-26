@@ -114,6 +114,10 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board .vp-zone-list button[aria-pressed=true],.${P}-project-board .vp-person[aria-pressed=true]{background:#d1e9ef;color:#064773;border-color:#d1e9ef}
 .${P}-project-board button:is([aria-pressed=true],[aria-selected=true],.vp-primary):hover:not(:disabled){background:#e0f1f4;color:#064773}
 .${P}-project-board textarea[rows="2"]{min-height:3.5rem}
+@media(min-width:701px) and (max-width:1050px){
+ .${P}-project-board .vp-new-types{grid-template-columns:minmax(0,1fr)}
+ .${P}-project-board .vp-new-types button{min-height:4rem}
+}
 @media(max-width:700px){
  ${P} .${P}-project-desk{padding:.6rem}
  ${P} .${P}-project-board{padding:.65rem;outline-width:2px;min-height:calc(100vh - 1.2rem)}

@@ -11,6 +11,7 @@ if (output) await mkdir(output, { recursive: true });
 try {
   for (const { width, height } of [
     { width: 1280, height: 900 },
+    { width: 850, height: 900 },
     { width: 390, height: 740 },
     { width: 390, height: 568 },
   ]) {
@@ -44,6 +45,14 @@ try {
     if (width < 700) await page.getByRole("button", { name: "Slot 1", exact: true }).click();
     await expect(page.getByRole("region", { name: "Project slot 1" })).toContainText("Empty slot");
     await expect(page.getByRole("button", { name: "New Venue", exact: true })).toBeDisabled();
+    if (width >= 700) {
+      const lines = await page.getByRole("button", { name: "Renovation", exact: true }).evaluate((button) => {
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        return range.getClientRects().length;
+      });
+      assert.equal(lines, 1, "Renovation remains on one line in the empty slot");
+    }
     const metrics = await root.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       const boardRect = element.querySelector("main").getBoundingClientRect();
