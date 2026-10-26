@@ -13,7 +13,7 @@ export class HaltedSceneTurn extends Error {
 /** Administrative adjudication in the existing System exchange, never character knowledge. */
 export const SCENE_HALT_INSTRUCTION =
   'Also return halt:{reason:"none|time|activity|condition|world",quote:"exact current input or draft substring",appointments:[{date:"YYYY-MM-DD",minute:null,quote:"exact current input or draft substring"}]}. ' +
-  "Check BOTH the original input and draft before accepting any part. Use reason none and quote empty for a supported turn. " +
+  'Check BOTH the original input and draft before accepting any part. A supported turn MUST return all three fields: halt:{reason:"none",quote:"",appointments:[]}. Never omit appointments, even when empty. ' +
   "Preserve the captured encounter until the player chooses Conclude; never return sceneEnded. Elapsed time between messages is not fictional silence or waiting. Ordinary speech, thoughts, gestures, local actions, short narrative pacing, hypotheticals, remembered reports and an NPC declining a request are not HALT. " +
   "Use time for an actual calendar rewind/advance or time travel; activity for declaring hours/days of completed participation or a large time skip without an existing supported mechanic. An old Scene never accrues additional narrative time or capabilities by waiting. " +
   "Use condition for an asserted ongoing state the game cannot enforce, including coma, unconsciousness that continues beyond the encounter, or player-authored compulsory NPC cooperation. A request, intention or feasible attempt is not its guaranteed outcome. Do not turn rejected narration into speech, a dream, an unsuccessful spell or another action. " +

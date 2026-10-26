@@ -356,10 +356,9 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
-      (context.preservation ? SCENE_HALT_INSTRUCTION : "") +
-        (residentActionsOmitted
-          ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
-          : "") +
+      (residentActionsOmitted
+        ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
+        : "") +
         (residentActions
           ? (actionContractV2
               ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
@@ -377,6 +376,7 @@ export function createSemanticService(ports: SemanticPorts) {
         (combined
           ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
           : "") +
+        (context.preservation ? 'halt:{reason:"none",quote:"",appointments:[]},' : "") +
         "consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
         (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
         "}. Return exactly one JSON object. " +
@@ -386,8 +386,11 @@ export function createSemanticService(ports: SemanticPorts) {
         (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
         "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
         "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
-        "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures, contactEnd and sceneEnded sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact; ending an in-person visit is sceneEnded with exact resident farewell speech, or omit the event when unsupported. " +
-        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], sceneEnded:{source}, residenceRequest:{source,venueId}, residenceDecision:{source,approved}, renovationRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
+        "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures and contactEnd sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact. " +
+        (context.preservation
+          ? "Only the player's Conclude ends this Scene; never return sceneEnded. "
+          : "Ending an in-person visit is sceneEnded:{source} with exact resident farewell speech, or omit the event when unsupported. ") +
+        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,approved}, renovationRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
         (actionContractV2
           ? ""
           : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
@@ -413,7 +416,8 @@ export function createSemanticService(ports: SemanticPorts) {
         'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist. Relationship changes additionally use contact:boolean for substantive actual shared contact; private opinion changes alone are not contact.' +
         (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
         " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
-        (scene.operation?.input.developmentVersion === 1 ? DEVELOPMENT_SCENE_INSTRUCTION : ""),
+        (scene.operation?.input.developmentVersion === 1 ? DEVELOPMENT_SCENE_INSTRUCTION : "") +
+        (context.preservation ? SCENE_HALT_INSTRUCTION : ""),
       (raw, hash, savedInput): SemanticExchange => {
         if (savedInput.context.preservation) {
           const outcome = readSceneHalt(
