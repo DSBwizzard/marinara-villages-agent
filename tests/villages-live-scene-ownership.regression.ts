@@ -33,7 +33,7 @@ function fixture(name: string) {
     active: ActiveVenue = { sessionId: "same", placeId: "venue" },
     sessions = new Map<string, VenueScene>(),
     world = coerceVillageState({
-      version: 4,
+      version: 5,
       ...defaultVillageState(),
       seed: name,
       foundedAt: stamp,

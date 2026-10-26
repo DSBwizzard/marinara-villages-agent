@@ -192,7 +192,7 @@ export function createWishProgress(ports: WishProgressPorts) {
         if (!input.sceneId.startsWith("project:"))
           await sceneQueries().processSavedExchange(input.sceneId, input.submissionId);
       } finally {
-        const current = await readVillageState();
+        const current = await readVillageState({ memories: true });
         if (current.seed === input.seed && pendingWishMemories(current, input.sceneId, input.submissionId).length)
           await mutateVillageState((state) => {
             if (state.seed === input.seed)
@@ -317,7 +317,7 @@ export function createWishProgress(ports: WishProgressPorts) {
 
   async function processWishExchange(scene: VenueScene, submissionId: string): Promise<Partial<DomainProcessing>> {
     const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
-    let state = await readVillageState();
+    let state = await readVillageState({ memories: true });
     if (state.seed !== scene.villageSeed) return { status: "rejected", reason: "Village identity changed" };
     if (semanticContinued(state, scene.id, submissionId, "wishes"))
       return { status: "rejected", reason: "Continued without this failed update" };
@@ -451,7 +451,7 @@ export function createWishProgress(ports: WishProgressPorts) {
           };
         });
         receiptIds.push(id);
-        state = await readVillageState();
+        state = await readVillageState({ memories: true });
         continue;
       }
       if (proposal.intent === "journal") {
@@ -508,7 +508,7 @@ export function createWishProgress(ports: WishProgressPorts) {
           };
         });
         receiptIds.push(id);
-        state = await readVillageState();
+        state = await readVillageState({ memories: true });
         continue;
       }
       const current = currentWish(state, proposal, villageNow().getTime(), scene.id);
@@ -764,7 +764,7 @@ export function createWishProgress(ports: WishProgressPorts) {
       if (!missing) failure.cause = "invalid_citation";
       return { status: "failed", receiptIds, reason, failure };
     }
-    const committed = await readVillageState();
+    const committed = await readVillageState({ memories: true });
     const rejected = receiptIds
       .map((id) => committed.exchangeReceipts[id])
       .filter((receipt) => receipt?.status === "rejected");

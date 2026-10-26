@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import {
@@ -386,10 +387,16 @@ async function scopedDispatch() {
   const ownerA = createActivationScope(),
     ownerB = createActivationScope();
   const releaseA = ownerA.run(() =>
-    configureVillagesRuntime({ persistence: { documents: a.documents }, logger: a.logger } as any),
+    configureVillagesRuntime({
+      persistence: { documents: villageFixtureDocuments(a.documents) },
+      logger: a.logger,
+    } as any),
   );
   const releaseB = ownerB.run(() =>
-    configureVillagesRuntime({ persistence: { documents: b.documents }, logger: b.logger } as any),
+    configureVillagesRuntime({
+      persistence: { documents: villageFixtureDocuments(b.documents) },
+      logger: b.logger,
+    } as any),
   );
   const ownedHandler = (f: ReturnType<typeof fixture>): Handler => ({
     generate: async (value) => {

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
@@ -101,7 +102,7 @@ async function main() {
   const migrated = coerceVillageState({
     ...defaultVillageState(),
     backgroundPace: "quiet",
-    version: 4,
+    version: 5,
     wishSystemVersion: 3,
     foundedAt: "2026-09-01T07:00:00.000Z",
     lastHappeningKey: "2:morning",
@@ -128,7 +129,7 @@ async function main() {
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 4,
+      version: 5,
       wishSystemVersion: 3,
       backgroundPace: "off",
       refreshClocks: [],
@@ -138,7 +139,7 @@ async function main() {
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 4,
+      version: 5,
       wishSystemVersion: 3,
       refreshClocks: ["morning", "evening"],
     }).backgroundPace,
@@ -189,7 +190,7 @@ async function main() {
       error() {},
       debugOverride() {},
     },
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: {
       async listCharacters() {
         return [];

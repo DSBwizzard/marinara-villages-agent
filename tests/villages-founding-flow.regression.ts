@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { foundingDraftDescription } from "../packages/villages/src/client/features/founding/draft-model.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
@@ -292,7 +293,7 @@ async function main() {
   }
 
   assert.equal(
-    coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
+    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
       .foundingPreparation,
     null,
     "older villages remain ready",
@@ -300,7 +301,7 @@ async function main() {
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 4,
+      version: 5,
       wishSystemVersion: 3,
       foundingPreparation: { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     }).foundingPreparation,
@@ -310,7 +311,7 @@ async function main() {
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 4,
+      version: 5,
       wishSystemVersion: 3,
       foundingPreparation: {
         status: "pending",
@@ -339,14 +340,14 @@ async function main() {
     "the active stage and bounded retry count survive a process restart",
   );
   assert.equal(
-    coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3 }).foundingGuidance,
+    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }).foundingGuidance,
     "",
     "older villages have no narrative direction",
   );
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 4,
+      version: 5,
       wishSystemVersion: 3,
       foundingGuidance: "Favor quiet bonds.",
     }).foundingGuidance,
@@ -420,7 +421,7 @@ async function main() {
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
   const noMapSetup = createFoundingSetup({
     ...setupPorts,
-    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3 }),
+    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }),
     prepareVillageMap: async () => ({
       image: "",
       size: null,
@@ -679,7 +680,7 @@ async function foundingConnectionOwnership() {
       let held = false;
       const state = coerceVillageState({
         ...defaultVillageState(),
-        version: 4,
+        version: 5,
         wishSystemVersion: 3,
         seed: "equal-founding-seed",
         name: label,
@@ -840,7 +841,9 @@ async function foundingConnectionOwnership() {
       const release = scope.run(() =>
         configureVillagesRuntime(
           nativePorts<CapabilityRuntimeHost>({
-            persistence: nativePorts<CapabilityRuntimeHost["persistence"]>({ documents }),
+            persistence: nativePorts<CapabilityRuntimeHost["persistence"]>({
+              documents: villageFixtureDocuments(documents),
+            }),
             languageModels: models,
             resources: {
               async listCharacters() {

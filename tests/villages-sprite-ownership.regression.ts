@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
@@ -36,7 +37,7 @@ const image = "data:image/png;base64," + PNG.sync.write(source).toString("base64
 const village = (name: string) =>
   coerceVillageState({
     ...defaultVillageState(),
-    version: 4,
+    version: 5,
     name,
     foundedAt: new Date().toISOString(),
     wishSystemVersion: 3,
@@ -238,7 +239,7 @@ try {
       two = createActivationScope();
     const host = (api: object) =>
       ({
-        persistence: { documents: api },
+        persistence: { documents: villageFixtureDocuments(api) },
         resources: { listCharacters: async () => [] },
         logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
         isDebugAgentsEnabled: () => false,

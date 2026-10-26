@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageConnectionSettings } from "../packages/villages/src/server/domain/rules/connection-rules.js";
 // Villages — proof for the three connections the village spends model calls on.
 //
@@ -545,7 +546,7 @@ async function main() {
           },
         },
         persistence: {
-          documents,
+          documents: villageFixtureDocuments(documents),
           async listChats() {
             return [];
           },

@@ -136,18 +136,22 @@ export function captureSceneContinuity(state: VillageState, scene: VenueScene, n
 }
 
 /** Historical presentation plus this Scene's committed evidence; never use for a world write. */
-export function sceneContinuityView(current: VillageState, scene: VenueScene): VillageState {
+export function sceneContinuityView(current: VillageState, scene: VenueScene, includeMemories = true): VillageState {
   const context = scene.continuity;
   if (!context || context.seed !== current.seed || scene.villageSeed !== current.seed) return current;
   const view = {
     ...current,
     ...structuredClone(context.facts),
     development: structuredClone(context.facts.development),
-    memories: current.memoryScenes[scene.id]
-      ? sceneMemories(current, scene.id)
-      : scene.status === "closed"
-        ? { format: 1 as const, revision: 0, records: [] }
-        : sceneMemories(current, scene.id),
+    ...(includeMemories
+      ? {
+          memories: current.memoryScenes[scene.id]
+            ? sceneMemories(current, scene.id)
+            : scene.status === "closed"
+              ? { format: 1 as const, revision: 0, records: [] }
+              : sceneMemories(current, scene.id),
+        }
+      : {}),
   };
   // Artwork is a presentation setting, not a later fictional event.
   for (const resident of view.villagers) {

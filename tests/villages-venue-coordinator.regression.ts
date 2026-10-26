@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
 import {
   venueSavedCheckpoint,
@@ -57,7 +58,7 @@ const documents = {
   },
 };
 const release = configureVillagesRuntime({
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   logger: { info() {}, warn() {}, debug() {}, error() {}, debugOverride() {} },
 } as any);
 const row = (id: string) => records.get(`villages-venue-visit-${id}`);

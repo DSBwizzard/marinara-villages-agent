@@ -112,7 +112,7 @@ function fixture(image = dataUrl(small)) {
       }),
     },
     writes: createSpriteWrites(),
-    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 4 }),
+    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 5 }),
   } as unknown as SpriteSetupPorts);
   return {
     service,

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { knownWishes } from "../packages/villages/src/server/domain/rules/wish-journal.js";
 import { configureSceneQueries, sceneQueries } from "../packages/villages/src/server/features/scenes/services.js";
 import assert from "node:assert/strict";
@@ -70,7 +71,7 @@ async function main() {
   records.set("villages-village", { id: "villages-village", kind: "village", data: state, revision: 1 });
   const release = configureVillagesRuntime({
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_p: string, id: string) {
           return structuredClone(records.get(id) ?? null);
         },
@@ -87,7 +88,7 @@ async function main() {
           records.set(value.id, row);
           return row;
         },
-      },
+      }),
     },
     languageModels: {
       async resolveForRequest() {
@@ -309,7 +310,7 @@ async function main() {
     const beforeContinuity = calls;
     await processWishExchange(next, "next-turn");
     await settleBackgroundWork();
-    const completed = await readVillageState();
+    const completed = await readVillageState({ memories: true });
     assert.equal(
       historyObserved,
       true,

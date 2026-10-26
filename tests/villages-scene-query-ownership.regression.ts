@@ -89,7 +89,7 @@ function ownedScene(owner: string): VenueScene {
 }
 function fixture(name: string) {
   const world = coerceVillageState({
-    version: 4,
+    version: 5,
     ...defaultVillageState(),
     seed: name,
     foundedAt: stamp,

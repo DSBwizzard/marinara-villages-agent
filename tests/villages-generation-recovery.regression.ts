@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -10,7 +11,7 @@ const release = configureVillagesRuntime({
   logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
   isDebugAgentsEnabled: () => false,
   getAgentConfig: async () => ({ connectionId: null }),
-  persistence: { documents: { getById: async () => null } },
+  persistence: { documents: villageFixtureDocuments({ getById: async () => null }) },
   languageModels: {
     async resolveForRequest() {
       return {

@@ -314,6 +314,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     for (const [id, expiry] of sessions) if (expiry <= now) sessions.delete(id);
     return sessions.size > 0;
   }
+  let resumingPresence: Promise<unknown> | null = null;
   async function villageBackgroundPresence<T = void>(
     sessionId: string,
     visible: boolean,
@@ -325,9 +326,25 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       pendingPresence.delete(sessionId);
       return;
     }
+    if (hasVillagePresence()) {
+      // Live sessions already passed resume catch-up. The deadline scheduler
+      // advances ongoing mechanics; a heartbeat only renews spending permission.
+      pendingPresence.delete(sessionId);
+      sessions.set(sessionId, presenceNow() + 90_000);
+      await recoverBackgroundWork();
+      return;
+    }
     const token = Symbol();
     pendingPresence.set(sessionId, token);
-    const advanced = await options.beforeResume?.();
+    if (!resumingPresence) {
+      const task: Promise<unknown> = Promise.resolve()
+        .then(() => options.beforeResume?.())
+        .finally(() => {
+          if (resumingPresence === task) resumingPresence = null;
+        });
+      resumingPresence = task;
+    }
+    const advanced = (await resumingPresence) as T | undefined;
     // A hidden message can overtake a slow catch-up. Never restore that stale permission.
     if (pendingPresence.get(sessionId) !== token) return advanced;
     pendingPresence.delete(sessionId);

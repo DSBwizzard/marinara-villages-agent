@@ -1,3 +1,5 @@
+import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { readFile } from "node:fs/promises";
@@ -306,7 +308,7 @@ const model = {
   },
 };
 const runtime = {
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   resources: {
     listCharacters: async () =>
       people.map(({ id, name }) => ({ id, revision: 1, data: { id, name, description: "An authored resident." } })),
@@ -628,7 +630,7 @@ try {
     { memoryChanges: [durable] },
   );
   assert(
-    !coerceVillageState(records.get("villages-village").data).memories.records.some(
+    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
       (row: any) => row.text === durable.text,
     ),
     "Narration alone has no fresh System write screen",
@@ -664,7 +666,7 @@ try {
     "Retired metadata has no memory reader",
   );
   assert(
-    !coerceVillageState(records.get("villages-village").data).memories.records.some(
+    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
       (row: any) => row.text === passingText,
     ),
   );
@@ -724,7 +726,7 @@ try {
   const pending = state().submissions.find((row: any) => row.id === "durable-unresolved");
   assert.equal(pending.processing.domains.memories.status, "rejected");
   assert(
-    !coerceVillageState(records.get("villages-village").data).memories.records.some(
+    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
       (row: any) => row.text === rejectedText,
     ),
   );
@@ -864,7 +866,7 @@ try {
   );
   assert.equal(state().submissions.at(-1).processing.domains.memories.status, "rejected");
   assert(
-    !coerceVillageState(records.get("villages-village").data).memories.records.some(
+    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
       (row: any) => row.text === falseFact,
     ),
   );
@@ -1245,12 +1247,12 @@ try {
   assert.equal(state().submissions.at(-1).semanticReady, true);
   assert.equal(state().submissions.at(-1).processing.domains.memories.status, "applied");
   assert(
-    coerceVillageState(records.get("villages-village").data).memories.records.some(
+    fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
       (row: any) => row.text === "Aqua suggested discussing the harbour tomorrow.",
     ),
   );
   assert(
-    !JSON.stringify(coerceVillageState(records.get("villages-village").data).memories.records).includes(
+    !JSON.stringify(fixtureVillageState(records.get("villages-village").data, records).memories.records).includes(
       "FORGED NARRATOR AUTHORITY",
     ),
   );

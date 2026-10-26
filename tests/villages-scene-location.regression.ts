@@ -11,7 +11,7 @@ import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js
 
 const at = "2026-10-23T12:00:00.000Z";
 const world = coerceVillageState({
-  version: 4,
+  version: 5,
   ...defaultVillageState(),
   seed: "location-regression",
   venues: [

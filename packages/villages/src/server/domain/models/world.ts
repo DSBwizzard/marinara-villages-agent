@@ -1028,6 +1028,7 @@ export type VillageScenarioImprint = {
 export type VillageState = {
   memories: import("./memories.js").MemoryCollection;
   memoryScenes: Record<string, import("./memories.js").MemorySceneState>;
+  memoryReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
   development?: import("./development-model.js").DevelopmentState;
   opening?: import("../rules/opening-project.js").OpeningRecord;
   semanticRequestReceipts?: Record<string, string>;
@@ -1048,7 +1049,7 @@ export type VillageState = {
   wishRefillIntents: Record<string, { id: string; settled: string }>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
   sceneWishProtections?: Record<string, import("../rules/scene-wish-protection.js").SceneWishProtection>;
-  version: 4;
+  version: 5;
   /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;

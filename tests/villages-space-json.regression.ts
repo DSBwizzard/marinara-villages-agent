@@ -8,7 +8,7 @@ import { createDocumentMutator } from "../packages/villages/src/server/adapters/
 async function main() {
   const world = coerceVillageState({
     ...defaultVillageState(),
-    version: 4,
+    version: 5,
     seed: "fixture",
     name: "Test",
     setting: "Test",

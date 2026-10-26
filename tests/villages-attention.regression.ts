@@ -1,3 +1,5 @@
+import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { mock } from "node:test";
 // Keep the scheduled cast on the seeded day; async timers remain real.
@@ -149,7 +151,7 @@ const release = configureVillagesRuntime({
     },
   },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_package: string, id: string) {
         return records.get(id) ?? null;
       },
@@ -194,7 +196,7 @@ const release = configureVillagesRuntime({
       async remove(_package: string, id: string) {
         return records.delete(id);
       },
-    },
+    }),
   },
   languageModels: {
     async resolveForRequest() {
@@ -1001,7 +1003,7 @@ try {
     assert.ok(!line.content.includes("PRIVATE SECRET"));
   assert.ok(noise.session.lines.find((line) => line.content === mixed)!.heardBy.every((id) => id === "local"));
   assert.ok(
-    !coerceVillageState(records.get("villages-village").data).memories.records.some((memory: any) =>
+    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some((memory: any) =>
       memory.text.includes("PRIVATE SECRET"),
     ),
   );
@@ -1457,7 +1459,7 @@ try {
   const priorMigration = await activeVenueSession();
   if (priorMigration) await discardVenueVisitDebug(priorMigration.id);
   scene = await open();
-  const migrationWorld = coerceVillageState(records.get("villages-village").data);
+  const migrationWorld = fixtureVillageState(records.get("villages-village").data, records);
   delete records.get("villages-venue-visit-" + scene.id).data.sceneAttendance.layout;
   const migrationSnapshot = structuredClone(scene);
   delete migrationSnapshot.sceneAttendance.layout;
@@ -1498,7 +1500,7 @@ try {
   );
   assert.deepEqual(counts, migratedBefore, "migrated topology and paid results survive recovery after a live map edit");
   await discardVenueVisitDebug(migratedReply.session.id);
-  await mutateVillageState((world) => Object.assign(world, migrationWorld));
+  await mutateVillageState((world) => Object.assign(world, migrationWorld), { memories: true });
   behavior = "local-end";
   const beforeEnd = await activeVenueSession();
   if (beforeEnd) await discardVenueVisitDebug(beforeEnd.id);
@@ -1508,7 +1510,7 @@ try {
   behavior = "answer";
   const priorMany = await activeVenueSession();
   if (priorMany) await discardVenueVisitDebug(priorMany.id);
-  const beforeManyWorld = coerceVillageState(records.get("villages-village").data);
+  const beforeManyWorld = fixtureVillageState(records.get("villages-village").data, records);
   await mutateVillageState((world) => {
     const template = world.villagers.find((person) => person.characterId === "faraway")!;
     for (let index = 0; index < 8; index++) {
@@ -1533,7 +1535,7 @@ try {
   await send(many.session, "venue-wide-many", "I set off an explosion.");
   assert.deepEqual(counts, manyRetry, "many-listener replay reuses its paid results");
   await discardVenueVisitDebug(many.session.id);
-  await mutateVillageState((world) => Object.assign(world, beforeManyWorld));
+  await mutateVillageState((world) => Object.assign(world, beforeManyWorld), { memories: true });
   scene = await open();
   refuseSceneContext = true;
   const fitBefore = { ...counts };

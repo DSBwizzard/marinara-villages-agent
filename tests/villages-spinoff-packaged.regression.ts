@@ -1,4 +1,5 @@
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -151,7 +152,7 @@ const model = {
 };
 const runtime = {
   persistence: {
-    documents,
+    documents: villageFixtureDocuments(documents),
     getChat: async () => ({
       id: "engine",
       personaId: "persona",
@@ -294,7 +295,7 @@ try {
   assert.equal(prepared.spinoff.memories.length, 1);
   await post("/spinoffs/resolve", { sessionId: "source", acceptedIds: [prepared.spinoff.memories[0].id] });
   assert.equal((await readScene()).spinoffPending, false, "the built Scene API stops recovery after resolution");
-  const saved = coerceVillageState(records.get("villages-village")!.data);
+  const saved = fixtureVillageState(records.get("villages-village")!.data, records);
   assert.equal(saved.memories.records.filter((row) => row.text === prepared.spinoff.memories[0].text).length, 1);
   // Knowledge reads remain inert even when the world clock needs reconciliation.
   const worldRecord = records.get("villages-village")!;

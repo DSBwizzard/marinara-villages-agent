@@ -111,33 +111,36 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
 
   async function retireResidentWish(characterId: string, wishId: string): Promise<void> {
     await outsideVenueOperation(async () => {
-      await mutateVillageState((state) => {
-        const resident = state.villagers.find((person) => person.characterId === characterId);
-        const wish = resident?.agenda?.wishes.find((item) => item.id === wishId);
-        if (!resident?.agenda || !wish?.learnedAt) throw notFound("That discovered wish is not active.");
-        resident.agenda.wishes = resident.agenda.wishes.filter((item) => item.id !== wishId);
-        const at = villageNow().toISOString();
-        rememberDomainFact(state, {
-          id: `wish-retired:${characterId}:${wishId}`,
-          at,
-          recordedAt: at,
-          text: "You retired this Wish.",
-          subjects: [characterId],
-          knowers: ["player"],
-          domainRef: { kind: "wish", id: wishId, characterId },
-          event: true,
-          disclosed: { status: "retired" },
-        });
-        removeWishActivities(resident, wishId, villageNow());
+      await mutateVillageState(
+        (state) => {
+          const resident = state.villagers.find((person) => person.characterId === characterId);
+          const wish = resident?.agenda?.wishes.find((item) => item.id === wishId);
+          if (!resident?.agenda || !wish?.learnedAt) throw notFound("That discovered wish is not active.");
+          resident.agenda.wishes = resident.agenda.wishes.filter((item) => item.id !== wishId);
+          const at = villageNow().toISOString();
+          rememberDomainFact(state, {
+            id: `wish-retired:${characterId}:${wishId}`,
+            at,
+            recordedAt: at,
+            text: "You retired this Wish.",
+            subjects: [characterId],
+            knowers: ["player"],
+            domainRef: { kind: "wish", id: wishId, characterId },
+            event: true,
+            disclosed: { status: "retired" },
+          });
+          removeWishActivities(resident, wishId, villageNow());
 
-        if (resident.wishLifecycle) {
-          const need = resident.wishLifecycle.needs.find((need) => need.id === wish.need?.id);
-          if (need) need.state = "expired";
-        }
-        state.progressTasks = state.progressTasks.filter(
-          (task) => task.definition.owner.kind !== "wish" || task.definition.owner.id !== wishId,
-        );
-      });
+          if (resident.wishLifecycle) {
+            const need = resident.wishLifecycle.needs.find((need) => need.id === wish.need?.id);
+            if (need) need.state = "expired";
+          }
+          state.progressTasks = state.progressTasks.filter(
+            (task) => task.definition.owner.kind !== "wish" || task.definition.owner.id !== wishId,
+          );
+        },
+        { memories: true },
+      );
     });
   }
 
@@ -160,43 +163,46 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       throw notFound("That completed wish is not in this villager's record.");
     if (outcome.correctedAt) return;
     const previous = await previousFulfilledNeed(characterId, outcome.needId, outcome.sequence);
-    await mutateVillageState((state) => {
-      const resident = state.villagers.find((entry) => entry.characterId === characterId),
-        lifecycle = resident?.wishLifecycle;
-      if (!resident || !lifecycle) throw notFound("That villager does not live here.");
-      if (state.exchangeReceipts[outcome.memoryId]?.wishOutcome === "corrected") return;
-      if (lifecycle.pendingOutcomes.some((row) => row.sequence === outcome.sequence && row.correctedAt)) return;
-      invalidateWishCompletion(state, outcome.memoryId, now.toISOString());
-      const corrected = { ...outcome, correctedAt: now.toISOString() };
-      lifecycle.pendingOutcomes = [
-        ...lifecycle.pendingOutcomes.filter((entry) => entry.sequence !== outcome.sequence),
-        corrected,
-      ];
-      const need = lifecycle.needs.find((entry) => entry.id === outcome.needId);
-      if (need) {
-        need.state = "corrected";
-        need.latestAt = now.toISOString();
-      }
-      if (need?.lastOutcomeSequence === outcome.sequence) {
-        need.lastFulfilledAt = previous?.fulfilledAt ?? "";
-        need.lastOutcomeSequence = previous?.sequence;
-      }
-      if (
-        resident.agenda &&
-        resident.agenda.wishes.length < MAX_ACTIVE &&
-        !resident.agenda.wishes.some((entry) => entry.id === wishId)
-      ) {
-        const wish = coerceWish({ ...outcome.wish, need: outcome.wish.need }, wishId, now.toISOString());
-        if (wish) {
-          // New evidence and a fresh task are required after withdrawing the old completion.
-          wish.addedAt = now.toISOString();
-          wish.learnedAt = outcome.wish.learnedAt;
-          wish.learnedLineIds = outcome.wish.learnedLineIds;
-          rememberWishNeed(resident, wish, outcome.needId);
-          resident.agenda.wishes.push(wish);
+    await mutateVillageState(
+      (state) => {
+        const resident = state.villagers.find((entry) => entry.characterId === characterId),
+          lifecycle = resident?.wishLifecycle;
+        if (!resident || !lifecycle) throw notFound("That villager does not live here.");
+        if (state.exchangeReceipts[outcome.memoryId]?.wishOutcome === "corrected") return;
+        if (lifecycle.pendingOutcomes.some((row) => row.sequence === outcome.sequence && row.correctedAt)) return;
+        invalidateWishCompletion(state, outcome.memoryId, now.toISOString());
+        const corrected = { ...outcome, correctedAt: now.toISOString() };
+        lifecycle.pendingOutcomes = [
+          ...lifecycle.pendingOutcomes.filter((entry) => entry.sequence !== outcome.sequence),
+          corrected,
+        ];
+        const need = lifecycle.needs.find((entry) => entry.id === outcome.needId);
+        if (need) {
+          need.state = "corrected";
+          need.latestAt = now.toISOString();
         }
-      }
-    });
+        if (need?.lastOutcomeSequence === outcome.sequence) {
+          need.lastFulfilledAt = previous?.fulfilledAt ?? "";
+          need.lastOutcomeSequence = previous?.sequence;
+        }
+        if (
+          resident.agenda &&
+          resident.agenda.wishes.length < MAX_ACTIVE &&
+          !resident.agenda.wishes.some((entry) => entry.id === wishId)
+        ) {
+          const wish = coerceWish({ ...outcome.wish, need: outcome.wish.need }, wishId, now.toISOString());
+          if (wish) {
+            // New evidence and a fresh task are required after withdrawing the old completion.
+            wish.addedAt = now.toISOString();
+            wish.learnedAt = outcome.wish.learnedAt;
+            wish.learnedLineIds = outcome.wish.learnedLineIds;
+            rememberWishNeed(resident, wish, outcome.needId);
+            resident.agenda.wishes.push(wish);
+          }
+        }
+      },
+      { memories: true },
+    );
     await flushWishOutcomes();
   }
 

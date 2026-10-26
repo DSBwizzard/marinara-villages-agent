@@ -104,7 +104,7 @@ function writerFixture() {
 
 await runCase("memories-runtime/schema", () => {
   const state = defaultVillageState();
-  assert.equal(state.version, 4);
+  assert.equal(state.version, 5);
   assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(state))).memories, state.memories);
   const missing = structuredClone(state);
   delete (missing as any).memories;

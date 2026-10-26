@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   startBackgroundWork,
@@ -111,7 +112,7 @@ async function archiveConnectionOwnership() {
       at = new Date().toISOString();
     const state = coerceVillageState({
       ...defaultVillageState(),
-      version: 4,
+      version: 5,
       seed: "equal-archive-seed",
       timeZone: "UTC",
       clock: { revision: 1, trustedAt: at, recovery: null, replayUntilDate: "", shiftTotalMs: 0 },
@@ -243,7 +244,7 @@ async function archiveConnectionOwnership() {
     };
     const release = scope.run(() =>
       configureVillagesRuntime({
-        persistence: { documents },
+        persistence: { documents: villageFixtureDocuments(documents) },
         getAgentConfig: async () => {
           providerAccess++;
           throw new Error("Archiving must not resolve a model");
@@ -512,7 +513,7 @@ async function archiveConnectionOwnership() {
       clear = installDefaultActivation(owned.scope, () => {});
     try {
       const exact = new Error("exact archive " + target + " failure");
-      await owned.scope.run(() => readVillageState());
+      await owned.scope.run(() => readVillageState({ memories: true }));
       owned.fail(exact, target);
       await assert.rejects(flushWishOutcomes(), (error) => error === exact);
       assert.equal(owned.records.get("villages-village").data.villagers[0].wishLifecycle.pendingOutcomes.length, 1);
@@ -540,7 +541,7 @@ async function archiveConnectionOwnership() {
     const owned = fixture("A"),
       clear = installDefaultActivation(owned.scope, () => {});
     try {
-      await owned.scope.run(() => readVillageState());
+      await owned.scope.run(() => readVillageState({ memories: true }));
       owned.fail(new Error("lost " + target + " acknowledgement"), target, true);
       if (target === "ack") await assert.rejects(flushWishOutcomes(), /lost ack acknowledgement/);
       else await flushWishOutcomes();
@@ -629,7 +630,7 @@ function seed(count = 1): VillageState {
   optionalIdea = false;
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 4,
+    version: 5,
     wishSystemVersion: 3,
     seed: "wish-test",
     name: "Willow",
@@ -689,7 +690,7 @@ const release = configureVillagesRuntime({
   isDebugAgentsEnabled: () => debugEnabled,
   getAgentConfig: async () => ({ connectionId: null }),
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_packageId: string, id: string) {
         return structuredClone(docs.get(id) ?? null);
       },
@@ -700,7 +701,7 @@ const release = configureVillagesRuntime({
         return true;
       },
       async list(_packageId: string, kind: string) {
-        if (kind === "background-work" || kind === "background-connection")
+        if (kind === "background-work" || kind === "background-connection" || kind === "memory-payload-intent")
           return [...docs.values()].filter((entry) => entry.kind === kind).map((entry) => structuredClone(entry));
         listCalls++;
         throw new Error("Unpaginated history reads are forbidden");
@@ -729,7 +730,7 @@ const release = configureVillagesRuntime({
         docs.set(input.id, record);
         return structuredClone(record);
       },
-    },
+    }),
   },
   languageModels: {
     async resolveForRequest() {
@@ -820,7 +821,7 @@ async function run() {
       goalText = text;
       neutralWordingResult = false;
       await reconcileWishLifecycle(now, false, () => now);
-      assert.equal((await readVillageState()).villagers[0].agenda!.wishes.length, 0);
+      assert.equal((await readVillageState({ memories: true })).villagers[0].agenda!.wishes.length, 0);
       const failure = (await backgroundWorkSummaries()).find((job) => job.kind === "wish");
       assert.equal(failure?.failure?.cause, "unsupported_outcome");
       assert.match(failure?.error ?? "", /neutrally/);
@@ -832,13 +833,13 @@ async function run() {
         await retryBackgroundJob(failure!.id, failure!.attempt, "wording-retry");
         await settleBackgroundWork();
         assert.equal(modelCalls.length, 2, "deliberate retry replaces only the rejected response");
-        assert.equal((await readVillageState()).villagers[0].agenda!.wishes[0]?.wish, goalText);
+        assert.equal((await readVillageState({ memories: true })).villagers[0].agenda!.wishes[0]?.wish, goalText);
       }
     }
     seed();
     goalText = "Identification of the tune stuck in their head";
     await reconcileWishLifecycle(now, false, () => now);
-    assert.equal((await readVillageState()).villagers[0].agenda!.wishes[0]?.wish, goalText);
+    assert.equal((await readVillageState({ memories: true })).villagers[0].agenda!.wishes[0]?.wish, goalText);
 
     // Replay and daily fairness are enforced by persistent reservations, not process memory.
     seed(3);
@@ -857,7 +858,7 @@ async function run() {
       ]),
     );
     assert.equal(modelCalls.length, 2, "concurrent workers spend one request for each empty-history resident");
-    let state = await readVillageState();
+    let state = await readVillageState({ memories: true });
     assert.equal(state.villagers.filter((resident) => resident.agenda!.wishes.length === 1).length, 2);
     assert.equal(
       (await reserveWishAttempts(now)).length,
@@ -873,18 +874,18 @@ async function run() {
     assert.equal((await reserveWishAttempts(nextEarly)).length, 0, "24-hour interval is independent of the date");
     const nextDay = new Date(now.getTime() + WISH_DAY_MS);
     await reconcileWishLifecycle(nextDay, false, () => nextDay);
-    state = await readVillageState();
+    state = await readVillageState({ memories: true });
     assert.ok(state.villagers.every((resident) => resident.agenda!.wishes.length <= 2));
     const farLater = new Date(now.getTime() + 50 * WISH_DAY_MS);
     await reconcileWishLifecycle(farLater, false, () => farLater);
     assert.ok(
-      (await readVillageState()).villagers.every((resident) => resident.agenda!.wishes.length <= 2),
+      (await readVillageState({ memories: true })).villagers.every((resident) => resident.agenda!.wishes.length <= 2),
       "absence creates no backlog",
     );
     seed();
     mode = "none";
     await reconcileWishLifecycle(now, false, () => now);
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 0);
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.length, 0);
     await reconcileWishLifecycle(noon, false, () => noon);
     assert.equal(modelCalls.length, 1, "a quiet result spends the daily allowance");
     seed();
@@ -977,7 +978,7 @@ async function run() {
       assert.ok(venueOperationSignal());
       await reconcileWishLifecycle(now, false, () => now);
     });
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 1);
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.length, 1);
     assert.deepEqual((docs.get("villages-venue-visit-background-wish")!.data as any).operation.attempts, {});
 
     // Interrupted provider calls are not silently sent again; persisted candidates and verdicts replay.
@@ -1002,7 +1003,7 @@ async function run() {
     });
     await processWishAttempt(job.characterId, job.id, now, () => now);
     assert.equal(modelCalls.length, 0, "generated proposals without a matching verdict never spend a repair request");
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 0);
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.length, 0);
     seed();
     job = (await reserveWishAttempts(now))[0]!;
     await mutateVillageState((live) => {
@@ -1014,7 +1015,7 @@ async function run() {
     });
     await processWishAttempt(job.characterId, job.id, now, () => now);
     assert.equal(modelCalls.length, 0);
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 1);
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.length, 1);
     seed();
     onModel = async () => {
       await mutateVillageState((live) => {
@@ -1022,11 +1023,15 @@ async function run() {
       });
     };
     await reconcileWishLifecycle(now, false, () => now);
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 0, "stale generation cannot commit");
+    assert.equal(
+      (await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.length,
+      0,
+      "stale generation cannot commit",
+    );
     seed();
     await reconcileWishLifecycle(now, false, () => new Date(now.getTime() + WISH_DAY_MS));
     assert.equal(
-      (await readVillageState()).villagers[0]!.agenda!.wishes.length,
+      (await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.length,
       0,
       "a response crossing midnight cannot grant yesterday's wish",
     );
@@ -1051,7 +1056,7 @@ async function run() {
     await reconcileWishLifecycle(now, false, () => now);
     assert.equal(modelCalls.length, 1);
     assert.equal(
-      (await readVillageState()).villagers[0]!.wishLifecycle!.attempt!.inputTokens,
+      (await readVillageState({ memories: true })).villagers[0]!.wishLifecycle!.attempt!.inputTokens,
       null,
       "partial usage remains explicitly unavailable",
     );
@@ -1117,7 +1122,7 @@ async function run() {
       mode = "repeat";
       await reconcileWishLifecycle(now, false, () => now);
       assert.equal(
-        (await readVillageState()).villagers[0]!.agenda!.wishes.length,
+        (await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.length,
         0,
         "a settled paraphrase stays blocked",
       );
@@ -1131,18 +1136,22 @@ async function run() {
     comparisonId = "flowers";
     await reconcileWishLifecycle(now, false, () => now);
     assert.equal(
-      (await readVillageState()).villagers[0]!.agenda!.wishes[0]!.need!.id,
+      (await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes[0]!.need!.id,
       "flowers",
       "an eligible paraphrase reuses its server identity",
     );
     seed();
-    state = await readVillageState();
+    state = await readVillageState({ memories: true });
     rememberWishNeed(state.villagers[0]!, freshWish("boat", "Own a boat", "lasting"));
     state.villagers[0]!.wishLifecycle!.needs[0]!.lastFulfilledAt = now.toISOString();
     put(state);
     mode = "uncertain";
     await reconcileWishLifecycle(now, false, () => now);
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 0, "uncertain verdicts fail closed");
+    assert.equal(
+      (await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.length,
+      0,
+      "uncertain verdicts fail closed",
+    );
     const repairState = seed();
     const acquisition = rememberWishNeed(
       repairState.villagers[0]!,
@@ -1163,8 +1172,11 @@ async function run() {
       attempt.stage = "generated";
     });
     await processWishAttempt(job.characterId, job.id, now, () => now);
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes[0]!.id, "boat-repair");
-    assert.notEqual((await readVillageState()).villagers[0]!.agenda!.wishes[0]!.need!.id, acquisition.id);
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes[0]!.id, "boat-repair");
+    assert.notEqual(
+      (await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes[0]!.need!.id,
+      acquisition.id,
+    );
     assert.equal(modelCalls.length, 0, "a saved folded verdict needs no matching call");
 
     // Outcomes live outside the hot village; outbox writes and corrections are replayable.
@@ -1190,13 +1202,13 @@ async function run() {
     put(state);
     pageFailure = true;
     await assert.rejects(flushWishOutcomes(), /archive unavailable/);
-    assert.equal((await readVillageState()).villagers[0]!.wishLifecycle!.pendingOutcomes.length, 101);
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.wishLifecycle!.pendingOutcomes.length, 101);
     pageFailure = false;
     await flushWishOutcomes();
     await flushWishOutcomes();
     await flushWishOutcomes();
     await flushWishOutcomes();
-    assert.equal((await readVillageState()).villagers[0]!.wishLifecycle!.pendingOutcomes.length, 0);
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.wishLifecycle!.pendingOutcomes.length, 0);
     const latest = await readWishHistoryPage("r0");
     assert.equal(latest.entries.length, 1);
     assert.equal(latest.total, 101);
@@ -1212,7 +1224,9 @@ async function run() {
     await correctResidentWish("r0", "fulfilled", now);
     assert.ok((await readWishOutcome("r0", "fulfilled"))!.correctedAt);
     assert.equal(modelCalls.length, 0);
-    assert.ok((await readVillageState()).villagers[0]!.agenda!.wishes.some((wish) => wish.id === "fulfilled"));
+    assert.ok(
+      (await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.some((wish) => wish.id === "fulfilled"),
+    );
 
     await mutateVillageState((live) => {
       assert.ok(fulfillResidentWish(live.villagers[0]!, "fulfilled", now.toISOString(), "second-fulfillment-receipt"));
@@ -1315,7 +1329,7 @@ async function run() {
     await reconcileWishLifecycle(now, false, () => now);
     assert.equal(modelCalls.length, 0);
     assert.equal(
-      (await readVillageState()).villagers[0]!.agenda!.wishes.length,
+      (await readVillageState({ memories: true })).villagers[0]!.agenda!.wishes.length,
       0,
       "Off still permits deterministic expiry",
     );

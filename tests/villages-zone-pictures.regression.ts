@@ -31,7 +31,7 @@ const picture = (id: string): VillageVenueImage => ({
 const image = picture("original");
 function fixture() {
   return coerceVillageState({
-    version: 4,
+    version: 5,
     ...defaultVillageState(),
     wishSystemVersion: 3,
     venues: [

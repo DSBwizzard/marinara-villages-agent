@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { fixture } from "./fixtures/villages-projects.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -17,25 +18,60 @@ const ids = [
   await f.newProject("Two", "b", { x: 0.8, y: 0.8 }),
   await f.newProject("Three", "c", { x: 0.5, y: 0.8 }),
 ];
-let record = { data: structuredClone(f.state()), revision: 1 },
+const root = () => ({
+  id: "villages-village",
+  packageId: "villages",
+  kind: "village",
+  data: structuredClone(f.state()),
+  revision: 1,
+});
+let record = root(),
   conflicts = 0;
+const rows = new Map<string, any>();
+let preferredStatus = "",
+  preferredCommit = Promise.resolve(),
+  releasePreferred = () => {};
 const documents = {
-  getById: async () => structuredClone(record),
+  getById: async (_pkg: string, id: string) => structuredClone(id === record.id ? record : (rows.get(id) ?? null)),
+  list: async (_pkg: string, kind: string) =>
+    [...rows.values()].filter((row) => row.kind === kind).map((row) => structuredClone(row)),
+  create: async (input: any) => {
+    const row = { ...structuredClone(input), revision: 1 };
+    rows.set(input.id, row);
+    return structuredClone(row);
+  },
+  remove: async (_pkg: string, id: string, revision: number) => {
+    if (rows.get(id)?.revision !== revision) return false;
+    rows.delete(id);
+    return true;
+  },
   update: async (input: any) => {
+    if (input.id !== record.id) {
+      const old = rows.get(input.id);
+      if (!old || old.revision !== input.expectedRevision) return null;
+      const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+      rows.set(input.id, row);
+      return structuredClone(row);
+    }
+    const status = input.data.projects.find((project: any) => project.id === ids[0])?.status;
+    // Control the actual CAS ordering, independently of payload preparation latency.
+    if (preferredStatus && ["complete", "cancelled"].includes(status) && status !== preferredStatus)
+      await preferredCommit;
     if (input.expectedRevision !== record.revision) {
       conflicts++;
       return null;
     }
-    record = { data: structuredClone(input.data), revision: record.revision + 1 };
+    record = { ...record, data: structuredClone(input.data), revision: record.revision + 1 };
+    if (status === preferredStatus) releasePreferred();
     return structuredClone(record);
   },
 };
-const repository = createVillageRepository(() => documents as any);
+const repository = createVillageRepository(() => villageFixtureDocuments(documents as any));
 const service = createProjectLifecycle({
   draftNewVenueProject,
   draftRenovationProject,
-  mutateVillageState: async (update: any) => {
-    await repository.mutateAuthority(update);
+  mutateVillageState: async (update: any, options: any) => {
+    await repository.mutateAuthority(update, options);
     return repository.readAuthority();
   },
 } as any);
@@ -59,11 +95,17 @@ await service.createNewVenueProject(create);
 await service.createNewVenueProject(create);
 await assert.rejects(service.createNewVenueProject({ ...create, name: "Other" }), /already used/);
 for (const completeFirst of [false, true]) {
-  record = { data: structuredClone(f.state()), revision: 1 };
+  record = root();
+  rows.clear();
   await service.startProjectConstruction(ids[0], commands[0].body, now);
+  preferredStatus = completeFirst ? "complete" : "cancelled";
+  preferredCommit = new Promise<void>((resolve) => {
+    releasePreferred = resolve;
+  });
   const complete = () =>
-    repository.mutateAuthority((state) =>
-      reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)),
+    repository.mutateAuthority(
+      (state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)),
+      { memories: true },
     );
   const cancel = () =>
     service.cancelProject(ids[0], { requestId: "cancel", expectedRevision: f.get(ids[0]).lifecycle!.revision });
@@ -80,5 +122,6 @@ for (const completeFirst of [false, true]) {
       "late cancellation cannot undo completed work",
     );
   else assert.equal(record.data.projectWishOutbox.length, 0, "cancelled work emits no completion benefit");
+  preferredStatus = "";
 }
 console.log("Concurrent starts, CAS retries, request payload binding and cancellation/completion races passed.");

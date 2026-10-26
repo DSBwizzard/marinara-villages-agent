@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
@@ -65,7 +66,7 @@ const release = configureVillagesRuntime({
   logger: { debugOverride() {}, warn() {}, error() {}, info() {}, debug() {} },
   getAgentConfig: async () => ({ connectionId: "paid", settings: { imageConnectionId: "picture" } }),
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_p: string, id: string) {
         return structuredClone(records.get(id) ?? null);
       },
@@ -84,7 +85,7 @@ const release = configureVillagesRuntime({
         records.set(value.id, r);
         return r;
       },
-    },
+    }),
   },
   resources: {
     async listCharacters() {
@@ -108,7 +109,7 @@ globalThis.fetch = async () =>
   );
 const state = coerceVillageState({
   ...defaultVillageState(),
-  version: 4,
+  version: 5,
   wishSystemVersion: 3,
   seed: "seed",
   setting: "Village",

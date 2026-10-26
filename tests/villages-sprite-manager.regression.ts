@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
@@ -31,7 +32,7 @@ const records = new Map<string, any>(),
 const now = new Date().toISOString();
 const village = coerceVillageState({
   ...defaultVillageState(),
-  version: 4,
+  version: 5,
   wishSystemVersion: 3,
   name: "Preserved village",
   foundedAt: now,
@@ -82,7 +83,7 @@ const release = configureVillagesRuntime({
     },
   },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       getById: async (_pkg: string, id: string) => structuredClone(records.get(id) ?? null),
       list: async (_pkg: string, kind: string) =>
         structuredClone([...records.values()].filter((row) => row.kind === kind)),
@@ -99,7 +100,7 @@ const release = configureVillagesRuntime({
         records.set(input.id, row);
         return row;
       },
-    },
+    }),
   },
 } as any);
 function sourceImage(opaque = false, wide = false) {
@@ -165,7 +166,7 @@ globalThis.fetch = async (input: any, init: any = {}) => {
 async function run() {
   try {
     assert.equal((await readSpriteManager("mara")).artwork.length, 0);
-    assert.equal((await readVillageState()).villagers[0]!.sprite, null);
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.sprite, null);
     const original = sourceImage();
     const uploaded = await importSpriteArtwork("mara", {
       images: [
@@ -215,14 +216,17 @@ async function run() {
     assert.equal(saved.manager.defaultExpressionId, expression.id);
     assert.equal(saved.snapshot.villagers[0]!.sprite!.images.length, 1);
     assert.match(
-      describeSpriteExpressions((await readVillageState()).villagers[0]!.sprite),
+      describeSpriteExpressions((await readVillageState({ memories: true })).villagers[0]!.sprite),
       /Listening with controlled authority/,
     );
     assert.equal(
-      validateSpriteExpression((await readVillageState()).villagers[0]!.sprite, expression.id),
+      validateSpriteExpression((await readVillageState({ memories: true })).villagers[0]!.sprite, expression.id),
       expression.id,
     );
-    assert.equal(validateSpriteExpression((await readVillageState()).villagers[0]!.sprite, "unknown"), "");
+    assert.equal(
+      validateSpriteExpression((await readVillageState({ memories: true })).villagers[0]!.sprite, "unknown"),
+      "",
+    );
     saved = await save(saved.manager.artwork[1]!, expression.id, "Composed", "side");
     assert.equal(saved.manager.assignments.length, 2, "front and side share an expression");
     // One image may occupy both facings and more than one expression.
@@ -364,7 +368,7 @@ async function run() {
     const removing = (await readSpriteManager("mara")).artwork[2]!;
     await removeSpriteArtwork("mara", { artworkId: removing.id, expectedUrl: removing.rendered.url });
     assert.equal((await readSpriteManager("mara")).defaultExpressionId, expression.id);
-    assert.equal((await readVillageState()).name, "Preserved village");
+    assert.equal((await readVillageState({ memories: true })).name, "Preserved village");
     assert.ok(records.has("sprite-studio-old"), "retired documents are left untouched");
     for (const format of ["jpeg", "webp"] as const) {
       const encoded = await sharp(Buffer.from(original.split(",")[1]!, "base64"))

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "../helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
 import {
@@ -179,7 +180,7 @@ function graph(label: "A" | "B") {
     };
   };
   const host: CapabilityRuntimeHost = {
-    persistence: unused<CapabilityRuntimeHost["persistence"]>({ documents }),
+    persistence: unused<CapabilityRuntimeHost["persistence"]>({ documents: villageFixtureDocuments(documents) }),
     resources: unused(),
     achievements: unused(),
     embeddings: unused(),

@@ -134,20 +134,20 @@ assert.equal(staged.lines[2]?.gazeAt, "resident-b", "whispers face their target 
 const now = new Date().toISOString();
 assert.equal(defaultVillageState().spriteCardFlipEnabled, true, "new Villages start with flips on");
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 4 }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 5 }).spriteCardFlipEnabled,
   true,
   "legacy Villages without a choice default to flips on",
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 4, spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 5, spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled,
   true,
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 4, spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 5, spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
   false,
   "saved Off stays Off",
 );
-const flipVillage = coerceVillageState({ ...defaultVillageState(), version: 4, spriteCardFlipEnabled: true });
+const flipVillage = coerceVillageState({ ...defaultVillageState(), version: 5, spriteCardFlipEnabled: true });
 assert.equal(
   coerceVillageState(JSON.parse(JSON.stringify(flipVillage))).spriteCardFlipEnabled,
   true,
@@ -160,7 +160,7 @@ const resident = {
   sprite: semanticSprite,
 };
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 4, wishSystemVersion: 3, villagers: [resident] }).villagers[0]
+  coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, villagers: [resident] }).villagers[0]
     ?.sprite,
   null,
   "retired unversioned assignments are ignored",

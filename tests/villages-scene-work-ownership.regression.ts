@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import assert from "node:assert/strict";
 import {
@@ -301,7 +302,7 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
   const release = scope.run(() =>
     configureVillagesRuntime(
       {
-        persistence: { documents },
+        persistence: { documents: villageFixtureDocuments(documents) },
         resources: { listCharacters: async () => [] },
         logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
         isDebugAgentsEnabled: () => false,
@@ -459,7 +460,7 @@ for (const canonical of [false, true]) {
   const releaseSharedB = sharedB.run(() =>
     configureVillagesRuntime(
       {
-        persistence: { documents: documentsB },
+        persistence: { documents: villageFixtureDocuments(documentsB) },
         resources: { listCharacters: async () => [] },
         get languageModels() {
           providerAccess++;

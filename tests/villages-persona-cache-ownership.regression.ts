@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { readPersona } from "../packages/villages/src/server/adapters/engine/catalog.js";
@@ -197,7 +198,7 @@ const documents = {
   },
 };
 const releaseRuntime = configureVillagesRuntime({
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   resources: {
     listCharacters: async () => [],
     async listPersonas(ids?: string[]) {
@@ -223,12 +224,12 @@ try {
   assert.equal(refreshed.statusCode, 200, refreshed.body);
   assert.equal(refreshed.json().settings.playerPersonaName, "Routed player");
   assert(!refreshed.body.includes("Private routed identity"), "The ordinary snapshot excludes private Persona prose.");
-  assert.equal((await readVillageState()).playerPersonaIdentity, "Private routed identity");
+  assert.equal((await readVillageState({ memories: true })).playerPersonaIdentity, "Private routed identity");
   libraryMissing = true;
   const gone = await app.inject({ method: "POST", url: "/persona/refresh" });
   assert.equal(gone.statusCode, 200, gone.body);
-  assert.equal((await readVillageState()).playerPersonaMissing, true);
-  assert.equal((await readVillageState()).playerPersonaName, "Routed player");
+  assert.equal((await readVillageState({ memories: true })).playerPersonaMissing, true);
+  assert.equal((await readVillageState({ memories: true })).playerPersonaName, "Routed player");
   assert.equal(libraryReads, 2);
 } finally {
   await app.close();

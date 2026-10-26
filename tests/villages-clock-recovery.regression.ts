@@ -378,7 +378,7 @@ async function verify() {
     const repeat = calendarDate(summer, 2026, 10, 1, 1, 30);
     assert.equal(repeat.toISOString(), "2026-11-01T08:30:00.000Z");
     assert.throws(
-      () => coerceVillageState({ version: 4, ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
+      () => coerceVillageState({ version: 5, ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
       /saved village clock/,
     );
     assert.equal(winter.getTimezoneOffset(), 480);
@@ -386,7 +386,7 @@ async function verify() {
     assert.equal(new ZonedDate("2026-11-01T08:30:00Z", "America/Los_Angeles").getHours(), 1);
     assert.equal(new ZonedDate("2026-11-01T09:30:00Z", "America/Los_Angeles").getHours(), 1);
     assert.equal(
-      coerceVillageState({ version: 4, ...defaultVillageState(), clock: fixture().state.clock }).clock,
+      coerceVillageState({ version: 5, ...defaultVillageState(), clock: fixture().state.clock }).clock,
       null,
     );
 

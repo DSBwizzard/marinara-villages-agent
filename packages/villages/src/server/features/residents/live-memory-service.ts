@@ -98,7 +98,7 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           ),
           id = scene.id + ":" + turn.id + ":memory:" + unit;
         receiptIds.push(id);
-        const prior = state.exchangeReceipts[id];
+        const prior = state.memoryReceipts[id];
         if (prior) {
           if (prior.status === "rejected") rejections.push({ kind: "memory", index, reason: prior.reason });
           return;
@@ -143,7 +143,7 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
             committedEffects: effects,
             ...context,
           });
-          state.exchangeReceipts[id] = {
+          state.memoryReceipts[id] = {
             id,
             sceneId: scene.id,
             submissionId: turn.id,
@@ -158,7 +158,7 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           rejections.push({ kind: "memory", index, reason });
-          state.exchangeReceipts[id] = {
+          state.memoryReceipts[id] = {
             id,
             sceneId: scene.id,
             submissionId: turn.id,

@@ -61,7 +61,7 @@ export function createSceneChanges({
       .filter((entry) => entry.sequence > afterScene)
       .sort((a, b) => a.sequence - b.sequence);
     const turns = changed.slice(0, size);
-    const effects = Object.values(village.exchangeReceipts);
+    const effects = [...Object.values(village.exchangeReceipts), ...Object.values(village.memoryReceipts)];
     const effectsBySubmission = new Map<string, typeof effects>();
     for (const receipt of effects)
       if (receipt.sceneId === id) {

@@ -42,7 +42,7 @@ See [Scene privacy](scene-response-privacy.md), [System responsibilities](system
 
 ## Saved work and compatibility
 
-The Memories cutover deliberately accepts only Village format 4, Scene/continuity format 2 and relationship format 2. Older saves remain stored but cannot be read by this runtime. There is no migration, backfill, dual write or old memory reader. The collection and active sparse memory preimages share one Village CAS; Scene attachment is a separate resumable stage. See [Memories](memories-core.md).
+The Memories cutover deliberately accepts only Village format 5, Scene/continuity format 2 and relationship format 2. Older saves remain stored but cannot be read by this runtime. There is no migration, backfill, dual write or old memory reader. A compact Village CAS publishes one immutable history reference with matching mechanics. The referenced payload contains the collection, active sparse memory preimages and memory-only receipts; ordinary world reads do not load it. Publication intents fence cleanup against concurrent writers and preserve ambiguous recovery. Scene attachment is a separate resumable stage. See [Memories](memories-core.md).
 
 Saved generation, validation, committed effects and Scene bookkeeping are distinct stages. Claims precede provider dispatch; completed responses and effect receipts support local replay. Compare-and-swap retries reuse saved output and preserve request accounting.
 

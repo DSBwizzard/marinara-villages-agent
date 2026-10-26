@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { townMapImageProblem } from "../packages/villages/src/shared/helpers/town-map-upload.js";
 import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
@@ -112,7 +113,7 @@ async function main() {
   );
   const legacy = coerceVillageState({
     ...defaultVillageState(),
-    version: 4,
+    version: 5,
     wishSystemVersion: 3,
     setting: "Misty cliffs",
     foundingReason: "rebuild",
@@ -210,7 +211,7 @@ async function main() {
   const documents = new Map<string, any>();
   const releaseRuntime = configureVillagesRuntime({
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_packageId: string, id: string) {
           return documents.get(id) ?? null;
         },
@@ -224,7 +225,7 @@ async function main() {
           documents.set(input.id, row);
           return row;
         },
-      },
+      }),
     },
     logger: { warn() {}, error() {}, info() {}, debug() {}, debugOverride() {} },
   } as any);

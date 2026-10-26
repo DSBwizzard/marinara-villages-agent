@@ -70,7 +70,7 @@ async function main() {
     },
   });
   const world = coerceVillageState({
-    version: 4,
+    version: 5,
     ...defaultVillageState(),
     seed: "attendance-fixture",
     foundedAt: stamp,

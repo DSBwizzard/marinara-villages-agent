@@ -82,7 +82,7 @@ export function createVillageSnapshot({
     const player = readPlayerIdentity(village);
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();
-    const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess) : village;
+    const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess, false) : village;
     const capturedVenue = residenceAccess && sceneWorld.venues.find((venue) => venue.id === residenceAccess.placeId);
     // ONE schedule read for the whole village, so every villager's pin and their
     // own drawer's plate are resolved off the same answer. Null when the Engine

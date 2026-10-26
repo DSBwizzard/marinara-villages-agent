@@ -42,7 +42,7 @@ const legacy = {
 const migrated = captureMissingVillagerCardColors(legacy, card);
 const recovered = coerceVillageState({
   ...defaultVillageState(),
-  version: 4,
+  version: 5,
   wishSystemVersion: 3,
   villagers: [{ characterId: "resident", cardSnapshot: legacy, addedAt: legacy.capturedAt }],
 });

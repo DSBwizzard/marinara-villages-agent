@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { addMemory } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -158,7 +159,7 @@ async function relationshipConnectionOwnership() {
     };
     const release = scope.run(() =>
       configureVillagesRuntime({
-        persistence: { documents },
+        persistence: { documents: villageFixtureDocuments(documents) },
         getAgentConfig: async () => null,
         logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
       } as any),
@@ -983,7 +984,7 @@ async function main() {
       },
     },
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_package: string, id: string) {
           return structuredClone(records.get(id) ?? null);
         },
@@ -1005,7 +1006,7 @@ async function main() {
           records.set(input.id, structuredClone(next));
           return next;
         },
-      },
+      }),
     },
   } as any);
   failWrite = true;

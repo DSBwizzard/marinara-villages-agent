@@ -97,9 +97,12 @@ export function createWorldCoordination({
    * "start over" that quietly kept some of it would be worse than not offering it.
    */
   async function resetVillage(): Promise<VillageSnapshot> {
-    await mutateVillageState((state) => {
-      Object.assign(state, defaultVillageState());
-    });
+    await mutateVillageState(
+      (state) => {
+        Object.assign(state, defaultVillageState());
+      },
+      { memories: true },
+    );
     return buildVillageSnapshot();
   }
 
@@ -161,9 +164,19 @@ export function createWorldCoordination({
       }
     }
     if (completedMove) recorded = await readVillageState();
-    await mutateVillageState((state) => {
-      reconcileProjectLifecycles(state, now);
-    });
+    await mutateVillageState(
+      (state) => {
+        reconcileProjectLifecycles(state, now);
+      },
+      {
+        memories: (world) =>
+          world.projects.some(
+            (project) =>
+              project.status === "working" &&
+              Date.parse(project.lifecycle?.workOrder?.completesAt ?? "") <= now.getTime(),
+          ),
+      },
+    );
     await processProjectWishOutbox?.();
     recorded = await readVillageState();
     const moment = deriveVillageMoment({
@@ -190,57 +203,63 @@ export function createWorldCoordination({
       }
     });
     await rollActiveAgendas(now);
-    await mutateVillageState((state) => {
-      const storedMs = Date.parse(state.simulatedThrough);
-      if (!Number.isFinite(storedMs) || currentMs > storedMs) state.simulatedThrough = moment.instant;
-      state.lastKnownTimeZone = moment.timeZone;
-      for (const venue of state.venues) {
-        for (const zone of venueZones(venue)) {
-          const remaining = [] as NonNullable<VillageVenue["state"]["traces"]>;
-          for (const trace of zone.state.traces ?? []) {
-            if (trace.expiresAt && Date.parse(trace.expiresAt) <= currentMs) continue;
-            if (trace.kind === "scene-note") {
-              remaining.push(trace);
-              continue;
-            }
-            const created = Date.parse(trace.createdAt);
-            if (!Number.isFinite(created) || currentMs - created < 60_000) {
-              remaining.push(trace);
-              continue;
-            }
-            const present = state.villagers.filter((villager) => {
-              const destination = villagerPlaceView(state, villager, null, moment.minuteOfDay, now);
-              return destination?.id === venue.id && destination.zoneId === zone.id;
-            });
-            const finders = present.filter((villager) =>
-              trace.kind === "note"
-                ? villager.characterId === trace.recipientId
-                : !(trace.seenBy ?? []).includes(villager.characterId),
-            );
-            for (const finder of finders) {
-              const id = `${trace.id}:found:${finder.characterId}`;
-              rememberDomainFact(state, {
-                id,
-                at: moment.instant,
-                recordedAt: moment.instant,
-                subjects: [finder.characterId],
-                knowers: [finder.characterId],
-                text:
-                  trace.kind === "note"
-                    ? `${finder.cardSnapshot.name} found a note at ${venue.name}: ${trace.text}`
-                    : `${finder.cardSnapshot.name} noticed ${trace.text} at ${venue.name}.`,
+    await mutateVillageState(
+      (state) => {
+        const storedMs = Date.parse(state.simulatedThrough);
+        if (!Number.isFinite(storedMs) || currentMs > storedMs) state.simulatedThrough = moment.instant;
+        state.lastKnownTimeZone = moment.timeZone;
+        for (const venue of state.venues) {
+          for (const zone of venueZones(venue)) {
+            const remaining = [] as NonNullable<VillageVenue["state"]["traces"]>;
+            for (const trace of zone.state.traces ?? []) {
+              if (trace.expiresAt && Date.parse(trace.expiresAt) <= currentMs) continue;
+              if (trace.kind === "scene-note") {
+                remaining.push(trace);
+                continue;
+              }
+              const created = Date.parse(trace.createdAt);
+              if (!Number.isFinite(created) || currentMs - created < 60_000) {
+                remaining.push(trace);
+                continue;
+              }
+              const present = state.villagers.filter((villager) => {
+                const destination = villagerPlaceView(state, villager, null, moment.minuteOfDay, now);
+                return destination?.id === venue.id && destination.zoneId === zone.id;
               });
+              const finders = present.filter((villager) =>
+                trace.kind === "note"
+                  ? villager.characterId === trace.recipientId
+                  : !(trace.seenBy ?? []).includes(villager.characterId),
+              );
+              for (const finder of finders) {
+                const id = `${trace.id}:found:${finder.characterId}`;
+                rememberDomainFact(state, {
+                  id,
+                  at: moment.instant,
+                  recordedAt: moment.instant,
+                  subjects: [finder.characterId],
+                  knowers: [finder.characterId],
+                  text:
+                    trace.kind === "note"
+                      ? `${finder.cardSnapshot.name} found a note at ${venue.name}: ${trace.text}`
+                      : `${finder.cardSnapshot.name} noticed ${trace.text} at ${venue.name}.`,
+                });
+              }
+              if (trace.kind !== "note" || finders.length === 0)
+                remaining.push({
+                  ...trace,
+                  seenBy: [...new Set([...(trace.seenBy ?? []), ...finders.map((finder) => finder.characterId)])],
+                });
             }
-            if (trace.kind !== "note" || finders.length === 0)
-              remaining.push({
-                ...trace,
-                seenBy: [...new Set([...(trace.seenBy ?? []), ...finders.map((finder) => finder.characterId)])],
-              });
+            zone.state.traces = remaining;
           }
-          zone.state.traces = remaining;
         }
-      }
-    });
+      },
+      {
+        memories: (world) =>
+          world.venues.some((venue) => venueZones(venue).some((zone) => !!zone.state.traces?.length)),
+      },
+    );
 
     if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
     // Discover optional paid work only after deterministic advancement has committed.
@@ -396,24 +415,27 @@ export function createWorldCoordination({
       !input.knowers.length
     )
       throw badRequest("Choose existing memory knowers.");
-    await mutateVillageState((state) => {
-      if (state.seed !== input.seed) throw conflict("Village identity changed.");
-      try {
-        applyForget(
-          state,
-          {
-            operationId: input.operationId,
-            expectedCollectionRevision: input.expectedCollectionRevision,
-            target: input.target,
-            knowers: input.knowers,
-            action: "forget",
-          },
-          villageNow().toISOString(),
-        );
-      } catch (error) {
-        throw conflict(error instanceof Error ? error.message : "The memory changed.");
-      }
-    });
+    await mutateVillageState(
+      (state) => {
+        if (state.seed !== input.seed) throw conflict("Village identity changed.");
+        try {
+          applyForget(
+            state,
+            {
+              operationId: input.operationId,
+              expectedCollectionRevision: input.expectedCollectionRevision,
+              target: input.target,
+              knowers: input.knowers,
+              action: "forget",
+            },
+            villageNow().toISOString(),
+          );
+        } catch (error) {
+          throw conflict(error instanceof Error ? error.message : "The memory changed.");
+        }
+      },
+      { memories: true },
+    );
   }
 
   return {

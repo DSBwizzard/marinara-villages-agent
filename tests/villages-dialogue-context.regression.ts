@@ -1,11 +1,10 @@
+import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { addMemory } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 import {
   relationshipPrompt,
@@ -143,21 +142,37 @@ const model: any = {
     throw Error("Prompt regressions must not call a model");
   },
 };
+const savedRows = new Map<string, any>([
+  ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", data: state, revision: 1 }],
+]);
 const release = configureVillagesRuntime({
   logger: { debug() {}, info() {}, warn() {}, error() {} },
   getAgentConfig: async () => ({ connectionId: "fixture" }),
   resources: { listLorebooks: async () => [], listCharacters: async () => [] },
   persistence: {
-    documents: {
-      getById: async (_p: any, id: string) =>
-        id === "villages-village" ? { id, kind: "village", data: state, revision: 1 } : null,
-      list: async () => [],
+    documents: villageFixtureDocuments({
+      getById: async (_pkg: any, id: string) => structuredClone(savedRows.get(id) ?? null),
+      list: async (_pkg: any, kind: string) =>
+        [...savedRows.values()].filter((row) => row.kind === kind).map((row) => structuredClone(row)),
       update: async (input: any) => {
-        Object.assign(state, coerceVillageState(input.data));
-        return { ...input, revision: input.expectedRevision + 1 };
+        const old = savedRows.get(input.id);
+        if (!old || old.revision !== input.expectedRevision) return null;
+        const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+        savedRows.set(input.id, row);
+        if (input.id === "villages-village") Object.assign(state, fixtureVillageState(input.data, savedRows));
+        return structuredClone(row);
       },
-      create: async (input: any) => ({ ...input, revision: 1 }),
-    },
+      create: async (input: any) => {
+        const row = { ...structuredClone(input), revision: 1 };
+        savedRows.set(input.id, row);
+        return structuredClone(row);
+      },
+      remove: async (_pkg: any, id: string, revision: number) => {
+        if (savedRows.get(id)?.revision !== revision) return false;
+        savedRows.delete(id);
+        return true;
+      },
+    }),
   },
   languageModels: { resolveForRequest: async () => model },
 } as any);

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 import { villageFoundingSetting } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
@@ -47,7 +48,7 @@ function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 4,
+    version: 5,
     wishSystemVersion: 3,
     seed: "station-fields",
     name: "Station Fields",
@@ -125,7 +126,7 @@ const release = configureVillagesRuntime({
     listLorebooks: async () => [],
   },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       getById: async (_p: string, id: string) => structuredClone(rows.get(id) ?? null),
       list: async (_p: string, kind: string) => structuredClone([...rows.values()].filter((row) => row.kind === kind)),
       create: async (input: any) => {
@@ -145,7 +146,7 @@ const release = configureVillagesRuntime({
         return row;
       },
       remove: async (_p: string, id: string) => rows.delete(id),
-    },
+    }),
   },
   languageModels: {
     resolveForRequest: async () => ({
@@ -273,7 +274,7 @@ async function main() {
     mode = "context-loss";
     await prepareFoundedVillage();
     assert.equal(calls.length, 0, "required resident context cannot be trimmed before dispatch");
-    assert.equal((await readVillageState()).foundingPreparation?.status, "failed");
+    assert.equal((await readVillageState({ memories: true })).foundingPreparation?.status, "failed");
     mode = "valid";
     install(false);
     await Promise.all([prepareFoundedVillage(), prepareFoundedVillage()]);
@@ -290,7 +291,7 @@ async function main() {
       "wish",
       "wish",
     ]);
-    let state = await readVillageState();
+    let state = await readVillageState({ memories: true });
     assert.equal(state.foundingPreparation?.status, "ready");
     assert.equal(state.foundingPreparation?.completedIds.length, 3);
     assert.ok(stages.includes("venues:model:"));
@@ -324,7 +325,7 @@ async function main() {
         });
       }
       await prepareFoundedVillage();
-      state = await readVillageState();
+      state = await readVillageState({ memories: true });
       assert.equal(state.foundingPreparation?.status, "failed");
       assert.equal(
         state.foundingPreparation?.completedIds.length,
@@ -367,7 +368,7 @@ async function main() {
       await assert.rejects(retryFoundedVillagePreparation({ ...action, expectedAttempt: 999 }), /changed/);
       await Promise.all([retryFoundedVillagePreparation(action), retryFoundedVillagePreparation(action)]);
       await prepareFoundedVillage();
-      state = await readVillageState();
+      state = await readVillageState({ memories: true });
       assert.equal(state.foundingPreparation?.status, "ready");
       assert.equal(calls.length, before + 1, "targeted retry uses exactly one replacement request");
       assert.equal(
@@ -392,9 +393,9 @@ async function main() {
     await retryFoundedVillagePreparation();
     await prepareFoundedVillage();
     assert.equal(
-      (await readVillageState()).foundingPreparation?.status,
+      (await readVillageState({ memories: true })).foundingPreparation?.status,
       "ready",
-      JSON.stringify((await readVillageState()).foundingPreparation),
+      JSON.stringify((await readVillageState({ memories: true })).foundingPreparation),
     );
 
     // Simulate the old validator rejecting a purchased venueNumber reply.
@@ -403,12 +404,12 @@ async function main() {
       install();
       mode = "routine-invalid";
       await prepareFoundedVillage();
-      assert.equal((await readVillageState()).foundingPreparation?.status, "failed");
+      assert.equal((await readVillageState({ memories: true })).foundingPreparation?.status, "failed");
       const checkpoint = [...rows.values()].find(
         (row) => row.kind === "background-work" && row.data.kind === "agenda",
       )!;
       if (recovery === "alias") {
-        const current = await readVillageState(),
+        const current = await readVillageState({ memories: true }),
           old = sourceSnapshots.get("aqua");
         const diffs = Object.keys(current).filter(
           (key) => JSON.stringify((current as any)[key]) !== JSON.stringify(old[key]),
@@ -437,7 +438,7 @@ async function main() {
         await settleBackgroundWork();
         assert.equal(rows.get(checkpoint.id).data.status, "obsolete");
         assert.equal(calls.length, 0);
-        assert.equal((await readVillageState()).villagers[0].agenda?.generatedAt, "");
+        assert.equal((await readVillageState({ memories: true })).villagers[0].agenda?.generatedAt, "");
         continue;
       }
       const previewWrites = writes;
@@ -450,7 +451,7 @@ async function main() {
       conflicts = 2;
       await Promise.all([retryFoundedVillagePreparation(), retryFoundedVillagePreparation()]);
       await prepareFoundedVillage();
-      state = await readVillageState();
+      state = await readVillageState({ memories: true });
       assert.equal(state.foundingPreparation?.status, "ready");
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
       assert.equal(
@@ -499,7 +500,7 @@ async function main() {
       const legacyRow = [...rows.values()].find(
         (row) => row.kind === "background-work" && row.data.kind === "agenda" && row.data.subjectId === "aqua",
       )!;
-      state = await readVillageState();
+      state = await readVillageState({ memories: true });
       const claim = state.villagers[0].wishLifecycle!.attempt!.id;
       const legacy = legacyRow.data;
       legacy.revision = agendaRevision(state, "aqua");
@@ -548,7 +549,7 @@ async function main() {
       assert.equal(calls.length, 0, "upgrade reads do not dispatch");
       await retryFoundedVillagePreparation({ actionId: "migrate-" + migration });
       await prepareFoundedVillage();
-      state = await readVillageState();
+      state = await readVillageState({ memories: true });
       assert.equal(
         state.foundingPreparation?.status,
         "ready",
@@ -581,7 +582,7 @@ async function main() {
         (row) => row.kind === "background-work" && row.data.kind === "agenda",
       )!.data;
       delete saved.input.foundingContract;
-      saved.revision = agendaRevision(await readVillageState(), saved.subjectId);
+      saved.revision = agendaRevision(await readVillageState({ memories: true }), saved.subjectId);
       saved.input.revision = saved.revision;
       saved.owner = "previous-process";
       saved.status = interruptedStatus;
@@ -608,7 +609,7 @@ async function main() {
       mode = failure;
       failVenue = "feddy";
       await prepareFoundedVillage();
-      state = await readVillageState();
+      state = await readVillageState({ memories: true });
       assert.equal(state.foundingPreparation?.status, "failed", failure);
       assert.deepEqual(
         calls,
@@ -632,7 +633,7 @@ async function main() {
       mode = "valid";
       await Promise.all([retryFoundedVillagePreparation(), retryFoundedVillagePreparation()]);
       await prepareFoundedVillage();
-      state = await readVillageState();
+      state = await readVillageState({ memories: true });
       assert.equal(state.foundingPreparation?.status, "ready");
       assert.deepEqual(calls, [
         "aqua",
@@ -671,7 +672,7 @@ async function main() {
     assert.equal(calls.length, 0, "orphaned claims cannot dispatch automatically");
     await retryPrivateSpaces();
     assert.equal(calls.length, 4);
-    assert.equal((await readVillageState()).venues[0].zones![1].preparation?.attempt, 5);
+    assert.equal((await readVillageState({ memories: true })).venues[0].zones![1].preparation?.attempt, 5);
 
     for (const change of ["seed", "room", "abort"]) {
       install();
@@ -694,7 +695,7 @@ async function main() {
       hold!();
       if (change === "seed") await work;
       else await assert.rejects(work, change === "abort" ? /interrupted/ : /changed/);
-      state = await readVillageState();
+      state = await readVillageState({ memories: true });
       assert.doesNotMatch(state.venues[0].zones![1].description, /PRIVATE CONTENT/);
       assert.equal(calls.length, 1, "stale/aborted work does not continue to later spaces");
     }
@@ -707,7 +708,7 @@ async function main() {
     });
     await prepareFoundedVillage();
     assert.equal(
-      (await readVillageState()).foundingPreparation?.status,
+      (await readVillageState({ memories: true })).foundingPreparation?.status,
       "ready",
       "vacant rooms are prepared and worksites stay deferred",
     );
@@ -738,7 +739,7 @@ async function main() {
     await mutateVillageState((current) => {
       current.foundingPreparation!.venueDetailsSeeded = false;
     });
-    const targeted = (await readVillageState()).foundingPreparation!.tasks!.aqua.routine!;
+    const targeted = (await readVillageState({ memories: true })).foundingPreparation!.tasks!.aqua.routine!;
     calls.length = 0;
     mode = "valid";
     await retryFoundedVillagePreparation({
@@ -749,7 +750,7 @@ async function main() {
     });
     await prepareFoundedVillage();
     assert.deepEqual(calls, ["routine"], "Targeted Routine retry cannot spend on unrelated Venue/interior work");
-    assert.equal((await readVillageState()).foundingPreparation!.venueDetailsSeeded, false);
+    assert.equal((await readVillageState({ memories: true })).foundingPreparation!.venueDetailsSeeded, false);
     console.log(
       "Founding preparation: Station Fields, single-space checkpoints, failures, retries, claims, fencing, progress and forecasts passed.",
     );

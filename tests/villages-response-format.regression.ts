@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   boundedRejectedText,
@@ -92,7 +93,7 @@ async function main() {
   };
   const release = configureVillagesRuntime({
     isDebugAgentsEnabled: () => false,
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     languageModels: { resolveForRequest: async () => model },
     getAgentConfig: async () => null,
     logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },

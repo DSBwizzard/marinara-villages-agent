@@ -188,7 +188,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     ) {
       const record = encounter as Record<string, unknown>;
       const nativeMemory = sceneMemoryContext(
-        await readVillageState(),
+        await readVillageState({ memories: true }),
         context.opportunity.actorIds,
         context.opportunity.facts.join(" "),
         JSON.stringify(record.lines),

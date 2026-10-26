@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   measurePipeline,
@@ -12,7 +13,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 async function run() {
   const logs: string[] = [];
   const release = configureVillagesRuntime({
-    persistence: { documents: { getById: async () => null, list: async () => [] } },
+    persistence: { documents: villageFixtureDocuments({ getById: async () => null, list: async () => [] }) },
     isDebugAgentsEnabled: () => true,
     logger: {
       debugOverride(_enabled: boolean, _format: string, text: string) {

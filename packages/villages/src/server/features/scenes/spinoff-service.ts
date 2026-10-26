@@ -482,7 +482,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
         )
           throw conflict("Prepared spinoff source changed");
         for (const memory of value.memories.filter((row) => acceptedIds.includes(row.id))) {
-          if (village.exchangeReceipts[memory.id]) continue;
+          if (village.memoryReceipts[memory.id]) continue;
           let reason = "",
             proposal;
           try {
@@ -509,7 +509,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
           } catch (error) {
             reason = error instanceof Error ? error.message : "Spinoff memory rejected";
           }
-          village.exchangeReceipts[memory.id] = {
+          village.memoryReceipts[memory.id] = {
             id: memory.id,
             sceneId: value.sessionId,
             submissionId: value.id,
@@ -523,7 +523,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
           };
         }
       });
-      appliedIds = acceptedIds.filter((id) => settled.exchangeReceipts[id]?.status === "applied");
+      appliedIds = acceptedIds.filter((id) => settled.memoryReceipts[id]?.status === "applied");
     }
     await change(sessionId, value.id, (draft) => {
       draft.acceptedIds = appliedIds;

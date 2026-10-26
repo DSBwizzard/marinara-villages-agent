@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -181,7 +182,7 @@ function fixture() {
     mutateDocument: createDocumentMutator(() => documents),
   });
   const persistence = {
-    documents,
+    documents: villageFixtureDocuments(documents),
     getChat: async () => structuredClone(chat),
     listMessages: async () => structuredClone(rows),
   } as unknown as CapabilityPersistenceHost;

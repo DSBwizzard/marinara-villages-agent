@@ -44,7 +44,7 @@ function fixture(name: string) {
   const stamp = new Date().toISOString();
   let state = coerceVillageState({
     ...defaultVillageState(),
-    version: 4,
+    version: 5,
     seed: "same-seed",
     name,
     setting: name,

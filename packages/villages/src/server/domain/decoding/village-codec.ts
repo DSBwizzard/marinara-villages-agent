@@ -120,9 +120,10 @@ import { shortWishText, wishPolicy, routineRevision } from "../rules/wish-policy
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 4,
+    version: 5,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
+    memoryReceipts: {},
     backgroundReceipts: {},
     exchangeReceipts: {},
     noticeSequence: 0,
@@ -1645,7 +1646,7 @@ function memoryField(value: unknown): unknown {
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 4) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 5) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
@@ -1666,7 +1667,7 @@ export function coerceVillageState(value: unknown): VillageState {
     memoryRequire(!Object.hasOwn(asRecord(raw.exchangeReceipts), id), "duplicate memory receipt");
   }
   const state: VillageState = {
-    version: 4,
+    version: 5,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(
@@ -1674,10 +1675,8 @@ export function coerceVillageState(value: unknown): VillageState {
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     ),
-    exchangeReceipts: structuredClone({
-      ...asRecord(raw.exchangeReceipts),
-      ...memoryReceipts,
-    }) as VillageState["exchangeReceipts"],
+    memoryReceipts: structuredClone(memoryReceipts) as VillageState["memoryReceipts"],
+    exchangeReceipts: structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"],
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
     projectWishOutbox: Array.isArray(raw.projectWishOutbox)

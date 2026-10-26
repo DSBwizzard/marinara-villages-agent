@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { fixture } from "./fixtures/villages-projects.fixture.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import assert from "node:assert/strict";
@@ -86,7 +87,7 @@ await runCase("village-clock-recovery", async () => {
   };
   const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} };
   const runtime = {
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: {
       async listCharacters() {
         return [];

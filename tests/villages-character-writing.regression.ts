@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   readVillagerCard,
@@ -79,7 +80,7 @@ const release = configureVillagesRuntime({
   getAgentConfig: async () => ({ connectionId: "fixture" }),
   resources: { listCharacters: async () => [source], listLorebooks: async () => [] },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       getById: async (_p: any, id: string) => (id === row.id ? row : null),
       list: async () => [],
       update: async (input: any) => {
@@ -87,7 +88,7 @@ const release = configureVillagesRuntime({
         return row;
       },
       create: async (input: any) => input,
-    },
+    }),
   },
   languageModels: { resolveForRequest: async () => model },
 } as any);
@@ -206,7 +207,7 @@ async function run() {
     assert.equal(paidCalls, 0);
     const legacy = coerceVillageState({
       ...defaultVillageState(),
-      version: 4,
+      version: 5,
       wishSystemVersion: 3,
       ...state,
       villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],

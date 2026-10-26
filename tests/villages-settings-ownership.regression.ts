@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -259,7 +260,7 @@ async function main() {
     },
   };
   const releaseRuntime = configureVillagesRuntime({
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: { listCharacters: async () => [] },
     logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
     isDebugAgentsEnabled: () => false,

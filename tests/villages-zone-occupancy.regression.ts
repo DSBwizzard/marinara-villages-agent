@@ -57,7 +57,7 @@ function fixture(count: number) {
   });
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 4,
+    version: 5,
     seed: "capacity",
     foundedAt: stamp,
     setupAt: stamp,

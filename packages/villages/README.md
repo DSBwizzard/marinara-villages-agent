@@ -77,7 +77,9 @@ Memories retain meaningful experiences, information and open matters without exp
 
 The Memories page starts with the player and loads 50 entries at a time. Inspect can select another knower and reveal retained evidence without teaching anyone. Forget suppresses the chosen existing knower on that memory root; independent disclosures, permissions, gameplay state and historical transcripts remain. Manual Correct is not exposed. Wishes keep only goal/condition clarifications, proof and lifecycle authority; ordinary conversational details live in Memories. Pursuit and relationship summaries use saved player disclosures and never fill gaps from private current state.
 
-This coordinated cutover requires Village format 4 and Scene format 2. Earlier saves and Scenes are rejected without conversion or deletion of their stored bytes. Use an independent fresh world; preserve older worlds for their matching runtime.
+History is held separately in Engine’s existing document store; the Village atomically publishes its committed reference with current gameplay state. Ordinary world activity does not load the growing history. Live presence renewals avoid repeated absence catch-up.
+
+This coordinated cutover requires Village format 5 and Scene format 2. Earlier saves and Scenes are rejected without conversion or deletion of their stored bytes. Use an independent fresh world; preserve older worlds for their matching runtime.
 
 New generation and consequential effects validate source identity, witnesses, revisions and authority. Rejected proposals do not become gameplay facts. The [generation lifecycle](../../docs/generation-pipeline.md), [Scene privacy](../../docs/scene-response-privacy.md) and [response recovery](../../docs/scene-response-recovery.md) describe the technical contracts.
 

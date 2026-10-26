@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -14,7 +15,7 @@ async function main() {
   let calls = 0;
   const release = configureVillagesRuntime({
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_p: string, id: string) {
           return records.get(id) ?? null;
         },
@@ -28,7 +29,7 @@ async function main() {
           records.set(value.id, row);
           return row;
         },
-      },
+      }),
     },
     languageModels: {
       async resolveForRequest() {
