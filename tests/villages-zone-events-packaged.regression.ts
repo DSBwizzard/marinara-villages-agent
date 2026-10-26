@@ -20,8 +20,6 @@ import { initializeVenueAccess } from "../packages/villages/src/server/domain/ru
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 
 // Archive-identical server and actual HTTP handlers, with synthetic storage/models only.
-// Clock checkpoints must not race assertions about a rejected turn's world effects.
-mock.timers.enable({ apis: ["Date"], now: Date.now() });
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8"));
 const zip = new AdmZip(receipt.retainedArchivePath ?? receipt.archivePath ?? receipt.archive);
 assert.deepEqual(
@@ -32,6 +30,9 @@ assert.deepEqual(
   await readFile("packages/villages/server.mjs"),
 );
 const { activate } = await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
+// Define the archive's Date subclasses before Node replaces Date: MockDate's constructor
+// does not preserve subclass prototypes. Freeze only the running clock, not class creation.
+mock.timers.enable({ apis: ["Date"], now: Date.now() });
 const now = new Date().toISOString();
 const world = defaultVillageState();
 Object.assign(world, {
