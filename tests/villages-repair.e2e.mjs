@@ -177,10 +177,28 @@ try {
       assert.equal(await repair.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
       await page.getByRole("button", { name: "Apply repair", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Repair applied", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "View repair history", exact: true }).click();
+      await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Memories Correct, forget, or record a missing detail.", exact: true })
+        .click();
+      await page.getByRole("button", { name: /The workshop key Shared recollection/ }).click();
+      await page
+        .getByRole("textbox", { name: "Remembered wording", exact: true })
+        .fill("An unfinished repair draft stays here.");
+      await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+      await page.getByRole("button", { name: "Repair history", exact: true }).click();
       await expect(page.getByRole("button", { name: "Review undo", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Review undo", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Review repair", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Apply repair", exact: true }).click();
+      await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Memories Correct, forget, or record a missing detail.", exact: true })
+        .click();
+      await page.getByRole("button", { name: /The workshop key Shared recollection/ }).click();
+      await expect(page.getByRole("textbox", { name: "Remembered wording", exact: true })).toHaveValue(
+        "An unfinished repair draft stays here.",
+      );
       await page.getByRole("button", { name: "Main menu", exact: true }).click();
       await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Scene draft", exact: true })).toHaveValue(

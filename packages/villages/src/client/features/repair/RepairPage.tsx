@@ -98,6 +98,7 @@ export function RepairPage({
             <footer>
               <label>
                 <input
+                  autoComplete="off"
                   type="checkbox"
                   checked={c.inspection}
                   disabled={c.busy}
@@ -114,6 +115,7 @@ export function RepairPage({
         {c.view === "list" ? (
           <>
             <form
+              autoComplete="off"
               className="repair-search"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -121,6 +123,7 @@ export function RepairPage({
               }}
             >
               <input
+                autoComplete="off"
                 type="search"
                 aria-label="Search repair records"
                 value={c.query}
@@ -210,6 +213,7 @@ export function RepairPage({
                     </select>
                   ) : f.type === "number" ? (
                     <input
+                      autoComplete="off"
                       id={`repair-${f.key}`}
                       type="number"
                       min={f.min}
@@ -221,6 +225,7 @@ export function RepairPage({
                     />
                   ) : f.type === "boolean" ? (
                     <input
+                      autoComplete="off"
                       id={`repair-${f.key}`}
                       type="checkbox"
                       disabled={c.busy}
@@ -229,6 +234,7 @@ export function RepairPage({
                     />
                   ) : (
                     <textarea
+                      autoComplete="off"
                       id={`repair-${f.key}`}
                       disabled={c.busy || c.draft.action === "forget" || c.draft.action === "remember"}
                       value={display(c.draft?.values[f.key])}
@@ -244,6 +250,7 @@ export function RepairPage({
                     {c.selected.people.map((p) => (
                       <label key={p.id}>
                         <input
+                          autoComplete="off"
                           type="checkbox"
                           disabled={c.busy}
                           checked={c.draft?.knowers.includes(p.id)}
@@ -348,6 +355,7 @@ export function RepairPage({
             {isRestore ? (
               <label className="repair-confirm">
                 <input
+                  autoComplete="off"
                   type="checkbox"
                   checked={c.restoreAcknowledged}
                   disabled={c.busy}
@@ -378,7 +386,7 @@ export function RepairPage({
             {c.preservedDraft ? (
               <div className="repair-panel">
                 <h2>Kept Scene draft · {c.preservedDraft.title}</h2>
-                <textarea aria-label="Kept Scene draft" readOnly value={c.preservedDraft.text} />
+                <textarea autoComplete="off" aria-label="Kept Scene draft" readOnly value={c.preservedDraft.text} />
               </div>
             ) : null}
             <div className="repair-buttons">
@@ -449,6 +457,7 @@ export function RepairPage({
         {c.view === "checkpoints" ? (
           <>
             <form
+              autoComplete="off"
               className="repair-search"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -456,6 +465,7 @@ export function RepairPage({
               }}
             >
               <input
+                autoComplete="off"
                 aria-label="Checkpoint name"
                 value={c.checkpointTitle}
                 placeholder="Checkpoint name"

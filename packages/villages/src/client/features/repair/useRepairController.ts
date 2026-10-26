@@ -152,7 +152,7 @@ export function useRepairController(
     act(async () => {
       if (!review) return;
       await request("/repair/apply", { method: "POST", body: JSON.stringify({ id: review.id }) });
-      if (selected)
+      if (selected && review.kind === "repair")
         setDrafts((prior) => {
           const next = { ...prior };
           delete next[selected.id];
