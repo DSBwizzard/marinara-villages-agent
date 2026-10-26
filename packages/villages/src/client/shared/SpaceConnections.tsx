@@ -12,16 +12,19 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
   editableIds,
   disabled = false,
   pageSize,
+  compact = false,
 }: {
   spaces: T[];
   editableIds?: string[];
   disabled?: boolean;
   pageSize?: number;
+  compact?: boolean;
   onChange(spaces: T[]): void;
 }) {
   const [from, setFrom] = useState(""),
     [to, setTo] = useState(""),
-    [page, setPage] = useState(0);
+    [page, setPage] = useState(0),
+    [view, setView] = useState<"list" | "add">("list");
   const rows = materializeConnections(spaces);
   const existing = new Set(rows.map((zone) => zone.id));
   const pairs = rows.flatMap((zone) =>
@@ -51,74 +54,94 @@ export function SpaceConnections<T extends ConnectedSpace & { name?: string }>({
   return (
     <fieldset className="villages-space-connections">
       <legend>Connections between spaces</legend>
-
-      <ul>
-        {visiblePairs.map(([a, b]) => (
-          <li key={a + ":" + b}>
-            <span>
-              {name(a)} ↔ {name(b)}
-            </span>{" "}
-            <button
-              type="button"
-              disabled={disabled || (!!editableIds && !editableIds.includes(a) && !editableIds.includes(b))}
-              aria-label={"Remove connection " + name(a) + " to " + name(b)}
-              onClick={() => update(a, b, false)}
-            >
-              Remove
-            </button>
-          </li>
-        ))}
-      </ul>
-      {pages > 1 ? (
-        <div className="vp-actions">
-          <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
-            Previous
+      {compact ? (
+        <div className="vp-detail-pages" role="group" aria-label="Connection pages">
+          <button type="button" aria-pressed={view === "list"} onClick={() => setView("list")}>
+            Connections
           </button>
-          <span>
-            {currentPage + 1} / {pages}
-          </span>
-          <button type="button" disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>
-            Next
+          <button type="button" aria-pressed={view === "add"} onClick={() => setView("add")}>
+            Add
           </button>
         </div>
       ) : null}
-      <label>
-        From space
-        <select disabled={disabled} value={from} onChange={(event) => setFrom(event.target.value)}>
-          <option value="">Choose a space</option>
-          {spaces
-            .filter((zone) => !editableIds || editableIds.includes(zone.id))
-            .map((zone) => (
-              <option key={zone.id} value={zone.id}>
-                {name(zone.id)}
-              </option>
+
+      {!compact || view === "list" ? (
+        <>
+          <ul>
+            {visiblePairs.map(([a, b]) => (
+              <li key={a + ":" + b}>
+                <span>
+                  {name(a)} ↔ {name(b)}
+                </span>{" "}
+                <button
+                  type="button"
+                  disabled={disabled || (!!editableIds && !editableIds.includes(a) && !editableIds.includes(b))}
+                  aria-label={"Remove connection " + name(a) + " to " + name(b)}
+                  onClick={() => update(a, b, false)}
+                >
+                  Remove
+                </button>
+              </li>
             ))}
-        </select>
-      </label>
-      <label>
-        To space
-        <select disabled={disabled} value={to} onChange={(event) => setTo(event.target.value)}>
-          <option value="">Choose a space</option>
-          {spaces
-            .filter((zone) => zone.id !== from)
-            .map((zone) => (
-              <option key={zone.id} value={zone.id}>
-                {name(zone.id)}
-              </option>
-            ))}
-        </select>
-      </label>
-      <button
-        type="button"
-        disabled={disabled || !from || !to || from === to || contactNeighborIds(rows, from).includes(to)}
-        onClick={() => {
-          update(from, to, true);
-          setFrom("");
-          setTo("");
-        }}
-      >
-        Add connection
-      </button>
+          </ul>
+          {pages > 1 ? (
+            <div className="vp-actions">
+              <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
+                Previous
+              </button>
+              <span>
+                {currentPage + 1} / {pages}
+              </span>
+              <button type="button" disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>
+                Next
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {!compact || view === "add" ? (
+        <>
+          <div className="vp-connection-fields">
+            <label>
+              From space
+              <select disabled={disabled} value={from} onChange={(event) => setFrom(event.target.value)}>
+                <option value="">Choose a space</option>
+                {spaces
+                  .filter((zone) => !editableIds || editableIds.includes(zone.id))
+                  .map((zone) => (
+                    <option key={zone.id} value={zone.id}>
+                      {name(zone.id)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              To space
+              <select disabled={disabled} value={to} onChange={(event) => setTo(event.target.value)}>
+                <option value="">Choose a space</option>
+                {spaces
+                  .filter((zone) => zone.id !== from)
+                  .map((zone) => (
+                    <option key={zone.id} value={zone.id}>
+                      {name(zone.id)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+          <button
+            type="button"
+            disabled={disabled || !from || !to || from === to || contactNeighborIds(rows, from).includes(to)}
+            onClick={() => {
+              update(from, to, true);
+              setFrom("");
+              setTo("");
+            }}
+          >
+            Add connection
+          </button>
+        </>
+      ) : null}
       {problem ? <p role="status">{problem}</p> : null}
     </fieldset>
   );

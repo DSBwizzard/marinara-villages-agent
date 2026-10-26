@@ -7,14 +7,20 @@ export function OpeningProjects({
   busy,
   decide,
   onPeople,
+  pageSize = 4,
 }: {
   snapshot: VillageSnapshot;
   busy: boolean;
   decide(action: "accept" | "decline" | "skip", residentId?: string): Promise<unknown>;
   onPeople(): void;
+  pageSize?: number;
 }) {
   const opening = snapshot.opening!;
   const [selectedId, select] = useState("");
+  const [page, setPage] = useState(0);
+  const [full, setFull] = useState(false);
+  const pages = Math.max(1, Math.ceil(opening.residentIds.length / pageSize));
+  const currentPage = Math.min(page, pages - 1);
   const proposals = opening.proposals;
   const selected = proposals.find((proposal) => proposal.residentId === selectedId) ?? proposals[0];
   const eligible =
@@ -40,7 +46,7 @@ export function OpeningProjects({
       </div>
       <div className={`${P}-opening-workspace`} data-selected={!!selectedId}>
         <nav aria-label="Resident proposals" className={`${P}-opening-list`}>
-          {opening.residentIds.map((id) => {
+          {opening.residentIds.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((id) => {
             const proposal = proposals.find((entry) => entry.residentId === id);
             const name = snapshot.villagers.find((resident) => resident.characterId === id)?.name ?? id;
             return (
@@ -49,7 +55,10 @@ export function OpeningProjects({
                 key={id}
                 className={`${P}-project-slot`}
                 aria-pressed={selected?.residentId === id}
-                onClick={() => (proposal ? select(id) : onPeople())}
+                onClick={() => {
+                  setFull(false);
+                  return proposal ? select(id) : onPeople();
+                }}
               >
                 <span>{name}</span>
                 <strong>{proposal?.name ?? "Talk together"}</strong>
@@ -65,38 +74,83 @@ export function OpeningProjects({
               </button>
             );
           })}
+          {pages > 1 ? (
+            <div className="vp-actions">
+              <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
+                Previous
+              </button>
+              <span>
+                {currentPage + 1} / {pages}
+              </span>
+              <button type="button" disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>
+                Next
+              </button>
+            </div>
+          ) : null}
         </nav>
         <article className={`${P}-project-card`}>
-          <button type="button" className={`${P}-button ${P}-opening-back`} onClick={() => select("")}>
+          <button
+            type="button"
+            className={`${P}-button ${P}-opening-back`}
+            onClick={() => {
+              setFull(false);
+              select("");
+            }}
+          >
             All proposals
           </button>
           {selected ? (
             <>
-              <h3>{selected.name}</h3>
-              <p>{selected.kind === "renovation" ? "Renovation" : "New Venue"}</p>
-              <p>{selected.description}</p>
-              <p>{selected.work}</p>
-              <p>
-                <strong>Work</strong> · 24 hours
-              </p>
-              <div className={`${P}-opening-actions`}>
-                <button
-                  type="button"
-                  className={`${P}-button`}
-                  disabled={busy || !ready || !eligible}
-                  onClick={() => void decide("accept", selected.residentId)}
-                >
-                  Accept proposal
-                </button>
-                <button
-                  type="button"
-                  className={`${P}-button`}
-                  disabled={busy || !eligible}
-                  onClick={() => void decide("decline", selected.residentId)}
-                >
-                  Decline
-                </button>
+              <div className="vp-panel-heading">
+                <h3>{selected.name}</h3>
+                {selected.description.length > 24 || selected.work.length > 24 ? (
+                  <button type="button" onClick={() => setFull(!full)}>
+                    {full ? "Summary" : "Full proposal"}
+                  </button>
+                ) : null}
               </div>
+              <p>{selected.kind === "renovation" ? "Renovation" : "New Venue"} · 24 hours</p>
+              {full ? (
+                <>
+                  <label>
+                    Design
+                    <textarea readOnly value={selected.description} />
+                  </label>
+                  <label>
+                    Work
+                    <textarea readOnly value={selected.work} />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <p>
+                    {selected.description.length > 24
+                      ? selected.description.slice(0, 24).trimEnd() + "…"
+                      : selected.description}
+                  </p>
+                  <p>{selected.work.length > 24 ? selected.work.slice(0, 24).trimEnd() + "…" : selected.work}</p>
+                </>
+              )}
+              {!full ? (
+                <div className={`${P}-opening-actions`}>
+                  <button
+                    type="button"
+                    className={`${P}-button`}
+                    disabled={busy || !ready || !eligible}
+                    onClick={() => void decide("accept", selected.residentId)}
+                  >
+                    Accept proposal
+                  </button>
+                  <button
+                    type="button"
+                    className={`${P}-button`}
+                    disabled={busy || !eligible}
+                    onClick={() => void decide("decline", selected.residentId)}
+                  >
+                    Decline
+                  </button>
+                </div>
+              ) : null}
             </>
           ) : (
             <p>{opening.action}</p>

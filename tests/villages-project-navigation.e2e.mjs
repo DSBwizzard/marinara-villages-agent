@@ -293,7 +293,7 @@ try {
     await page.getByRole("button", { name: "Start · 24 hours", exact: true }).click();
     await expect(page.locator("time")).toHaveAttribute("datetime", "2026-10-24T12:00:00Z");
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
-    await expect(page.getByLabel("Physical design", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Physical design", { exact: true })).toHaveAttribute("readonly", "");
     await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
     await page.getByRole("button", { name: "Cancel Project", exact: true }).click();
     await back();
@@ -349,7 +349,7 @@ try {
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("A narrow gate beside the old oak.");
     await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
-    await expect(page.getByRole("tabpanel")).toContainText(longDesign.trim());
+    await expect(page.getByRole("button", { name: "Full design", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Save design", exact: true }).click();
     await expect.poll(() => f.calls.at(-1)?.path).toBe("/projects/created/plan");
     assert.equal(f.calls.at(-1).body.form, longDesign);
@@ -359,7 +359,7 @@ try {
       .getByRole("navigation", { name: "Projects", exact: true })
       .getByRole("button", { name: /New Garden/ })
       .click();
-    await expect(reopened.page.getByRole("tabpanel")).toContainText(longDesign.trim());
+    await expect(reopened.page.getByRole("button", { name: "Full design", exact: true })).toBeVisible();
     await reopened.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(reopened.page.getByLabel("Physical design", { exact: true })).toHaveValue(longDesign);
     await reopened.page.getByRole("button", { name: "Zones", exact: true }).click();
@@ -391,9 +391,11 @@ try {
     await expect(limit.page.getByRole("button", { name: "Add Zone", exact: true })).toBeDisabled();
     await expect(limit.page.getByRole("button", { name: "Add private Zone", exact: true })).toBeDisabled();
     await limit.page.getByRole("navigation", { name: "Project Zones" }).getByRole("button", { name: /Art 0/ }).click();
+    if (width < 700) await limit.page.getByRole("button", { name: "Options", exact: true }).click();
     await limit.page.getByRole("button", { name: "Remove Zone", exact: true }).click();
     await limit.page.getByRole("button", { name: "Add private Zone", exact: true }).click();
     await limit.page.getByLabel("Zone Name", { exact: true }).fill("Quiet room");
+    if (width < 700) await limit.page.getByRole("button", { name: "Appearance", exact: true }).click();
     await limit.page.getByLabel("Room Specification", { exact: true }).fill("A quiet canvas alcove.");
     await expect(limit.page.getByLabel("Zone Appearance", { exact: true })).toHaveCount(0);
     await limit.page.getByRole("button", { name: "Save design", exact: true }).click();
@@ -420,8 +422,10 @@ try {
     await restricted.page.getByRole("button", { name: "Zones", exact: true }).click();
     await restricted.page.getByRole("button", { name: "Add private Zone", exact: true }).click();
     await restricted.page.getByLabel("Zone Name", { exact: true }).fill("Archive");
+    if (width < 700) await restricted.page.getByRole("button", { name: "Appearance", exact: true }).click();
     await restricted.page.getByLabel("Room Specification", { exact: true }).fill("Shelves and a reading desk.");
     if (width < 700) await restricted.page.getByRole("button", { name: "Options", exact: true }).click();
+    if (width < 700) await restricted.page.getByRole("button", { name: "Controllers", exact: true }).click();
     await restricted.page
       .getByRole("group", { name: "Zone controllers" })
       .getByRole("button", { name: "You", exact: true })
@@ -462,7 +466,7 @@ try {
     await expect(changed.page.getByRole("button", { name: "Resume", exact: true })).toBeDisabled();
     await changed.page.getByRole("button", { name: "Discard edits", exact: true }).click();
     await expect(changed.page.getByRole("button", { name: "Resume", exact: true })).toBeEnabled();
-    await expect(changed.page.getByLabel("Physical design", { exact: true })).toHaveCount(0);
+    await expect(changed.page.getByLabel("Physical design", { exact: true })).toHaveAttribute("readonly", "");
     await changed.page.close();
   }
   console.log(

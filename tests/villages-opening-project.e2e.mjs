@@ -3,7 +3,12 @@ import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { openProjectPage, projectSnapshot, currentProject } from "./fixtures/villages-project-browser.fixture.mjs";
 const browser = await chromium.launch({ headless: true });
 try {
-  for (const width of [1280, 390]) {
+  for (const [width, height] of [
+    [1280, 900],
+    [390, 740],
+    [390, 568],
+    [320, 568],
+  ]) {
     const snapshot = projectSnapshot();
     snapshot.projects = [];
     snapshot.opening = {
@@ -23,8 +28,8 @@ try {
           residentId: "mara",
           kind: "new-venue",
           name: "Canvas Tent",
-          description: "An art pavilion.",
-          work: "Lead the work.",
+          description: "An art pavilion for gatherings and performances. ".repeat(8),
+          work: "Lead the work and assemble the venue. ".repeat(8),
           venueClass: "community",
           established: false,
           provenance: "",
@@ -45,10 +50,33 @@ try {
         data.opening.stage = "project";
       }),
       { page } = f;
+    await page.setViewportSize({ width, height });
+    const fits = async () => {
+      const [scrollHeight, clientHeight] = await page.evaluate(() => {
+        const root = document.querySelector(".marinara-capability-villages-project-root");
+        return [root.scrollHeight, root.clientHeight];
+      });
+      assert(scrollHeight <= clientHeight + 1, `opening proposals fit ${width}x${height}`);
+    };
     await expect(page.getByRole("button", { name: "New Venue", exact: true })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Renovation", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Opening proposals", exact: true }).click();
+    await fits();
+    if (width < 700) {
+      await page.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(
+        page.getByRole("navigation", { name: "Resident proposals" }).getByRole("button", { name: /Lina/ }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Previous", exact: true }).click();
+    }
     await page.getByRole("navigation", { name: "Resident proposals" }).getByRole("button", { name: /Mara/ }).click();
+    await fits();
+    await page.getByRole("button", { name: "Full proposal", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Design", exact: true })).toHaveValue(
+      snapshot.opening.proposals[0].description,
+    );
+    await fits();
+    await page.getByRole("button", { name: "Summary", exact: true }).click();
     await expect(page.getByRole("button", { name: "Accept proposal", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Accept proposal", exact: true }).click();
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();

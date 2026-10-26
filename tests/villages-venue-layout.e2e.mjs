@@ -104,6 +104,7 @@ try {
         await editor.getByRole("button", { name: "Add Zone", exact: true }).click();
         await editor.getByLabel("Zone Name", { exact: true }).first().fill("Workshop");
         await editor.getByLabel("Zone Used For", { exact: true }).first().fill("Making things");
+        if (width < 700) await editor.getByRole("button", { name: "Appearance", exact: true }).click();
         await editor.getByLabel("Zone Appearance", { exact: true }).first().fill("A canvas workshop.");
         if (width < 700) await editor.getByRole("button", { name: "Options", exact: true }).click();
         await editor
@@ -117,6 +118,7 @@ try {
         await editor.getByRole("button", { name: "Add private Zone", exact: true }).click();
         await editor.getByLabel("Zone Name", { exact: true }).last().fill("Sleeping alcove");
         await editor.getByLabel("Zone Used For", { exact: true }).last().fill("Sleeping");
+        if (width < 700) await editor.getByRole("button", { name: "Appearance", exact: true }).click();
         await editor.getByLabel("Room Specification", { exact: true }).fill("A quiet canvas sleeping alcove.");
         await expect(editor.getByText(/Private contents stay hidden/)).toBeVisible();
       }
