@@ -1929,6 +1929,7 @@ try {
       oldIntent = clone(semanticIntentAnswer),
       oldExchange = clone(semanticExchangeAnswer);
     const message = '"Hello." *I sleep for two months*';
+    let sourceLines: unknown[] = [];
     const reset = async () => {
       beforeSemanticResponse = undefined;
       records.clear();
@@ -1981,6 +1982,7 @@ try {
         ],
       };
       await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+      sourceLines = clone(state().lines);
     };
     for (const [reason, expected] of [
       ["time", "halt-time"],
@@ -2044,7 +2046,7 @@ try {
     assert.equal(farewell.statusCode, 200, farewell.body);
     assert.equal(farewell.json().turnOutcome, "halt-time");
     assert.equal(state().status, "active", "a held farewell does not conclude the Scene");
-    assert.deepEqual(state().lines, []);
+    assert.deepEqual(state().lines, sourceLines);
     await reset();
     const zone = () => records.get("villages-village").data.venues[0].zones.find((row: any) => row.id === "terrace");
     const action = {
@@ -2082,7 +2084,7 @@ try {
     });
     assert.equal(changed.statusCode, 200, changed.body);
     assert.equal(changed.json().turnOutcome, "halt-world");
-    assert.deepEqual(state().lines, []);
+    assert.deepEqual(state().lines, sourceLines);
     assert.equal(zone().state.condition, "The cloth was removed elsewhere.");
     zone().state.condition = action.conditionBefore;
     await turn("preserved-physical", "*folds the cloth*", [{ text: "You fold the cloth." }]);

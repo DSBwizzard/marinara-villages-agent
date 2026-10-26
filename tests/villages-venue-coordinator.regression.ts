@@ -15,6 +15,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { quietContactReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
   venueOperationSignal,
+  venueOperationInput,
   venueRequestMetrics,
 } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { mock } from "node:test";
@@ -299,6 +300,7 @@ async function main() {
       coordinateVenue,
       venueCheckpoint,
       venueOperationSignal,
+      venueOperationInput,
       venueRequestMetrics,
       cancelVenueOperation,
       hasVenueOperation: () => true,
