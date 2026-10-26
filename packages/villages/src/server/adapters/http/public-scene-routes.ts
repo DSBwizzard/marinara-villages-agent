@@ -9,7 +9,7 @@ export function publicSceneRoutes(
   engine: FastifyInstance,
   guard?: (method: string, path: string, body: unknown) => Promise<string | null>,
   present?: (request: Parameters<VillageRouteHandler>[0], result: unknown) => Promise<unknown>,
-  clockIndependentReads: readonly string[] = [],
+  clockIndependentRoutes: readonly string[] = [],
 ): FastifyInstance {
   const owner = activationScope();
   const surface = Object.create(engine) as FastifyInstance;
@@ -22,9 +22,7 @@ export function publicSceneRoutes(
           if (blocked) return reply.code(409).send({ error: blocked });
           return handler(request, reply);
         };
-        let result = await (method === "get" && clockIndependentReads.includes(path)
-          ? work()
-          : withVillageClockWork(work));
+        let result = await (clockIndependentRoutes.includes(`${method} ${path}`) ? work() : withVillageClockWork(work));
         if (present) result = await present(request, result);
         if (result && typeof result === "object") {
           const payload = result as Record<string, unknown>;

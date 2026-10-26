@@ -19,3 +19,6 @@ export async function readVillageMemoryEvidence(...args: Parameters<WorldCoordin
 export async function forgetMemory(...args: Parameters<WorldCoordination["forgetMemory"]>) {
   return binding.get().forgetMemory(...args);
 }
+export async function correctMemory(...args: Parameters<WorldCoordination["correctMemory"]>) {
+  return binding.get().correctMemory(...args);
+}

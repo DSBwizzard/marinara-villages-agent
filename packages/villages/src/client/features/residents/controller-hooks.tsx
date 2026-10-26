@@ -4,28 +4,21 @@ import { useCallback, useEffect } from "react";
 
 export function useResidentInspection(ports: {
   loadAgendas: (signal?: AbortSignal) => Promise<void>;
-  loadMemoryLibrary: ReturnType<typeof import("./actions.js").useLoadMemoryLibrary>;
   personProfile: import("./villages-dossier.js").DossierNavigation;
   profileInspection: import("./villages-dossier.js").DossierSection;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
   setAgendas: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillagerAgendaView[]>>;
-  setMemoryLibrary: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").MemoryLibrary>>;
 }) {
-  const { loadAgendas, loadMemoryLibrary, personProfile, profileInspection, screen, setAgendas, setMemoryLibrary } =
-    ports;
+  const { loadAgendas, personProfile, profileInspection, screen, setAgendas } = ports;
   useEffect(() => {
     if (screen !== "person" || !personProfile || !profileInspection) return;
     const controller = new AbortController();
-    if (profileInspection === "memories") {
-      setMemoryLibrary(null);
-      void loadMemoryLibrary(controller.signal, { characterId: personProfile.actorId });
-    }
     if (["wishes", "agenda", "venues"].includes(profileInspection)) {
       setAgendas(null);
       void loadAgendas(controller.signal);
     }
     return () => controller.abort();
-  }, [screen, personProfile, profileInspection, loadAgendas, loadMemoryLibrary, setMemoryLibrary, setAgendas]);
+  }, [screen, personProfile, profileInspection, loadAgendas, setAgendas]);
 }
 
 export function useResidentAgendaPolling(ports: {

@@ -142,7 +142,16 @@ export function applyVillageMemory(state: VillageState, proposal: MemoryProposal
 }
 
 export function forgetVillageMemory(state: VillageState, operation: MemoryRepair, at: string) {
-  memoryRequire(operation.action === "forget", "manual Correct is not exposed");
+  memoryRequire(operation.action === "forget", "expected Forget");
+  return repairVillageMemory(state, operation, at);
+}
+
+export function correctVillageMemory(state: VillageState, operation: MemoryRepair, at: string) {
+  memoryRequire(operation.action === "repair", "expected Correct");
+  return repairVillageMemory(state, operation, at);
+}
+
+function repairVillageMemory(state: VillageState, operation: MemoryRepair, at: string) {
   const result = applyMemoryRepair(
     state.memories,
     operation,

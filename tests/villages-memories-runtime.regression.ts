@@ -317,7 +317,7 @@ await runCase("memories-runtime/public-inspection", async () => {
     readScene: async () => {
       throw new Error("Source Scene was deleted.");
     },
-    mutateVillageState: async (mutate: any) => {
+    mutateMemoryAuthority: async (mutate: any) => {
       const draft = structuredClone(state);
       mutate(draft);
       state = draft;

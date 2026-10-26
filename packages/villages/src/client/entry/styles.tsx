@@ -2078,6 +2078,11 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-memory-card-actions { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: auto; }
 .${ELEMENT_TAG}-memory-card-actions button, .${ELEMENT_TAG}-memory-evidence button { border: 0; padding: .18rem 0; background: transparent; color: var(--primary); font-size: .64rem; font-weight: 700; cursor: pointer; }
 .${ELEMENT_TAG}-memory-card-actions button:last-child { color: var(--muted-foreground); }
+.${ELEMENT_TAG}-memory-correction { display: grid; gap: .6rem; min-width: 0; }
+.${ELEMENT_TAG}-memory-correction > label { display: grid; gap: .35rem; }
+.${ELEMENT_TAG}-memory-correction textarea { box-sizing: border-box; width: 100%; min-width: 0; resize: vertical; font: inherit; padding: .5rem; color: inherit; background: var(--background); border: 1px solid var(--border); border-radius: .4rem; }
+.${ELEMENT_TAG}-memory-correction fieldset { display: flex; flex-wrap: wrap; gap: .5rem 1rem; min-width: 0; border: 0; padding: 0; margin: 0; }
+.${ELEMENT_TAG}-memory-correction fieldset label { display: flex; align-items: center; gap: .35rem; }
 .${ELEMENT_TAG}-memory-empty { display: grid; place-items: center; min-height: 10rem; border: 1px dashed var(--border); border-radius: .82rem; padding: 1rem; text-align: center; color: var(--muted-foreground); }
 .${ELEMENT_TAG}-memory-empty span { color: var(--primary); font-size: 1.35rem; }
 .${ELEMENT_TAG}-memory-empty h3 { margin: .25rem 0 0; color: var(--foreground); font-size: .82rem; }

@@ -599,6 +599,10 @@
       "path": "/memories/:id/forget"
     },
     {
+      "method": "post",
+      "path": "/memories/:id/correct"
+    },
+    {
       "method": "get",
       "path": "/agendas/:characterId/history"
     },
