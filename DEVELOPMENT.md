@@ -48,7 +48,15 @@ The runner executes selected tests afresh. Focused local tests are feedback; pas
 
 ## Preview and saved data
 
+Villages is an unreleased prototype without a public installer or official catalog entry. Test installation is arranged separately; historical tagged downloads are not the current prototype distribution.
+
+The opt-in [resident development prototype](docs/resident-development.md) and [experimental spinoffs](docs/spinoffs.md) document their own behavior and extension boundaries.
+
 During development, **DEBUG Settings → Advance Village time** advances the current instance by a chosen elapsed duration. The saved offset survives restart; days are 24 hours. It runs ordinary absence catch-up across Village mechanics, including any normally enabled model work, and preserves active Scene snapshots and held failures. Operational clocks and model settings remain unchanged. It is available in every development instance, including staging. Before admitting active playtesters, remove the `TimeControl.tsx` UI and `/clock/advance` route. Retain saved-offset compatibility so existing development worlds do not jump backwards; resetting the offset is not an undo operation. Checkpoint retained worlds before consequential time tests.
+
+**DEBUG Settings → Verbose runtime logging** defaults Off and can print prompts, replies and private conversation context in the server terminal. It is separate from destructive debug controls. Keep logs private. Background leases renew every 30 seconds while visible; unsettled work may use scoped status reads, while settled views have no dedicated polling timer. The [generation lifecycle](docs/generation-pipeline.md), [Scene privacy](docs/scene-response-privacy.md), [response recovery](docs/scene-response-recovery.md) and [saved-state contracts](docs/architecture-migration.md#saved-work-and-compatibility) own request, evidence, persistence and compatibility details.
+
+Sprite analysis sends temporary PNG copies capped at a 1024px longest edge without enlargement, with up to two requests in flight and an 800-token allowance per image. Originals and framing stay unchanged. Each completed proposal saves independently; cancellation stops new dispatches but an in-flight sibling may still be billed. The browser remembers the separately chosen vision connection; System and Image Captioning selections do not control it.
 
 Machine-specific commands are in the private Docker runtime guide referenced by the global Villages pointer. New previews copy selective setup and Villages data from a verified saved staging checkpoint into independent storage, without stopping live staging. Existing preview progress is preserved on feedback. Package changes require the guarded installer and checkpoint/recovery protection. Deliberate paid gameplay and personal installation operations require separate authorization.
 
