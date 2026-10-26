@@ -61,6 +61,10 @@ A resident continuing a doorway conversation may approach, stay inside or declin
 
 Navigation retains an unfinished Scene, composer draft and reading position. Refresh restores it even after days away. Real time between replies does not pass within the roleplay: a morning conversation remains that morning conversation. The wider Village continues on real time. Conclude rejoins its current date, schedules and availability without inventing player activities during the gap; Scenes cannot advance the Village into the future.
 
+Scenes remain open until **Conclude**, with no inactivity or age limit. Ordinary pacing is allowed; waiting between replies does not grant hours or days of completed activity. Unsupported time travel, large time skips and ongoing conditions the game cannot enforce are held before acceptance. New appointments resolve from the Scene's date and must still be possible when the player chooses them. An old Scene cannot overwrite a newer affected world fact or revive a corrected, retired or fulfilled Wish.
+
+**HALT** holds the entire turn, including its generated reply, outside the fiction. A brief notice identifies the boundary and preserves the player's editable input. No part enters dialogue, memories or world effects. The player rewrites it; Villages does not substitute a dream, a failed attempt or an invented action. Accepted information belongs to the original encounter and is recorded when accepted. It can inform subsequent interactions without rewriting the intervening days. An ordinary refusal, attempt, historical report or unrelated world change does not by itself require HALT.
+
 During development, **DEBUG Settings → Advance Village time** advances this instance by a custom elapsed duration across all Village mechanics, using normal absence catch-up. Enabled background work may use models. The saved advance survives restart; active Scenes keep their captured moment. This temporary control will be removed before active playtesters join. See [Village time](../../docs/village-clock-recovery.md).
 
 ## Writing and saved changes

@@ -4,7 +4,7 @@ import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { refreshSceneAfterFailure } from "./ScenePanel.js";
 import { request } from "../../shared/api.js";
 import type { RoomOperation } from "../../../shared/contracts/village.js";
-import { OCCUPANCY_UNAVAILABLE_MESSAGE } from "../../../shared/contracts/scene-turn-outcome.js";
+import { isSceneTurnOutcome, sceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
 
 type Pending = {
   sceneId: string;
@@ -70,12 +70,12 @@ export function useTurnRecovery(ports: {
       ).catch(() => ({ operation: null }));
       if (reading.current === token) reading.current = null;
       if (!owns()) return;
-      if (operation?.id === pending.submissionId && operation.turnOutcome === "occupancy-unavailable") {
+      if (operation?.id === pending.submissionId && isSceneTurnOutcome(operation.turnOutcome)) {
         if (scene) latest.current.setRoom(scene);
         latest.current.setRoomError("");
         if (!latest.current.editVersion || latest.current.editVersion.current === pending.editVersion) {
           latest.current.setRoomDraft(pending.text);
-          latest.current.setRoomRuling?.(OCCUPANCY_UNAVAILABLE_MESSAGE);
+          latest.current.setRoomRuling?.(sceneTurnOutcomeMessage(operation.turnOutcome));
         }
         if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
         setPending(null);

@@ -1,3 +1,4 @@
+import { isSceneTurnOutcome } from "../../shared/contracts/scene-turn-outcome.js";
 import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import { villageNow } from "../adapters/time/clock-gate.js";
 import { semanticBlocker } from "../domain/rules/semantic-continuity.js";
@@ -554,7 +555,9 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         ) {
           prior.status = "complete";
           prior.error = "";
-          prior.turnOutcome = "occupancy-unavailable";
+          prior.turnOutcome = (data.rejectedSubmissions as NonNullable<VenueScene["rejectedSubmissions"]>).find(
+            (receipt) => receipt.id === prior.id,
+          )!.turnOutcome;
         }
         if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
           throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
@@ -704,8 +707,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           try {
             const result = await work();
             assertVenueOwnership();
-            if (asRecord(result).turnOutcome === "occupancy-unavailable")
-              operation.turnOutcome = "occupancy-unavailable";
+            const outcome = asRecord(result).turnOutcome;
+            if (isSceneTurnOutcome(outcome)) operation.turnOutcome = outcome;
             if (current.blocked.size)
               throw venueRefusal(
                 "OPERATION_INTERRUPTED",

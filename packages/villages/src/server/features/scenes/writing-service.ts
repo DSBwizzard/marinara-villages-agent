@@ -1,3 +1,4 @@
+import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
 import { readDevelopmentSceneChanges } from "../../domain/rules/development-scene.js";
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
 import {
@@ -1118,6 +1119,7 @@ export function createSceneWriting({
             })
         : null;
     if (semanticResult?.turnOutcome === "occupancy-unavailable") throw new UnavailableResidentMovement();
+    if (semanticResult?.turnOutcome) throw new HaltedSceneTurn(semanticResult.turnOutcome);
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
     const semanticAccess = semanticResult?.access;
     if (semanticResult) {
@@ -1300,6 +1302,7 @@ export function createSceneWriting({
         : [];
       const ending = heardSignal(raw?.sceneEnded);
       const sceneEnded =
+        venueOperationInput()?.preservationVersion !== 1 &&
         !!ending &&
         (!session.contactGeneration ||
           ((session.contactGeneration.acoustics === true || session.contactGeneration.zoneEvents === true) &&
@@ -1558,6 +1561,8 @@ export function createSceneWriting({
           ? ({
               version: 2 as const,
               turnPolicyVersion: 1 as const,
+              ...(venueOperationInput()?.preservationVersion === 1 ? { preservationVersion: 1 as const } : {}),
+              ...(venueOperationInput()?.occurrenceVersion === 1 ? { occurrenceVersion: 1 as const } : {}),
               ...(venueOperationInput()?.developmentVersion === 1 ? { developmentVersion: 1 as const } : {}),
               sourceHash: semanticResult.sourceHash,
               ...(venueOperationInput()?.semanticPipelineVersion === 3 ? { pipelineVersion: 3 as const } : {}),

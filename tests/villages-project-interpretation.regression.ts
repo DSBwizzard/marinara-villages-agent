@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mock } from "node:test";
 import { fixture, renovation, venue } from "./fixtures/villages-projects.fixture.js";
 import { createProjectEvidence } from "../packages/villages/src/server/features/projects/project-evidence-service.js";
 import { readRenovationChange } from "../packages/villages/src/server/domain/rules/project-design.js";
@@ -167,3 +168,38 @@ await delayed.agree(delayedId);
 const resumedAt = new Date("2026-10-24T11:01:00.000Z");
 await delayed.service.resumeProject(delayedId, delayed.body(delayedId), resumedAt);
 assert.equal(Date.parse(delayed.get(delayedId).lifecycle!.workOrder!.completesAt) - resumedAt.getTime(), 24 * 3600000);
+
+// Accepting an old encounter today affects the remaining real work today.
+const preserved = fixture(),
+  preservedId = await preserved.newProject();
+await preserved.service.startProjectConstruction(preservedId, preserved.body(preservedId), startedAt);
+const appliedAt = "2026-10-24T18:00:00.000Z";
+const oldSpeech = {
+  ...withdrawal,
+  preservationVersion: 1,
+  at: "2026-10-24T07:00:00.000Z",
+  villageSeed: preserved.state().seed,
+  projectContexts: [
+    { projectId: preservedId, revision: preserved.get(preservedId).lifecycle!.revision, phase: "working" },
+  ],
+  projectSpeech: [
+    {
+      ...withdrawal.projectSpeech[0],
+      projectId: preservedId,
+      revision: preserved.get(preservedId).lifecycle!.revision,
+    },
+  ],
+};
+mock.timers.enable({ apis: ["Date"], now: Date.parse(appliedAt) });
+try {
+  await createProjectEvidence({
+    readVillageState: async () => preserved.state(),
+    mutateVillageState: preserved.mutate,
+    sceneQueries: () => ({ readProjectTurnEvidence: async () => oldSpeech }),
+  } as any).processProjectSpeechTurn("old-scene", "newly-accepted");
+  assert.equal(preserved.get(preservedId).lifecycle!.workOrder!.remainingMs, 17 * 3600000);
+  assert.equal(preserved.get(preservedId).updatedAt, appliedAt);
+  assert.equal(preserved.get(preservedId).lifecycle!.spokenProofs[0].at, oldSpeech.at);
+} finally {
+  mock.timers.reset();
+}

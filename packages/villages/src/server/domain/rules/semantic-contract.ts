@@ -62,6 +62,16 @@ export function semanticContext(
     history.unshift(row);
   }
   return {
+    ...(scene.operation?.input.preservationVersion === 1
+      ? {
+          preservation: {
+            version: 1 as const,
+            sceneAt: scene.continuity?.capturedAt ?? scene.sceneAttendance?.capturedAt ?? scene.startedAt,
+            chosenAt: String(scene.operation.input.chosenAt),
+            timeZone: authority.timeZone,
+          },
+        }
+      : {}),
     ...(scene.continuity
       ? {
           time: {

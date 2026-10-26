@@ -1,6 +1,10 @@
 import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { useCallback, useState, useRef } from "react";
-import { OCCUPANCY_UNAVAILABLE_MESSAGE } from "../../../shared/contracts/scene-turn-outcome.js";
+import {
+  isSceneTurnOutcome,
+  isSceneTurnOutcomeMessage,
+  sceneTurnOutcomeMessage,
+} from "../../../shared/contracts/scene-turn-outcome.js";
 import type { RoomOperation, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -63,11 +67,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   useEffect(() => {
     const operation = currentOperation;
     const key = `${sceneId}:${operation?.id}`;
-    if (operation?.turnOutcome !== "occupancy-unavailable" || restoredInformation.current === key) return;
+    if (!operation || !isSceneTurnOutcome(operation.turnOutcome) || restoredInformation.current === key) return;
     restoredInformation.current = key;
     if (editVersionRef.current !== 0) return;
     restoreRoomDraft((current) => current || operation.input?.message || "");
-    showInformation(OCCUPANCY_UNAVAILABLE_MESSAGE);
+    showInformation(sceneTurnOutcomeMessage(operation.turnOutcome));
   }, [sceneId, currentOperation, editVersionRef, showInformation, restoreRoomDraft]);
   useEffect(() => {
     if (clarificationId && clarificationMessage) restoreRoomDraft((current) => current || clarificationMessage);
@@ -261,14 +265,14 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             (snapshot?.villagers ?? []).map((villager) => [villager.characterId, villager.sprite]),
           )}
           onDraft={(value) => {
-            if (roomRuling === OCCUPANCY_UNAVAILABLE_MESSAGE) controller.setRoomRuling("");
+            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             roomLeaveSubmissionIdRef.current = null;
             setRoomDraft(value);
           }}
           onMode={(value) => {
-            if (roomRuling === OCCUPANCY_UNAVAILABLE_MESSAGE) controller.setRoomRuling("");
+            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             setRoomMode(value);
@@ -279,7 +283,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           onTarget={(value) => {
             composerEditVersionRef.current++;
-            if (roomRuling === OCCUPANCY_UNAVAILABLE_MESSAGE) setRoomRuling("");
+            if (isSceneTurnOutcomeMessage(roomRuling)) setRoomRuling("");
             roomSubmissionIdRef.current = null;
             setRoomTargetId(value);
           }}

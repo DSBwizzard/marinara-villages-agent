@@ -5,6 +5,7 @@ import { projectFor, pauseProject } from "../../domain/rules/project-lifecycle-r
 import { approvalScope, projectDesignKey, renovationAffectedIds } from "../../domain/rules/project-terms.js";
 import { validateProjectSpeech } from "../../domain/rules/project-interpretation.js";
 import type { SceneQueries } from "../scenes/services.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 
 export interface ProjectEvidencePorts {
   readVillageState(): Promise<VillageState>;
@@ -42,6 +43,8 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
     )
       throw conflict("This agreement was not witnessed.");
     await mutateVillageState((state) => {
+      const appliedAt =
+        turn.preservationVersion === 1 || turn.occurrenceVersion === 1 ? villageNow().toISOString() : turn.at;
       const project = projectFor(state, projectId),
         flow = project.lifecycle;
       const proofId = JSON.stringify([proposal.kind, sessionId, submissionId, lineId]);
@@ -59,7 +62,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         flow.approvals = flow.approvals.filter((row) => row.residentId !== speakerId);
         flow.candidates = flow.candidates.filter((row) => row.residentId !== speakerId);
         if (project.status === "working" && (speakerId === flow.builderId || flow.affectedIds.includes(speakerId)))
-          pauseProject(project, turn.at, "Renew the necessary agreements and lead, then Resume.");
+          pauseProject(project, appliedAt, "Renew the necessary agreements and lead, then Resume.");
       } else {
         if (!["planning", "paused"].includes(project.status)) return;
         if (proposal.kind === "approval") {
@@ -107,7 +110,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
           citations: proposal.citations,
         });
       flow.evidenceIds.push(proofId);
-      project.updatedAt = turn.at;
+      project.updatedAt = appliedAt;
     });
   }
   async function processProjectSpeechTurn(sessionId: string, submissionId: string): Promise<void> {

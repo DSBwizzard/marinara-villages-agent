@@ -1,3 +1,4 @@
+import { readSceneHalt, SCENE_HALT_INSTRUCTION } from "../../domain/rules/scene-halt.js";
 import { readDevelopmentSceneProposals } from "../../domain/rules/development-scene.js";
 import { DEVELOPMENT_SCENE_INSTRUCTION } from "../../domain/rules/development-knowledge.js";
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
@@ -355,9 +356,10 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
-      (residentActionsOmitted
-        ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
-        : "") +
+      (context.preservation ? SCENE_HALT_INSTRUCTION : "") +
+        (residentActionsOmitted
+          ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
+          : "") +
         (residentActions
           ? (actionContractV2
               ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
@@ -413,6 +415,24 @@ export function createSemanticService(ports: SemanticPorts) {
         " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
         (scene.operation?.input.developmentVersion === 1 ? DEVELOPMENT_SCENE_INSTRUCTION : ""),
       (raw, hash, savedInput): SemanticExchange => {
+        if (savedInput.context.preservation) {
+          const outcome = readSceneHalt(
+            raw.halt,
+            savedInput.context.preservation,
+            savedInput.message,
+            savedInput.evidence,
+          );
+          if (outcome)
+            return {
+              version: 2,
+              sourceHash: hash,
+              checkpointKey: "",
+              turnOutcome: outcome,
+              authority: { physical: false, access: false, projects: false, standing: false },
+              effects: {},
+              access: null,
+            };
+        }
         const interpretedIntent = combined
           ? readIntent(asRecord(raw.intent), hash, savedInput, state, scene)
           : undefined;

@@ -74,6 +74,18 @@ export function createVillageStateService(repository: VillageRepository, worldRe
     await persistRelationshipAuthority(next);
     return next;
   }
-  return { readVillageAuthority, readVillageSnapshot, readVillageState, mutateVillageState };
+  async function withVillageSceneAcceptance<T>(work: (state: VillageState) => Promise<T>): Promise<T> {
+    // Observe before acquiring the write gate: the clock can itself need a world write.
+    await observeVillageClock();
+    const accept = async () => work(await repository.readAuthority());
+    return repository.withAuthorityLock ? repository.withAuthorityLock(accept) : accept();
+  }
+  return {
+    readVillageAuthority,
+    readVillageSnapshot,
+    readVillageState,
+    mutateVillageState,
+    withVillageSceneAcceptance,
+  };
 }
 export type VillageStateService = ReturnType<typeof createVillageStateService>;
