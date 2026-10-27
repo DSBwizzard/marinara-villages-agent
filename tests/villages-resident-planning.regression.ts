@@ -158,7 +158,6 @@ assert(
   effects.state.villagers[0].agenda!.routineProfile!.activities.some((row) => row.activity === "Reading by the window"),
 );
 assert.equal(effects.state.memories.records.length, 0);
-assert.equal(effects.state.noticeboard.length, 0);
 assert.equal(Object.hasOwn(proposal, "memory"), false);
 const changed = structuredClone(effects.state);
 changed.villagers[0].cardSnapshot.capturedAt = "changed";

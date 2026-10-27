@@ -26,7 +26,10 @@ const base = {
   contributions: definition.contributions,
   files: payloads.map(([path, bytes]) => ({ path, bytes: bytes.length, sha256: hash(bytes) })),
 };
-for (const [name, bytes] of payloads) await writeFile(join(packageRoot, name), bytes);
+for (const [name, bytes] of payloads) {
+  await mkdir(dirname(join(packageRoot, name)), { recursive: true });
+  await writeFile(join(packageRoot, name), bytes);
+}
 async function fixture(changeManifest = () => {}, changeArchive = () => {}) {
   const manifest = structuredClone(base);
   changeManifest(manifest);

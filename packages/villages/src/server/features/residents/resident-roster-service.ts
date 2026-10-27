@@ -1,3 +1,4 @@
+import { chooseLetterFont, legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { EMPTY_RESIDENT_ADMISSION, readResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -66,6 +67,7 @@ export function createResidentRoster({
     if (!alreadyResident) {
       const spriteManager = await preparedSpriteManager?.(characterId, spriteSetupRevision);
       const addedAt = villageNow().toISOString();
+      const letterFontId = chooseLetterFont(randomVillageSeed());
       await mutateVillageState((state) => {
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
         if (state.villagers.length >= MAX_VILLAGERS) {
@@ -83,6 +85,10 @@ export function createResidentRoster({
         // what lets the tab tell those two apart.
         state.villagers.push({
           characterId,
+          letterFontId:
+            (state.formerLetterFonts && Object.hasOwn(state.formerLetterFonts, characterId)
+              ? state.formerLetterFonts[characterId]
+              : undefined) ?? letterFontId,
           admission,
           spriteManager,
           identityDescription: initialIdentityDescription(),
@@ -132,6 +138,16 @@ export function createResidentRoster({
   async function removeVillager(characterId: string): Promise<void> {
     let removed = false;
     await mutateVillageState((state) => {
+      const departing = state.villagers.find((villager) => villager.characterId === characterId);
+      if (departing) {
+        state.formerLetterFonts ??= {};
+        Object.defineProperty(state.formerLetterFonts, characterId, {
+          value: departing.letterFontId ?? legacyLetterFont(characterId),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
       const remaining = state.villagers.filter((villager) => villager.characterId !== characterId);
       removed = remaining.length !== state.villagers.length;
       if (removed)

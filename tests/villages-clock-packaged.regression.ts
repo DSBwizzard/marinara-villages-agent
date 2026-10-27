@@ -32,9 +32,7 @@ await runCase("village-clock-recovery", async () => {
     backgroundPace: "off",
     visitMemoryBackfilled: true,
   });
-  const legacyNotes = ["Legacy player note", { author: "Mara", text: "Legacy resident note" }];
-  seed.noticeboard = legacyNotes as unknown as typeof seed.noticeboard;
-  seed.promptKnowledge = "Village lore {{noticeboard}}";
+  Object.assign(seed, { noticeboard: ["Old note"] });
   seed.clock = {
     revision: 2,
     trustedAt: new Date(wall).toISOString(),
@@ -165,11 +163,8 @@ await runCase("village-clock-recovery", async () => {
     response = await call("/settings", "PATCH", { name: "Still playable after sleep" });
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().village.name, "Still playable after sleep");
-    assert.deepEqual(response.json().noticeboard, [
-      { author: "", text: "Legacy player note" },
-      { author: "Mara", text: "Legacy resident note" },
-    ]);
-    assert.equal(response.json().settings.promptKnowledge, "Village lore {{noticeboard}}");
+    assert.equal("noticeboard" in response.json(), false);
+    assert.equal("noticeboard" in records.get("villages-village").data, false);
     assert.equal((await call("/noticeboard", "POST", { notice: "new" })).statusCode, 404);
     assert.equal((await call("/noticeboard/0", "DELETE")).statusCode, 404);
     response = await call("/clock/recover", "POST", { revision: 0, choice: "accept" });
@@ -200,11 +195,6 @@ await runCase("village-clock-recovery", async () => {
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().clock.paused, false);
     assert.equal(response.json().village.instant, new Date(wall).toISOString());
-    assert.deepEqual(response.json().noticeboard, [
-      { author: "", text: "Legacy player note" },
-      { author: "Mara", text: "Legacy resident note" },
-    ]);
-    assert.equal(response.json().settings.promptKnowledge, "Village lore {{noticeboard}}");
     const startAdvance = wall;
     let totalAdvance = 0;
     for (const milliseconds of [90 * 60_000, 86_400_000, 7 * 86_400_000, 30 * 86_400_000]) {

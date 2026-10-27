@@ -1,3 +1,4 @@
+import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import type { RepairTopic, RepairValue } from "../../../shared/contracts/repair.js";
 import type { RepairController } from "./useRepairController.js";
 import { REPAIR_STYLES } from "./repair-styles.js";
@@ -53,6 +54,11 @@ export function RepairPage({
   );
   const display = (value: RepairValue | undefined) =>
     typeof value === "boolean" ? (value ? "Yes" : "No") : String(value ?? "");
+  const previewFontId =
+    c.view === "edit" && c.selected?.fields.some((f) => f.key === "letterFontId")
+      ? display(c.draft?.values.letterFontId)
+      : undefined;
+  useLetterFont(previewFontId);
   const value = (key: string, next: RepairValue) => c.update({ values: { ...c.draft?.values, [key]: next } });
   return (
     <div className="villages-repair" aria-label="REPAIR">
@@ -288,7 +294,22 @@ export function RepairPage({
                   {!c.selected.creating && !memoryRecord ? (
                     <div className="repair-current">
                       <small>Current</small>
-                      <p>{display(f.value) || "None"}</p>
+                      <p>
+                        {f.options?.find((option) => option.value === f.value)?.label ?? (display(f.value) || "None")}
+                      </p>
+                    </div>
+                  ) : null}
+                  {f.key === "letterFontId" ? (
+                    <div>
+                      <p
+                        style={{
+                          fontFamily: letterFontFamily(display(c.draft?.values[f.key])),
+                          fontSize: "1.25rem",
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        Dear friend, I hope this letter finds you well. 123
+                      </p>
                     </div>
                   ) : null}
                   {memoryReadOnly ? (
