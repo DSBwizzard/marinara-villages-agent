@@ -31,6 +31,10 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const fixture = structuredClone(snapshot);
+    fixture.settings.venues[0].zones = [
+      { id: "exterior", name: "Outside", kind: "exterior", seen: true },
+      { id: "hall", name: "Hall", kind: "public", seen: true },
+    ];
     const session = {
       version: 2,
       id: "send-recovery",
@@ -60,7 +64,9 @@ try {
       submissions: [],
       operation: null,
     };
+    let zonePosts = 0;
     let active = true;
+    let holdReview = null;
     let failure = null;
     let loseSuccessResponse = false;
     let hideReads = false;
@@ -95,6 +101,11 @@ try {
       } else if (path.endsWith("/connections"))
         value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
       else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) {
+        if (path.endsWith("/rooms/active") && holdReview) {
+          const held = holdReview;
+          holdReview = null;
+          await held;
+        }
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         value = { session: active ? session : null };
         if (path.endsWith("/rooms/active") && staleRecovery) {
@@ -138,6 +149,9 @@ try {
         settingsWrites.push(input);
         Object.assign(fixture.settings, input);
         value = fixture;
+      } else if (path.endsWith("/rooms/zone")) {
+        zonePosts++;
+        value = { session };
       } else if (path.endsWith("/rooms/turn") || path.endsWith("/rooms/leave")) {
         const input = request.postDataJSON();
         turns.push(input);
@@ -237,9 +251,165 @@ try {
       await page.goto("http://scene-send.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     };
-    await load();
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
     const send = page.getByRole("button", { name: "Send", exact: true });
+    for (const mode of ["contact", "fulfill"]) {
+      for (const edit of [false, true]) {
+        for (const status of ["interrupted", "complete"]) {
+          const message = `Saved ${mode} action`;
+          const original = {
+            message,
+            mode,
+            targetId: "mara",
+            ...(mode === "contact"
+              ? {
+                  contact: {
+                    kind: "call",
+                    boundaryZoneId: "interior",
+                    delivery: "device",
+                    deviceFeatureId: "old-intercom",
+                  },
+                }
+              : {}),
+          };
+          session.operation = {
+            id: `old-${mode}-${edit}-${status}`,
+            kind: "turn",
+            status,
+            attemptId: "old-attempt",
+            error: "Interrupted",
+            input: original,
+          };
+          const before = turns.length;
+          await load();
+          await expect(composer).toHaveValue(message);
+          await expect(
+            page.getByText(new RegExp(`Saved ${mode === "contact" ? "Contact" : "Fulfill"} action`)),
+          ).toBeVisible();
+          assert.equal(turns.length, before, "restoration never sends a request");
+          if (edit) await composer.fill(message + " changed");
+          await expect(send).toBeDisabled();
+          await page
+            .getByRole("button", { name: edit ? "Replace with Say / Do" : "Retry original action", exact: true })
+            .click();
+          await expect.poll(() => turns.length).toBe(before + 1);
+          const sent = turns.at(-1);
+          assert.equal(sent.retryOfAttemptId, "old-attempt");
+          if (edit) {
+            assert.equal(sent.mode, "chat");
+            assert.equal(sent.replaceOfOperationId, `old-${mode}-${edit}-${status}`);
+            assert.equal(sent.targetId, "");
+            assert.equal(sent.contact, undefined);
+          } else {
+            assert.equal(sent.mode, mode);
+            assert.equal(sent.submissionId, `old-${mode}-${edit}-${status}`);
+            assert.equal(sent.targetId, "mara");
+            assert.deepEqual(sent.contact, original.contact);
+          }
+          const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+          while (await next.isEnabled()) await next.click();
+          await expect(composer).toHaveValue("");
+        }
+      }
+    }
+    session.operation = null;
+    await load();
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    const zoneSelect = page.getByLabel("Move to Zone", { exact: true });
+    session.operation = {
+      id: "held-before-move",
+      kind: "turn",
+      status: "complete",
+      attemptId: "held-attempt",
+      error: "Interrupted",
+      input: {
+        message: "Saved call before moving",
+        mode: "contact",
+        contact: { kind: "call", boundaryZoneId: "hall" },
+      },
+    };
+    await zoneSelect.selectOption("hall");
+    await expectSceneError(page, "Review the saved action before moving");
+    assert.equal(zonePosts, 0, "movement does not replace an unbound legacy hold");
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(page.getByText(/Saved Contact action/)).toBeVisible();
+    await expect(zoneSelect).toHaveCount(0);
+    await expect(composer).toBeVisible();
+    session.operation = null;
+    await page.getByRole("button", { name: "Review latest saved action", exact: true }).click();
+    await expect(zoneSelect).toBeEnabled();
+    await page.getByRole("button", { name: "Mode: Move. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
+    await composer.fill("My newer unsent draft");
+    session.operation = {
+      id: "held-old",
+      kind: "turn",
+      status: "interrupted",
+      attemptId: "attempt-one",
+      error: "Interrupted",
+      input: {
+        message: "Earlier saved call",
+        mode: "contact",
+        targetId: "mara",
+        contact: { kind: "call", boundaryZoneId: "interior" },
+      },
+    };
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(page.getByText(/Saved Contact action/)).toBeVisible();
+    await expect(composer).toHaveValue("My newer unsent draft");
+    const beforeConflict = turns.length;
+    session.operation = {
+      ...session.operation,
+      attemptId: "attempt-two",
+      input: { ...session.operation.input, message: "A newer saved call" },
+    };
+    const legacyErrors = await openSceneErrors(page);
+    await legacyErrors.getByRole("button", { name: "Retry original message", exact: true }).click();
+    await closeSceneErrors(page);
+    await expectSceneError(page, "saved request changed");
+    assert.equal(turns.length, beforeConflict, "a newer attempt is never retried silently");
+    let releaseReview;
+    holdReview = new Promise((resolve) => {
+      releaseReview = resolve;
+    });
+    await page.getByRole("button", { name: "Review latest saved action", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Review latest saved action", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Retry original action", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Replace with Say / Do", exact: true })).toHaveCount(0);
+    const blockedErrors = await openSceneErrors(page);
+    await expect(blockedErrors.getByRole("button", { name: "Retry original message", exact: true })).toBeDisabled();
+    await closeSceneErrors(page);
+    releaseReview();
+    await expect(page.getByText("A newer saved call", { exact: true })).toBeVisible();
+    await expect(composer).toHaveValue("My newer unsent draft");
+    session.operation = { ...session.operation, attemptId: "attempt-three" };
+    await page.getByRole("button", { name: "Replace with Say / Do", exact: true }).click();
+    await expectSceneError(page, "saved action changed");
+    assert.equal(turns.length, beforeConflict, "replacement never adopts a newer attempt");
+    session.operation = null;
+    await page.getByRole("button", { name: "Review latest saved action", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Retry original action", exact: true })).toHaveCount(0);
+    await expect(composer).toHaveValue("My newer unsent draft");
+    assert.equal(turns.length, beforeConflict, "reviewing a completed action does not send");
+    session.operation = {
+      id: "held-outcome",
+      kind: "turn",
+      status: "interrupted",
+      attemptId: "outcome-attempt",
+      error: "Interrupted",
+      input: { message: "Older saved request", mode: "fulfill", targetId: "mara" },
+    };
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(page.getByText(/Saved Fulfill action/)).toBeVisible();
+    occupancyUnavailable = true;
+    await page.getByRole("button", { name: "Retry original action", exact: true }).click();
+    await expect.poll(() => turns.length).toBe(beforeConflict + 1);
+    await expect(composer).toHaveValue("My newer unsent draft");
+    occupancyUnavailable = false;
+    session.operation = null;
+    turns.length = 0;
+    await load();
     await expect(composer).toBeVisible();
     await composer.fill("First line");
     await composer.press("Enter");

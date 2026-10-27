@@ -50,7 +50,7 @@ export type PersonaPreview = {
  */
 export type VillageBeatRegister = "speech" | "narration";
 
-export type SceneComposerMode = "chat" | "fulfill" | "move" | "conclude" | "contact";
+export type SceneComposerMode = "chat" | "move" | "conclude";
 
 /**
  * What a connection is for, in the Engine's own terms.

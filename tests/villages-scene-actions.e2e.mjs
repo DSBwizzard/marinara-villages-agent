@@ -143,11 +143,10 @@ try {
     await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
     assert.deepEqual(
       await page.getByRole("menu", { name: "Scene mode" }).getByRole("menuitemradio").allTextContents(),
-      ["Say / Do", "Move", "Contact", "Conclude"],
+      ["Say / Do", "Move", "Conclude"],
     );
-    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
     await expect(composer).toHaveValue("Keep this draft");
-    await page.getByLabel("Contact Zone", { exact: true }).selectOption("exterior");
     let finishContact;
     heldContact = new Promise((done) => {
       finishContact = done;
@@ -160,9 +159,8 @@ try {
     await expect(composer).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Mode:.*Choose mode/ })).toHaveCount(0);
     await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
-    assert.equal(lastContact.mode, "contact");
-    assert.equal(lastContact.contact.kind, "call");
-    assert.equal(lastContact.contact.boundaryZoneId, "exterior");
+    assert.equal(lastContact.mode, "chat");
+    assert.equal(lastContact.contact, undefined);
     finishContact();
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
@@ -174,8 +172,6 @@ try {
     }
     await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
     await expect(composer).toBeVisible();
-    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
     const preservedDraft = "Draft survives Zone changes. ".repeat(35);
     await composer.fill(preservedDraft);
     const dockAtBottom = async (selector) => {
@@ -240,14 +236,12 @@ try {
     await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
     assert.equal(moves, 5);
     assert.equal(scene.lines.length, lineCount);
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
-    await expect(page.getByLabel("Contact Zone")).toHaveValue("");
+    await expect(page.getByLabel("Contact Zone")).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
     const finalMessage = width === 1366 ? "Goodbye." : "";
     await composer.fill(finalMessage);
-    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "Conclude", exact: true }).click();
     assert.equal(lastLeave, undefined, "selecting Conclude does not end the Scene");
     await expect(composer).toHaveValue(finalMessage);
@@ -259,7 +253,7 @@ try {
     await context.close();
   }
   console.log(
-    "Scene actions browser: four modes, inline immediate movement, contact targeting, final-paragraph readiness, busy/stale/lost-response navigation, drafts, silent repeated moves and optional concluding messages passed",
+    "Scene actions browser: three modes, inline immediate movement, Say / Do, final-paragraph readiness, busy/stale/lost-response navigation, drafts, silent repeated moves and optional concluding messages passed",
   );
 } finally {
   await browser.close();

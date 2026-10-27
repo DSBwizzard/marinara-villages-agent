@@ -55,7 +55,7 @@ try {
       else if (path.endsWith("/rooms/turn")) {
         submitted = route.request().postDataJSON();
         submissions.push(submitted);
-        if (submitted.mode === "contact") contactTurns++;
+        if (submitted.message !== "I look around.") contactTurns++;
         session = {
           ...session,
           sceneRevision: submissions.length,
@@ -82,7 +82,7 @@ try {
             { id: submitted.submissionId, activeIdsAtTurn: [], activeIdsAfterTurn: [], replyLineIds: ["answer"] },
           ],
         };
-        if (submitted.mode === "chat") {
+        if (submitted.message === "I look around.") {
           session.participants = [];
           session.doorwayContacts = [];
           session.entryOffers = [];
@@ -125,28 +125,15 @@ try {
     while (await readNext.isEnabled()) await readNext.click();
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet exterior");
     await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
-    const send = page.getByRole("button", { name: "Send", exact: true });
-    await expect(send).toBeDisabled();
-    await page.getByLabel("Contact Zone", { exact: true }).selectOption("common");
-    await expect(send).toBeEnabled();
-    await expect(page.locator("[data-scene-scope]")).toHaveText("Contacting Interior entrance");
-    await expect(page.getByLabel("Who to contact")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Knock / Call", exact: true })).toHaveCount(0);
-    assert.equal(
-      await page
-        .getByLabel("Contact Zone")
-        .getByRole("option", { name: /Secret bedroom/ })
-        .count(),
-      0,
-    );
-    const box = await page.getByLabel("Contact Zone").boundingBox();
-    assert.ok(box && box.x >= 0 && box.x + box.width <= width);
+    await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toHaveCount(0);
+    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
+    await composer.fill("I call through the entrance: Is anyone there?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect.poll(() => submitted?.mode).toBe("contact");
+    await expect.poll(() => submissions.length).toBe(2);
+    assert.equal(submitted.mode, "chat");
     assert.equal(submitted.targetId, "");
-    assert.deepEqual(submitted.contact, { kind: "call", boundaryZoneId: "common" });
-    assert.match(submitted.message, /attention toward Interior entrance/);
+    assert.equal(submitted.contact, undefined);
+    assert.match(submitted.message, /call through the entrance/);
     assert.equal(entered, undefined, "an invitation never automatically moves the player");
     await expect(page.getByRole("button", { name: "Move to Common Space", exact: true })).toHaveCount(0);
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
@@ -163,16 +150,16 @@ try {
         .first(),
     ).toBeVisible();
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: "Message at The Mill", exact: true }).fill("Thanks. How are you?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => submissions.length).toBe(3);
     await expect(composer).toHaveValue("");
-    assert.equal(submitted.mode, "contact");
+    assert.equal(submitted.mode, "chat");
     assert.equal(submitted.targetId, "");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
     while (await next.isEnabled()) await next.click();
-    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
     await expect(page.getByLabel("Move to Zone").getByRole("option", { name: /invited/ })).toHaveText(
       "Interior entrance (invited)",
@@ -184,7 +171,7 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log("Contact controls, doorway speech, physical cast and explicit entry passed on desktop and phones.");
+  console.log("Say / Do doorway speech, physical cast and explicit entry passed on desktop and phones.");
 } finally {
   await browser.close();
 }
