@@ -5,6 +5,7 @@ export function useScenesOpenMenu(ports: {
   loadCatalog: (signal?: AbortSignal) => Promise<void>;
   loadLorebooks: (signal?: AbortSignal) => Promise<void>;
   loadProgressDebug: () => Promise<void>;
+  debugDiscardEnabled: boolean;
   menuPage: import("../shared/types.js").MenuPage;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
   setFocusedRequestId: React.Dispatch<React.SetStateAction<string>>;
@@ -20,6 +21,7 @@ export function useScenesOpenMenu(ports: {
     loadCatalog,
     loadLorebooks,
     loadProgressDebug,
+    debugDiscardEnabled,
     menuPage,
     screen,
     setFocusedRequestId,
@@ -39,7 +41,7 @@ export function useScenesOpenMenu(ports: {
       if (tab === "villagers") void loadCatalog();
 
       if (tab === "village") void loadLorebooks();
-      if (tab === "progress") void loadProgressDebug();
+      if (tab === "progress" && debugDiscardEnabled) void loadProgressDebug();
       const enteringVillageSettings =
         (tab === "village" || tab === "visual") && (screen !== "menu" || menuPage !== tab);
       if (enteringVillageSettings) openSettings();
@@ -53,6 +55,7 @@ export function useScenesOpenMenu(ports: {
       loadCatalog,
       loadLorebooks,
       loadProgressDebug,
+      debugDiscardEnabled,
       screen,
       menuPage,
       openSettings,

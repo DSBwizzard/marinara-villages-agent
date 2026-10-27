@@ -1112,6 +1112,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     loadCatalog,
     loadLorebooks,
     loadProgressDebug,
+    debugDiscardEnabled,
     menuPage,
     screen,
     setFocusedRequestId,

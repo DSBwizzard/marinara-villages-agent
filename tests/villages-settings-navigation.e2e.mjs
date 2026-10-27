@@ -43,7 +43,7 @@ const bundle = await build({
       const session=useSettingsDraftSession({...settings,snapshot,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft});
       const loadPersonas=useLoadPersonas({setError:unused,setPersonaDraft:settings.setPersonaDraft,setPersonas});
       const open=useScenesOpenMenu({snapshot,screen,menuPage,setScreen,setMenuPage,openSettings:session.openSettings,
-        loadCatalog:async()=>{},loadLorebooks:async()=>{},loadPersonas,loadProgressDebug:async()=>{},setFocusedRequestId:unused,
+        loadCatalog:async()=>{},loadLorebooks:async()=>{},loadPersonas,debugDiscardEnabled:false,loadProgressDebug:async()=>{},setFocusedRequestId:unused,
         setSiteProjectId:unused,setSettingsError:settings.setSettingsError});
       const save=useSaveSettings({...settings,snapshot,setBusy,setSnapshot,acceptSavedSettings:session.acceptSavedSettings});
       window.settingsHarness={settings,open,save:()=>{const promise=save(); (window.pendingSettingsSaves??=[]).push(promise); return promise;},setSnapshot,setBusy,loadPersonas,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft};
