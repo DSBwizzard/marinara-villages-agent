@@ -25,7 +25,11 @@ import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js"
 import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
-import { applyWishReflection, SOCIAL_WISH_INSTRUCTION } from "../../domain/rules/social-wishes.js";
+import {
+  applyWishReflection,
+  readSocialWishChanges,
+  SOCIAL_WISH_INSTRUCTION,
+} from "../../domain/rules/social-wishes.js";
 import { hasVenueClass, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
@@ -298,7 +302,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       )
         throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
       record.relationshipReview = review;
-      record.wishChanges = interpreted!.wishChanges;
+      record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
       record.semanticVersion = 2;
       record.memoryChanges = interpreted!.memoryChanges;
       record.memoryContexts = { [nativeMemory.saved.protection.fingerprint]: nativeMemory.saved };

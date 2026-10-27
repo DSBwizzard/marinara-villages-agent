@@ -44,7 +44,9 @@ import {
 import {
   applyWishSource,
   publishWishDisclosure,
+  readSocialWishChanges,
   SOCIAL_WISH_INSTRUCTION,
+  WishInterpretationError,
   wishWritingContext,
 } from "../../domain/rules/social-wishes.js";
 
@@ -288,8 +290,8 @@ export function createSocialMail(ports: SocialMailPorts) {
       reply,
       replyText: text,
       sourceMemoryChanges: input.sourceDelivered ? [] : memories(raw.sourceMemoryChanges),
-      sourceWishChanges: input.sourceDelivered ? [] : memories(raw.sourceWishChanges),
-      replyWishChanges: text ? memories(raw.replyWishChanges) : [],
+      sourceWishChanges: input.sourceDelivered ? [] : readSocialWishChanges(raw.sourceWishChanges ?? []),
+      replyWishChanges: text ? readSocialWishChanges(raw.replyWishChanges ?? []) : [],
       replyMemoryChanges: text ? memories(raw.replyMemoryChanges) : [],
     };
   }
@@ -719,7 +721,9 @@ export function createSocialMail(ports: SocialMailPorts) {
             if (saved) {
               saved.error = message;
               saved.reinterpretRequired =
-                error instanceof SocialRevisionConflict || error instanceof PersonalLetterActionError;
+                error instanceof SocialRevisionConflict ||
+                error instanceof PersonalLetterActionError ||
+                error instanceof WishInterpretationError;
             }
           });
         })
@@ -1275,7 +1279,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         reply: emptyRelationshipReview(),
         replyText: "",
         sourceWishChanges: Array.isArray(asRecord(value).wishChanges)
-          ? (asRecord(value).wishChanges as unknown[]).map((raw) => ({
+          ? readSocialWishChanges(asRecord(value).wishChanges).map((raw) => ({
               ...asRecord(raw),
               evidence: (asRecord(raw).evidence as unknown[]).map((ref) => (ref === 0 ? messageId : ref)),
             }))

@@ -9,7 +9,7 @@ import { VILLAGE_SHARED_SETTING_RULE } from "../../domain/rules/narrative-ground
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NAME_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import { SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
-import { SOCIAL_WISH_INSTRUCTION } from "../../domain/rules/social-wishes.js";
+import { readSocialWishChanges, SOCIAL_WISH_INSTRUCTION } from "../../domain/rules/social-wishes.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
 
@@ -232,7 +232,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     if (context.memory) record.memoryContexts = { [context.memory.saved.protection.fingerprint]: context.memory.saved };
     record.semanticVersion = 2;
     record.memoryChanges = interpreted!.memoryChanges;
-    record.wishChanges = interpreted!.wishChanges;
+    record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
     record.semanticSourceHash = createHash("sha256").update(JSON.stringify(reviewMessages)).digest("hex");
     return record;
   }

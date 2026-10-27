@@ -1042,3 +1042,27 @@ for (const failPublication of [false, true]) {
   assert.equal(village.socialMailOutbox?.length, 0);
   assert.equal(calls, before, "Publication and recovery are provider-free");
 }
+
+// Malformed retained reply metadata offers interpretation recovery, while preserving delivery.
+backgroundStatuses = [];
+narrationReply = "I would enjoy staying in touch.";
+await service.send({ residentId: "ada", requestId: "wish-invalid", text: "I enjoy hearing from you." });
+const invalidInput = queued.at(-1).input;
+active = invalidInput;
+const invalidMeaning = await service.handler.generate(invalidInput);
+invalidMeaning.replyWishChanges = [
+  { actorId: "ada", wishId: "missing", intent: "fulfilled", evidence: [], reason: "Invalid evidence." },
+];
+service.handler.apply(village, invalidInput, invalidMeaning, { retrying: false });
+await service.processOutbox(await snapshot());
+assert.equal(village.socialMailOutbox?.[0]?.reinterpretRequired, true);
+const beforeMeaning = calls;
+await service.retry(invalidInput.threadId, invalidInput.messageId, "repair-wish-meaning");
+const reinterpretedInput = queued.at(-1).input;
+assert.equal(reinterpretedInput.retainedReply, invalidMeaning.replyText);
+active = reinterpretedInput;
+const fixedMeaning = await service.handler.generate(reinterpretedInput);
+service.handler.apply(village, reinterpretedInput, fixedMeaning, { retrying: false });
+await service.processOutbox(await snapshot());
+assert.equal(village.socialMailOutbox?.length, 0);
+assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writing and purchases only interpretation");

@@ -22,7 +22,7 @@ export type WishDisclosure = {
   wishId: string;
   title: string;
   text: string;
-  status: WishStatus;
+  status?: WishStatus;
   at: string;
   sourceId: string;
   lineIds: string[];

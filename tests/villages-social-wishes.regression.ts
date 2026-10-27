@@ -1,3 +1,4 @@
+import { bindWishProposals } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 // Test cases: social-wishes/source, social-wishes/privacy, social-wishes/replay, social-wishes/revisions, social-wishes/conditions, social-wishes/continuity, social-wishes/following, social-wishes/reflection, social-wishes/fresh-world
@@ -65,6 +66,7 @@ await runCase("social-wishes/source", () => {
   assert.equal(wish.status, "open");
   assert.equal(knownSocialWishes(world, "a")[0]!.text, "I would like to talk with Bryn.");
   assert.equal(world.villagers[1]!.wishes.length, 0);
+  assert.match(bindWishProposals([null], wishWorld(), [], "", []).error, /explicitly retry/);
   const together = wishWorld();
   const immediate = source(together);
   (immediate.changes as any[])[0].fulfilled = true;
@@ -125,13 +127,36 @@ await runCase("social-wishes/source", () => {
     ],
   });
   const applied = applyWishSource(privateWorld, aftermath);
-  assert.equal(knownSocialWishes(privateWorld, "a")[0].status, "fulfilled");
+  assert.equal(
+    knownSocialWishes(privateWorld, "a")[0].status,
+    undefined,
+    "Mentioning the desire cannot reveal its private outcome",
+  );
   assert.deepEqual(privateWorld.villagers[0].wishes[0], closed, "Sharing an aftermath changes knowledge only");
   assert.equal(
     privateWorld.exchangeReceipts[applied.receiptIds[0]].wishOutcome,
     undefined,
     "Disclosure is not another fulfillment",
   );
+
+  const reported = source(privateWorld, {
+    id: "later:turn:reported",
+    changes: [
+      {
+        actorId: "a",
+        wishId: closed.id,
+        intent: "reveal",
+        evidence: [0],
+        quote: "We had the conversation I wanted.",
+        disclosedStatus: "fulfilled",
+        statusQuote: "We had the conversation I wanted.",
+        reason: "Owner explicitly communicates the outcome.",
+      },
+    ],
+  });
+  reported.lines[0].content = "We had the conversation I wanted.";
+  applyWishSource(privateWorld, reported);
+  assert.equal(knownSocialWishes(privateWorld, "a")[0].status, "fulfilled");
   const repaired = wishWorld(),
     bad = source(repaired);
   (bad.changes as any[])[0].quote = "Words nobody spoke";

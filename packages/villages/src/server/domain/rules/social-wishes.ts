@@ -25,9 +25,19 @@ const change = z
     supersedes: z.string().min(1).optional(),
     reason: text,
     fulfilled: z.boolean().optional(),
+    disclosedStatus: z.enum(["open", "fulfilled", "withdrawn"]).optional(),
+    statusQuote: text.optional(),
   })
   .strict();
 export type SocialWishChange = z.infer<typeof change>;
+export class WishInterpretationError extends Error {}
+export function readSocialWishChanges(value: unknown): SocialWishChange[] {
+  try {
+    return z.array(change).max(16).parse(value);
+  } catch (error) {
+    throw new WishInterpretationError("Invalid social Wish interpretation.", { cause: error });
+  }
+}
 export type WishLine = {
   id: string;
   speakerId: string;
@@ -62,7 +72,7 @@ export const wishFingerprint = (wish: SocialWish) =>
 
 export const SOCIAL_WISH_INSTRUCTION = `Return wishChanges:[] or social Wish changes. Each row is {actorId,wishId,intent:"create|reveal|clarify|approach|attention|progress|fulfilled|withdrawn",evidence:[exact current source IDs or indexes],reason:"brief grounded meaning"}.
 Wishes are resident-owned concrete desired social outcomes. Admit actual current wants deserving continuity, including small ordinary experiences. Interests, hypothetical preferences, polite agreement and player suggestions alone do not establish the resident's desire. Quiet results are valid. Preserve whole character, current circumstances and independent agency. Only social conversations/shared experiences/relationships belong in this pass; no housing, construction, possessions, jobs or skills. Never invent people, history, emergencies, obligations or player participation.
-Create uses wishId:"new:local-key",desire:{wish:"short neutral desired outcome",reason:"grounded significance"}. Create/reveal additionally require quote:"exact short owner words communicating this desire". Public learning retains only this quotation, never fills gaps with private goal wording. Reuse an existing ID for the same unmet desire; never paraphrase it into a second Wish. One source may create and satisfy a Wish using fulfilled:true ONLY when its actual outcome is established in this source. It can then be referenced by the same new:local-key. No prescribed routes, secret preferences, intensity scores, size classes, expiry rolls or required player help.
+Create uses wishId:"new:local-key",desire:{wish:"short neutral desired outcome",reason:"grounded significance"}. Create/reveal additionally require quote:"exact short owner words communicating this desire". Public learning retains only this quotation, never fills gaps with private goal wording. Reveal may include disclosedStatus:"open|fulfilled|withdrawn" and statusQuote:"exact current owner words explicitly communicating that status" ONLY when those words actually communicate that current status; omit it when only the desire is communicated. A closed private outcome never becomes public merely because the desire was mentioned. Reuse an existing ID for the same unmet desire; never paraphrase it into a second Wish. One source may create and satisfy a Wish using fulfilled:true ONLY when its actual outcome is established in this source. It can then be referenced by the same new:local-key. No prescribed routes, secret preferences, intensity scores, size classes, expiry rolls or required player help.
 Existing rows use exact supplied IDs and their complete captured conditions/history. Reveal means the owner actually communicates the desire; player learning is separately bound to perception. Clarify may include condition:"exact owner quotation" and supersedes:"exact earlier condition ID" only for an explicitly essential condition or its genuine correction, prospectively. A different desired outcome is a new Wish; withdraw the old one only when the owner actually stops wanting it. Ending one approach does not withdraw a desire.
 Approach requires approach:string (empty means stop this attempt); it records the owner's actual chosen response, not instructions or mandatory steps. Attention requires attention:{state:"background|foreground",reason}; retention alone never demands attention. Most conversations have no Wish relevance. A sustained preoccupation needs grounded character/circumstance support. No principal-Wish quota. Existing approaches, refusals and history matter: repeated solicitation needs a genuinely new reason, not merely an open Wish.
 Progress/fulfilled require actual new witnessed interaction establishing the desired outcome, every applicable essential condition, and any specified participant/channel. An invitation, accepted plan, promise, gratitude, claim or elapsed time alone is not the requested shared experience. Apologizing differs from being forgiven. Other participants decide independently; cite their actual response where necessary. Never invent affection or automatic rewards. NPC-only interaction can fulfill a Wish without player participation or knowledge. Evidence must be heard by the owner and cite at least one current line. Owner-only claims about an earlier event do not prove that earlier event; earlier supplied history may support conditions but cannot replace new evidence. No unsupported physical results. For fulfilled reason briefly identifies the outcome actually established.`;
@@ -144,7 +154,7 @@ export function publishWishDisclosure(state: VillageState, fact: WishDisclosure,
     knowers: ["player"],
     subjects: [fact.actorId],
     domainRef: { kind: "wish", id: fact.wishId, characterId: fact.actorId },
-    disclosed: { title: fact.title, status: fact.status },
+    disclosed: { title: fact.title, ...(fact.status ? { status: fact.status } : {}) },
   });
 }
 
@@ -153,7 +163,7 @@ export function applyWishSource(
   state: VillageState,
   source: WishSource,
 ): { receiptIds: string[]; disclosures: WishDisclosure[] } {
-  const rows = z.array(change).max(16).parse(source.changes);
+  const rows = readSocialWishChanges(source.changes);
   const receiptIds: string[] = [],
     disclosures: WishDisclosure[] = [];
   const aliases = new Map<string, string>();
@@ -214,6 +224,14 @@ export function applyWishSource(
         expected.get(row.actorId + ":" + wishId) !== wishFingerprint(wish))
     )
       rejection = "Wish changed since this source was captured.";
+    else if (
+      row.disclosedStatus &&
+      (row.intent !== "reveal" ||
+        row.disclosedStatus !== wish?.status ||
+        !row.statusQuote ||
+        !lines.some((l) => l?.speakerId === row.actorId && current.has(l.id) && l.content.includes(row.statusQuote!)))
+    )
+      rejection = "Communicated status lacks current owner words or does not match the captured Wish.";
     else if (row.intent === "attention" && !row.attention) rejection = "Attention decision is incomplete.";
     else if (row.intent === "approach" && row.approach === undefined) rejection = "Approach decision is incomplete.";
     else if (
@@ -305,7 +323,7 @@ export function applyWishSource(
                       .map((l) => l!.content)
                       .join(" ")
                       .slice(0, 320),
-                    status: wish.status,
+                    status: row.intent === "reveal" ? row.disclosedStatus : wish.status,
                     at: source.at,
                     sourceId: source.id,
                     lineIds: refs,
@@ -351,7 +369,7 @@ export function applyWishSource(
                     wishUpdate: {
                       actorId: row.actorId,
                       wishId: wish.id,
-                      state: wish.status === "fulfilled" ? "fulfilled" : "progress",
+                      state: facts[0]!.status === "fulfilled" ? "fulfilled" : "progress",
                     },
                   },
                 }
