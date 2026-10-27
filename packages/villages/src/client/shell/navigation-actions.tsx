@@ -4,8 +4,8 @@ import { useCallback } from "react";
 export function useScenesOpenMenu(ports: {
   loadCatalog: (signal?: AbortSignal) => Promise<void>;
   loadLorebooks: (signal?: AbortSignal) => Promise<void>;
-  loadPersonas: (signal?: AbortSignal, selectActive?: boolean) => Promise<void>;
   loadProgressDebug: () => Promise<void>;
+  debugDiscardEnabled: boolean;
   menuPage: import("../shared/types.js").MenuPage;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
   setFocusedRequestId: React.Dispatch<React.SetStateAction<string>>;
@@ -20,8 +20,8 @@ export function useScenesOpenMenu(ports: {
   const {
     loadCatalog,
     loadLorebooks,
-    loadPersonas,
     loadProgressDebug,
+    debugDiscardEnabled,
     menuPage,
     screen,
     setFocusedRequestId,
@@ -39,11 +39,11 @@ export function useScenesOpenMenu(ports: {
       // The villager list is read when it is asked for rather than kept current
       // on every snapshot.
       if (tab === "villagers") void loadCatalog();
-      // Same rule for the Personas the identity picker offers.
-      if (tab === "village") void loadPersonas(undefined, false);
+
       if (tab === "village") void loadLorebooks();
-      if (tab === "progress") void loadProgressDebug();
-      const enteringVillageSettings = tab === "village" && (screen !== "menu" || menuPage !== "village");
+      if (tab === "progress" && debugDiscardEnabled) void loadProgressDebug();
+      const enteringVillageSettings =
+        (tab === "village" || tab === "visual") && (screen !== "menu" || menuPage !== tab);
       if (enteringVillageSettings) openSettings();
       setMenuPage(tab);
       setScreen("menu");
@@ -53,9 +53,9 @@ export function useScenesOpenMenu(ports: {
       setSiteProjectId,
       setSettingsError,
       loadCatalog,
-      loadPersonas,
       loadLorebooks,
       loadProgressDebug,
+      debugDiscardEnabled,
       screen,
       menuPage,
       openSettings,

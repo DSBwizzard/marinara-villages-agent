@@ -107,7 +107,7 @@ async function checkMapPlacement(width, activeScene = false) {
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
   } else {
     await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
-    await page.getByRole("button", { name: /^Projects \(/ }).click();
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
   }
   await openSite();
   await page.getByRole("button", { name: "Choose map position", exact: true }).click();

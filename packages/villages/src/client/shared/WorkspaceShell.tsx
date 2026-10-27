@@ -49,6 +49,13 @@ const styles = `
 .${P}-workspace-venues img{width:72px;height:56px;object-fit:cover;flex:none}
 .${P}-workspace-venues span{min-width:0}.${P}-workspace-venues strong,.${P}-workspace-venues small{display:block;overflow-wrap:anywhere}.${P}-workspace-venues small{font-size:.8rem}
 .${P}-workspace-venue-picker{display:none}
+.${P}-workspace-sections{display:grid;gap:.3rem}
+.${P}-workspace-sections button{width:100%;min-height:44px;padding:.6rem;border:1px solid transparent;border-bottom-color:#536168;background:transparent;color:#f5eee0;font:inherit;text-align:left;cursor:pointer}
+.${P}-workspace-sections button[aria-current="page"]{background:#d9ad72;border-color:#efc994;color:#18252d}
+.${P}-workspace-section-picker{display:none}
+.${P}-workspace-content .${P}-root.${P}-sectioned-menu{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+.${P}-workspace-content .${P}-sectioned-menu>.${P}-header{grid-column:1;grid-row:1}
+.${P}-workspace-content .${P}-sectioned-menu>.${P}-menu-content{grid-column:1;grid-row:2}
 .${P}-workspace-content .${P}-venue-profile{max-width:none;margin:0;padding:.45rem;background:transparent;color:#f5eee0;box-sizing:border-box}
 .${P}-workspace-venue-header{position:relative;isolation:isolate;overflow:hidden;min-height:140px;padding:1rem;background:#111b20;color:#fff9ef}
 .${P}-workspace-venue-header img{position:absolute;z-index:-2;inset:0;width:100%;height:100%;object-fit:cover}
@@ -68,9 +75,13 @@ const styles = `
 .${P}-workspace-content .${P}-venue-zone-details{background:#1a292f;border-color:#758180;border-radius:.2rem}
 .${P}-workspace-content .${P}-sectioned-menu{--background:#202f36;--foreground:#f5eee0;--popover:#25373e;--muted:#33474d;--muted-foreground:#c9d2ce;--border:#738382;--primary:#d9ad72;--primary-foreground:#17232a;height:100%;background:#202f36;color:var(--foreground)}
 .${P}-workspace-content .${P}-sectioned-menu>.${P}-header{background:#1b2930;border-color:#738382}
-.${P}-workspace-content .${P}-sectioned-menu .${P}-menu-nav{background:#202f36;border-color:#738382}
-.${P}-workspace-content .${P}-sectioned-menu .${P}-menu-nav .${P}-button[data-active="true"]{background:#d9ad72;border-color:#efc994;color:#18252d;box-shadow:none}
 .${P}-workspace-content .${P}-menu-content :is(.${P}-panel,.${P}-overlay){background:#25373e;border-color:#738382;border-radius:.2rem}
+.${P}-workspace-content .${P}-menu-content.${P}-panel{background:#25373e;border-color:#738382;border-radius:.2rem}
+.${P}-workspace-content .villages-lorebook-card{background:#202f36;border-color:#738382;color:#f5eee0;border-radius:.2rem}
+.${P}-workspace-content .villages-lorebook-action{background:#2c4047;border-color:#738382;color:#f5eee0;border-radius:.2rem}
+.${P}-workspace-content .${P}-menu-content{font-size:1rem;line-height:1.4}
+.${P}-workspace-content .${P}-menu-content :is(.${P}-label,.${P}-panel-title,.${P}-hint,.${P}-empty){font-size:.95rem}
+.${P}-workspace-content .${P}-menu-content :is(select,input:not([type="checkbox"]):not([type="radio"])){min-height:40px;padding:.35rem .55rem;font:inherit;box-sizing:border-box}
 .${P}-workspace-content .${P}-menu-content .${P}-button{background:#2c4047;color:#f5eee0;border-color:#738382}
 .${P}-workspace-content .${P}-sectioned-menu button:not([class]){min-height:44px;padding:.5rem .8rem;border:1px solid #738382;border-radius:.2rem;background:#2c4047;color:#f5eee0;font:inherit;cursor:pointer}
 .${P}-workspace-content .${P}-sectioned-menu input[type="checkbox"]{accent-color:#d9ad72}
@@ -83,7 +94,9 @@ const styles = `
  .${P}-workspace-nav svg{width:20px;height:20px}
  .${P}-workspace-body{flex-direction:column}
  .${P}-workspace-sidebar{flex:none;overflow:visible;padding:.5rem}
- .${P}-workspace-sidebar h2,.${P}-workspace-venues{display:none}
+ .${P}-workspace-sidebar h2,.${P}-workspace-venues,.${P}-workspace-sections{display:none}
+ .${P}-workspace-section-picker{display:flex;align-items:center;gap:.5rem}
+ .${P}-workspace-section-picker select{flex:1;min-width:0;min-height:44px;background:#17252c;color:#f5eee0;border:1px solid #7a8584;font:inherit}
  .${P}-workspace-venue-picker{display:flex;align-items:center;gap:.5rem}
  .${P}-workspace-venue-picker select{flex:1;min-width:0;min-height:44px;background:#17252c;color:#f5eee0;border:1px solid #7a8584;font:inherit}
  .${P}-workspace-venue-header{min-height:110px;padding:.65rem}

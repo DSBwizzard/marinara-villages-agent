@@ -1111,8 +1111,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const openMenu = useScenesOpenMenu({
     loadCatalog,
     loadLorebooks,
-    loadPersonas,
     loadProgressDebug,
+    debugDiscardEnabled,
     menuPage,
     screen,
     setFocusedRequestId,

@@ -142,7 +142,7 @@ A Venue supports up to six non-Entrance Zones, two Classes, and four residents. 
 
 ## Maps, artwork, and sprites
 
-**Village Settings** manages map names, artwork, framing, and marker placements. **All maps** switches between maps without moving anyone. Additional maps need artwork and begin empty; creating a map does not create its Venues. Existing Venues cannot currently be moved between maps, and maps cannot be deleted.
+**World Configuration** manages map names, artwork, framing, and marker placements. **All maps** switches between maps without moving anyone. Additional maps need artwork and begin empty; creating a map does not create its Venues. Existing Venues cannot currently be moved between maps, and maps cannot be deleted.
 
 Scene navigation can open the map; **Return to Scene** restores your draft. Conclude the current Scene before starting another.
 

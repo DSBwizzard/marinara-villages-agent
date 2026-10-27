@@ -112,10 +112,7 @@ assert.equal(source.includes("Force Village Update"), false);
 assert.equal(source.includes("FORCE_VILLAGE_UPDATE_NOTICE"), false);
 assert.equal(source.includes('openMenu("events")'), false);
 assert.ok(source.includes("data-section={menuSection}"));
-assert.ok(source.includes('onClick={() => openMenu("general")}'));
-assert.ok(source.includes('onClick={() => openMenu("village")}'));
 assert.equal(source.includes('onClick={() => openMenu("memories")}'), false);
-assert.ok(source.includes('onClick={() => openMenu("villagers")}'));
 assert.equal(source.includes('onClick={() => openMenu("story")}'), false);
 assert.equal(source.includes("Fit entire map"), false);
 

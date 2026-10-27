@@ -195,7 +195,7 @@ try {
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
   await expect.poll(() => retries.length).toBe(2);
   assert.equal(acceptedRetries, 1);
-  await page.getByRole("button", { name: /^Villagers \(/ }).click();
+  await page.getByRole("button", { name: "People", exact: true }).click();
   await page.getByRole("button", { name: "Open Mara profile" }).click();
   await page.getByRole("button", { name: "Inspect", exact: true }).click();
   await page.getByText("Manage", { exact: true }).click();
