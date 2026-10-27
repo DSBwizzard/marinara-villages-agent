@@ -77,7 +77,7 @@ async function fixture(width) {
             { ...people[1], text: privateText },
           ]
       : [{ ...people[0], text: known }],
-    actions: [{ id: "correct", label: "Correct" }],
+    actions: [{ id: "correct", label: "Modify" }],
     related: [],
     private: spoilers,
   });

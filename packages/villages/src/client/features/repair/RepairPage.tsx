@@ -22,6 +22,14 @@ export function RepairPage({
   const isRestore = c.review?.kind === "restore";
   const addingMemory = c.review?.memory?.creating === true;
   const memoryRecord = c.selected?.topic === "memories";
+  const forgettingMemory = memoryRecord && c.draft?.action === "forget";
+  const restoringMemory = memoryRecord && c.draft?.action === "remember";
+  const memoryReadOnly = forgettingMemory || restoringMemory;
+  const reviewTitle = forgettingMemory
+    ? "Review forgetting"
+    : restoringMemory
+      ? "Review restoration"
+      : "Review changes";
   const source = [...new Set(c.selected?.source ?? [])].filter(
     (excerpt) => !memoryRecord || !c.selected?.fields.some((field) => String(field.value).trim() === excerpt.trim()),
   );
@@ -33,7 +41,7 @@ export function RepairPage({
         ? "Forget memory"
         : c.draft?.action === "remember"
           ? "Restore memory"
-          : "Edit memory"
+          : "Modify memory"
     : c.selected?.title;
   const directory = c.view === "list" && c.topic === "people" && !c.person;
   const people = (c.index?.people ?? []).filter((p) =>
@@ -98,7 +106,7 @@ export function RepairPage({
                   : c.view === "review"
                     ? addingMemory
                       ? "Add memory"
-                      : "Review changes"
+                      : reviewTitle
                     : c.view === "done"
                       ? c.review?.kind === "undo"
                         ? "Changes undone"
@@ -295,14 +303,16 @@ export function RepairPage({
               ) : null}
               {c.selected.fields.map((f) => (
                 <div className="repair-field" key={f.key}>
-                  <label htmlFor={`repair-${f.key}`}>{f.label}</label>
+                  {memoryReadOnly ? <h2>{f.label}</h2> : <label htmlFor={`repair-${f.key}`}>{f.label}</label>}
                   {!c.selected.creating && !memoryRecord ? (
                     <div className="repair-current">
                       <small>Current</small>
                       <p>{display(f.value) || "None"}</p>
                     </div>
                   ) : null}
-                  {f.type === "choice" ? (
+                  {memoryReadOnly ? (
+                    <p>{display(f.value)}</p>
+                  ) : f.type === "choice" ? (
                     <select
                       id={`repair-${f.key}`}
                       disabled={c.busy}
@@ -340,7 +350,7 @@ export function RepairPage({
                     <textarea
                       autoComplete="off"
                       id={`repair-${f.key}`}
-                      disabled={c.busy || c.draft.action === "forget" || c.draft.action === "remember"}
+                      disabled={c.busy}
                       value={display(c.draft?.values[f.key])}
                       onChange={(e) => value(f.key, e.target.value)}
                     />
@@ -388,7 +398,7 @@ export function RepairPage({
                   Back to records
                 </button>
                 <button type="button" className="repair-primary" disabled={c.busy} onClick={() => void c.prepare()}>
-                  Review changes
+                  {reviewTitle}
                 </button>
               </div>
             </section>
@@ -495,7 +505,11 @@ export function RepairPage({
                       ? "Add memory"
                       : c.review.kind === "undo"
                         ? "Undo changes"
-                        : "Save changes"}
+                        : forgettingMemory
+                          ? "Forget memory"
+                          : restoringMemory
+                            ? "Restore memory"
+                            : "Save changes"}
               </button>
             </div>
           </>

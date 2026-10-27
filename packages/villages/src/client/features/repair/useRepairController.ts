@@ -282,6 +282,10 @@ export function useRepairController(
         operationId: createVillagesClientId(),
         recordId: selected.id,
         ...draft,
+        values:
+          selected.topic === "memories" && ["forget", "remember"].includes(draft.action)
+            ? Object.fromEntries(selected.fields.map((field) => [field.key, field.value]))
+            : draft.values,
         inspection,
         expectedRecord: selected.token ?? "",
         ...(person ? { personId: person.id } : {}),

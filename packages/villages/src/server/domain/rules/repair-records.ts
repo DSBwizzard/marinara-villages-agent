@@ -29,7 +29,7 @@ const choices = (
   value: string,
   options: { value: string; label: string }[],
 ): RepairField => ({ key, label, value, type: "choice", options });
-const actions = [{ id: "correct", label: "Correct" }];
+const actions = [{ id: "correct", label: "Modify" }];
 export function worldRepairRecords(
   state: VillageState,
   inspection: boolean,

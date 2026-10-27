@@ -189,6 +189,35 @@ await runCase("repair/memory-undo", async () => {
   assert.ok(current.memories.revision > revision);
   assert.equal(projectMemories(current.memories, ["player"])[0].text, before.memories.records[0].text);
   assert.deepEqual(sceneMemories(current, "frozen"), sceneMemories(before, "frozen"));
+  const forget = await f.prepare({
+    ...request,
+    operationId: "forget-with-unsaved-text",
+    action: "forget",
+    values: { text: "This unfinished text edit must never be saved by Forget." },
+  });
+  assert.deepEqual(forget.changes, [
+    { label: "Your Persona · memory", before: before.memories.records[0].text, after: "Forgotten" },
+  ]);
+  await f.api.apply(forget.id);
+  current = await f.read();
+  const forgotten = current.memories.records.find((record) => record.id === id)!;
+  assert.ok(forgotten.knowers.player.forgotten);
+  assert.deepEqual(forgotten.knowers.player.repair, before.memories.records[0].knowers.player.repair);
+  assert.equal(
+    projectMemories(current.memories, ["player"]).find((record) => record.rootId === id),
+    undefined,
+  );
+  assert.equal(
+    projectMemories(current.memories, ["aqua"]).find((record) => record.rootId === id)?.text,
+    before.memories.records[0].text,
+  );
+  assert.deepEqual(sceneMemories(current, "frozen"), sceneMemories(before, "frozen"));
+  const restore = await f.api.undo(forget.id, "undo-forget-with-unsaved-text");
+  await f.api.apply(restore.id);
+  assert.equal(
+    projectMemories((await f.read()).memories, ["player"]).find((record) => record.rootId === id)?.text,
+    before.memories.records[0].text,
+  );
 });
 await runCase("repair/add-memory", async () => {
   const f = await fixture(),

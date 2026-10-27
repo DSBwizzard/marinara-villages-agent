@@ -259,7 +259,7 @@ export function createRepairService(ports: RepairPorts) {
             { key: "concerns", label: "Concerns (one per line)", type: "text", value: edge.concerns.join("\n") },
           ],
           source: ["Current relationship record. Permissions and disclosures remain separate."],
-          actions: [{ id: "correct", label: "Correct" }],
+          actions: [{ id: "correct", label: "Modify" }],
           related: [],
           private: true,
         });
@@ -327,7 +327,7 @@ export function createRepairService(ports: RepairPorts) {
             .filter((l) => !l.contactHidden)
             .slice(-6)
             .map((l) => l.content),
-          actions: [{ id: "correct", label: "Correct" }],
+          actions: [{ id: "correct", label: "Modify" }],
           related: [],
         });
       }
@@ -696,7 +696,7 @@ export function createRepairService(ports: RepairPorts) {
       changedFields =
         kind === "new-memory" ? [{ label: "Memory", before: "", after: simulation.value.addedText! }] : diff.changes,
       affectedRecords = diff.affected;
-    if (request.action !== "correct")
+    if (request.action !== "correct" && kind !== "memory")
       changedFields.push({
         label: "Action",
         before: record.summary,

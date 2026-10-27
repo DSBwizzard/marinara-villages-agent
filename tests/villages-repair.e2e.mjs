@@ -35,7 +35,8 @@ try {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
       await mockEngineLookups(page);
       let text = "Nora gave you a workshop key.",
-        applied = 0;
+        applied = 0,
+        reviewed;
       const record = {
         id: '["memory","key"]',
         token: "current-token",
@@ -54,7 +55,7 @@ try {
           { id: "nora", name: "Nora", text },
         ],
         actions: [
-          { id: "correct", label: "Correct" },
+          { id: "correct", label: "Modify" },
           { id: "forget", label: "Forget" },
         ],
         related: [],
@@ -69,7 +70,7 @@ try {
         fields: [{ key: "text", label: "Memory", type: "text", value: "" }],
         source: [],
         people: [{ id: "player", name: "Your Persona" }],
-        actions: [{ id: "correct", label: "Correct" }],
+        actions: [{ id: "correct", label: "Modify" }],
         related: [],
       };
       const session = {
@@ -121,6 +122,26 @@ try {
         if (path === "/repair/record") return json(url.searchParams.get("id") === addition.id ? addition : record);
         if (path === "/repair/review") {
           const body = route.request().postDataJSON();
+          reviewed = body;
+          if (body.action === "forget")
+            return json({
+              kind: "repair",
+              id: body.operationId,
+              title: record.title,
+              changes: body.knowers.map((id) => ({
+                label: `${record.people.find((person) => person.id === id).name} · memory`,
+                before: record.people.find((person) => person.id === id).text,
+                after: "Forgotten",
+              })),
+              affected: [],
+              related: [],
+              checkpoint: false,
+              undoAvailable: true,
+              memory: {
+                creating: false,
+                people: body.knowers.map((id) => record.people.find((person) => person.id === id).name),
+              },
+            });
           text = body.values.text;
           if (body.recordId === addition.id)
             return json({
@@ -188,7 +209,7 @@ try {
       assert.equal(colors.background, "rgb(246, 245, 239)");
       await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
       await page.getByRole("button", { name: /Nora gave you a workshop key. Shared recollection/ }).click();
-      await expect(repair.getByRole("heading", { name: "Edit memory", exact: true })).toBeVisible();
+      await expect(repair.getByRole("heading", { name: "Modify memory", exact: true })).toBeVisible();
       await expect(repair.locator(".repair-current")).toHaveCount(0);
       await expect(repair.locator("blockquote")).toHaveCount(1);
       await expect(repair.locator("h1,p,blockquote").filter({ hasText: text })).toHaveCount(0);
@@ -198,9 +219,26 @@ try {
         assert.ok(source.y >= editor.y + editor.height, "Source follows the editor on phones");
       }
       await repair.screenshot({ path: `.build-tmp/repair-ui/${name}-memory-editor.png` });
+      const unfinished = "An unfinished modification must not become the memory being forgotten.";
+      await page.getByRole("textbox", { name: "Memory", exact: true }).fill(unfinished);
       await page.getByRole("button", { name: "Forget", exact: true }).click();
-      await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toBeDisabled();
-      await page.getByRole("button", { name: "Correct", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveCount(0);
+      await expect(repair.getByText(record.fields[0].value, { exact: true })).toBeVisible();
+      await expect(repair).not.toContainText(unfinished);
+      await page.getByRole("checkbox", { name: "Nora", exact: true }).check();
+      await repair.screenshot({ path: `.build-tmp/repair-ui/${name}-forget.png` });
+      await page.getByRole("button", { name: "Review forgetting", exact: true }).click();
+      assert.equal(reviewed.action, "forget");
+      assert.equal(reviewed.values.text, record.fields[0].value);
+      assert.deepEqual(reviewed.knowers, ["player", "nora"]);
+      await expect(repair.getByText("Forgotten", { exact: true })).toHaveCount(2);
+      await expect(repair.getByRole("button", { name: "Forget memory", exact: true })).toBeEnabled();
+      await expect(repair).not.toContainText(unfinished);
+      assert.equal(applied, 0, "Choosing Forget and reviewing it cannot save a text edit");
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await page.getByRole("button", { name: "Modify", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue(unfinished);
+      await page.getByRole("checkbox", { name: "Nora", exact: true }).uncheck();
       await page
         .getByRole("textbox", { name: "Memory", exact: true })
         .fill("Nora lent you her workshop key until Friday.");
@@ -288,7 +326,7 @@ try {
       title: "Village setting",
       summary: "Setting",
       fields: [{ key: "setting", label: "Place description", type: "text", value: "Old setting" }],
-      actions: [{ id: "correct", label: "Correct" }],
+      actions: [{ id: "correct", label: "Modify" }],
       source: [],
       related: [],
     };
