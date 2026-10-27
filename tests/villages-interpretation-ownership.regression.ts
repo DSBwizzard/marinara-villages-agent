@@ -57,7 +57,7 @@ function fixture(name: string) {
       return next;
     },
     async remove(_package: string, id: string, revision: number) {
-      if (rows.get(id)?.revision === revision) rows.delete(id);
+      return rows.get(id)?.revision === revision && rows.delete(id);
     },
   };
   const ports = {

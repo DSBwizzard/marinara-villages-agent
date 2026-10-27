@@ -114,8 +114,6 @@ const publicFields = [
   "loreTokenBudgetMax",
   "loreTokenBudgetMin",
   "macros",
-  "maxNoticeLength",
-  "maxNoticeboardNotes",
   "maxPlaces",
   "maxVenueImageBytes",
   "maxVenueImageIdLength",
@@ -158,7 +156,6 @@ const publicFields = [
   "venues",
   "villageGalleryFolderName",
   "villageNameMaxLength",
-  "visitRetention",
   "worldFacts",
   "worldName",
 ] satisfies (keyof VillageSettings)[];

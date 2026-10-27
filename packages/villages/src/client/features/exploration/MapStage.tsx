@@ -204,6 +204,8 @@ export function MapStage({
   compactPhotos = false,
   onMovePin,
   onMoveInvalid,
+  onNudgePin,
+  keyboardPlacementId,
   placementCursor,
   children,
 }: {
@@ -254,6 +256,8 @@ export function MapStage({
     size: { width: number; height: number; photoWidth: number; photoHeight: number },
   ): void;
   onMoveInvalid?(): void;
+  onNudgePin?(id: string, dx: number, dy: number): void;
+  keyboardPlacementId?: string;
   placementCursor?: { x: number; y: number };
   /**
    * Anything that belongs on the picture rather than beside it. Drawn inside the
@@ -716,6 +720,10 @@ export function MapStage({
                 const delta = deltas[event.key];
                 if (delta) {
                   event.preventDefault();
+                  if (keyboardPlacementId && onNudgePin) {
+                    onNudgePin(keyboardPlacementId, delta[0] / 5, delta[1] / 5);
+                    return;
+                  }
                   updateMobileView({
                     ...mobileCurrent,
                     centerX: clamp(mobileCurrent.centerX + delta[0], 0, 1),
@@ -798,7 +806,9 @@ export function MapStage({
             }}
           />
         ) : null}
-        {exploration && picture && frame ? <ExplorationMarkers pins={pins} picture={picture} frame={frame} /> : null}
+        {exploration && picture && frame ? (
+          <ExplorationMarkers pins={pins} picture={picture} frame={frame} onNudge={onNudgePin} />
+        ) : null}
         {picture && !exploration
           ? pins.map((pin) => (
               <span

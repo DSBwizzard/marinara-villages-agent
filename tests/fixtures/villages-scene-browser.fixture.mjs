@@ -54,7 +54,6 @@ const snapshot = {
     dayIndex: 1,
     nextTransitionAt: "",
   },
-  noticeboard: [{ id: "note-1", text: "Market today", author: "Mara", at: now }],
   venueRequests: [],
   projects: [],
   residences: [],

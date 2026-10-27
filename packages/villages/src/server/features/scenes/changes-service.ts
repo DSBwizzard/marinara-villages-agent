@@ -19,6 +19,7 @@ import { sceneProcessingSummary } from "../../domain/rules/scene-public.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
 import { workFailureSummary } from "../../domain/rules/work-failure.js";
 export interface SceneChangesPorts {
+  withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
   finishSemanticScene?(id: string): Promise<void>;
   mutateRelationships?: typeof import("../residents/relationship-store.js").mutateRelationships;
   changeSession?: typeof import("../../adapters/storage/scene-store.js").changeSession;
@@ -28,10 +29,12 @@ export interface SceneChangesPorts {
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   villagesDocuments(): Pick<CapabilityDocumentStore, "list">;
   processSavedExchange(sessionId: string, submissionId: string): Promise<void>;
+  readTerminal?(id: string): Promise<import("../../domain/models/scene-terminal-model.js").SceneTerminal | null>;
   venueRequestMetrics: typeof import("../../adapters/operations/operation-context.js").venueRequestMetrics;
 }
 /** Inert saved diagnostics, dismissal and explicit replay with originating connections. */
 export function createSceneChanges({
+  withSceneWork,
   finishSemanticScene,
   mutateRelationships,
   readSession,
@@ -41,6 +44,7 @@ export function createSceneChanges({
   mutateVillageState,
   villagesDocuments,
   processSavedExchange,
+  readTerminal,
   venueRequestMetrics,
 }: SceneChangesPorts) {
   /** Privileged diagnostics use the saved record only. A read never starts interpretation or recovery. */
@@ -231,11 +235,18 @@ export function createSceneChanges({
   }
 
   async function dismissSceneNotice(id: string, noticeId: string) {
-    const scene = await readSession(id),
-      village = await readVillageState();
+    const scene = await readSession(id).catch(async (error: unknown) => {
+      if ((error as { statusCode?: number })?.statusCode !== 404 || !readTerminal) throw error;
+      const terminal = await readTerminal(id);
+      if (!terminal) throw error;
+      return terminal;
+    });
+    const village = await readVillageState();
     if (scene.villageSeed && scene.villageSeed !== village.seed) throw conflict("Village identity changed.");
     const known =
-      scene.submissions.some((turn) => turn.recordEvents?.some((event) => event.id === noticeId)) ||
+      ("recordEvents" in scene
+        ? scene.recordEvents.some((event) => event.id === noticeId)
+        : scene.submissions.some((turn) => turn.recordEvents?.some((event) => event.id === noticeId))) ||
       !!village.exchangeReceipts[noticeId]?.notice ||
       !!(
         village.relationshipContext &&
@@ -255,6 +266,10 @@ export function createSceneChanges({
 
   /** Explicit recovery applies saved results in their existing order. */
   async function replaySceneChanges(id: string) {
+    const work = () => replaySceneChangesOnce(id);
+    return withSceneWork ? withSceneWork(id, work) : work();
+  }
+  async function replaySceneChangesOnce(id: string) {
     const scene = await readSession(id);
     for (const turn of scene.submissions.filter((turn) => turn.processing && unfinishedExchange(turn.processing)))
       await processSavedExchange(id, turn.id);
@@ -263,6 +278,10 @@ export function createSceneChanges({
   }
 
   async function continueSceneChange(id: string, submissionId: string, domain: ExchangeDomain) {
+    const work = () => continueSceneChangeOnce(id, submissionId, domain);
+    return withSceneWork ? withSceneWork(id, work) : work();
+  }
+  async function continueSceneChangeOnce(id: string, submissionId: string, domain: ExchangeDomain) {
     if (!changeSession) throw badRequest("Scene continuation is unavailable.");
     const saved = await readSession(id);
     const original = saved.submissions.find((row) => row.id === submissionId);

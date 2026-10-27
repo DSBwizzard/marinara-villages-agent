@@ -90,10 +90,7 @@ async function mount({
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname,
       body = route.request().postDataJSON();
-    const id =
-      body?.sessionId ??
-      (path.includes("/archive/") ? path.split("/").at(-1) : /\/rooms\/([^/]+)\//.exec(path)?.[1]) ??
-      "A";
+    const id = body?.sessionId ?? /\/rooms\/([^/]+)\//.exec(path)?.[1] ?? "A";
     if (path.endsWith("/turn")) submissions.set(id, body.submissionId);
     requests.push({ path, id, body });
     const kind = path.endsWith("/turn")
@@ -104,7 +101,7 @@ async function mount({
           ? "recovery-operation"
           : path.endsWith("/active")
             ? "active"
-            : path.includes("/archive/")
+            : path.endsWith("/recovery")
               ? "archive"
               : "unknown";
     if ((id === "A" && kind === hold) || (id === "B" && kind === "turn" && holdB)) {

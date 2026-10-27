@@ -142,7 +142,6 @@ export interface SceneCommandPorts {
   activeVenueSession: typeof import("./live-session.js").activeVenueSession;
   requireLiveVenueSession: typeof import("./live-session.js").requireLiveVenueSession;
   refreshZoneParticipants: typeof import("./live-session.js").refreshZoneParticipants;
-  pruneVenueVisits: typeof import("./archive.js").pruneVenueVisits;
   decideVillageResidence: typeof import("../venues/residences.js").decideVillageResidence;
   proposeVillageResidence: typeof import("../venues/residences.js").proposeVillageResidence;
   activationScope():
@@ -227,7 +226,6 @@ export function createSceneCommands({
   activeVenueSession,
   requireLiveVenueSession,
   refreshZoneParticipants,
-  pruneVenueVisits,
   decideVillageResidence,
   proposeVillageResidence,
   activationScope,
@@ -3894,7 +3892,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       releaseSceneMemories(state, closed);
     });
     await clearActivePointer(session.id);
-    await pruneVenueVisits();
     return closed;
   }
 

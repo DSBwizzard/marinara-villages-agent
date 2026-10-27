@@ -111,7 +111,8 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
     else if (path.endsWith("/rooms")) {
       session = opening("visit-" + (greetingCalls + 1));
       value = { session };
-    } else if (path.includes("/rooms/archive/")) value = { visit: archived.get(path.split("/").at(-1)) || session };
+    } else if (/\/rooms\/[^/]+\/recovery$/.test(path))
+      value = { visit: archived.get(path.split("/").at(-2)) || session };
     else if (path.includes("/operations/")) {
       if (changeAttemptOnRead) session.operation.attemptId = "newer-attempt";
       value = { operation: session?.operation || null };

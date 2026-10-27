@@ -1,4 +1,4 @@
-import type { VillageBackgroundPace, VillageSettings } from "../../../shared/contracts/village.js";
+import type { VillageBackgroundPace } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { AgentConnectionsControls } from "./AgentConnections.js";
 import type { GeneralSettingsPagePorts } from "./page-contracts.js";
@@ -14,7 +14,6 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
     saveCharacterSpeechColors,
     saveSendOnEnter,
     saveBackgroundPace,
-    saveVisitRetention,
     setResetArmed,
     settingsError,
     snapshot,
@@ -81,51 +80,6 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
       ) : (
         <>
           <AgentConnectionsControls connections={connections} disabled={busy} />
-          {snapshot ? (
-            <div className={`${ELEMENT_TAG}-field`}>
-              <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-visit-retention`}>
-                Scene transcripts
-              </label>
-              <p className={`${ELEMENT_TAG}-empty`}>
-                Exact Scene logs are kept forever by default. Automatic cleanup skips Scenes with memory pending and
-                keeps filed memories and world changes.
-              </p>
-              <select
-                id={`${ELEMENT_TAG}-visit-retention`}
-                value={snapshot.settings.visitRetention.mode}
-                disabled={busy}
-                onChange={(event) => {
-                  const mode = event.target.value as VillageSettings["visitRetention"]["mode"];
-                  void saveVisitRetention({ mode, value: mode === "count" ? 100 : mode === "days" ? 365 : 0 });
-                }}
-              >
-                <option value="forever">Keep forever</option>
-                <option value="count">Keep latest Scenes</option>
-                <option value="days">Retire after days</option>
-              </select>
-              {snapshot.settings.visitRetention.mode !== "forever" ? (
-                <input
-                  autoComplete="off"
-                  key={`${snapshot.settings.visitRetention.mode}:${snapshot.settings.visitRetention.value}`}
-                  type="number"
-                  aria-label={
-                    snapshot.settings.visitRetention.mode === "count"
-                      ? "Number of Scenes to keep"
-                      : "Days to keep Scenes"
-                  }
-                  min={snapshot.settings.visitRetention.mode === "count" ? 1 : 30}
-                  max={snapshot.settings.visitRetention.mode === "count" ? 1000 : 3650}
-                  defaultValue={snapshot.settings.visitRetention.value}
-                  onBlur={(event) => {
-                    const value = Number(event.target.value);
-                    if (value !== snapshot.settings.visitRetention.value)
-                      void saveVisitRetention({ mode: snapshot.settings.visitRetention.mode, value });
-                  }}
-                />
-              ) : null}
-            </div>
-          ) : null}
-
           <div className={`${ELEMENT_TAG}-field`}>
             <span className={`${ELEMENT_TAG}-label`}>Erase Village</span>
             <p className={`${ELEMENT_TAG}-empty`}>

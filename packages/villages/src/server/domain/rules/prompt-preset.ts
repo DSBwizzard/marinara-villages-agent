@@ -6,15 +6,10 @@ import { hasVenueClass } from "./venue-model.js";
 
 /** Preserve the existing bound when reading saved legacy knowledge. */
 export const VILLAGES_PROMPT_BOX_MAX_LENGTH = 8_000;
-/** How many notices fit on the board, and how long each one may be. */
-export const MAX_NOTICEBOARD_NOTES = 24;
-export const MAX_NOTICE_LENGTH = 280;
-/**
- * How long the name on a notice may be. The villagers' own names are the usual
- * value, so this is only a ceiling on someone with a title in their name rather
- * than a field anyone is expected to reach.
- */
-export const MAX_NOTICE_AUTHOR_LENGTH = 60;
+/** Bound venue event text and decision titles. */
+export const MAX_EVENT_TEXT_LENGTH = 280;
+/** Bound saved requester names. */
+export const MAX_REQUESTER_NAME_LENGTH = 60;
 
 /** Maximum narration length for a committed physical change. */
 export const MAX_PHYSICAL_NARRATION_LENGTH = 320;
@@ -510,7 +505,6 @@ export const VILLAGES_DEFAULT_KNOWLEDGE = [
   "{{player}}",
   "{{roster}}",
   "{{present}}",
-  "{{noticeboard}}",
   "{{memory}}",
   "{{lore}}",
 ].join("\n");
@@ -569,11 +563,6 @@ export const VILLAGE_PRESET_MACROS: readonly VillagePresetMacro[] = [
     token: "{{present}}",
     label: "Who is around now",
     help: "Where everybody else is at this hour, and what they are at. Renders nothing when nobody else is anywhere.",
-  },
-  {
-    token: "{{noticeboard}}",
-    label: "Noticeboard",
-    help: "The notes pinned up here, and who wrote each one. Renders nothing when the board is empty.",
   },
   {
     token: "{{memory}}",

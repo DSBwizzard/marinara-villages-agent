@@ -9,12 +9,12 @@ import React,{useState,useRef} from 'react';
 import {createRoot} from 'react-dom/client';
 import {useTurnRecovery} from './packages/villages/src/client/features/scenes/turn-recovery.js';
 function Harness(){
- const [room,setRoom]=useState(window.initial),[draft,setDraft]=useState('sent'),[error,setError]=useState(''),[ended,setEnded]=useState(false);
+ const [room,setRoom]=useState(window.initial),[draft,setDraft]=useState('sent'),[error,setError]=useState(''),[ended,setEnded]=useState(false),[notices,setNotices]=useState([]),[refreshes,setRefreshes]=useState(0);
  const submission=useRef('submission'),editVersion=useRef(0),[visible,setVisible]=useState(true);
- const recovery=useTurnRecovery({visible,room,setRoom,setRoomEnded:setEnded,setRoomError:setError,setRoomDraft:setDraft,submission,editVersion});
+ const recovery=useTurnRecovery({visible,room,setRoom,setRoomEnded:setEnded,setRoomError:setError,setRoomDraft:setDraft,submission,editVersion,receiveRoomRecordEvents:setNotices,refreshSnapshot:()=>setRefreshes(n=>n+1)});
  window.h={begin:()=>recovery.begin('submission','sent',0),check:recovery.check,select:()=>setRoom({...room,id:'B'}),
  visible:setVisible,edit:(value)=>{editVersion.current++;setDraft(value)}};
- return <pre id='state'>{JSON.stringify({room,draft,error,ended,status:recovery.status,pending:recovery.pending,submission:submission.current})}</pre>;
+ return <pre id='state'>{JSON.stringify({room,draft,error,ended,notices,refreshes,status:recovery.status,pending:recovery.pending,submission:submission.current})}</pre>;
 }createRoot(document.getElementById('root')).render(<Harness/>);
 `,
     loader: "tsx",
@@ -41,6 +41,9 @@ try {
       "selection",
       "unknown",
       "hidden-return",
+      "retired",
+      "retired-draft",
+      "retired-unknown",
     ]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       await mockEngineLookups(page);
@@ -56,13 +59,15 @@ try {
         requests.push(r.request().method());
         if (unavailable) return fulfill(r, { status: 503, json: { error: "offline" } });
         const path = new URL(r.request().url()).pathname;
+        if (mode.startsWith("retired") && path.includes("/archive/"))
+          return fulfill(r, { status: 404, json: { error: "Scene unavailable" } });
         return fulfill(r, {
           status: 200,
           json: path.includes("/operations/")
             ? { operation: scene.operation }
             : path.includes("/archive/")
               ? { visit: scene }
-              : { session: scene },
+              : { session: mode.startsWith("retired") ? null : scene },
         });
       });
       await page.goto("http://recovery.test/");
@@ -72,7 +77,7 @@ try {
       if (mode === "unknown" || mode === "hidden-return") await page.clock.install();
       await page.evaluate(() => window.h.begin());
       await expect(page.locator("#state")).toContainText("Reconnecting");
-      if (mode === "draft") await page.evaluate(() => window.h.edit("new draft"));
+      if (mode === "draft" || mode === "retired-draft") await page.evaluate(() => window.h.edit("new draft"));
       if (mode === "same-draft") await page.evaluate(() => window.h.edit("sent"));
       if (mode === "selection") await page.evaluate(() => window.h.select());
       if (mode === "unknown") {
@@ -85,7 +90,16 @@ try {
       }
       unavailable = false;
       scene = { ...initial, sceneRevision: 2 };
-      if (mode === "error")
+      if (mode.startsWith("retired")) {
+        scene.operation = {
+          id: "submission",
+          status: mode === "retired-unknown" ? "interrupted" : "complete",
+          terminal: true,
+          recordEvents: [{ id: "notice", kind: "project", text: "Project updated" }],
+          ...(mode === "retired-unknown" ? { error: "The request outcome is unavailable." } : {}),
+        };
+        scene.submissions = [];
+      } else if (mode === "error")
         scene.operation = { id: "submission", status: "complete", error: "Confirmed validation failure" };
       else if (mode === "clarify")
         scene.attentionClarification = {
@@ -119,14 +133,31 @@ try {
         const state = JSON.parse(await page.locator("#state").textContent());
         assert.equal(
           state.draft,
-          mode === "draft"
+          mode === "draft" || mode === "retired-draft"
             ? "new draft"
-            : mode === "clarify" || mode === "error" || mode === "same-draft"
+            : mode === "clarify" || mode === "error" || mode === "same-draft" || mode === "retired-unknown"
               ? "sent"
               : "",
         );
-        assert.equal(state.error, mode === "error" ? "Confirmed validation failure" : "");
-        if (mode !== "error") assert.equal(state.submission, null);
+        assert.equal(
+          state.error,
+          mode === "error"
+            ? "Confirmed validation failure"
+            : mode === "retired-unknown"
+              ? "The request outcome is unavailable."
+              : mode.startsWith("retired")
+                ? "The Scene ended. Your turn completed, but the reply text is no longer available."
+                : "",
+        );
+        if (mode !== "error" && mode !== "retired-unknown") assert.equal(state.submission, null);
+        if (mode.startsWith("retired")) {
+          assert.equal(state.ended, true);
+          assert.equal(state.room.status, "closed");
+        }
+        if (mode === "retired" || mode === "retired-draft") {
+          assert.equal(state.notices[0].id, "notice");
+          assert.equal(state.refreshes, 1);
+        }
       }
       assert(requests.length > 0);
       assert(

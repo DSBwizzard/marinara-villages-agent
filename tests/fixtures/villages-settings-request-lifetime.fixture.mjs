@@ -6,7 +6,7 @@ import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
 /** Actual Settings hooks and independently held synthetic HTTP responses. */
 export async function verifySettingsRequestLifetimes(browser) {
-  const kinds = ["save", "scenery", "flip", "pace", "enter", "colors", "retention"];
+  const kinds = ["save", "scenery", "flip", "pace", "enter", "colors"];
   const bundle = await build({
     stdin: {
       loader: "tsx",
@@ -14,7 +14,7 @@ export async function verifySettingsRequestLifetimes(browser) {
       contents: `
 import {createRoot} from 'react-dom/client';import {StrictMode,useState} from 'react';
 import {useSettingsState} from './packages/villages/src/client/features/settings/useSettingsState.js';
-import {useSaveSettings,useSaveScenerySettings,useSaveSpriteCardFlip,useSaveBackgroundPace,useSaveSendOnEnter,useSaveCharacterSpeechColors,useSaveVisitRetention} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveSettings,useSaveScenerySettings,useSaveSpriteCardFlip,useSaveBackgroundPace,useSaveSendOnEnter,useSaveCharacterSpeechColors} from './packages/villages/src/client/features/settings/actions.js';
 function Harness(){
  const settings=useSettingsState(),[snapshot,setSnapshot]=useState(window.seed),[busy,setBusy]=useState(false),
  [flipDraft,setSpriteFlipDraft]=useState(null),[flipError,setSpriteFlipError]=useState(''),[flipSaving,setSpriteFlipSaving]=useState(false),
@@ -22,8 +22,8 @@ function Harness(){
  [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[sceneryStyleProfileId]=useState(null),[personalizeHomes,setPersonalizeHomes]=useState(false),[visualLoreDefault,setVisualLoreDefault]=useState(true);
  const ports={...settings,snapshot,setSnapshot,setBusy,setSpriteFlipDraft,setSpriteFlipError,setSpriteFlipSaving,setArchiveVersion,
   sceneryStyle,sceneryStyleProfileId,personalizeHomes,visualLoreDefault,acceptSavedSettings:()=>{window.acks++}};
- const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),flip=useSaveSpriteCardFlip(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports),colors=useSaveCharacterSpeechColors(ports),retention=useSaveVisitRetention(ports);
- const commands={save,scenery,flip:()=>flip(window.flipValue??true),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>colors(false),retention:()=>retention({mode:'count',value:20})};
+ const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),flip=useSaveSpriteCardFlip(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports),colors=useSaveCharacterSpeechColors(ports);
+ const commands={save,scenery,flip:()=>flip(window.flipValue??true),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>colors(false)};
  const launch=work=>{window.pending.push(work());return window.pending.length-1},run=kind=>launch(commands[kind]);
  window.h={run,twice:kind=>{run(kind);run(kind)},cross:()=>{run('pace');run('enter')},crossScenery:reverse=>{run(reverse?'pace':'scenery');run(reverse?'scenery':'pace')},independent:()=>{run('flip');run('pace')},
   editScenery:()=>{setSceneryStyle('Newer scenery');setPersonalizeHomes(true);setVisualLoreDefault(false)},
@@ -112,7 +112,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     pace: { backgroundPace: "quiet" },
     enter: { sendOnEnter: true },
     colors: { characterSpeechColors: false },
-    retention: { visitRetention: { mode: "count", value: 20 } },
   };
   // State/ownership harness: responsive presentation is covered by the visual suites.
   for (const width of [1280])
@@ -132,7 +131,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           const after = await f.state();
           assert.equal(after.busy, false);
           assert.equal(after.flipSaving, false);
-          assert.equal(after.archive, !fail && kind === "retention" ? 1 : 0);
+          assert.equal(after.archive, 0);
           if (fail) {
             assert.equal(after.setting, "A");
             assert.equal(after.enter, false);
