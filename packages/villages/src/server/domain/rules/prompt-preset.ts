@@ -627,7 +627,7 @@ export const VILLAGE_PRESET_MACROS: readonly VillagePresetMacro[] = [
   {
     token: "{{wishes}}",
     label: "What they wish for",
-    help: "What this villager privately wishes for, and the small way it shows. Renders nothing when they wish for nothing.",
+    help: "Retained private social desires, when supplied. Retention does not require attention or disclosure.",
   },
   {
     token: "{{player}}",
@@ -887,20 +887,7 @@ function blockEnd(time: string): string {
   return split === -1 ? "" : time.slice(split + 1).trim();
 }
 
-/**
- * How much of the day one wish sits in the front of a villager's mind, said to
- * the villager.
- *
- * The whole point of `intensity` is that a wish can be at the back of somebody's
- * mind or occupy them for the day. It is not a measure of a wish's size: somebody
- * can badly want a chocolate bar, while a larger concern can sit quietly. The generator uses 1 for most things; lower intensity must remain quiet rather than repeatedly steering every conversation toward the goal.
- *
- * Phrased as words rather than printed as the number, for the reason the tab
- * already draws it as words: "this is on your mind most of the day" is something
- * a person can act on and "3" is a field name. The middle tier renders NOTHING,
- * which is deliberate — it is the default the model is asked to reach for, and
- * the ordinary case should be the quiet one.
- */
+/** Retained desires are available context without a required mention or behavior. */
 export function renderWishesBlock(wishes: VillageWish[], query = ""): string {
   const relevant = wishWritingContext(wishes, query);
   return relevant.length

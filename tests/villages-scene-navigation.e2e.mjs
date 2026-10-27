@@ -106,7 +106,7 @@ try {
     import {createRoot} from 'react-dom/client';
     import {useVillageController} from './packages/villages/src/client/shell/useVillageController.js';
     import {VillagerDossier} from './packages/villages/src/client/features/residents/villages-dossier.js';
-    const request=async(path,options)=>{if(options?.method==='POST')throw Error('Scene profile attempted a mutation');return path.endsWith('/signature')?{available:true,status:'ready'}:{profiles:[{characterId:'mara',knownWishes:[{wishId:'garden',text:'Plant a garden',status:'active',learnedAt:''}]}]}}; const noop=()=>{};
+    const request=async(path,options)=>{if(options?.method==='POST')throw Error('Scene profile attempted a mutation');return path.endsWith('/signature')?{available:true,status:'ready'}:{profiles:[{characterId:'mara',knownWishes:[{wishId:'garden',text:'Share gardening stories',status:'open',at:'2026-10-26T00:00:00.000Z',followed:true,facts:[]}]}]}}; const noop=()=>{};
     function Harness(){const c=useVillageController({element:document.getElementById('root')});window.navigation=c;
       return <><pre id="screen">{!c.room && c.sceneRestoration.status!=='ready'?c.sceneRestoration.status:c.screen}</pre>{c.screen==='person'&&<VillagerDossier navigation={c.personProfile}
         villager={{characterId:'mara',name:'Mara',summary:'A resident',tags:[]}} portrait={null} request={request}

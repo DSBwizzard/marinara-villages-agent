@@ -35,7 +35,7 @@ ACTION-BASED SOUND. ${ZONE_SOUND_CONTRACT}`
       ? `contactMoves records only crossing into a DIFFERENT listed destination Zone, never walking within the current Zone. A step toward someone, crossing a courtyard or changing seats within one Zone needs no contactMoves. For a real Zone crossing use the exact full narration quote or omit quote to reference its segment.`
       : "",
     c.wishes !== false
-      ? `Optional wishChanges:[{actorId,wishId,intent:"reveal|progress|check",evidence:[]}], only listed Wishes. Reveal needs the wishing resident's disclosure. Progress/check needs meaningful new witnessed evidence; no filler, promises or conditional/quoted claims. Never invent or fulfill Wishes. Physical results need verified receipts.`
+      ? `Omit wishChanges or return []. System independently interprets social desires and outcomes from this exchange.`
       : "",
     c.invitationZones && c.invitationZones !== "none"
       ? `Invitation destinations: ${c.invitationZones}. Optional roomEvents:[{actorId,venueId,zoneId,kind:"invite-now|invite-later|refuse|dismiss|revoke|ban-zone|ban-venue|invite-outside-hours|uncertain",evidence:[]}]. Use actual permission speech or unambiguous named gestures; short replies may answer pending questions. Unknown destination uses zoneId:"",kind:"uncertain". Silence/open doors/third-party claims grant nothing; retain contextual cautions. Optional invitation:{source:0,venueId,zoneId,scope:"shared|private",ownerId,timing:"now|later",accompanies}; accompanies needs an explicit offer. Entry grants no editing authority or movement.`
@@ -128,7 +128,7 @@ export function reliableSceneContract(c: VenueResponseContext, capabilities: Sce
       ? "contactMoves:[{characterId,zoneId,segment}]:completed crossing to DIFFERENT listed Zone only; local walking/seating/doors need no row. segment:narration naming actor/completed crossing,never intent/condition. One voluntary move/actor; code owns quote. Later speech uses new positions,never retroactive witnesses/unseen journeys/interiors."
       : "",
     c.wishes !== false
-      ? 'wishChanges:[{actorId,wishId,intent:"reveal|progress|check",evidence:[]}],listed Wishes only. Reveal needs actor disclosure; progress/check needs meaningful new witnessed evidence. No filler, promises, conditional/quoted claims, invented/fulfilled Wishes; physical results need receipts.'
+      ? "wishChanges:[]; System independently interprets social desires and outcomes from this exchange."
       : "",
     c.invitationZones && c.invitationZones !== "none"
       ? `Invitation destinations:${c.invitationZones}. roomEvents:[{actorId,venueId,zoneId,kind:"invite-now|invite-later|refuse|dismiss|revoke|ban-zone|ban-venue|invite-outside-hours|uncertain",evidence:[]}]. Actual permission speech or unambiguous named gesture; short answers may resolve pending questions. Unknown destination:zoneId:"",kind:"uncertain". Silence/open doors/third-party claims grant nothing; retain cautions. invitation:{source:0,venueId,zoneId,scope:"shared|private",ownerId,timing:"now|later",accompanies}; accompanies needs explicit offer. Entry grants no editing/movement.`

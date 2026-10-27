@@ -44,7 +44,7 @@ try {
     const notice = {
       id: "wish-discovery",
       kind: "wish",
-      text: "Wish discovery · Feddy",
+      text: "Wish shared · Feddy",
       detail: wish.text,
       wishUpdate: { actorId: "feddy", wishId: "swim", state: "progress" },
     };
@@ -207,7 +207,7 @@ try {
       node.scrollTop = 20;
     });
     const readingScroll = await reader.evaluate((node) => node.scrollTop);
-    await page.getByRole("button", { name: /View Wish update: Wish discovery/ }).click();
+    await page.getByRole("button", { name: /View Wish update: Wish shared/ }).click();
     await expect(profile).toBeVisible();
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true, "Scene reader stays mounted");
     await expect(profile.locator('[data-wish-id="swim"]')).toBeFocused();

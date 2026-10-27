@@ -56,7 +56,7 @@ export const VENUE_RESPONSE_EVIDENCE =
 export const VENUE_LIVE_MEMORY_CONTRACT = LIVE_MEMORY_INSTRUCTION;
 
 export const VENUE_WISH_CONTRACT =
-  'Return wishChanges:[] even when there are no Wish updates, or [{actorId,wishId,intent:"reveal|progress|check",evidence:["player",0]}] for listed existing Wishes, citing only this exchange. Reveal requires the wishing resident telling the player what they want. Progress/check needs meaningful new relevant witnessed evidence, not greetings, unrelated company, repetition, physical-work promises, or quoted/conditional claims. Physical results need verified receipts. Never invent wishes, mark fulfillment, or expose hidden wishes.';
+  "Return wishChanges:[]. System independently interprets social desires and outcomes from this exchange.";
 
 export function buildVenueResponseContract(context: VenueResponseContext): string[] {
   return [

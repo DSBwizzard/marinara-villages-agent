@@ -160,7 +160,7 @@ Sprite setup lets you choose expressions, facing, inclusion, defaults, and frami
 
 Time, schedules, construction, approved moves, and expiry can advance without model requests. Recurring creative activity runs while Villages is visible and pauses before its next request after you leave. Work you already requested can finish while you are away.
 
-Set **Resident activity and Wishes → Off** to pause automatic social planning, routine suggestions, housing proposals, and new Wishes. This leaves local time, construction, approved moves, and existing Wish expiry running.
+Set **Resident activity and Wishes → Off** to pause automatic social planning, routine suggestions, housing proposals, and new Wishes. Local time, construction and approved moves continue. Retained Wishes do not expire.
 
 Quiet, Balanced, and Lively permit at most 1, 3, and 6 automatic resident attempts per local day, at least fifteen minutes apart, with no missed-day catch-up. Each attempt uses at most two principal model requests; quiet outcomes, failures, and unknown outcomes still count. Residents may initiate private encounters or personal mail. Weather alone does not start an automatic request.
 

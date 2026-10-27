@@ -456,9 +456,6 @@ try {
       else if (path.endsWith("/villagers/mara") && request.method() === "DELETE") {
         village.villagers = village.villagers.filter((entry) => entry.characterId !== "mara");
         value = village;
-      } else if (path.endsWith("/wishes/swim/retire")) {
-        relationships.profiles[0].knownWishes[0].status = "retired";
-        value = relationships;
       } else if (/\/greet|\/turn|\/interpret/.test(path)) throw Error("Unexpected generation request " + path);
       await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
