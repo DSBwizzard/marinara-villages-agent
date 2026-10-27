@@ -281,14 +281,17 @@ assert.equal(
   "Unread mail has not added notebook knowledge",
 );
 failMemoryWrite = true;
-await assert.rejects(() => service.readThread(active.threadId), /Memory publication unavailable/);
+await assert.rejects(
+  () => service.readLetter(active.threadId, active.messageId + ":reply"),
+  /Memory publication unavailable/,
+);
 assert.equal(
   social.mailThreads[active.threadId]!.messages.find((m) => m.id === active.messageId + ":reply")!.readAt,
   undefined,
   "A lost Memory write never marks mail read",
 );
-await service.readThread(active.threadId);
-await service.readThread(active.threadId);
+await service.readLetter(active.threadId, active.messageId + ":reply");
+await service.readLetter(active.threadId, active.messageId + ":reply");
 assert.equal(village.memories.records.filter((r) => !!r.knowers.player).length, 1);
 assert.equal(calls, beforeRetryCalls, "Reading and polling buy no model calls");
 await assert.rejects(() => service.cancel(active.threadId, active.messageId), /already been delivered/);
@@ -347,8 +350,27 @@ assert.equal(
   false,
 );
 assert.equal(village.memories.records.filter((r) => !!r.knowers.player).length, 1);
-await service.readThread("personal:ada");
+const anotherLetter = service.automaticOutbox(
+  await snapshot(),
+  social,
+  { senderId: "ada", text: "Another separate letter.", relationshipReview: emptyRelationshipReview() },
+  "another-opportunity",
+  new Date().toISOString(),
+);
+village.socialMailOutbox = [anotherLetter];
+await service.processOutbox(await snapshot());
+await service.readLetter("personal:ada", "opportunity:mail");
 assert.equal(village.memories.records.filter((r) => !!r.knowers.player).length, 2);
+assert.equal(
+  social.mailThreads["personal:ada"]!.messages.find((m) => m.id === "opportunity:mail")!.readAt !== undefined,
+  true,
+);
+assert.equal(
+  social.mailThreads["personal:ada"]!.messages.find((m) => m.id === "another-opportunity:mail")!.readAt,
+  undefined,
+  "Reading one letter leaves the other unread",
+);
+await assert.rejects(() => service.readLetter("personal:ada", "not-a-letter"), /unavailable/);
 await assert.rejects(() => service.send({ residentId: "ada", requestId: "two:reply", text: "Collision" }));
 await service.send({ residentId: "ada", requestId: "cleanup", text: "Keep the original source." });
 active = queued.at(-1).input;

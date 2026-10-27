@@ -690,18 +690,19 @@ export function createSocialMail(ports: SocialMailPorts) {
       await queue(await makeInput(village, personalThreadId(input.residentId), source.id));
     return readMailbox();
   }
-  async function readThread(threadId: string) {
+  async function readLetter(threadId: string, messageId: string) {
     const village = await ports.readVillageSnapshot();
     const thread = village.relationshipContext?.mailThreads[threadId];
     if (!thread || !thread.participantIds.includes("player")) throw badRequest("That thread is unavailable.");
-    const readIds = thread.messages
+    const letter = thread.messages.find((message) => message.id === messageId && message.toId === "player");
+    if (!letter || !village.relationshipContext!.mailDeliveries[messageId])
+      throw badRequest("That letter is unavailable.");
+    const lines: RelationshipEvidenceLine[] = thread.messages
       .filter(
         (message) =>
-          message.toId === "player" && village.relationshipContext!.mailDeliveries[message.id] && !message.readAt,
+          !!village.relationshipContext!.mailDeliveries[message.id] &&
+          (message.fromId === "player" || !!message.readAt || message.id === messageId),
       )
-      .map((message) => message.id);
-    const lines: RelationshipEvidenceLine[] = thread.messages
-      .filter((message) => !!village.relationshipContext!.mailDeliveries[message.id])
       .map((message) => ({
         id: message.id,
         speakerId: message.fromId,
@@ -711,7 +712,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         playerHeard: true,
       }));
     // Publish first. A failed Memory write leaves the message unread and locally retryable.
-    for (const message of thread.messages) {
+    for (const message of [letter]) {
       const delivery = village.relationshipContext!.mailDeliveries[message.id];
       if (message.toId !== "player" || !delivery || message.readAt) continue;
       await ports.mutateVillageState(
@@ -730,7 +731,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       );
     }
     await ports.mutateRelationships(village.seed, (state) =>
-      readPersonalThread(state, threadId, new Date().toISOString(), readIds),
+      readPersonalThread(state, threadId, new Date().toISOString(), [messageId]),
     );
     return readMailbox();
   }
@@ -886,6 +887,6 @@ export function createSocialMail(ports: SocialMailPorts) {
       },
     };
   }
-  return { handler, processOutbox, readMailbox, send, readThread, cancel, retry, automaticOutbox };
+  return { handler, processOutbox, readMailbox, send, readLetter, cancel, retry, automaticOutbox };
 }
 export type SocialMailService = ReturnType<typeof createSocialMail>;

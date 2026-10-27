@@ -42,7 +42,8 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
   });
   engine.post<{ Params: { threadId: string } }>("/mailbox/threads/:threadId/read", async (request, reply) => {
     try {
-      return await socialMail().readThread(request.params.threadId);
+      const { messageId } = z.object({ messageId: z.string().min(1) }).parse(request.body);
+      return await socialMail().readLetter(request.params.threadId, messageId);
     } catch (error) {
       return fail(reply, error, "read personal thread");
     }
