@@ -40,10 +40,15 @@ try {
         id: '["memory","key"]',
         token: "current-token",
         topic: "memories",
-        title: "The workshop key",
+        title: text,
         summary: "Shared recollection",
-        fields: [{ key: "text", label: "Remembered wording", type: "text", value: text }],
-        source: ["Nora: “You can borrow my key until Friday.”"],
+        fields: [{ key: "text", label: "Memory", type: "text", value: text }],
+        source: [
+          text,
+          text,
+          "Nora: “You can borrow my key until Friday.”",
+          "Nora: “You can borrow my key until Friday.”",
+        ],
         people: [
           { id: "player", name: "Your Persona", text },
           { id: "nora", name: "Nora", text },
@@ -182,9 +187,22 @@ try {
       }));
       assert.equal(colors.background, "rgb(246, 245, 239)");
       await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
-      await page.getByRole("button", { name: /The workshop key Shared recollection/ }).click();
+      await page.getByRole("button", { name: /Nora gave you a workshop key. Shared recollection/ }).click();
+      await expect(repair.getByRole("heading", { name: "Edit memory", exact: true })).toBeVisible();
+      await expect(repair.locator(".repair-current")).toHaveCount(0);
+      await expect(repair.locator("blockquote")).toHaveCount(1);
+      await expect(repair.locator("h1,p,blockquote").filter({ hasText: text })).toHaveCount(0);
+      if (width === 390) {
+        const editor = await repair.locator(".repair-editor").boundingBox(),
+          source = await repair.locator(".repair-source").boundingBox();
+        assert.ok(source.y >= editor.y + editor.height, "Source follows the editor on phones");
+      }
+      await repair.screenshot({ path: `.build-tmp/repair-ui/${name}-memory-editor.png` });
+      await page.getByRole("button", { name: "Forget", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toBeDisabled();
+      await page.getByRole("button", { name: "Correct", exact: true }).click();
       await page
-        .getByRole("textbox", { name: "Remembered wording", exact: true })
+        .getByRole("textbox", { name: "Memory", exact: true })
         .fill("Nora lent you her workshop key until Friday.");
       await page.getByRole("button", { name: "Main menu", exact: true }).click();
       await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
@@ -193,7 +211,7 @@ try {
       );
       await page.getByRole("button", { name: "Open main menu", exact: true }).click();
       await page.getByRole("button", { name: "REPAIR", exact: true }).first().click();
-      await expect(page.getByRole("textbox", { name: "Remembered wording", exact: true })).toHaveValue(
+      await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue(
         "Nora lent you her workshop key until Friday.",
       );
       await page.getByRole("button", { name: "Review changes", exact: true }).click();
@@ -204,10 +222,8 @@ try {
       await expect(page.getByRole("heading", { name: "Changes saved", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
       await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
-      await page.getByRole("button", { name: /The workshop key Shared recollection/ }).click();
-      await page
-        .getByRole("textbox", { name: "Remembered wording", exact: true })
-        .fill("An unfinished repair draft stays here.");
+      await page.getByRole("button", { name: /Nora gave you a workshop key. Shared recollection/ }).click();
+      await page.getByRole("textbox", { name: "Memory", exact: true }).fill("An unfinished repair draft stays here.");
       await page.getByRole("button", { name: "REPAIR", exact: true }).click();
       await page.getByRole("button", { name: "Repair history", exact: true }).click();
       await expect(page.getByRole("button", { name: "Review undo", exact: true })).toBeVisible();
@@ -216,8 +232,8 @@ try {
       await page.getByRole("button", { name: "Undo changes", exact: true }).click();
       await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
       await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
-      await page.getByRole("button", { name: /The workshop key Shared recollection/ }).click();
-      await expect(page.getByRole("textbox", { name: "Remembered wording", exact: true })).toHaveValue(
+      await page.getByRole("button", { name: /Nora gave you a workshop key. Shared recollection/ }).click();
+      await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue(
         "An unfinished repair draft stays here.",
       );
       await page.getByRole("button", { name: "Main menu", exact: true }).click();

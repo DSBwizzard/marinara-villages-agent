@@ -105,7 +105,7 @@ export function worldRepairRecords(
         "memories",
         row.text,
         `${row.kind} · ${new Date(row.occurredAt).toLocaleDateString("en-US")}`,
-        [text("text", "Remembered wording", row.text)],
+        [text("text", "Memory", row.text)],
         {
           source:
             root.origin.kind === "domain" && root.origin.id.startsWith("player-repair:")

@@ -63,7 +63,7 @@ async function fixture(width) {
     fields: [
       {
         key: "text",
-        label: "Remembered wording",
+        label: "Memory",
         type: "text",
         value: id === secretId ? secretText : spoilers ? privateText : known,
       },
@@ -203,7 +203,7 @@ try {
       await root.getByRole("button", { name: /Nora's private recollection/ }).click();
       await expect(page.getByRole("checkbox", { name: "Nora", exact: true })).toBeChecked();
       await expect(page.getByRole("checkbox", { name: "Your Persona", exact: true })).not.toBeChecked();
-      const field = page.getByRole("textbox", { name: "Remembered wording", exact: true });
+      const field = page.getByRole("textbox", { name: "Memory", exact: true });
       await expect(field).toHaveValue(privateText);
       await field.fill("The corrected shared recollection.");
       await page.getByRole("checkbox", { name: "Your Persona", exact: true }).check();
@@ -265,7 +265,7 @@ try {
     await expect(root).not.toContainText(secretText);
     await spoilers(page).check();
     await root.getByRole("button", { name: /Nora's private recollection/ }).click();
-    const field = page.getByRole("textbox", { name: "Remembered wording", exact: true });
+    const field = page.getByRole("textbox", { name: "Memory", exact: true });
     await field.fill("Private pending draft.");
     const review = f.hold("repair");
     await page.getByRole("button", { name: "Review changes", exact: true }).click();

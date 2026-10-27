@@ -21,7 +21,20 @@ export function RepairPage({
   const currentTopic = topics.find((t) => t.id === c.topic)!;
   const isRestore = c.review?.kind === "restore";
   const addingMemory = c.review?.memory?.creating === true;
-  const hasSource = !!c.selected?.source.length || !!c.selected?.related.length;
+  const memoryRecord = c.selected?.topic === "memories";
+  const source = [...new Set(c.selected?.source ?? [])].filter(
+    (excerpt) => !memoryRecord || !c.selected?.fields.some((field) => String(field.value).trim() === excerpt.trim()),
+  );
+  const hasSource = !!source.length || !!c.selected?.related.length;
+  const editorTitle = memoryRecord
+    ? c.selected?.creating
+      ? "Add memory"
+      : c.draft?.action === "forget"
+        ? "Forget memory"
+        : c.draft?.action === "remember"
+          ? "Restore memory"
+          : "Edit memory"
+    : c.selected?.title;
   const directory = c.view === "list" && c.topic === "people" && !c.person;
   const people = (c.index?.people ?? []).filter((p) =>
     c.query
@@ -81,7 +94,7 @@ export function RepairPage({
               : c.view === "list"
                 ? (c.person?.name ?? currentTopic.name)
                 : c.view === "edit"
-                  ? c.selected?.title
+                  ? editorTitle
                   : c.view === "review"
                     ? addingMemory
                       ? "Add memory"
@@ -283,7 +296,7 @@ export function RepairPage({
               {c.selected.fields.map((f) => (
                 <div className="repair-field" key={f.key}>
                   <label htmlFor={`repair-${f.key}`}>{f.label}</label>
-                  {!c.selected.creating ? (
+                  {!c.selected.creating && !memoryRecord ? (
                     <div className="repair-current">
                       <small>Current</small>
                       <p>{display(f.value) || "None"}</p>
@@ -336,7 +349,17 @@ export function RepairPage({
               ))}
               {c.selected.people ? (
                 <fieldset>
-                  <legend>{c.selected.creating ? "Who remembers this?" : "Apply to"}</legend>
+                  <legend>
+                    {c.selected.creating
+                      ? "Who remembers this?"
+                      : memoryRecord
+                        ? c.draft.action === "forget"
+                          ? "Forget for"
+                          : c.draft.action === "remember"
+                            ? "Restore for"
+                            : "Change for"
+                        : "Apply to"}
+                  </legend>
                   <div className="repair-audience">
                     {c.selected.people.map((p) => (
                       <label key={p.id}>
@@ -354,20 +377,10 @@ export function RepairPage({
                           }
                         />
                         {p.name}
+                        {p.forgotten ? " (forgotten)" : ""}
                       </label>
                     ))}
                   </div>
-                  {c.selected.people
-                    .filter((p) => c.draft?.knowers.includes(p.id) && p.text !== undefined)
-                    .map((p) => (
-                      <p key={p.id} className="repair-current">
-                        <small>
-                          {p.name} · Current{p.forgotten ? " · Forgotten" : ""}
-                        </small>
-                        <br />
-                        {p.text}
-                      </p>
-                    ))}
                 </fieldset>
               ) : null}
               <div className="repair-buttons">
@@ -381,10 +394,10 @@ export function RepairPage({
             </section>
             {hasSource ? (
               <aside className="repair-source">
-                {c.selected.source.length ? (
+                {source.length ? (
                   <section className="repair-panel">
                     <h2>Source</h2>
-                    {c.selected.source.map((s, i) => (
+                    {source.map((s, i) => (
                       <blockquote key={i}>{s}</blockquote>
                     ))}
                   </section>

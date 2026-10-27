@@ -79,6 +79,6 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-history-entry>div{min-width:0;}
 .villages-repair .repair-history-entry small{color:var(--repair-muted);}
 .villages-repair .repair-history-change{margin-top:12px;}
-@media(max-width:700px){.villages-repair .repair-layout{grid-template-columns:1fr;}.villages-repair .repair-layout>.repair-source{display:contents;}.villages-repair .repair-source>section:first-child{order:-1;}.villages-repair .repair-source>section+section{order:1;margin-top:0;}.villages-repair main{padding:17px;}}
+@media(max-width:700px){.villages-repair .repair-layout{grid-template-columns:1fr;}.villages-repair main{padding:17px;}}
 @media(max-width:460px){.villages-repair .repair-grid,.villages-repair .repair-comparison{grid-template-columns:1fr;}.villages-repair .repair-tile{min-height:88px;padding:15px;}.villages-repair .repair-buttons button{flex:1;}.villages-repair .repair-panel{padding:15px;}.villages-repair .repair-history-entry{flex-wrap:wrap;}}
 `;
