@@ -805,8 +805,8 @@ try {
     await profile.getByText("Message", { exact: true }).click();
     await expect(draft).toHaveValue(exactMessage);
     await mail.getByRole("button", { name: "Send letter", exact: true }).click();
-    assert.equal(writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.text, exactMessage);
     await expect(mail.getByLabel("Personal mail").getByText(exactMessage, { exact: true })).toBeVisible();
+    assert.equal(writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.text, exactMessage);
     assert.equal(
       await mail.evaluate((node) => node.scrollWidth > node.clientWidth + 1),
       false,
@@ -833,7 +833,9 @@ try {
     await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
     await mail.getByLabel("Recipient").selectOption("mara");
     await draft.fill(exactMessage);
+    const mailWrites = writes.filter((row) => row.path.endsWith("/mailbox/threads")).length;
     await mail.getByRole("button", { name: "Send letter", exact: true }).click();
+    await expect.poll(() => writes.filter((row) => row.path.endsWith("/mailbox/threads")).length).toBe(mailWrites + 1);
     assert.notEqual(
       writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId,
       firstMailId,
