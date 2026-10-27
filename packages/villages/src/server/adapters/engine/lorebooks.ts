@@ -1,6 +1,9 @@
 import { coerceLoreTokenBudget, DEFAULT_LORE_TOKEN_BUDGET } from "../../domain/rules/lore-policy.js";
 import { villageEngineJson } from "./engine-transport.js";
-import { villagesLogger } from "./runtime-host.js";
+import { runtimeDebug } from "../observability/runtime-debug.js";
+import { badGateway } from "../../domain/rules/errors.js";
+import { selectVillageLore, type LoreEntry } from "../../domain/rules/lore-selection.js";
+import type { LoreInspection } from "../../../shared/contracts/lore.js";
 
 export { MIN_LORE_TOKEN_BUDGET, MAX_LORE_TOKEN_BUDGET } from "../../domain/rules/lore-policy.js";
 
@@ -14,8 +17,6 @@ export {
 
 // Live, read-only Engine lore for one Village generation. The village stores IDs,
 // never copies entry content, so edits in the Engine take effect on the next call.
-
-const MAX_LORE_ENTRIES = 24;
 
 type EngineBook = { id: string; name: string; enabled: boolean; hiddenFromLibrary?: boolean };
 type EngineFolder = { id: string; parentFolderId: string | null; enabled: boolean };
@@ -38,11 +39,12 @@ type EngineEntry = {
 
 export async function listVillageLorebooks(signal?: AbortSignal): Promise<EngineBook[]> {
   const books = await villageEngineJson<unknown>("/api/lorebooks", { signal });
-  if (!Array.isArray(books)) return [];
+  if (!Array.isArray(books)) throw badGateway("Lorebooks are unavailable. Check Engine and retry.");
   return books.flatMap((value): EngineBook[] => {
-    if (!value || typeof value !== "object") return [];
+    if (!value || typeof value !== "object") throw badGateway("Lorebooks are unavailable. Check Engine and retry.");
     const book = value as Record<string, unknown>;
-    if (typeof book.id !== "string" || typeof book.name !== "string") return [];
+    if (typeof book.id !== "string" || typeof book.name !== "string" || typeof book.enabled !== "boolean")
+      throw badGateway("Lorebooks are unavailable. Check Engine and retry.");
     return [
       {
         id: book.id,
@@ -52,16 +54,6 @@ export async function listVillageLorebooks(signal?: AbortSignal): Promise<Engine
       },
     ];
   });
-}
-
-function keyMatches(key: string, text: string): boolean {
-  return (
-    typeof key === "string" && key.length > 0 && key.length <= 160 && text.toLowerCase().includes(key.toLowerCase())
-  );
-}
-
-function matches(entry: EngineEntry, text: string): boolean {
-  return entry.constant || (Array.isArray(entry.keys) && entry.keys.some((key) => keyMatches(key, text)));
 }
 
 function folderEnabled(folderId: string | null, folders: Map<string, EngineFolder>): boolean {
@@ -82,67 +74,73 @@ export async function readVillageLore(
   context: string,
   signal?: AbortSignal,
   tokenBudget = DEFAULT_LORE_TOKEN_BUDGET,
-  strict = false,
-  preferMatches = false,
+  options?: {
+    current?: string;
+    recent?: readonly string[];
+    purpose?: string;
+    inspect?: (report: LoreInspection) => void;
+  },
 ): Promise<string[]> {
-  if (!ids.length || coerceLoreTokenBudget(tokenBudget) === 0) return [];
+  if (!ids.length || coerceLoreTokenBudget(tokenBudget) === 0) {
+    const inspection: LoreInspection = {
+      purpose: options?.purpose ?? "Lore lookup",
+      stage: "selection",
+      budget: coerceLoreTokenBudget(tokenBudget),
+      entries: [],
+      omittedDiagnostics: 0,
+    };
+    options?.inspect?.(inspection);
+    runtimeDebug("lore inspection", inspection);
+    return [];
+  }
   try {
     const books = await listVillageLorebooks(signal);
     const byId = new Map(books.map((book) => [book.id, book]));
-    const candidates: EngineEntry[] = [];
+    const candidates: LoreEntry[] = [];
     for (const id of ids) {
-      if (strict && !byId.has(id)) throw new Error(`Selected lorebook ${id} could not be found.`);
+      if (!byId.has(id)) throw new Error("Missing selected book.");
       if (!byId.get(id)?.enabled) continue;
-      try {
-        const [entries, folders] = await Promise.all([
-          villageEngineJson<EngineEntry[]>(`/api/lorebooks/${encodeURIComponent(id)}/entries`, { signal }),
-          villageEngineJson<EngineFolder[]>(`/api/lorebooks/${encodeURIComponent(id)}/folders`, { signal }),
-        ]);
-        if (strict && (!Array.isArray(entries) || !Array.isArray(folders)))
-          throw new Error("The entries or folders response was unreadable.");
-        const folderMap = new Map((Array.isArray(folders) ? folders : []).map((folder) => [folder.id, folder]));
-        candidates.push(
-          ...(Array.isArray(entries) ? entries : []).filter(
-            (entry) =>
-              entry.enabled &&
-              typeof entry.content === "string" &&
-              entry.content.trim() &&
-              folderEnabled(entry.folderId, folderMap) &&
-              matches(entry, context),
-          ),
-        );
-      } catch (error) {
-        signal?.throwIfAborted();
-        if (strict)
-          throw new Error(`Selected lorebook ${byId.get(id)?.name ?? id} could not be read: ${String(error)}`);
-        villagesLogger().warn("[villages] could not read lorebook %s: %s", id, String(error));
-      }
+      const [entries, folders] = await Promise.all([
+        villageEngineJson<EngineEntry[]>(`/api/lorebooks/${encodeURIComponent(id)}/entries`, { signal }),
+        villageEngineJson<EngineFolder[]>(`/api/lorebooks/${encodeURIComponent(id)}/folders`, { signal }),
+      ]);
+      if (!Array.isArray(entries) || !Array.isArray(folders))
+        throw new Error("The entries or folders response was unreadable.");
+      if (folders.some((folder) => !folder || typeof folder.id !== "string" || typeof folder.enabled !== "boolean"))
+        throw new Error("Invalid folder.");
+      const folderMap = new Map(folders.map((folder) => [folder.id, folder]));
+      candidates.push(
+        ...entries.map((entry) => {
+          if (
+            !entry ||
+            typeof entry.id !== "string" ||
+            typeof entry.name !== "string" ||
+            typeof entry.content !== "string" ||
+            typeof entry.enabled !== "boolean" ||
+            [entry.keys, entry.secondaryKeys].some(
+              (keys) => keys !== undefined && (!Array.isArray(keys) || keys.some((key) => typeof key !== "string")),
+            )
+          )
+            throw new Error("Invalid entry.");
+          return { ...entry, bookId: id, folderEnabled: folderEnabled(entry.folderId, folderMap) };
+        }),
+      );
     }
-    candidates.sort(
-      (a, b) =>
-        (preferMatches
-          ? Number(!!b.keys?.some((key) => keyMatches(key, context))) -
-            Number(!!a.keys?.some((key) => keyMatches(key, context)))
-          : 0) ||
-        (preferMatches ? 0 : Number(b.constant) - Number(a.constant)) ||
-        a.name.localeCompare(b.name),
+    const result = selectVillageLore(
+      candidates,
+      { setting: context, current: options?.current, recent: options?.recent },
+      tokenBudget,
     );
-    const selected: string[] = [];
-    let tokens = 0;
-    for (const entry of candidates) {
-      const content = entry.content.trim();
-      const cost = Math.ceil((entry.name.length + content.length) / 4) + 4;
-      if (tokens + cost > coerceLoreTokenBudget(tokenBudget)) continue;
-      selected.push(`${entry.name}: ${content}`);
-      tokens += cost;
-      if (selected.length >= MAX_LORE_ENTRIES) break;
-    }
-    return selected;
-  } catch (error) {
+    result.inspection.purpose = options?.purpose ?? "Lore lookup";
+    options?.inspect?.(result.inspection);
+    runtimeDebug("lore inspection", result.inspection);
+    return result.selected;
+  } catch (_error) {
     signal?.throwIfAborted();
-    if (strict) throw error;
-    villagesLogger().warn("[villages] Engine lorebooks unavailable: %s", String(error));
-    return [];
+    runtimeDebug("lore unavailable", { reason: "Selected books could not be read." });
+    throw badGateway(
+      "Selected lorebooks are unavailable. Restore them in Engine or change Village Lorebooks, then retry.",
+    );
   }
 }
 
@@ -163,7 +161,7 @@ export async function readVillageVisualLoreEntries(
   maxLength = 360,
   tokenBudget = DEFAULT_LORE_TOKEN_BUDGET,
 ): Promise<string[]> {
-  const entries = await readVillageLore(ids, context, undefined, tokenBudget, false, true);
+  const entries = await readVillageLore(ids, context, undefined, tokenBudget);
   const selected: string[] = [];
   let length = 0;
   for (const entry of entries) {

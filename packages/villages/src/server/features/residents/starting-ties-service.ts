@@ -322,7 +322,6 @@ export function createStartingTies(ports: StartingTiesPorts) {
         JSON.stringify(snapshot),
         undefined,
         state.loreTokenBudget,
-        true,
       )) ?? [];
     const sources = evidence(snapshot, lore),
       sourceHash = semanticHash([snapshot, sources]);

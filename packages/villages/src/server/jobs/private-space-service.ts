@@ -200,8 +200,6 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           [village.setting, village.worldName, ...village.worldFacts, JSON.stringify(room)].join("\n"),
           signal,
           Math.min(village.loreTokenBudget, 256),
-          true,
-          true,
         );
         await progress("resolving", { loreEntryCount: lore.length });
         const model = await villagesLanguageModels().resolveForRequest({

@@ -324,6 +324,15 @@
     },
     {
       "method": "get",
+      "path": "/debug/lore"
+    },
+    {
+      "method": "post",
+      "path": "/debug/lore",
+      "bodyLimit": 12000
+    },
+    {
+      "method": "get",
       "path": "/debug/runtime"
     },
     {

@@ -704,6 +704,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const semantic = createSemanticService({
+    runtimeDebug,
     venueExplicitRetry,
     venueDebugContext,
     readVillageLore,
@@ -720,6 +721,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createSceneWriting({
       semantic,
       venueCheckpoint,
+      venueSavedCheckpoint,
       venueExplicitRetry,
       refreshZoneParticipants,
       readEffectiveVillagerCard,

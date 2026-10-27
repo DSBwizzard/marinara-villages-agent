@@ -1462,9 +1462,58 @@ function memoryField(value: unknown): unknown {
     throw new Error("Invalid saved Memories JSON.");
   }
 }
+/** Settings-only v5 records contain no retired Wish, Mailbox, or played-world state to convert. */
+export function isEmptyLegacyVillage(raw: Record<string, unknown>): boolean {
+  const emptyList = (value: unknown) => value === undefined || (Array.isArray(value) && value.length === 0);
+  const emptyMap = (value: unknown) =>
+    value === undefined ||
+    (value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0);
+  const memories = asRecord(raw.memories);
+  return (
+    raw.version === 5 &&
+    raw.setupAt === "" &&
+    raw.memoryHead == null &&
+    raw.development == null &&
+    raw.foundingPreparation == null &&
+    raw.opening == null &&
+    Array.isArray(raw.villagers) &&
+    raw.villagers.length === 0 &&
+    Array.isArray(raw.venues) &&
+    raw.venues.length === 0 &&
+    [
+      "residences",
+      "projects",
+      "progressTasks",
+      "pendingDecisions",
+      "venueMail",
+      "projectWishOutbox",
+      "venueEvents",
+      "noticeboard",
+      "processedActionIds",
+      "processedOpportunityIds",
+      "socialOutbox",
+      "socialMailOutbox",
+    ].every((key) => emptyList(raw[key])) &&
+    [
+      "sceneWishProtections",
+      "wishRefillIntents",
+      "memoryScenes",
+      "memoryReceipts",
+      "backgroundReceipts",
+      "exchangeReceipts",
+      "eventAttempts",
+      "semanticRequestReceipts",
+      "semanticContinuations",
+      "semanticStartingTies",
+    ].every((key) => emptyMap(raw[key])) &&
+    (raw.memories === undefined ||
+      (memories.format === 1 && memories.revision === 0 && Array.isArray(memories.records) && !memories.records.length))
+  );
+}
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 6) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 6 && !isEmptyLegacyVillage(raw))
+    throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
