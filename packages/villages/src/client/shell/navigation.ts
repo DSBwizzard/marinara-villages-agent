@@ -16,7 +16,6 @@ export const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   visual: "Visual Configuration",
   general: "General Preferences",
   advanced: "Advanced",
-  chatlogs: "Scene History",
   progress: "Debug",
 };
 

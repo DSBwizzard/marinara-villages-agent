@@ -156,7 +156,6 @@ const publicFields = [
   "venues",
   "villageGalleryFolderName",
   "villageNameMaxLength",
-  "visitRetention",
   "worldFacts",
   "worldName",
 ] satisfies (keyof VillageSettings)[];

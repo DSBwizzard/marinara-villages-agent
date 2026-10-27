@@ -512,7 +512,6 @@ export type VillageSettings = {
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
-  visitRetention: { mode: "forever" | "count" | "days"; value: number };
   promptKnowledge: string;
   defaultPromptKnowledge: string;
   promptBoxMaxLength: number;
@@ -753,6 +752,9 @@ type RoomParticipant = {
   doing: string;
 };
 export type RoomOperation = {
+  /** The Scene has ended and its completed transcript is no longer retained. */
+  terminal?: boolean;
+  recordEvents?: RoomRecordEvent[];
   turnOutcome?: import("./scene-turn-outcome.js").SceneTurnOutcome;
   recoverable?: boolean;
   id: string;

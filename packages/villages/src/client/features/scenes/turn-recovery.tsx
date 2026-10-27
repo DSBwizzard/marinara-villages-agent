@@ -28,6 +28,8 @@ export function useTurnRecovery(ports: {
   submission: React.RefObject<string | null>;
   editVersion?: React.RefObject<number>;
   setRoomRuling?: React.Dispatch<React.SetStateAction<string>>;
+  receiveRoomRecordEvents?: (events: readonly import("../../../shared/contracts/village.js").RoomRecordEvent[]) => void;
+  refreshSnapshot?: () => void;
 }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [status, setStatus] = useState("");
@@ -72,12 +74,44 @@ export function useTurnRecovery(ports: {
       if (!owns()) return;
       if (operation?.id === pending.submissionId && isSceneTurnOutcome(operation.turnOutcome)) {
         if (scene) latest.current.setRoom(scene);
+        if (operation.terminal) {
+          latest.current.setRoom((current) =>
+            current?.id === pending.sceneId ? { ...current, status: "closed" } : current,
+          );
+          latest.current.setRoomEnded(true);
+        }
         latest.current.setRoomError("");
         if (!latest.current.editVersion || latest.current.editVersion.current === pending.editVersion) {
           latest.current.setRoomDraft(pending.text);
           latest.current.setRoomRuling?.(sceneTurnOutcomeMessage(operation.turnOutcome));
         }
         if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
+        setPending(null);
+        setStatus("");
+        return;
+      }
+      if (operation?.id === pending.submissionId && operation.terminal && operation.status === "complete") {
+        recordTurnTiming(pending.sceneId, pending.submissionId, "recovered");
+        latest.current.receiveRoomRecordEvents?.(operation.recordEvents ?? []);
+        latest.current.refreshSnapshot?.();
+        latest.current.setRoom((current) =>
+          current?.id === pending.sceneId ? { ...current, status: "closed" } : current,
+        );
+        latest.current.setRoomEnded(true);
+        latest.current.setRoomError("The Scene ended. Your turn completed, but the reply text is no longer available.");
+        if (!latest.current.editVersion || latest.current.editVersion.current === pending.editVersion)
+          latest.current.setRoomDraft((current) => (current === pending.text ? "" : current));
+        if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
+        setPending(null);
+        setStatus("");
+        return;
+      }
+      if (operation?.id === pending.submissionId && operation.terminal && operation.status === "interrupted") {
+        latest.current.setRoom((current) =>
+          current?.id === pending.sceneId ? { ...current, status: "closed" } : current,
+        );
+        latest.current.setRoomEnded(true);
+        latest.current.setRoomError(operation.error || "The Scene ended, but the request outcome is unavailable.");
         setPending(null);
         setStatus("");
         return;

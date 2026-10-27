@@ -1,7 +1,6 @@
 import type {
   VillageBackgroundPace,
   VillageLorebookOption,
-  VillageSettings,
   VillageSnapshot,
 } from "../../../shared/contracts/village.js";
 
@@ -15,7 +14,6 @@ export type GeneralSettingsPagePorts = {
   readonly saveCharacterSpeechColors: (characterSpeechColors: boolean) => Promise<void>;
   readonly saveSendOnEnter: (sendOnEnter: boolean) => Promise<void>;
   readonly saveBackgroundPace: (backgroundPace: VillageBackgroundPace) => Promise<void>;
-  readonly saveVisitRetention: (visitRetention: VillageSettings["visitRetention"]) => Promise<void>;
   readonly setResetArmed: React.Dispatch<React.SetStateAction<boolean>>;
   readonly settingsError: string;
   readonly snapshot: VillageSnapshot | null;

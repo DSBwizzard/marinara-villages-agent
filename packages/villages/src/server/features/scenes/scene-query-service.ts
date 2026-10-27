@@ -11,11 +11,23 @@ export interface SceneQueryPorts {
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   villagesDocuments(): Pick<CapabilityDocumentStore, "list">;
+  readRetiredProjectScenes?(seed: string): Promise<import("../../domain/models/scene-model.js").VenueScene[]>;
 }
 /** Inert internal Scene evidence/backlog queries with explicit originating connections. */
-export function createSceneQueryService({ readSession, readVillageState, villagesDocuments }: SceneQueryPorts) {
+export function createSceneQueryService({
+  readSession,
+  readVillageState,
+  villagesDocuments,
+  readRetiredProjectScenes,
+}: SceneQueryPorts) {
   async function readProjectTurnEvidence(sessionId: string, submissionId: string) {
-    const session = await readSession(sessionId);
+    const session = await readSession(sessionId).catch(async (error: unknown) => {
+      if ((error as { statusCode?: number })?.statusCode !== 404 || !readRetiredProjectScenes) throw error;
+      const seed = (await readVillageState()).seed;
+      const saved = (await readRetiredProjectScenes(seed)).find((scene) => scene.id === sessionId);
+      if (!saved) throw error;
+      return saved;
+    });
     const submission = session.submissions.find((entry) => entry.id === submissionId);
     if (!submission) throw notFound("That roleplay turn was not recorded.");
     const venue = (await readVillageState()).venues.find((entry) => entry.id === session.placeId);

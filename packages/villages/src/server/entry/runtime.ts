@@ -80,7 +80,7 @@ import {
   venueRequestMetrics,
 } from "../adapters/operations/operation-context.js";
 import { createDocumentMutator, mutateDocument } from "../adapters/storage/document-store.js";
-import { repairGate } from "../adapters/storage/repair-gate.js";
+import { repairGate, withRepairWork } from "../adapters/storage/repair-gate.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
 import {
   changeSession,
@@ -234,7 +234,7 @@ import {
   queueFoundingWish,
 } from "../features/residents/wishes/service.js";
 import { createSceneArchive } from "../features/scenes/archive-service.js";
-import { configureSceneArchive, listVenueVisits, pruneVenueVisits } from "../features/scenes/archive.js";
+import { configureSceneArchive, listVenueVisits } from "../features/scenes/archive.js";
 import { createSceneChanges } from "../features/scenes/changes-service.js";
 import {
   configureSceneChanges,
@@ -252,13 +252,13 @@ import {
   requireLiveVenueSession,
 } from "../features/scenes/live-session.js";
 import { createSceneProgress } from "../features/scenes/progress-service.js";
-import {
-  configureSceneProgress,
-  processSavedExchange,
-  processSavedProgressSubmission,
-} from "../features/scenes/progress.js";
+import { configureSceneProgress, processSavedExchange } from "../features/scenes/progress.js";
 import { interpretRoomReply } from "../features/scenes/room-interpretation.js";
 import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
+import { createSceneTerminalStore } from "../features/scenes/scene-terminal.js";
+import { createProjectEvidenceIndex } from "../features/scenes/project-evidence-index.js";
+import { createSceneRetirement } from "../features/scenes/scene-retirement-service.js";
+import { filterRelationshipNotices } from "../domain/rules/relationship-presentation.js";
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork, sceneWork } from "../features/scenes/scene-work.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
@@ -384,6 +384,51 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     villagesDocuments,
     mutateDocument: createDocumentMutator(villagesDocuments),
   });
+  const sceneTerminals = createSceneTerminalStore({
+    villagesDocuments,
+    mutateDocument: createDocumentMutator(villagesDocuments),
+  });
+  const projectEvidenceIndex = createProjectEvidenceIndex({
+    villagesDocuments,
+    mutateDocument: createDocumentMutator(villagesDocuments),
+  });
+  const retirementOwner = activationScope();
+  const logRetirementFailure = (message: string, error: unknown) => {
+    if (retirementOwner?.active === false) return;
+    try {
+      villagesLogger().warn("[villages] %s: %s", message, String(error));
+    } catch {
+      /* The activation may have closed. */
+    }
+  };
+  const retirement = bindActivationService(
+    createSceneRetirement({
+      villagesDocuments,
+      readActive,
+      readVillageState: readVillageAuthority,
+      readVillageMemoryState: readVillageMemoryAuthority,
+      mutateVillageMemoryState,
+      hasVenueOperation,
+      saveProjectEvidence: projectEvidenceIndex.save,
+      saveTerminal: sceneTerminals.save,
+      readTerminal: sceneTerminals.read,
+      removeInterpretationDiagnostics,
+      withRepairWork,
+      withSceneWork: backendWork.sceneFence.run,
+      withLateResponseWork: backendWork.lateResponseFence.run,
+      onFailure: (id, error) => logRetirementFailure(`Scene cleanup deferred ${id}`, error),
+    }),
+  );
+  const scheduleRetirement = (id: string) =>
+    backendWork.sceneFence.defer(() => {
+      if (retirementOwner?.active === false) return;
+      void retirement.retire(id).catch((error) => logRetirementFailure(`Scene cleanup deferred ${id}`, error));
+    });
+  const scheduleRetirementScan = () =>
+    backendWork.sceneFence.defer(() => {
+      if (retirementOwner?.active === false) return;
+      void retirement.retireSettled().catch((error) => logRetirementFailure("Scene cleanup scan deferred", error));
+    });
   const releaseSceneRepository = configureSceneRepository(sceneRepository);
   const releaseSpinoffs = configureSpinoffs(
     createSpinoffs({
@@ -709,7 +754,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       activeVenueSession,
       requireLiveVenueSession,
       refreshZoneParticipants,
-      pruneVenueVisits,
       decideVillageResidence,
       proposeVillageResidence,
       activationScope,
@@ -758,6 +802,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSceneProgress = configureSceneProgress(
     createSceneProgress({
+      withSceneWork: backendWork.sceneFence.run,
+      onSettled: scheduleRetirement,
+      onRecoveryFinished: scheduleRetirementScan,
       readVillageState: readVillageMemoryState,
       readSession,
       processProjectSpeechTurn,
@@ -777,6 +824,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSceneChanges = configureSceneChanges(
     createSceneChanges({
+      withSceneWork: backendWork.sceneFence.run,
       finishSemanticScene,
       mutateRelationships,
       changeSession,
@@ -787,6 +835,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesDocuments,
       processSavedExchange,
       venueRequestMetrics: operations.venueRequestMetrics,
+      readTerminal: sceneTerminals.read,
     }),
   );
   const releaseSceneArchive = configureSceneArchive(
@@ -794,16 +843,18 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesDocuments,
       readActive,
       readSession,
-      readVillageState,
-      mutateVillageState: mutateVillageMemoryState,
-      processSavedProgressSubmission,
-      removeInterpretationDiagnostics,
     }),
   );
   const releaseQueries = configureSceneQueries({
-    ...createSceneQueryService({ readSession, readVillageState, villagesDocuments }),
+    ...createSceneQueryService({
+      readSession,
+      readVillageState,
+      villagesDocuments,
+      readRetiredProjectScenes: projectEvidenceIndex.read,
+    }),
     activeVenueSession,
     listVenueVisits,
+    listRetiredProjectScenes: projectEvidenceIndex.read,
     processSavedExchange,
   });
   const releaseProjectChecks = configureProjectChecks(
@@ -1025,7 +1076,30 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseCoordinator = configureVenueCoordinator(
-    createVenueCoordinator({ operations, villagesDocuments, villagesLogger, runtimeDebug, readInterpretationSettings }),
+    createVenueCoordinator({
+      withSceneWork: backendWork.sceneFence.run,
+      sceneWorkBusy: backendWork.sceneFence.isBusy,
+      withLateResponseWork: backendWork.lateResponseFence.run,
+      withRepairWork,
+      onSettled: scheduleRetirement,
+      operations,
+      villagesDocuments,
+      villagesLogger,
+      runtimeDebug,
+      readInterpretationSettings,
+      readTerminal: async (id) => {
+        const receipt = await sceneTerminals.read(id);
+        const state = await readVillageAuthority();
+        if (!receipt || receipt.villageSeed !== state.seed) return null;
+        return {
+          ...receipt,
+          recordEvents: filterRelationshipNotices(
+            [...new Map(receipt.recordEvents.map((event) => [event.id, event])).values()],
+            undefined,
+          ).filter((event) => !state.dismissedNoticeIds.includes(event.id)),
+        };
+      },
+    }),
   );
   const residentPlanning = createResidentPlanning({
     applySavedStartingTies: startingTies.applySaved,
