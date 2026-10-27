@@ -273,6 +273,8 @@ export async function verifyFoundingLayout(group) {
         let suggestionCalls = 0;
         let releaseSuggestion;
         let connections = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
+        let holdConnectionSave = false;
+        let heldConnectionSave = null;
         const spriteRevisions = {};
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname;
@@ -345,8 +347,13 @@ export async function verifyFoundingLayout(group) {
                 "founding uses the exact reviewed sprite revision",
               );
           }
-          if (path.endsWith("/connections") && route.request().method() === "PUT")
+          if (path.endsWith("/connections") && route.request().method() === "PUT") {
             connections = { ...connections, ...route.request().postDataJSON() };
+            if (holdConnectionSave) {
+              heldConnectionSave = route;
+              return;
+            }
+          }
           if (path.endsWith("/setup/venues/suggest")) {
             suggestionCalls++;
             const body = route.request().postDataJSON();
@@ -672,6 +679,24 @@ export async function verifyFoundingLayout(group) {
           .fill("An abandoned farm with a habitable farmhouse and one shared barn.");
         await expect(root.getByRole("group", { name: "Map source", exact: true })).toHaveCount(0);
         await capture("place");
+        if (width === 390 && height === 844) {
+          const connectionCard = root.locator(".villages-founding-connections");
+          await expect(connectionCard.getByText("Connections · Ready")).toBeVisible();
+          await connectionCard.getByText("Connections · Ready").click();
+          const system = connectionCard.getByLabel("System", { exact: true });
+          holdConnectionSave = true;
+          await system.selectOption("");
+          await expect.poll(() => heldConnectionSave !== null).toBe(true);
+          await expect(connectionCard.getByText("Connections · Needs setup")).toBeVisible();
+          holdConnectionSave = false;
+          await fulfill(heldConnectionSave, { status: 503, json: { error: "Save failed" } });
+          await expect(system).toBeDisabled();
+          await expect(connectionCard.getByText("Connections · Needs setup")).toBeVisible();
+          await connectionCard.getByRole("button", { name: "Retry", exact: true }).click();
+          await expect(system).toBeEnabled();
+          await system.selectOption("talk");
+          await expect(connectionCard.getByText("Connections · Ready")).toBeVisible();
+        }
         await forward("Continue to People").click();
         await expect(root).toHaveAttribute("data-step", "1");
         await expect(root.getByRole("heading", { name: "You", exact: true })).toBeVisible();
