@@ -28,7 +28,7 @@ Scenes retain their captured situation and receive immutable after-values from t
 
 The notebook projects independently eligible player memories. First disclosure requires the owner's exact communicated desire. Other changes cannot expose an unknown private goal. Later private motives, conditions and results do not fill gaps in the player's knowledge. Mail freezes eligible disclosure facts at delivery and publishes them locally on reading.
 
-Each Wish is a compact selectable entry. Known Wishes contains only information the player has learned; Inspect's All Wishes includes the resident's private and closed records. The detail selector separates the desired outcome, attention, approach, conditions and chronological history. List and detail pages fit the book's viewport with fixed navigation; opening an entry never scrolls the host page. Entries and statements show timestamps. Following affects only the player's notebook and Wish notices; it changes neither resident motivation nor activity priority. Inspect retrieves private retained state through its separate endpoint.
+Each Wish is a compact selectable entry. Known Wishes contains only information the player has learned; Inspect's All Wishes includes the resident's private and closed records. Detail tabs separate the desired outcome, attention, approach, conditions and chronological history. List and detail pages fit the book's viewport with fixed navigation; opening an entry never scrolls the host page. Entries and statements show timestamps. Following affects only the player's notebook and Wish notices; it changes neither resident motivation nor activity priority. Inspect retrieves private retained state through its separate endpoint.
 
 ## Prototype boundary
 

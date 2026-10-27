@@ -244,12 +244,15 @@ try {
     const details = profile.getByRole("region", { name: "Wish details", exact: true });
     await expect(details).toBeFocused();
     assert.deepEqual(await camera(), beforeCamera, "Opening a Wish preserves the camera and notebook scroll positions");
-    const section = details.getByRole("combobox", { name: "Wish detail section" });
+    const section = details.getByRole("tablist", { name: "Wish sections" });
+    await expect(details.getByRole("combobox")).toHaveCount(0);
+    await expect(section.getByRole("tab")).toHaveCount(2);
     const noScroll = async () => {
       await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toBeInViewport({ ratio: 1 });
       await expect(profile.getByRole("button", { name: /^(Inspect|Leave Inspect)$/ })).toBeInViewport({ ratio: 1 });
       await expect(details.getByRole("button", { name: "← Wishes", exact: true })).toBeInViewport({ ratio: 1 });
       await expect(section).toBeInViewport({ ratio: 1 });
+      for (const tab of await section.getByRole("tab").all()) await expect(tab).toBeInViewport({ ratio: 1 });
       await expect(details.getByRole("button", { name: "Next detail page" })).toBeInViewport({ ratio: 1 });
       assert(
         await profile
@@ -259,7 +262,16 @@ try {
       assert.deepEqual(await camera(), beforeCamera);
     };
     await noScroll();
-    await section.selectOption("history");
+    const wishTab = section.getByRole("tab", { name: "Wish", exact: true });
+    const historyTab = section.getByRole("tab", { name: "History", exact: true });
+    await wishTab.press("End");
+    await expect(historyTab).toBeFocused();
+    await historyTab.press("Home");
+    await expect(wishTab).toBeFocused();
+    await wishTab.press("ArrowLeft");
+    await expect(historyTab).toBeFocused();
+    await expect(historyTab).toHaveAttribute("aria-selected", "true");
+    await expect(details.getByRole("tabpanel", { name: "History", exact: true })).toBeVisible();
     await expect(details.getByRole("region", { name: "Recorded statements" }).locator("time")).toHaveCount(4);
     await expect(profile.getByText("Deep water makes me nervous.", { exact: true })).toBeVisible();
     await expect(profile.getByText("I like the idea of lessons.", { exact: true })).toBeVisible();
@@ -293,6 +305,7 @@ try {
     assert.equal(privateReads, 1);
     await expect(profile.getByText(/PRIVATE REASON/)).toHaveCount(0);
     await profile.getByRole("button", { name: "Open Wish: PRIVATE SOCIAL DESIRE", exact: true }).click();
+    await expect(section.getByRole("tab")).toHaveCount(5);
     await expect(details.getByRole("region", { name: "Wish summary" })).toHaveText(/PRIVATE REASON/);
     await noScroll();
     let summaryPages = 0;
@@ -320,22 +333,23 @@ try {
         }),
       "The final line of a long reason is reachable without scrolling",
     );
-    await section.selectOption("attention");
+    await wishTab.press("ArrowRight");
+    await expect(section.getByRole("tab", { name: "Attention", exact: true })).toBeFocused();
     await expect(details.getByRole("region", { name: "Attention", exact: true })).toHaveText(
       /In the background.*Available when relevant\./s,
     );
     await noScroll();
-    await section.selectOption("approach");
+    await section.getByRole("tab", { name: "Approach", exact: true }).click();
     await expect(details.getByRole("region", { name: "Approach", exact: true })).toHaveText(
       /Ask Roxie about a quiet afternoon together\./,
     );
     await noScroll();
-    await section.selectOption("conditions");
+    await section.getByRole("tab", { name: "Conditions", exact: true }).click();
     await expect(details.getByRole("region", { name: "Conditions", exact: true })).toHaveText(
       /Somewhere quiet, please\./,
     );
     await noScroll();
-    await section.selectOption("history");
+    await section.getByRole("tab", { name: "History", exact: true }).click();
     await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem")).toHaveCount(3);
     await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem").last()).toContainText(
       "Chose to ask Roxie directly.",
@@ -354,7 +368,7 @@ try {
     await expect(profile.getByRole("button", { name: "Open Wish: PRIVATE SOCIAL DESIRE", exact: true })).toBeFocused();
     await expect(profile.getByText(/PRIVATE REASON/)).toHaveCount(0);
     await profile.getByRole("button", { name: "Open Wish: PRIVATE FOREGROUND DESIRE", exact: true }).click();
-    await section.selectOption("attention");
+    await section.getByRole("tab", { name: "Attention", exact: true }).click();
     await expect(details.getByRole("region", { name: "Attention", exact: true })).toHaveText(
       /On their mind.*A recent conversation brought this to mind\./s,
     );

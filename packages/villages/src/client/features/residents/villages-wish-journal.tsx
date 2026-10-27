@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { KnownWish, SocialWish } from "../../../shared/contracts/wishes.js";
 import { useVillageActivity } from "../../shared/activity.js";
 import { WISH_JOURNAL_STYLES } from "./wish-journal-styles.js";
@@ -11,6 +11,13 @@ const timestamp = (at: string) => (
 );
 const statuses = { open: "Open", fulfilled: "Fulfilled", withdrawn: "Withdrawn" };
 const attentionLabels = { background: "In the background", foreground: "On their mind" };
+const sectionLabels: Record<string, string> = {
+  wish: "Wish",
+  attention: "Attention",
+  approach: "Approach",
+  conditions: "Conditions",
+  history: "History",
+};
 const historyLabels: Record<string, string> = {
   create: "Wish formed",
   reveal: "Shared",
@@ -119,6 +126,8 @@ function WishDetail({
   onFollow: (wish: KnownWish) => void;
 }) {
   const [section, setSection] = useState("wish");
+  const tabId = useId();
+  const sections = entry.privateWish ? ["wish", "attention", "approach", "conditions", "history"] : ["wish", "history"];
   return (
     <section className="villages-wish-detail" aria-label="Wish details" data-wish-id={entry.id} tabIndex={-1}>
       <div className="villages-wish-actions">
@@ -144,43 +153,72 @@ function WishDetail({
           {timestamp(entry.at)}
         </div>
       </header>
-      <select aria-label="Wish detail section" value={section} onChange={(event) => setSection(event.target.value)}>
-        <option value="wish">Wish</option>
-        {entry.privateWish ? (
-          <>
-            <option value="attention">Attention</option>
-            <option value="approach">Approach</option>
-            <option value="conditions">Conditions</option>
-          </>
-        ) : null}
-        <option value="history">History</option>
-      </select>
-      <WishPages key={section}>
-        {entry.privateWish ? (
-          <PrivateWishDetails wish={entry.privateWish} section={section} />
-        ) : section === "wish" ? (
-          <section className="villages-wish-section" aria-label="Wish summary">
-            <h4>Desired outcome</h4>
-            <p>{entry.title}</p>
-          </section>
-        ) : (
-          <section className="villages-wish-section" aria-label="Recorded statements">
-            <h4>History</h4>
-            {entry.known?.facts.length ? (
-              <ol className="villages-wish-timeline">
-                {entry.known.facts.map((fact) => (
-                  <li key={fact.id}>
-                    {timestamp(fact.at)}
-                    <blockquote>{fact.text}</blockquote>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p>No further statements recorded.</p>
-            )}
-          </section>
-        )}
-      </WishPages>
+      <div className="villages-wish-tabs" role="tablist" aria-label="Wish sections">
+        {sections.map((name, index) => (
+          <button
+            type="button"
+            role="tab"
+            key={name}
+            id={`${tabId}-${name}`}
+            aria-selected={section === name}
+            aria-controls={`${tabId}-panel`}
+            tabIndex={section === name ? 0 : -1}
+            onClick={() => setSection(name)}
+            onKeyDown={(event) => {
+              const next =
+                event.key === "ArrowRight"
+                  ? (index + 1) % sections.length
+                  : event.key === "ArrowLeft"
+                    ? (index + sections.length - 1) % sections.length
+                    : event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? sections.length - 1
+                        : -1;
+              if (next < 0) return;
+              event.preventDefault();
+              setSection(sections[next]);
+              document.getElementById(`${tabId}-${sections[next]}`)?.focus({ preventScroll: true });
+            }}
+          >
+            {sectionLabels[name]}
+          </button>
+        ))}
+      </div>
+      <div
+        className="villages-wish-panel"
+        role="tabpanel"
+        id={`${tabId}-panel`}
+        aria-labelledby={`${tabId}-${section}`}
+        tabIndex={0}
+      >
+        <WishPages key={section}>
+          {entry.privateWish ? (
+            <PrivateWishDetails wish={entry.privateWish} section={section} />
+          ) : section === "wish" ? (
+            <section className="villages-wish-section" aria-label="Wish summary">
+              <h4>Desired outcome</h4>
+              <p>{entry.title}</p>
+            </section>
+          ) : (
+            <section className="villages-wish-section" aria-label="Recorded statements">
+              <h4>History</h4>
+              {entry.known?.facts.length ? (
+                <ol className="villages-wish-timeline">
+                  {entry.known.facts.map((fact) => (
+                    <li key={fact.id}>
+                      {timestamp(fact.at)}
+                      <blockquote>{fact.text}</blockquote>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p>No further statements recorded.</p>
+              )}
+            </section>
+          )}
+        </WishPages>
+      </div>
     </section>
   );
 }

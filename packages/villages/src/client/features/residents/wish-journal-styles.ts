@@ -14,13 +14,16 @@ export const WISH_JOURNAL_STYLES = `
 .villages-wish-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12px;line-height:1.3;color:var(--muted-foreground)}
 .villages-wish-entry .villages-wish-meta{grid-column:1}
 .villages-wish-status{display:inline-block;border:1px solid var(--border);border-radius:20px;padding:1px 8px;white-space:nowrap;font-size:13px;color:var(--foreground)}
-.villages-wish-detail{min-width:0;min-height:0;display:grid;grid-template-rows:44px auto 44px minmax(0,1fr);gap:10px;overflow:hidden}
+.villages-wish-detail{min-width:0;min-height:0;display:grid;grid-template-rows:44px auto auto minmax(0,1fr);gap:10px;overflow:hidden}
 .villages-wish-detail header{display:grid;gap:6px}
 .villages-wish-detail header h3{font-size:20px;line-height:1.3;margin:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .villages-wish-detail :is(p,blockquote){margin:0;overflow-wrap:anywhere;line-height:1.55}
 .villages-wish-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
 .villages-wish-actions button{min-height:44px;height:44px;padding:5px 10px}
-.villages-wish-detail select{min-width:0;width:100%;height:44px;margin:0}
+.villages-wish-tabs{display:flex;flex-wrap:wrap;align-content:start;gap:4px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.villages-wish-tabs button{flex:1 0 auto;min-height:44px;padding:4px 8px;font-size:14px;line-height:1.2;border-radius:6px 6px 0 0;box-shadow:none;white-space:nowrap}
+.villages-wish-tabs button[aria-selected=true]{background:#f7df9a;border-color:#8c7145;box-shadow:inset 0 -3px #8c7145;font-weight:700}
+.villages-wish-panel{min-width:0;min-height:0;display:grid;grid-template-rows:minmax(0,1fr)}
 .villages-wish-section{min-width:0;display:block}
 .villages-wish-section h4{font-size:19px;margin:0 0 8px;line-height:1.3;break-after:avoid}
 .villages-wish-section p+h4{margin-top:16px}
