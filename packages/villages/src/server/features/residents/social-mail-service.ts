@@ -17,6 +17,7 @@ import {
   PERSONAL_LETTER_INSTRUCTION,
   PersonalLetterActionError,
 } from "../../domain/rules/personal-letter.js";
+import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
 import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
 import {
@@ -952,6 +953,12 @@ export function createSocialMail(ports: SocialMailPorts) {
             id: thread.id,
             residentId,
             residentName: name(residentId),
+            letterFontId:
+              village.villagers.find((row) => row.characterId === residentId)?.letterFontId ??
+              (village.formerLetterFonts && Object.hasOwn(village.formerLetterFonts, residentId)
+                ? village.formerLetterFonts[residentId]
+                : undefined) ??
+              legacyLetterFont(residentId),
             revision: thread.revision,
             messages: thread.messages
               .filter((row) => row.fromId === "player" || !!state.mailDeliveries[row.id])

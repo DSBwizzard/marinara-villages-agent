@@ -13,6 +13,7 @@ export type ScenarioImprint = {
 };
 
 export type VillageVillagerView = {
+  letterFontId?: string;
   identityDescription?: import("./resident-description.js").ResidentIdentityDescription;
   signature?: import("../helpers/resident-signature.js").ResidentSignatureImage;
   signatureFallback?: import("../helpers/resident-signature.js").ResidentSignature;

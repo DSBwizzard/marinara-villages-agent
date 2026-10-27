@@ -271,6 +271,18 @@ assert(
 );
 assert.equal(departed.state.backgroundReceipts[receiptId], undefined);
 await assert.rejects(departed.service.removeVillager("same"), /does not live here/);
+const letters = fixture("Letters");
+await letters.service.addVillager("same");
+letters.state.villagers[0]!.letterFontId = "caveat";
+await letters.service.removeVillager("same");
+assert.equal(
+  coerceVillageState(letters.state).formerLetterFonts?.same,
+  "caveat",
+  "A departed writer retains their repaired style",
+);
+await letters.service.addVillager("same");
+assert.equal(letters.state.villagers[0]!.letterFontId, "caveat", "Returning the same character preserves their style");
+
 const retryRemoval = fixture("Retry removal");
 await retryRemoval.service.addVillager("same");
 retryRemoval.retryWith((state) => {

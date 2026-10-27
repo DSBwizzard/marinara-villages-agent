@@ -203,6 +203,9 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
   if (!cardSnapshot || cardSnapshot.id !== characterId) return null;
   return {
     characterId,
+    ...(typeof raw.letterFontId === "string" && raw.letterFontId.length <= 120
+      ? { letterFontId: raw.letterFontId }
+      : {}),
     agendaGeneration: asString(raw.agendaGeneration),
     translationGeneration: asString(raw.translationGeneration),
     cardSnapshot,
@@ -1684,6 +1687,15 @@ export function coerceVillageState(value: unknown): VillageState {
     ) as Record<string, boolean>,
     progressTasks: coerceProgressTasks(raw.progressTasks),
     pendingDecisions: coercePendingDecisions(raw.pendingDecisions),
+    ...(raw.formerLetterFonts
+      ? {
+          formerLetterFonts: Object.fromEntries(
+            Object.entries(asRecord(raw.formerLetterFonts)).filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length <= 120,
+            ),
+          ),
+        }
+      : {}),
     villagers: villagers
       .filter((entry) => {
         if (seen.has(entry.characterId)) return false;

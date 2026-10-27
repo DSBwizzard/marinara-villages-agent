@@ -1,3 +1,5 @@
+import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
+import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import type { RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
 import type { MemoryKnower } from "../models/memories.js";
 import type { VillageState } from "../models/world.js";
@@ -183,6 +185,22 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
       {
         source: ["Captured character and admission context. The original library card stays separate."],
       },
+    );
+    const fontId = person.letterFontId ?? legacyLetterFont(id);
+    add(
+      ["letter-font", id],
+      "people",
+      `${name} · letter style`,
+      "Applies to existing and future letters",
+      [
+        choices("letterFontId", "Letter style", fontId, [
+          ...(!LETTER_FONTS.some((font) => font.id === fontId) ? [{ value: fontId, label: "Unavailable style" }] : []),
+          ...[...LETTER_FONTS]
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((font) => ({ value: font.id, label: font.name })),
+        ]),
+      ],
+      { source: [] },
     );
     if (person.agenda) {
       add(["routine", id], "people", `${name} · routine`, "Future routine plans", [
@@ -523,6 +541,10 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         for (const key of ["personality", "backstory", "scenario", "appearance", "postHistoryInstructions"] as const)
           p.cardSnapshot[key] = str(key);
         p.cardSnapshot.revision++;
+      } else if (kind === "letter-font") {
+        const person = state.villagers.find((v) => v.characterId === id);
+        if (!person) throw conflict("That villager is unavailable.");
+        person.letterFontId = str("letterFontId");
       } else if (kind === "routine") {
         const agenda = state.villagers.find((v) => v.characterId === id)!.agenda!;
         agenda.routineSummary = str("routineSummary");
