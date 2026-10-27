@@ -21,7 +21,6 @@ const snapshot = {
   status: "ready",
   isFounded: false,
   village: { name: "Willowbrook", setting: "" },
-  noticeboard: [],
   projects: [],
   venueRequests: [],
   residences: [],
