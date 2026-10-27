@@ -73,12 +73,16 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
     if (entry.selective && secondary.length && !entry.constant) {
       const found = secondary.map((key) => scopes.some((text) => keyMatches(key, text, entry)));
       switch (entry.selectiveLogic ?? "and_any") {
+        // Engine's native names use the same conditions as compatible imported entries.
+        case "and":
+        case "or":
         case "and_any":
           secondaryMatches = found.some(Boolean);
           break;
         case "and_all":
           secondaryMatches = found.every(Boolean);
           break;
+        case "not":
         case "not_any":
           secondaryMatches = !found.some(Boolean);
           break;

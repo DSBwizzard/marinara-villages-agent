@@ -152,7 +152,7 @@ async function main() {
     Object.assign(entries.world[1]!, {
       selective: true,
       secondaryKeys: ["absent"],
-      selectiveLogic: "and_all",
+      selectiveLogic: "and",
       caseSensitive: true,
       matchWholeWords: true,
     });
@@ -169,6 +169,16 @@ async function main() {
       useRegex: false,
     });
     assert.equal((await readVillageLore(["world"], "harbor")).length, 2);
+    Object.assign(entries.world[1]!, { selective: true, secondaryKeys: ["fog"], selectiveLogic: "and" });
+    assert.equal((await readVillageLore(["world"], "harbor fog")).length, 2);
+    assert.equal((await readVillageLore(["world"], "harbor")).length, 1);
+    Object.assign(entries.world[1]!, { selectiveLogic: "or" });
+    assert.equal((await readVillageLore(["world"], "harbor fog")).length, 2);
+    assert.equal((await readVillageLore(["world"], "harbor")).length, 1);
+    Object.assign(entries.world[1]!, { selectiveLogic: "not" });
+    assert.equal((await readVillageLore(["world"], "harbor")).length, 2);
+    assert.equal((await readVillageLore(["world"], "harbor fog")).length, 1);
+    Object.assign(entries.world[1]!, { selective: false });
     bridge = "The bridge is painted blue now.";
     assert.ok(
       (await readVillageLore(["world"], "harbor")).join(" ").includes("painted blue"),
@@ -230,15 +240,21 @@ async function main() {
   assert.equal(match({ matchWholeWords: true }, "harbor𐐀"), 0);
   assert.equal(match({ matchWholeWords: true }, "the harbor!"), 1);
   for (const [logic, present, absent] of [
+    ["and", "harbor fog", "harbor"],
+    ["or", "harbor fog", "harbor"],
     ["and_any", "harbor fog", "harbor"],
     ["and_all", "harbor fog tide", "harbor fog"],
     ["not_any", "harbor", "harbor fog"],
+    ["not", "harbor", "harbor fog"],
     ["not_all", "harbor fog", "harbor fog tide"],
   ]) {
     const entry = { selective: true, selectiveLogic: logic, secondaryKeys: ["fog", "tide"] };
     assert.equal(match(entry, present!), 1, logic);
     assert.equal(match(entry, absent!), 0, logic);
+    assert.equal(match(entry, "fog tide"), 0, `${logic} still requires a primary key`);
   }
+  assert.equal(match({ selective: true, secondaryKeys: ["fog"] }, "harbor fog"), 1);
+  assert.equal(match({ selective: true, secondaryKeys: ["fog"] }, "harbor"), 0);
   assert.equal(match({ selective: true, secondaryKeys: [] }, "harbor"), 1);
   assert.equal(match({ selective: true, secondaryKeys: ["fog"], selectiveLogic: "unknown" }, "harbor fog"), 0);
   assert.equal(match({ useRegex: true, keys: ["(a+)+$"] }, "a".repeat(10000) + "!"), 0);
