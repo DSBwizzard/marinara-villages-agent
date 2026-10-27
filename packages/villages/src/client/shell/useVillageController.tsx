@@ -140,7 +140,6 @@ import { useRepairController } from "../features/repair/useRepairController.js";
 import { request } from "../shared/api.js";
 import { useSceneViewport } from "../features/scenes/villages-scene-viewport.js";
 import {
-  useInsertMacro,
   useSaveCharacterSpeechColors,
   useSaveScenerySettings,
   useSaveSendOnEnter,
@@ -150,7 +149,6 @@ import {
   useSaveVisitRetention,
 } from "../features/settings/actions.js";
 import { useSettingsState } from "../features/settings/useSettingsState.js";
-import { useKnowledgeCaret } from "../features/settings/workflow-controller.js";
 import {
   useDecideVenueRequest,
   useLeaveVenue,
@@ -460,7 +458,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const {
     resetArmed,
     setResetArmed,
-    pendingCaretRef,
     requestEdits,
     setRequestEdits,
     knowledgeDraft,
@@ -475,7 +472,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setLoreTokenBudgetDraft,
     settingsError,
     setSettingsError,
-    knowledgeRef,
   } = useSettingsState();
 
   const {
@@ -925,8 +921,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomError,
     setRoomNotices,
   });
-
-  useKnowledgeCaret({ knowledgeDraft, knowledgeRef, pendingCaretRef });
 
   const currentSnapshotRef = useRef(snapshot);
 
@@ -1938,15 +1932,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setPlaceProblem,
   });
 
-  /**
-   * Drop a macro in at the caret of the prompt box, then put the caret back
-   * where it was.
-   *
-   * It used to choose between two boxes on the strength of which one was last
-   * focused. There is one box left, and the choice went with the box.
-   */
-  const insertMacro = useInsertMacro({ knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft });
-
   const needle = calculateNeedle({ search });
 
   const visibleCatalog = calculateVisibleCatalog({ catalog, needle });
@@ -2146,10 +2131,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     gotoSetupStep,
     greetRoom,
     homeBuildings,
-    insertMacro,
     keepPlaceImage,
     knowledgeDraft,
-    knowledgeRef,
     lastSceneEnding,
     leaveRoom,
     leaveVenue,

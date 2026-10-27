@@ -102,7 +102,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     };
   }
   const payloads = {
-    save: { promptKnowledge: "", playerPersonaId: "", setting: "", selectedLorebookIds: [], loreTokenBudget: 1600 },
+    save: { selectedLorebookIds: [], loreTokenBudget: 1600 },
     scenery: {
       sceneryStyleProfileId: null,
       sceneryArtStyle: " Exact scenery A ",
@@ -140,7 +140,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             assert.equal(after.colors, true);
             assert.match(kind === "flip" ? after.flipError : after.error, /synthetic settings failure/);
           } else {
-            assert.equal(after.setting, kind === "save" ? "" : "saved 0");
+            assert.equal(after.setting, "saved 0");
           }
           assert.equal(await f.page.evaluate(() => window.acks), !fail && kind === "save" ? 1 : 0);
           await f.finish();

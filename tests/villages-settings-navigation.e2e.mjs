@@ -155,9 +155,6 @@ async function checkHooks(width) {
   await call(() => void window.settingsHarness.save());
   await expect.poll(() => requests.length).toBe(1);
   assert.deepEqual(requests[0].request().postDataJSON(), {
-    promptKnowledge: "Retained unsaved knowledge",
-    playerPersonaId: "",
-    setting: "Updated saved setting",
     selectedLorebookIds: ["edited-book"],
     loreTokenBudget: 2200,
   });
@@ -302,7 +299,7 @@ async function checkPackage(width) {
     tense: "present",
     person: "second",
     rating: "sfw",
-    writingGuidance: "",
+    writingGuidance: "Saved writing guidance",
     writingGuidanceMaxLength: 2000,
   };
   await page.clock.install();
@@ -397,13 +394,6 @@ async function checkPackage(width) {
   await expect(loreBudget).toHaveValue("");
   await expect(loreBudget).toHaveAttribute("placeholder", "1600");
 
-  await page.getByLabel("The information villagers know", { exact: true }).fill("Packaged retained draft");
-  await page.getByRole("button", { name: "Back to menu", exact: true }).click();
-  await page.getByRole("button", { name: "General Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Village Settings", exact: true }).click();
-  await expect(page.getByLabel("The information villagers know", { exact: true })).toHaveValue(
-    "Packaged retained draft",
-  );
   await page.getByLabel("Scenery style description", { exact: true }).fill("Packaged scenery save");
   await page.getByLabel("Personalize new venue images by default", { exact: true }).uncheck();
   await page.getByLabel("Use visual lore by default", { exact: true }).check();
@@ -441,15 +431,10 @@ async function checkPackage(width) {
   saved.settings.automaticZonePictures = true;
   await fulfill(scenerySaves[2], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   await expect(automatic).toBeChecked();
-  const guidance = page.getByLabel("Additional writing guidance", { exact: true });
-  await guidance.fill("Committed guidance");
-  await page.getByRole("button", { name: "Apply guidance", exact: true }).click();
-  const savedStatus = page.getByRole("status").filter({ hasText: /^Saved$/ });
-  await expect(savedStatus).toBeVisible();
-  await guidance.fill("Unsaved guidance");
-  await expect(savedStatus).not.toBeVisible();
-  await expect(page.getByRole("button", { name: "Apply guidance", exact: true })).toBeEnabled();
-  assert.equal(narration.writingGuidance, "Committed guidance", "Editing does not silently save the draft");
+  await expect(page.getByLabel("Additional writing guidance", { exact: true })).toHaveCount(0);
+  await page.locator("label").filter({ hasText: "Tense" }).locator("select").selectOption("past");
+  await expect.poll(() => narration.tense).toBe("past");
+  assert.equal(narration.writingGuidance, "Saved writing guidance", "Writing preferences preserve saved guidance");
   if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
     await page.screenshot({
       path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-settings-${width}.png`),
