@@ -136,6 +136,8 @@ import {
 } from "../features/scenes/controller-hooks.js";
 import { useSceneRecord } from "../features/scenes/useSceneRecord.js";
 import { useScenesState } from "../features/scenes/useScenesState.js";
+import { useRepairController } from "../features/repair/useRepairController.js";
+import { request } from "../shared/api.js";
 import { useSceneViewport } from "../features/scenes/villages-scene-viewport.js";
 import {
   useSaveCharacterSpeechColors,
@@ -2039,7 +2041,36 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupVenues,
     setupZoneDrafts,
   });
+  const repairController = useRepairController(screen === "menu" && menuPage === "repair", async (kind) => {
+    setMemoryLibrary(null);
+    setAgendas([]);
+    await loadSnapshot();
+    if (kind === "restore") {
+      const { session } = await request<{ session: import("../../shared/contracts/village.js").SceneView | null }>(
+        "/rooms/active",
+      );
+      if (session) {
+        const kept =
+          room?.id !== session.id && roomDraft ? { title: room?.placeName ?? "Previous Scene", text: roomDraft } : null;
+        if (room?.id !== session.id) setRoomDraft("");
+        roomCompletionRef.current = null;
+        observedRoomIdRef.current = "";
+        setRoom(session);
+        setRoomEnded(false);
+        setRoomOpen(true);
+        setRoomMode("chat");
+        return kept;
+      }
+    } else if (roomOpen && room) {
+      const { session } = await request<{ session: import("../../shared/contracts/village.js").SceneView | null }>(
+        "/rooms/active",
+      );
+      if (session?.id === room.id) setRoom(session);
+    }
+    return null;
+  });
   return {
+    repairController,
     selectedMap,
     setSelectedMapId,
     showAllMaps,
