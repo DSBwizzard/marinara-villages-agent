@@ -1,40 +1,32 @@
-import { memoryProposal, memoryRepair } from "./helpers/memories-fixture.js";
-import {
-  applyVillageMemory,
-  forgetVillageMemory,
-} from "../packages/villages/src/server/domain/rules/village-memories.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import {
-  captureSceneContinuity,
-  captureSceneWishEffect,
-  sceneContinuityView,
-} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import {
-  protectSceneWishes,
-  releaseSceneWishes,
-  sceneWishProtected,
-} from "../packages/villages/src/server/domain/rules/scene-wish-protection.js";
-import { expireResidentWishes } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
-import { currentWish } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
-import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
-import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
-import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { resolveVenueZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import {
   defaultRelationshipState,
   neutralRelationship,
   relationshipKey,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
+  captureSceneContinuity,
+  captureSceneWishEffect,
+  sceneContinuityView,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
+import { resolveVenueZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
+import {
+  applyVillageMemory,
+  forgetVillageMemory,
+} from "../packages/villages/src/server/domain/rules/village-memories.js";
 import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
 import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
-import { createWorldCoordination } from "../packages/villages/src/server/features/world/village-service.js";
-import { notFound } from "../packages/villages/src/server/domain/rules/errors.js";
-import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { memoryProposal, memoryRepair } from "./helpers/memories-fixture.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 
 const day = 86400000;
 const start = Date.now() - 3 * day,
@@ -42,7 +34,7 @@ const start = Date.now() - 3 * day,
 function fixture() {
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     seed: "time-world",
     foundedAt: new Date(start - day).toISOString(),
     timeZone: "America/Los_Angeles",
@@ -57,16 +49,7 @@ function fixture() {
   });
   const resident = state.villagers[0]!;
   resident.agenda = unwrittenVillageAgenda(state.venues, "Ada");
-  resident.agenda.wishes = [
-    {
-      id: "ride",
-      wish: "Show the player my motorcycle",
-      tell: "Hop on!",
-      intensity: 2,
-      addedAt: at,
-      expiresAt: new Date(start + 3600000).toISOString(),
-    },
-  ];
+  resident.wishes = [fixtureWish({ wish: "Share stories about motorcycles" }, "ride", at)];
   state.relationshipContext = defaultRelationshipState(state.seed);
   state.relationshipContext.reviewedActorIds = ["a"];
   state.relationshipContext.edges[relationshipKey("a", "player")] = {
@@ -103,7 +86,7 @@ function fixture() {
     lines: [],
     submissions: [],
   });
-  return { state, scene, resident, wish: resident.agenda.wishes[0]! };
+  return { state, scene, resident, wish: resident.wishes[0]! };
 }
 function learn(state: VillageState, text: string, sceneId?: string) {
   const next = memoryProposal(state.memories, { text, audience: ["a"], patch: { kind: "information" } });
@@ -163,94 +146,6 @@ function learn(state: VillageState, text: string, sceneId?: string) {
 }
 
 {
-  const { state, scene, resident, wish } = fixture();
-  state.setupAt = state.foundedAt;
-  state.backgroundPace = "off";
-  protectSceneWishes(state, scene, start);
-  let readFailure: "unknown" | "missing" | "" = "";
-  const world = createWorldCoordination({
-    readVillageState: async () => structuredClone(state),
-    mutateVillageState: async (change: (state: VillageState) => void) => {
-      change(state);
-      return structuredClone(state);
-    },
-    readScene: async () => {
-      if (readFailure === "unknown") throw Error("Temporary storage failure");
-      if (readFailure === "missing") throw notFound("Missing Scene");
-      return scene;
-    },
-    buildVillageSnapshot: async () => ({}),
-    villagesLogger: () => ({ warn() {} }),
-    reconcileProjectLifecycles() {},
-    expireResidentWishes,
-    rollActiveAgendas: async () => {},
-    respondDueVenueMail: async () => {},
-    outsideVenueOperation: (work: () => void) => work(),
-    preparePrivateSpaces: async () => {},
-    backfillAgendas: async (value: VillageState) => value,
-    refreshVillagerRemaps: async () => {},
-    reconcileWishLifecycle: async () => {},
-  } as any);
-  await world.reconcileVillage();
-  assert.equal(resident.agenda!.wishes.length, 1);
-  assert.deepEqual(state.wishRefillIntents, {}, "held expiry cannot enqueue a replacement");
-  assert(Date.parse(state.simulatedThrough) > start, "the wider Village advances during the same protected Scene");
-  readFailure = "unknown";
-  await world.reconcileVillage();
-  assert(sceneWishProtected(state, "a", wish), "uncertain Scene reads never discard eligibility");
-  readFailure = "missing";
-  await world.reconcileVillage();
-  assert.equal(sceneWishProtected(state, "a", wish), false, "missing documents release orphan holds");
-  assert.equal(resident.agenda!.wishes.length, 0);
-  assert(state.wishRefillIntents.a, "ordinary expiry/refill resumes after release");
-}
-
-{
-  const { state, scene, resident, wish } = fixture();
-  protectSceneWishes(state, scene, start);
-  const deadline = wish.expiresAt;
-  // Simulate restart after hold persistence, before the Scene document write.
-  const restarted = coerceVillageState(JSON.parse(JSON.stringify(state)));
-  scene.continuity = captureSceneContinuity(restarted, scene, Date.now());
-  assert.equal(scene.continuity.facts.villagers[0]!.agenda!.wishes.length, 1);
-  const proposal = {
-    actorId: "a",
-    wishId: wish.id,
-    fingerprint: wishFingerprint(wish),
-    intent: "check" as const,
-    lineIds: [],
-  };
-  assert(currentWish(state, proposal, Date.now(), scene.id), "this Scene retains exact initial eligibility");
-  assert.equal(currentWish(state, proposal, Date.now(), "another"), null, "another Scene receives no expiry exception");
-  assert.equal(currentWish(state, proposal, Date.now()), null);
-  expireResidentWishes(resident, new Date(), state);
-  assert.equal(resident.agenda!.wishes.length, 1);
-  assert.equal(wish.expiresAt, deadline, "protection never extends or rewrites the real deadline");
-  const changed = { ...wish, wish: "A different motorcycle" };
-  assert.equal(sceneWishProtected(state, "a", changed, scene.id), false, "correction replaces the fingerprint");
-  resident.agenda!.wishes = [];
-  assert.equal(currentWish(state, proposal, Date.now(), scene.id), null, "retirement/deletion still wins");
-  resident.agenda!.wishes = [wish];
-  scene.status = "closed";
-  const processing = createExchangeProcessing({
-    seed: state.seed,
-    sceneId: scene.id,
-    submissionId: "last",
-    order: 0,
-    lineIds: [],
-    actionReceiptIds: [],
-  });
-  scene.submissions.push({ id: "last", at, processing } as any);
-  releaseSceneWishes(state, scene);
-  assert(sceneWishProtected(state, "a", wish), "closed final exchange retains its hold during recovery");
-  for (const domain of Object.values(processing.domains)) domain.status = "rejected";
-  releaseSceneWishes(state, scene);
-  assert.equal(sceneWishProtected(state, "a", wish), false, "terminal rejected domains also release the hold");
-  expireResidentWishes(resident, new Date(), state);
-  assert.equal(resident.agenda!.wishes.length, 0);
-}
-
-{
   const { state, scene } = fixture();
   const oldMemory = learn(state, "Ada likes the morning market");
   scene.continuity = captureSceneContinuity(state, scene, start);
@@ -261,7 +156,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   state.residences.push({ id: "future-move", characterId: "a", status: "pending", proposedVenueId: "square" } as any);
   state.venues[0]!.editProposals = [{ id: "future-edit", declined: false }] as any;
   const laterMemory = learn(state, "Ada opened a new shop during the three days");
-  state.villagers[0]!.agenda!.wishes = [];
+  state.villagers[0]!.wishes = [];
   state.relationshipContext!.edges[relationshipKey("a", "player")]!.connection = "Former friends";
   state.simulatedThrough = new Date().toISOString();
   resolveVenueZone(state.venues[0]!, "community")!.state.condition = "A changed Village";
@@ -294,7 +189,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   const restored = coerceSession(JSON.parse(JSON.stringify(scene))).continuity!;
   assert.equal(restored.capturedAt, at, "capture survives a restart");
   assert(!("memories" in restored.facts), "A Scene never copies the memory collection");
-  assert.equal(restored.facts.villagers[0]!.agenda!.wishes[0]!.id, "ride");
+  assert.equal(restored.facts.villagers[0]!.wishes[0]!.id, "ride");
   assert.equal(restored.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.connection, "Friends");
   assert.throws(
     () => coerceSession({ version: 2, ...scene, continuity: { ...scene.continuity, version: 99 } }),
@@ -366,9 +261,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
 
 {
   const { state, scene, wish } = fixture();
-  protectSceneWishes(state, scene, start);
   scene.continuity = captureSceneContinuity(state, scene, start);
-  wish.learnedAt = new Date().toISOString();
   const facts = captureSceneWishEffect(state, "a", wish.id);
   state.exchangeReceipts.reveal = {
     id: "reveal",
@@ -386,7 +279,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   scene.submissions.push({ id: "reveal" } as any);
   wish.wish = "A later different Wish";
   const view = sceneContinuityView(state, scene);
-  assert.equal(view.villagers[0]!.agenda!.wishes[0]!.wish, "Show the player my motorcycle");
+  assert.equal(view.villagers[0]!.wishes[0]!.wish, "Share stories about motorcycles");
 }
 
 {

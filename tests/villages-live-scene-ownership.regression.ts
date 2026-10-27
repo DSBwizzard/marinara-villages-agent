@@ -1,10 +1,4 @@
 import assert from "node:assert/strict";
-import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
-import {
-  configureLiveScenes,
-  activeVenueSession,
-  touchVenueSession,
-} from "../packages/villages/src/server/features/scenes/live-session.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -15,12 +9,18 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
-import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import type { ActiveVenue, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { resolveVenueZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
-import type { ActiveVenue, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
+import {
+  activeVenueSession,
+  configureLiveScenes,
+  touchVenueSession,
+} from "../packages/villages/src/server/features/scenes/live-session.js";
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => (resolve = done));
@@ -33,7 +33,7 @@ function fixture(name: string) {
     active: ActiveVenue = { sessionId: "same", placeId: "venue" },
     sessions = new Map<string, VenueScene>(),
     world = coerceVillageState({
-      version: 5,
+      version: 6,
       ...defaultVillageState(),
       seed: name,
       foundedAt: stamp,
@@ -175,7 +175,7 @@ async function main() {
   const closed = fixture("closed");
   closed.saved.status = "closed";
   assert.equal(await closed.service.activeVenueSession(), null);
-  assert.deepEqual(closed.calls, ["active", "read:same", "world-change", "clear:same"]);
+  assert.deepEqual(closed.calls, ["active", "read:same", "clear:same"]);
   const running = fixture("running");
   running.setBusy(true);
   assert.equal((await running.service.activeVenueSession())?.placeName, "running");

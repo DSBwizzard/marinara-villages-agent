@@ -1,3 +1,4 @@
+import type { FastifyInstance } from "fastify";
 import { villagesDebugAgentsEnabled } from "../../adapters/engine/runtime-host.js";
 import { fail, readVenueId } from "../../adapters/http/route-support.js";
 import { notFound } from "../../domain/rules/errors.js";
@@ -6,21 +7,19 @@ import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageState } from "../world/village-store.js";
 import { listProjectEvidenceCandidates, recordProjectSpokenEvidence } from "./project-evidence.js";
 import {
-  saveProjectPlan,
-  decideOpeningProposal,
+  cancelProject,
   createNewVenueProject,
   createRenovationProject,
   debugCompleteProjectConstruction,
+  decideOpeningProposal,
   lockProjectBuilder,
   placeNewVenueProject,
   renewRenovationApprovals,
-  requestProjectMailbox,
-  reviseRenovationProject,
-  startProjectConstruction,
   resumeProject,
-  cancelProject,
+  reviseRenovationProject,
+  saveProjectPlan,
+  startProjectConstruction,
 } from "./project-lifecycle.js";
-import type { FastifyInstance } from "fastify";
 
 export function registerProjectRoutes(engine: FastifyInstance) {
   const app = engine;
@@ -55,7 +54,6 @@ export function registerProjectRoutes(engine: FastifyInstance) {
   };
   projectAction("plan", saveProjectPlan);
   projectAction("place", placeNewVenueProject);
-  projectAction("request-approval", requestProjectMailbox);
   projectAction("builder", lockProjectBuilder);
   projectAction("start", startProjectConstruction);
   projectAction("resume", resumeProject);

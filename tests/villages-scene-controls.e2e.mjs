@@ -88,8 +88,10 @@ try {
           interpretationReads.settings++;
         if (path.includes("/interpretation-diagnostics/")) interpretationReads.diagnostics++;
         let value = fixture;
-        if (path.endsWith("/mailbox"))
-          value = { threads: [], invitations: [], recovery: [], venueMail: fixture.venueMail ?? [] };
+        if (path.endsWith("/connections"))
+          value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
+        else if (path.endsWith("/mailbox")) value = { threads: [], recovery: [] };
+        else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
         else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
         else if (
           path.endsWith("/interpretation-settings") &&
@@ -170,9 +172,10 @@ try {
       await expect(send).toBeEnabled();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
-      for (const mode of ["Say / Do", "Move", "Contact", "Conclude"])
+      for (const mode of ["Say / Do", "Move", "Conclude"])
         await expect(page.getByRole("menuitemradio", { name: mode, exact: true })).toBeVisible();
-      await expect(page.getByRole("menuitemradio", { name: "Fulfill", exact: true })).toHaveCount(0);
+      for (const removed of ["Contact", "Fulfill"])
+        await expect(page.getByRole("menuitemradio", { name: removed, exact: true })).toHaveCount(0);
       await expect(page.getByRole("menuitemradio", { name: "Knock / Call", exact: true })).toHaveCount(0);
       await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
       await page.getByRole("button", { name: "Venue actions" }).click();
@@ -224,8 +227,7 @@ try {
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "View Mailbox" }).click();
         const mailbox = page.getByRole("dialog", { name: "Mailbox", exact: true });
-        await mailbox.getByText("Venue decisions", { exact: true }).click();
-        await expect(mailbox.getByRole("button", { name: "Review request" })).toBeEnabled();
+        await expect(mailbox.getByText("Venue decisions", { exact: true })).toHaveCount(0);
         await mailbox.getByRole("button", { name: "Close Mailbox", exact: true }).click();
       }
 
@@ -234,9 +236,23 @@ try {
         await page.getByRole("menuitem", { name: menu, exact: true }).click();
         await expect(page.locator("." + tag + "-room-screen")).toBeHidden();
         await expect(page.locator("." + tag + "-home")).toHaveCount(0);
-        await page
-          .getByRole("button", menu === "Projects" ? { name: /^Close/ } : { name: "Back to menu", exact: true })
-          .click();
+        if (menu === "Projects") await page.getByRole("button", { name: /^Close/ }).click();
+        await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+        await expect(composer).toHaveValue(draftBeforeVenue);
+      }
+
+      for (const [key, label] of [
+        ["general", "General Preferences"],
+        ["village", "World Configuration"],
+        ["visual", "Visual Configuration"],
+        ["advanced", "Advanced"],
+        ["chatlogs", "Scene History"],
+      ]) {
+        await page.getByRole("button", { name: "Venue actions" }).click();
+        await page.getByRole("menuitem", { name: "Proposals", exact: true }).click();
+        if (mobile) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
+        else await page.getByRole("button", { name: label, exact: true }).click();
+        await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
         await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
         await expect(composer).toHaveValue(draftBeforeVenue);
       }

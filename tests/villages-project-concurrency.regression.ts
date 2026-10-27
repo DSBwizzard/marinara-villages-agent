@@ -1,16 +1,16 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
-import { fixture } from "./fixtures/villages-projects.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import { createProjectLifecycle } from "../packages/villages/src/server/features/projects/project-lifecycle-service.js";
+import {
+  PROJECT_DURATION_MS,
+  reconcileProjectLifecycles,
+} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
   draftNewVenueProject,
   draftRenovationProject,
 } from "../packages/villages/src/server/features/projects/project-drafts.js";
-import {
-  reconcileProjectLifecycles,
-  PROJECT_DURATION_MS,
-} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
+import { createProjectLifecycle } from "../packages/villages/src/server/features/projects/project-lifecycle-service.js";
+import { fixture } from "./fixtures/villages-projects.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 const f = fixture(),
   now = new Date("2026-10-24T00:00:00Z");
 const ids = [
@@ -88,6 +88,28 @@ const create = { requestId: "create", name: "Current", description: "A future ro
 await service.createNewVenueProject(create);
 await service.createNewVenueProject(create);
 await assert.rejects(service.createNewVenueProject({ ...create, name: "Other" }), /already used/);
+record = root();
+rows.clear();
+await service.createNewVenueProject({ ...create, requestId: "four", name: "Four" });
+await service.createNewVenueProject({ ...create, requestId: "five", name: "Five" });
+const draftRace = await Promise.allSettled([
+  service.createNewVenueProject({ ...create, requestId: "six-a", name: "Six A" }),
+  service.createNewVenueProject({ ...create, requestId: "six-b", name: "Six B" }),
+]);
+assert.equal(draftRace.filter((result) => result.status === "fulfilled").length, 1);
+assert.equal(draftRace.filter((result) => result.status === "rejected").length, 1);
+assert.equal(record.data.projects.filter((project) => project.status === "planning").length, 6);
+const winningDraft = record.data.projects.find((project) => ["project:six-a", "project:six-b"].includes(project.id))!;
+const winningBody =
+  winningDraft.id === "project:six-a"
+    ? { ...create, requestId: "six-a", name: "Six A" }
+    : { ...create, requestId: "six-b", name: "Six B" };
+await service.createNewVenueProject(winningBody);
+assert.equal(
+  record.data.projects.filter((project) => project.status === "planning").length,
+  6,
+  "replaying the winner remains idempotent at capacity",
+);
 for (const completeFirst of [false, true]) {
   record = root();
   rows.clear();
@@ -111,6 +133,6 @@ for (const completeFirst of [false, true]) {
       race.some((result) => result.status === "rejected"),
       "late cancellation cannot undo completed work",
     );
-  else assert.equal(record.data.projectWishOutbox.length, 0, "cancelled work emits no completion benefit");
+  else assert.equal(record.data.projects[0].status, "cancelled");
 }
 console.log("Concurrent starts, CAS retries, request payload binding and cancellation/completion races passed.");

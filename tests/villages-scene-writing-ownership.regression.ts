@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
 import {
+  createActivationScope,
+  installDefaultActivation,
+  scopedActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/social-wishes.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import {
   createSceneWriting,
   type SceneWritingPorts,
 } from "../packages/villages/src/server/features/scenes/writing-service.js";
@@ -8,16 +18,6 @@ import {
   generate,
   prepareVenueTurnMessages,
 } from "../packages/villages/src/server/features/scenes/writing.js";
-import {
-  createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
   let resolve!: () => void;

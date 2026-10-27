@@ -1,23 +1,23 @@
-import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import assert from "node:assert/strict";
-import { mock } from "node:test";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { mock } from "node:test";
+import { pathToFileURL } from "node:url";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
-import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
-import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { fixtureVillageState, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 // Archive-identical server and actual HTTP handlers, with synthetic storage/models only.
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8"));
@@ -1487,40 +1487,21 @@ try {
   for (const [key, record] of clone(beforeInvalidSound)) records.set(key, record);
   // A simple complete System verdict is consumed once, without Decisions or a second Wish judge.
   const liveWorld = records.get("villages-village").data;
-  const wish = {
-    id: "semantic-simple-wish",
-    wish: "A brief discussion of the harbour",
-    intensity: 1,
-    tell: "",
-    size: "everyday",
-    addedAt: now,
-    expiresAt: "",
-    learnedAt: now,
-    learnedLineIds: [],
-  };
-  liveWorld.villagers.find((row: any) => row.characterId === "aqua").agenda = {
-    wishes: [wish],
-    day: [],
-    routineSummary: "",
-    generatedAt: now,
-    personalizationPending: false,
-    source: "village",
-  };
+  const wish = fixtureWish(
+    { wish: "A brief discussion of the harbour" },
+    "semantic-simple-wish",
+    new Date(now).toISOString(),
+  );
+  liveWorld.villagers.find((row: any) => row.characterId === "aqua").wishes = [wish];
   state().continuity.facts.villagers = clone(liveWorld.villagers);
   semanticIntentAnswer.timeline = [{ kind: "speech", text: "Let us discuss the harbour." }];
   semanticExchangeAnswer.wishChanges = [
     {
       actorId: "aqua",
       wishId: wish.id,
-      intent: "check",
+      intent: "fulfilled",
       evidence: [0, 1],
-      criteria: { kind: "conversation", requiresPhysical: false },
-      verdict: {
-        outcome: "fulfilled",
-        completeContext: true,
-        evidence: [0, 1],
-        reason: "The brief discussion took place.",
-      },
+      reason: "The brief discussion took place.",
     },
   ];
   await turn("semantic-simple-wish", '"Let us discuss the harbour."', [
@@ -1529,16 +1510,10 @@ try {
   ]);
   assert.equal(state().submissions.at(-1).processing.domains.wishes.status, "applied");
   assert(
-    !records
+    records
       .get("villages-village")
       .data.villagers.find((row: any) => row.characterId === "aqua")
-      .agenda.wishes.some((row: any) => row.id === wish.id),
-  );
-  assert.equal(
-    records.get("villages-village").data.exchangeReceipts[
-      `wish-change:${scene.id}:semantic-simple-wish:${wish.id}:check`
-    ].status,
-    "applied",
+      .wishes.some((row: any) => row.id === wish.id && row.status === "fulfilled"),
   );
   const canonicalVenue = records.get("villages-village").data.venues[0];
   initializeVenueAccess(canonicalVenue);

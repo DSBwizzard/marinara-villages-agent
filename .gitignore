@@ -8,6 +8,7 @@ node_modules/
 /packages/villages/manifest.json
 /packages/villages/agents.json
 /packages/villages/locales/en.json
+/packages/villages/letter-fonts/*.json
 # Obsolete capture copies from older local builders are not maintained source.
 /sources/engine/
 

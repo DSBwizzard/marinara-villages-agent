@@ -18,10 +18,12 @@ export function VenueLayout({
   zones,
   selectedId,
   onSelect,
+  disabled = false,
 }: {
   zones: VenueDisplayZone[];
   selectedId: string;
   onSelect(id: string): void;
+  disabled?: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const [lines, setLines] = useState<{ key: string; from: string; to: string; d: string }[]>([]);
@@ -115,6 +117,7 @@ export function VenueLayout({
               <button
                 key={id}
                 type="button"
+                disabled={disabled}
                 data-layout-zone={id}
                 aria-pressed={selectedId === id}
                 onClick={() => onSelect(id)}

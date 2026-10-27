@@ -1,50 +1,48 @@
-import { readSceneHalt, SCENE_HALT_INSTRUCTION } from "../../domain/rules/scene-halt.js";
-import { readDevelopmentSceneProposals } from "../../domain/rules/development-scene.js";
-import { DEVELOPMENT_SCENE_INSTRUCTION } from "../../domain/rules/development-knowledge.js";
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
-import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
+import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
+import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
+import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
+import { asRecord } from "../../domain/rules/coerce.js";
+import { badGateway, conflict } from "../../domain/rules/errors.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
+import { LIVE_MEMORY_INSTRUCTION } from "../../domain/rules/live-exchange.js";
 import {
-  readOpeningSignal,
+  IncompleteOpeningGathering,
+  IncompleteOpeningPitch,
   openingGatheringQuoteMatches,
   openingProposalFingerprint,
-  IncompleteOpeningPitch,
-  IncompleteOpeningGathering,
+  readOpeningSignal,
 } from "../../domain/rules/opening-project.js";
 import { RELATIONSHIP_PERMISSION_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
-  RESIDENT_ACTION_SHAPE,
-  RESIDENT_ACTION_REVIEW,
-  RESIDENT_ACTION_PUBLIC_SOCIAL,
-  RESIDENT_ACTION_REVIEW_V1,
   reconcileResidentActions,
+  RESIDENT_ACTION_PUBLIC_SOCIAL,
+  RESIDENT_ACTION_REVIEW,
+  RESIDENT_ACTION_REVIEW_V1,
+  RESIDENT_ACTION_SHAPE,
   type ResidentAccessAction,
 } from "../../domain/rules/resident-actions.js";
-import type { SemanticIntent, SemanticExchange } from "../../domain/models/semantic-model.js";
-import type { VenueScene, VenueReplyLine } from "../../domain/models/scene-model.js";
+import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
-import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
-import { readAccessCommand, managesAccess } from "../../domain/rules/venue-access.js";
+import { readSceneHalt, SCENE_HALT_INSTRUCTION } from "../../domain/rules/scene-halt.js";
 import {
-  resolveVenueZone,
-  canInviteToZone,
-  canRevokeZonePermission,
-  zoneClosed,
-} from "../../domain/rules/venue-zones.js";
-import { venueInZone } from "../../domain/rules/venue-zones.js";
-import { venueInArea } from "../../domain/rules/venue-model.js";
-import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
-import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
-import { asRecord } from "../../domain/rules/coerce.js";
-import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
-import { badGateway, conflict } from "../../domain/rules/errors.js";
-import {
+  readSemanticEffects,
   semanticContext,
   semanticEvidence,
   semanticHash,
   semanticImmediate,
-  readSemanticEffects,
 } from "../../domain/rules/semantic-contract.js";
-import { LIVE_MEMORY_INSTRUCTION } from "../../domain/rules/live-exchange.js";
+import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
+import { managesAccess, readAccessCommand } from "../../domain/rules/venue-access.js";
+import { venueInArea } from "../../domain/rules/venue-model.js";
+import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
+import {
+  canInviteToZone,
+  canRevokeZonePermission,
+  resolveVenueZone,
+  venueInZone,
+  zoneClosed,
+} from "../../domain/rules/venue-zones.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../../domain/rules/wish-progress-rules.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 
@@ -402,7 +400,6 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(movementReview
           ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
           : {}),
-        ...(scene.operation?.input.developmentVersion === 1 ? { developmentVersion: 1 } : {}),
         residentActionsOmitted,
         evidence,
         prepared,
@@ -444,7 +441,7 @@ export function createSemanticService(ports: SemanticPorts) {
         (context.preservation
           ? "Only the player's Conclude ends this Scene; never return sceneEnded. "
           : "Ending an in-person visit is sceneEnded:{source} with exact resident farewell speech, or omit the event when unsupported. ") +
-        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,approved}, renovationRequest:{source}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
+        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,approved}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
         (actionContractV2
           ? ""
           : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
@@ -463,14 +460,12 @@ export function createSemanticService(ports: SemanticPorts) {
           .replace('"player" means the latest player line.', "Captured player speech uses its numeric segment index.")
           .replace('"player" for the current player line, or ', "") +
         " " +
-        " Inspect each context.actors entry's wishes independently using actor.id and wish.id. Natural player-heard disclosure of the listed desire supports reveal without the word wish. Actual new evidence toward that listed goal supports progress/check, including a goal first disclosed and achieved in this exchange. Evaluate the supplied semanticCriteria and witnessed current plus supplied earlier evidence; do not require a separate player claim or a Narration proposal. " +
+        " Consider only the owner’s captured wishes and grounded new social desires. No relevant desire is valid. " +
         WISH_PROPOSAL_INSTRUCTION.replace('evidence:["player",0]', "evidence:[0]") +
         ' Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".' +
-        " Never use an opening proposal, its name, or a newly spoken desire as a Wish ID. If there is no matching supplied Wish ID, return no Wish proposal. Use numeric indexes matching evidence draft:N for current memory evidence/relationship lineIds/Wish evidence. Keep independent learners and their basis in each memoryChanges row; never repeat a source unit. Do not emit systemVerification fields. Every knower must witness ALL support and meaning-bearing context. Temporary company never automatically establishes trust. " +
-        'Every check/progress Wish candidate additionally includes criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} interpreting the ORIGINAL Wish, not just this turn. Transfer/action require exact supported identifiers. For a simple self-contained conversational goal without conditions, discoveries or physical requirements, additionally return verdict:{outcome:"none|progress|fulfilled",completeContext:true,evidence:[current segment indexes],reason}; this is the final semantic judgment, not a request for another judge. Positive results must cite actual player interaction and ALL goal clauses. Omit verdict when compound/history/receipt proof requires the specialist.' +
+        " Use numeric indexes matching evidence draft:N for Wish evidence. Existing goals keep exact IDs; genuinely new social desires use new:local-key. Memory learners must witness all supporting context. " +
         (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
         " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
-        (scene.operation?.input.developmentVersion === 1 ? DEVELOPMENT_SCENE_INSTRUCTION : "") +
         (context.preservation ? SCENE_HALT_INSTRUCTION : ""),
       (raw, hash, savedInput): SemanticExchange => {
         if (savedInput.context.preservation) {
@@ -631,8 +626,6 @@ export function createSemanticService(ports: SemanticPorts) {
           (asRecord(raw.action).happened !== true || !Number.isInteger(asRecord(raw.action).segment))
         )
           throw badGateway("System physical outcome lacks a completed, cited action.");
-        if (savedInput.developmentVersion === 1)
-          effects.developmentChanges = readDevelopmentSceneProposals(raw.developmentChanges);
         const immediate = semanticImmediate(raw.events, lines);
         if (
           savedInput.context.opening?.requiredPitch &&

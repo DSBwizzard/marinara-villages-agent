@@ -6,7 +6,7 @@ import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
 /** Actual Settings hooks and independently held synthetic HTTP responses. */
 export async function verifySettingsRequestLifetimes(browser) {
-  const kinds = ["save", "scenery", "flip", "pace", "enter", "colors", "retention", "add", "remove"];
+  const kinds = ["save", "scenery", "flip", "pace", "enter", "colors", "retention"];
   const bundle = await build({
     stdin: {
       loader: "tsx",
@@ -14,24 +14,24 @@ export async function verifySettingsRequestLifetimes(browser) {
       contents: `
 import {createRoot} from 'react-dom/client';import {StrictMode,useState} from 'react';
 import {useSettingsState} from './packages/villages/src/client/features/settings/useSettingsState.js';
-import {useSaveSettings,useSaveScenerySettings,useSaveSpriteCardFlip,useSaveBackgroundPace,useSaveSendOnEnter,useSaveCharacterSpeechColors,useSaveVisitRetention,useAddNotice,useRemoveNotice} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveSettings,useSaveScenerySettings,useSaveSpriteCardFlip,useSaveBackgroundPace,useSaveSendOnEnter,useSaveCharacterSpeechColors,useSaveVisitRetention} from './packages/villages/src/client/features/settings/actions.js';
 function Harness(){
  const settings=useSettingsState(),[snapshot,setSnapshot]=useState(window.seed),[busy,setBusy]=useState(false),
  [flipDraft,setSpriteFlipDraft]=useState(null),[flipError,setSpriteFlipError]=useState(''),[flipSaving,setSpriteFlipSaving]=useState(false),
- [archive,setArchiveVersion]=useState(0),[noticeDraft,setNoticeDraft]=useState(' A notice '),
+ [archive,setArchiveVersion]=useState(0),
  [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[sceneryStyleProfileId]=useState(null),[personalizeHomes,setPersonalizeHomes]=useState(false),[visualLoreDefault,setVisualLoreDefault]=useState(true);
- const ports={...settings,snapshot,setSnapshot,setBusy,setSpriteFlipDraft,setSpriteFlipError,setSpriteFlipSaving,setArchiveVersion,noticeDraft,setNoticeDraft,
+ const ports={...settings,snapshot,setSnapshot,setBusy,setSpriteFlipDraft,setSpriteFlipError,setSpriteFlipSaving,setArchiveVersion,
   sceneryStyle,sceneryStyleProfileId,personalizeHomes,visualLoreDefault,acceptSavedSettings:()=>{window.acks++}};
- const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),flip=useSaveSpriteCardFlip(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports),colors=useSaveCharacterSpeechColors(ports),retention=useSaveVisitRetention(ports),add=useAddNotice(ports),remove=useRemoveNotice(ports);
- const commands={save,scenery,flip:()=>flip(window.flipValue??true),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>colors(false),retention:()=>retention({mode:'count',value:20}),add,remove:()=>remove(0)};
+ const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),flip=useSaveSpriteCardFlip(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports),colors=useSaveCharacterSpeechColors(ports),retention=useSaveVisitRetention(ports);
+ const commands={save,scenery,flip:()=>flip(window.flipValue??true),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>colors(false),retention:()=>retention({mode:'count',value:20})};
  const launch=work=>{window.pending.push(work());return window.pending.length-1},run=kind=>launch(commands[kind]);
  window.h={run,twice:kind=>{run(kind);run(kind)},cross:()=>{run('pace');run('enter')},crossScenery:reverse=>{run(reverse?'pace':'scenery');run(reverse?'scenery':'pace')},independent:()=>{run('flip');run('pace')},
   editScenery:()=>{setSceneryStyle('Newer scenery');setPersonalizeHomes(true);setVisualLoreDefault(false)},
-  retain:kind=>{window.old=commands[kind]},old:()=>launch(window.old),edit:value=>setNoticeDraft(value),
-  reset:()=>{setSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});setBusy(true);setNoticeDraft('reset notice')},
-  resetDone:()=>setBusy(false),refound:()=>{setSnapshot({...window.seed,isFounded:true,settings:{...window.seed.settings,setting:'B',sendOnEnter:true,characterSpeechColors:false}});setNoticeDraft('B notice')},
+  retain:kind=>{window.old=commands[kind]},old:()=>launch(window.old),
+  reset:()=>{setSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});setBusy(true)},
+  resetDone:()=>setBusy(false),refound:()=>{setSnapshot({...window.seed,isFounded:true,settings:{...window.seed.settings,setting:'B',sendOnEnter:true,characterSpeechColors:false}})},
   hydrate:()=>setSnapshot(current=>({...current,isFounded:true})),
-  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError,flipDraft,flipError,flipSaving,archive,noticeDraft,sceneryStyle,personalizeHomes,visualLoreDefault,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors})};
+  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError,flipDraft,flipError,flipSaving,archive,sceneryStyle,personalizeHomes,visualLoreDefault,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors})};
  return <pre id='state'>{JSON.stringify(window.h.read())}</pre>;
 }window.pending=[];window.acks=0;
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);
@@ -102,20 +102,17 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     };
   }
   const payloads = {
-    save: { promptKnowledge: "", playerPersonaId: "", setting: "", selectedLorebookIds: [], loreTokenBudget: 1600 },
+    save: { selectedLorebookIds: [], loreTokenBudget: 1600, useVisualLoreByDefault: true },
     scenery: {
       sceneryStyleProfileId: null,
       sceneryArtStyle: " Exact scenery A ",
       personalizeVenueImagesByDefault: false,
-      useVisualLoreByDefault: true,
     },
     flip: { spriteCardFlipEnabled: true },
     pace: { backgroundPace: "quiet" },
     enter: { sendOnEnter: true },
     colors: { characterSpeechColors: false },
     retention: { visitRetention: { mode: "count", value: 20 } },
-    add: { notice: "A notice" },
-    remove: null,
   };
   // State/ownership harness: responsive presentation is covered by the visual suites.
   for (const width of [1280])
@@ -126,7 +123,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           const f = await mount(strict, width);
           await f.run(kind);
           await expect.poll(() => f.requests.length).toBe(1);
-          assert.equal(f.requests[0].method, kind === "add" ? "POST" : kind === "remove" ? "DELETE" : "PATCH");
+          assert.equal(f.requests[0].method, "PATCH");
           assert.deepEqual(f.requests[0].body, payloads[kind]);
           if (kind === "enter") assert.equal((await f.state()).enter, true);
           if (kind === "colors") assert.equal((await f.state()).colors, false);
@@ -142,8 +139,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             assert.equal(after.colors, true);
             assert.match(kind === "flip" ? after.flipError : after.error, /synthetic settings failure/);
           } else {
-            assert.equal(after.setting, kind === "save" ? "" : "saved 0");
-            assert.equal(after.noticeDraft, kind === "add" ? "" : " A notice ");
+            assert.equal(after.setting, "saved 0");
           }
           assert.equal(await f.page.evaluate(() => window.acks), !fail && kind === "save" ? 1 : 0);
           await f.finish();
@@ -237,28 +233,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       await independent.respond(1);
       await independent.settle(1);
       await independent.finish();
-      // Current notice acknowledgement compares raw submitted text, including whitespace edits.
-      for (const draft of ["newer notice", " A notice  "]) {
-        const f = await mount(strict, width);
-        await f.run("add");
-        await expect.poll(() => f.requests.length).toBe(1);
-        await f.page.evaluate((draft) => window.h.edit(draft), draft);
-        await f.respond(0);
-        await f.settle(0);
-        assert.equal((await f.state()).noticeDraft, draft);
-        await f.finish();
-      }
-      const empty = await mount(strict, width);
-      await empty.page.evaluate(() => window.h.edit("  "));
-      await expect.poll(async () => (await empty.state()).noticeDraft).toBe("  ");
-      await empty.run("add");
-      await empty.settle(0);
-      assert.equal(empty.requests.length, 0);
-      await empty.run("pace");
-      await expect.poll(() => empty.requests.length).toBe(1);
-      await empty.respond(0);
-      await empty.settle(1);
-      await empty.finish();
       // Old callbacks do not revive after reset/refounding; new pre-founding saves are allowed.
       for (const kind of kinds) {
         const f = await mount(strict, width);
@@ -321,6 +295,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
     }
   console.log(
-    "Settings request lifetimes: current contracts/rollback, shared synchronous admission, real replacement requests, raw notice acknowledgement, reset/founding/hydration, retained callbacks and disposal passed (mounted hooks, synthetic HTTP; single viewport and StrictMode).",
+    "Settings request lifetimes: current contracts/rollback, shared synchronous admission, real replacement requests, reset/founding/hydration, retained callbacks and disposal passed (mounted hooks, synthetic HTTP; single viewport and StrictMode).",
   );
 }

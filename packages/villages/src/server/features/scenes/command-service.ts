@@ -1,52 +1,8 @@
-import { applyLiveMemories } from "../../domain/rules/live-memory-application.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
-import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
-import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
-import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
-import { sceneMemoryContext, SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
-import { bindDevelopmentChanges, applyDevelopmentScene } from "../../domain/rules/development-scene.js";
-import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
-import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
-import { createLiveEvidenceContext } from "../../domain/rules/live-exchange.js";
-import { observeHousing } from "../../domain/rules/resident-development.js";
-import { shape as projectZoneShape } from "../../domain/rules/project-structure.js";
-import { semanticContext } from "../../domain/rules/semantic-contract.js";
-import { releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
-import { openingPresence } from "../../domain/rules/opening-presence.js";
-import { openingActive, gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
-import { completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
-import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
-import { acousticFragment, bindAcousticPlan } from "../../domain/rules/scene-acoustics.js";
-import { interpretAcoustics } from "./acoustic-interpretation.js";
-import { acousticInstructions } from "./acoustic-prompt.js";
-import {
-  semanticBlocker,
-  semanticAuthorityDomain,
-  projectInterpretationNeedsRecovery,
-  projectMetadataRejected,
-  rejectProjectMetadata,
-} from "../../domain/rules/semantic-continuity.js";
-import { readSemanticEffects, SEMANTIC_OPERATION_BUDGET } from "../../domain/rules/semantic-contract.js";
-import { zoneEventScene } from "../../domain/rules/zone-events.js";
-import { assertSceneMovementCapacity, UnavailableResidentMovement } from "../../domain/rules/resident-movement.js";
-import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
-import { captureSceneLayout, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
-import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
-import { villageNow, villageClockShiftMs } from "../../adapters/time/clock-gate.js";
-import { type SceneReply } from "./writing.js";
-import { interpretAttention } from "./attention-interpretation.js";
-import {
-  movedAttentionContacts,
-  attentionClarificationChoices,
-  bindAttentionPlan,
-  holdAttentionPlan,
-  validAttentionPlan,
-  type AttentionPlan,
-} from "../../domain/rules/scene-attention.js";
-import { observePrivateInterior } from "../../domain/rules/private-interior.js";
-import { claimZonePictureEntry, zonePictureContext } from "../../domain/rules/zone-picture.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+import { createHash, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
-import { ACTIVE_ID, SESSION_PREFIX, activeSlot, sessionSlot } from "../../adapters/storage/scene-slots.js";
+import { ACTIVE_ID, activeSlot, SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
+import { villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
@@ -70,16 +26,62 @@ import {
   VillagesRequestError,
 } from "../../domain/rules/errors.js";
 import {
+  bindLiveProposals,
+  createLiveEvidenceContext,
+  liveEvidence,
+  mergeLiveReplyProposals,
+} from "../../domain/rules/live-exchange.js";
+import { applyLiveMemories } from "../../domain/rules/live-memory-application.js";
+import { openingPresence } from "../../domain/rules/opening-presence.js";
+import { gatheringDialogueComplete, openingActive } from "../../domain/rules/opening-project.js";
+import { observePrivateInterior } from "../../domain/rules/private-interior.js";
+import {
   bindProjectSpeech,
   projectSpeechContexts,
   validateProjectSpeech,
 } from "../../domain/rules/project-interpretation.js";
+import { shape as projectZoneShape } from "../../domain/rules/project-structure.js";
+import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
+import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
+import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
+import { parseRelationshipProposals, RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import { relationshipZoneController } from "../../domain/rules/relationship-rules.js";
+import { assertSceneMovementCapacity, UnavailableResidentMovement } from "../../domain/rules/resident-movement.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
+import { acousticFragment, bindAcousticPlan } from "../../domain/rules/scene-acoustics.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
+import {
+  attentionClarificationChoices,
+  bindAttentionPlan,
+  holdAttentionPlan,
+  movedAttentionContacts,
+  validAttentionPlan,
+  type AttentionPlan,
+} from "../../domain/rules/scene-attention.js";
+import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
+import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
+import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
+import { captureSceneLayout, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
+import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
+import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { parseVenueReply, quietContactReply, savedAccessEvents } from "../../domain/rules/scene-reply.js";
 import { applyInterpretedRoomEvents } from "../../domain/rules/scene-room-application.js";
+import { completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
+import {
+  projectInterpretationNeedsRecovery,
+  projectMetadataRejected,
+  rejectProjectMetadata,
+  semanticAuthorityDomain,
+  semanticBlocker,
+} from "../../domain/rules/semantic-continuity.js";
+import {
+  readSemanticEffects,
+  SEMANTIC_OPERATION_BUDGET,
+  semanticContext,
+} from "../../domain/rules/semantic-contract.js";
+import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import {
   applyAccessCommand,
   claimVisitPermission,
@@ -91,7 +93,6 @@ import {
 import {
   contactCanEnter,
   contactDevice,
-  type ContactIntent,
   contactNeighbors,
   contactPath,
   contactPosition,
@@ -99,10 +100,10 @@ import {
   readContactDelivery,
   readContactRelay,
   sceneAccessContext,
+  type ContactIntent,
 } from "../../domain/rules/venue-contact.js";
 import { venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
-import { movementTransition, assertConversationalPlayerPosition } from "../../domain/rules/venue-movement.js";
-import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
+import { assertConversationalPlayerPosition, movementTransition } from "../../domain/rules/venue-movement.js";
 import {
   applyVenueSceneChange,
   physicalVenueEvents,
@@ -121,10 +122,12 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
-import { bindLiveProposals, liveEvidence, mergeLiveReplyProposals } from "../../domain/rules/live-exchange.js";
-import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-import { createHash, randomUUID } from "node:crypto";
+import { zoneEventScene } from "../../domain/rules/zone-events.js";
+import { claimZonePictureEntry, zonePictureContext } from "../../domain/rules/zone-picture.js";
+import { interpretAcoustics } from "./acoustic-interpretation.js";
+import { acousticInstructions } from "./acoustic-prompt.js";
+import { interpretAttention } from "./attention-interpretation.js";
+import { type SceneReply } from "./writing.js";
 export interface SceneCommandPorts {
   applySavedStartingTies?: () => Promise<void>;
   withVillageSceneAcceptance?: typeof import("../world/village-store.js").withVillageSceneAcceptance;
@@ -170,7 +173,6 @@ export interface SceneCommandPorts {
     ReturnType<typeof import("../../adapters/models/language-models.js").villagesLanguageModels>,
     "resolveForRequest"
   >;
-  loadBackgroundRetry(): Promise<Pick<typeof import("../../jobs/background-work.js"), "retryBackgroundJob">>;
   loadPrivateSpaceImages(): Promise<
     Pick<typeof import("../media/location-image.js"), "generateFirstPrivateSpaceImage"> &
       Partial<Pick<typeof import("../media/location-image.js"), "personalizeZoneOnEntry">>
@@ -202,11 +204,9 @@ export interface SceneCommandPorts {
   interpretProjectDraft: typeof import("../projects/project-checks.js").interpretProjectDraft;
   projectProposals: typeof import("../../domain/rules/project-check-rules.js").projectProposals;
   rollActiveAgendas: typeof import("../residents/resident-agendas.js").rollActiveAgendas;
-  wishFingerprint: typeof import("../../domain/rules/wish-interpretation-rules.js").wishFingerprint;
   bindWishProposals: typeof import("../../domain/rules/wish-progress-rules.js").bindWishProposals;
   WISH_PROPOSAL_INSTRUCTION: typeof import("../../domain/rules/wish-progress-rules.js").WISH_PROPOSAL_INSTRUCTION;
   villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
-  recordVillagerVenueImprovement: typeof import("../venues/venue-mailbox.js").recordVillagerVenueImprovement;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   readVillageSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
@@ -237,7 +237,6 @@ export function createSceneCommands({
   villagesDocuments,
   villagesLogger,
   villagesLanguageModels,
-  loadBackgroundRetry,
   loadPrivateSpaceImages,
   runtimeDebug,
   assertVenueOwnership,
@@ -266,11 +265,9 @@ export function createSceneCommands({
   interpretProjectDraft,
   projectProposals,
   rollActiveAgendas,
-  wishFingerprint,
   bindWishProposals,
   WISH_PROPOSAL_INSTRUCTION,
   villagesConnectionIdFor,
-  recordVillagerVenueImprovement,
   mutateVillageState,
   readVillageSnapshot,
   readVillageState,
@@ -323,41 +320,6 @@ export function createSceneCommands({
     const proposals = turn.liveProposals;
     const originalProjectProposals = JSON.stringify(turn.projectSpeech ?? []);
     const originalSourceHash = turn.semanticProvenance?.sourceHash;
-    if (domain === "wishes") {
-      const jobs = await villagesDocuments().list(VILLAGES_PACKAGE_ID, "background-work");
-      const failed = jobs.filter((record) => {
-        const job = asRecord(record.data),
-          input = asRecord(job.input);
-        return (
-          job.kind === "wish-check" &&
-          job.seed === village.seed &&
-          input.sceneId === id &&
-          input.submissionId === submissionId &&
-          ["failed", "interrupted", "paused"].includes(String(job.status))
-        );
-      });
-      if (failed.length) {
-        const { retryBackgroundJob } = await loadBackgroundRetry();
-        const action = venueOperationId();
-        await venueCheckpoint("wish-background-retry", async () => {
-          for (const record of failed) {
-            const job = asRecord(record.data);
-            await outsideVenueOperation(() =>
-              retryBackgroundJob(
-                record.id,
-                Number(job.attempt),
-                createHash("sha256")
-                  .update(JSON.stringify([action, record.id, job.attempt]))
-                  .digest("hex"),
-              ),
-            );
-          }
-          return true;
-        });
-        await processSavedExchange(id, submissionId);
-        return readSceneChanges(id);
-      }
-    }
     const result = await venueCheckpoint("change-interpretation", async () => {
       const nativeMemory = sceneMemoryContext(
         village,
@@ -395,14 +357,7 @@ export function createSceneCommands({
               : {}),
             ...(domain === "wishes"
               ? {
-                  wishes: (turn.wishContexts ?? []).flatMap((context) => {
-                    const wish = village.villagers
-                      .find((person) => person.characterId === context.actorId)
-                      ?.agenda?.wishes.find(
-                        (wish) => wish.id === context.wishId && wishFingerprint(wish) === context.fingerprint,
-                      );
-                    return wish ? [{ ...context, text: wish.wish }] : [];
-                  }),
+                  owners: turn.wishContexts ?? [],
                 }
               : {}),
             ...(domain === "relationships"
@@ -1044,7 +999,7 @@ export function createSceneCommands({
       await rollActiveAgendas();
     }
     const live = await readVillageState();
-    let village = existing ? sceneContinuityView(live, existing) : live;
+    const village = existing ? sceneContinuityView(live, existing) : live;
     const place = village.venues.find((entry) => entry.id === placeId);
     if (!place) throw notFound("That place is not in this village.");
     if (
@@ -1129,8 +1084,6 @@ export function createSceneCommands({
         return refreshZoneParticipants(prior);
       }
     }
-    if (village.development)
-      village = await mutateVillageState((state) => observeHousing(state, villageNow().toISOString()));
     const sceneAttendance = captureSceneAttendance(village, placeId, villageNow());
     if (gathering)
       sceneAttendance.occupants = village.villagers
@@ -1332,12 +1285,7 @@ export function createSceneCommands({
                 castLimitVersion: 1,
                 playerAgencyVersion: 1,
                 ...(admission.semanticVersion === 2
-                  ? {
-                      semanticBudget: SEMANTIC_OPERATION_BUDGET,
-                      semanticPipelineVersion: 3,
-                      residentActionsVersion: 2,
-                      ...((await readVillageState()).development?.enabled ? { developmentVersion: 1 } : {}),
-                    }
+                  ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3, residentActionsVersion: 2 }
                   : {}),
                 writingCapabilities: sceneWritingCapabilities(await readVillageState(), admission),
               };
@@ -1478,9 +1426,7 @@ export function createSceneCommands({
                 projectInterpretationVersion: 1 as const,
                 invitationSignal: reply.invitationSignal ?? undefined,
                 editApprovalSignal: reply.editApprovalSignal ?? undefined,
-                developmentChanges: bindDevelopmentChanges(reply.developmentChanges, savedLineIds),
                 residenceSignal: reply.residenceSignal ?? undefined,
-                renovationSignal: reply.renovationSignal ?? undefined,
                 venueRequestSignal: reply.venueRequestSignal ?? undefined,
               }
             : {}),
@@ -1928,17 +1874,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           ? { preservationVersion: 1, chosenAt: villageNow().toISOString() }
           : {}),
       ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.developmentVersion === 1
-          ? { developmentVersion: 1 }
-          : {}
-        : prior
-          ? prior.semanticProvenance?.developmentVersion === 1
-            ? { developmentVersion: 1 }
-            : {}
-          : (await readVillageState()).development?.enabled
-            ? { developmentVersion: 1 }
-            : {}),
-      ...(scene.operation?.id === input.submissionId
         ? scene.operation.input.residentMovementReviewVersion === 1
           ? { residentMovementReviewVersion: 1 }
           : {}
@@ -2135,7 +2070,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     let session = await readSession(input.sessionId);
     if (rejectedSubmission(session, input.submissionId, input))
       return unavailableTurnResult(session, input.submissionId);
-    const compatibilityWishCheck = input.mode === "fulfill";
     const requestMode = input.mode === "act" || input.mode === "fulfill" ? input.mode : undefined;
     const prior = session.submissions.find((entry) => entry.id === input.submissionId);
     if (!prior && session.semanticVersion === 2) {
@@ -2722,25 +2656,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           reply.wishContexts,
           state.semanticVersion === 2,
         );
-        if (
-          compatibilityWishCheck &&
-          state.semanticVersion !== 2 &&
-          state.lines.find((line) => line.id === playerLineId)?.heardBy.includes(input.targetId)
-        ) {
-          const cited = [
-            playerLineId,
-            ...replyLineIds.filter((id) =>
-              state.lines.find((line) => line.id === id)?.heardBy.includes(input.targetId),
-            ),
-          ];
-          for (const context of reply.wishContexts.filter((context) => context.actorId === input.targetId))
-            if (
-              !wishChanges.proposals.some(
-                (proposal) => proposal.wishId === context.wishId && proposal.intent !== "reveal",
-              )
-            )
-              wishChanges.proposals.push({ ...context, intent: "check", lineIds: cited });
-        }
         if (reply.recap) state.recap = reply.recap;
         state.submissions.push({
           id: input.submissionId,
@@ -2806,9 +2721,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
                 actionReplyDone: true,
               }
             : {}),
-          developmentChanges: bindDevelopmentChanges(reply.developmentChanges, replyLineIds),
           ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
-          ...(reply.renovationSignal ? { renovationSignal: reply.renovationSignal } : {}),
           ...(reply.venueRequestSignal
             ? {
                 venueRequestSignal: {
@@ -3359,10 +3272,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       )
         await applyResidenceEditApproval(session.placeId, signal.proposalId, signal.residentId, signal.approved);
     }
-    if (submission.developmentChanges?.length)
-      await mutateVillageState((state) =>
-        applyDevelopmentScene(state, session, submission, villageNow().toISOString()),
-      );
     if (submission.residenceSignal) {
       const signal = submission.residenceSignal;
       if (signal.kind === "request") {
@@ -3386,19 +3295,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           if (submission.semanticProvenance?.version === 2) throw error;
           villagesLogger().warn("[villages] residence decision was no longer valid: %s", String(error));
         }
-      }
-    }
-    if (submission.renovationSignal) {
-      try {
-        await recordVillagerVenueImprovement(
-          submission.renovationSignal.characterId,
-          submission.renovationSignal.venueId,
-          submission.renovationSignal.quote,
-          `venue-renovation:${submission.id}`,
-        );
-      } catch (error) {
-        if (submission.semanticProvenance?.version === 2) throw error;
-        villagesLogger().warn("[villages] Renovation request was no longer valid: %s", String(error));
       }
     }
   }
@@ -3882,16 +3778,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         session.participants.find((person) => person.characterId === request.characterId)?.name ?? "A villager";
       events.push({ id: `venue-move:${submission.id}`, kind: "request", text: `${name} asked to move.` });
     }
-    if (submission.renovationSignal && village.processedActionIds.includes(`venue-renovation:${submission.id}`)) {
-      const name =
-        session.participants.find((person) => person.characterId === submission.renovationSignal!.characterId)?.name ??
-        "A villager";
-      events.push({
-        id: `venue-renovation:${submission.id}`,
-        kind: "request",
-        text: `${name} suggested a Venue improvement.`,
-      });
-    }
     const combined = [...new Map([...events, ...cached].map((event) => [event.id, event])).values()];
     if (persist && JSON.stringify(combined) !== JSON.stringify(submission.recordEvents ?? []))
       await changeSession(session.id, (state) => {
@@ -4005,7 +3891,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       state.endReason ||= "player";
     });
     await mutateVillageState((state) => {
-      releaseSceneWishes(state, closed);
       releaseSceneMemories(state, closed);
     });
     await clearActivePointer(session.id);
@@ -4053,7 +3938,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
     await mutateVillageState((state) => {
       if (state.seed === session.villageSeed) {
-        delete state.sceneWishProtections?.[session.id];
         delete state.memoryScenes[session.id];
       }
     });

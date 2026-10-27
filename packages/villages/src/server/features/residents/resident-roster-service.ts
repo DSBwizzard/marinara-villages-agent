@@ -1,16 +1,17 @@
-import { readResidentAdmission, EMPTY_RESIDENT_ADMISSION } from "../../../shared/helpers/resident-admission.js";
+import { chooseLetterFont, legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
-import { randomVillageSeed } from "../../domain/rules/village-clock.js";
-import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
+import { EMPTY_RESIDENT_ADMISSION, readResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
-import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
+import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
+import { randomVillageSeed } from "../../domain/rules/village-clock.js";
+import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
 
 export interface ResidentRosterPorts {
   preparedSpriteManager?(
@@ -66,6 +67,7 @@ export function createResidentRoster({
     if (!alreadyResident) {
       const spriteManager = await preparedSpriteManager?.(characterId, spriteSetupRevision);
       const addedAt = villageNow().toISOString();
+      const letterFontId = chooseLetterFont(randomVillageSeed());
       await mutateVillageState((state) => {
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
         if (state.villagers.length >= MAX_VILLAGERS) {
@@ -83,6 +85,10 @@ export function createResidentRoster({
         // what lets the tab tell those two apart.
         state.villagers.push({
           characterId,
+          letterFontId:
+            (state.formerLetterFonts && Object.hasOwn(state.formerLetterFonts, characterId)
+              ? state.formerLetterFonts[characterId]
+              : undefined) ?? letterFontId,
           admission,
           spriteManager,
           identityDescription: initialIdentityDescription(),
@@ -109,7 +115,7 @@ export function createResidentRoster({
           },
           addedAt,
           agenda: unwrittenVillageAgenda(state.venues, card.name, villageNow()),
-          completedWishes: [],
+          wishes: [],
           ingestSchedule: false,
           scheduleInfluence: influenceSettings(null),
           remap: null,
@@ -132,6 +138,16 @@ export function createResidentRoster({
   async function removeVillager(characterId: string): Promise<void> {
     let removed = false;
     await mutateVillageState((state) => {
+      const departing = state.villagers.find((villager) => villager.characterId === characterId);
+      if (departing) {
+        state.formerLetterFonts ??= {};
+        Object.defineProperty(state.formerLetterFonts, characterId, {
+          value: departing.letterFontId ?? legacyLetterFont(characterId),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
       const remaining = state.villagers.filter((villager) => villager.characterId !== characterId);
       removed = remaining.length !== state.villagers.length;
       if (removed)

@@ -24,7 +24,7 @@ function Harness(){
  openMenu=useCallback(v=>{window.calls.menu++;rawMenu(v)},[]);
  const ports={snapshot,setSnapshot,setBusy,setSettingsError,setVenueEditDraft,setVenuesDraft,requestEdits,setRequestEdits,openMenu};
  const save=useSaveVenue(ports),remove=useRemoveVenue(ports),decide=useDecideVenueRequest(ports),pace=useSaveBackgroundPace(ports),settings=useSaveSettings({...ports,
- knowledgeDraft:'',personaDraft:'',settingDraft:'',lorebookDraft:[],loreTokenBudgetDraft:1600,acceptSavedSettings:()=>window.acks++});
+ knowledgeDraft:'',personaDraft:'',settingDraft:'',lorebookDraft:[],loreTokenBudgetDraft:1600,visualLoreDefault:true,acceptSavedSettings:()=>window.acks++});
  const commands={save:()=>save(venueEditDraft),remove:()=>remove(window.targetId),approve:()=>decide(window.entry,true),deny:()=>decide(window.entry,false),pace:()=>pace('quiet'),settings};
  const launch=fn=>{window.pending.push(fn());return window.pending.length-1},run=kind=>launch(commands[kind]);
  const reset=()=>{rawSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});rawBusy(true)};
@@ -51,7 +51,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     residentCharacterIds: [],
     playerHome: false,
     workerCharacterIds: [],
-    pendingMailCount: 0,
     pendingResidenceCharacterIds: [],
     remapCount: 0,
     roomPresent: false,
@@ -263,11 +262,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       }
       // Removal keeps the complete dependency blocker precedence and exact confirmation behavior.
       for (const [dependencies, expected] of [
-        [
-          { roomPresent: true, pendingMailCount: 2, playerHome: true },
-          "End the active Scene before deleting this Venue.",
-        ],
-        [{ pendingMailCount: 2, playerHome: true }, "Resolve pending Venue decisions before deleting this Venue."],
+        [{ roomPresent: true, playerHome: true }, "End the active Scene before deleting this Venue."],
         [{ playerHome: true }, "Move every resident, including yourself, before deleting this Residence."],
         [
           { residentCharacterIds: ["resident"] },

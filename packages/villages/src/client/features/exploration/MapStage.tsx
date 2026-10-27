@@ -1,3 +1,15 @@
+import {
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { TownMapFit, TownMapView } from "../../../shared/contracts/village.js";
 import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
 import { clamp, round4 } from "../../shared/presentation.js";
@@ -14,18 +26,6 @@ import {
   mobilePhotoScale,
 } from "./villages-mobile-map";
 import { VenuePolaroid } from "./villages-venue-polaroid.js";
-import {
-  type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-  type PointerEvent as ReactPointerEvent,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
 
 /**
  * How far under a place its people stack, as a fraction of the picture.
@@ -776,7 +776,7 @@ export function MapStage({
         )}
         {src && failedSrc === src ? (
           <span className={`${ELEMENT_TAG}-canvas-missing`}>
-            The map picture could not be loaded — choose another one in Village Settings → Village Map.
+            The map picture could not be loaded — choose another one in More → World Configuration → Maps.
           </span>
         ) : null}
         {picture && placementCursor && placing ? (

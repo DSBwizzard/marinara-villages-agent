@@ -1,10 +1,4 @@
 import { isSceneTurnOutcome, type SceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
-import { readOpeningSignal } from "../rules/opening-project.js";
-import { readSceneLayout } from "../rules/scene-layout.js";
-import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
-import { coerceVillageState } from "./village-codec.js";
-import { coerceRelationshipState } from "../rules/relationship-rules.js";
-import { savedVenueClassRecord } from "./venue-class-compat.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import type { LiveExchangeProposals } from "../models/memory-model.js";
 import type { VenueOperation } from "../models/operation-model.js";
@@ -20,13 +14,18 @@ import type { VenueActionResult } from "../models/venue-action-model.js";
 import type { WishProposal } from "../models/wish-check-model.js";
 import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
 import { conflict } from "../rules/errors.js";
-import { coercePendingAttention } from "../rules/scene-attention.js";
+import { readOpeningSignal } from "../rules/opening-project.js";
 import { coerceProjectSpeech } from "../rules/project-interpretation.js";
+import { coerceRelationshipState } from "../rules/relationship-rules.js";
+import { coercePendingAttention } from "../rules/scene-attention.js";
+import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
+import { readSceneLayout } from "../rules/scene-layout.js";
 import { sceneRevision } from "../rules/scene-revision.js";
 import type { ContactIntent, DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
 import { coerceExchangeProcessing } from "./exchange-codec.js";
-import { coerceWishApplicationProof } from "./wish-criteria.js";
+import { savedVenueClassRecord } from "./venue-class-compat.js";
+import { coerceVillageState } from "./village-codec.js";
 
 export function coerceActive(value: unknown): ActiveVenue {
   const raw = asRecord(value);
@@ -50,7 +49,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   // This is an already-captured projection, not an old world to migrate.
   const decoded = coerceVillageState({
     ...facts,
-    version: 5,
+    version: 6,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
   });
@@ -456,9 +455,7 @@ export function coerceSession(value: unknown): VenueScene {
                 ? { effectFailures: structuredClone(row.effectFailures) as VenueSubmission["effectFailures"] }
                 : {}),
               ...(row.projectInterpretationVersion === 1 ? { projectInterpretationVersion: 1 as const } : {}),
-              ...(Object.hasOwn(row, "wishInterpretationProof")
-                ? { wishInterpretationProof: coerceWishApplicationProof(row.wishInterpretationProof) }
-                : {}),
+              ...(Object.hasOwn(row, "wishInterpretationProof") ? {} : {}),
               ...(typeof row.progressError === "string" ? { progressError: row.progressError.slice(0, 300) } : {}),
               verdict:
                 row.verdict && typeof asRecord(row.verdict).fulfilled === "boolean"
@@ -472,18 +469,8 @@ export function coerceSession(value: unknown): VenueScene {
               ...(row.action ? { action: row.action as VenueActionResult } : {}),
               ...(row.actionReplyDone === true ? { actionReplyDone: true } : {}),
               ...(row.sceneChange ? { sceneChange: row.sceneChange as VenueSceneChange } : {}),
-              ...(Array.isArray(row.developmentChanges)
-                ? {
-                    developmentChanges: structuredClone(
-                      row.developmentChanges,
-                    ) as VenueSubmission["developmentChanges"],
-                  }
-                : {}),
               ...(row.residenceSignal
                 ? { residenceSignal: row.residenceSignal as VenueSubmission["residenceSignal"] }
-                : {}),
-              ...(row.renovationSignal
-                ? { renovationSignal: row.renovationSignal as VenueSubmission["renovationSignal"] }
                 : {}),
               ...(row.venueRequestSignal
                 ? { venueRequestSignal: row.venueRequestSignal as VenueSubmission["venueRequestSignal"] }

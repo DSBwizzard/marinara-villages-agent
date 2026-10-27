@@ -1,25 +1,29 @@
-import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
-import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
-import { asRecord } from "../../domain/rules/coerce.js";
-import { WorkFailureError } from "../../domain/rules/work-failure.js";
-class EncounterInterpretationError extends Error {}
-import { villageNow } from "../../adapters/time/clock-gate.js";
 import { z } from "zod";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
+import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import type { Handler } from "../../domain/models/background-model.js";
-import type { SocialOutboxEntry } from "../../domain/models/social-outbox-model.js";
-import { socialContextState } from "../../domain/rules/social-context.js";
-import { SocialRevisionConflict } from "../../domain/rules/relationship-rules.js";
 import type { SocialEncounter } from "../../domain/models/relationship-types.js";
+import type { SocialOutboxEntry } from "../../domain/models/social-outbox-model.js";
 import type { VillageState } from "../../domain/models/world.js";
+import { asRecord } from "../../domain/rules/coerce.js";
+import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
 import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
-import { applyRelationshipReview, reconcileRelationships } from "../../domain/rules/relationship-rules.js";
-import { projectSocialActivities, reconcileSocialPlans, socialPlanValid } from "../../domain/rules/social-rules.js";
+import {
+  applyRelationshipReview,
+  reconcileRelationships,
+  SocialRevisionConflict,
+} from "../../domain/rules/relationship-rules.js";
+import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
+import { socialContextState } from "../../domain/rules/social-context.js";
 import { readEncounter } from "../../domain/rules/social-encounter.js";
+import { projectSocialActivities, reconcileSocialPlans, socialPlanValid } from "../../domain/rules/social-rules.js";
+import { applyWishSource } from "../../domain/rules/social-wishes.js";
 import { settleStandingAccess } from "../../domain/rules/venue-access.js";
+import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import type { mutateVillageState } from "../world/village-store.js";
 import type { mutateRelationships } from "./relationship-store.js";
-import { coerceSession } from "../../domain/decoding/scene-codec.js";
-import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
+class EncounterInterpretationError extends Error {}
 export type RelationshipSocialPorts = {
   readVillageSnapshot?: typeof import("../world/village-store.js").readVillageSnapshot;
   queueBackgroundJob?: typeof import("../../jobs/background-work.js").queueBackgroundJob;
@@ -49,6 +53,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
                 raw = asRecord(entry.proposal.encounter);
               if (accepted) {
                 accepted.memoryChanges = structuredClone(raw.memoryChanges);
+                accepted.wishChanges = structuredClone(raw.wishChanges) as unknown[];
                 accepted.memoryContexts = structuredClone(raw.memoryContexts) as SocialEncounter["memoryContexts"];
                 accepted.semanticProvenance = {
                   version: 2,
@@ -174,6 +179,27 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           // Its captured evidence survives retries after the original encounter window ends.
           const encounter = state.relationshipContext?.socialEncounters.find((row) => row.id === entry.id);
           if (encounter) {
+            const captured = entry.admitted?.villagers;
+            if (encounter.wishChanges?.length && !captured) throw new Error("Wish encounter authority is missing.");
+            if (captured) {
+              try {
+                applyWishSource(state, {
+                  id: "offscreen:" + entry.id,
+                  kind: "encounter",
+                  at: encounter.at,
+                  recordedAt: villageNow().toISOString(),
+                  lines: encounter.lines.map((l) => ({ ...l, playerHeard: false, contactHidden: true })),
+                  currentLineIds: encounter.lines.map((l) => l.id),
+                  changes: encounter.wishChanges ?? [],
+                  residents: captured,
+                  learn: false,
+                });
+              } catch (error) {
+                throw new EncounterInterpretationError(
+                  error instanceof Error ? error.message : "Wish interpretation is invalid.",
+                );
+              }
+            }
             const fresh = parseRelationshipProposals(
               { changes: [], disclosures: [], permissions: encounter.review.permissions },
               encounter.id,
@@ -266,7 +292,14 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
       const raw = input.entry.proposal.encounter as Record<string, unknown>;
       return ports.interpretSocialSource(
         raw.lines,
-        { state: input.social, candidates: [], relationships: [], at: input.admittedAt, memory: input.memory },
+        {
+          state: input.social,
+          candidates: [],
+          relationships: [],
+          residents: input.entry.admitted.villagers,
+          at: input.admittedAt,
+          memory: input.memory,
+        },
         false,
       );
     },

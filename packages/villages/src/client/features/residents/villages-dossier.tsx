@@ -1,14 +1,13 @@
-import { useFocusRevision, useVillageActivity } from "../../shared/activity.js";
-import { PeopleBook } from "./PeopleBook.js";
-import { PursuitsPanel } from "./PursuitsPanel.js";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ResidentSignature, ResidentSignatureImage } from "../../../shared/helpers/resident-signature.js";
+import { useFocusRevision, useVillageActivity } from "../../shared/activity.js";
 import { VenuePolaroid } from "../exploration/villages-venue-polaroid.js";
+import { PeopleBook } from "./PeopleBook.js";
 import { type RelationshipView, VillagesRelationships } from "./villages-relationships.js";
 import { VillagerSignature } from "./villages-signature.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
-import { type ReactNode, useEffect, useRef, useState } from "react";
 
-export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues" | "pursuits";
+export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues";
 export type DossierNavigation = {
   actorId: string;
   wishId?: string;
@@ -25,7 +24,6 @@ const titles: Record<DossierSection, string> = {
   memories: "Memories",
   agenda: "Agenda",
   venues: "Venues",
-  pursuits: "Pursuits",
 };
 export type DossierVenue = {
   id: string;
@@ -34,15 +32,10 @@ export type DossierVenue = {
   connections: string[];
   inspectOnly?: boolean;
 };
-export type DossierLink = { id: string; title: string; detail: string; onOpen: () => void };
+export type DossierLink = { id: string; title: string; detail: string; onOpen: () => void; playerVisible?: boolean };
 
 export function DossierIcon({ name }: { name: DossierSection | "inspect" }) {
   const paths = {
-    pursuits: (
-      <>
-        <path d="M5 21V3m0 0h13l-3 5 3 5H5" />
-      </>
-    ),
     overview: (
       <>
         <path d="m3 11 9-8 9 8M5 10v11h14V10M9 21v-8h6v8" />
@@ -139,7 +132,6 @@ export function VillagerDossier({
     characterId: string;
     name: string;
     summary: string;
-    tags: string[];
     missing: boolean;
     signatureFallback?: ResidentSignature;
     signature?: ResidentSignatureImage;
@@ -176,6 +168,7 @@ export function VillagerDossier({
     if (!visible || showingSprites) return;
     const controller = new AbortController();
     const refresh = async () => {
+      setRelationships(null);
       try {
         const view = await request<RelationshipView>("/relationships", { signal: controller.signal });
         if (!controller.signal.aborted) {
@@ -198,7 +191,7 @@ export function VillagerDossier({
   }, [inspect, section, onInspectSection]);
   const choose = (next: DossierSection, inspection = inspect) => {
     if (next !== section) {
-      const order = [...sections, "pursuits"];
+      const order = sections;
       setTurn((current) => ({ id: current.id + 1, backwards: order.indexOf(next) < order.indexOf(section) }));
     }
     setSection(next);
@@ -211,7 +204,7 @@ export function VillagerDossier({
       return {
         ...venue,
         connections: [
-          ...venue.connections,
+          ...(inspect ? venue.connections : []),
           ...grants.map((grant) => `${grant.name} · ${grant.active ? "Standing access" : "Access suspended"}`),
         ],
         inspectOnly: venue.inspectOnly && !grants.length,
@@ -235,21 +228,20 @@ export function VillagerDossier({
         ))}
       </div>
     ) : (
-      <p>No relevant Venues recorded.</p>
+      <p>No known Venues.</p>
     );
   const personalMail = links.find((link) => link.id === "personal-mail");
+  const relatedLinks = links.filter((link) => link.id !== "personal-mail" && (inspect || link.playerVisible === true));
   const related = (
     <div className={`${P}-dossier-links`}>
-      {links.length ? (
-        links
-          .filter((link) => link.id !== "personal-mail")
-          .map((link) => (
-            <button key={link.id} type="button" onClick={link.onOpen}>
-              <strong>{link.title}</strong>
-              <small>{link.detail}</small>
-              <span aria-hidden="true">›</span>
-            </button>
-          ))
+      {relatedLinks.length ? (
+        relatedLinks.map((link) => (
+          <button key={link.id} type="button" onClick={link.onOpen}>
+            <strong>{link.title}</strong>
+            <small>{link.detail}</small>
+            <span aria-hidden="true">›</span>
+          </button>
+        ))
       ) : (
         <p>No related Projects or Venue Requests.</p>
       )}
@@ -272,11 +264,6 @@ export function VillagerDossier({
             {section !== "overview" || !villager ? <h1>{name}</h1> : null}
             <div className={`${P}-dossier-actions`} role="group" aria-label="Profile actions">
               {villager ? (
-                <button type="button" aria-pressed={section === "pursuits"} onClick={() => choose("pursuits")}>
-                  Pursuits
-                </button>
-              ) : null}
-              {villager ? (
                 <details className={`${P}-dossier-management`} open={manageOpen}>
                   <summary
                     onClick={(event) => {
@@ -284,11 +271,10 @@ export function VillagerDossier({
                       setManageOpen((open) => !open);
                     }}
                   >
-                    Manage
+                    Character tools
                   </summary>
-                  <div className={`${P}-dossier-controls`} role="group" aria-label="Villager management">
+                  <div className={`${P}-dossier-controls`} role="group" aria-label="Character tools">
                     {controls}
-                    {inspect ? inspectors.overview : null}
                   </div>
                 </details>
               ) : null}
@@ -317,11 +303,6 @@ export function VillagerDossier({
                   <p className={`${P}-dossier-warning`}>Card missing · saved character remains available.</p>
                 ) : null}
               </div>
-            </div>
-            <div className={`${P}-dossier-tags`}>
-              {villager?.tags?.map((tag, index) => (
-                <span key={`${tag}-${index}`}>{tag}</span>
-              ))}
             </div>
             {villager ? (
               <VillagerSignature
@@ -381,13 +362,63 @@ export function VillagerDossier({
               </Sheet>
             ) : (
               <>
-                {section === "overview" ? null : section === "pursuits" ? (
-                  <PursuitsPanel
-                    characterId={navigation.actorId}
-                    known={relationships ? (profile?.knownDevelopment ?? []) : null}
-                    inspect={inspect}
-                    request={request}
-                  />
+                {section === "overview" ? (
+                  <div className={`${P}-dossier-overview`}>
+                    {readError ? null : !relationships ? (
+                      <p role="status">Reading profile…</p>
+                    ) : !profile ? (
+                      <p role="status">
+                        {relationships.starting?.pending
+                          ? "Profile information is still being prepared."
+                          : "Profile information is unavailable."}
+                      </p>
+                    ) : (
+                      <>
+                        <Sheet title="Relationships" icon="relationships">
+                          <p>{profile?.summary || "No relationship shared yet."}</p>
+                          {profile?.learned
+                            ?.filter(
+                              (entry) =>
+                                entry.kind !== "routine" &&
+                                entry.kind !== "preference" &&
+                                entry.text !== profile.summary,
+                            )
+                            .map((entry, index) => (
+                              <p key={index}>{entry.text}</p>
+                            ))}
+                        </Sheet>
+                        <Sheet title="Wishes" icon="wishes">
+                          {profile?.knownWishes?.length ? (
+                            <ul>
+                              {profile?.knownWishes?.map((wish) => (
+                                <li key={wish.wishId}>
+                                  {wish.text}
+                                  {wish.status ? ` · ${wish.status}` : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p>None shared yet.</p>
+                          )}
+                        </Sheet>
+                        <Sheet title="Routine" icon="agenda">
+                          {profile?.routine?.length ? (
+                            <ul>
+                              {profile.routine.map((line, index) => (
+                                <li key={index}>{line}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p>No routine shared yet.</p>
+                          )}
+                        </Sheet>
+                        <Sheet title="Home and work" icon="venues">
+                          <p>No known home or work location.</p>
+                        </Sheet>
+                      </>
+                    )}
+                    {inspect ? inspectors.overview : null}
+                  </div>
                 ) : section === "relationships" ? (
                   <VillagesRelationships
                     request={request}
@@ -402,27 +433,26 @@ export function VillagerDossier({
                   inspect ? (
                     inspectors.wishes
                   ) : (
-                    <Sheet title="Shared wishes" icon="wishes">
-                      <VillagerWishJournal
-                        request={request}
-                        characterId={navigation.actorId}
-                        prefix={P}
-                        focusWishId={navigation.wishId}
-                        wishes={relationships ? (profile?.knownWishes ?? []) : null}
-                        onWishes={(knownWishes) =>
-                          setRelationships((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  profiles: current.profiles.map((entry) =>
-                                    entry.characterId === navigation.actorId ? { ...entry, knownWishes } : entry,
-                                  ),
-                                }
-                              : current,
-                          )
-                        }
-                      />
-                    </Sheet>
+                    <VillagerWishJournal
+                      inspect={inspect}
+                      request={request}
+                      characterId={navigation.actorId}
+                      prefix={P}
+                      focusWishId={navigation.wishId}
+                      wishes={relationships ? (profile?.knownWishes ?? []) : null}
+                      onWishes={(knownWishes) =>
+                        setRelationships((current) =>
+                          current
+                            ? {
+                                ...current,
+                                profiles: current.profiles.map((entry) =>
+                                  entry.characterId === navigation.actorId ? { ...entry, knownWishes } : entry,
+                                ),
+                              }
+                            : current,
+                        )
+                      }
+                    />
                   )
                 ) : section === "memories" ? (
                   inspect ? (
@@ -439,7 +469,7 @@ export function VillagerDossier({
                     inspectors.agenda
                   ) : (
                     <Sheet title="Known routine" icon="agenda">
-                      {profile?.knownAt ? (
+                      {profile?.routine?.length ? (
                         <>
                           <p>Last shared information · {new Date(profile.knownAt).toLocaleString()}</p>
                           <ul>
@@ -459,7 +489,7 @@ export function VillagerDossier({
                     <Sheet title="Relevant Venues" icon="venues">
                       {venueCards()}
                     </Sheet>
-                    <Sheet title="Related Projects and Venue Requests">{related}</Sheet>
+                    <Sheet title="Projects and Venue Requests">{related}</Sheet>
                   </>
                 )}
               </>

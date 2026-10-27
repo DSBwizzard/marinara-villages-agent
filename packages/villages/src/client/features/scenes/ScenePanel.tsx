@@ -1,9 +1,20 @@
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { isSceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
 import type {
   ResidentSprite,
   RoomLine,
   RoomRecordEvent,
-  SceneView,
   SceneChangeIssue,
+  SceneView,
 } from "../../../shared/contracts/village.js";
 import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import {
@@ -18,27 +29,16 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
 import type { Portrait, PortraitMap, RoomStep, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
+import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, SceneInformationChip, type SceneErrorItem } from "./scene-errors.js";
-import { isSceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";
 import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene.js";
 import { useReadingPages } from "./villages-reading-viewport.js";
-import type { SceneReadingSession } from "./reading-session.js";
 import { hasCompletedRoomSubmission, nextRoomReadIndex } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
 import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
-import {
-  type CSSProperties,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
 
 /** Unseen Zone names remain private. */
 export function sceneZoneLabel(zone?: { name: string; kind: string; seen?: boolean }): string {
@@ -136,11 +136,7 @@ export function openingFailureMessage(cause: unknown): string {
 }
 
 /** Same Send geometry and stroke as Engine's lucide-react composer icon (ISC). */
-function SceneControlIcon({
-  name,
-}: {
-  name: "send" | "sending" | "chat" | "knock" | "fulfill" | "conclude" | "up" | "down" | "narrator";
-}) {
+function SceneControlIcon({ name }: { name: "send" | "sending" | "chat" | "conclude" | "up" | "down" | "narrator" }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -165,16 +161,6 @@ function SceneControlIcon({
         <path d="m6 15 6-6 6 6" />
       ) : name === "down" ? (
         <path d="m6 9 6 6 6-6" />
-      ) : name === "knock" ? (
-        <>
-          <path d="M10 3h10v18H10V3Z M4 10h4 M2 6l4 2 M2 16l4-2" />
-          <path d="M16 12h.01" />
-        </>
-      ) : name === "fulfill" ? (
-        <>
-          <path d="m9 12 2 2 4-4" />
-          <rect x="4" y="3" width="16" height="18" rx="2" />
-        </>
       ) : name === "conclude" ? (
         <>
           <path d="M9 21H5V3h4 M12 12h10 m-4-4 4 4-4 4" />
@@ -199,7 +185,11 @@ export function RoomPanel({
   picture,
   draft,
   mode,
-  targetId,
+  legacyDestination,
+  legacyRecovery,
+  onRetryLegacy,
+  onReplaceLegacy,
+  onReviewLegacy,
   busy,
   error,
   greetingNotice,
@@ -216,7 +206,6 @@ export function RoomPanel({
   sprites,
   onDraft,
   onMode,
-  onTarget,
   onSend,
   onAttentionChoice,
   sendOnEnter,
@@ -241,9 +230,6 @@ export function RoomPanel({
   onProjects,
   onProposals,
   sceneSettings,
-  contactDoors,
-  contactBoundary,
-  onContactBoundary,
   movementZones,
   onMovementTarget,
   currentZoneLabel,
@@ -257,7 +243,11 @@ export function RoomPanel({
   picture: string;
   draft: string;
   mode: SceneComposerMode;
-  targetId: string;
+  legacyDestination: string;
+  legacyRecovery: import("./useScenesState.js").LegacySceneRecovery | null;
+  onRetryLegacy: () => void;
+  onReplaceLegacy: () => void;
+  onReviewLegacy: () => void;
   busy: boolean;
   error: string;
   greetingNotice: string;
@@ -274,7 +264,6 @@ export function RoomPanel({
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
   onMode: (value: SceneComposerMode) => void;
-  onTarget: (value: string) => void;
   onSend: () => void;
   onAttentionChoice?: (zoneId: string) => void;
   sendOnEnter: boolean;
@@ -302,9 +291,6 @@ export function RoomPanel({
   onProjects?: () => void;
   onProposals?: () => void;
   sceneSettings: ReactNode;
-  contactDoors: { id: string; label: string }[];
-  contactBoundary: string;
-  onContactBoundary: (id: string) => void;
   movementZones: { id: string; label: string; closed?: boolean }[];
   onMovementTarget: (id: string) => void;
   currentZoneLabel: string;
@@ -727,12 +713,11 @@ export function RoomPanel({
   const submitComposer = () => {
     if (
       !canCompose ||
+      !!legacyRecovery ||
       (room.semanticVersion === 2 && !!changeStatus && changeStatus.pending + changeStatus.failed > 0) ||
       mode === "move" ||
       busy ||
-      (mode !== "conclude" && mode !== "contact" && !draft.trim()) ||
-      (mode === "fulfill" && !targetId) ||
-      (mode === "contact" && !contactDoors.some((door) => door.id === contactBoundary))
+      (mode !== "conclude" && !draft.trim())
     )
       return;
     setModeMenuOpen(false);
@@ -1552,86 +1537,44 @@ export function RoomPanel({
         {ruling && !isSceneTurnOutcomeMessage(ruling) ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
-        {canCompose && mode === "fulfill" && activeParticipants.length === 0 ? (
-          <p className={`${ELEMENT_TAG}-hint`}>Nobody is here whose wish you can fulfill.</p>
-        ) : null}
         {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>
-            {mode === "contact" ? (
-              <div className={`${ELEMENT_TAG}-contact-controls`}>
-                <select
-                  className={`${ELEMENT_TAG}-select`}
-                  aria-label="Contact Zone"
-                  value={contactBoundary}
-                  disabled={busy}
-                  onChange={(event) => onContactBoundary(event.target.value)}
-                >
-                  <option value="">Choose an adjacent Zone</option>
-                  {contactDoors.map((door) => (
-                    <option key={door.id} value={door.id}>
-                      {door.label}
-                    </option>
-                  ))}
-                </select>
+            {legacyRecovery ? (
+              <div role="status">
+                <p>
+                  Saved {legacyRecovery.operation.input?.mode === "contact" ? "Contact" : "Fulfill"} action ·{" "}
+                  {legacyDestination}
+                </p>
+                <p>{legacyRecovery.operation.input?.message || "Saved action"}</p>
+                <button type="button" disabled={busy} onClick={onRetryLegacy}>
+                  Retry original action
+                </button>
+                <button type="button" disabled={busy || !draft.trim()} onClick={onReplaceLegacy}>
+                  Replace with Say / Do
+                </button>
+                <button type="button" disabled={busy} onClick={onReviewLegacy}>
+                  Review latest saved action
+                </button>
               </div>
             ) : null}
-            {mode === "fulfill" && activeParticipants.length > 0 ? (
-              <select
-                value={targetId}
-                onChange={(event) => onTarget(event.target.value)}
-                aria-label="Whose wish you fulfilled"
-                disabled={busy || ended || room.status !== "active"}
-              >
-                <option value="">Choose one villager</option>
-                {activeParticipants.map((person) => (
-                  <option key={person.characterId} value={person.characterId}>
-                    {person.name}
-                  </option>
-                ))}
-              </select>
-            ) : null}
             <div className={`${ELEMENT_TAG}-composer-row`}>
-              {mode === "contact" ? (
-                <p className={`${ELEMENT_TAG}-scene-scope`} role="status" data-scene-scope>
-                  Contacting {contactDoors.find((door) => door.id === contactBoundary)?.label ?? "an adjacent Zone"}
-                </p>
-              ) : null}
               <span className={`${ELEMENT_TAG}-chat-input`}>
                 <span ref={modeAnchorRef} className={`${ELEMENT_TAG}-room-mode-anchor`}>
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-room-mode-toggle`}
                     onClick={() => setModeMenuOpen((value) => !value)}
-                    aria-label={`Mode: ${mode === "conclude" ? "Conclude" : mode === "move" ? "Move" : mode === "contact" ? "Contact" : "Say / Do"}. Choose mode`}
+                    disabled={!!legacyRecovery}
+                    aria-label={`Mode: ${mode === "conclude" ? "Conclude" : mode === "move" ? "Move" : "Say / Do"}. Choose mode`}
                     aria-haspopup="menu"
                     aria-expanded={modeMenuOpen}
-                    title={
-                      mode === "chat"
-                        ? "Say / Do"
-                        : mode === "move"
-                          ? "Move"
-                          : mode === "contact"
-                            ? "Contact"
-                            : mode === "fulfill"
-                              ? "Fulfill"
-                              : "Conclude"
-                    }
+                    title={mode === "conclude" ? "Conclude" : mode === "move" ? "Move" : "Say / Do"}
                   >
-                    <SceneControlIcon
-                      name={
-                        mode === "chat" || mode === "move"
-                          ? "chat"
-                          : mode === "contact"
-                            ? "knock"
-                            : mode === "fulfill"
-                              ? "fulfill"
-                              : "conclude"
-                      }
-                    />
+                    <SceneControlIcon name={mode === "conclude" ? "conclude" : "chat"} />
                   </button>
                   {modeMenuOpen ? (
                     <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Scene mode">
-                      {(["chat", "move", "contact", "conclude"] as const).map((option) => (
+                      {(["chat", "move", "conclude"] as const).map((option) => (
                         <button
                           key={option}
                           type="button"
@@ -1639,7 +1582,7 @@ export function RoomPanel({
                           aria-checked={mode === option}
                           disabled={
                             busy ||
-                            (option === "contact" && contactDoors.length === 0) ||
+                            !!legacyRecovery ||
                             (option === "move" &&
                               !movementZones.some((zone) => zone.id !== room.zoneId && !zone.closed))
                           }
@@ -1648,22 +1591,17 @@ export function RoomPanel({
                             setModeMenuOpen(false);
                           }}
                         >
-                          {option === "chat"
-                            ? "Say / Do"
-                            : option === "move"
-                              ? "Move"
-                              : option === "contact"
-                                ? "Contact"
-                                : "Conclude"}
+                          {option === "chat" ? "Say / Do" : option === "move" ? "Move" : "Conclude"}
                         </button>
                       ))}
                     </span>
                   ) : null}
                 </span>
-                {mode === "move" ? (
+                {mode === "move" && !legacyRecovery ? (
                   <select
                     className={`${ELEMENT_TAG}-select ${ELEMENT_TAG}-zone-navigation`}
                     aria-label="Move to Zone"
+                    disabled={busy || !!legacyRecovery}
                     value=""
                     onChange={(event) => onMovementTarget(event.target.value)}
                   >
@@ -1717,15 +1655,7 @@ export function RoomPanel({
                           submitComposer();
                         }
                       }}
-                      placeholder={
-                        mode === "contact"
-                          ? "Optional knock, call, or message…"
-                          : mode === "fulfill"
-                            ? "What did you do for them?"
-                            : mode === "conclude"
-                              ? "Final line (optional)…"
-                              : "Say or do something…"
-                      }
+                      placeholder={mode === "conclude" ? "Final line (optional)…" : "Say or do something…"}
                       aria-label={`Message at ${room.placeName}`}
                       disabled={(busy && !draftWhilePending) || ended || room.status !== "active"}
                     />
@@ -1735,15 +1665,14 @@ export function RoomPanel({
                       onClick={submitComposer}
                       disabled={
                         !canCompose ||
+                        !!legacyRecovery ||
                         (room.semanticVersion === 2 &&
                           !!changeStatus &&
                           changeStatus.pending + changeStatus.failed > 0) ||
                         busy ||
                         ended ||
                         room.status !== "active" ||
-                        (mode !== "conclude" && mode !== "contact" && draft.trim().length === 0) ||
-                        (mode === "fulfill" && !targetId) ||
-                        (mode === "contact" && !contactDoors.some((door) => door.id === contactBoundary))
+                        (mode !== "conclude" && draft.trim().length === 0)
                       }
                       aria-label={busy ? "Sending" : "Send"}
                       title={busy ? "Sending" : "Send"}

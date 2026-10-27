@@ -1,48 +1,48 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { projectDesignKey, approvalScope } from "../packages/villages/src/server/domain/rules/project-terms.js";
-import {
-  finishConstruction,
-  projectFor,
-} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
-import {
-  completeVillageResidence,
-  proposeVillageResidence,
-  decideVillageResidence,
-} from "../packages/villages/src/server/features/venues/residences.js";
 import assert from "node:assert/strict";
-import { proposePlayerMove } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
-import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
-import { removeVillager } from "../packages/villages/src/server/features/residents/resident-roster.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
-import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
-import { defaultVenueSpace, venueCapacity } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
-  chooseAgendaZone,
-  canOccupyZone,
-  synchronizeVenueZones,
-  legacyZoneId,
-} from "../packages/villages/src/server/domain/rules/venue-zones.js";
-import {
-  draftRenovationProject,
-  createRenovationProject as createRenovationProjectRaw,
-  createNewVenueProject as createNewVenueProjectRaw,
-  placeNewVenueProject as placeNewVenueProjectRaw,
-  saveProjectPlan,
-  startProjectConstruction,
-} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+  finishConstruction,
+  projectFor,
+} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
+import { approvalScope, projectDesignKey } from "../packages/villages/src/server/domain/rules/project-terms.js";
+import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import {
   assertResidencePrivateDestination,
   readBaseVenueLayout,
 } from "../packages/villages/src/server/domain/rules/venue-layout.js";
-import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { defaultVenueSpace, venueCapacity } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import {
+  canOccupyZone,
+  chooseAgendaZone,
+  legacyZoneId,
+  synchronizeVenueZones,
+} from "../packages/villages/src/server/domain/rules/venue-zones.js";
+import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import {
+  createNewVenueProject as createNewVenueProjectRaw,
+  createRenovationProject as createRenovationProjectRaw,
+  draftRenovationProject,
+  placeNewVenueProject as placeNewVenueProjectRaw,
+  saveProjectPlan,
+  startProjectConstruction,
+} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { removeVillager } from "../packages/villages/src/server/features/residents/resident-roster.js";
+import {
+  completeVillageResidence,
+  decideVillageResidence,
+  movePlayerToResidence,
+  proposeVillageResidence,
+} from "../packages/villages/src/server/features/venues/residences.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-preparation.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 
 function draft(layout: string, role = "residence", owner = "a") {
   return {
@@ -89,7 +89,7 @@ function place(layout: string, role = "residence", owner = "a"): VillageVenue {
   const zones = readBaseVenueLayout(source, [role as "residence"], owner, () => null);
   const parsed = { ...parsePlace(source, false), zones };
   initializeVenueAccess(parsed);
-  return coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, venues: [parsed] })
+  return coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, venues: [parsed] })
     .venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
@@ -98,7 +98,7 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     const expected =
       1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both");
     assert.equal(venue.zones!.length, expected, `${role} ${layout} creates only selected Zones`);
-    let saved = coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, venues: [venue] });
+    let saved = coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, venues: [venue] });
     for (let pass = 0; pass < 3; pass++) {
       const before = structuredClone(saved);
       saved = coerceVillageState(saved);
@@ -167,7 +167,7 @@ initial.venues[0]!.zones![1]!.state.condition = "Fixed hammock hooks remain anch
 initial.venues[0]!.zones![1]!.state.publicFacts = ["A personal secret"];
 initial.villagers = coerceVillageState({
   ...defaultVillageState(),
-  version: 5,
+  version: 6,
   wishSystemVersion: 3,
   villagers: [
     {
@@ -200,7 +200,7 @@ assertResidencePrivateDestination(state, vacant, "b", "personal");
 assert.throws(() => assertResidencePrivateDestination(state, privateOnly, "b", "personal"), /no longer vacant/);
 const legacy = structuredClone(privateOnly);
 delete legacy.layoutVersion;
-const preserved = coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, venues: [legacy] })
+const preserved = coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, venues: [legacy] })
   .venues[0]!;
 assert.equal(preserved.zones!.find((zone) => zone.id === "personal")!.description, privateOnly.zones![1]!.description);
 const records = new Map<string, any>();
@@ -495,18 +495,16 @@ async function main() {
     const changedLayout = structuredClone(expanded);
     changedLayout.zones!.push({ ...chamber, id: "another", ownerId: undefined });
     assert.notEqual(privatePreparationKey(expanded, chamber), privatePreparationKey(changedLayout, chamber));
-    // Player moves use the same physical assignment and survive the mail roundtrip.
-    await proposePlayerMove(privateOnly.id, "personal");
+    // An unoccupied Residence can be assigned directly.
+    await movePlayerToResidence(privateOnly.id, "personal");
     current = await readVillageState({ memories: true });
     assert.equal(current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.ownerId, "player");
     assert.equal(
       current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.state.condition,
       "Fixed hammock hooks remain anchored to the beams.",
     );
-    await proposePlayerMove(outside.id, chamber.id);
+    await assert.rejects(movePlayerToResidence(outside.id, chamber.id), /shared Residence/);
     current = await readVillageState({ memories: true });
-    assert.equal(current.venueMail.at(-1)!.proposedPrivateZoneId, chamber.id);
-    assert.equal(current.venueMail.at(-1)!.status, "awaiting-villagers");
     assert.equal(
       current.venues.find((venue) => venue.id === outside.id)!.zones!.find((zone) => zone.id === chamber.id)!.ownerId,
       undefined,

@@ -1,24 +1,23 @@
-import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
-import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import assert from "node:assert/strict";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import type { SocialOutboxEntry } from "../packages/villages/src/server/domain/models/social-outbox-model.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
 } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { readEncounter } from "../packages/villages/src/server/domain/rules/social-encounter.js";
-import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
-import { createRelationshipSocial } from "../packages/villages/src/server/features/residents/relationship-social-service.js";
-import { respondSocialInvitation } from "../packages/villages/src/server/domain/rules/social-mail.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { WorkFailureError, metadataFailure } from "../packages/villages/src/server/domain/rules/work-failure.js";
+import { createRelationshipSocial } from "../packages/villages/src/server/features/residents/relationship-social-service.js";
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
-import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import type { SocialOutboxEntry } from "../packages/villages/src/server/domain/models/social-outbox-model.js";
 const village = coerceVillageState({
   ...defaultVillageState(),
   seed: "events",
@@ -84,6 +83,7 @@ const entry: SocialOutboxEntry = {
         { speakerId: "a", text: "I would like to spend more time together." },
         { speakerId: "b", text: "Let's talk again." },
       ],
+      wishChanges: [],
       relationshipReview: {
         ...emptyRelationshipReview(),
         changes: [
@@ -190,21 +190,16 @@ assert.equal(village.socialOutbox[0]!.reinterpretRequired, true);
 assert.equal(Object.values(social.edges)[0]!.revision, 1);
 assert.equal(await service.processSocialOutbox(await snapshot()), false);
 
-// A maximum-size valid invitation remains cancellable without shortening its terms.
-social.mailDeliveries.message = { messageId: "message", sourceHash: "written-source", at };
-social.invitations.invite = {
+// A maximum-size existing commitment remains cancellable without shortening its terms.
+social.sharedRecords.invite = {
   id: "invite",
-  threadId: "personal:a",
-  messageId: "message",
-  proposerId: "a",
-  participantIds: ["a", "player"],
   revision: 1,
-  terms: { title: "T".repeat(120), detail: "D".repeat(400), venueId: "cafe", zoneId: zone.id },
-  status: "proposed",
+  kind: "commitment",
+  text: "D".repeat(400),
+  participants: ["a", "player"],
+  status: "accepted",
+  evidenceIds: ["message"],
 };
-respondSocialInvitation(social, "invite", 1, true, at);
-assert.equal(social.sharedRecords.invite!.text.length, 400);
-assert.equal(social.invitations.invite.response!.terms.title.length, 120);
 const cancel = { ...social.sharedRecords.invite!, expectedRevision: 1, status: "cancelled" };
 const review = parseRelationshipReview(
   {
@@ -261,7 +256,7 @@ const writer = createResidentPlanning({
             housingRequests: [],
             social: { mail: { senderId: "a", text: "Hello.", invitation: { title: "Forged invitation" } } },
           }
-        : { relationshipReview: emptyRelationshipReview(), memoryChanges: [] },
+        : { wishChanges: [], relationshipReview: emptyRelationshipReview(), memoryChanges: [] },
     ),
   }),
 } as any);

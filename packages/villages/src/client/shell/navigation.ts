@@ -1,21 +1,23 @@
 import type { MenuPage } from "../shared/types.js";
 
 export function menuCategory(page: MenuPage): "index" | "general" | "village" | "debug" {
-  if (page === "index" || page === "general") return page;
-  if (["chatlogs", "progress"].includes(page)) return "debug";
+  if (page === "index" || page === "general" || page === "advanced") return page === "index" ? "index" : "general";
+  if (page === "progress") return "debug";
   return "village";
 }
 
 export const MENU_PAGE_TITLES: Record<MenuPage, string> = {
-  index: "Menu",
+  index: "General Preferences",
+  repair: "REPAIR",
   villagers: "Villagers",
-  noticeboard: "Noticeboard",
   venueRequests: "Venue Requests",
   projects: "Projects",
-  village: "Village Settings",
-  general: "General Settings",
-  chatlogs: "Scenes",
-  progress: "Progress",
+  village: "World Configuration",
+  visual: "Visual Configuration",
+  general: "General Preferences",
+  advanced: "Advanced",
+  chatlogs: "Scene History",
+  progress: "Debug",
 };
 
 /** An unfinished Scene owns navigation, including opening/closing and failed entry. */

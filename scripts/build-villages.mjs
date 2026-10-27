@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "./esbuild.mjs";
 import { villagesDefinition as feature } from "../packages/villages/package-definition.mjs";
+import { letterFontSources } from "../packages/villages/letter-font-assets.mjs";
 import { assertPackagePrivateImportBoundary } from "./package-engine-boundary.mjs";
 import { createDeterministicZip } from "./deterministic-zip.mjs";
 import { withPackageActivationGuidance } from "./catalog-package-guidance.mjs";
@@ -96,7 +97,17 @@ try {
         path.split("/").some((part) => !part || part === "." || part === "..")
       )
         throw new Error(`Unsafe package path: ${path}`);
-      return { name: path, data: await readFile(join(packageRoot, path)) };
+      const sources = letterFontSources[path];
+      if (!sources) return { name: path, data: await readFile(join(packageRoot, path)) };
+      const faces = await Promise.all(
+        sources.map(async (source) => [
+          source.split("/").at(-1),
+          (await readFile(join(packageRoot, source))).toString("base64"),
+        ]),
+      );
+      const data = Buffer.from(JSON.stringify(Object.fromEntries(faces)));
+      await writeFile(join(packageRoot, path), data);
+      return { name: path, data };
     }),
   );
   const manifest = {
@@ -131,6 +142,7 @@ try {
       "package-lock.json",
       "tsconfig.json",
       "packages/villages/package-definition.mjs",
+      "packages/villages/letter-font-assets.mjs",
       "packages/villages/engine-boundary.json",
       "scripts/build-villages.mjs",
       "scripts/esbuild.mjs",
@@ -138,7 +150,9 @@ try {
       "scripts/package-engine-boundary.mjs",
       "scripts/catalog-package-guidance.mjs",
       "scripts/package-locales.mjs",
-      ...(feature.assetPaths ?? []).map((p) => `packages/villages/${p}`),
+      ...(feature.assetPaths ?? []).flatMap((p) =>
+        (letterFontSources[p] ?? [p]).map((source) => `packages/villages/${source}`),
+      ),
     ]),
   ]
     .filter((p) => !p.includes("node_modules/") && !p.startsWith("<") && !p.endsWith("villages-server-entry.mjs"))

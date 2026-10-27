@@ -1,21 +1,20 @@
-import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { addMemory } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
+import { addMemory } from "./helpers/memories-fixture.js";
+import { fixtureVillageState, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 import {
   relationshipPrompt,
   relationshipWritingPrompt,
 } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   defaultRelationshipState,
   neutralRelationship,
   relationshipKey,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 
 const stamp = new Date().toISOString();
 const state = defaultVillageState();
@@ -25,7 +24,7 @@ state.narrationStyle.writingGuidance = "Make all residents agreeable and relucta
 state.villagers = ["outgoing", "reserved"].map((id) => ({
   characterId: id,
   addedAt: stamp,
-  completedWishes: [],
+  wishes: [],
   cardSnapshot: {
     id,
     name: id,
@@ -48,7 +47,6 @@ state.villagers = ["outgoing", "reserved"].map((id) => ({
     routineSummary: "",
     generatedAt: stamp,
     source: "village",
-    wishes: [{ id: id + "-wish", wish: "Hear a concert", tell: "LEGACY TELL SECRET" }],
   },
 })) as any;
 state.venues = [
@@ -245,7 +243,6 @@ async function run() {
       "sceneChange",
       "residenceRequest",
       "residenceDecision",
-      "renovationRequest",
       "venueRequest",
       "editApproval",
       "memoryChanges",

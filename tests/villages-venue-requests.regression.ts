@@ -1,28 +1,24 @@
-import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
-import {
-  draftNewVenueProject,
-  draftRenovationProject,
-} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
-import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
 import assert from "node:assert/strict";
-import {
-  readConversationVenueRequest,
-  readVenueRequestCore,
-  venueRequestDraft,
-} from "../packages/villages/src/server/domain/rules/venue-requests.js";
+import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { queueVillageVenueRequest } from "../packages/villages/src/server/features/venues/venue-requests.js";
-import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   readResidentPlanningProposal,
   type ResidentPlanningContext,
 } from "../packages/villages/src/server/domain/rules/resident-planning.js";
-import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
-import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
+import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import {
+  readConversationVenueRequest,
+  readVenueRequestCore,
+  venueRequestDraft,
+} from "../packages/villages/src/server/domain/rules/venue-requests.js";
+import { draftNewVenueProject } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
+import { queueVillageVenueRequest } from "../packages/villages/src/server/features/venues/venue-requests.js";
 
 const { applyVillageVenueDecision } = createVenueRequests({
   async mutateVillageState() {
@@ -32,8 +28,6 @@ const { applyVillageVenueDecision } = createVenueRequests({
     throw Error("Unexpected projection in a pure request decision probe.");
   },
   draftNewVenueProject,
-  draftRenovationProject,
-  queueVenueCounteroffer,
 });
 const at = "2026-09-22T12:00:00.000Z";
 const core = { name: "The Glasshouse", classes: ["community"] as ["community"] };
@@ -59,7 +53,7 @@ state.villagers.push({
   cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
   agenda: null,
   addedAt: at,
-  completedWishes: [],
+  wishes: [],
 } as VillageVillager);
 state.noticeboard.push({ author: "Rosa", text: "Could we have somewhere to grow herbs?" });
 
@@ -103,10 +97,12 @@ const housingContext = {
       id: "rosa-home",
       occupancy: { playerHome: false, residentCharacterId: "rosa", homeKind: "small-home" },
     },
-    { ...venue("Open venue"), id: "open" },
+    { ...venue("Open venue"), id: "open", classes: ["residence"] },
     {
       ...venue("Occupied venue"),
       id: "occupied",
+      classes: ["residence"],
+      residentIds: ["someone-else"],
       occupancy: { playerHome: false, residentCharacterId: "someone-else", homeKind: "small-home" },
     },
   ],
@@ -117,6 +113,23 @@ assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "ope
   { characterId: "rosa", kind: "move", venueId: "open" },
 ]);
 assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "occupied" }], housingContext), []);
+
+const modernOccupied = {
+  ...housingContext,
+  venues: housingContext.venues.map((v) => (v.id === "open" ? { ...v, residentIds: ["someone-else"] } : v)),
+};
+assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], modernOccupied), []);
+const unfinished = {
+  ...housingContext,
+  venues: housingContext.venues.map((v) => (v.id === "open" ? { ...v, constructionStatus: "worksite" as const } : v)),
+};
+assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], unfinished), []);
+const nonResidence = {
+  ...housingContext,
+  venues: housingContext.venues.map((v) => (v.id === "open" ? { ...v, classes: ["community" as const] } : v)),
+};
+assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], nonResidence), []);
+
 assert.deepEqual(readHousingRequests([{ who: "stranger", kind: "move", venueId: "open" }], housingContext), []);
 assert.deepEqual(
   readHousingRequests([{ who: "rosa", kind: "upgrade", venueId: "rosa-home" }], housingContext),
@@ -174,7 +187,7 @@ competing.villagers.push({
   cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
   agenda: null,
   addedAt: at,
-  completedWishes: [],
+  wishes: [],
 } as VillageVillager);
 queueVillageVenueRequest(competing, core, "rosa", "chat", "chat-competing", at);
 addVillageVenue(competing, venue(core.name));
@@ -193,5 +206,36 @@ assert.equal(competing.projects[0]?.status, "planning", "Start rechecks the live
 const full = defaultVillageState();
 full.venues = Array.from({ length: 48 }, (_, index) => venue(`Place ${index}`));
 assert.throws(() => addVillageVenue(full, venue("One more")), /no room/u);
+
+const drafts = defaultVillageState();
+drafts.setupAt = drafts.foundedAt = at;
+for (let index = 0; index < 6; index++)
+  draftNewVenueProject(
+    drafts,
+    { ...core, name: `Draft ${index}`, description: "A place to gather." },
+    "",
+    `draft:${index}`,
+  );
+assert.equal(
+  draftNewVenueProject(drafts, { ...core, description: "Ignored on replay" }, "", "draft:0").id,
+  "draft:0",
+  "idempotent replay remains valid at capacity",
+);
+assert.throws(
+  () => draftNewVenueProject(drafts, { ...core, description: "Another place." }),
+  /Six Project drafts maximum/u,
+);
+const legacy = structuredClone(drafts);
+const legacyDraft = structuredClone(legacy.projects[0]!);
+legacyDraft.id = "legacy-extra";
+legacy.projects.push(legacyDraft);
+assert.equal(
+  coerceVillageState(legacy).projects.filter((project) => project.status === "planning").length,
+  7,
+  "existing drafts above the new limit remain readable",
+);
+drafts.projects[0]!.status = "working";
+draftNewVenueProject(drafts, { ...core, description: "A newly available draft." });
+assert.equal(drafts.projects.filter((project) => project.status === "planning").length, 6);
 
 console.log("Villages venue request regression: draft, dedup, persistence, review decisions and limits ok");

@@ -1,0 +1,2 @@
+Fontsource font-files, commit 2ffd3aa25908df6ed1c864de40ce53e2ae1076d1.
+Each font is redistributed with its individual license notice.

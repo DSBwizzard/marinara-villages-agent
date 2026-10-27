@@ -1,5 +1,4 @@
-import { sceneNavigationScreen } from "./navigation.js";
-import { useSettingsDraftSession } from "../features/settings/draft-session.js";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { TownMapView, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
 import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
@@ -71,32 +70,25 @@ import {
   createFoundingWithSetupImage,
   useFoundingGenerateSetupTownMap,
 } from "../features/founding/image-controller.js";
-import { useFoundingState } from "../features/founding/useFoundingState.js";
 import {
   createFoundingGotoSetupStep,
   createFoundingSuggestSetupVenues,
   useFoundingStartOver,
 } from "../features/founding/setup-controller.js";
+import { useFoundingState } from "../features/founding/useFoundingState.js";
 import { useProjectsController } from "../features/projects/useProjectsController.js";
 import { useProjectsState } from "../features/projects/useProjectsState.js";
+import { useRepairController } from "../features/repair/useRepairController.js";
 import {
-  useAddVillager,
   useApplyVillagerRefresh,
-  useCorrectCompletedWish,
   useForgetMemory,
   useLoadAgendas,
   useLoadMemoryLibrary,
   usePreviewVillagerRefresh,
-  useRemoveVillager,
   useRewriteAgenda,
   useSetAgendaScheduleIngestion,
 } from "../features/residents/actions.js";
-import {
-  calculateNeedle,
-  calculatePersonaPortraitId,
-  calculatePortraitWanted,
-  calculateVisibleCatalog,
-} from "../features/residents/calculations.js";
+import { calculatePersonaPortraitId, calculatePortraitWanted } from "../features/residents/calculations.js";
 import {
   useResidentAgendaPolling,
   useResidentInspection,
@@ -106,7 +98,6 @@ import {
 import { useResidentsState } from "../features/residents/useResidentsState.js";
 import {
   usePersonaPortrait,
-  useResidentPickerLoad,
   useResidentPortraits,
   useResidentsLoadCatalog,
 } from "../features/residents/workflow-controller.js";
@@ -138,19 +129,18 @@ import { useSceneRecord } from "../features/scenes/useSceneRecord.js";
 import { useScenesState } from "../features/scenes/useScenesState.js";
 import { useSceneViewport } from "../features/scenes/villages-scene-viewport.js";
 import {
-  useAddNotice,
-  useInsertMacro,
-  useRemoveNotice,
+  useSaveBackgroundPace,
   useSaveCharacterSpeechColors,
   useSaveScenerySettings,
   useSaveSendOnEnter,
   useSaveSettings,
   useSaveSpriteCardFlip,
-  useSaveBackgroundPace,
   useSaveVisitRetention,
 } from "../features/settings/actions.js";
+import { useAgentConnections } from "../features/settings/AgentConnections.js";
+import { useSettingsDraftSession } from "../features/settings/draft-session.js";
 import { useSettingsState } from "../features/settings/useSettingsState.js";
-import { useKnowledgeCaret } from "../features/settings/workflow-controller.js";
+import { useVillageWriting } from "../features/settings/WritingSettings.js";
 import {
   useDecideVenueRequest,
   useLeaveVenue,
@@ -159,10 +149,12 @@ import {
   useSaveVenue,
 } from "../features/venues/actions.js";
 import { useVenueRequestFocus } from "../features/venues/controller-hooks.js";
-import { useVenueScreenCommands } from "../features/venues/screen-commands.js";
 import { useVenueRequestCommands } from "../features/venues/request-commands.js";
+import { useVenueScreenCommands } from "../features/venues/screen-commands.js";
 import { useVenuesState } from "../features/venues/useVenuesState.js";
 import { useVenueZoneSelection } from "../features/venues/zone-selection.js";
+import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
+import { request } from "../shared/api.js";
 import {
   useInitialVillageLoad,
   useLoadLorebooks,
@@ -173,12 +165,10 @@ import {
   useVillagePresence,
   useVillageSnapshot,
 } from "../shared/data-controller.js";
-import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
 import type { MapFrameShape, MapPin, MenuPage } from "../shared/types.js";
 import { useScenesOpenMenu } from "./navigation-actions.js";
 import { useNavigationGoHome, useNavigationOpenPerson } from "./navigation-controller.js";
-import { menuCategory } from "./navigation.js";
-import { useLayoutEffect, useRef, useState } from "react";
+import { menuCategory, sceneNavigationScreen } from "./navigation.js";
 
 export function useVillageController({ element }: { element: HTMLElement }) {
   const visible = useCapabilityVisibility(element);
@@ -196,6 +186,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   }, [element]);
 
   const { snapshot, setSnapshot, beginSnapshotRead } = useVillageSnapshot();
+  const writing = useVillageWriting(snapshot?.isFounded === true);
   const [error, setError] = useState("");
 
   const homeBuildings = snapshot?.settings.homeBuildings ?? [];
@@ -219,8 +210,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setPersonProfile,
     profileInspection,
     setProfileInspection,
-    rosterSearch,
-    setRosterSearch,
     profileOrigin,
     spriteManagerId,
     setSpriteManagerId,
@@ -269,9 +258,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomDraft,
     roomMode,
     setRoomMode,
+    legacyRecovery,
+    setLegacyRecovery,
     roomContactBoundary,
     setRoomContactBoundary,
-    roomContactKind,
     setRoomContactKind,
     roomTargetId,
     setRoomTargetId,
@@ -347,12 +337,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     if (requestedScreen !== screen) setScreen(screen);
   }, [requestedScreen, screen]);
 
-  useLayoutEffect(() => {
-    element.dataset.housingView = ["home", "venue", "person"].includes(screen) ? "current" : "none";
-    return () => {
-      delete element.dataset.housingView;
-    };
-  }, [element, screen]);
   useSceneViewport(element, screen === "room");
   const projectsController = useProjectsController({
     snapshot,
@@ -442,6 +426,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useRemovedVenueNavigation({ closeExploration, openPlaceId, snapshot });
 
   const [menuPage, setMenuPage] = useState<MenuPage>("index");
+  const advancedOpen = screen === "menu" && menuPage === "advanced";
+  const connections = useAgentConnections(snapshot?.isFounded === true || advancedOpen, advancedOpen);
 
   useVenueRequestFocus({ element, focusedRequestId, menuPage, screen });
 
@@ -460,7 +446,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const {
     resetArmed,
     setResetArmed,
-    pendingCaretRef,
     requestEdits,
     setRequestEdits,
     knowledgeDraft,
@@ -473,12 +458,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setLorebookDraft,
     loreTokenBudgetDraft,
     setLoreTokenBudgetDraft,
-    noticeDraft,
-    setNoticeDraft,
     settingsError,
     setSettingsError,
-    knowledgeRef,
   } = useSettingsState();
+
+  useLayoutEffect(() => {
+    if (screen !== "menu" || menuPage !== "advanced") setResetArmed(false);
+  }, [screen, menuPage, setResetArmed]);
 
   const {
     savedSetupDraft,
@@ -928,8 +914,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomNotices,
   });
 
-  useKnowledgeCaret({ knowledgeDraft, knowledgeRef, pendingCaretRef });
-
   const currentSnapshotRef = useRef(snapshot);
 
   useSnapshotReference({ currentSnapshotRef, snapshot });
@@ -985,14 +969,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const retryWork = useResidentsRetryWork({ loadAgendas, setSnapshot });
 
-  const backgroundPanel = (
-    <BackgroundWorkPanel
-      jobs={(snapshot?.backgroundWork ?? []).filter((job) =>
-        menuPage === "venueRequests" ? ["mail", "adaptation"].includes(job.kind) : true,
-      )}
-      onRetry={retryWork}
-    />
-  );
+  const backgroundPanel = <BackgroundWorkPanel jobs={snapshot?.backgroundWork ?? []} onRetry={retryWork} />;
 
   const rewriteAgenda = useRewriteAgenda({
     currentSnapshotRef,
@@ -1001,8 +978,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setBusy,
     setError,
   });
-
-  const correctCompletedWish = useCorrectCompletedWish({ setAgendas, setBusy, setError });
 
   const setAgendaScheduleIngestion = useSetAgendaScheduleIngestion({ setAgendas, setBusy, setError });
 
@@ -1035,6 +1010,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     composerEditVersionRef,
     restoredSceneDraftRef,
     room,
+    setLegacyRecovery,
     roomMoveOperationIdRef,
     setRoomContactBoundary,
     setRoomContactKind,
@@ -1083,15 +1059,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setOpenArchivedVisit,
   });
 
-  useResidentPickerLoad({ loadCatalog, pickerOpen });
-
   // Kept as its own effect, keyed on the stamp: the picture is fetched once and
   // re-fetched only when the server says the map changed, so the homepage never
   // holds a stale copy and the snapshot never carries a megabyte of base64.
-
-  const addVillager = useAddVillager({ loadCatalog, setBusy, setError, setSnapshot });
-
-  const removeVillager = useRemoveVillager({ catalog, loadCatalog, setBusy, setError, setSnapshot });
 
   const previewVillagerRefresh = usePreviewVillagerRefresh({ setError, setRefreshBusyId, setRefreshPreviews });
 
@@ -1117,10 +1087,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
   const { progressDebug, loadProgressDebug } = useProgressDiagnostics({ setError });
   const openMenu = useScenesOpenMenu({
-    loadCatalog,
     loadLorebooks,
-    loadPersonas,
     loadProgressDebug,
+    debugDiscardEnabled,
     menuPage,
     screen,
     setFocusedRequestId,
@@ -1173,6 +1142,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
+    legacyRecovery,
     roomBusy,
     roomCompletionRef,
     roomDraft,
@@ -1224,6 +1194,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     isFounded: snapshot?.isFounded,
     loadSnapshot,
     room,
+    legacyRecovery,
     roomBusy,
     roomCompletionRef,
     roomEnded,
@@ -1244,21 +1215,19 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
+    legacyRecovery,
+    setLegacyRecovery,
     roomBusy,
     roomCompletionRef,
-    roomContactBoundary,
-    roomContactKind,
     roomDraft,
     roomEnded,
     roomMode,
     roomSendInFlightRef,
     roomSubmissionIdRef,
-    roomTargetId,
     seenRoomEventIdsRef,
     setLastSceneEnding,
     setRoom,
     setRoomBusy,
-    setRoomContactKind,
     setRoomDraft,
     setRoomEnded,
     setRoomError,
@@ -1267,7 +1236,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomNotices,
     setRoomOpen,
     setRoomRuling,
-    setRoomTargetId,
     setScreen,
     snapshot,
   });
@@ -1336,6 +1304,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
+    setLegacyRecovery,
     roomBusy,
     roomCompletionRef,
     roomDraft,
@@ -1352,6 +1321,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomGreetingError,
     setRoomRuling,
     setRoomMode,
     setRoomMoveZoneId,
@@ -1451,6 +1421,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     knowledgeDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
+    visualLoreDefault,
     personaDraft,
     setBusy,
     setSettingsError,
@@ -1463,7 +1434,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     sceneryStyle,
     sceneryStyleProfileId,
     personalizeHomes,
-    visualLoreDefault,
     snapshot,
     setBusy,
     setSettingsError,
@@ -1940,23 +1910,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   /**
-   * Drop a macro in at the caret of the prompt box, then put the caret back
-   * where it was.
-   *
-   * It used to choose between two boxes on the strength of which one was last
-   * focused. There is one box left, and the choice went with the box.
-   */
-  const insertMacro = useInsertMacro({ knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft });
-
-  const addNotice = useAddNotice({ noticeDraft, setBusy, setNoticeDraft, setSettingsError, setSnapshot, snapshot });
-
-  const removeNotice = useRemoveNotice({ setBusy, setSettingsError, setSnapshot, snapshot });
-
-  const needle = calculateNeedle({ search });
-
-  const visibleCatalog = calculateVisibleCatalog({ catalog, needle });
-
-  /**
    * Everybody the tab can currently draw a face for, as one string.
    *
    * A string rather than the list, because the list is rebuilt on every render —
@@ -1970,7 +1923,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * pictures for a list nobody is looking at is the one kind of work this could
    * do that the player would never see the result of.
    */
-  const portraitWanted = calculatePortraitWanted({ catalog, pickerOpen, screen, setupStep, snapshot, visibleCatalog });
+  const portraitWanted = calculatePortraitWanted({ catalog, screen, setupStep, snapshot });
 
   /**
    * The faces behind everybody the tab can draw.
@@ -2061,7 +2014,36 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupVenues,
     setupZoneDrafts,
   });
+  const repairController = useRepairController(screen === "menu" && menuPage === "repair", async (kind) => {
+    setMemoryLibrary(null);
+    setAgendas([]);
+    await loadSnapshot();
+    if (kind === "restore") {
+      const { session } = await request<{ session: import("../../shared/contracts/village.js").SceneView | null }>(
+        "/rooms/active",
+      );
+      if (session) {
+        const kept =
+          room?.id !== session.id && roomDraft ? { title: room?.placeName ?? "Previous Scene", text: roomDraft } : null;
+        if (room?.id !== session.id) setRoomDraft("");
+        roomCompletionRef.current = null;
+        observedRoomIdRef.current = "";
+        setRoom(session);
+        setRoomEnded(false);
+        setRoomOpen(true);
+        setRoomMode("chat");
+        return kept;
+      }
+    } else if (roomOpen && room) {
+      const { session } = await request<{ session: import("../../shared/contracts/village.js").SceneView | null }>(
+        "/rooms/active",
+      );
+      if (session?.id === room.id) setRoom(session);
+    }
+    return null;
+  });
   return {
+    repairController,
     selectedMap,
     setSelectedMapId,
     showAllMaps,
@@ -2073,9 +2055,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     ...venueScreenCommands,
     element,
     visible,
-    addNotice,
     addVenue,
-    addVillager,
     agendas,
     applyVillagerRefresh,
     archiveError,
@@ -2084,6 +2064,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     archiveVenueId,
     archiveVillagerId,
     backgroundPanel,
+    writing,
     busy,
     catalog,
 
@@ -2092,7 +2073,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     composerEditVersionRef,
     connectionSetupProblem,
     continueRoomWithoutGreeting,
-    correctCompletedWish,
     debugDiscardEnabled,
     decideVenueRequest,
     generateRequestDescription,
@@ -2123,10 +2103,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     gotoSetupStep,
     greetRoom,
     homeBuildings,
-    insertMacro,
     keepPlaceImage,
     knowledgeDraft,
-    knowledgeRef,
     lastSceneEnding,
     leaveRoom,
     leaveVenue,
@@ -2141,6 +2119,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     memoryLibrary,
     menuPage,
     menuSection,
+    connections,
     mobile,
     movePrivateZoneId,
     moveRoom,
@@ -2149,7 +2128,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     nameOfCharacter,
     navigationView,
     newSetupDraft,
-    noticeDraft,
     openArchivedVisit,
     openMenu,
     openPerson,
@@ -2180,9 +2158,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     progressDebug,
     refreshBusyId,
     refreshPreviews,
-    removeNotice,
     removeVenue,
-    removeVillager,
     requestEdits,
     resetArmed,
     restoreSetupDraft,
@@ -2202,6 +2178,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomGreetingNotice,
     roomLeaveSubmissionIdRef,
     roomMode,
+    legacyRecovery,
+    setLegacyRecovery,
     roomMoveOperationIdRef,
     roomMoveZoneId,
     roomNotices,
@@ -2212,7 +2190,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomSubmissionIdRef,
     roomTargetId,
     roomUnresolvedChanges,
-    rosterSearch,
     saveCharacterSpeechColors,
     saveScenerySettings,
     saveSendOnEnter,
@@ -2257,7 +2234,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setMoveTargetId,
     setMovingSetupVenueId,
     setNavigationView,
-    setNoticeDraft,
     setOpenArchivedVisit,
     setOpenPlaceId,
     setPersonProfile,
@@ -2280,7 +2256,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomMode,
     setRoomMoveZoneId,
     setRoomTargetId,
-    setRosterSearch,
     setSceneryStyle,
     setSceneryStyleProfileId,
     setScreen,
@@ -2412,7 +2387,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venueVisits,
     venueZoneKey,
     venuesDraft,
-    visibleCatalog,
     visualLoreDefault,
   };
 }

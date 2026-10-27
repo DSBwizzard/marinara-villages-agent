@@ -16,6 +16,14 @@
     },
     {
       "method": "get",
+      "path": "/villagers/:characterId/wishes/inspect"
+    },
+    {
+      "method": "patch",
+      "path": "/villagers/:characterId/wishes/:wishId/follow"
+    },
+    {
+      "method": "get",
       "path": "/mailbox"
     },
     {
@@ -32,15 +40,7 @@
     },
     {
       "method": "post",
-      "path": "/mailbox/threads/:threadId/messages/:messageId/cancel"
-    },
-    {
-      "method": "post",
       "path": "/mailbox/threads/:threadId/messages/:messageId/retry"
-    },
-    {
-      "method": "post",
-      "path": "/mailbox/invitations/:id/response"
     },
     {
       "method": "post",
@@ -53,10 +53,6 @@
     {
       "method": "get",
       "path": "/relationships"
-    },
-    {
-      "method": "post",
-      "path": "/villagers/:characterId/wishes/:wishId/retire"
     },
     {
       "method": "get",
@@ -477,10 +473,6 @@
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/request-approval"
-    },
-    {
-      "method": "post",
       "path": "/projects/:projectId/builder"
     },
     {
@@ -561,10 +553,6 @@
     },
     {
       "method": "post",
-      "path": "/venue-mail/:mailId/decision"
-    },
-    {
-      "method": "post",
       "path": "/residences/approvals"
     },
     {
@@ -588,28 +576,8 @@
       "path": "/clock/advance"
     },
     {
-      "method": "get",
-      "path": "/development"
-    },
-    {
-      "method": "patch",
-      "path": "/development"
-    },
-    {
-      "method": "post",
-      "path": "/development/review"
-    },
-    {
       "method": "post",
       "path": "/clock/recover"
-    },
-    {
-      "method": "post",
-      "path": "/noticeboard"
-    },
-    {
-      "method": "delete",
-      "path": "/noticeboard/:index"
     },
     {
       "method": "post",
@@ -649,10 +617,6 @@
     },
     {
       "method": "get",
-      "path": "/agendas/:characterId/history"
-    },
-    {
-      "method": "get",
       "path": "/agendas"
     },
     {
@@ -660,12 +624,40 @@
       "path": "/agendas/:characterId/regenerate"
     },
     {
-      "method": "post",
-      "path": "/agendas/:characterId/completed/:wishId/correct"
-    },
-    {
       "method": "patch",
       "path": "/agendas/:characterId/influence"
+    },
+    {
+      "method": "get",
+      "path": "/repair"
+    },
+    {
+      "method": "get",
+      "path": "/repair/records"
+    },
+    {
+      "method": "get",
+      "path": "/repair/record"
+    },
+    {
+      "method": "post",
+      "path": "/repair/review"
+    },
+    {
+      "method": "post",
+      "path": "/repair/apply"
+    },
+    {
+      "method": "post",
+      "path": "/repair/undo"
+    },
+    {
+      "method": "post",
+      "path": "/repair/checkpoints"
+    },
+    {
+      "method": "post",
+      "path": "/repair/restore"
     }
   ],
   "freshStartChanges": [

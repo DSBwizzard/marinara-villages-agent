@@ -1,51 +1,49 @@
-import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
-import { publishRelationshipDisclosures } from "../packages/villages/src/server/domain/rules/relationship-memories.js";
 import assert from "node:assert/strict";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  defaultRelationshipState,
-  neutralRelationship,
-  relationshipKey,
-  relationshipFor,
-  applyRelationshipReview,
-  reconcileRelationships,
-  coerceRelationshipState,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import {
-  emptyRelationshipReview,
-  parseRelationshipReview,
-} from "../packages/villages/src/server/domain/rules/relationship-review.js";
-import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
-import {
-  relationshipWritingPrompt,
-  relationshipChangeNotices,
-} from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
-import {
-  captureSceneContinuity,
-  sceneContinuityView,
-} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import {
-  reserveEventAttempt,
-  eventAttemptAvailable,
-} from "../packages/villages/src/server/domain/rules/event-attempts.js";
-import {
-  queuePersonalMessage,
-  cancelPersonalMessage,
-  beginMailDelivery,
-  completeMailDelivery,
-  readPersonalThread,
-  respondSocialInvitation,
-} from "../packages/villages/src/server/domain/rules/social-mail.js";
-import { createRelationships } from "../packages/villages/src/server/features/residents/relationship-service.js";
-import { startVillagesApplication } from "../packages/villages/src/server/entry/application.js";
 import type {
   RelationshipEvidenceLine,
   RelationshipUpdate,
   SocialRecord,
 } from "../packages/villages/src/server/domain/models/relationship-types.js";
+import {
+  eventAttemptAvailable,
+  reserveEventAttempt,
+} from "../packages/villages/src/server/domain/rules/event-attempts.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
+import { publishRelationshipDisclosures } from "../packages/villages/src/server/domain/rules/relationship-memories.js";
+import {
+  relationshipChangeNotices,
+  relationshipWritingPrompt,
+} from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
+import {
+  emptyRelationshipReview,
+  parseRelationshipReview,
+} from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import {
+  applyRelationshipReview,
+  coerceRelationshipState,
+  defaultRelationshipState,
+  neutralRelationship,
+  reconcileRelationships,
+  relationshipFor,
+  relationshipKey,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
+  captureSceneContinuity,
+  sceneContinuityView,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import {
+  beginMailDelivery,
+  completeMailDelivery,
+  queuePersonalMessage,
+  readPersonalThread,
+} from "../packages/villages/src/server/domain/rules/social-mail.js";
+import { startVillagesApplication } from "../packages/villages/src/server/entry/application.js";
+import { createRelationships } from "../packages/villages/src/server/features/residents/relationship-service.js";
 
 const village = defaultVillageState();
 village.seed = "social-v2";
@@ -53,7 +51,7 @@ village.foundedAt = "2026-10-22T10:00:00.000Z";
 village.villagers = ["ada", "ben", "cy"].map((id) => ({
   characterId: id,
   cardSnapshot: { name: id },
-  completedWishes: [],
+  wishes: [],
 })) as any;
 village.relationshipContext = defaultRelationshipState(village.seed);
 const state = village.relationshipContext;
@@ -362,17 +360,15 @@ assert.equal(queuePersonalMessage(state, "ada", "request-1", mail.text, mail.at)
 assert.throws(() => queuePersonalMessage(state, "ada", "request-1", "Different text", mail.at), /different message/);
 const thread = state.mailThreads["personal:ada"]!;
 beginMailDelivery(state, thread.id, mail.id);
-assert.throws(() => cancelPersonalMessage(state, thread.id, mail.id), /recovery/);
 completeMailDelivery(state, thread.id, mail.id, "source-hash", "2026-10-22T13:01:00Z");
 assert.equal(mail.replyStatus, "pending");
-assert.throws(() => cancelPersonalMessage(state, thread.id, mail.id), /already been delivered/);
 const once = structuredClone(state.mailDeliveries);
 completeMailDelivery(state, thread.id, mail.id, "other-hash", "2026-10-22T13:02:00Z");
 assert.deepEqual(state.mailDeliveries, once, "A later write cannot replace delivery authority");
 mail.replyStatus = "complete";
-const cancelled = queuePersonalMessage(state, "ada", "request-2", "Cancel me", mail.at);
-cancelPersonalMessage(state, thread.id, cancelled.id);
-assert.throws(() => beginMailDelivery(state, thread.id, cancelled.id), /cancelled/);
+const cancelled = queuePersonalMessage(state, "ada", "request-2", "Earlier retained work", mail.at);
+cancelled.status = "cancelled";
+assert.throws(() => beginMailDelivery(state, thread.id, cancelled.id), /no longer be delivered/);
 const incoming = {
   id: "incoming",
   requestId: "incoming",
@@ -417,34 +413,6 @@ assert.equal(village.memories.records.length, countBeforeRead + 1);
 const readOnce = structuredClone(village.memories);
 readPersonalThread(state, thread.id, "2026-10-22T13:06:00Z");
 assert.deepEqual(village.memories, readOnce);
-state.invitations.invite = {
-  id: "invite",
-  threadId: thread.id,
-  messageId: "incoming",
-  proposerId: "ada",
-  participantIds: ["ada", "player"],
-  revision: 1,
-  terms: {
-    title: "Garden visit",
-    detail: "Meet in the garden",
-    venueId: "garden",
-    zoneId: "outside",
-    dueAt: "2026-10-23T12:00:00Z",
-  },
-  status: "proposed",
-};
-assert.throws(() => respondSocialInvitation(state, "invite", 0, true, "2026-10-22T14:00:00Z"), /changed/);
-respondSocialInvitation(state, "invite", 1, true, "2026-10-22T14:00:00Z");
-assert.equal(state.sharedRecords.invite!.status, "accepted");
-assert.equal(state.sharedRecords.invite!.dueAt, "2026-10-23T12:00:00Z");
-assert.equal(Object.keys(state.grants).length, 0, "Acceptance neither travels nor grants entry");
-const acceptedInvitation = structuredClone(state.invitations.invite);
-respondSocialInvitation(state, "invite", 1, true, "2026-10-22T14:00:00Z");
-assert.deepEqual(state.invitations.invite, acceptedInvitation, "The same acknowledged decision replays unchanged");
-assert.throws(() => respondSocialInvitation(state, "invite", 1, false, "2026-10-22T14:00:00Z"), /changed/);
-state.invitations.expired = { ...state.invitations.invite!, id: "expired", status: "proposed", revision: 1 };
-assert.throws(() => respondSocialInvitation(state, "expired", 1, true, "2026-10-24T14:00:00Z"), /expired/);
-
 // Shared Events budget counts admitted attempts, including failed, empty and uncertain calls.
 const budget = defaultVillageState();
 budget.backgroundPace = "balanced";

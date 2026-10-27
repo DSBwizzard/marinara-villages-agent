@@ -1,23 +1,20 @@
-import { developmentSceneContext } from "./development-knowledge.js";
-import { socialContextState } from "./social-context.js";
-import { openingSemanticContext } from "./opening-context.js";
 import { createHash } from "node:crypto";
-import { asRecord } from "./coerce.js";
-import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
-import type { VillageState } from "../models/world.js";
-import { venueZones, zoneControllerIds } from "./venue-zones.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
-import { zoneEventHearingContext } from "./zone-events.js";
-import { sceneLayoutVenue } from "./scene-layout.js";
-import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
-import { badGateway } from "./errors.js";
-import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
-import { wishCheckKnowledge } from "./wish-journal.js";
+import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
+import type { VillageState } from "../models/world.js";
 import { accessManagementPrompt } from "./access-speech.js";
+import { asRecord } from "./coerce.js";
+import { badGateway } from "./errors.js";
+import { openingSemanticContext } from "./opening-context.js";
+import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { capturedSceneCalendar } from "./scene-halt.js";
 import { sharedLoreHistory } from "./scene-writing-history.js";
-
-export { readSemanticWishCriteria } from "./wish-criteria.js";
+import { sceneLayoutVenue } from "./scene-layout.js";
+import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
+import { socialContextState } from "./social-context.js";
+import { venueZones, zoneControllerIds } from "./venue-zones.js";
+import { wishCheckKnowledge } from "./wish-journal.js";
+import { zoneEventHearingContext } from "./zone-events.js";
 
 export const SEMANTIC_VERSION = 2;
 export const SEMANTIC_OPERATION_BUDGET = {
@@ -84,7 +81,6 @@ export function semanticContext(
           },
         }
       : {}),
-    ...(scene.operation?.input.developmentVersion === 1 ? { development: developmentSceneContext(state, actors) } : {}),
     opening: openingSemanticContext(state, scene),
     worldSeed: state.seed,
     setting: state.setting,
@@ -102,14 +98,6 @@ export function semanticContext(
             id: `venue-chat:${scene.id}:${scene.operation.input.submissionId}`,
             domainRef: { kind: "physical", id: scene.placeId },
           },
-          wishes: state.villagers.flatMap((resident) =>
-            (resident.agenda?.wishes ?? []).flatMap((wish) =>
-              ["check", "progress"].map((intent) => ({
-                id: `wish-change:${scene.id}:${scene.operation!.input.submissionId}:${wish.id}:${intent}`,
-                domainRef: { kind: "wish", id: wish.id, characterId: resident.characterId },
-              })),
-            ),
-          ),
         }
       : undefined,
     revision: scene.sceneRevision,
@@ -134,7 +122,7 @@ export function semanticContext(
             }
           : row.cardSnapshot,
         admission: row.admission,
-        wishes: (row.agenda?.wishes ?? []).map((wish) => ({
+        wishes: (row.wishes ?? []).map((wish) => ({
           ...wish,
           knowledge: wishCheckKnowledge(state, row.characterId, wish.id),
         })),
@@ -215,14 +203,7 @@ export function semanticImmediate(value: unknown, lines: readonly VenueReplyLine
     contactEnd: raw.contactEnd.map((row) => source(row)),
     semanticPlayerMoves: raw.playerMoves ?? [],
   };
-  for (const key of [
-    "residenceRequest",
-    "residenceDecision",
-    "renovationRequest",
-    "venueRequest",
-    "editApproval",
-    "sceneEnded",
-  ])
+  for (const key of ["residenceRequest", "residenceDecision", "venueRequest", "editApproval", "sceneEnded"])
     if (raw[key] !== undefined && raw[key] !== null) result[key] = source(raw[key]);
   if (raw.moves.length > 16 || raw.departures.length > 16 || raw.contactEnd.length > 16)
     throw badGateway("System event limit exceeded.");

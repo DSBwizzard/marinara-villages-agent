@@ -1,4 +1,18 @@
 import assert from "node:assert/strict";
+import {
+  createActivationScope,
+  installDefaultActivation,
+  scopedActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { DomainProcessing, ExchangeDomain } from "../packages/villages/src/server/domain/models/exchange-model.js";
+import type { VenueLine, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import { createLiveEvidenceContext } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+import { createProgressTask } from "../packages/villages/src/server/domain/rules/progress-engine.js";
+import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
+import { dispatchExchange } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
 import { createSceneProgress } from "../packages/villages/src/server/features/scenes/progress-service.js";
 import {
   configureSceneProgress,
@@ -6,20 +20,6 @@ import {
   processSavedProgressSubmission,
   startProgressRecovery,
 } from "../packages/villages/src/server/features/scenes/progress.js";
-import {
-  createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
-import { createProgressTask } from "../packages/villages/src/server/domain/rules/progress-engine.js";
-import { dispatchExchange } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
-import { createLiveEvidenceContext } from "../packages/villages/src/server/domain/rules/live-exchange.js";
-import type { VenueLine, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
-import type { DomainProcessing, ExchangeDomain } from "../packages/villages/src/server/domain/models/exchange-model.js";
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => (resolve = done));
@@ -349,13 +349,10 @@ async function main() {
   );
   const finalExchange = fixture("final-exchange");
   finalExchange.saved.status = "closed";
-  finalExchange.world.sceneWishProtections = { same: { seed: finalExchange.world.seed, wishes: [] } };
   finalExchange.result("wishes", { status: "pending", reason: "Saved verdict awaits recovery" });
   await finalExchange.service.processSavedExchange("same", "turn");
-  assert(finalExchange.world.sceneWishProtections.same, "closed pending final effects retain Scene eligibility");
   finalExchange.result("wishes", { status: "applied", reason: "Saved verdict recovered" });
   await finalExchange.service.processSavedExchange("same", "turn");
-  assert.equal(finalExchange.world.sceneWishProtections.same, undefined, "terminal replay releases the Scene hold");
   for (const field of ["seed", "scene", "submission"] as const) {
     const changed = fixture("changed");
     if (field === "seed") changed.world.seed = "replacement";

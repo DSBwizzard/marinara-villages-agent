@@ -1,23 +1,24 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
-import { readUsageMeter, saveUsageRate } from "../packages/villages/src/server/features/settings/usage-meter.js";
-import {
-  proposeRemap,
-  remapBlocks,
-  remapBlockKeys,
-} from "../packages/villages/src/server/domain/rules/native-remap.js";
-import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 import {
   translationBatchSize,
   translationRequestCount,
 } from "../packages/villages/src/server/domain/rules/generation-budgets.js";
-import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
+import {
+  proposeRemap,
+  remapBlockKeys,
+  remapBlocks,
+} from "../packages/villages/src/server/domain/rules/native-remap.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { readUsageMeter, saveUsageRate } from "../packages/villages/src/server/features/settings/usage-meter.js";
+import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
 const records = new Map<string, any>();
 let calls = 0,
   writes = 0,
@@ -109,7 +110,7 @@ globalThis.fetch = async () =>
   );
 const state = coerceVillageState({
   ...defaultVillageState(),
-  version: 5,
+  version: 6,
   wishSystemVersion: 3,
   seed: "seed",
   setting: "Village",
@@ -148,7 +149,7 @@ async function main() {
       home: "",
       venues: [],
       activeWishes: [],
-      completedWishes: [],
+      wishes: [],
       schedule: null,
       allowInitialWish: false,
     };
@@ -180,7 +181,7 @@ async function main() {
       (await previewVillageBurst({ action: "change", settings: { setting: "A different world" } })).requests,
       0,
     );
-    state.villagers[0].agenda!.wishes = [{ wish: "Learn pottery", id: "wish", status: "active" }] as any;
+    state.villagers[0].wishes = [fixtureWish({ wish: "Talk about pottery" })];
     state.villagers[0].remap!.signature = "unused-retired-translation-with-wish";
     storeState();
     assert.equal(
@@ -305,7 +306,11 @@ async function main() {
     const failure = new Error("A raw world storage failure");
     a.failNext("get", "villages-village", failure);
     await assert.rejects(previewVillageBurst({ action: "images" }), (error) => error === failure);
-    assert.equal(a.calls.length, 1, "raw read failure precedes model and background lookup");
+    assert.ok(
+      a.calls.every((call) => call.op === "get" && ["villages-repair-control", "villages-village"].includes(call.id)),
+      "raw read failure precedes model and background lookup; only recovery admission may precede it",
+    );
+    assert.equal(a.calls.filter((call) => call.id === "villages-village").length, 1);
     a.failNext("resolver", "same-connection", new Error("model unavailable"));
     const result = await previewVillageBurst({ action: "images", count: 1 });
     assert.equal(result.requests, 1, "resolution failure retains counts and unknown prices");

@@ -1,12 +1,13 @@
-import type { VillageMap, VillageSnapshot, TownMapView } from "../../../shared/contracts/village.js";
-import { useEffect, useRef, useState } from "react";
-import { messageFrom, request, VillageApiError } from "../../shared/api.js";
-import { createVillagesClientId } from "../../shared/request-id.js";
-import { readFileAsDataUrl, measureImage } from "../../shared/presentation.js";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { TownMapView, VillageMap, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
-import { readDeviceDraft, saveDeviceDraft, removeDeviceDraft } from "../../shared/device-drafts.js";
-import { MapStage, defaultView, TOWN_MAP_FITS } from "../exploration/MapStage.js";
+import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
+import { readDeviceDraft, removeDeviceDraft, saveDeviceDraft } from "../../shared/device-drafts.js";
+import { measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
+import { defaultView, MapStage, TOWN_MAP_FITS } from "../exploration/MapStage.js";
+import type { ReportLocalDraftStatus } from "./local-draft-status.js";
 
 type Draft = {
   id: string;
@@ -31,10 +32,12 @@ export function MapsPanel({
   snapshot,
   onSnapshot,
   mobile,
+  reportLocalDraftStatus,
 }: {
   snapshot: VillageSnapshot;
   onSnapshot(next: VillageSnapshot): void;
   mobile: boolean;
+  reportLocalDraftStatus: ReportLocalDraftStatus;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   return (
@@ -72,6 +75,7 @@ export function MapsPanel({
           onSnapshot={onSnapshot}
           onClose={() => setEditing(null)}
           mobile={mobile}
+          reportLocalDraftStatus={reportLocalDraftStatus}
         />
       ) : null}
     </section>
@@ -83,12 +87,14 @@ function MapEditor({
   onSnapshot,
   onClose,
   mobile,
+  reportLocalDraftStatus,
 }: {
   snapshot: VillageSnapshot;
   map?: VillageMap;
   onSnapshot(next: VillageSnapshot): void;
   onClose(): void;
   mobile: boolean;
+  reportLocalDraftStatus: ReportLocalDraftStatus;
 }) {
   const initial = (): Draft => ({
     id: map?.id ?? createVillagesClientId(),
@@ -120,6 +126,7 @@ function MapEditor({
     ]),
   });
   const [draft, setDraft] = useState<Draft>(initial);
+  const original = useRef(draft);
   const [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -128,6 +135,13 @@ function MapEditor({
       ? (snapshot.projects.find((project) => project.id === id.slice(8))?.title ?? "")
       : (snapshot.settings.venues.find((venue) => venue.id === id)?.name ?? "");
   const [placing, setPlacing] = useState("");
+  useLayoutEffect(() => {
+    reportLocalDraftStatus("map", {
+      dirty: JSON.stringify(draft) !== JSON.stringify(original.current),
+      busy: busy || !ready,
+    });
+  }, [draft, busy, ready, reportLocalDraftStatus]);
+  useEffect(() => () => reportLocalDraftStatus("map", null), [reportLocalDraftStatus]);
   const revision = useRef(0),
     checking = useRef(false),
     attempt = useRef(0),
@@ -349,33 +363,38 @@ function MapEditor({
       </div>
       {draft.image || map ? (
         <>
-          <MapStage
-            src={draft.image || map!.artwork.url}
-            alt="Map preview"
-            shape={{ width: draft.width, height: draft.height }}
-            view={draft.view}
-            onView={(view) => setDraft({ ...draft, view })}
-            mobile={mobile}
-            pins={Object.entries(draft.placements).flatMap(([id, point]) =>
-              point.x === null || point.y === null
-                ? []
-                : [
-                    {
-                      id,
-                      x: point.x,
-                      y: point.y,
-                      text: label(id),
-                      tone: "venue" as const,
-                      onSelect: () => setPlacing(id),
-                    },
-                  ],
-            )}
-            placing={!!placing}
-            onPlace={(x, y) => {
-              setDraft({ ...draft, placements: { ...draft.placements, [placing]: { x, y } } });
-              setPlacing("");
-            }}
-          />
+          <div className={P + "-map-edit-canvas"} inert={disabled}>
+            <MapStage
+              src={draft.image || map!.artwork.url}
+              alt="Map preview"
+              shape={{ width: draft.width, height: draft.height }}
+              view={draft.view}
+              onView={(view) => {
+                if (!disabled) setDraft({ ...draft, view });
+              }}
+              mobile={mobile}
+              pins={Object.entries(draft.placements).flatMap(([id, point]) =>
+                point.x === null || point.y === null
+                  ? []
+                  : [
+                      {
+                        id,
+                        x: point.x,
+                        y: point.y,
+                        text: label(id),
+                        tone: "venue" as const,
+                        onSelect: () => setPlacing(id),
+                      },
+                    ],
+              )}
+              placing={!!placing}
+              onPlace={(x, y) => {
+                if (disabled) return;
+                setDraft({ ...draft, placements: { ...draft.placements, [placing]: { x, y } } });
+                setPlacing("");
+              }}
+            />
+          </div>
           <div className={P + "-row"}>
             {TOWN_MAP_FITS.map((option) => (
               <button

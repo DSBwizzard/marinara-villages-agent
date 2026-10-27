@@ -1,13 +1,14 @@
-import type { SavedSettingsDraft } from "./draft-session.js";
-import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
-import type { VillageSettings, VillageSnapshot, VillageBackgroundPace } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
 import { type SetStateAction, useCallback } from "react";
+import type { VillageBackgroundPace, VillageSettings, VillageSnapshot } from "../../../shared/contracts/village.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
+import type { SavedSettingsDraft } from "./draft-session.js";
 
 export function useSaveSettings(ports: {
   knowledgeDraft: string;
   lorebookDraft: string[];
   loreTokenBudgetDraft: number;
+  visualLoreDefault: boolean;
   personaDraft: string;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
@@ -22,6 +23,7 @@ export function useSaveSettings(ports: {
     knowledgeDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
+    visualLoreDefault,
     personaDraft,
     setBusy,
     setSettingsError,
@@ -39,16 +41,21 @@ export function useSaveSettings(ports: {
       const saved = await request<VillageSnapshot>("/settings", {
         method: "PATCH",
         body: JSON.stringify({
-          promptKnowledge: knowledgeDraft,
-          playerPersonaId: personaDraft,
-          setting: settingDraft,
           selectedLorebookIds: lorebookDraft,
           loreTokenBudget: loreTokenBudgetDraft,
+          useVisualLoreByDefault: visualLoreDefault,
         }),
       });
       if (!lifetime.owns(claim)) return;
       setSnapshot(saved);
-      acceptSavedSettings(saved, { knowledgeDraft, personaDraft, settingDraft, lorebookDraft, loreTokenBudgetDraft });
+      acceptSavedSettings(saved, {
+        knowledgeDraft,
+        personaDraft,
+        settingDraft,
+        lorebookDraft,
+        loreTokenBudgetDraft,
+        visualLoreDefault,
+      });
     } catch (cause) {
       if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "Those settings could not be saved."));
     } finally {
@@ -63,6 +70,7 @@ export function useSaveSettings(ports: {
     settingDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
+    visualLoreDefault,
     setSnapshot,
     acceptSavedSettings,
   ]);
@@ -72,21 +80,12 @@ export function useSaveScenerySettings(ports: {
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
   personalizeHomes: boolean;
-  visualLoreDefault: boolean;
   snapshot: VillageSnapshot | null;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
-  const {
-    sceneryStyle,
-    sceneryStyleProfileId,
-    personalizeHomes,
-    visualLoreDefault,
-    setBusy,
-    setSettingsError,
-    setSnapshot,
-  } = ports;
+  const { sceneryStyle, sceneryStyleProfileId, personalizeHomes, setBusy, setSettingsError, setSnapshot } = ports;
   const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(
     async (automaticZonePictures?: boolean) => {
@@ -103,7 +102,6 @@ export function useSaveScenerySettings(ports: {
                   sceneryArtStyle: sceneryStyle,
                   sceneryStyleProfileId,
                   personalizeVenueImagesByDefault: personalizeHomes,
-                  useVisualLoreByDefault: visualLoreDefault,
                 }
               : { automaticZonePictures }),
           }),
@@ -115,16 +113,7 @@ export function useSaveScenerySettings(ports: {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [
-      sceneryStyle,
-      sceneryStyleProfileId,
-      personalizeHomes,
-      visualLoreDefault,
-      setBusy,
-      setSettingsError,
-      setSnapshot,
-      lifetime,
-    ],
+    [sceneryStyle, sceneryStyleProfileId, personalizeHomes, setBusy, setSettingsError, setSnapshot, lifetime],
   );
 }
 
@@ -307,88 +296,5 @@ export function useSaveVisitRetention(ports: {
       }
     },
     [lifetime, setArchiveVersion, setBusy, setSettingsError, setSnapshot],
-  );
-}
-
-export function useInsertMacro(ports: {
-  knowledgeDraft: string;
-  knowledgeRef: React.RefObject<HTMLTextAreaElement>;
-  pendingCaretRef: React.RefObject<number>;
-  setKnowledgeDraft: React.Dispatch<SetStateAction<string>>;
-}) {
-  const { knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft } = ports;
-  return useCallback(
-    (token: string) => {
-      const node = knowledgeRef.current;
-      const start = node?.selectionStart ?? knowledgeDraft.length;
-      const end = node?.selectionEnd ?? start;
-      pendingCaretRef.current = start + token.length;
-      setKnowledgeDraft(`${knowledgeDraft.slice(0, start)}${token}${knowledgeDraft.slice(end)}`);
-    },
-    [knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft],
-  );
-}
-
-export function useAddNotice(ports: {
-  snapshot: VillageSnapshot | null;
-  noticeDraft: string;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setNoticeDraft: React.Dispatch<SetStateAction<string>>;
-  setSettingsError: React.Dispatch<SetStateAction<string>>;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-}) {
-  const { snapshot } = ports;
-
-  const { noticeDraft, setBusy, setNoticeDraft, setSettingsError, setSnapshot } = ports;
-  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
-  return useCallback(async () => {
-    const notice = noticeDraft.trim();
-    if (notice.length === 0) return;
-    const claim = lifetime.begin();
-    if (!claim) return;
-    setBusy(true);
-    setSettingsError("");
-    try {
-      const saved = await request<VillageSnapshot>("/noticeboard", {
-        method: "POST",
-        body: JSON.stringify({ notice }),
-      });
-      if (!lifetime.owns(claim)) return;
-      setSnapshot(saved);
-      setNoticeDraft((current) => (current === noticeDraft ? "" : current));
-    } catch (cause) {
-      if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "That notice could not be pinned up."));
-    } finally {
-      if (lifetime.finish(claim)) setBusy(false);
-    }
-  }, [noticeDraft, lifetime, setBusy, setSettingsError, setSnapshot, setNoticeDraft]);
-}
-
-export function useRemoveNotice(ports: {
-  snapshot: VillageSnapshot | null;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setSettingsError: React.Dispatch<SetStateAction<string>>;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-}) {
-  const { snapshot } = ports;
-
-  const { setBusy, setSettingsError, setSnapshot } = ports;
-  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
-  return useCallback(
-    async (index: number) => {
-      const claim = lifetime.begin();
-      if (!claim) return;
-      setBusy(true);
-      setSettingsError("");
-      try {
-        const saved = await request<VillageSnapshot>(`/noticeboard/${index}`, { method: "DELETE" });
-        if (lifetime.owns(claim)) setSnapshot(saved);
-      } catch (cause) {
-        if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "That notice could not be taken down."));
-      } finally {
-        if (lifetime.finish(claim)) setBusy(false);
-      }
-    },
-    [lifetime, setBusy, setSettingsError, setSnapshot],
   );
 }

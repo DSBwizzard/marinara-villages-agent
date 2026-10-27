@@ -1,4 +1,5 @@
 import { clientImplementation } from "./client-source.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 // Villages — proof for the translation of the Engine's weekly schedule into a
 // village's own terms.
 //
@@ -49,17 +50,8 @@ async function main() {
     translateRoutine,
     VILLAGE_UNTRANSLATED_ACTIVITY,
   } = await import("../packages/villages/src/server/domain/rules/native-remap.js");
-  const {
-    coerceWish,
-    renderDoingBlock,
-    MAX_REMAP_HERE_LENGTH,
-    MAX_REMAP_SLOT_LENGTH,
-    MAX_ROUTINE_SUMMARY_LENGTH,
-    MAX_VENUES,
-    MAX_VILLAGER_WISHES,
-    remapVenues,
-    wishLifetimeDays,
-  } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
+  const { MAX_REMAP_HERE_LENGTH, MAX_REMAP_SLOT_LENGTH, MAX_ROUTINE_SUMMARY_LENGTH, MAX_VENUES, remapVenues } =
+    await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
   const { agendaAt, agendaDayPlan } = await import("../packages/villages/src/server/domain/rules/agenda-plan.js");
   const { buildResidentPlanningMessages } = await import("./fixtures/resident-planning.fixture.js");
   const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
@@ -100,7 +92,7 @@ async function main() {
    * part of it a hand-written fixture gets wrong by default.
    */
   const wishOf = (id: string, text: string, intensity = 2, tell = "", at: string = BORN) => {
-    const wish = coerceWish({ wish: text, intensity, tell }, id, at);
+    const wish = fixtureWish({ wish: text, intensity, tell }, id, at);
     assert.ok(wish, `the fixture wish ${id} has words in it`);
     return wish;
   };
@@ -188,7 +180,7 @@ async function main() {
     village: "Willowbrook",
     setting: "A small farming village on a river.",
     lore: [],
-    completedWishes: [],
+    wishes: [],
     loreKey: "",
     venues: [venue("mill", "the mill", "where the grain goes"), venue("hives", "the hives")],
     // Two wishes, in the order that gives the numbering something to prove: the
@@ -395,26 +387,6 @@ async function main() {
     ],
     "legacy wish tags are discarded without changing the venue",
   );
-
-  // Even a legacy tag inside or outside the wish-list cap is discarded.
-  const manyWishes = {
-    ...context,
-    wishes: Array.from({ length: MAX_VILLAGER_WISHES + 3 }, (_unused, index) =>
-      wishOf(`wish-${index + 1}`, `something number ${index + 1}`),
-    ),
-  };
-  const beyondWishes = coerceRemap(
-    { moves: [{ day: "Monday", time: "05:00-08:00", here: "out", wish: MAX_VILLAGER_WISHES + 1 }] },
-    manyWishes,
-    "now",
-  );
-  assert.equal(beyondWishes.moves[0].wishId, "");
-  const lastWish = coerceRemap(
-    { moves: [{ day: "Monday", time: "05:00-08:00", here: "out", wish: MAX_VILLAGER_WISHES }] },
-    manyWishes,
-    "now",
-  );
-  assert.equal(lastWish.moves[0].wishId, "");
 
   // ── The lookup, and what a miss costs ──────────────────────────────────────
   // A miss is not an error, and what it costs is the village's own default rather
@@ -655,7 +627,7 @@ async function main() {
   for (const wishes of [
     [],
     [...context.wishes].reverse(),
-    manyWishes.wishes,
+    [fixtureWish({ wish: "Share another conversation" }, "extra")],
     [{ ...context.wishes[0]!, wish: "Different wish", intensity: 3, tell: "Different tell" }],
   ]) {
     assert.equal(remapSignature({ ...context, wishes }), signature, "wish changes do not invalidate a stable routine");
@@ -1181,13 +1153,6 @@ async function main() {
   assert.equal(pilotDoing.routineSummary, "An ordinary village day.");
   assert.equal(pilotDoing.today.length, 4, "the Village agenda retains its complete active day");
   assert.ok(!("reason" in pilotDoing.today[1]!), "agenda projections omit legacy reasons");
-  const currentSceneDoing = renderDoingBlock(pilotDoing);
-  assert.ok(currentSceneDoing.includes("at home"));
-  assert.ok(!currentSceneDoing.includes("Halcyon"), "current Scene writing receives Village-owned activity");
-  assert.ok(
-    !currentSceneDoing.includes("To prepare for the day"),
-    "current Scene recurring activity omits routine reasons",
-  );
   function eventsPrompt(
     doing: string,
     agenda: Parameters<typeof buildResidentPlanningMessages>[0]["residents"][number]["agenda"],
@@ -1345,7 +1310,7 @@ async function main() {
   const refusals = store.coerceVillageState({
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
-    version: 5,
+    version: 6,
     socialContractVersion: 2,
     wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",
@@ -1371,7 +1336,7 @@ async function main() {
   const partial = store.coerceVillageState({
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
-    version: 5,
+    version: 6,
     socialContractVersion: 2,
     wishSystemVersion: 3,
     villagers: [
@@ -1430,7 +1395,7 @@ async function main() {
     store.coerceVillageState({
       memories: { format: 1, revision: 0, records: [] },
       memoryScenes: {},
-      version: 5,
+      version: 6,
       socialContractVersion: 2,
       wishSystemVersion: 3,
       villagers: [{ characterId: "a", cardSnapshot: cardSnapshot("a", "A"), addedAt: "", agenda: null, remap: null }],
@@ -1471,158 +1436,7 @@ async function main() {
   );
   assert.ok(wordy.endsWith("…"), "and marked as cut rather than left looking complete");
 
-  // ── The day a wish dies ────────────────────────────────────────────────────
-  // The last field of a wish that is not the model's: how long it lasts. A wish is
-  // not a task with a deadline, so the date is never shown to a villager and never
-  // reaches a prompt — it exists so that a wish can go quiet on its own, and so that
-  // a village the player has not opened in a month does not come back holding
-  // somebody's small hope from a month ago as if it were today's.
-  //
-  // It is ROLLED from the wish's own id rather than drawn at random, and that is
-  // what makes any of it assertable: a lifetime out of `Math.random` could only be
-  // checked for being a number, and — worse — the same wish read back off disk twice
-  // could die on two different days. Every claim below is a claim that could not be
-  // made about a random draw.
-  const spread = Array.from({ length: 512 }, (_unused, index) => wishLifetimeDays(`wish-${index}`));
-  assert.deepEqual(
-    ["wish-cart", "wish-roof", "wish-1", "wish-7", "a", ""].map(wishLifetimeDays),
-    ["wish-cart", "wish-roof", "wish-1", "wish-7", "a", ""].map(wishLifetimeDays),
-    "the same id is always given the same number of days, which is the whole point of rolling it off the id",
-  );
-  assert.ok(
-    spread.every((days) => Number.isInteger(days) && days >= 1 && days <= 7),
-    "and every roll is a whole number of days inside the week the village is willing to remember for",
-  );
-  assert.ok(
-    spread.filter((days) => days <= 3).length > spread.length / 2,
-    "with most of a village inside three days, because the ordinary wish is a small thing somebody notices this week",
-  );
-  assert.ok(
-    spread.includes(7) && spread.includes(3),
-    "and the far end of the table reachable rather than decorative, so the table's own tail is proved to exist",
-  );
-  assert.ok(
-    new Set(spread).size > 1,
-    "and the roll is not one number in disguise: a table that answered the same everywhere would satisfy every " +
-      "assertion above and none of the intent",
-  );
-
-  // What the writer stamps, and the two ways the moment can arrive. `at` is the
-  // moment the wish's own answer came back from the model, and it is put through the
-  // same reader every other stored instant in this package goes through, so a wish
-  // and a `generatedAt` beside it can never disagree about what a moment looks like.
-  const roof = wishOf("wish-4", "a roof that does not leak", 3, "", BORN);
-  assert.equal(roof.addedAt, BORN, "a wish is born at the moment its own answer arrived");
-  assert.equal(
-    roof.expiresAt,
-    "2026-09-14T09:00:00.000Z",
-    "and dies a week later, because this id is one of the table's rare long rolls and a week is the most it gives",
-  );
-  assert.equal(
-    Date.parse(roof.expiresAt) - Date.parse(roof.addedAt),
-    wishLifetimeDays("wish-4") * 86_400_000,
-    "which is the roll and no other number, so the date and the roll cannot come to disagree about the same wish",
-  );
-  assert.equal(
-    wishOf("wish-4", "a roof that does not leak", 3, "", "2020-01-01T00:00:00.000Z").expiresAt,
-    "2020-01-08T00:00:00.000Z",
-    "with the date moving with the moment it was born rather than being fixed per id: the id decides the LENGTH",
-  );
-  assert.equal(
-    wishOf("wish-4", "a roof that does not leak", 3, "", "2026-09-07").addedAt,
-    "2026-09-07T00:00:00.000Z",
-    "and a moment written without a time is read as midnight rather than rejected, normalised as everything else is",
-  );
-  const undated = wishOf("wish-roof", "a roof that does not leak", 3, "", "now");
-  assert.deepEqual(
-    [undated.addedAt, undated.expiresAt],
-    ["", ""],
-    "while a moment that is not one leaves the wish with no birth date and no deadline at all, which is the safe " +
-      "direction in two senses at once: every wish written before this field existed keeps behaving exactly as it " +
-      "did, and a hand-edited document cannot make somebody's wish vanish by accident. An undated wish still leaves " +
-      "the list the other two ways — fulfilled, or judged to have lapsed",
-  );
-  assert.ok(
-    ["2026-03-28T12:00:00.000Z", "2026-10-24T12:00:00.000Z"].every((at) =>
-      spread.slice(0, 32).every((days, index) => {
-        const stamped = wishOf(`wish-${index}`, "a roof that does not leak", 3, "", at);
-        return Date.parse(stamped.expiresAt) - Date.parse(stamped.addedAt) === days * 86_400_000;
-      }),
-    ),
-    "and the arithmetic is done in UTC rather than on the calendar, so a wish born on the weekend a clock changes " +
-      "dies the same number of days later as any other: a local roll would move that deadline by an hour",
-  );
-
-  // ── What the village reads back ────────────────────────────────────────────
-  // The second half of the two-coercion rule every stored field in this package
-  // follows, and the half that is easy to get wrong in the direction nobody notices:
-  // the READER must hand back what it found rather than rolling a fresh date. A
-  // reader that re-derived the deadline would look correct for a wish written a
-  // second earlier and would silently re-age every wish in the village on every
-  // restart.
-  const stored = store.coerceVillageState({
-    memories: { format: 1, revision: 0, records: [] },
-    memoryScenes: {},
-    version: 5,
-    socialContractVersion: 2,
-    wishSystemVersion: 3,
-    villagers: [
-      {
-        characterId: "character-ives",
-        cardSnapshot: cardSnapshot("character-ives", "Ives"),
-        cachedName: "Ives",
-        addedAt: "",
-        remap: null,
-        agenda: {
-          routineSummary: "",
-          source: "village",
-          generatedAt: "",
-          wishes: [
-            // A deadline no roll can produce, on purpose: the reader has to hand
-            // back what it found rather than derive what it would have written.
-            {
-              id: "wish-roof",
-              wish: "a roof that does not leak",
-              intensity: 3,
-              tell: "",
-              addedAt: BORN,
-              expiresAt: "2030-01-01T00:00:00.000Z",
-            },
-            { id: "wish-legacy", wish: "the handcart mended", intensity: 1, tell: "" },
-            {
-              id: "wish-junk",
-              wish: "a lamp for the workshop",
-              intensity: 2,
-              tell: "",
-              addedAt: "sometime",
-              expiresAt: "next Tuesday",
-            },
-          ],
-        },
-      },
-    ],
-  }).villagers[0]!.agenda!;
-  assert.deepEqual(
-    stored.wishes.map((wish) => [wish.id, wish.addedAt, wish.expiresAt]),
-    [
-      ["wish-roof", BORN, "2030-01-01T00:00:00.000Z"],
-      ["wish-legacy", "", ""],
-      ["wish-junk", "", ""],
-    ],
-    "a wish read back off the document keeps the two dates it was written with rather than being given fresh ones, " +
-      "a wish that predates the fields reads as undated, and dates that are not dates read as undated too — the " +
-      "difference being a wish that survives a hand-edited save instead of a wish that has quietly expired",
-  );
-  assert.equal(
-    stored.wishes[0]!.wish,
-    "a roof that does not leak",
-    "with the rest of the wish arriving beside them, so the dates are additions to the record rather than a " +
-      "replacement for any of it",
-  );
-
-  console.log(
-    "Villages schedule remap regression: slots, table, timetable, home, signature, day, leak, prompt, wish life ok\n",
-  );
+  console.log("Villages schedule remap regression: slots, table, timetable, home, signature, day, leak, prompt, ok\n");
 }
 
 void main().catch((error) => {

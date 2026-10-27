@@ -1,14 +1,5 @@
 // Test cases: memories/formation, memories/repair, memories/guards, memories/authority, memories/continuity, memories/evidence, memories/protection, memories/consolidation, memories/review-regressions
 import assert from "node:assert/strict";
-import { runCase } from "../scripts/test-cases.mjs";
-import { wishCheckKnowledge } from "../packages/villages/src/server/domain/rules/wish-journal.js";
-import { knownDevelopment } from "../packages/villages/src/server/domain/rules/development-knowledge.js";
-import {
-  defaultRelationshipState,
-  neutralRelationship,
-  relationshipKey,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
 import {
   applyMemoryProposal,
   applyMemoryRepair,
@@ -23,9 +14,16 @@ import {
   captureMemoryScene,
   inspectMemory,
   projectMemories,
-  sceneMemoryCollection,
   readMemorySceneSnapshot,
+  sceneMemoryCollection,
 } from "../packages/villages/src/server/domain/rules/memory-views.js";
+import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
+import {
+  defaultRelationshipState,
+  neutralRelationship,
+  relationshipKey,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { runCase } from "../scripts/test-cases.mjs";
 import {
   addMemory,
   emptyMemories,
@@ -426,69 +424,11 @@ await runCase("memories/protection", () => {
 });
 
 await runCase("memories/consolidation", () => {
-  let memories = emptyMemories();
-  for (const kind of ["preference", "concern", "possibility"]) {
-    memories = addMemory(memories, {
-      text: "Exact " + kind,
-      audience: ["ella"],
-      patch: { kind: "information", domainRef: { kind: "wish", id: "lavender", characterId: "ella" } },
-    });
-    memories.records.at(-1)!.knowers.ella.disclosed = { kind };
-  }
-  memories = addMemory(memories, {
-    text: "Ella is considering the orchard.",
-    audience: ["player"],
-    patch: { kind: "information", domainRef: { kind: "pursuit", id: "move", characterId: "ella" } },
-  });
-  memories.records.at(-1)!.knowers.player.disclosed = { title: "Move to the orchard", status: "considering" };
   const village: any = {
-    memories,
-    villagers: [
-      {
-        characterId: "ella",
-        cardSnapshot: { name: "Ella" },
-        agenda: {
-          wishes: [
-            {
-              id: "lavender",
-              goalJournal: {
-                facts: [
-                  {
-                    id: "condition",
-                    kind: "condition",
-                    quote: "Exact condition",
-                    at: memoryTime(1),
-                    lineIds: ["spoken"],
-                    submissionId: "turn",
-                    sceneId: "scene",
-                    conditionRevision: 2,
-                  },
-                ],
-                evidence: [],
-              },
-            },
-          ],
-        },
-      },
-    ],
+    memories: emptyMemories(),
+    villagers: [{ characterId: "ella", cardSnapshot: { name: "Ella" }, wishes: [] }],
     venues: [{ id: "home", zones: [{ id: "door", name: "Front door" }] }],
-    development: {
-      residents: {
-        ella: { pursuits: [{ id: "move", targetVenueId: "private-attic", status: "arranged", consent: "refused" }] },
-      },
-    },
   };
-  const wish = wishCheckKnowledge(village, "ella", "lavender");
-  assert.deepEqual(
-    wish.discoveries.map((row) => row.kind),
-    ["preference", "concern", "possibility"],
-  );
-  assert.equal(wish.conditionRevision, 2);
-  assert.equal(wish.conditions[0].quote, "Exact condition");
-  const development = knownDevelopment(village, "ella")[0];
-  assert.equal(development.title, "Move to the orchard");
-  assert.equal(development.status, "considering");
-  assert.doesNotMatch(JSON.stringify(development), /private-attic|refused|arranged/u);
   const relationships = defaultRelationshipState("knowledge");
   relationships.edges[relationshipKey("ella", "player")] = {
     ...neutralRelationship("ella", "player"),

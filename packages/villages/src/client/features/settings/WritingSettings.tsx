@@ -1,27 +1,38 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { VillageWritingView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { VillageWritingView } from "../../../shared/contracts/village.js";
-import { useCallback, useEffect, useState } from "react";
 /** Per-village writing controls. Each save returns the server's effective settings. */
-function useVillageWriting() {
+export function useVillageWriting(enabled: boolean) {
   const [view, setView] = useState<VillageWritingView | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const generation = useRef(0);
 
   useEffect(() => {
+    const current = ++generation.current;
     let cancelled = false;
+    if (!enabled) {
+      setView(null);
+      setError("");
+      setSaved(false);
+      setBusy(false);
+      return;
+    }
     void request<VillageWritingView>("/narration")
       .then((next) => {
-        if (!cancelled) setView(next);
+        if (!cancelled && generation.current === current) setView(next);
       })
       .catch((cause) => {
-        if (!cancelled) setError(messageFrom(cause, "Village writing settings could not be read."));
+        if (!cancelled && generation.current === current)
+          setError(messageFrom(cause, "Village writing settings could not be read."));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled, readAttempt]);
 
   const save = useCallback(
     async (patch: {
@@ -30,71 +41,43 @@ function useVillageWriting() {
       rating?: VillageWritingView["rating"];
       writingGuidance?: string;
     }): Promise<VillageWritingView | null> => {
+      const current = generation.current;
       setBusy(true);
       setSaved(false);
       setError("");
       try {
         const next = await request<VillageWritingView>("/narration", { method: "PUT", body: JSON.stringify(patch) });
-        setView(next);
-        setSaved(true);
+        if (generation.current === current) {
+          setView(next);
+          setSaved(true);
+        }
         return next;
       } catch (cause) {
-        setError(messageFrom(cause, "That writing change could not be saved."));
+        if (generation.current === current) setError(messageFrom(cause, "That writing change could not be saved."));
         return null;
       } finally {
-        setBusy(false);
+        if (generation.current === current) setBusy(false);
       }
     },
     [],
   );
 
-  return { view, error, busy, saved, save };
+  const retryRead = useCallback(() => {
+    setError("");
+    setReadAttempt((attempt) => attempt + 1);
+  }, []);
+
+  return { view, error, busy, saved, save, retryRead };
 }
 
-export function VillageWritingSettings() {
-  const { view, error, busy, saved, save } = useVillageWriting();
-  const [guidanceDraft, setGuidanceDraft] = useState<string | null>(null);
-  const draft = guidanceDraft ?? view?.writingGuidance ?? "";
+export function VillageWritingSettings({ writing }: { writing: ReturnType<typeof useVillageWriting> }) {
+  const { view, error, busy, saved, save, retryRead } = writing;
 
   return (
     <div className={ELEMENT_TAG + "-field"}>
-      <span className={ELEMENT_TAG + "-label"}>Additional writing guidance</span>
+      <span className={ELEMENT_TAG + "-label"}>Writing</span>
       {view ? (
         <>
-          <textarea
-            autoComplete="off"
-            className={ELEMENT_TAG + "-textarea"}
-            aria-label="Additional writing guidance"
-            value={draft}
-            rows={5}
-            maxLength={view.writingGuidanceMaxLength}
-            disabled={busy}
-            onChange={(event) => setGuidanceDraft(event.target.value)}
-          />
-          <button
-            type="button"
-            className={ELEMENT_TAG + "-button"}
-            disabled={busy || draft === view.writingGuidance}
-            onClick={() => {
-              void save({ writingGuidance: draft }).then((next) => {
-                if (next) setGuidanceDraft(next.writingGuidance);
-              });
-            }}
-          >
-            Apply guidance
-          </button>
-          <button
-            type="button"
-            className={ELEMENT_TAG + "-button"}
-            disabled={busy || !draft}
-            onClick={() => {
-              void save({ writingGuidance: "" }).then((next) => {
-                if (next) setGuidanceDraft(next.writingGuidance);
-              });
-            }}
-          >
-            Clear guidance
-          </button>
           <div className={ELEMENT_TAG + "-row"}>
             <label className={ELEMENT_TAG + "-field"}>
               <span className={ELEMENT_TAG + "-label"}>Tense</span>
@@ -136,7 +119,7 @@ export function VillageWritingSettings() {
         <span className={ELEMENT_TAG + "-hint"}>Loading…</span>
       ) : null}
       {busy ? <span className={ELEMENT_TAG + "-hint"}>Saving…</span> : null}
-      {saved && !busy && draft === view?.writingGuidance ? (
+      {saved && !busy ? (
         <span className={ELEMENT_TAG + "-hint"} role="status">
           Saved
         </span>
@@ -144,6 +127,11 @@ export function VillageWritingSettings() {
       {error ? (
         <p className={ELEMENT_TAG + "-error"} role="alert">
           {error}
+          {!view ? (
+            <button type="button" onClick={retryRead}>
+              Retry
+            </button>
+          ) : null}
         </p>
       ) : null}
     </div>

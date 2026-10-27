@@ -1,42 +1,44 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { foundingDraftDescription } from "../packages/villages/src/client/features/founding/draft-model.js";
-import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
-import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
-import { villageRouteSource } from "./route-source.js";
-import { clientImplementation } from "./client-source.js";
-import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
   CapabilityDocumentStore,
   CapabilityResolvedLanguageModel,
   CapabilityRuntimeHost,
 } from "@marinara-engine/shared";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
-import type { Ledger } from "../packages/villages/src/server/domain/models/usage-model.js";
-import { reportFoundingProgress } from "../packages/villages/src/server/features/founding/founding-progress.js";
-import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
-import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { foundingDraftDescription } from "../packages/villages/src/client/features/founding/draft-model.js";
 import {
-  suggestStartingVenues,
-  seedFoundingVenueDetails,
-  generateFoundingVenueImage,
-  uploadFoundingVenueImage,
-} from "../packages/villages/src/server/features/founding/founding-drafts.js";
-import {
-  proposeVillage,
-  proposePublicVenueNames,
-  draftVillageVenueDescriptions,
-} from "../packages/villages/src/server/features/founding/village-bootstrap.js";
-import {
-  createActivationScope,
   activationScope,
+  createActivationScope,
   installDefaultActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { Ledger } from "../packages/villages/src/server/domain/models/usage-model.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
+import {
+  generateFoundingVenueImage,
+  seedFoundingVenueDetails,
+  suggestStartingVenues,
+  uploadFoundingVenueImage,
+} from "../packages/villages/src/server/features/founding/founding-drafts.js";
+import { reportFoundingProgress } from "../packages/villages/src/server/features/founding/founding-progress.js";
+import {
+  draftVillageVenueDescriptions,
+  proposePublicVenueNames,
+  proposeVillage,
+} from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
+import { clientImplementation } from "./client-source.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { villageRouteSource } from "./route-source.js";
 
 async function reviewNavigation() {
   const { createFoundingGotoSetupStep } =
@@ -293,7 +295,7 @@ async function main() {
   }
 
   assert.equal(
-    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
+    coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
       .foundingPreparation,
     null,
     "older villages remain ready",
@@ -301,7 +303,7 @@ async function main() {
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       foundingPreparation: { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     }).foundingPreparation,
@@ -311,7 +313,7 @@ async function main() {
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       foundingPreparation: {
         status: "pending",
@@ -340,14 +342,14 @@ async function main() {
     "the active stage and bounded retry count survive a process restart",
   );
   assert.equal(
-    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }).foundingGuidance,
+    coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3 }).foundingGuidance,
     "",
     "older villages have no narrative direction",
   );
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       foundingGuidance: "Favor quiet bonds.",
     }).foundingGuidance,
@@ -421,7 +423,7 @@ async function main() {
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
   const noMapSetup = createFoundingSetup({
     ...setupPorts,
-    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }),
+    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3 }),
     prepareVillageMap: async () => ({
       image: "",
       size: null,
@@ -680,7 +682,7 @@ async function foundingConnectionOwnership() {
       let held = false;
       const state = coerceVillageState({
         ...defaultVillageState(),
-        version: 5,
+        version: 6,
         wishSystemVersion: 3,
         seed: "equal-founding-seed",
         name: label,
@@ -939,7 +941,7 @@ async function foundingConnectionOwnership() {
       venues: [],
       lore: [],
       activeWishes: [],
-      completedWishes: [],
+      wishes: [],
       schedule: null,
       allowInitialWish: false,
     };

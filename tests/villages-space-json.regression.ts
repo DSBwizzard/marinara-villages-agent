@@ -1,14 +1,16 @@
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
-import { createPrivateSpacePreparation } from "../packages/villages/src/server/jobs/private-space-service.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { createPrivateSpacePreparation } from "../packages/villages/src/server/jobs/private-space-service.js";
 
 async function main() {
   const world = coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     seed: "fixture",
     name: "Test",
     setting: "Test",

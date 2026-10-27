@@ -1,8 +1,8 @@
-import { completeProject } from "./project-completion.js";
-export { validImage, renovationAffectedIds } from "./project-terms.js";
-import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
 import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import { conflict, notFound } from "./errors.js";
+import { completeProject } from "./project-completion.js";
+import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
+export { renovationAffectedIds, validImage } from "./project-terms.js";
 
 export const PROJECT_DURATION_MS = 24 * 60 * 60_000;
 export function active(state: VillageState, kind?: "new-venue" | "renovation"): boolean {
@@ -83,35 +83,6 @@ export function pauseProject(project: VillageProject, at: string, reason: string
   }
   project.status = flow.phase = "paused";
   flow.blockedReason = reason;
-  project.updatedAt = at;
-}
-export function applyProjectMailboxDecisions(
-  state: VillageState,
-  projectId: string,
-  mailId: string,
-  decisions: { characterId: string; accepted: boolean }[],
-  at: string,
-): void {
-  const project = state.projects.find(
-    (project) => project.id === projectId && ["planning", "paused"].includes(project.status),
-  );
-  const mail = state.venueMail.find((mail) => mail.id === mailId);
-  if (!project?.lifecycle || mail?.projectRevision !== project.lifecycle.revision) return;
-  const venue = state.venues.find((venue) => venue.id === project.venueId);
-  if (!venue || !project.lifecycle.change) return;
-  const flow = project.lifecycle;
-  flow.affectedIds = renovationAffectedIds(venue, flow.change, flow.changedZoneIds);
-  for (const decision of decisions) {
-    if (!decision.accepted || !flow.affectedIds.includes(decision.characterId)) continue;
-    flow.approvals = flow.approvals.filter((entry) => entry.residentId !== decision.characterId);
-    flow.approvals.push({
-      residentId: decision.characterId,
-      source: "mailbox",
-      evidenceId: mailId,
-      scope: approvalScope(venue, flow.change!, decision.characterId, flow.changedZoneIds),
-      at,
-    });
-  }
   project.updatedAt = at;
 }
 export function finishConstruction(

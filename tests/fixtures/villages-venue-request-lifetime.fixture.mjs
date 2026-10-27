@@ -182,12 +182,6 @@ export async function verifyVenueRequestLifetimes(browser) {
         await f.page.getByRole("button", { name: "Generate description draft", exact: true }).click();
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page
-          .getByRole("textbox", { name: "Requested place name from Resident", exact: true })
-          .fill("Newer name");
-        await f.page
-          .getByRole("combobox", { name: "Requested place class from Resident", exact: true })
-          .selectOption("other");
-        await f.page
           .getByRole("textbox", { name: "Requested place description from Resident", exact: true })
           .fill(" Newer raw description ");
         const submitted = (await f.state()).edits[f.entry.id];

@@ -147,6 +147,7 @@ export type SocialPlan = {
   status: "planned" | "completed" | "cancelled";
 };
 export type SocialEncounter = {
+  wishChanges?: unknown[];
   semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
   memoryChanges?: unknown;
   memoryContexts?: Record<string, import("../rules/scene-memories.js").SceneMemoryContext>;
@@ -193,7 +194,6 @@ export type RelationshipState = {
   initializationConflicts: { actorIds: string[]; question: string; sourceIds: string[] }[];
   mailThreads: Record<string, import("./social-mail.js").SocialMailThread>;
   mailDeliveries: Record<string, { messageId: string; at: string; sourceHash: string }>;
-  invitations: Record<string, import("./social-mail.js").SocialInvitation>;
   socialPlans: SocialPlan[];
   socialEncounters: SocialEncounter[];
 };

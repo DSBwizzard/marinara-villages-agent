@@ -16,7 +16,7 @@ For new admissions, pending memories and non-standing social updates do not bloc
 
 An unfinished Scene has no inactivity deadline. Its private captured writing context preserves the original moment while the Village continues in real time. Same-Scene accepted effects contribute exact retained context, independent of later mutable memories or live retention. Provider deadlines and usage bookkeeping use operational time; calendar allowances and saved world effects use Village time, including development advances. Older closed Scenes remain archived; this change never reopens them or buys replacement interpretation.
 
-Scene-owned Wish protection retains exact eligible actor/Wish fingerprints against expiry. It is persisted before the first captured-context request and remains through closed Scenes with unfinished final effects. Live resources, access, identity, conditions, correction and retirement still govern application. Terminal replay or reconciliation releases completed/deleted Scene holds, preserving uncertain reads for recovery. Pre-existing paid operations retain their admitted snapshots and checkpoints.
+Social Wish effects are applied from the existing saved Scene, encounter and mail interpretations. Captured owner revisions and immutable source evidence govern creation and changes. Wishes have no automatic expiry; source replay purchases no replacement interpretation. See [Social Wishes](wishes.md).
 
 ## Resident access actions
 

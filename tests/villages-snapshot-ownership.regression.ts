@@ -1,6 +1,19 @@
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import assert from "node:assert/strict";
+import {
+  createActivationScope,
+  installDefaultActivation,
+  scopedActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import {
+  captureMissingVillagerCardColors,
+  villagerCardFromSnapshot,
+} from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import {
   createVillageSnapshot,
   type VillageSnapshotPorts,
@@ -9,19 +22,6 @@ import {
   buildVillageSnapshot,
   configureVillageSnapshot,
 } from "../packages/villages/src/server/features/world/snapshot.js";
-import {
-  createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  captureMissingVillagerCardColors,
-  villagerCardFromSnapshot,
-} from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { privatePreparationRooms } from "../packages/villages/src/server/jobs/private-space-preparation.js";
 
 const stamp = "2026-10-07T12:00:00.000Z";
@@ -33,7 +33,7 @@ function deferred() {
 }
 function fixture(label: string, missingColors = false) {
   const world = coerceVillageState({
-    version: 5,
+    version: 6,
     ...defaultVillageState(),
     seed: "same-seed",
     name: label,

@@ -1,20 +1,20 @@
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import assert from "node:assert/strict";
 import {
-  defaultVillageState,
-  coerceVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
-import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
-import {
-  readVillagerCard,
   readEffectiveVillagerCard,
+  readVillagerCard,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
-import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
+import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 
 const now = new Date(),
   at = now.toISOString(),
@@ -31,15 +31,26 @@ function fixture() {
       { id: "square", name: "Square", form: "Square", description: "An open square.", category: "public" },
       null,
     ),
-    venueDraft({ id: "home", name: "Empty home", form: "House", description: "A home.", category: "residence" }, null),
+    venueDraft(
+      {
+        id: "home",
+        name: "Empty home",
+        form: "House",
+        description: "A home.",
+        category: "residence",
+        classes: ["residence"],
+      },
+      null,
+    ),
   ];
   state.venues[0].occupancy.residentCharacterId = "a";
+  state.venues[0].residentIds = ["a"];
   state.villagers = [
     {
       characterId: "a",
       cardSnapshot: snapshotFromCard(readVillagerCard({ id: "a", comment: "", data: { name: "Ada" } }), 1),
       addedAt: at,
-      completedWishes: [],
+      wishes: [],
       remap: null,
       remapFailure: null,
       agenda: {
@@ -47,7 +58,6 @@ function fixture() {
         routineSummary: "A quiet day",
         source: "village",
         generatedAt: at,
-        wishes: [],
         routineProfile: {
           version: 1,
           activities: [
@@ -87,7 +97,11 @@ function fixture() {
         finishReason: "stop",
         content: JSON.stringify(
           messages[0].content.startsWith("Independently interpret")
-            ? { memoryChanges: [], relationshipReview: { changes: [], permissions: [], disclosures: [] } }
+            ? {
+                wishChanges: [],
+                memoryChanges: [],
+                relationshipReview: { changes: [], permissions: [], disclosures: [] },
+              }
             : payload,
         ),
       } as any;
@@ -111,7 +125,7 @@ const input = f.queued[0].input;
 assert.equal(input.opportunity.kind, "routine", "A lone resident still gets routine and housing choices");
 const quiet: any = await f.service.handler.generate(input);
 assert.equal(f.calls.length, 1);
-assert.deepEqual(quiet, { housingRequests: [], routineIdea: undefined, social: undefined });
+assert.deepEqual(quiet, { housingRequests: [], routineIdea: undefined, social: undefined, wishReflection: null });
 assert.equal(f.service.handler.valid(f.state, input), true);
 reserveEventAttempt(f.state, f.queued[0].revision, dateKey, now.getTime());
 f.service.handler.apply(f.state, input, quiet, { retrying: false });
@@ -196,6 +210,39 @@ await invalid.service.reconcile(now);
 invalid.payload({});
 await assert.rejects(invalid.service.handler.generate(invalid.queued[0].input), /incomplete choices/);
 assert.equal(invalid.calls.length, 1, "Malformed output never buys an automatic repair");
+
+const actionLetter = fixture();
+await actionLetter.service.reconcile(now);
+actionLetter.payload({
+  social: { mail: { senderId: "a", text: "Hello! *Ada dusts her hands and smiles.*" } },
+  routineIdea: null,
+  housingRequests: [],
+});
+await assert.rejects(actionLetter.service.handler.generate(actionLetter.queued[0].input), /roleplay action/);
+assert.equal(actionLetter.calls.length, 1, "An invalid automatic letter never triggers interpretation or repair");
+assert.match(actionLetter.calls[0].messages[0].content, /only the words the resident puts in a personal letter/i);
+
+const savedAction = fixture();
+await savedAction.service.reconcile(now);
+const savedInput = savedAction.queued[0].input;
+savedAction.service.handler.apply(
+  savedAction.state,
+  savedInput,
+  {
+    social: { mail: { senderId: "a", text: "Hello. *Ada dusts her paws.*" } },
+    routineIdea: { characterId: "a", activity: "Reading by the window", venueId: "", flexible: true },
+    housingRequests: [],
+  },
+  { retrying: true },
+);
+assert.equal(savedAction.state.socialMailOutbox?.length ?? 0, 0, "Previously saved invalid mail is not delivered");
+assert(
+  savedAction.state.villagers[0].agenda!.routineProfile!.activities.some(
+    (row) => row.activity === "Reading by the window",
+  ),
+  "Other saved choices are retained",
+);
+assert.equal(savedAction.calls.length, 0, "Applying a saved result never triggers a model request");
 
 const legacyRaw: any = { ...effects.state };
 delete legacyRaw.backgroundPace;

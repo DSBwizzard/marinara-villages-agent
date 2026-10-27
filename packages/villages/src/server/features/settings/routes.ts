@@ -1,16 +1,4 @@
-import {
-  setScenerySettings,
-  setVillageCharacterSpeechColors,
-  setVillageLoreSettings,
-  setVillageName,
-  setVillagePlayer,
-  setVillagePromptKnowledge,
-  setVillageSendOnEnter,
-  setVillageSetting,
-  setVillageWorldName,
-  setVillageSpriteCardFlipEnabled,
-  setVillageBackgroundPace,
-} from "./village-settings.js";
+import type { FastifyInstance } from "fastify";
 import { decisionAdapterStatus } from "../../adapters/engine/decisions-adapter.js";
 import { listVillageLorebooks, readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
@@ -19,17 +7,29 @@ import { readRuntimeDebug, saveRuntimeDebug, readLoreInspections } from "../../a
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
 import { setVenueVisitRetention } from "../scenes/archive.js";
-import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageAuthority } from "../world/village-store.js";
-import { refreshPlayerPersona } from "./persona-cache.js";
-import { buildVillagePersonaCatalog, readVillagePersonaPreview } from "./personas.js";
 import { setVillageHomeBuildingNames, setVillageVenues } from "../venues/services.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageConnectionSettings, saveVillageConnections } from "./connections.js";
 import { readInterpretationSettings, saveInterpretationSettings } from "./interpretation-settings.js";
 import { readVillageWriting, saveVillageWriting } from "./narration-settings.js";
+import { refreshPlayerPersona } from "./persona-cache.js";
+import { buildVillagePersonaCatalog, readVillagePersonaPreview } from "./personas.js";
 import { readUsageMeter, resetUsagePeriod, saveLinkApiGroup, saveUsageRate } from "./usage-meter.js";
 import { previewVillageBurst } from "./usage-preview.js";
-import type { FastifyInstance } from "fastify";
+import {
+  setScenerySettings,
+  setVillageBackgroundPace,
+  setVillageCharacterSpeechColors,
+  setVillageLoreSettings,
+  setVillageName,
+  setVillagePlayer,
+  setVillagePromptKnowledge,
+  setVillageSendOnEnter,
+  setVillageSetting,
+  setVillageSpriteCardFlipEnabled,
+  setVillageWorldName,
+} from "./village-settings.js";
 
 export function registerInterpretationRoutes(engine: FastifyInstance) {
   engine.get("/interpretation-settings", async (_request, reply) => {
@@ -229,7 +229,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
     try {
       const body = request.body ?? {};
       if (body.townMapImage !== undefined || body.townMapView !== undefined)
-        throw conflict("Edit the village map in Village Settings.");
+        throw conflict("Edit the village map in World Configuration.");
       let snapshot = await buildVillageSnapshot();
       if (
         body.sceneryArtStyle !== undefined ||

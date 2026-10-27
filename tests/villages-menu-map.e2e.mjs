@@ -31,6 +31,8 @@ try {
     state.settings.venues[1].presentation.mapId = "map-street";
     const writes = [];
     let generation = null;
+    let holdMapSave = false,
+      heldMapSave;
     let statusReads = 0;
     let releaseStatus;
     const statusGate = new Promise((resolve) => {
@@ -76,6 +78,10 @@ try {
           state.settings.venues.filter((venue) => venue.presentation.mapId === map.id).map((venue) => venue.id),
         );
         Object.assign(map, { name: body.name, view: body.view, revision: map.revision + 1 });
+        if (holdMapSave) {
+          heldMapSave = route;
+          return;
+        }
       } else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity"))
         value = { session, debugDiscardEnabled: false };
       else if (path.endsWith("/changes"))
@@ -113,7 +119,7 @@ try {
     await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
     await expect(mapImage("Maple Street")).toBeVisible();
     await expect(places).toHaveCount(0);
-    await page.getByRole("button", { name: "Places", exact: true }).click();
+    await page.getByRole("button", { name: "Show places", exact: true }).click();
     await expect(page.getByRole("button", { name: /Corner Café.*Venue/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Lobby.*Workplace/ })).toHaveCount(0);
     assert.equal(
@@ -147,9 +153,42 @@ try {
     await expect(page.locator("." + P + "-maps-saved-row")).toHaveCount(3);
     assert.equal(state.settings.venues.length, 2, "a map does not create Venues");
     await page.getByRole("button", { name: "Edit map", exact: true }).first().click();
+    const originalPosition = { x: state.settings.venues[0].presentation.x, y: state.settings.venues[0].presentation.y };
+    const marker = page.getByRole("combobox", { name: "Place marker", exact: true });
+    await marker.selectOption(state.settings.venues[0].id);
+    const editStage = page.locator("." + P + "-maps-editor ." + P + "-stage");
+    const stageBox = await editStage.boundingBox();
+    await editStage.click({ position: { x: stageBox.width * 0.2, y: stageBox.height * 0.6 } });
+    await expect(marker).toHaveValue("");
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Map", exact: true })
+      .click();
+    await expect(page.getByRole("textbox", { name: "Map name", exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: "Map name", exact: true }).fill("Maple House Interior");
+    await marker.selectOption(state.settings.venues[0].id);
+    holdMapSave = true;
     await page.getByRole("button", { name: "Save map", exact: true }).click();
+    await expect.poll(() => !!heldMapSave).toBe(true);
+    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled();
+    await expect(page.getByLabel("Village world", { exact: true })).toBeDisabled();
+    await expect(page.locator("." + P + "-map-edit-canvas")).toHaveAttribute("inert", "");
+    await editStage.scrollIntoViewIfNeeded();
+    const heldBox = await editStage.boundingBox();
+    await page.mouse.click(heldBox.x + heldBox.width * 0.75, heldBox.y + heldBox.height * 0.5);
+    await expect(marker).toHaveValue(state.settings.venues[0].id);
+    await fulfill(heldMapSave, { json: state });
+    holdMapSave = false;
     await expect(page.locator("." + P + "-maps-saved-row").first()).toContainText("Maple House Interior");
+    const savedPlacement = writes
+      .findLast((write) => write.path.endsWith("/maps/map-house"))
+      .body.placements.find((row) => row.venueId === state.settings.venues[0].id);
+    assert.notDeepEqual(
+      { x: savedPlacement.x, y: savedPlacement.y },
+      originalPosition,
+      "cancelled navigation preserves the unsaved placement",
+    );
     session = {
       version: 2,
       id: "scene-map",
@@ -190,7 +229,7 @@ try {
     await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
     await expect(mapImage("Maple Street")).toBeVisible();
     await expect(places).toHaveCount(0);
-    await page.getByRole("button", { name: "Places", exact: true }).click();
+    await page.getByRole("button", { name: "Show places", exact: true }).click();
     await expect(page.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
     await expect(composer).toHaveValue("An unfinished thought");

@@ -1,5 +1,5 @@
-import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
+import { villageRouteSource } from "./route-source.js";
 // Wiring proof for the active Scene, Venue editor, and Mailbox. Behavior is
 // exercised by the Venue session, model, and location image suites.
 import assert from "node:assert/strict";
@@ -29,7 +29,6 @@ for (const path of [
   "/locations/venue/:venueId/dependencies",
   "/locations/venue/:venueId/proposals",
   "/locations/venue/:venueId/player-move",
-  "/venue-mail/:mailId/decision",
 ])
   assert.ok(routes.includes(`"${path}"`), `${path} is exposed`);
 
@@ -38,6 +37,7 @@ for (const retired of [
   "/villagers/:characterId/greet",
   "/villagers/:characterId/end",
   "/villagers/:characterId/wish",
+  "/venue-mail/:mailId/decision",
   "/rooms/debug-presence",
   "/rooms/leave-pending",
   "/rooms/archive/:id/retry-memory",
@@ -67,7 +67,7 @@ assert.doesNotMatch(
 assert.match(ui, /className=\{`\$\{ELEMENT_TAG\}-room-mode-menu`\}/u, "visit modes have a visible menu");
 assert.match(ui, /View Mailbox/u, "the player can open Mailbox while visiting home");
 assert.match(ui, /Plan a renovation/u, "Venue structural changes use renovation Projects");
-assert.match(ui, /Search Venues/u, "the Venue index is searchable");
+assert.doesNotMatch(ui, /Search Venues/u, "Settings does not duplicate the Places directory");
 assert.match(ui, /Retry opening/u);
 assert.match(ui, /Continue without opening/u);
 assert.match(ui, /That line could not be sent/u, "failed turns keep a visible error");

@@ -1,7 +1,15 @@
+import { useState } from "react";
 import type { BackgroundWork } from "../../../shared/contracts/village.js";
 import { messageFrom } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { useState } from "react";
+
+function waitingTime(timestamp: string): string {
+  const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(timestamp)) / 60_000));
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 1_440) return `${Math.floor(minutes / 60)} hr`;
+  const days = Math.floor(minutes / 1_440);
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
 
 export function BackgroundWorkPanel({
   jobs,
@@ -12,27 +20,25 @@ export function BackgroundWorkPanel({
 }) {
   const [pending, setPending] = useState("");
   const [problem, setProblem] = useState("");
-  const visible = jobs.filter((job) => job.status !== "obsolete");
+  const visible = jobs.filter((job) => job.kind !== "personal-mail" && job.status !== "obsolete");
   const active = visible.filter((job) => ["queued", "running"].includes(job.status));
   const paused = visible.filter((job) => job.status === "paused");
   const attention = visible.filter((job) => ["failed", "interrupted"].includes(job.status));
   const completed = visible.filter((job) => job.status === "completed");
   const renderJobs = (rows: BackgroundWork[]) =>
     rows.map((job) => (
-      <div key={job.id} className={ELEMENT_TAG + "-notice-row"}>
-        <div className={ELEMENT_TAG + "-field"}>
+      <div key={job.id} className={ELEMENT_TAG + "-background-job"}>
+        <div className={ELEMENT_TAG + "-background-job-content"}>
           <strong>{job.kind === "resident-planning" ? "Resident activity" : job.label}</strong>
-          <span>
-            {job.status}: {job.completedSteps} reusable steps, {job.requests} requests,{" "}
-            {job.tokens === null ? "token usage unavailable" : job.tokens + " reported tokens"}
+          <span className={ELEMENT_TAG + "-background-meta"}>
+            {job.status} · {job.completedSteps} steps · {job.requests} requests ·{" "}
+            {job.tokens === null ? "tokens unavailable" : job.tokens + " tokens"}
           </span>
           {["failed", "interrupted"].includes(job.status) ? (
             <p className={ELEMENT_TAG + "-hint"}>
               {job.failure ? job.failure.cause.replaceAll("_", " ") + " · " + job.failure.stage + " · " : ""}
               {Number.isFinite(Date.parse(job.failedAt ?? job.updatedAt ?? ""))
-                ? "Waiting for retry · " +
-                  Math.max(0, Math.floor((Date.now() - Date.parse(job.failedAt ?? job.updatedAt!)) / 60000)) +
-                  " minutes"
+                ? "Waiting for retry · " + waitingTime(job.failedAt ?? job.updatedAt!)
                 : "Waiting for explicit retry"}
             </p>
           ) : null}
@@ -69,33 +75,43 @@ export function BackgroundWorkPanel({
       className={ELEMENT_TAG + "-panel"}
       open={visible.some((job) => ["failed", "interrupted"].includes(job.status))}
     >
-      <summary>
-        Background work: {active.length} running / queued, {paused.length} paused, {attention.length} need attention
+      <style>{`
+        .${ELEMENT_TAG}-background-summary { display:flex; flex-wrap:wrap; gap:.4rem 1rem; align-items:baseline; cursor:pointer; }
+        .${ELEMENT_TAG}-background-counts, .${ELEMENT_TAG}-background-meta { color:var(--muted-foreground); font-size:.88rem; }
+        .${ELEMENT_TAG}-background-group { display:grid; gap:.5rem; margin-top:1rem; }
+        .${ELEMENT_TAG}-background-group h3 { margin:0; font-size:1rem; }
+        .${ELEMENT_TAG}-background-job { border:1px solid var(--border); padding:.75rem; min-width:0; }
+        .${ELEMENT_TAG}-background-job-content { display:grid; gap:.3rem; min-width:0; overflow-wrap:anywhere; }
+        .${ELEMENT_TAG}-background-job-content p { margin:0; }
+        .${ELEMENT_TAG}-background-job-content button { justify-self:start; }
+      `}</style>
+      <summary className={ELEMENT_TAG + "-background-summary"}>
+        <strong>Background work</strong>
+        <span className={ELEMENT_TAG + "-background-counts"}>
+          {active.length} active · {paused.length} paused · {attention.length} need attention
+        </span>
       </summary>
-      <p className={ELEMENT_TAG + "-hint"}>
-        Recurring updates run while Villages is visible. Requested work can finish while away.
-      </p>
       {active.length ? (
-        <section>
-          <h3>Running / queued ({active.length})</h3>
+        <section className={ELEMENT_TAG + "-background-group"}>
+          <h3>Active ({active.length})</h3>
           {renderJobs(active)}
         </section>
       ) : null}
       {paused.length ? (
-        <section>
+        <section className={ELEMENT_TAG + "-background-group"}>
           <h3>Paused ({paused.length})</h3>
           {renderJobs(paused)}
         </section>
       ) : null}
       {attention.length ? (
-        <section>
+        <section className={ELEMENT_TAG + "-background-group"}>
           <h3>Needs attention ({attention.length})</h3>
           {renderJobs(attention)}
         </section>
       ) : null}
       {completed.length ? (
-        <details>
-          <summary>Completed history ({completed.length})</summary>
+        <details className={ELEMENT_TAG + "-background-group"}>
+          <summary>Completed ({completed.length})</summary>
           {renderJobs(completed)}
         </details>
       ) : null}

@@ -8,7 +8,7 @@ import { snapshot as fixture, mapImage } from "./fixtures/villages-scene-browser
 const browser = await chromium.launch({ headless: true });
 const prefix = "marinara-capability-villages";
 try {
-  for (const width of [1366, 390, 320]) {
+  for (const width of [1366, 850, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
     const errors = [],
@@ -22,7 +22,12 @@ try {
     snapshot.projects = [];
     const place = snapshot.settings.venues[0];
     let session = null;
+    let holdZoneSave = false,
+      heldZoneSave,
+      holdVenueSave = false,
+      heldVenueSave;
     place.name = "Warehouse home";
+    place.venueType = "Converted office residence";
     place.classes = ["residence"];
     place.residentIds = ["mara"];
     place.occupancy = { playerHome: false, residentCharacterId: "mara", homeKind: null };
@@ -145,11 +150,19 @@ try {
         const zone = place.zones.find((zone) => zone.id === body.zoneId);
         if (zone)
           zone.image = request.method() === "DELETE" ? null : { ref: "zone:" + zone.id, url: body.image || mapImage };
-      } else if (path.endsWith(`/locations/venue/${place.id}`) && request.method() === "PUT")
+      } else if (path.endsWith(`/locations/venue/${place.id}`) && request.method() === "PUT") {
         place.name = request.postDataJSON().name;
-      else if (/\/venues\/[^/]+\/zones\/[^/]+$/.test(path) && request.method() === "PUT") {
+        if (holdVenueSave) {
+          heldVenueSave = route;
+          return;
+        }
+      } else if (/\/venues\/[^/]+\/zones\/[^/]+$/.test(path) && request.method() === "PUT") {
         const zone = place.zones.find((zone) => zone.id === decodeURIComponent(path.split("/").at(-1)));
         zone.name = request.postDataJSON().name;
+        if (holdZoneSave) {
+          heldZoneSave = route;
+          return;
+        }
       } else if (path.endsWith("/image/generate")) value = { ...snapshot };
       await fulfill(route, { json: value });
     });
@@ -161,16 +174,48 @@ try {
     );
     await page.goto("http://venue.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(page.getByRole("navigation", { name: "Village exploration" }).getByRole("button")).toHaveText([
+      "Map",
+      "Places",
+      "People",
+      "Projects",
+      "More",
+    ]);
+    await page
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Projects", exact: true })
+      .click();
+    await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
+    await page.getByRole("main", { name: "Projects" }).getByRole("button", { name: "Close ×", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Map", exact: true })
+      .click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
-    await page
-      .getByRole("complementary", { name: "Places navigator", exact: true })
-      .getByRole("button", { name: /Warehouse home/ })
-      .click();
-    await page
-      .getByRole("complementary", { name: "Places navigator" })
-      .getByRole("button", { name: "View venue", exact: true })
-      .click();
     const profile = page.locator(`.${prefix}-venue-profile`);
+    await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
+    const typeLines = await profile
+      .getByRole("region", { name: "Basic information" })
+      .locator("dd")
+      .first()
+      .evaluate((entry) => {
+        const range = document.createRange();
+        range.setStart(entry.firstChild, 0);
+        range.setEnd(entry.firstChild, "Converted".length);
+        return range.getClientRects().length;
+      });
+    assert.equal(typeLines, 1, "Venue type words remain readable without splitting across lines");
+    const chooseVenue = async (id, name) => {
+      if (width < 700) await page.getByRole("combobox", { name: "Venue", exact: true }).selectOption(id);
+      else
+        await page
+          .getByRole("group", { name: "Venues", exact: true })
+          .getByRole("button", { name: new RegExp("^" + name) })
+          .click();
+    };
+    await chooseVenue(otherId, "The Harbour");
+    await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
+    await chooseVenue(place.id, "Warehouse home");
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const tabs = profile.getByRole("navigation", { name: "Venue sections" });
@@ -181,6 +226,28 @@ try {
     const layout = profile.locator(`.${prefix}-venue-layout`);
     await expect(layout.locator("[data-layout-zone]")).toHaveCount(4);
     await expect(layout.locator("svg path")).toHaveCount(3);
+    await layout.locator('[data-layout-zone="workshop"]').click();
+    await profile.getByLabel("Zone name", { exact: true }).fill("Unsent Zone name");
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await chooseVenue(otherId, "The Harbour");
+    await expect(profile.getByLabel("Zone name", { exact: true })).toHaveValue("Unsent Zone name");
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
+    await expect(profile.getByLabel("Zone name", { exact: true })).toHaveValue("Unsent Zone name");
+    page.once("dialog", (dialog) => dialog.accept());
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
+    const peopleBook = page.getByRole("dialog", { name: "People", exact: true });
+    await expect(peopleBook).toBeVisible();
+    await peopleBook.getByRole("button", { name: "Close ×", exact: true }).click();
+    await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
+    await expect(profile.getByLabel("Zone name", { exact: true })).toHaveValue("Workshop");
+    await layout.locator('[data-layout-zone="exterior"]').click();
     await expect(layout.locator('[data-layout-zone="exterior"]')).toContainText("Exterior");
     await expect(profile.getByText("Entrance", { exact: true })).toHaveCount(0);
     await expect(profile.getByLabel("Zone name", { exact: true })).toHaveCount(0);
@@ -245,7 +312,20 @@ try {
     await detail.getByLabel("Zone name", { exact: true }).fill("  ");
     await expect(detail.getByRole("button", { name: "Save zone name", exact: true })).toBeDisabled();
     await detail.getByLabel("Zone name", { exact: true }).fill("Harbour Lounge");
+    holdZoneSave = true;
     await detail.getByRole("button", { name: "Save zone name", exact: true }).click();
+    await expect.poll(() => !!heldZoneSave).toBe(true);
+    await expect(
+      page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People", exact: true }),
+    ).toBeDisabled();
+    await expect(tabs.getByRole("button", { name: "About", exact: true })).toBeDisabled();
+    if (width < 700) await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toBeDisabled();
+    else
+      await expect(
+        page.getByRole("group", { name: "Venues" }).getByRole("button", { name: /^The Harbour/ }),
+      ).toBeDisabled();
+    await fulfill(heldZoneSave, { json: snapshot });
+    holdZoneSave = false;
     await expect(detail.getByRole("heading", { name: "Harbour Lounge", exact: true })).toBeVisible();
     assert.deepEqual(writes.at(-1), {
       path: `/api/villages/venues/${place.id}/zones/bay`,
@@ -263,7 +343,25 @@ try {
     await expect(profile.getByRole("button", { name: "Regenerate artwork" })).toHaveCount(0);
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await chooseVenue(otherId, "The Harbour");
+    await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
+    if (width < 700) await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await profile.getByRole("button", { name: "Plan a renovation →", exact: true }).click();
+    await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
+    await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
+    holdVenueSave = true;
     await profile.getByRole("button", { name: "Save name", exact: true }).click();
+    await expect.poll(() => !!heldVenueSave).toBe(true);
+    await expect(
+      page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map", exact: true }),
+    ).toBeDisabled();
+    await expect(profile.getByRole("button", { name: "Plan a renovation →", exact: true })).toBeDisabled();
+    await fulfill(heldVenueSave, { json: snapshot });
+    holdVenueSave = false;
     await expect(profile.getByRole("heading", { name: "Renamed warehouse", exact: true })).toBeVisible();
     assert.deepEqual(writes.at(-1), {
       path: `/api/villages/locations/venue/${place.id}`,
@@ -271,28 +369,49 @@ try {
     });
     await profile.getByRole("button", { name: "Plan a renovation →", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Renovation", exact: true })).toBeVisible();
-    await expect(
-      page
-        .getByRole("group", { name: "Venue", exact: true })
-        .getByRole("button", { name: "Renamed warehouse", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
     assert.equal(writes.length, beforeName + 1, "planning does not submit a Project");
     await page.getByRole("button", { name: /^Close/, exact: false }).click();
-    await page.getByRole("button", { name: "Back to the village", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Map", exact: true })
+      .click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
-    await page
-      .getByRole("complementary", { name: "Places navigator", exact: true })
-      .getByRole("button", { name: /Renamed warehouse/ })
-      .click();
-    await page
-      .getByRole("complementary", { name: "Places navigator" })
-      .getByRole("button", { name: "View venue", exact: true })
-      .click();
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
     await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
     await expect(page.getByText("Housing requests · Renamed warehouse", { exact: true })).toBeVisible();
     await expect(page.locator('[data-villager-request="residence:mara"]')).toBeVisible();
     await expect(page.locator('[data-villager-request="residence:eli"]')).toHaveCount(0);
+    if (width === 1366) {
+      await page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "People", exact: true })
+        .click();
+      await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
+      const person = page.getByRole("region", { name: "Mara profile", exact: true });
+      await person
+        .getByRole("navigation", { name: "Villager profile sections" })
+        .getByRole("button", { name: "Venues", exact: true })
+        .click();
+      await person.getByRole("button", { name: /Projects Open Projects/ }).click();
+      await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: /^Close/ }).click();
+      await page.getByRole("button", { name: "People", exact: true }).click();
+      await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
+      await person
+        .getByRole("navigation", { name: "Villager profile sections" })
+        .getByRole("button", { name: "Venues", exact: true })
+        .click();
+      await person.getByRole("button", { name: /Venue Requests Open Venue Requests/ }).click();
+      await expect(page.getByRole("button", { name: "Show all requests", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("main").locator('[data-villager-request="residence:eli"]')).toBeVisible();
+      await page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "Places", exact: true })
+        .click();
+      await tabs.getByRole("button", { name: "Manage", exact: true }).click();
+      await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
+    }
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
     await expect(profile).toBeVisible();
     for (const section of ["About", "Zones", "Manage"]) {
@@ -316,14 +435,23 @@ try {
         });
       }
     }
-    await profile.getByRole("button", { name: "Back", exact: true }).click();
-    await page.getByRole("button", { name: "Village Settings", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "More", exact: true })
+      .click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("village");
+    else await page.getByRole("button", { name: "World Configuration", exact: true }).click();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "View Venue", exact: true }).first().click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Places", exact: true })
+      .click();
     await expect(profile).toBeVisible();
     await expect(tabs.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
     await profile.getByRole("button", { name: "Visit venue", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Message at Renamed warehouse", exact: true })).toBeVisible();
+    const composer = page.getByRole("textbox", { name: "Message at Renamed warehouse", exact: true });
+    await expect(composer).toBeVisible();
+    await composer.fill("An unsent Scene draft.");
     const beforeSceneBrowse = writes.length;
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
@@ -340,8 +468,14 @@ try {
         });
       }
     }
-    await profile.getByRole("button", { name: "Back to Scene", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Message at Renamed warehouse", exact: true })).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Projects", exact: true })
+      .click();
+    await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
+    await page.getByRole("main", { name: "Projects" }).getByRole("button", { name: "Close ×", exact: true }).click();
+    await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+    await expect(composer).toHaveValue("An unsent Scene draft.");
     assert.deepEqual(
       writes.slice(beforeSceneBrowse).filter((write) => !write.path.endsWith("/rooms/activity")),
       [],

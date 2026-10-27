@@ -1,48 +1,47 @@
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
-import { mock } from "node:test";
-// Keep the scheduled cast on the seeded day; async timers remain real.
-mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00.000Z") });
-import { contactNeighborIds } from "../packages/villages/src/shared/helpers/zone-contact.js";
 import assert from "node:assert/strict";
+import { mock } from "node:test";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  enterVenue,
-  moveVenueZone,
-  continueVenueWithoutGreeting,
-  sendVenueTurn as sendCurrentVenueTurn,
-  discardVenueVisitDebug,
-} from "../packages/villages/src/server/features/scenes/venue-session.js";
-import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
-import { readProjectTurnEvidence } from "../packages/villages/src/server/features/scenes/services.js";
-import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import {
-  attentionCheck,
-  attentionConversation,
-  movedAttentionContacts,
-  attentionClarificationChoices,
-  directAttention,
-  readAttentionPlan,
-  coercePendingAttention,
-  bindAttentionPlan,
-  validAttentionPlan,
-} from "../packages/villages/src/server/domain/rules/scene-attention.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import {
   boundDecisionResult,
   decisionCandidates,
 } from "../packages/villages/src/server/domain/rules/decision-candidates.js";
-import { createInterpretation } from "../packages/villages/src/server/features/generation/interpretation-service.js";
 import { coerceInterpretationSettings } from "../packages/villages/src/server/domain/rules/interpretation-policy.js";
 import { fingerprint } from "../packages/villages/src/server/domain/rules/interpretation-rules.js";
-import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
+  attentionCheck,
+  attentionClarificationChoices,
+  attentionConversation,
+  bindAttentionPlan,
+  coercePendingAttention,
+  directAttention,
+  movedAttentionContacts,
+  readAttentionPlan,
+  validAttentionPlan,
+} from "../packages/villages/src/server/domain/rules/scene-attention.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { createInterpretation } from "../packages/villages/src/server/features/generation/interpretation-service.js";
+import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
+import { readProjectTurnEvidence } from "../packages/villages/src/server/features/scenes/services.js";
+import {
+  continueVenueWithoutGreeting,
+  discardVenueVisitDebug,
+  enterVenue,
+  moveVenueZone,
+  sendVenueTurn as sendCurrentVenueTurn,
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { contactNeighborIds } from "../packages/villages/src/shared/helpers/zone-contact.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
+import { fixtureVillageState, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+// Keep the scheduled cast on the seeded day; async timers remain real.
+mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00.000Z") });
 
 const stamp = new Date().toISOString();
 const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
@@ -119,11 +118,10 @@ state.villagers = [
       exampleDialogue: "",
     },
     addedAt: stamp,
-    completedWishes: [],
+    wishes: [],
     remap: null,
     ingestSchedule: false,
     agenda: {
-      wishes: [],
       routineSummary: "",
       day: [block],
       week: { [weekday]: [block] },

@@ -1,4 +1,3 @@
-import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import {
   focusedPhotoScale,
@@ -9,6 +8,7 @@ import {
   mobileMapGesture,
   mobilePhotoScale,
 } from "../packages/villages/src/client/features/exploration/villages-mobile-map.ts";
+import { clientImplementation } from "./client-source.js";
 
 const image = { width: 1500, height: 1000 };
 const frame = { width: 360, height: 600 };
@@ -106,16 +106,13 @@ assert.ok(
 assert.ok(source.includes("onPlace(round4(x), round4(y), {"));
 assert.ok(source.includes("photoWidth: photoRect?.width"));
 assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-canvas`)"));
-assert.ok(source.includes("<NoticesButton"));
+assert.equal(source.includes("<NoticesButton"), false);
 assert.equal(source.includes('aria-label="Events (NYI)"'), false);
 assert.equal(source.includes("Force Village Update"), false);
 assert.equal(source.includes("FORCE_VILLAGE_UPDATE_NOTICE"), false);
 assert.equal(source.includes('openMenu("events")'), false);
 assert.ok(source.includes("data-section={menuSection}"));
-assert.ok(source.includes('onClick={() => openMenu("general")}'));
-assert.ok(source.includes('onClick={() => openMenu("village")}'));
 assert.equal(source.includes('onClick={() => openMenu("memories")}'), false);
-assert.ok(source.includes('onClick={() => openMenu("villagers")}'));
 assert.equal(source.includes('onClick={() => openMenu("story")}'), false);
 assert.equal(source.includes("Fit entire map"), false);
 

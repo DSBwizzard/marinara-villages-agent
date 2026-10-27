@@ -1,8 +1,8 @@
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
+import type { VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { ProgressTask } from "../rules/progress-engine.js";
 import type { HomeBuildingKind } from "../rules/prompt-preset.js";
-import type { VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillagesTurnBeat } from "../rules/turn-beats.js";
 
 // Villages — the shapes the server half of the package trades in.
@@ -27,62 +27,7 @@ import type { VillagesTurnBeat } from "../rules/turn-beats.js";
 /** One stable desired outcome. Size controls scope/lifetime; intensity remains emotional attention.
  * Legacy tells stay readable but are excluded from Scene writing. Essential conditions are
  * separately versioned, explicitly witnessed journal facts, not generated solution steps. */
-export type VillageWish = {
-  goalJournal?: import("../rules/wish-journal.js").WishGoalJournal;
-  semanticCriteria?: import("./wish-interpretation-model.js").WishCriteria;
-  size?: import("../rules/wish-definition.js").WishSize;
-  conditionRevision?: number;
-  learnedAt?: string;
-  learnedLineIds?: string[];
-  need?: { id: string; subject: string; action: string; policy: import("./wish-types.js").WishPolicy };
-  /**
-   * Stable within one save, and the handle a wish is answered BY.
-   *
-   * A wish is matched by id and never by its position, because the list it
-   * lives in is rewritten whenever a wish is replaced and a position would
-   * silently point at a different wish afterwards. It is also the only thing
-   * the villager is allowed to name when they are told which wish a player has
-   * satisfied, so the naming cannot drift into prose the village has to read.
-   */
-  id: string;
-  wish: string;
-  /** 1-3: how much it is on their mind, and how much it matters when it is answered. */
-  intensity: number;
-  /** What somebody else could notice without being told. */
-  tell: string;
-  /**
-   * When the village wrote this, ISO, or "" when nothing readable was stored.
-   *
-   * Stored rather than derived, unlike the village's clock, because a wish's age
-   * is the one thing about it that cannot be worked out afterwards: nothing else
-   * in the package records when the question was asked, and the answer matters
-   * to a player looking at a wish that has been sitting there for days.
-   */
-  addedAt: string;
-  /**
-   * The instant this dies of age, ISO, or "" when it never does.
-   *
-   * Rolled ONCE, from the wish's own id, at the moment the wish is written — see
-   * `wishLifetimeDays`. A wish is not a task with a deadline, so the date is
-   * never shown to the villager and never mentioned in a prompt: it exists so
-   * that a wish can go quiet on its own, and so that the debug tab can say which
-   * day the wish it is looking at will be gone.
-   *
-   * An UNREADABLE one never expires, which is the safe direction in two senses at
-   * once: every wish written before this field existed keeps behaving exactly as
-   * it did, and a hand-edited document cannot make somebody's wish vanish by
-   * accident. An undated wish still leaves the list the other two ways —
-   * fulfilled, or judged to have lapsed.
-   */
-  expiresAt: string;
-};
-
-/** A confirmed wish outcome, kept separately from the prose memory about it. */
-export type VillageCompletedWish = {
-  wish: VillageWish;
-  fulfilledAt: string;
-  memoryId: string;
-};
+export type VillageWish = import("../../../shared/contracts/wishes.js").SocialWish;
 
 /**
  * What a villager is after, written once when they move in and then kept.
@@ -108,9 +53,7 @@ export type VillageAgenda = {
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
-  wishActivities?: import("./wish-types.js").WishActivity[];
-  socialActivities?: import("./wish-types.js").WishActivity[];
-  wishes: VillageWish[];
+  socialActivities?: import("./social-activity.js").SocialActivity[];
   /** One line about an ordinary day for them, here. */
   routineSummary: string;
   /** The village's repeating exact-time day when the Engine has no weekly schedule. */
@@ -392,12 +335,13 @@ export type VillageRemapFailure = {
 
 /** One library card the village has adopted. */
 export type VillageVillager = {
+  letterFontId?: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
     initialGenerationComplete: boolean;
   };
   signature?: import("../../../shared/helpers/resident-signature.js").ResidentSignatureImage;
   admission: import("../../../shared/helpers/resident-admission.js").ResidentAdmission;
-  wishLifecycle?: import("./wish-types.js").WishLifecycle;
+  wishes: VillageWish[];
   agendaGeneration?: string;
   translationGeneration?: string;
   characterId: string;
@@ -422,7 +366,6 @@ export type VillageVillager = {
    * retried on every part of every day forever.
    */
   agenda: VillageAgenda | null;
-  completedWishes: VillageCompletedWish[];
   /** Schedule changes influence tomorrow's agenda, never today's. */
   ingestSchedule?: boolean;
   scheduleInfluence?: import("../rules/owned-routine.js").ScheduleInfluence;
@@ -747,32 +690,6 @@ export type VillageVenue = {
   };
 };
 
-/** A durable Venue decision shown in the player's Mailbox. */
-export type VillageVenueMail = {
-  proposedPrivateZoneId?: string;
-  id: string;
-  venueId: string;
-  title: string;
-  detail: string;
-  kind: "change" | "player-move" | "counteroffer" | "villager-change" | "villager-move" | "project-approval";
-  projectId?: string;
-  projectRevision?: number;
-  status: "pending-player" | "awaiting-villagers" | "approved" | "declined";
-  createdAt: string;
-  dueAt: string;
-  resolvedAt: string;
-  requesterCharacterId: string;
-  movingCharacterId?: string;
-  counterofferRequestId?: string;
-  counterofferDraft?: { name: string; classes: VillageVenueClass[]; description: string };
-  /** Exact reviewed terms; retained alongside the outcome for future relationship use. */
-  proposedClasses?: VillageVenueClass[];
-  proposedCapacity?: number;
-  affectedIds: string[];
-  decisions: { characterId: string; accepted: boolean; reply: string }[];
-  error: string;
-};
-
 /** A compact reference used anywhere a current literal location is required. */
 export type VillageVenueReference = {
   venueId: string;
@@ -921,7 +838,7 @@ export type VillageProjectLifecycle = {
   affectedIds: string[];
   approvals: {
     residentId: string;
-    source: "conversation" | "mailbox";
+    source: "conversation";
     evidenceId: string;
     scope: string;
     at: string;
@@ -1029,7 +946,6 @@ export type VillageState = {
   memories: import("./memories.js").MemoryCollection;
   memoryScenes: Record<string, import("./memories.js").MemorySceneState>;
   memoryReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
-  development?: import("./development-model.js").DevelopmentState;
   socialContractVersion: 2;
   socialMailOutbox?: import("./social-mail.js").SocialMailOutbox[];
   socialPublications?: Record<string, true>;
@@ -1050,14 +966,11 @@ export type VillageState = {
   exchangeReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
   noticeSequence: number;
   dismissedNoticeIds: string[];
-  projectWishOutbox: { projectId: string; at: string }[];
   relationshipContext?: import("./relationship-types.js").RelationshipState;
   socialOutbox?: import("./social-outbox-model.js").SocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
-  wishRefillIntents: Record<string, { id: string; settled: string }>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
-  sceneWishProtections?: Record<string, import("../rules/scene-wish-protection.js").SceneWishProtection>;
-  version: 5;
+  version: 6;
   /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;
@@ -1153,7 +1066,7 @@ export type VillageState = {
   foundedAt: string;
   /** Weather flavour. Random at founding so two villages of the same age differ. */
   seed: string;
-  /** Pinned by the player and by the villagers, oldest first. Empty at founding. */
+  /** Legacy Noticeboard notes, retained for saved-world compatibility and snapshot access. */
   noticeboard: VillageNotice[];
   /** Durable high-water mark for deterministic reconciliation. */
   simulatedThrough: string;
@@ -1170,12 +1083,14 @@ export type VillageState = {
   processedActionIds: string[];
   projects: VillageProject[];
   /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
+  wishFollowing?: Record<string, boolean>;
   progressTasks: ProgressTask[];
   /** Ordinary scene props are visible but cannot become project stock. */
   /** Finite resident source yields already transferred into a project. */
   pendingDecisions: VillagePendingDecision[];
-  venueMail: VillageVenueMail[];
   villagers: VillageVillager[];
+  /** Writing styles retained when residents leave, keyed by character ID. */
+  formerLetterFonts?: Record<string, string>;
   /**
    * The village's one prompt box: what a villager here knows.
    *
@@ -1309,7 +1224,7 @@ export type VillageChatRole = "user" | "assistant";
  * let a wish show as its tell, and may change the subject. `ask` is a question
  * being put to them, which they answer directly and briefly. `fulfill` is the
  * player saying they have done something for them, which the villager values
- * rather than judges — see `renderModeBlock`.
+ * rather than judges.
  *
  * Venue submissions store the mode for replay. Fulfill can be requested by
  * the player, but the server judges the claim before generating the reply.
@@ -1442,6 +1357,7 @@ export type VillagePlayerIdentity = {
 
 /** A villager as the tab renders it: live card fields where they exist, cached name otherwise. */
 export type VillageVillagerView = {
+  letterFontId?: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription;
   signature?: import("../../../shared/helpers/resident-signature.js").ResidentSignatureImage;
   signatureFallback?: import("../../../shared/helpers/resident-signature.js").ResidentSignature;
@@ -1539,7 +1455,6 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   venueRequests: VillagePendingDecision[];
   projects: import("../../../shared/contracts/village.js").BuildProject[];
   residences: VillageResidence[];
-  venueMail: VillageVenueMail[];
   /** Newest last, so the board reads the way a board fills up. */
   noticeboard: VillageNotice[];
   /** Newest first, so the window on the map opens on what just happened. */
@@ -1575,11 +1490,6 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
 export type VillageAgendaView = {
   canInterpretSchedule?: boolean;
   effectiveDays?: Record<string, VillageAgendaBlock[]>;
-  wishHistoryCount?: number;
-  wishAttempt?: Pick<
-    import("./wish-types.js").WishAttempt,
-    "stage" | "reason" | "calls" | "inputTokens" | "outputTokens" | "elapsedMs" | "at"
-  >;
   characterId: string;
   name: string;
   /**
@@ -1607,7 +1517,6 @@ export type VillageAgendaView = {
   weekUnreadable: boolean;
   addedAt: string;
   agenda: VillageAgenda | null;
-  completedWishes: VillageCompletedWish[];
   ingestSchedule: boolean;
   scheduleInfluence?: import("../rules/owned-routine.js").ScheduleInfluence;
   nativeSchedule: {

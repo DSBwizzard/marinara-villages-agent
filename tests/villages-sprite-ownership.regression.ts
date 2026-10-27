@@ -1,5 +1,3 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import {
@@ -7,22 +5,26 @@ import {
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
-import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { createSpriteImageDecoder } from "../packages/villages/src/server/features/media/sprite-image-codec.js";
 import {
   createSpriteManager,
   type SpriteManagerPorts,
 } from "../packages/villages/src/server/features/media/sprite-manager-service.js";
 import {
-  configureSpriteManager,
-  importSpriteArtwork,
   adoptSpriteArtwork,
-  readSpriteManager,
+  configureSpriteManager,
   decodeSpriteImage,
+  importSpriteArtwork,
+  readSpriteManager,
 } from "../packages/villages/src/server/features/media/sprite-manager.js";
+import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -37,7 +39,7 @@ const image = "data:image/png;base64," + PNG.sync.write(source).toString("base64
 const village = (name: string) =>
   coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     name,
     foundedAt: new Date().toISOString(),
     wishSystemVersion: 3,

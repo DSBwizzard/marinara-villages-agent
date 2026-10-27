@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
-import { observeHousing } from "../../domain/rules/resident-development.js";
-import { foundingCompletedIds } from "../../domain/rules/founding-tasks.js";
-import { openingView } from "../../domain/rules/opening-project.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
-import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
+import { foundingCompletedIds } from "../../domain/rules/founding-tasks.js";
+import { openingView } from "../../domain/rules/opening-project.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
+import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { canOccupyZone, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity, villagerPlaceView } from "../../domain/rules/village-projections.js";
@@ -41,7 +40,7 @@ export function createVillageSnapshot({
   privatePreparationRooms,
 }: VillageSnapshotPorts) {
   /** The village as the tab draws it: live library labels and adopted card colors. */
-  async function buildVillageSnapshot(at?: Date, observeCurrentHousing = false): Promise<VillageSnapshot> {
+  async function buildVillageSnapshot(at?: Date, _observeCurrentHousing = false): Promise<VillageSnapshot> {
     let village = await readVillageState();
     const clock = await observeVillageClock();
     let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
@@ -68,11 +67,6 @@ export function createVillageSnapshot({
       });
       village = await readVillageState();
     }
-    if (observeCurrentHousing && !clock?.paused)
-      village = await mutateVillageState((state) => {
-        now = villageNow();
-        observeHousing(state, now.toISOString());
-      });
     const minuteOfDay = deriveVillageMoment({
       foundedAt: village.foundedAt,
       seed: village.seed,
@@ -208,7 +202,6 @@ export function createVillageSnapshot({
           : undefined,
       })),
       residences: village.residences,
-      venueMail: village.venueMail,
       noticeboard: village.noticeboard,
       villagers,
       relationshipStartingPending: village.villagers.some(
@@ -270,7 +263,7 @@ export function createVillageSnapshot({
       backgroundWork: await backgroundWorkSummaries(),
     };
     if (clock && (await observeVillageClock())?.revision !== clock.revision)
-      return buildVillageSnapshot(undefined, observeCurrentHousing);
+      return buildVillageSnapshot(undefined, _observeCurrentHousing);
     return snapshot;
   }
 

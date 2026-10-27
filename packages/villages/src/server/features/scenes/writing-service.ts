@@ -1,66 +1,21 @@
-import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
-import { readDevelopmentSceneChanges } from "../../domain/rules/development-scene.js";
-import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
-import {
-  IncompleteOpeningPitch,
-  IncompleteOpeningGathering,
-  openingSceneDirection,
-  readOpeningSignal,
-} from "../../domain/rules/opening-project.js";
-import {
-  RESIDENT_ACTION_WRITING,
-  RESIDENT_ACTION_WRITING_V1,
-  RESIDENT_ACTION_PUBLIC_SOCIAL,
-  readResidentActions,
-  assertResidentActionWitnesses,
-} from "../../domain/rules/resident-actions.js";
-import {
-  playerSpeechCapture,
-  materializePlayerSpeech,
-  assertRecoveredSpeechPrivacy,
-  playerQuoteSources,
-  recoverPlayerSpeech,
-  PLAYER_CAPTURE_CONTRACT,
-} from "../../domain/rules/player-speech-capture.js";
-import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
+import { createHash } from "node:crypto";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
-import { applyAcousticWitnesses } from "../../domain/rules/acoustic-witnesses.js";
-import {
-  routeZoneEvents,
-  InvalidNarratedSound,
-  zoneEventScene,
-  zoneEventReply,
-  zoneEventHearingContext,
-  ZONE_EVENT_CONTRACT,
-  ZONE_PLAYER_SPEECH_CONTRACT,
-} from "../../domain/rules/zone-events.js";
-import { contactPosition } from "../../domain/rules/venue-contact.js";
-import { UnavailableResidentMovement } from "../../domain/rules/resident-movement.js";
-import { villageNow } from "../../adapters/time/clock-gate.js";
-import { renderResidentAdmission } from "../../domain/rules/resident-admission.js";
+import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
 import {
   initialStaging,
   replayStaging,
   stagingLayout,
   stagingTranscriptEvents,
 } from "../../../shared/helpers/scene-staging.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type { GreetingTrace, VenueReplyFailureKind, VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { accessManagementPrompt } from "../../domain/rules/access-speech.js";
+import { applyAcousticWitnesses } from "../../domain/rules/acoustic-witnesses.js";
+import { applyAttentionWitnesses } from "../../domain/rules/attention-witnesses.js";
 import { asRecord, asString, asTrimmedString } from "../../domain/rules/coerce.js";
 import { validDecisionEvidence } from "../../domain/rules/decision-candidates.js";
-import { applyAttentionWitnesses } from "../../domain/rules/attention-witnesses.js";
-import {
-  sceneContinuityView,
-  sceneLocationContext,
-  visibleSceneContinuity,
-} from "../../domain/rules/scene-continuity.js";
-import {
-  applyResidentMovementTimeline,
-  residentMovementPrompt,
-  residentLocalIdsAt,
-} from "../../domain/rules/resident-movement.js";
 import { badGateway, conflict } from "../../domain/rules/errors.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import { recallMemories } from "../../domain/rules/memory-recall.js";
@@ -69,7 +24,21 @@ import {
   venueAdditionalWritingGuidance,
   venueWritingDirection,
 } from "../../domain/rules/narration-style.js";
+import {
+  IncompleteOpeningGathering,
+  IncompleteOpeningPitch,
+  openingSceneDirection,
+  readOpeningSignal,
+} from "../../domain/rules/opening-project.js";
 import { renderPlayerBackgroundWritingContext } from "../../domain/rules/player-background.js";
+import {
+  assertRecoveredSpeechPrivacy,
+  materializePlayerSpeech,
+  PLAYER_CAPTURE_CONTRACT,
+  playerQuoteSources,
+  playerSpeechCapture,
+  recoverPlayerSpeech,
+} from "../../domain/rules/player-speech-capture.js";
 import {
   bindProjectSpeech,
   projectSpeechContexts,
@@ -77,36 +46,62 @@ import {
   validateProjectSpeech,
 } from "../../domain/rules/project-interpretation.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
+import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
+import {
+  assertResidentActionWitnesses,
+  readResidentActions,
+  RESIDENT_ACTION_PUBLIC_SOCIAL,
+  RESIDENT_ACTION_WRITING,
+  RESIDENT_ACTION_WRITING_V1,
+} from "../../domain/rules/resident-actions.js";
+import { renderResidentAdmission } from "../../domain/rules/resident-admission.js";
+import {
+  applyResidentMovementTimeline,
+  residentLocalIdsAt,
+  residentMovementPrompt,
+  UnavailableResidentMovement,
+} from "../../domain/rules/resident-movement.js";
 import {
   responseDiagnostics,
   type ResponseDiagnostics,
   sceneMissingFields,
 } from "../../domain/rules/response-diagnostics.js";
+import {
+  compactSceneContract,
+  readSceneWritingCapabilities,
+  reliableSceneContract,
+  sceneWritingCapabilities,
+} from "../../domain/rules/scene-compact-contract.js";
+import {
+  sceneContinuityView,
+  sceneLocationContext,
+  visibleSceneContinuity,
+} from "../../domain/rules/scene-continuity.js";
+import { capturedSceneCalendar, HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
 import { extractSceneReply } from "../../domain/rules/scene-reply-json.js";
 import { parseVenueReply, quietContactReply } from "../../domain/rules/scene-reply.js";
+import {
+  completeSceneObject,
+  normalizeRecoverableSceneReply,
+  normalizeSceneEffectReferences,
+  normalizeSparseSceneReply,
+} from "../../domain/rules/scene-writing-contract.js";
+import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
+import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
+import { semanticPhysicalContext, semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
+import { wishWritingContext } from "../../domain/rules/social-wishes.js";
 import { describeSpriteExpressions, validateSpriteExpression } from "../../domain/rules/sprite-expressions.js";
 import {
   contactNeighbors,
+  contactPosition,
   contactSpeech,
   readContactIntent,
   readContactMoves,
   readContactRelay,
 } from "../../domain/rules/venue-contact.js";
-import { venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { hasVenueClass, venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { type MovementIntent, readPlayerMovement } from "../../domain/rules/venue-movement.js";
 import { readVenueRequestCore } from "../../domain/rules/venue-requests.js";
-import {
-  completeSceneObject,
-  normalizeSparseSceneReply,
-  normalizeRecoverableSceneReply,
-  normalizeSceneEffectReferences,
-} from "../../domain/rules/scene-writing-contract.js";
-import {
-  compactSceneContract,
-  reliableSceneContract,
-  readSceneWritingCapabilities,
-  sceneWritingCapabilities,
-} from "../../domain/rules/scene-compact-contract.js";
 import { buildVenueResponseContract } from "../../domain/rules/venue-response-contract.js";
 import { venueFoundingBackground } from "../../domain/rules/venue-scene-context.js";
 import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
@@ -128,13 +123,17 @@ import {
   zoneControllerIds,
 } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
-import { capturedSceneCalendar } from "../../domain/rules/scene-halt.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure as typedCompletionFailure, type WorkFailure } from "../../domain/rules/work-failure.js";
-import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
-import { createHash } from "node:crypto";
-import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
-import { semanticPlayerMoves, semanticPhysicalContext } from "../../domain/rules/semantic-timeline.js";
+import {
+  InvalidNarratedSound,
+  routeZoneEvents,
+  ZONE_EVENT_CONTRACT,
+  ZONE_PLAYER_SPEECH_CONTRACT,
+  zoneEventHearingContext,
+  zoneEventReply,
+  zoneEventScene,
+} from "../../domain/rules/zone-events.js";
 export interface SceneWritingPorts {
   semantic?: import("../../domain/models/semantic-model.js").SemanticInterpreter;
   venueCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
@@ -155,7 +154,6 @@ export interface SceneWritingPorts {
   venueOperationSignal: typeof import("../../adapters/operations/operation-context.js").venueOperationSignal;
   rejectVenueCompletion: typeof import("../../jobs/venue-coordinator.js").rejectVenueCompletion;
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
-  wishFingerprint: typeof import("../../domain/rules/wish-interpretation-rules.js").wishFingerprint;
   villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   interpretRoomReply: typeof import("./room-interpretation.js").interpretRoomReply;
@@ -181,7 +179,6 @@ export function createSceneWriting({
   venueOperationSignal,
   rejectVenueCompletion,
   completeWithRoom,
-  wishFingerprint,
   villagesConnectionIdFor,
   readVillageState,
   interpretRoomReply,
@@ -334,8 +331,7 @@ export function createSceneWriting({
               .map((venue) => `${venue.name} (${venue.id})`)
               .join(", ") || "none"
           }.`,
-          `Private resident intentions (captured for this Scene; motives and reasons belong only to this resident. Each consent decision is shared only between its signer and mover): ${JSON.stringify(village.development?.residents[person.characterId]?.pursuits ?? [])}. The resident can explain or reconsider them through conversation; do not assume the player knows.`,
-          `Private current desires of ${card.name}: ${resident.agenda?.wishes.map((wish) => `[${wish.id}] ${wish.wish}`).join("; ") || "none"}. These can inform a relevant choice; they require no gesture, hint, mention, or player errand.`,
+          `Retained personal desires of ${card.name} (availability is separate from attention): ${JSON.stringify(wishWritingContext(resident.wishes, "")) || "none"}. These can inform a relevant choice; they require no gesture, hint, mention, or player errand.`,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -643,9 +639,10 @@ export function createSceneWriting({
               village.venues
                 .filter(
                   (venue) =>
+                    hasVenueClass(venue, "residence") &&
                     venue.constructionStatus !== "worksite" &&
                     !venue.occupancy.playerHome &&
-                    !venue.occupancy.residentCharacterId,
+                    venueResidentIds(venue).length === 0,
                 )
                 .map((venue) => `${venue.id}: ${venue.name}`)
                 .join("; ") || "none"
@@ -702,7 +699,7 @@ export function createSceneWriting({
           projects: projectContexts.length > 0,
           wishes: active.some((person) =>
             village.villagers.some(
-              (resident) => resident.characterId === person.characterId && !!resident.agenda?.wishes.length,
+              (resident) => resident.characterId === person.characterId && !!resident.wishes.length,
             ),
           ),
           exampleSpeakerId: stageIds[0],
@@ -1181,7 +1178,6 @@ export function createSceneWriting({
         "invitation",
         "residenceRequest",
         "residenceDecision",
-        "renovationRequest",
         "venueRequest",
         "editApproval",
         "departures",
@@ -1328,7 +1324,6 @@ export function createSceneWriting({
       };
       const request = heardSignal(raw?.residenceRequest);
       const decision = heardSignal(raw?.residenceDecision);
-      const renovation = heardSignal(raw?.renovationRequest);
       const venueRequest = heardSignal(raw?.venueRequest);
       const invitation = heardSignal(raw?.invitation);
       const editApproval = heardSignal(raw?.editApproval);
@@ -1501,14 +1496,16 @@ export function createSceneWriting({
         semanticPlayerMoves: playerMoves,
         physicalContext,
         movementIntent,
-        developmentChanges:
-          semanticResult && session.operation?.input.developmentVersion === 1
-            ? readDevelopmentSceneChanges(semanticResult.effects.developmentChanges, village, parsed.lines)
-            : [],
         residenceSignal:
           (semanticResult || mode === "chat" || mode === "ask") &&
           requestedVenueId &&
-          village.venues.some((venue) => venue.id === requestedVenueId)
+          village.venues.some(
+            (venue) =>
+              venue.id === requestedVenueId &&
+              hasVenueClass(venue, "residence") &&
+              venue.constructionStatus !== "worksite" &&
+              venueResidentIds(venue).every((id) => id === request!.speakerId),
+          )
             ? { kind: "request" as const, characterId: request!.speakerId, venueId: requestedVenueId }
             : (semanticResult || mode === "chat" || mode === "ask") &&
                 pendingDecision &&
@@ -1520,12 +1517,6 @@ export function createSceneWriting({
                   approved: decision!.entry.approved === true,
                 }
               : null,
-        renovationSignal:
-          (semanticResult || mode === "chat" || mode === "ask") &&
-          renovation &&
-          (place?.residentIds?.includes(renovation.speakerId) || place?.workerIds?.includes(renovation.speakerId))
-            ? { characterId: renovation.speakerId, venueId: place.id, quote: asTrimmedString(renovation.entry.quote) }
-            : null,
         venueRequestSignal:
           (semanticResult || mode === "chat" || mode === "ask") &&
           venueRequest &&
@@ -1609,7 +1600,6 @@ export function createSceneWriting({
               turnPolicyVersion: 1 as const,
               ...(venueOperationInput()?.preservationVersion === 1 ? { preservationVersion: 1 as const } : {}),
               ...(venueOperationInput()?.occurrenceVersion === 1 ? { occurrenceVersion: 1 as const } : {}),
-              ...(venueOperationInput()?.developmentVersion === 1 ? { developmentVersion: 1 as const } : {}),
               sourceHash: semanticResult.sourceHash,
               ...(venueOperationInput()?.semanticPipelineVersion === 3 ? { pipelineVersion: 3 as const } : {}),
               ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
@@ -1627,11 +1617,16 @@ export function createSceneWriting({
           ? (semanticResult.effects.earlierLineIds as string[])
           : earlierEvidence.map((line) => line.id),
         wishChanges: raw?.wishChanges,
-        wishContexts: active.flatMap((person) =>
-          (village.villagers.find((resident) => resident.characterId === person.characterId)?.agenda?.wishes ?? []).map(
-            (wish) => ({ actorId: person.characterId, wishId: wish.id, fingerprint: wishFingerprint(wish) }),
-          ),
-        ),
+        wishContexts: active.map((person) => {
+          const owner = village.villagers.find((r) => r.characterId === person.characterId)!;
+          return {
+            actorId: owner.characterId,
+            wishId: "",
+            fingerprint: "",
+            wishes: structuredClone(owner.wishes),
+            capturedAt: owner.cardSnapshot.capturedAt,
+          };
+        }),
       };
     } catch (error) {
       if (semanticResult) await semantic?.rejectExchange?.(semanticResult);

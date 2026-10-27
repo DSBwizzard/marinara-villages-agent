@@ -1,26 +1,26 @@
 import assert from "node:assert/strict";
-import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   createActivationScope,
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { MAX_VILLAGERS } from "../packages/villages/src/server/domain/rules/village-limits.js";
-import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
-import { retireBackgroundResident } from "../packages/villages/src/server/jobs/background-work.js";
-import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
 import {
   addVillager,
-  removeVillager,
   configureResidentRoster,
+  removeVillager,
 } from "../packages/villages/src/server/features/residents/resident-roster.js";
+import { retireBackgroundResident } from "../packages/villages/src/server/jobs/background-work.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -185,7 +185,7 @@ const departed = fixture("Departed");
 await departed.service.addVillager("same");
 const home = coerceVillageState({
   ...defaultVillageState(),
-  version: 5,
+  version: 6,
   venues: [
     parsePlace(
       {
@@ -242,7 +242,6 @@ home.playerInvitations = [
   { residentId: "other", recordedAt: "earlier" },
 ];
 departed.state.venues = [home];
-departed.state.wishRefillIntents.same = { id: "refill", settled: "" };
 const receiptId = "villages-background-" + backgroundRevision(["agenda", "same"]);
 departed.state.backgroundReceipts[receiptId] = "receipt";
 await departed.service.removeVillager("same");
@@ -270,9 +269,20 @@ assert(
     (archive) => archive.ownerId === "same" && archive.space.description === "Secret writing",
   ),
 );
-assert.equal(departed.state.wishRefillIntents.same, undefined);
 assert.equal(departed.state.backgroundReceipts[receiptId], undefined);
 await assert.rejects(departed.service.removeVillager("same"), /does not live here/);
+const letters = fixture("Letters");
+await letters.service.addVillager("same");
+letters.state.villagers[0]!.letterFontId = "caveat";
+await letters.service.removeVillager("same");
+assert.equal(
+  coerceVillageState(letters.state).formerLetterFonts?.same,
+  "caveat",
+  "A departed writer retains their repaired style",
+);
+await letters.service.addVillager("same");
+assert.equal(letters.state.villagers[0]!.letterFontId, "caveat", "Returning the same character preserves their style");
+
 const retryRemoval = fixture("Retry removal");
 await retryRemoval.service.addVillager("same");
 retryRemoval.retryWith((state) => {

@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
-import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
-import {
-  reconcileProjectLifecycles,
-  PROJECT_DURATION_MS,
-} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { wishReceiptRecords } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
+import {
+  PROJECT_DURATION_MS,
+  reconcileProjectLifecycles,
+} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
+import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
 const f = fixture(),
   now = new Date("2026-10-24T00:00:00Z");
 const first = await f.newProject("Art Hall", "a", { x: 0.5, y: 0.5 }),
@@ -33,14 +32,8 @@ await f.mutate((state) => {
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)));
 assert.equal(f.get(first).status, "complete", "ordinary schedule changes cannot stop completion");
 assert.equal(f.get(second).status, "complete");
-assert.equal(f.state().projectWishOutbox.length, 2);
-assert.equal(
-  wishReceiptRecords(f.state(), "a").filter((receipt) => receipt.completedProject).length,
-  2,
-  "current completion supplies factual Wish evidence",
-);
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS * 2)));
-assert.equal(f.state().projectWishOutbox.length, 2, "completion is exactly once");
+assert.equal(f.state().projects.filter((p) => p.status === "complete").length, 2, "completion is exactly once");
 assert.equal(f.state().progressTasks.length, 0, "Projects do not create old progress tasks");
 const r = await renovation(f),
   r2 = await renovation(f, { capacity: 4 });
@@ -57,7 +50,7 @@ assert.deepEqual(
 );
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS * 3)));
 assert.equal(f.get(r).status, "cancelled");
-assert.equal(coerceVillageState(undefined).version, 5);
+assert.equal(coerceVillageState(undefined).version, 6);
 for (const old of [{ version: 2 }, {}, { version: 0 }])
   assert.throws(() => coerceVillageState(old), /Unsupported Village format/);
 const fresh = defaultVillageState();

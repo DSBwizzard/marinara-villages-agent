@@ -38,32 +38,11 @@ export function ClassChoices({
 }
 
 export function ProjectDrawing({ image, caption }: { image?: VillageVenueImage | null; caption: string }) {
+  if (!image) return null;
   return (
     <figure className="vp-drawing">
-      {image ? (
-        <img src={image.url} alt={caption} />
-      ) : (
-        <svg viewBox="0 0 600 380" role="img" aria-label="Illustrative building elevation">
-          <g fill="none" stroke="currentColor" strokeWidth="1.6">
-            <path d="M55 145 300 45 545 145H505V320H95V145Z" />
-            <path d="M245 320V215H355V320M135 175H200V220H135ZM400 175H465V220H400Z" />
-            <path
-              opacity=".5"
-              strokeWidth=".7"
-              d="M160 145V320M215 145V320M270 145V320M325 145V320M380 145V320M435 145V320"
-            />
-            <path
-              opacity=".6"
-              strokeWidth="1"
-              d="M55 335H545M55 331V339M177 332V338M300 331V339M423 332V338M545 331V339"
-            />
-          </g>
-        </svg>
-      )}
-      <figcaption>
-        <span>{image ? "ARTWORK" : "DESIGN STUDY"}</span>
-        {caption}
-      </figcaption>
+      <img src={image.url} alt={caption} />
+      <figcaption>{caption}</figcaption>
     </figure>
   );
 }

@@ -1,19 +1,18 @@
-import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
-import { useId, useState } from "react";
-import { OpeningProjects } from "./OpeningProjects.js";
-import { ProjectZones } from "./ProjectZones.js";
-import { ArtworkUpload, ClassChoices, ProjectDrawing, titleCase } from "./ProjectDesign.js";
-import { projectStyles } from "./project-styles.js";
+import { useEffect, useId, useRef, useState } from "react";
+import type { SceneView, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import { MAX_PHYSICAL_DESIGN_LENGTH, MAX_PROJECT_DRAFTS } from "../../../shared/helpers/project-design.js";
 import { SpaceConnections } from "../../shared/SpaceConnections.js";
-import type { VillageSnapshot, VillageVenue, SceneView } from "../../../shared/contracts/village.js";
+import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
-import type { ProjectsController } from "./useProjectsController.js";
-import { request, messageFrom } from "../../shared/api.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
+import { OpeningProjects } from "./OpeningProjects.js";
+import { ArtworkUpload, ClassChoices, ProjectDrawing, titleCase } from "./ProjectDesign.js";
+import { ProjectZones } from "./ProjectZones.js";
+import { projectStyles } from "./project-styles.js";
+import type { ProjectsController } from "./useProjectsController.js";
 
-const tabs = ["Overview", "Design", "Zones", "People", "Site", "Progress"] as const;
+const tabs = ["Overview & Progress", "Design & Spaces", "People", "Location"] as const;
 type Tab = (typeof tabs)[number];
-const statuses = ["All", "Planning", "Working", "Paused", "Complete", "Cancelled"] as const;
 const active = (status: string) => status === "working" || status === "paused";
 const kindName = (kind: string) => (kind === "new-venue" ? "New Venue" : "Renovation");
 function Facts({ rows }: { rows: [string, string][] }) {
@@ -38,6 +37,7 @@ export function ProjectsPanel({
   onClose = onMap,
   room,
   onReturn,
+  mobile,
   debugEnabled = false,
 }: {
   snapshot: VillageSnapshot;
@@ -59,8 +59,27 @@ export function ProjectsPanel({
     venue = draft.venue;
   const [selectedTabs, setTabs] = useState<Record<string, Tab>>({});
   const [selectedZones, setZones] = useState<Record<string, string>>({});
-  const [filter, setFilter] = useState<(typeof statuses)[number]>("All");
-  const tab = selectedTabs[workspace.key] ?? "Overview";
+  const [detailPages, setDetailPages] = useState<Record<string, string>>({});
+  const [indexView, setIndexView] = useState<"projects" | "history" | "opening">("projects");
+  const [mobileSection, setMobileSection] = useState<"drafts" | "slot1" | "slot2">("drafts");
+  const [draftPage, setDraftPage] = useState(0);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [peopleSection, setPeopleSection] = useState<"lead" | "agreements">("lead");
+  const [peoplePage, setPeoplePage] = useState(0);
+  const boardRef = useRef<HTMLElement>(null);
+  const [boardHeight, setBoardHeight] = useState(0);
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const root = board.closest<HTMLElement>("." + P + "-project-root") ?? board;
+    const observer = new ResizeObserver(() => setBoardHeight(root.clientHeight));
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+  const tab = selectedTabs[workspace.key] ?? "Overview & Progress";
+  const detailKey = workspace.key + ":" + tab;
+  const detailPage = detailPages[detailKey] ?? (tab === "Overview & Progress" ? "Overview" : "Design");
+  const selectDetailPage = (page: string) => setDetailPages((current) => ({ ...current, [detailKey]: page }));
   const selectTab = (next: Tab) => setTabs((current) => ({ ...current, [workspace.key]: next }));
   const tabId = useId();
   const people = snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }));
@@ -78,7 +97,7 @@ export function ProjectsPanel({
     : project?.kind === "new-venue" && !project.plan
       ? "Save the design."
       : project?.kind === "new-venue" && project.venueDraft?.position?.x == null
-        ? "Choose a map position in Site."
+        ? "Choose a map position in Location."
         : !flow?.builderId
           ? "Choose a willing lead in People."
           : missing.length
@@ -124,7 +143,10 @@ export function ProjectsPanel({
   };
   const start = async () => {
     const next = await c.action(resumable ? "resume" : "start");
-    if (next) selectTab("Progress");
+    if (next) {
+      selectTab("Overview & Progress");
+      setDetailPages((current) => ({ ...current, [workspace.key + ":Overview & Progress"]: "Progress" }));
+    }
   };
   const connections: { id: string; name?: string; kind: string; connectedTo?: string[] }[] = venue
     ? project?.kind === "new-venue"
@@ -136,18 +158,30 @@ export function ProjectsPanel({
       : [{ id: "exterior", name: "Entrance", kind: "exterior", connectedTo: [] as string[] }, ...draft.zones]
     : [];
   const intended = project?.kind === "new-venue" ? (venue?.form ?? "") : draft.detail;
+  const overviewLimit = mobile ? 45 : 300;
   const count =
     project?.kind === "new-venue"
       ? (venue?.spaces?.length ?? 0) + (venue?.privateSpaces?.length ?? 0)
       : draft.zones.length;
+  const drafts = snapshot.projects.filter((entry) => entry.status === "planning");
+  const activeProjects = snapshot.projects.filter((entry) => active(entry.status));
+  const finished = snapshot.projects.filter((entry) => entry.status === "complete" || entry.status === "cancelled");
+  const history = [...activeProjects.slice(2), ...finished];
+  const pageSize =
+    boardHeight && boardHeight < 490 ? 2 : boardHeight && boardHeight < 600 ? 3 : mobile ? 4 : MAX_PROJECT_DRAFTS;
+  const detailPageSize = mobile ? (boardHeight && boardHeight < 650 ? 1 : 2) : 4;
+  const pages = Math.max(1, Math.ceil(drafts.length / pageSize));
+  const currentDraftPage = Math.min(draftPage, pages - 1);
+  const historyPages = Math.max(1, Math.ceil(history.length / pageSize));
+  const currentHistoryPage = Math.min(historyPage, historyPages - 1);
+  const openingAvailable = snapshot.opening && !["complete", "ended"].includes(snapshot.opening.stage);
   return (
     <div className={P + "-project-desk"}>
       <style>{projectStyles}</style>
-      <main className={P + "-project-board"} aria-label="Project portfolio">
+      <main ref={boardRef} className={P + "-project-board"} aria-label="Projects">
         <header className="vp-header">
           <div>
-            <span className="vp-eyebrow">Villages / Projects</span>
-            <h1>{project ? "02 / Project Portfolio" : "01 / Project Portfolio"}</h1>
+            <h1>Projects</h1>
           </div>
           <div className="vp-actions">
             {project || c.draftType ? (
@@ -155,71 +189,197 @@ export function ProjectsPanel({
                 ‹ All Projects
               </button>
             ) : null}
-            <button type="button" className="vp-subtle" onClick={onMap}>
-              Map
-            </button>
             <button type="button" className="vp-subtle" onClick={onClose}>
               Close ×
             </button>
           </div>
         </header>
-        {!project && !c.draftType ? (
+        {!project && !c.draftType && indexView === "projects" ? (
           <>
-            <div className="vp-panel-heading">
-              <h2>Your Projects</h2>
-              <span className="vp-note">
-                {snapshot.projects.filter((entry) => active(entry.status)).length} / 2 active
-              </span>
+            <div className="vp-index-tools">
+              <div className="vp-actions">
+                {openingAvailable ? (
+                  <button type="button" onClick={() => setIndexView("opening")}>
+                    Opening proposals
+                  </button>
+                ) : null}
+                {history.length ? (
+                  <button type="button" onClick={() => setIndexView("history")}>
+                    History
+                  </button>
+                ) : null}
+              </div>
+              <span className="vp-note">{activeProjects.length} / 2 active</span>
             </div>
-            <div className="vp-actions">
-              <button type="button" className="vp-primary" onClick={() => c.setDraftType("new-venue")}>
-                New Venue
-              </button>
-              <button type="button" onClick={() => c.setDraftType("renovation")}>
-                Renovation
-              </button>
-            </div>
-            <nav className="vp-filters" aria-label="Project status">
-              {statuses.map((status) => (
-                <button type="button" key={status} aria-pressed={filter === status} onClick={() => setFilter(status)}>
-                  {status}
+            <div className="vp-mobile-sections" role="group" aria-label="Project sections">
+              {(
+                [
+                  ["drafts", "Drafts"],
+                  ["slot1", "Slot 1"],
+                  ["slot2", "Slot 2"],
+                ] as const
+              ).map(([id, label]) => (
+                <button type="button" key={id} aria-pressed={mobileSection === id} onClick={() => setMobileSection(id)}>
+                  {label}
                 </button>
               ))}
-            </nav>
-            <nav className="vp-project-list" aria-label="Projects">
-              {snapshot.projects
-                .filter((entry) => filter === "All" || entry.status === filter.toLowerCase())
-                .map((entry, index) => (
+            </div>
+            <nav className="vp-workspace" aria-label="Projects" data-mobile-section={mobileSection}>
+              <section className="vp-drafts" aria-label="Project drafts">
+                <h2>Project Drafts</h2>
+                <div className="vp-project-list">
+                  {drafts.slice(currentDraftPage * pageSize, currentDraftPage * pageSize + pageSize).map((entry) => (
+                    <button
+                      type="button"
+                      className="vp-project-row"
+                      key={entry.id}
+                      onClick={() => c.setSelectedId(entry.id)}
+                    >
+                      <span>{entry.title}</span>
+                      <span aria-hidden="true">›</span>
+                    </button>
+                  ))}
+                  {!drafts.length ? <p className="vp-note">No drafts.</p> : null}
+                </div>
+                <div className="vp-actions vp-draft-create" data-full={activeProjects.length >= 2}>
                   <button
                     type="button"
-                    className="vp-project-row"
-                    key={entry.id}
-                    onClick={() => c.setSelectedId(entry.id)}
+                    disabled={drafts.length >= MAX_PROJECT_DRAFTS}
+                    onClick={() => c.setDraftType("new-venue")}
                   >
-                    <span className="vp-number">{String(index + 1).padStart(2, "0")}</span>
-                    <span>
-                      <strong>{entry.title}</strong>
-                      <small>
-                        {kindName(entry.kind)} · {titleCase(entry.status)}
-                      </small>
-                      <small>
-                        {entry.lifecycle?.builderId
-                          ? "Lead · " + person(entry.lifecycle.builderId)
-                          : "No lead selected"}
-                        {entry.status === "working" && entry.lifecycle?.workOrder
-                          ? " · Due " + new Date(entry.lifecycle.workOrder.completesAt).toLocaleString()
-                          : ""}
-                      </small>
-                    </span>
-                    <span aria-hidden="true">›</span>
+                    New Venue
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    disabled={drafts.length >= MAX_PROJECT_DRAFTS}
+                    onClick={() => c.setDraftType("renovation")}
+                  >
+                    Renovation
+                  </button>
+                </div>
+                {drafts.length >= MAX_PROJECT_DRAFTS ? <p className="vp-note">Six drafts maximum.</p> : null}
+                {pages > 1 ? (
+                  <div className="vp-actions">
+                    <button
+                      type="button"
+                      disabled={currentDraftPage === 0}
+                      onClick={() => setDraftPage(currentDraftPage - 1)}
+                    >
+                      Previous
+                    </button>
+                    <span>
+                      {currentDraftPage + 1} / {pages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={currentDraftPage + 1 === pages}
+                      onClick={() => setDraftPage(currentDraftPage + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+              {[0, 1].map((index) => {
+                const entry = activeProjects[index - Math.max(0, 2 - activeProjects.length)];
+                const artwork =
+                  entry?.kind === "renovation"
+                    ? snapshot.settings.venues.find((item) => item.id === entry.venueId)?.presentation.image
+                    : entry?.plan?.exteriorImage;
+                return (
+                  <section className="vp-active-slot" key={index} aria-label={`Project slot ${index + 1}`}>
+                    {entry ? (
+                      <button type="button" className="vp-active-project" onClick={() => c.setSelectedId(entry.id)}>
+                        <strong>{kindName(entry.kind)}</strong>
+                        {artwork ? <img src={artwork.url} alt="" /> : null}
+                        <span>{entry.title}</span>
+                        <small>{titleCase(entry.status)}</small>
+                      </button>
+                    ) : (
+                      <div className="vp-empty-slot">
+                        <span>Empty slot</span>
+                        {index === 0 ? (
+                          <div className="vp-new-types">
+                            <button
+                              type="button"
+                              disabled={drafts.length >= MAX_PROJECT_DRAFTS}
+                              onClick={() => c.setDraftType("new-venue")}
+                            >
+                              New Venue
+                            </button>
+                            <button
+                              type="button"
+                              disabled={drafts.length >= MAX_PROJECT_DRAFTS}
+                              onClick={() => c.setDraftType("renovation")}
+                            >
+                              Renovation
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
             </nav>
-            {!snapshot.projects.some((entry) => filter === "All" || entry.status === filter.toLowerCase()) ? (
-              <p className="vp-note">No {filter === "All" ? "" : filter.toLowerCase() + " "}Projects.</p>
+          </>
+        ) : null}
+        {!project && !c.draftType && indexView !== "projects" ? (
+          <>
+            <button type="button" onClick={() => setIndexView("projects")}>
+              ‹ Projects
+            </button>
+            {indexView === "opening" && openingAvailable ? (
+              <OpeningProjects
+                snapshot={snapshot}
+                busy={draft.busy}
+                decide={c.openingAction}
+                onPeople={onPeople}
+                pageSize={mobile ? 2 : 4}
+              />
             ) : null}
-            {snapshot.opening && !["complete", "ended"].includes(snapshot.opening.stage) ? (
-              <OpeningProjects snapshot={snapshot} busy={draft.busy} decide={c.openingAction} onPeople={onPeople} />
+            {indexView === "history" ? (
+              <section className="vp-panel">
+                <h2>History</h2>
+                <nav aria-label="Project history" className="vp-project-list">
+                  {history
+                    .slice(currentHistoryPage * pageSize, currentHistoryPage * pageSize + pageSize)
+                    .map((entry) => (
+                      <button
+                        className="vp-project-row"
+                        type="button"
+                        key={entry.id}
+                        onClick={() => c.setSelectedId(entry.id)}
+                      >
+                        <span>
+                          {entry.title} · {titleCase(entry.status)}
+                        </span>
+                        <span aria-hidden="true">›</span>
+                      </button>
+                    ))}
+                </nav>
+                {historyPages > 1 ? (
+                  <div className="vp-actions">
+                    <button
+                      type="button"
+                      disabled={currentHistoryPage === 0}
+                      onClick={() => setHistoryPage(currentHistoryPage - 1)}
+                    >
+                      Previous
+                    </button>
+                    <span>
+                      {currentHistoryPage + 1} / {historyPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={currentHistoryPage + 1 === historyPages}
+                      onClick={() => setHistoryPage(currentHistoryPage + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                ) : null}
+              </section>
             ) : null}
           </>
         ) : null}
@@ -236,30 +396,23 @@ export function ProjectsPanel({
               <span>Planning</span>
             </div>
             <div className="vp-columns">
-              <ProjectDrawing
-                caption={c.draftType === "new-venue" ? "A place to begin" : "A new design for an existing place"}
-              />
               <section className="vp-panel">
                 <h3>{c.draftType === "new-venue" ? "New Venue" : "Renovation"} specification</h3>
                 <fieldset disabled={draft.busy}>
                   {c.draftType === "renovation" ? (
-                    <>
-                      <span className="vp-label">Venue</span>
-                      <div className="vp-choices" role="group" aria-label="Venue">
+                    <label>
+                      Venue
+                      <select value={c.venueId} onChange={(event) => c.setVenueId(event.target.value)}>
+                        <option value="">Choose a Venue</option>
                         {snapshot.settings.venues
                           .filter((venue) => venue.constructionStatus !== "worksite")
                           .map((venue) => (
-                            <button
-                              type="button"
-                              key={venue.id}
-                              aria-pressed={c.venueId === venue.id}
-                              onClick={() => c.setVenueId(venue.id)}
-                            >
+                            <option key={venue.id} value={venue.id}>
                               {venue.name}
-                            </button>
+                            </option>
                           ))}
-                      </div>
-                    </>
+                      </select>
+                    </label>
                   ) : null}
                   <label>
                     Name
@@ -300,7 +453,7 @@ export function ProjectsPanel({
         {project && flow ? (
           <article>
             <div className="vp-project-heading">
-              <h2>{project.title}</h2>
+              <h2 title={project.title}>{project.title}</h2>
               <span>
                 {kindName(project.kind)} · {titleCase(project.status)}
               </span>
@@ -319,6 +472,7 @@ export function ProjectsPanel({
                   type="button"
                   role="tab"
                   key={name}
+                  aria-label={name}
                   id={tabId + name}
                   aria-selected={tab === name}
                   aria-controls={tabId + "panel"}
@@ -341,21 +495,59 @@ export function ProjectsPanel({
                     document.getElementById(tabId + tabs[next])?.focus();
                   }}
                 >
-                  {name}
+                  {mobile && name === "Overview & Progress"
+                    ? "Overview"
+                    : mobile && name === "Design & Spaces"
+                      ? "Design"
+                      : name}
                 </button>
               ))}
             </div>
             <div role="tabpanel" id={tabId + "panel"} aria-labelledby={tabId + tab}>
-              {tab === "Overview" ? (
+              {tab === "Overview & Progress" || tab === "Design & Spaces" ? (
+                <div className="vp-detail-pages" role="group" aria-label={tab + " pages"}>
+                  {(tab === "Overview & Progress"
+                    ? ["Overview", "Progress", ...(mobile && venue?.presentation.image ? ["Artwork"] : [])]
+                    : ["Design", "Zones", "Connections"]
+                  ).map((page) => (
+                    <button
+                      type="button"
+                      key={page}
+                      aria-pressed={detailPage === page}
+                      onClick={() => selectDetailPage(page)}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {tab === "Overview & Progress" && detailPage === "Overview" ? (
                 <div className="vp-columns">
-                  <ProjectDrawing image={venue?.presentation.image} caption={project.title} />
+                  {!mobile ? <ProjectDrawing image={venue?.presentation.image} caption={project.title} /> : null}
                   <section className="vp-panel">
                     <h3>Project overview</h3>
-                    <span className="vp-label">Physical design</span>
-                    <p>{intended}</p>
+                    <div className="vp-panel-heading">
+                      <span className="vp-label">Physical design</span>
+                      {intended.length > overviewLimit ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            selectTab("Design & Spaces");
+                            setDetailPages((current) => ({
+                              ...current,
+                              [workspace.key + ":Design & Spaces"]: "Design",
+                            }));
+                          }}
+                        >
+                          Full design
+                        </button>
+                      ) : null}
+                    </div>
+                    <p>
+                      {intended.length > overviewLimit ? intended.slice(0, overviewLimit).trimEnd() + "…" : intended}
+                    </p>
                     <Facts
                       rows={[
-                        ["Status", titleCase(project.status)],
                         ["Lead", flow.builderId ? person(flow.builderId) : "Not selected"],
                         ["Design", count + " / 6 Zones"],
                         ["Agreements", missing.length ? missing.map(person).join(", ") : "Ready"],
@@ -365,9 +557,12 @@ export function ProjectsPanel({
                   </section>
                 </div>
               ) : null}
-              {tab === "Design" && venue ? (
+              {tab === "Overview & Progress" && detailPage === "Artwork" && venue?.presentation.image ? (
+                <ProjectDrawing image={venue.presentation.image} caption={project.title} />
+              ) : null}
+              {tab === "Design & Spaces" && detailPage === "Design" && venue ? (
                 <div className="vp-columns">
-                  <ProjectDrawing image={venue.presentation.image} caption={project.title} />
+                  {!mobile ? <ProjectDrawing image={venue.presentation.image} caption={project.title} /> : null}
                   <section className="vp-panel">
                     <h3>Design specification</h3>
                     {editable ? (
@@ -417,47 +612,33 @@ export function ProjectsPanel({
                               onChange={(event) => workspace.field("capacity")(Number(event.target.value))}
                             />
                           </label>
-                        ) : (
-                          <Facts rows={[["Residence capacity", "Not applicable"]]} />
-                        )}
+                        ) : null}
                         {project.kind === "new-venue" ? (
-                          <>
-                            <label>
-                              Entrance
-                              <textarea
-                                aria-label="Entrance"
-                                autoComplete="off"
-                                rows={2}
-                                maxLength={1000}
-                                value={venue.description}
-                                onChange={(event) => patchVenue({ ...venue, description: event.target.value })}
-                              />
-                            </label>
-                            <ArtworkUpload busy={draft.busy} onUpload={(file) => void upload(file)} />
-                          </>
+                          <ArtworkUpload busy={draft.busy} onUpload={(file) => void upload(file)} />
                         ) : null}
                       </fieldset>
                     ) : (
-                      <Facts
-                        rows={[
-                          ["Classes", (venue.classes ?? []).map(titleCase).join(" · ")],
-                          ["Physical design", intended],
-                          [
-                            "Residence capacity",
-                            venue.classes?.includes("residence") ? String(draft.capacity) : "Not applicable",
-                          ],
-                          ["Entrance", venue.description],
-                        ]}
-                      />
+                      <>
+                        <Facts rows={[["Classes", (venue.classes ?? []).map(titleCase).join(" · ")]]} />
+                        <label>
+                          Physical design
+                          <textarea autoComplete="off" aria-label="Physical design" readOnly value={intended} />
+                        </label>
+                        {venue.classes?.includes("residence") ? (
+                          <Facts rows={[["Residence capacity", String(draft.capacity)]]} />
+                        ) : null}
+                      </>
                     )}
                   </section>
                 </div>
               ) : null}
-              {tab === "Zones" && venue ? (
+              {tab === "Design & Spaces" && detailPage === "Zones" && venue ? (
                 <ProjectZones
                   key={project.id}
                   venue={venue}
                   people={people}
+                  mobile={mobile}
+                  pageSize={detailPageSize}
                   selectedId={selectedZones[workspace.key] ?? "exterior"}
                   onSelect={(id) => setZones((current) => ({ ...current, [workspace.key]: id }))}
                   zones={draft.zones}
@@ -469,72 +650,170 @@ export function ProjectsPanel({
                   onUpload={(file, id) => void upload(file, id)}
                 />
               ) : null}
-              {tab === "People" ? (
-                <div className="vp-columns">
-                  <section className="vp-panel">
-                    <h3>Resident lead</h3>
-                    <div className="vp-people" role="group" aria-label="Willing leads">
-                      {flow.candidates.map((candidate) => (
-                        <button
-                          type="button"
-                          className="vp-person"
-                          key={candidate.residentId}
-                          aria-pressed={flow.builderId === candidate.residentId}
-                          disabled={draft.busy || !(editable || resumable)}
-                          onClick={() => void c.action("builder", { residentId: candidate.residentId })}
-                        >
-                          <span className="vp-number">{person(candidate.residentId).charAt(0)}</span>
-                          <span>
-                            <strong>{person(candidate.residentId)}</strong>
-                            <small>
-                              {flow.builderId === candidate.residentId ? "Selected lead" : "Willing to lead"}
-                            </small>
-                          </span>
-                          <span aria-hidden="true">{flow.builderId === candidate.residentId ? "✓" : "›"}</span>
-                        </button>
-                      ))}
-                    </div>
-                    {!flow.candidates.length ? (
-                      <>
-                        <p className="vp-note">No willing lead yet.</p>
-                        <button type="button" onClick={onPeople}>
-                          Talk to residents
-                        </button>
-                      </>
-                    ) : null}
-                  </section>
-                  <section className="vp-panel">
-                    <h3>Agreements</h3>
-                    {flow.affectedIds.length ? (
-                      <ul className="vp-agreements">
-                        {flow.affectedIds.map((id) => (
-                          <li key={id}>
-                            <span>{person(id)}</span>
-                            <span>{missing.includes(id) ? "Needed" : "Agreed"}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p>No additional agreements needed.</p>
-                    )}
-                    {missing.length && (editable || resumable) ? (
-                      <button
-                        type="button"
-                        disabled={draft.busy || draft.dirty}
-                        onClick={() => void c.action("request-approval")}
-                      >
-                        Request agreement
-                      </button>
-                    ) : null}
-                  </section>
-                </div>
-              ) : null}
-              {tab === "Site" ? (
-                <div className="vp-columns">
-                  <ProjectDrawing
-                    image={project.kind === "renovation" ? c.target?.presentation.image : null}
-                    caption={project.kind === "renovation" ? (c.target?.name ?? project.title) : "Map location"}
+              {tab === "Design & Spaces" && detailPage === "Connections" && venue ? (
+                <section className="vp-panel">
+                  <SpaceConnections
+                    spaces={connections}
+                    disabled={!editable || draft.busy}
+                    pageSize={detailPageSize}
+                    compact={mobile}
+                    editableIds={project.kind === "renovation" ? draft.zones.map((zone) => zone.id) : undefined}
+                    onChange={(rows) =>
+                      project.kind === "renovation"
+                        ? workspace.field("zones")(
+                            draft.zones.map((zone) => ({
+                              ...zone,
+                              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                            })),
+                          )
+                        : patchVenue({
+                            ...venue,
+                            spaces: venue.spaces?.map((zone) => ({
+                              ...zone,
+                              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                            })),
+                            privateSpaces: venue.privateSpaces?.map((zone) => ({
+                              ...zone,
+                              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                            })),
+                          })
+                    }
                   />
+                </section>
+              ) : null}
+              {tab === "People" ? (
+                <>
+                  <div className="vp-detail-pages" role="group" aria-label="People pages">
+                    <button
+                      type="button"
+                      aria-pressed={peopleSection === "lead"}
+                      onClick={() => {
+                        setPeopleSection("lead");
+                        setPeoplePage(0);
+                      }}
+                    >
+                      Lead
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={peopleSection === "agreements"}
+                      onClick={() => {
+                        setPeopleSection("agreements");
+                        setPeoplePage(0);
+                      }}
+                    >
+                      Agreements
+                    </button>
+                  </div>
+                  <div className="vp-columns">
+                    {peopleSection === "lead" ? (
+                      <section className="vp-panel">
+                        <h3>Resident lead</h3>
+                        <div className="vp-people" role="group" aria-label="Willing leads">
+                          {flow.candidates
+                            .slice(peoplePage * detailPageSize, peoplePage * detailPageSize + detailPageSize)
+                            .map((candidate) => (
+                              <button
+                                type="button"
+                                className="vp-person"
+                                key={candidate.residentId}
+                                aria-pressed={flow.builderId === candidate.residentId}
+                                disabled={draft.busy || !(editable || resumable)}
+                                onClick={() => void c.action("builder", { residentId: candidate.residentId })}
+                              >
+                                <span className="vp-number">{person(candidate.residentId).charAt(0)}</span>
+                                <span>
+                                  <strong>{person(candidate.residentId)}</strong>
+                                  <small>
+                                    {flow.builderId === candidate.residentId ? "Selected lead" : "Willing to lead"}
+                                  </small>
+                                </span>
+                                <span aria-hidden="true">{flow.builderId === candidate.residentId ? "✓" : "›"}</span>
+                              </button>
+                            ))}
+                        </div>
+                        {flow.candidates.length > detailPageSize ? (
+                          <div className="vp-actions">
+                            <button
+                              type="button"
+                              disabled={peoplePage === 0}
+                              onClick={() => setPeoplePage(peoplePage - 1)}
+                            >
+                              Previous
+                            </button>
+                            <span>
+                              {peoplePage + 1} / {Math.ceil(flow.candidates.length / detailPageSize)}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={(peoplePage + 1) * detailPageSize >= flow.candidates.length}
+                              onClick={() => setPeoplePage(peoplePage + 1)}
+                            >
+                              Next
+                            </button>
+                          </div>
+                        ) : null}
+                        {!flow.candidates.length ? (
+                          <>
+                            <p className="vp-note">No willing lead yet.</p>
+                            <button type="button" onClick={onPeople}>
+                              Talk to residents
+                            </button>
+                          </>
+                        ) : null}
+                      </section>
+                    ) : null}
+                    {peopleSection === "agreements" ? (
+                      <section className="vp-panel">
+                        <h3>Agreements</h3>
+                        {flow.affectedIds.length ? (
+                          <ul className="vp-agreements">
+                            {flow.affectedIds
+                              .slice(peoplePage * detailPageSize, peoplePage * detailPageSize + detailPageSize)
+                              .map((id) => (
+                                <li key={id}>
+                                  <span>{person(id)}</span>
+                                  <span>{missing.includes(id) ? "Needed" : "Agreed"}</span>
+                                </li>
+                              ))}
+                          </ul>
+                        ) : (
+                          <p>No additional agreements needed.</p>
+                        )}
+                        {flow.affectedIds.length > detailPageSize ? (
+                          <div className="vp-actions">
+                            <button
+                              type="button"
+                              disabled={peoplePage === 0}
+                              onClick={() => setPeoplePage(peoplePage - 1)}
+                            >
+                              Previous
+                            </button>
+                            <span>
+                              {peoplePage + 1} / {Math.ceil(flow.affectedIds.length / detailPageSize)}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={(peoplePage + 1) * detailPageSize >= flow.affectedIds.length}
+                              onClick={() => setPeoplePage(peoplePage + 1)}
+                            >
+                              Next
+                            </button>
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+              {tab === "Location" ? (
+                <div className="vp-columns">
+                  {!mobile ? (
+                    <ProjectDrawing
+                      image={project.kind === "renovation" ? c.target?.presentation.image : null}
+                      caption={project.kind === "renovation" ? (c.target?.name ?? project.title) : "Map location"}
+                    />
+                  ) : null}
                   <section className="vp-panel">
                     <h3>Project site</h3>
                     <Facts
@@ -568,41 +847,13 @@ export function ProjectsPanel({
                         {placementBlocked ? <p id={tabId + "-placement-blocked"}>{placementBlocked}</p> : null}
                       </div>
                     ) : null}
-                    {venue ? (
-                      <fieldset disabled={!editable || draft.busy}>
-                        <SpaceConnections
-                          spaces={connections}
-                          editableIds={project.kind === "renovation" ? draft.zones.map((zone) => zone.id) : undefined}
-                          onChange={(rows) =>
-                            project.kind === "renovation"
-                              ? workspace.field("zones")(
-                                  draft.zones.map((zone) => ({
-                                    ...zone,
-                                    connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-                                  })),
-                                )
-                              : patchVenue({
-                                  ...venue,
-                                  spaces: venue.spaces?.map((zone) => ({
-                                    ...zone,
-                                    connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-                                  })),
-                                  privateSpaces: venue.privateSpaces?.map((zone) => ({
-                                    ...zone,
-                                    connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-                                  })),
-                                })
-                          }
-                        />
-                      </fieldset>
-                    ) : null}
                   </section>
                 </div>
               ) : null}
-              {tab === "Progress" ? (
+              {tab === "Overview & Progress" && detailPage === "Progress" ? (
                 <div className="vp-columns">
                   <section className="vp-panel">
-                    <h3>{titleCase(project.status)}</h3>
+                    <h3>Progress</h3>
                     {project.status === "working" && flow.workOrder ? (
                       <>
                         <span className="vp-label">Completes</span>
@@ -615,13 +866,6 @@ export function ProjectsPanel({
                       <p>{Math.ceil(flow.workOrder.remainingMs / 60_000)} minutes remaining</p>
                     ) : null}
                     {editable ? <p>24 hours from Start.</p> : null}
-                    {flow.blockedReason ? <p role="status">{flow.blockedReason}</p> : null}
-                    <Facts
-                      rows={[
-                        ["Lead", flow.builderId ? person(flow.builderId) : "Not selected"],
-                        ["Result", intended],
-                      ]}
-                    />
                   </section>
                   <section className="vp-panel">
                     <h3>Project actions</h3>
@@ -654,7 +898,7 @@ export function ProjectsPanel({
             </div>
             {editable || resumable ? (
               <footer className="vp-footer">
-                <p role="status">{unavailable || "Lead · " + person(flow.builderId)}</p>
+                {unavailable ? <p role="status">{unavailable}</p> : null}
                 <div className="vp-actions">
                   {editable ? (
                     <button type="button" disabled={draft.busy || stale} onClick={() => void c.save()}>

@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState, VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
-import { MAX_NOTICEBOARD_NOTES } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import {
   createActivationScope,
@@ -154,6 +153,20 @@ async function main() {
   );
   assert.equal(a.state.sceneryArtStyle, originalStyle, "invalid multi-field mutation publishes no partial state");
 
+  const loreOnly = fixture("Lore only");
+  loreOnly.state.venues = [];
+  loreOnly.state.setting = "A saved world";
+  loreOnly.state.promptKnowledge = "Saved player knowledge";
+  loreOnly.state.playerPersonaId = "saved-persona";
+  loreOnly.state.narrationStyle.writingGuidance = "Saved writing guidance";
+  await loreOnly.service.setVillageLoreSettings(["book"], 800);
+  assert.equal(loreOnly.state.setting, "A saved world");
+  assert.equal(loreOnly.state.promptKnowledge, "Saved player knowledge");
+  assert.equal(loreOnly.state.playerPersonaId, "saved-persona");
+  assert.equal(loreOnly.state.narrationStyle.writingGuidance, "Saved writing guidance");
+  assert.equal(loreOnly.bootstrapCalls, 0, "saving Lorebooks does not bootstrap an empty world");
+  assert.equal(loreOnly.personaReads, 0, "saving Lorebooks does not resolve or replace the Persona");
+
   const bootstrap = fixture("Bootstrap");
   bootstrap.state.venues = [venueDraft({ name: "Home", description: "Residence", classes: ["residence"] }, null)];
   bootstrap.retryWith((state) => {
@@ -173,29 +186,6 @@ async function main() {
   assert.equal(bootstrap.bootstrapCalls, 2, "failed proposal is not automatically repeated");
   await bootstrap.service.setVillageSetting("");
   assert.equal(bootstrap.bootstrapCalls, 2);
-
-  const board = fixture("Board");
-  board.state.noticeboard = Array.from({ length: MAX_NOTICEBOARD_NOTES - 1 }, () => ({ author: "", text: "existing" }));
-  board.retryWith((state) => {
-    state.noticeboard.push({ author: "", text: "concurrent" });
-  });
-  await assert.rejects(() => board.service.addNotice("new"), /holds at most/);
-  assert.equal(board.state.noticeboard.length, MAX_NOTICEBOARD_NOTES);
-  assert(!board.state.noticeboard.some((note) => note.text === "new"));
-  board.state.noticeboard = [
-    { author: "First", text: "same" },
-    { author: "Second", text: "same" },
-  ];
-  await board.service.removeNoticeAt("0");
-  assert.deepEqual(board.state.noticeboard, [{ author: "Second", text: "same" }]);
-  board.retryWith((state) => {
-    state.noticeboard = [];
-  });
-  await assert.rejects(() => board.service.removeNoticeAt(0), /no longer/);
-  await assert.rejects(() => board.service.removeNoticeAt(-1), /not a notice/);
-  await assert.rejects(() => board.service.addNotice("  "), /Write something/);
-  await board.service.addNotice("hello");
-  assert.deepEqual(board.state.noticeboard, [{ author: "", text: "hello" }]);
 
   const scopeA = createActivationScope(),
     scopeB = createActivationScope();

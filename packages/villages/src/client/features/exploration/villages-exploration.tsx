@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 
 const P = "marinara-capability-villages";
 
-export type ExplorationTab = "map" | "places" | "people" | "more";
+export type ExplorationTab = "map" | "places" | "people" | "projects" | "more";
 
 export type ExplorationSheet = { tab: "places" | "people" };
 
@@ -62,7 +62,7 @@ export function useExplorationViewport(host: HTMLElement, active: boolean): void
   }, [host, active]);
 }
 
-export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" | "visit" }) {
+export function MapIcon({ name }: { name: ExplorationTab | "close" | "visit" }) {
   const paths: Record<typeof name, ReactNode> = {
     map: (
       <>
@@ -82,6 +82,11 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" |
         <path d="M2 21v-3a7 7 0 0 1 14 0v3ZM17 3a4 4 0 0 1 0 8M20 21v-3a7 7 0 0 0-3-6" />
       </>
     ),
+    projects: (
+      <>
+        <path d="m14 5 5 5M3 21l9-9m1-8 3-2 6 6-2 3-7-7ZM3 21l3-1-2-2-1 3Z" />
+      </>
+    ),
     more: (
       <>
         <circle cx="5" cy="12" r="1" />
@@ -90,12 +95,6 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" |
       </>
     ),
     close: <path d="m6 6 12 12M18 6 6 18" />,
-    notices: (
-      <>
-        <rect x="5" y="3" width="14" height="18" rx="2" />
-        <path d="M9 7h6M9 12h6M9 17h4" />
-      </>
-    ),
     visit: (
       <>
         <path d="M10 3H4v18h6M9 12h12m-4-4 4 4-4 4" />
@@ -118,7 +117,7 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" |
   );
 }
 
-export const EXPLORATION_DESTINATIONS = ["map", "places", "people", "more"] as const;
+export const EXPLORATION_DESTINATIONS = ["map", "places", "people", "projects", "more"] as const;
 
 export function ExplorationNavigation({
   active,
@@ -282,31 +281,5 @@ export function LocationNavigator({
         ) : null}
       </div>
     </aside>
-  );
-}
-
-export function NoticesButton({
-  count,
-  disabled,
-  onSelect,
-}: {
-  count: number;
-  disabled: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={P + "-explore-notices"}
-      aria-label={`Notices (${count})`}
-      disabled={disabled}
-      onClick={onSelect}
-    >
-      <MapIcon name="notices" />
-      <span>Notices</span>
-      <span className={P + "-explore-badge"} aria-hidden="true">
-        {count}
-      </span>
-    </button>
   );
 }

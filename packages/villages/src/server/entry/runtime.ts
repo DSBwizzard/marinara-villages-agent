@@ -1,379 +1,368 @@
-import { createResidentPlanning } from "../features/residents/resident-planning-service.js";
-import { backgroundJobSnapshot, backgroundLegacyFounding, retireLegacyFounding } from "../jobs/background-work.js";
-import { readFoundingResidentContext, adoptFoundingRoutine } from "../features/residents/resident-agendas.js";
-import { queueFoundingWish } from "../features/residents/wishes/wish-lifecycle.js";
-import { createVillageClock } from "../adapters/time/clock-service.js";
-import { configureVillageClock } from "../adapters/time/clock-gate.js";
-import { createFoundingProgress } from "../features/founding/founding-progress-service.js";
-import { configureFoundingProgress } from "../features/founding/founding-progress.js";
-import { createCompactFounding } from "../features/founding/founding-compact-service.js";
-import { configureCompactFounding } from "../features/founding/founding-compact.js";
-import { createFoundingDrafts } from "../features/founding/founding-drafts-service.js";
-import { configureFoundingDrafts, suggestStartingVenues } from "../features/founding/founding-drafts.js";
-import { createVillageBootstrap } from "../features/founding/village-bootstrap-service.js";
-import { configureVillageBootstrap } from "../features/founding/village-bootstrap.js";
-import { loadEngineImageStyleSupport } from "../adapters/engine/image-style-profiles.js";
-import { createImageGeneration } from "../features/media/image-generation-service.js";
-import { configureImageGeneration } from "../features/media/image-generation.js";
-import { villageEngineJson as villageImageEngineJson } from "../adapters/engine/engine-loopback.js";
-import { decodeVillageImageDataUrl } from "../adapters/engine/image-files.js";
-import { villagesImageConnectionChoice } from "../features/settings/connections.js";
-import { createTownMapImage } from "../features/media/town-map-image-service.js";
-import { configureTownMapImage } from "../features/media/town-map-image.js";
-import { readVillageVisualLoreEntries, readVillageVisualLore } from "../adapters/engine/lorebooks.js";
-import { createLocationImages } from "../features/media/location-image-service.js";
-import { configureLocationImages } from "../features/media/location-image.js";
-import { decodeImageDataUrl } from "../features/media/location-image-codec.js";
-import { assertVenueImageAccess, setVillageVenueImage } from "../features/venues/services.js";
-import { createWishLifecycle } from "../features/residents/wishes/wish-lifecycle-service.js";
-import { configureWishLifecycle, wishLifecycle } from "../features/residents/wishes/wish-lifecycle.js";
-import { createWishProgress } from "../features/residents/wishes/wish-progress-service.js";
-import { configureWishProgress, wishProgress } from "../features/residents/wishes/wish-progress.js";
-import { readWishAttemptClock, wishAttemptClocks } from "../features/residents/wishes/wish-attempt-clocks.js";
+import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
+import { randomUUID } from "node:crypto";
 import {
-  readWishOutcome,
-  previousFulfilledNeed,
-  flushWishOutcomes,
-} from "../features/residents/wishes/wish-archive.js";
-import { cachedWishCriteria, interpretWishBatch } from "../features/residents/wishes/wish-interpretation.js";
-import { createWishArchive } from "../features/residents/wishes/wish-archive-service.js";
-import { configureWishArchive } from "../features/residents/wishes/wish-archive.js";
-import { createWishInterpretation } from "../features/residents/wishes/wish-interpretation-service.js";
-import { configureWishInterpretation } from "../features/residents/wishes/wish-interpretation.js";
-import { createRelationshipStore } from "../features/residents/relationship-store-service.js";
-import { configureRelationshipStore, mutateRelationships } from "../features/residents/relationship-store.js";
-import { createRelationshipSocial } from "../features/residents/relationship-social-service.js";
-import { configureRelationshipSocial } from "../features/residents/relationship-social.js";
-import { createSocialMail } from "../features/residents/social-mail-service.js";
-import { configureSocialMail } from "../features/residents/social-mail.js";
-import { createStartingTies } from "../features/residents/starting-ties-service.js";
-import { createRelationships } from "../features/residents/relationship-service.js";
-import { configureRelationships } from "../features/residents/relationships.js";
-import { createLiveMemory } from "../features/residents/live-memory-service.js";
-import { configureLiveMemory } from "../features/residents/live-memory.js";
-import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
-import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
-import { applyResidenceEditApproval } from "../features/venues/zone-edits.js";
-import { queueVillageVenueRequest } from "../features/venues/venue-requests.js";
-import { recordVillagerVenueImprovement } from "../features/venues/venue-mailbox.js";
-import { WISH_PROPOSAL_INSTRUCTION } from "../domain/rules/wish-progress-rules.js";
-import { bindWishProposals } from "../domain/rules/wish-progress-rules.js";
-import { projectProposals } from "../domain/rules/project-check-rules.js";
-import { createProjectChecks } from "../features/projects/project-check-service.js";
-import { configureProjectChecks } from "../features/projects/project-checks.js";
-import { pipelineSignal } from "../adapters/observability/metrics-context.js";
-import { boundInterpretationEvidence } from "../domain/rules/interpretation-evidence-rules.js";
-import { configureInterpretationEvidence, contextualChecks } from "../features/generation/interpretation-evidence.js";
-import { createInterpretationEvidence } from "../features/generation/interpretation-evidence-service.js";
-import { routeInterpretationChecks } from "../domain/rules/interpretation-routing.js";
-import { recordInterpretationRouting } from "../features/generation/interpretation.js";
-import { configureInterpretation, interpretChecks } from "../features/generation/interpretation.js";
-import { createInterpretation } from "../features/generation/interpretation-service.js";
-import { createSystemInterpretation } from "../features/generation/system-interpretation-service.js";
-import { evaluateVillagesDecisions, decisionAdapterStatus } from "../adapters/engine/decisions-adapter.js";
-import { coordinatedOptionalCompletion, venueInterpretationSettings } from "../jobs/venue-coordinator.js";
-import { interpretProjectDraft } from "../features/projects/project-checks.js";
-import { finalizeProjectDiagnostics } from "../features/projects/project-checks.js";
-import { saveInterpretationContext } from "../features/generation/interpretation-evidence.js";
-import { writeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
-import { venueCheckpoint, venueSavedCheckpoint } from "../jobs/venue-coordinator.js";
-import { recoverVenueOperations } from "../jobs/venue-coordinator.js";
-import { coordinateVenue } from "../jobs/venue-coordinator.js";
-import { cancelVenueOperation } from "../jobs/venue-coordinator.js";
-import { mutateDocument } from "../adapters/storage/document-store.js";
-import { venueRequestMetrics } from "../adapters/operations/operation-context.js";
-import { venueRefusal } from "../adapters/operations/operation-context.js";
-import { venueOperationSnapshot } from "../adapters/operations/operation-context.js";
-import { outsideVenueOperation } from "../adapters/operations/operation-context.js";
-import { assertVenueOwnership } from "../adapters/operations/operation-context.js";
-import { sceneWork } from "../features/scenes/scene-work.js";
-import { activationScope } from "../adapters/engine/activation-scope.js";
-import { proposeVillageResidence } from "../features/venues/residences.js";
-import { decideVillageResidence } from "../features/venues/residences.js";
-import { pruneVenueVisits } from "../features/scenes/archive.js";
-import { requireLiveVenueSession } from "../features/scenes/live-session.js";
-import { readSceneChanges } from "../features/scenes/changes.js";
-import { VENUE_REPLY_MAX_TOKENS } from "../features/scenes/writing.js";
-import { explicitSceneActions } from "../features/scenes/writing.js";
-import { generateContactResponse } from "../features/scenes/writing.js";
-import { generate } from "../features/scenes/writing.js";
-import { interpretRoomDraft } from "../features/scenes/writing.js";
-import { createSceneCommands } from "../features/scenes/command-service.js";
-import { configureSceneCommands, finishSemanticScene } from "../features/scenes/venue-session.js";
-import { interpretRoomReply } from "../features/scenes/room-interpretation.js";
-import { wishFingerprint } from "../domain/rules/wish-interpretation-rules.js";
-import { rejectVenueCompletion } from "../jobs/venue-coordinator.js";
-import { venueOperationSignal } from "../adapters/operations/operation-context.js";
-import { venueExplicitRetry, venueOperationInput } from "../adapters/operations/operation-context.js";
-import { venueOperationId } from "../adapters/operations/operation-context.js";
-import { refreshZoneParticipants } from "../features/scenes/live-session.js";
-import { createSceneWriting } from "../features/scenes/writing-service.js";
-import { configureSceneWriting } from "../features/scenes/writing.js";
-import { processProjectWishOutbox } from "../features/residents/wishes/wish-progress.js";
-import { dispatchExchange } from "../features/scenes/exchange-processing.js";
-import { processLiveRelationships } from "../features/residents/live-memory.js";
-import { processLiveMemories } from "../features/residents/live-memory.js";
-import { processWishExchange } from "../features/residents/wishes/wish-progress.js";
-import { createLiveEvidenceContext } from "../domain/rules/live-exchange.js";
-import { configureProjectEvidence, processProjectSpeechTurn } from "../features/projects/project-evidence.js";
-import { createProjectEvidence } from "../features/projects/project-evidence-service.js";
-import { createSemanticService } from "../features/generation/semantic-service.js";
-import { createSceneProgress } from "../features/scenes/progress-service.js";
-import { configureSceneProgress } from "../features/scenes/progress.js";
-import { createSceneChanges } from "../features/scenes/changes-service.js";
-import { configureSceneChanges } from "../features/scenes/changes.js";
-import { sceneReplayEffects } from "../features/scenes/venue-session.js";
-import { createLiveScenes } from "../features/scenes/live-session-service.js";
-import { configureLiveScenes } from "../features/scenes/live-session.js";
-import { hasVenueOperation } from "../jobs/venue-coordinator.js";
-import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
-import { createSceneRepository } from "../adapters/storage/scene-repository.js";
-import {
-  configureSceneRepository,
-  readActive,
-  readSession,
-  changeSession,
-  clearActivePointer,
-} from "../adapters/storage/scene-store.js";
-import { createSceneArchive } from "../features/scenes/archive-service.js";
-import { configureSceneArchive } from "../features/scenes/archive.js";
-import { processSavedProgressSubmission } from "../features/scenes/progress.js";
-import { removeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
-import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
-import { configureFoundingSetup } from "../features/founding/founding-setup.js";
-import { prepareVillageMap } from "../features/media/town-map-review.js";
-import {
-  configureConnectionSettings,
-  readVillageConnectionSettings,
-  validateVillageSetupConnections,
-} from "../features/settings/connections.js";
-import { createConnectionSettings } from "../features/settings/connection-service.js";
-import { villagesAgentConnectionId, villagesAgentImageConnectionId } from "../adapters/engine/agent-config.js";
-import {
-  proposeVillage,
-  proposePublicVenueNames,
-  draftVillageVenueDescriptions,
-  interpretSocialSource,
-} from "../features/founding/village-bootstrap.js";
-import { createTownMapReview } from "../features/media/town-map-review-service.js";
-import { configureTownMapReview } from "../features/media/town-map-review.js";
-import { createVenueRequests } from "../features/venues/venue-request-service.js";
-import { configureVenueRequests } from "../features/venues/venue-requests.js";
-import {
-  createRenovationProject,
-  draftNewVenueProject,
-  draftRenovationProject,
-  configureProjectLifecycle,
-} from "../features/projects/project-lifecycle.js";
-import { createResidentRoster } from "../features/residents/resident-roster-service.js";
-import { configureResidentRoster } from "../features/residents/resident-roster.js";
-import { createResidences } from "../features/venues/residence-service.js";
-import {
-  configureResidences,
-  completeVillageResidence,
-  retryResidencePrivateSpaceAdaptation,
-} from "../features/venues/residences.js";
-import {
-  queueSharedMoveConsent,
-  queueVenueCounteroffer,
-  respondDueVenueMail,
-} from "../features/venues/venue-mailbox.js";
-import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
-import { createScheduleInfluence } from "../features/residents/schedule-influence-service.js";
-import {
-  configureResidentAgendas,
-  queueVillagerAgenda,
-  backfillAgendas,
-  refreshVillagerRemaps,
-} from "../features/residents/resident-agendas.js";
-import { readEffectiveVillagerCard } from "../adapters/engine/catalog.js";
-import { readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
-import {
-  reserveInitialWishAllowance,
-  correctResidentWish,
-  reconcileWishLifecycle,
-} from "../features/residents/wishes/wish-lifecycle.js";
-import { registerInitialWish } from "../features/residents/wishes/wish-initial.js";
-import { expireResidentWishes } from "../domain/rules/wish-lifecycle-rules.js";
-import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
-import { proposeCompactFounding, proposeOpeningIdea } from "../features/founding/founding-compact.js";
-import { rollActiveAgendas } from "../features/residents/resident-agendas.js";
-import { createPersonaCache } from "../features/settings/persona-cache-service.js";
-import { configurePersonaCache } from "../features/settings/persona-cache.js";
-import { createResidentCards } from "../features/residents/resident-card-service.js";
-import { configureResidentCards } from "../features/residents/resident-cards.js";
-import {
-  configureRuntimeHost,
-  VILLAGES_PACKAGE_ID,
-  villagesDocuments,
-  villagesLogger,
-  villagesResources,
-  villagesRuntimeEpoch,
-} from "../adapters/engine/runtime-host.js";
-import { configureNativeSchedules } from "../adapters/engine/native-schedules.js";
-import { createNativeSchedules } from "../adapters/engine/native-schedules-service.js";
-import { configureGlobalGallery, uploadVillageGalleryImage } from "../adapters/engine/global-gallery.js";
-import { createGlobalGallery } from "../adapters/engine/global-gallery-service.js";
-import {
+  activationScope,
   bindActivationService,
   createActivationScope,
   installDefaultActivation,
   scopedActivation,
 } from "../adapters/engine/activation-scope.js";
-import { createVillageRepository } from "../adapters/storage/village-repository.js";
-import { createDocumentMutator } from "../adapters/storage/document-store.js";
+import { villagesAgentConnectionId, villagesAgentImageConnectionId } from "../adapters/engine/agent-config.js";
 import {
-  configureUsageLedger,
-  withUsagePurpose,
-  trackUsage,
-  inferredPurpose,
-  usageProcessOwner,
-  readUsageLedger,
-  resetUsagePeriod as resetUsageLedgerPeriod,
-  saveUsageRate as saveLedgerRate,
-  saveLinkApiGroup as saveLedgerGroup,
-  quoteUsageRate,
-} from "../adapters/models/usage-ledger.js";
+  captureMissingVillagerCardColors,
+  findPlayerPersona,
+  findVillagerCard,
+  listPlayerPersonas,
+  listVillagerCards,
+  readEffectiveVillagerCard,
+  toCatalogEntry,
+} from "../adapters/engine/catalog.js";
+import { decisionAdapterStatus, evaluateVillagesDecisions } from "../adapters/engine/decisions-adapter.js";
+import { villageEngineJson as villageImageEngineJson } from "../adapters/engine/engine-loopback.js";
+import {
+  deleteVillageSpriteFile,
+  villageEngineBaseUrl,
+  villageEngineForm,
+  villageEngineJson,
+} from "../adapters/engine/engine-transport.js";
+import { createGlobalGallery } from "../adapters/engine/global-gallery-service.js";
+import { configureGlobalGallery, uploadVillageGalleryImage } from "../adapters/engine/global-gallery.js";
+import { decodeVillageImageDataUrl, inspectVillageImage } from "../adapters/engine/image-files.js";
+import { loadEngineImageStyleSupport } from "../adapters/engine/image-style-profiles.js";
+import { readVillageLore, readVillageVisualLore, readVillageVisualLoreEntries } from "../adapters/engine/lorebooks.js";
+import { createNativeSchedules } from "../adapters/engine/native-schedules-service.js";
+import { configureNativeSchedules, readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
+import {
+  configureRuntimeHost,
+  requireHost,
+  VILLAGES_PACKAGE_ID,
+  villagesDebugAgentsEnabled,
+  villagesDocuments,
+  villagesLogger,
+  villagesResources,
+  villagesRuntimeEpoch,
+} from "../adapters/engine/runtime-host.js";
+import { readZonePictureReference } from "../adapters/engine/zone-picture-reference.js";
+import { villagesLanguageModels } from "../adapters/models/language-models.js";
+import { linkApiQuote, readExchangeRate } from "../adapters/models/linkapi-pricing.js";
 import { createUsageLedger } from "../adapters/models/usage-ledger-service.js";
 import {
-  villageEngineJson,
-  villageEngineForm,
-  villageEngineBaseUrl,
-  deleteVillageSpriteFile,
-} from "../adapters/engine/engine-transport.js";
-import { inspectVillageImage } from "../adapters/engine/image-files.js";
-import { linkApiQuote, readExchangeRate } from "../adapters/models/linkapi-pricing.js";
-import { configureMetricsContext } from "../adapters/observability/metrics-context.js";
+  configureUsageLedger,
+  inferredPurpose,
+  quoteUsageRate,
+  readUsageLedger,
+  resetUsagePeriod as resetUsageLedgerPeriod,
+  saveLinkApiGroup as saveLedgerGroup,
+  saveUsageRate as saveLedgerRate,
+  trackUsage,
+  usageProcessOwner,
+  withUsagePurpose,
+} from "../adapters/models/usage-ledger.js";
 import { createMetricsContext } from "../adapters/observability/metrics-context-service.js";
+import { configureMetricsContext, pipelineSignal } from "../adapters/observability/metrics-context.js";
 import { measurePipeline } from "../adapters/observability/pipeline-metrics.js";
-import { configureRuntimeDebug, readRuntimeDebug, runtimeDebug } from "../adapters/observability/runtime-debug.js";
 import { createRuntimeDebug } from "../adapters/observability/runtime-debug-service.js";
-import { villagesDebugAgentsEnabled } from "../adapters/engine/runtime-host.js";
-import { venueDebugContext } from "../adapters/operations/operation-context.js";
-import { configureVenueOperationContext } from "../adapters/operations/operation-context.js";
-import { createVenueOperationContext } from "../adapters/operations/operation-context-service.js";
-import { configureBackgroundContext } from "../adapters/operations/background-context.js";
+import { configureRuntimeDebug, readRuntimeDebug, runtimeDebug } from "../adapters/observability/runtime-debug.js";
 import { createBackgroundContext } from "../adapters/operations/background-context-service.js";
+import { configureBackgroundContext } from "../adapters/operations/background-context.js";
+import { createVenueOperationContext } from "../adapters/operations/operation-context-service.js";
+import {
+  assertVenueOwnership,
+  configureVenueOperationContext,
+  outsideVenueOperation,
+  venueDebugContext,
+  venueExplicitRetry,
+  venueOperationId,
+  venueOperationInput,
+  venueOperationSignal,
+  venueOperationSnapshot,
+  venueRefusal,
+  venueRequestMetrics,
+} from "../adapters/operations/operation-context.js";
+import { createDocumentMutator, mutateDocument } from "../adapters/storage/document-store.js";
+import { repairGate } from "../adapters/storage/repair-gate.js";
+import { createSceneRepository } from "../adapters/storage/scene-repository.js";
+import {
+  changeSession,
+  clearActivePointer,
+  configureSceneRepository,
+  readActive,
+  readSession,
+} from "../adapters/storage/scene-store.js";
+import { createVillageRepository } from "../adapters/storage/village-repository.js";
+import { configureVillageClock, villageNow } from "../adapters/time/clock-gate.js";
+import { createVillageClock } from "../adapters/time/clock-service.js";
+import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
+import { boundInterpretationEvidence } from "../domain/rules/interpretation-evidence-rules.js";
+import { routeInterpretationChecks } from "../domain/rules/interpretation-routing.js";
+import { createLiveEvidenceContext } from "../domain/rules/live-exchange.js";
+import { projectProposals } from "../domain/rules/project-check-rules.js";
+import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
 import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
 import { projectSocialActivities, reconcileSocialPlans } from "../domain/rules/social-rules.js";
-import { processSocialOutbox } from "../features/residents/relationship-social.js";
-import { generateVillageTownMap } from "../features/media/town-map-image.js";
+import { bindWishProposals, WISH_PROPOSAL_INSTRUCTION } from "../domain/rules/wish-progress-rules.js";
+import { createCompactFounding } from "../features/founding/founding-compact-service.js";
+import {
+  configureCompactFounding,
+  proposeCompactFounding,
+  proposeOpeningIdea,
+} from "../features/founding/founding-compact.js";
+import { createFoundingDrafts } from "../features/founding/founding-drafts-service.js";
+import {
+  configureFoundingDrafts,
+  seedFoundingVenueDetails,
+  suggestStartingVenues,
+} from "../features/founding/founding-drafts.js";
+import { createFoundingProgress } from "../features/founding/founding-progress-service.js";
+import { configureFoundingProgress, reportFoundingProgress } from "../features/founding/founding-progress.js";
+import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
+import { configureFoundingSetup, runVillageBootstrap } from "../features/founding/founding-setup.js";
+import { createFoundingSuggestions } from "../features/founding/founding-suggestions-service.js";
+import { configureFoundingSuggestions } from "../features/founding/founding-suggestions.js";
+import { createFoundingPreparation } from "../features/founding/preparation-service.js";
+import { configureFoundingPreparation, prepareFoundedVillage } from "../features/founding/preparation.js";
+import { createVillageBootstrap } from "../features/founding/village-bootstrap-service.js";
+import {
+  configureVillageBootstrap,
+  draftVillageVenueDescriptions,
+  interpretSocialSource,
+  proposePublicVenueNames,
+  proposeVillage,
+} from "../features/founding/village-bootstrap.js";
+import { createModelCompletions } from "../features/generation/completion-service.js";
+import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
+import {
+  configureInterpretationDiagnostics,
+  removeInterpretationDiagnostics,
+  writeInterpretationDiagnostics,
+} from "../features/generation/interpretation-diagnostics.js";
+import { createInterpretationEvidence } from "../features/generation/interpretation-evidence-service.js";
+import {
+  configureInterpretationEvidence,
+  contextualChecks,
+  saveInterpretationContext,
+} from "../features/generation/interpretation-evidence.js";
+import { createInterpretation } from "../features/generation/interpretation-service.js";
+import {
+  configureInterpretation,
+  interpretChecks,
+  recordInterpretationRouting,
+} from "../features/generation/interpretation.js";
+import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
+import { createSemanticService } from "../features/generation/semantic-service.js";
+import { createSystemInterpretation } from "../features/generation/system-interpretation-service.js";
+import { configureSystemInterpretation, systemInterpretations } from "../features/generation/system-interpretation.js";
+import { createImageGeneration } from "../features/media/image-generation-service.js";
+import {
+  configureImageGeneration,
+  generateVillageImage,
+  resolveVillageImageConnectionId,
+  resolveVillageImageEditing,
+} from "../features/media/image-generation.js";
+import { decodeImageDataUrl } from "../features/media/location-image-codec.js";
+import { createLocationImages } from "../features/media/location-image-service.js";
+import { configureLocationImages } from "../features/media/location-image.js";
 import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.js";
 import { createSpriteManager } from "../features/media/sprite-manager-service.js";
 import { configureSpriteManager } from "../features/media/sprite-manager.js";
 import { createSpriteSetup } from "../features/media/sprite-setup-service.js";
 import { configureSpriteSetup, preparedSpriteManager } from "../features/media/sprite-setup.js";
+import { createTownMapImage } from "../features/media/town-map-image-service.js";
+import { configureTownMapImage, generateVillageTownMap } from "../features/media/town-map-image.js";
+import { createTownMapReview } from "../features/media/town-map-review-service.js";
+import { configureTownMapReview, prepareVillageMap } from "../features/media/town-map-review.js";
+import { createProjectChecks } from "../features/projects/project-check-service.js";
 import {
-  generateVillageImage,
-  resolveVillageImageConnectionId,
-  resolveVillageImageEditing,
-} from "../features/media/image-generation.js";
-import { readZonePictureReference } from "../adapters/engine/zone-picture-reference.js";
+  configureProjectChecks,
+  finalizeProjectDiagnostics,
+  interpretProjectDraft,
+} from "../features/projects/project-checks.js";
+import { createProjectEvidence } from "../features/projects/project-evidence-service.js";
+import { configureProjectEvidence, processProjectSpeechTurn } from "../features/projects/project-evidence.js";
+import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
+import {
+  cancelProject,
+  configureProjectLifecycle,
+  draftNewVenueProject,
+  draftRenovationProject,
+  resumeProject,
+} from "../features/projects/project-lifecycle.js";
+import { createRepairService } from "../features/repair/repair-service.js";
+import { configureRepairs } from "../features/repair/repair.js";
+import { createLiveMemory } from "../features/residents/live-memory-service.js";
+import {
+  configureLiveMemory,
+  processLiveMemories,
+  processLiveRelationships,
+} from "../features/residents/live-memory.js";
+import { createRelationships } from "../features/residents/relationship-service.js";
+import { createRelationshipSocial } from "../features/residents/relationship-social-service.js";
+import { configureRelationshipSocial, processSocialOutbox } from "../features/residents/relationship-social.js";
+import { createRelationshipStore } from "../features/residents/relationship-store-service.js";
+import {
+  configureRelationshipStore,
+  mutateRelationships,
+  persistRelationshipAuthority,
+  readRelationshipState,
+} from "../features/residents/relationship-store.js";
+import { configureRelationships } from "../features/residents/relationships.js";
+import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
+import {
+  backfillAgendas,
+  configureResidentAgendas,
+  queueVillagerAgenda,
+  readFoundingResidentContext,
+  refreshVillagerRemaps,
+  rollActiveAgendas,
+} from "../features/residents/resident-agendas.js";
+import { createResidentCards } from "../features/residents/resident-card-service.js";
+import { configureResidentCards } from "../features/residents/resident-cards.js";
+import { createResidentPlanning } from "../features/residents/resident-planning-service.js";
+import { createResidentRoster } from "../features/residents/resident-roster-service.js";
+import { configureResidentRoster } from "../features/residents/resident-roster.js";
 import { createResidentSignatures } from "../features/residents/resident-signature-service.js";
 import { configureResidentSignatures } from "../features/residents/resident-signature.js";
+import { createScheduleInfluence } from "../features/residents/schedule-influence-service.js";
 import { prepareSignatureImage } from "../features/residents/signature-image.js";
-import { createVillageWriting } from "../features/settings/writing-settings-service.js";
-import { configureVillageWriting } from "../features/settings/narration-settings.js";
+import { createSocialMail } from "../features/residents/social-mail-service.js";
+import { configureSocialMail } from "../features/residents/social-mail.js";
+import { createStartingTies } from "../features/residents/starting-ties-service.js";
+import {
+  configureWishes,
+  createWishes,
+  processWishExchange,
+  queueFoundingWish,
+} from "../features/residents/wishes/service.js";
+import { createSceneArchive } from "../features/scenes/archive-service.js";
+import { configureSceneArchive, listVenueVisits, pruneVenueVisits } from "../features/scenes/archive.js";
+import { createSceneChanges } from "../features/scenes/changes-service.js";
+import {
+  configureSceneChanges,
+  continueSceneChange,
+  readSceneChanges,
+  replaySceneChanges,
+} from "../features/scenes/changes.js";
+import { createSceneCommands } from "../features/scenes/command-service.js";
+import { dispatchExchange } from "../features/scenes/exchange-processing.js";
+import { createLiveScenes } from "../features/scenes/live-session-service.js";
+import {
+  activeVenueSession,
+  configureLiveScenes,
+  refreshZoneParticipants,
+  requireLiveVenueSession,
+} from "../features/scenes/live-session.js";
+import { createSceneProgress } from "../features/scenes/progress-service.js";
+import {
+  configureSceneProgress,
+  processSavedExchange,
+  processSavedProgressSubmission,
+} from "../features/scenes/progress.js";
+import { interpretRoomReply } from "../features/scenes/room-interpretation.js";
+import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
+import { createSceneWork } from "../features/scenes/scene-work-service.js";
+import { configureSceneWork, sceneWork } from "../features/scenes/scene-work.js";
+import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
+import { createSpinoffs } from "../features/scenes/spinoff-service.js";
+import { configureSpinoffs } from "../features/scenes/spinoffs.js";
+import { configureSceneCommands, finishSemanticScene, sceneReplayEffects } from "../features/scenes/venue-session.js";
+import { createSceneWriting } from "../features/scenes/writing-service.js";
+import {
+  configureSceneWriting,
+  explicitSceneActions,
+  generate,
+  generateContactResponse,
+  interpretRoomDraft,
+  VENUE_REPLY_MAX_TOKENS,
+} from "../features/scenes/writing.js";
+import { createConnectionSettings } from "../features/settings/connection-service.js";
+import {
+  configureConnectionSettings,
+  readVillageConnectionSettings,
+  validateVillageSetupConnections,
+  villagesConnectionIdFor,
+  villagesImageConnectionChoice,
+} from "../features/settings/connections.js";
 import { createInterpretationSettings } from "../features/settings/interpretation-settings-service.js";
 import {
   configureInterpretationSettings,
   readInterpretationSettings,
 } from "../features/settings/interpretation-settings.js";
+import { configureVillageWriting } from "../features/settings/narration-settings.js";
+import { createPersonaCache } from "../features/settings/persona-cache-service.js";
+import { configurePersonaCache } from "../features/settings/persona-cache.js";
+import { createPersonaQueries } from "../features/settings/persona-service.js";
+import { configurePersonaQueries, readLinkedPersona } from "../features/settings/personas.js";
 import { createUsageMeter } from "../features/settings/usage-meter-service.js";
 import { configureUsageMeter } from "../features/settings/usage-meter.js";
 import { createUsagePreview } from "../features/settings/usage-preview-service.js";
 import { configureUsagePreview } from "../features/settings/usage-preview.js";
-import { persistRelationshipAuthority, readRelationshipState } from "../features/residents/relationship-store.js";
-import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
-import { createSceneWork } from "../features/scenes/scene-work-service.js";
-import { configureSceneWork } from "../features/scenes/scene-work.js";
-import { processSavedExchange } from "../features/scenes/progress.js";
-import { activeVenueSession } from "../features/scenes/live-session.js";
-import { listVenueVisits } from "../features/scenes/archive.js";
-import { configureWorldRelationships, worldRelationships } from "../features/world/world-relationships.js";
-import { createVillageStateService } from "../features/world/village-state-service.js";
-import { configureVenueCommands } from "../features/venues/services.js";
-import { createVenueCommands } from "../features/venues/venue-service.js";
-import { createVenueZoneEdits } from "../features/venues/zone-edit-service.js";
-import { configureVenueZoneEdits } from "../features/venues/zone-edits.js";
-import { buildVillageSnapshot, configureVillageSnapshot } from "../features/world/snapshot.js";
-import { createVillageSnapshot } from "../features/world/snapshot-service.js";
-import { captureMissingVillagerCardColors } from "../adapters/engine/catalog.js";
-import { privatePreparationRooms } from "../jobs/private-space-preparation.js";
-import { configureWorldCoordination } from "../features/world/village.js";
-import { createDevelopment } from "../features/world/development-service.js";
-import { configureDevelopment, reconcileDevelopment } from "../features/world/development.js";
-import { createWorldCoordination } from "../features/world/village-service.js";
-import { configureVenueMailbox, venueMailbox } from "../features/venues/venue-mailbox.js";
-import { createVenueMailbox } from "../features/venues/venue-mailbox-service.js";
-import {
-  configureWishAttemptClocks,
-  createWishAttemptClocks,
-} from "../features/residents/wishes/wish-attempt-clocks.js";
-import {
-  configureVillageStateService,
-  withVillageSceneAcceptance,
-  mutateVillageState,
-  readVillageState,
-  readVillageAuthority,
-  readVillageMemoryState,
-  readVillageMemoryAuthority,
-  mutateVillageMemoryState,
-  readVillageMemorySnapshot,
-} from "../features/world/village-store.js";
-import { configureFoundingSuggestions } from "../features/founding/founding-suggestions.js";
-import { createFoundingSuggestions } from "../features/founding/founding-suggestions-service.js";
-import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
-import { createTownMapGeneration } from "../jobs/town-map-service.js";
-import { configureVenueCoordinator } from "../jobs/venue-coordinator.js";
-import { createVenueCoordinator } from "../jobs/venue-coordinator-service.js";
-import {
-  configureBackgroundWork,
-  queueBackgroundJob,
-  retireBackgroundResident,
-  previewBackgroundJobs,
-} from "../jobs/background-work.js";
-import { createBackgroundWork } from "../jobs/background-service.js";
-import { configurePrivateSpacePreparation } from "../jobs/private-space-preparation.js";
-import { createPrivateSpacePreparation } from "../jobs/private-space-service.js";
-import { readVillageLore } from "../adapters/engine/lorebooks.js";
-import { villagesLanguageModels } from "../adapters/models/language-models.js";
-import { requireHost } from "../adapters/engine/runtime-host.js";
-import { villageNow } from "../adapters/time/clock-gate.js";
-import { createSpinoffs } from "../features/scenes/spinoff-service.js";
-import { configureSpinoffs } from "../features/scenes/spinoffs.js";
-import { reportFoundingProgress } from "../features/founding/founding-progress.js";
-import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
-import { createModelCompletions } from "../features/generation/completion-service.js";
-import { coordinatedCompletion } from "../jobs/venue-coordinator.js";
-import { configureInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
-import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
-import { configureSystemInterpretation, systemInterpretations } from "../features/generation/system-interpretation.js";
-import { villagesConnectionIdFor } from "../features/settings/connections.js";
-import { createPersonaQueries } from "../features/settings/persona-service.js";
-import { configurePersonaQueries, readLinkedPersona } from "../features/settings/personas.js";
-import {
-  findPlayerPersona,
-  listPlayerPersonas,
-  findVillagerCard,
-  listVillagerCards,
-  toCatalogEntry,
-} from "../adapters/engine/catalog.js";
 import { createVillageSettings } from "../features/settings/village-settings-service.js";
 import { configureVillageSettings } from "../features/settings/village-settings.js";
-import { runVillageBootstrap } from "../features/founding/founding-setup.js";
-import { createFoundingPreparation } from "../features/founding/preparation-service.js";
-import { configureFoundingPreparation, prepareFoundedVillage } from "../features/founding/preparation.js";
-import { seedFoundingVenueDetails } from "../features/founding/founding-drafts.js";
-import { preparePrivateSpaces } from "../jobs/private-space-preparation.js";
+import { createVillageWriting } from "../features/settings/writing-settings-service.js";
+import { createResidences } from "../features/venues/residence-service.js";
 import {
-  backgroundStatus,
+  completeVillageResidence,
+  configureResidences,
+  decideVillageResidence,
+  proposeVillageResidence,
+  retryResidencePrivateSpaceAdaptation,
+} from "../features/venues/residences.js";
+import { assertVenueImageAccess, configureVenueCommands, setVillageVenueImage } from "../features/venues/services.js";
+import { createVenueRequests } from "../features/venues/venue-request-service.js";
+import { configureVenueRequests, queueVillageVenueRequest } from "../features/venues/venue-requests.js";
+import { createVenueCommands } from "../features/venues/venue-service.js";
+import { createVenueZoneEdits } from "../features/venues/zone-edit-service.js";
+import { applyResidenceEditApproval, configureVenueZoneEdits } from "../features/venues/zone-edits.js";
+import { createVillageSnapshot } from "../features/world/snapshot-service.js";
+import { buildVillageSnapshot, configureVillageSnapshot } from "../features/world/snapshot.js";
+import { createWorldCoordination } from "../features/world/village-service.js";
+import { createVillageStateService } from "../features/world/village-state-service.js";
+import {
+  configureVillageStateService,
+  mutateVillageMemoryState,
+  mutateVillageState,
+  readVillageAuthority,
+  readVillageMemoryAuthority,
+  readVillageMemorySnapshot,
+  readVillageMemoryState,
+  readVillageState,
+  withVillageSceneAcceptance,
+} from "../features/world/village-store.js";
+import { configureWorldCoordination } from "../features/world/village.js";
+import { configureWorldRelationships, worldRelationships } from "../features/world/world-relationships.js";
+import { createBackgroundWork } from "../jobs/background-service.js";
+import {
+  backgroundJobSnapshot,
   backgroundWorkSummaries,
+  configureBackgroundWork,
+  previewBackgroundJobs,
+  queueBackgroundJob,
+  retireBackgroundResident,
   retryBackgroundJob,
   settleBackgroundWork,
 } from "../jobs/background-work.js";
-import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
-import { randomUUID } from "node:crypto";
+import {
+  configurePrivateSpacePreparation,
+  preparePrivateSpaces,
+  privatePreparationRooms,
+} from "../jobs/private-space-preparation.js";
+import { createPrivateSpacePreparation } from "../jobs/private-space-service.js";
+import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
+import { createTownMapGeneration } from "../jobs/town-map-service.js";
+import { createVenueCoordinator } from "../jobs/venue-coordinator-service.js";
+import {
+  cancelVenueOperation,
+  configureVenueCoordinator,
+  coordinatedCompletion,
+  coordinatedOptionalCompletion,
+  coordinateVenue,
+  hasVenueOperation,
+  recoverVenueOperations,
+  rejectVenueCompletion,
+  venueCheckpoint,
+  venueInterpretationSettings,
+  venueSavedCheckpoint,
+} from "../jobs/venue-coordinator.js";
 import { backendWorkFor } from "./backend-work.js";
 
 // A process identity preserves the existing saved-attempt recovery policy.
@@ -559,17 +548,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       bindCallback: (callback) => (completionOwner ? completionOwner.bind(callback) : callback),
     }),
   );
-  const releaseWishInterpretation = configureWishInterpretation(
-    createWishInterpretation({
-      VILLAGES_PACKAGE_ID,
-      villagesDocuments,
-      interpretChecks,
-      systemInterpretations,
-      bindCallback: (callback) => (completionOwner ? completionOwner.bind(callback) : callback),
-    }),
-  );
   const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
-  const releaseWishClocks = configureWishAttemptClocks(createWishAttemptClocks());
   const releaseRelationshipStore = configureRelationshipStore(
     createRelationshipStore({
       VILLAGES_PACKAGE_ID,
@@ -600,6 +579,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const personalMail = createSocialMail({
     processLiveMemories,
+    withVillageSceneAcceptance,
     readVillageSnapshot: readVillageMemorySnapshot,
     mutateVillageState: mutateVillageMemoryState,
     mutateRelationships,
@@ -648,75 +628,21 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseFoundingProgress = configureFoundingProgress(
     createFoundingProgress({ readVillageState, mutateVillageState }),
   );
-  const releaseWishArchive = configureWishArchive(
-    createWishArchive({
-      VILLAGES_PACKAGE_ID,
-      villagesDocuments,
-      readVillageState,
-      mutateVillageState,
-    }),
-  );
-  const releaseWishLifecycle = configureWishLifecycle(
-    createWishLifecycle({
-      wishAttemptClocks,
-      readWishAttemptClock,
-      readVillageLore,
-      villagesDebugAgentsEnabled,
-      villagesLogger,
-      villagesLanguageModels,
-      backgroundCalls: background.backgroundCalls,
-      backgroundSetting: background.backgroundSetting,
-      outsideVenueOperation: operations.outsideVenueOperation,
-      backgroundStatus,
-      queueBackgroundJob,
-      settleBackgroundWork,
-      completeWithRoom,
-      villagesConnectionIdFor,
-      mutateVillageState,
-      readVillageState,
-      flushWishOutcomes,
-      previousFulfilledNeed,
-      readWishOutcome,
-    }),
-  );
-  const releaseWishProgress = configureWishProgress(
-    createWishProgress({
-      backgroundJobSnapshot,
-      finishSemanticScene,
-      readEffectiveVillagerCard,
-      backgroundCalls: background.backgroundCalls,
-      backgroundSetting: background.backgroundSetting,
-      outsideVenueOperation: operations.outsideVenueOperation,
-      backgroundStatus,
-      queueBackgroundJob,
-      writeInterpretationDiagnostics,
-      sceneQueries,
-      mutateVillageState: mutateVillageMemoryState,
-      readVillageState,
-      cachedWishCriteria,
-      interpretWishBatch,
-    }),
-  );
+  const wishService = createWishes({
+    readVillageState,
+    mutateVillageState: mutateVillageMemoryState,
+    queueBackgroundJob,
+    villagesLanguageModels,
+    villagesConnectionIdFor,
+    completeWithRoom,
+  });
+  const releaseWishes = configureWishes(wishService);
   const releaseProjectLifecycle = configureProjectLifecycle(
     createProjectLifecycle({
       mutateVillageState: mutateVillageMemoryState,
       villagesDebugAgentsEnabled,
       outsideVenueOperation: operations.outsideVenueOperation,
       preparePrivateSpaces,
-      loadProjectWishProgress: () => import("../features/residents/wishes/wish-progress.js"),
-      draftNewVenueProject,
-      draftRenovationProject,
-    }),
-  );
-  const releaseMailbox = configureVenueMailbox(
-    createVenueMailbox({
-      readVillageState,
-      mutateVillageState,
-      queueBackgroundJob,
-      villagesConnectionIdFor,
-      villagesLanguageModels,
-      completeWithRoom,
-      createRenovationProject,
       draftNewVenueProject,
       draftRenovationProject,
     }),
@@ -764,7 +690,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       venueOperationSignal,
       rejectVenueCompletion,
       completeWithRoom,
-      wishFingerprint,
       villagesConnectionIdFor,
       readVillageState: readVillageMemoryState,
       interpretRoomReply,
@@ -780,7 +705,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       generateContactResponse,
       explicitSceneActions,
       VENUE_REPLY_MAX_TOKENS,
-      loadBackgroundRetry: () => import("../jobs/background-work.js"),
       loadPrivateSpaceImages: () => import("../features/media/location-image.js"),
       readSceneChanges,
       processSavedExchange,
@@ -824,11 +748,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       interpretProjectDraft,
       projectProposals,
       rollActiveAgendas,
-      wishFingerprint,
       bindWishProposals,
       WISH_PROPOSAL_INSTRUCTION,
       villagesConnectionIdFor,
-      recordVillagerVenueImprovement,
       mutateVillageState: mutateVillageMemoryState,
       readVillageSnapshot: readVillageMemorySnapshot,
       readVillageState: readVillageMemoryState,
@@ -850,7 +772,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       processLiveRelationships,
       runtimeDebug,
       dispatchExchange,
-      processProjectWishOutbox,
       sceneQueries,
       villagesLogger,
       ...sceneReplayEffects(),
@@ -935,22 +856,18 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     mutateVillageState,
     reportFoundingProgress,
     readEffectiveVillagerCard,
-    reserveInitialWishAllowance,
     readVillageLore,
     queueBackgroundJob,
     backgroundWorkSummaries,
     parseCompactFoundingCompletion,
     proposeCompactFounding,
     readNativeScheduleSnapshot,
-    registerInitialWish,
-    correctResidentWish,
   });
   const releaseResidentAgendas = configureResidentAgendas(residentAgendas);
   const residences = createResidences({
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot,
-    queueSharedMoveConsent,
     outsideVenueOperation: operations.outsideVenueOperation,
     preparePrivateSpaces,
     readVillageLore,
@@ -989,7 +906,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateVillageState: mutateVillageMemoryState,
       buildVillageSnapshot,
       draftNewVenueProject,
-      queueVenueCounteroffer,
     }),
   );
   const releaseTownMapReview = configureTownMapReview(
@@ -1113,17 +1029,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseCoordinator = configureVenueCoordinator(
     createVenueCoordinator({ operations, villagesDocuments, villagesLogger, runtimeDebug, readInterpretationSettings }),
   );
-  const development = createDevelopment({
-    readVillageState,
-    mutateVillageState: mutateVillageMemoryState,
-    backgroundJobSnapshot,
-    retryBackgroundJob,
-    queueBackgroundJob,
-    villagesLanguageModels,
-    villagesConnectionIdFor,
-    completeWithRoom,
-  });
-  const releaseDevelopment = configureDevelopment(development);
   const residentPlanning = createResidentPlanning({
     applySavedStartingTies: startingTies.applySaved,
     automaticMail: personalMail.automaticOutbox,
@@ -1142,9 +1047,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     // Manual history edits preserve current mechanics and do not reconcile the world.
     mutateMemoryAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
     reconcileResidentPlanning: residentPlanning.reconcile,
-    reconcileDevelopment,
-    processProjectWishOutbox,
-    readScene: readSession,
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot,
@@ -1157,11 +1059,18 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     preparePrivateSpaces,
     reconcileProjectLifecycles,
     rollActiveAgendas,
-    expireResidentWishes,
-    reconcileWishLifecycle,
-    respondDueVenueMail,
   });
   const releaseWorldCoordination = configureWorldCoordination(worldCoordination);
+  const releaseRepairs = configureRepairs(
+    createRepairService({
+      gate: repairGate(),
+      repository: villageRepository,
+      resumeProject,
+      cancelProject,
+      replaySaved: replaySceneChanges,
+      continueSaved: continueSceneChange,
+    }),
+  );
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
       villagesDocuments,
@@ -1175,15 +1084,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       handlers: [
         ["starting-ties", startingTies.handler],
         ["schedule-influence", scheduleInfluence.handler],
-        ["wish", wishLifecycle().wishBackgroundHandler],
-        ["wish-check", wishProgress().wishCheckBackgroundHandler],
-        ["mail", venueMailbox().mailBackgroundHandler],
+        ["wish", wishService.handler],
         ["personal-mail", personalMail.handler],
         ["social-recovery", relationshipSocial.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
         ["resident-planning", bindActivationService(residentPlanning.handler)],
-        ["development", bindActivationService(development.handler)],
       ],
     }),
   );
@@ -1204,10 +1110,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createFoundingPreparation({
       proposeOpeningIdea,
       backgroundJobSnapshot,
-      backgroundLegacyFounding,
-      retireLegacyFounding,
       readFoundingResidentContext,
-      adoptFoundingRoutine,
       queueFoundingWish,
       readVillageState,
       mutateVillageState: mutateVillageMemoryState,
@@ -1223,10 +1126,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseGraph = () => {
+    releaseRepairs();
     releaseSettings();
     releaseFoundingSetup();
     releaseWorldCoordination();
-    releaseDevelopment();
     releaseFounding();
     releaseBackground();
     releaseUsagePreview();
@@ -1246,7 +1149,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releasePersonaCache();
     releaseResidences();
     releaseSceneCommands();
-    releaseMailbox();
     releaseProjectLifecycle();
     releasePrivateSpaces();
     releaseSceneWriting();
@@ -1259,14 +1161,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSceneArchive();
     releaseLocationImages();
     releaseVenueCommands();
-    releaseWishProgress();
-    releaseWishLifecycle();
     releaseQueries();
     releaseLiveScenes();
     releaseLiveMemory();
     releaseRelationshipViews();
     releasePersonalMail();
-    releaseWishArchive();
+    releaseWishes();
     releaseFoundingProgress();
     releaseWritingSettings();
     releaseVillageState();
@@ -1274,9 +1174,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseRelationships();
     releaseRelationshipSocial();
     releaseRelationshipStore();
-    releaseWishClocks();
     releaseSceneWork();
-    releaseWishInterpretation();
     releaseInterpretation();
     releaseSystemInterpretation();
     releaseInterpretationEvidence();

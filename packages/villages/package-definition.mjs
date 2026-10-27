@@ -1,3 +1,5 @@
+import { letterFontAssets } from "./letter-font-assets.mjs";
+
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
@@ -18,7 +20,9 @@ export const villagesDefinition = {
     runtimeDisabled: false,
   },
   assetPaths: [
+    ...letterFontAssets,
     "villages-icon.png",
+    "menu-desk.jpg",
     "founding-rebuild.jpg",
     "founding-pioneer.jpg",
     "founding-prosper.jpg",
@@ -39,6 +43,8 @@ export const villagesDefinition = {
     },
     assets: {
       paths: [
+        ...letterFontAssets.filter((path) => path.endsWith(".json")),
+        "menu-desk.jpg",
         "founding-rebuild.jpg",
         "founding-pioneer.jpg",
         "founding-prosper.jpg",

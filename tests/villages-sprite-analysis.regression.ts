@@ -1,15 +1,17 @@
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import sharp from "sharp";
 import { PNG } from "pngjs";
+import sharp from "sharp";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { spriteAnalysisImage } from "../packages/villages/src/server/features/media/sprite-image-codec.js";
 import {
   createSpriteSetup,
   type SpriteSetupPorts,
 } from "../packages/villages/src/server/features/media/sprite-setup-service.js";
 import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { SpriteSetupDraft } from "../packages/villages/src/shared/contracts/sprites.js";
 
 function deferred<T>() {
@@ -112,7 +114,7 @@ function fixture(image = dataUrl(small)) {
       }),
     },
     writes: createSpriteWrites(),
-    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 5 }),
+    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 6 }),
   } as unknown as SpriteSetupPorts);
   return {
     service,

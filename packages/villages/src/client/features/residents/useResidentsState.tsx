@@ -1,13 +1,13 @@
+import { useRef, useState } from "react";
 import type {
   CatalogEntry,
-  PersonaEntry,
   MemoryLibrary,
+  PersonaEntry,
   VillagerAgendaView,
   VillagerRefreshPreview,
 } from "../../../shared/contracts/village.js";
 import type { Portrait, PortraitMap } from "../../shared/types.js";
 import type { DossierNavigation, DossierSection } from "./villages-dossier.js";
-import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useResidentsState() {
@@ -44,8 +44,6 @@ export function useResidentsState() {
   const [personProfile, setPersonProfile] = useState<DossierNavigation | null>(null);
 
   const [profileInspection, setProfileInspection] = useState<DossierSection | null>(null);
-
-  const [rosterSearch, setRosterSearch] = useState("");
 
   const profileOrigin = useRef<{ selector: string; scroll: Array<{ selector: string; top: number }> }>({
     selector: "",
@@ -126,8 +124,6 @@ export function useResidentsState() {
     setPersonProfile,
     profileInspection,
     setProfileInspection,
-    rosterSearch,
-    setRosterSearch,
     profileOrigin,
     spriteManagerId,
     setSpriteManagerId,

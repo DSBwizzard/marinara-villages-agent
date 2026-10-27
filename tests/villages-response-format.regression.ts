@@ -1,37 +1,36 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   boundedRejectedText,
   privateRejectedText,
   REJECTED_RESPONSE_TEXT_LIMIT,
 } from "../packages/villages/src/server/domain/rules/rejected-response.js";
-import { createHash } from "node:crypto";
-import {
-  coordinateVenue,
-  rejectVenueCompletion,
-  readVenueOperation,
-} from "../packages/villages/src/server/jobs/venue-coordinator.js";
-import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
-import { proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
-import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
-import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import {
   responseDiagnostics,
   sceneMissingFields,
 } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
-import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
+import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import {
-  registerBackgroundHandler,
-  queueBackgroundJob,
-  startBackgroundWork,
-  settleBackgroundWork,
   backgroundWorkSummaries,
+  queueBackgroundJob,
   recoverBackgroundWork,
+  registerBackgroundHandler,
+  settleBackgroundWork,
+  startBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
+import {
+  coordinateVenue,
+  readVenueOperation,
+  rejectVenueCompletion,
+} from "../packages/villages/src/server/jobs/venue-coordinator.js";
+import { buildResidentPlanningMessages, proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 async function main() {
   const state = defaultVillageState();
@@ -103,7 +102,7 @@ async function main() {
     setting: "A village",
     moment: deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date() }),
     residents: [
-      { characterId: "a", name: "Ada", summary: "Ada", doing: "Resting", profile: "Ada", agenda: { wishes: [] } },
+      { characterId: "a", name: "Ada", summary: "Ada", doing: "Resting", profile: "Ada", wishes: [], agenda: {} },
     ],
     venues: [],
     opportunities: [{ id: "opportunity", kind: "wish", actorIds: ["a"], venueId: "park", facts: ["A quiet morning"] }],
@@ -410,7 +409,15 @@ async function main() {
     const social = { planId: "offered-plan" };
     const supportedContext = {
       ...context,
-      venues: [{ id: "destination", name: "Open home", occupancy: { playerHome: false, residentCharacterId: null } }],
+      venues: [
+        {
+          id: "destination",
+          name: "Open home",
+          classes: ["residence"],
+          residentIds: [],
+          occupancy: { playerHome: false, residentCharacterId: null },
+        },
+      ],
       social: { candidates: [{ id: "offered-plan" }], relationships: [] },
     };
     output = JSON.stringify({

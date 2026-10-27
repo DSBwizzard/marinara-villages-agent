@@ -1,3 +1,9 @@
+import { useCallback, useRef, type SetStateAction } from "react";
+import {
+  isSceneTurnOutcome,
+  sceneTurnOutcomeMessage,
+  type SceneTurnOutcome,
+} from "../../../shared/contracts/scene-turn-outcome.js";
 import type {
   RoomLine,
   RoomOperation,
@@ -10,27 +16,44 @@ import type {
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
+import { recordTurnTiming } from "../../shared/turn-timing.js";
 import type { SceneComposerMode } from "../../shared/types.js";
+import { useSceneEntryLifetime } from "./entry-lifetime.js";
+import { useSceneRequestLifetime } from "./request-lifetime.js";
 import {
   completedGreetingAfterFailure,
   completedRoomAfterFailure,
   currentRoom,
   openingFailureMessage,
   refreshSceneAfterFailure,
-  sceneZoneLabel,
   staleVenueReason,
 } from "./ScenePanel.js";
-import { recordTurnTiming } from "../../shared/turn-timing.js";
-import {
-  isSceneTurnOutcome,
-  sceneTurnOutcomeMessage,
-  type SceneTurnOutcome,
-} from "../../../shared/contracts/scene-turn-outcome.js";
 import { useTurnRecovery } from "./turn-recovery.js";
+import type { LegacySceneRecovery } from "./useScenesState.js";
 import { sceneResend } from "./villages-venue-send";
-import { useSceneRequestLifetime } from "./request-lifetime.js";
-import { useSceneEntryLifetime } from "./entry-lifetime.js";
-import { type SetStateAction, useCallback, useRef } from "react";
+
+function sameSavedOperation(
+  expected: RoomOperation,
+  actual: RoomOperation | null | undefined,
+  includeInput = true,
+): boolean {
+  return (
+    !!actual &&
+    expected.id === actual.id &&
+    expected.kind === actual.kind &&
+    expected.attemptId === actual.attemptId &&
+    expected.status === actual.status &&
+    (!includeInput || JSON.stringify(expected.input) === JSON.stringify(actual.input))
+  );
+}
+
+function hasPendingLegacy(operation: RoomOperation | null): boolean {
+  return (
+    !!operation &&
+    (operation.status !== "complete" || !!operation.error) &&
+    ["contact", "fulfill"].includes(operation.input?.mode ?? "")
+  );
+}
 
 export function useReceiveRoomRecordEvents(ports: {
   dismissedRoomEventIdsRef: React.RefObject<Set<string>>;
@@ -306,6 +329,7 @@ export function useLeaveRoom(ports: {
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
   room: SceneView;
+  legacyRecovery: LegacySceneRecovery | null;
   roomBusy: boolean;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomDraft: string;
@@ -333,6 +357,7 @@ export function useLeaveRoom(ports: {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
+    legacyRecovery,
     roomBusy,
     roomCompletionRef,
     roomDraft,
@@ -362,7 +387,14 @@ export function useLeaveRoom(ports: {
     setBusy: setRoomBusy,
   });
   return useCallback(async () => {
-    if (!room?.id || room.status !== "active" || roomBusy || roomSendInFlightRef.current) return;
+    if (
+      !room?.id ||
+      room.status !== "active" ||
+      roomBusy ||
+      roomSendInFlightRef.current ||
+      legacyRecovery?.sceneId === room.id
+    )
+      return;
     const claim = lifetime.begin(room.id);
     if (!claim) return;
     let submissionId = roomLeaveSubmissionIdRef.current ?? createVillagesClientId();
@@ -392,6 +424,7 @@ export function useLeaveRoom(ports: {
         `/rooms/${encodeURIComponent(room.id)}/operation`,
       );
       if (!lifetime.owns(claim)) return;
+      if (hasPendingLegacy(operation)) throw new Error("Review the saved action before continuing.");
       const resend = sceneResend(operation, { message: roomDraft, mode: "leave", targetId: "" }, submissionId);
       submissionId = resend.submissionId;
       roomLeaveSubmissionIdRef.current = submissionId;
@@ -481,6 +514,7 @@ export function useLeaveRoom(ports: {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
+    legacyRecovery,
     roomBusy,
     roomCompletionRef,
     roomDraft,
@@ -572,6 +606,7 @@ export function useMoveRoom(ports: {
   isFounded: boolean | undefined;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   room: SceneView;
+  legacyRecovery: LegacySceneRecovery | null;
   roomBusy: boolean;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomEnded: boolean;
@@ -589,6 +624,7 @@ export function useMoveRoom(ports: {
     isFounded,
     loadSnapshot,
     room,
+    legacyRecovery,
     roomBusy,
     roomCompletionRef,
     roomEnded,
@@ -614,7 +650,15 @@ export function useMoveRoom(ports: {
   });
   return useCallback(
     async (zoneId = roomMoveZoneId) => {
-      if (!room?.id || roomEnded || roomBusy || roomSendInFlightRef.current || !zoneId || zoneId === room.zoneId)
+      if (
+        !room?.id ||
+        roomEnded ||
+        roomBusy ||
+        roomSendInFlightRef.current ||
+        legacyRecovery?.sceneId === room.id ||
+        !zoneId ||
+        zoneId === room.zoneId
+      )
         return;
       if (zoneId !== roomMoveZoneId) roomMoveOperationIdRef.current = null;
       setRoomMoveZoneId(zoneId);
@@ -630,6 +674,7 @@ export function useMoveRoom(ports: {
           `/rooms/${encodeURIComponent(room.id)}/operation`,
         );
         if (!owns()) return;
+        if (hasPendingLegacy(operation)) throw new Error("Review the saved action before moving.");
         const resend = sceneResend(operation, { zoneId }, operationId);
         operationId = resend.submissionId;
         roomMoveOperationIdRef.current = operationId;
@@ -675,6 +720,7 @@ export function useMoveRoom(ports: {
     },
     [
       room,
+      legacyRecovery,
       roomMoveZoneId,
       roomEnded,
       roomBusy,
@@ -698,21 +744,19 @@ export function useSendRoom(ports: {
   receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
   composerEditVersionRef?: React.RefObject<number>;
   room: SceneView;
+  legacyRecovery: LegacySceneRecovery | null;
+  setLegacyRecovery: React.Dispatch<SetStateAction<LegacySceneRecovery | null>>;
   roomBusy: boolean;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
-  roomContactBoundary: string;
-  roomContactKind: "knock" | "call";
   roomDraft: string;
   roomEnded: boolean;
   roomMode: SceneComposerMode;
   roomSendInFlightRef: React.RefObject<boolean>;
   roomSubmissionIdRef: React.RefObject<string>;
-  roomTargetId: string;
   seenRoomEventIdsRef: React.RefObject<Set<string>>;
   setLastSceneEnding: React.Dispatch<SetStateAction<string>>;
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
-  setRoomContactKind: React.Dispatch<SetStateAction<"knock" | "call">>;
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
@@ -721,7 +765,6 @@ export function useSendRoom(ports: {
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
   setRoomRuling: React.Dispatch<SetStateAction<string>>;
-  setRoomTargetId: React.Dispatch<SetStateAction<string>>;
   setScreen: React.Dispatch<
     SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
   >;
@@ -733,21 +776,19 @@ export function useSendRoom(ports: {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
+    legacyRecovery,
+    setLegacyRecovery,
     roomBusy,
     roomCompletionRef,
-    roomContactBoundary,
-    roomContactKind,
     roomDraft,
     roomEnded,
     roomMode,
     roomSendInFlightRef,
     roomSubmissionIdRef,
-    roomTargetId,
     seenRoomEventIdsRef,
     setLastSceneEnding,
     setRoom,
     setRoomBusy,
-    setRoomContactKind,
     setRoomDraft,
     setRoomEnded,
     setRoomError,
@@ -756,7 +797,6 @@ export function useSendRoom(ports: {
     setRoomNotices,
     setRoomOpen,
     setRoomRuling,
-    setRoomTargetId,
     setScreen,
     snapshot,
   } = ports;
@@ -782,14 +822,10 @@ export function useSendRoom(ports: {
   });
   const { pending: recoveryPending, begin: beginRecovery } = recovery;
   const sendRoom = useCallback(
-    async (attentionZoneId?: string) => {
-      if (recoveryPending) return;
+    async (attentionZoneId?: string, replacement?: LegacySceneRecovery) => {
+      if (recoveryPending || (legacyRecovery?.sceneId === room?.id && !replacement)) return;
       const editVersion = composerEditVersionRef?.current ?? 0;
-      const venue = snapshot?.settings.venues.find((place) => place.id === room?.placeId);
-      const targetZone = venue?.zones?.find((zone) => zone.id === roomContactBoundary);
-      const contactLabel = targetZone ? sceneZoneLabel(targetZone) : "the adjacent Zone";
-      const text =
-        roomDraft.trim() || (roomMode === "contact" ? `I try to get someone’s attention toward ${contactLabel}.` : "");
+      const text = roomDraft.trim();
       const attentionChoice =
         attentionZoneId && roomMode === "chat" && room.attentionClarification?.message === text
           ? { id: room.attentionClarification.id, zoneId: attentionZoneId }
@@ -811,16 +847,21 @@ export function useSendRoom(ports: {
           `/rooms/${encodeURIComponent(room.id)}/operation`,
         );
         if (!owns()) return;
+        if (
+          !replacement &&
+          (operation?.status !== "complete" || !!operation.error) &&
+          ["contact", "fulfill"].includes(operation?.input?.mode ?? "")
+        )
+          throw new Error("Review the saved action before sending a new message.");
+        if (replacement && (replacement.sceneId !== room.id || !sameSavedOperation(replacement.operation, operation)))
+          throw new Error("The saved action changed. Review it before replacing it.");
         resend = sceneResend(
           operation,
           {
             message: text,
-            mode: roomMode,
-            targetId: roomMode === "fulfill" || roomMode === "contact" ? roomTargetId : "",
+            mode: "chat",
+            targetId: "",
             ...(attentionChoice ? { attentionChoice } : {}),
-            ...(roomMode === "contact"
-              ? { contact: { kind: roomContactKind, boundaryZoneId: roomContactBoundary } }
-              : {}),
           },
           submissionId,
         );
@@ -871,12 +912,9 @@ export function useSendRoom(ports: {
           body: JSON.stringify({
             sessionId: room.id,
             message: text,
-            mode: roomMode,
-            targetId: roomMode === "fulfill" || roomMode === "contact" ? roomTargetId : "",
+            mode: "chat",
+            targetId: "",
             ...(attentionChoice ? { attentionChoice } : {}),
-            ...(roomMode === "contact"
-              ? { contact: { kind: roomContactKind, boundaryZoneId: roomContactBoundary } }
-              : {}),
             ...resend,
             expectedSceneRevision: room.sceneRevision ?? 0,
           }),
@@ -891,6 +929,7 @@ export function useSendRoom(ports: {
           claim.completion = null;
         }
         receiveRoomRecordEvents(answer.recordEvents ?? []);
+        if (replacement && !isSceneTurnOutcome(answer.turnOutcome)) setLegacyRecovery(null);
         if (isSceneTurnOutcome(answer.turnOutcome)) {
           if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
             setRoomDraft(text);
@@ -906,13 +945,8 @@ export function useSendRoom(ports: {
           claim.submission = null;
           return;
         }
-        if (roomMode === "contact") {
-          setRoomTargetId("");
-          setRoomContactKind("call");
-        }
-        if (roomTargetId && !answer.session.activeIds.includes(roomTargetId)) setRoomTargetId("");
         setRoomRuling(answer.verdict?.reason ?? "");
-        if (roomMode !== "contact") setRoomMode("chat");
+        setRoomMode("chat");
         roomSubmissionIdRef.current = null;
         claim.submission = null;
         setRoomGreetingNotice("");
@@ -946,15 +980,12 @@ export function useSendRoom(ports: {
         if (!owns()) return;
         if (authoritative?.submissions?.some((entry) => entry.id === submissionId)) recovered = authoritative;
         if (recovered) {
+          if (replacement) setLegacyRecovery(null);
           if (latest) setRoom(currentRoom(latest));
           setRoom(currentRoom(recovered));
           setRoomEnded(recovered.status === "closed");
           setRoomError("");
           setRoomDraft("");
-          if (roomMode === "contact") {
-            setRoomTargetId("");
-            setRoomContactKind("call");
-          }
           roomSubmissionIdRef.current = null;
           claim.submission = null;
           setRoomGreetingNotice("");
@@ -1004,9 +1035,10 @@ export function useSendRoom(ports: {
     [
       recoveryPending,
       composerEditVersionRef,
-      snapshot?.settings?.venues,
       roomDraft,
       roomMode,
+      legacyRecovery,
+      setLegacyRecovery,
       room,
       roomEnded,
       roomBusy,
@@ -1018,9 +1050,6 @@ export function useSendRoom(ports: {
       setRoomDraft,
       setRoom,
       roomCompletionRef,
-      roomContactBoundary,
-      roomTargetId,
-      roomContactKind,
       setRoomOpen,
       setRoomNotices,
       seenRoomEventIdsRef,
@@ -1029,11 +1058,9 @@ export function useSendRoom(ports: {
       loadSnapshot,
       setRoomEnded,
       receiveRoomRecordEvents,
-      setRoomTargetId,
       setRoomRuling,
       setRoomMode,
       setRoomGreetingNotice,
-      setRoomContactKind,
       beginRecovery,
     ],
   );
@@ -1127,6 +1154,7 @@ export function useRetrySavedScene(ports: {
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
   room: SceneView;
+  setLegacyRecovery: React.Dispatch<SetStateAction<LegacySceneRecovery | null>>;
   roomBusy: boolean;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomDraft: string;
@@ -1143,6 +1171,7 @@ export function useRetrySavedScene(ports: {
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
   setRoomRuling: React.Dispatch<SetStateAction<string>>;
   setRoomMode: React.Dispatch<SetStateAction<SceneComposerMode>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
@@ -1153,6 +1182,7 @@ export function useRetrySavedScene(ports: {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
+    setLegacyRecovery,
     roomBusy,
     roomCompletionRef,
     roomDraft,
@@ -1169,6 +1199,7 @@ export function useRetrySavedScene(ports: {
     setRoomDraft,
     setRoomEnded,
     setRoomError,
+    setRoomGreetingError,
     setRoomRuling,
     setRoomMode,
     setRoomMoveZoneId,
@@ -1186,109 +1217,146 @@ export function useRetrySavedScene(ports: {
     setBusy: setRoomBusy,
     clearCompletionOnRetire: false,
   });
-  return useCallback(async () => {
-    if (!room?.id || !room.operation || roomBusy) return;
-    const claim = lifetime.begin(room.id);
-    if (!claim) return;
-    claim.busy = true;
-    setRoomBusy(true);
-    const editVersion = composerEditVersionRef?.current;
-    try {
-      const { operation } = await request<{ operation: RoomOperation }>(
-        `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
-      );
-      if (!lifetime.owns(claim)) return;
-      const path =
-        operation.kind === "move"
-          ? "/rooms/zone"
-          : operation.kind === "greet"
-            ? "/rooms/greet"
-            : operation.kind === "turn"
-              ? operation.input?.mode === "leave"
-                ? "/rooms/leave"
-                : "/rooms/turn"
-              : "/rooms/end";
-      const answer = isSceneTurnOutcome(operation.turnOutcome)
-        ? {
-            session: (await refreshSceneAfterFailure(room.id, operation.id, () => lifetime.owns(claim))) ?? room,
-            turnOutcome: operation.turnOutcome,
-            recordEvents: [],
-          }
-        : await request<{ session: SceneView; turnOutcome?: SceneTurnOutcome; recordEvents?: RoomRecordEvent[] }>(
-            path,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                ...operation.input,
-                sessionId: room.id,
-                submissionId: operation.id,
-                operationId: operation.id,
-                expectedSceneRevision: room.sceneRevision ?? 0,
-                ...(operation.kind === "greet" && operation.recoverable
-                  ? { recovery: true }
-                  : { retryOfAttemptId: operation.attemptId }),
-              }),
-            },
+  return useCallback(
+    async (expected?: LegacySceneRecovery) => {
+      if (!room?.id || roomBusy) return;
+      if (
+        !room.operation ||
+        (expected && (expected.sceneId !== room.id || !sameSavedOperation(expected.operation, room.operation, false)))
+      ) {
+        if (expected) setRoomError("The saved action changed. Review it before retrying.");
+        return;
+      }
+      const claim = lifetime.begin(room.id);
+      if (!claim) return;
+      claim.busy = true;
+      setRoomBusy(true);
+      const editVersion = composerEditVersionRef?.current;
+      try {
+        const { operation } = await request<{ operation: RoomOperation }>(
+          `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
+        );
+        if (!lifetime.owns(claim)) return;
+        if (!expected && operation?.kind === "turn" && ["contact", "fulfill"].includes(operation.input?.mode ?? ""))
+          throw new Error("Review the saved action before retrying.");
+        if (
+          (room.operation.kind === "greet" || !!expected) &&
+          (!operation ||
+            operation.id !== room.operation.id ||
+            operation.kind !== room.operation.kind ||
+            operation.attemptId !== room.operation.attemptId ||
+            operation.status !== room.operation.status ||
+            !!operation.recoverable !== !!room.operation.recoverable ||
+            (!!expected && !sameSavedOperation(expected.operation, operation)))
+        )
+          throw new Error(
+            room.operation.kind === "greet"
+              ? "The opening request changed. Review the current Scene before retrying."
+              : "The saved request changed. Review the current Scene before retrying.",
           );
-      if (!lifetime.owns(claim)) return;
-      setRoom(currentRoom(answer.session));
-      setRoomEnded(answer.session.status === "closed");
-      receiveRoomRecordEvents(answer.recordEvents ?? []);
-      if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
-        if (isSceneTurnOutcome(answer.turnOutcome)) {
-          setRoomDraft(operation.input?.message ?? roomDraft);
-          setRoomRuling(sceneTurnOutcomeMessage(answer.turnOutcome));
-        } else if (roomDraft.trim() === operation.input?.message) setRoomDraft("");
+        const path =
+          operation.kind === "move"
+            ? "/rooms/zone"
+            : operation.kind === "greet"
+              ? "/rooms/greet"
+              : operation.kind === "turn"
+                ? operation.input?.mode === "leave"
+                  ? "/rooms/leave"
+                  : "/rooms/turn"
+                : "/rooms/end";
+        const answer = isSceneTurnOutcome(operation.turnOutcome)
+          ? {
+              session: (await refreshSceneAfterFailure(room.id, operation.id, () => lifetime.owns(claim))) ?? room,
+              turnOutcome: operation.turnOutcome,
+              recordEvents: [],
+            }
+          : await request<{ session: SceneView; turnOutcome?: SceneTurnOutcome; recordEvents?: RoomRecordEvent[] }>(
+              path,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  ...operation.input,
+                  sessionId: room.id,
+                  submissionId: operation.id,
+                  operationId: operation.id,
+                  expectedSceneRevision: room.sceneRevision ?? 0,
+                  ...(operation.kind === "greet" && operation.recoverable
+                    ? { recovery: true }
+                    : { retryOfAttemptId: operation.attemptId }),
+                }),
+              },
+            );
+        if (!lifetime.owns(claim)) return;
+        setRoom(currentRoom(answer.session));
+        setRoomEnded(answer.session.status === "closed");
+        receiveRoomRecordEvents(answer.recordEvents ?? []);
+        if (expected && !isSceneTurnOutcome(answer.turnOutcome)) setLegacyRecovery(null);
+        if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
+          if (isSceneTurnOutcome(answer.turnOutcome)) {
+            setRoomDraft((current) =>
+              expected && current && current !== operation.input?.message
+                ? current
+                : (operation.input?.message ?? roomDraft),
+            );
+            setRoomRuling(sceneTurnOutcomeMessage(answer.turnOutcome));
+          } else if (roomDraft.trim() === operation.input?.message) setRoomDraft("");
+        }
+        roomSubmissionIdRef.current = null;
+        roomLeaveSubmissionIdRef.current = null;
+        roomCompletionRef.current = null;
+        claim.completion = null;
+        setRoomError("");
+        if (operation.kind === "greet")
+          setRoomGreetingError((current) => (current?.sessionId === room.id ? null : current));
+        if (operation.kind === "move") {
+          setRoomMode("chat");
+          setRoomMoveZoneId("");
+          setRoomContactBoundary("");
+          roomMoveOperationIdRef.current = null;
+        }
+        if (operation.kind === "turn" && ["contact", "fulfill"].includes(operation.input?.mode ?? "")) {
+          if (!isSceneTurnOutcome(answer.turnOutcome)) setRoomMode("chat");
+          setRoomTargetId("");
+          setRoomContactKind("call");
+        }
+        void loadSnapshot();
+      } catch (cause) {
+        if (!lifetime.owns(claim)) return;
+        const latest = await refreshSceneAfterFailure(room.id, undefined, () => lifetime.owns(claim));
+        if (!lifetime.owns(claim)) return;
+        if (latest) setRoom(currentRoom(latest));
+        setRoomError(messageFrom(cause, "The saved request could not be recovered."));
+      } finally {
+        if (lifetime.finish(claim)) setRoomBusy(false);
       }
-      roomSubmissionIdRef.current = null;
-      roomLeaveSubmissionIdRef.current = null;
-      roomCompletionRef.current = null;
-      claim.completion = null;
-      setRoomError("");
-      if (operation.kind === "move") {
-        setRoomMode("chat");
-        setRoomMoveZoneId("");
-        setRoomContactBoundary("");
-        roomMoveOperationIdRef.current = null;
-      }
-      if (operation.kind === "turn" && operation.input?.mode === "contact") {
-        setRoomTargetId("");
-        setRoomContactKind("call");
-      }
-      void loadSnapshot();
-    } catch (cause) {
-      if (!lifetime.owns(claim)) return;
-      const latest = await refreshSceneAfterFailure(room.id, undefined, () => lifetime.owns(claim));
-      if (!lifetime.owns(claim)) return;
-      if (latest) setRoom(currentRoom(latest));
-      setRoomError(messageFrom(cause, "The saved request could not be recovered."));
-    } finally {
-      if (lifetime.finish(claim)) setRoomBusy(false);
-    }
-  }, [
-    lifetime,
-    room,
-    roomBusy,
-    roomDraft,
-    receiveRoomRecordEvents,
-    loadSnapshot,
-    roomCompletionRef,
-    roomLeaveSubmissionIdRef,
-    roomMoveOperationIdRef,
-    roomSubmissionIdRef,
-    composerEditVersionRef,
-    setRoom,
-    setRoomBusy,
-    setRoomContactBoundary,
-    setRoomContactKind,
-    setRoomDraft,
-    setRoomEnded,
-    setRoomError,
-    setRoomRuling,
-    setRoomMode,
-    setRoomMoveZoneId,
-    setRoomTargetId,
-  ]);
+    },
+    [
+      lifetime,
+      room,
+      roomBusy,
+      roomDraft,
+      setLegacyRecovery,
+      receiveRoomRecordEvents,
+      loadSnapshot,
+      roomCompletionRef,
+      roomLeaveSubmissionIdRef,
+      roomMoveOperationIdRef,
+      roomSubmissionIdRef,
+      composerEditVersionRef,
+      setRoom,
+      setRoomBusy,
+      setRoomContactBoundary,
+      setRoomContactKind,
+      setRoomDraft,
+      setRoomEnded,
+      setRoomError,
+      setRoomGreetingError,
+      setRoomRuling,
+      setRoomMode,
+      setRoomMoveZoneId,
+      setRoomTargetId,
+    ],
+  );
 }
 
 export function useContinueRoomWithoutGreeting(ports: {

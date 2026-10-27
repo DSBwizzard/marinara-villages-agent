@@ -1,12 +1,14 @@
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import type {
   ArchiveVisitSummary,
   RoomOperation,
   RoomRecordEvent,
-  SceneView,
   SceneChangeIssue,
+  SceneView,
 } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
 import { useFocusRevision } from "../../shared/activity.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import {
   completedGreetingAfterFailure,
   currentRoom,
@@ -15,8 +17,6 @@ import {
   staleVenueReason,
 } from "./ScenePanel.js";
 import { isLocalRoomCompletion } from "./villages-room-reading";
-import { useSceneEntryLifetime } from "./entry-lifetime.js";
-import { useEffect, useEffectEvent, useCallback, useState, useRef } from "react";
 
 export function useSceneChangesPolling(ports: {
   visible: boolean;
@@ -44,15 +44,7 @@ export function useSceneChangesPolling(ports: {
   const focusRevision = useFocusRevision(ports.visible && ports.viewing);
   const sceneChanges = ports.snapshot?.sceneChanges;
   const revision = room?.id && sceneChanges?.sceneId === room.id ? sceneChanges.revision : "";
-  const jobs = JSON.stringify(
-    ports.snapshot?.backgroundWork
-      ?.filter(
-        (job) =>
-          job.kind === "wish-check" &&
-          (job.subjectId.startsWith(`wish-batch:${room?.id}:`) || job.subjectId.startsWith(`wish-change:${room?.id}:`)),
-      )
-      .map(({ id, status, attempt, updatedAt }) => [id, status, attempt, updatedAt]) ?? [],
-  );
+  const jobs = "";
   useEffect(() => {
     if (
       !room?.id ||
@@ -326,6 +318,7 @@ export function useSceneInterruptedSubmission(ports: {
   composerEditVersionRef: React.RefObject<number>;
   restoredSceneDraftRef: React.RefObject<string>;
   room: import("../../../shared/contracts/village.js").SceneView;
+  setLegacyRecovery: React.Dispatch<React.SetStateAction<import("./useScenesState.js").LegacySceneRecovery | null>>;
   roomMoveOperationIdRef: React.RefObject<string>;
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
   setRoomContactKind: React.Dispatch<React.SetStateAction<"knock" | "call">>;
@@ -338,6 +331,7 @@ export function useSceneInterruptedSubmission(ports: {
     composerEditVersionRef,
     restoredSceneDraftRef,
     room,
+    setLegacyRecovery,
     roomMoveOperationIdRef,
     setRoomContactBoundary,
     setRoomContactKind,
@@ -371,20 +365,17 @@ export function useSceneInterruptedSubmission(ports: {
           }
           return;
         }
+        const legacy = ["contact", "fulfill"].includes(operation.input.mode ?? "");
+        if (legacy) {
+          setLegacyRecovery((current) => (current?.sceneId === room.id ? current : { sceneId: room.id, operation }));
+        }
         if (!operation.input.message) return;
         restoredSceneDraftRef.current = restoreKey;
         if (composerEditVersionRef.current !== editVersion) return;
         setRoomDraft((current) => current || operation.input?.message || "");
         if (editVersion !== 0) return;
         if (operation.input.mode === "leave") setRoomMode("conclude");
-        else if (["chat", "fulfill", "contact"].includes(operation.input.mode ?? "")) {
-          setRoomMode(operation.input.mode as "chat" | "fulfill" | "contact");
-          setRoomTargetId(operation.input.targetId ?? "");
-          if (operation.input.contact) {
-            setRoomContactKind(operation.input.contact.kind === "call" ? "call" : "knock");
-            setRoomContactBoundary(operation.input.contact.boundaryZoneId ?? "");
-          }
-        }
+        else if (operation.input.mode === "chat") setRoomMode("chat");
       })
       .catch(() => {});
     return () => {
@@ -406,6 +397,7 @@ export function useSceneInterruptedSubmission(ports: {
     setRoomTargetId,
     setRoomContactKind,
     setRoomContactBoundary,
+    setLegacyRecovery,
   ]);
 }
 

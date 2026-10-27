@@ -1,4 +1,5 @@
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
+import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
 import { isPrivateInterior, privateInteriorKey } from "./private-interior.js";
 import type {
@@ -57,6 +58,7 @@ export function projectVillager(
 ): VillageVillagerView {
   return {
     characterId: villager.characterId,
+    letterFontId: villager.letterFontId ?? legacyLetterFont(villager.characterId),
     signatureFallback: residentSignature(villager.cardSnapshot),
     ...(villager.signature ? { signature: villager.signature } : {}),
     nameColor,

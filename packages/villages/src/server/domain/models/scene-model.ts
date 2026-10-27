@@ -1,7 +1,8 @@
-import type { StagingCue } from "../../../shared/helpers/scene-staging.js";
 import type { SpeechDelivery, SpeechPresentation } from "../../../shared/helpers/scene-speech.js";
+import type { StagingCue } from "../../../shared/helpers/scene-staging.js";
 import type { ProjectSpeechContext, ProjectSpeechProposal } from "../rules/project-interpretation.js";
 import type { ResponseDiagnostics } from "../rules/response-diagnostics.js";
+import type { AttentionPlan } from "../rules/scene-attention.js";
 import type { ContactIntent, ContactMove, ContactRelay, DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
 import type { ExchangeProcessing } from "./exchange-model.js";
@@ -9,9 +10,7 @@ import type { LiveExchangeProposals } from "./memory-model.js";
 import type { VenueOperation, VenueRequestMetrics } from "./operation-model.js";
 import type { VenueActionResult } from "./venue-action-model.js";
 import type { WishProposal } from "./wish-check-model.js";
-import type { WishCriteria } from "./wish-interpretation-model.js";
-import type { VillageVenueClass } from "./world.js";
-import type { AttentionPlan } from "../rules/scene-attention.js";
+import type { VillageVenueClass, VillageWish } from "./world.js";
 
 export type VenueLine = {
   speechSource?: { version: 3; spans: import("../rules/player-speech-capture.js").SpeechSource[] };
@@ -80,7 +79,6 @@ export type VenueSubmission = {
   projectContexts?: ProjectSpeechContext[];
   projectSpeech?: ProjectSpeechProposal[];
   projectInterpretationVersion?: 1;
-  wishInterpretationProof?: { fingerprint: string; criteria: WishCriteria; receiptIds: string[] };
   progressProcessedAt?: string;
   progressError?: string;
   verdict: { fulfilled: boolean; reason: string } | null;
@@ -94,9 +92,7 @@ export type VenueSubmission = {
   sceneChange?: VenueSceneChange;
   semanticPlayerMoves?: import("../rules/semantic-timeline.js").SemanticPlayerMove[];
   physicalContext?: { zoneId: string; witnessIds: string[]; segment: number };
-  developmentChanges?: import("../rules/development-scene.js").SavedDevelopmentChange[];
   residenceSignal?: { kind: "request" | "decision"; characterId: string; venueId: string; approved?: boolean };
-  renovationSignal?: { characterId: string; venueId: string; quote: string };
   venueRequestSignal?: {
     characterId: string;
     name: string;
@@ -138,7 +134,7 @@ export type VenueSubmission = {
   semanticContinuedDomains?: import("./exchange-model.js").ExchangeDomain[];
   semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
   liveProposals?: LiveExchangeProposals;
-  wishContexts?: { actorId: string; wishId: string; fingerprint: string }[];
+  wishContexts?: { actorId: string; wishId: string; fingerprint: string; wishes: VillageWish[]; capturedAt: string }[];
   requestMetrics?: VenueRequestMetrics;
   timing?: import("./operation-model.js").VenueTiming;
   interpretationHistory?: {

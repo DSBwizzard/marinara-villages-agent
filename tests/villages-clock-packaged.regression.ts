@@ -32,6 +32,9 @@ await runCase("village-clock-recovery", async () => {
     backgroundPace: "off",
     visitMemoryBackfilled: true,
   });
+  const legacyNotes = ["Legacy player note", { author: "Mara", text: "Legacy resident note" }];
+  seed.noticeboard = legacyNotes as unknown as typeof seed.noticeboard;
+  seed.promptKnowledge = "Village lore {{noticeboard}}";
   seed.clock = {
     revision: 2,
     trustedAt: new Date(wall).toISOString(),
@@ -159,9 +162,16 @@ await runCase("village-clock-recovery", async () => {
     assert.equal(snapshot.village.instant, new Date(wall).toISOString());
     assert.equal(Date.parse(deadline) < wall, true, "ordinary absence counts toward unfinished work");
     assert.equal(snapshot.projects[0].lifecycle.workOrder.completesAt, deadline);
-    response = await call("/noticeboard", "POST", { notice: "Still playable after sleep" });
+    response = await call("/settings", "PATCH", { name: "Still playable after sleep" });
     assert.equal(response.statusCode, 200, response.body);
-    assert.equal(records.get("villages-village").data.noticeboard.length, 1);
+    assert.equal(response.json().village.name, "Still playable after sleep");
+    assert.deepEqual(response.json().noticeboard, [
+      { author: "", text: "Legacy player note" },
+      { author: "Mara", text: "Legacy resident note" },
+    ]);
+    assert.equal(response.json().settings.promptKnowledge, "Village lore {{noticeboard}}");
+    assert.equal((await call("/noticeboard", "POST", { notice: "new" })).statusCode, 404);
+    assert.equal((await call("/noticeboard/0", "DELETE")).statusCode, 404);
     response = await call("/clock/recover", "POST", { revision: 0, choice: "accept" });
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().clock.paused, false, "older open clients can recover idempotently");
@@ -190,6 +200,11 @@ await runCase("village-clock-recovery", async () => {
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().clock.paused, false);
     assert.equal(response.json().village.instant, new Date(wall).toISOString());
+    assert.deepEqual(response.json().noticeboard, [
+      { author: "", text: "Legacy player note" },
+      { author: "Mara", text: "Legacy resident note" },
+    ]);
+    assert.equal(response.json().settings.promptKnowledge, "Village lore {{noticeboard}}");
     const startAdvance = wall;
     let totalAdvance = 0;
     for (const milliseconds of [90 * 60_000, 86_400_000, 7 * 86_400_000, 30 * 86_400_000]) {

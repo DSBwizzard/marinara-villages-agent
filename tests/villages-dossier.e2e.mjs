@@ -1,7 +1,8 @@
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as base, mapImage, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -16,12 +17,17 @@ try {
   for (const [width, height] of [
     [1440, 900],
     [1366, 600],
+    [977, 932],
     [900, 800],
     [768, 1024],
     [390, 844],
     [390, 600],
     [320, 650],
-  ].filter(([width]) => !process.env.VILLAGES_DOSSIER_WIDTH || width === Number(process.env.VILLAGES_DOSSIER_WIDTH))) {
+  ].filter(
+    ([width, height]) =>
+      (!process.env.VILLAGES_DOSSIER_WIDTH || width === Number(process.env.VILLAGES_DOSSIER_WIDTH)) &&
+      (!process.env.VILLAGES_DOSSIER_HEIGHT || height === Number(process.env.VILLAGES_DOSSIER_HEIGHT)),
+  )) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
     await mockEngineLookups(page);
     const errors = [],
@@ -30,6 +36,13 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     const village = structuredClone(base);
     village.villagers = village.villagers.slice(0, 2);
+    village.villagers[0].letterFontId = "caveat";
+    await page.route("**/api/capability-packages/villages/assets/letter-fonts/caveat.json", (route) =>
+      fulfill(route, {
+        contentType: "application/json",
+        body: readFileSync("packages/villages/letter-fonts/caveat.json", "utf8"),
+      }),
+    );
     village.villagers[0].summary = "A curious explorer who enjoys meeting people and sharing stories.";
     if (width === 390) village.villagers[0].summary = village.villagers[0].summary.repeat(12);
     village.villagers[0].identityDescription = { text: village.villagers[0].summary, revision: "description-1" };
@@ -52,6 +65,12 @@ try {
     );
     village.settings.venues[0].residentIds = ["mara"];
     village.villagers[0].place = { id: "mill" };
+    village.settings.venues.push({
+      ...structuredClone(village.settings.venues[1]),
+      id: "secret-place",
+      name: "Unseen private place",
+      zones: [{ id: "secret-zone", name: "Secret", kind: "private-residence", seen: false, ownerId: "mara" }],
+    });
     village.projects = [
       {
         id: "mara-project",
@@ -132,15 +151,51 @@ try {
         wishes: characterId === "mara" ? ["Learn to swim"] : [],
         knownWishes:
           characterId === "mara"
-            ? [{ wishId: "swim", text: "Learn to swim", learnedAt: now, status: "active", facts: [] }]
+            ? [{ wishId: "swim", text: "Learn to swim", at: now, status: "open", followed: true, facts: [] }]
             : [],
         ties: [],
-        learned: [],
+        learned:
+          characterId === "mara"
+            ? [{ text: "Mara and Eli are friends", kind: "connection", at: now, aboutName: "Eli" }]
+            : [],
         access: [{ venueId: "harbour", zoneId: "public", active: true, name: "Harbour" }],
       })),
       starting: { pending: false },
     };
-    const mailbox = { threads: [], invitations: [], recovery: [], venueMail: [] };
+    let failMailRead = false;
+    let failMailResponse = false;
+    const mailbox = {
+      threads: [
+        {
+          id: "personal:mara",
+          residentId: "mara",
+          residentName: "Mara",
+          revision: 1,
+          messages: [
+            {
+              id: "first-letter",
+              fromId: "mara",
+              text: "A first letter from Mara.",
+              at: now,
+              status: "delivered",
+              read: false,
+              replyPending: false,
+              retryAvailable: false,
+            },
+            {
+              id: "second-letter",
+              fromId: "mara",
+              text: "A second letter from Mara.",
+              at: now,
+              status: "delivered",
+              read: false,
+              replyPending: false,
+            },
+          ],
+        },
+      ],
+      recovery: [],
+    };
     let historyRetried = false;
     const agendas = {
       villagers: ["mara", "eli"].map((characterId) => ({
@@ -150,17 +205,17 @@ try {
         weekUnreadable: false,
         ingestSchedule: false,
         nativeSchedule: null,
-        agenda: {
-          wishes: [
+        wishes: [
+          fixtureWish(
             {
-              id: characterId + "-private",
               wish: characterId === "mara" ? "PRIVATE MARA WISH" : "PRIVATE ELI WISH",
-              tell: "",
-              intensity: 2,
-              addedAt: now,
-              expiresAt: now,
+              reason: "Grounded social fixture desire",
             },
-          ],
+            characterId + "-private",
+            now,
+          ),
+        ],
+        agenda: {
           routineSummary: "PRIVATE ROUTINE",
           generatedAt: now,
           activeDay: { blocks: [] },
@@ -174,15 +229,13 @@ try {
         wishHistoryCount: 0,
       })),
     };
-    relationships.profiles[0].knownDevelopment = [
-      { id: "move", text: "Mara: move to Mill : stalled.", at: now, status: "stalled" },
-    ];
     relationships.profiles[0].knownWishes.push(
       ...Array.from({ length: 12 }, (_, index) => ({
         wishId: `shared-${index}`,
         text: `Shared wish ${index + 1}`,
-        learnedAt: now,
-        status: "active",
+        at: now,
+        followed: true,
+        status: "open",
         facts: [],
       })),
     );
@@ -207,32 +260,45 @@ try {
       } else if (path.includes("/mailbox")) {
         if (path.endsWith("/mailbox/threads") && request.method() === "POST") {
           const body = request.postDataJSON();
-          mailbox.threads = [
-            {
-              id: "personal:mara",
-              residentId: "mara",
-              residentName: "Mara",
+          let thread = mailbox.threads.find((row) => row.residentId === body.residentId);
+          if (!thread) {
+            thread = {
+              id: "personal:" + body.residentId,
+              residentId: body.residentId,
+              residentName: person(body.residentId).name,
               revision: 1,
-              messages: [
-                {
-                  id: body.requestId,
-                  fromId: "player",
-                  text: body.text,
-                  at: now,
-                  status: "pending",
-                  read: false,
-                  replyPending: false,
-                },
-              ],
-            },
-          ];
+              messages: [],
+            };
+            mailbox.threads.push(thread);
+          }
+          if (!thread.messages.some((message) => message.id === body.requestId))
+            thread.messages.push({
+              id: body.requestId,
+              fromId: "player",
+              text: body.text,
+              at: now,
+              status: "pending",
+              read: false,
+              replyPending: false,
+            });
+          if (failMailResponse) {
+            failMailResponse = false;
+            return fulfill(route, { status: 503, json: { error: "Reply lost" } });
+          }
         }
-        if (path.endsWith("/cancel")) mailbox.threads[0].messages[0].status = "cancelled";
-        if (path.endsWith("/invitations/recover-visit/response")) {
-          assert.equal(request.postDataJSON().expectedRevision, 1);
-          assert.equal(request.postDataJSON().accepted, true);
-          delete mailbox.invitations[0].accessRecovery;
+        if (path.endsWith("/retry")) {
+          const failed = mailbox.threads.flatMap((thread) => thread.messages).find((message) => message.retryAvailable);
+          if (failed) {
+            failed.retryAvailable = false;
+            delete failed.error;
+          }
         }
+        if (path.endsWith("/read") && failMailRead) {
+          failMailRead = false;
+          return fulfill(route, { status: 503, json: { error: "Read failed" } });
+        }
+        if (path.endsWith("/read"))
+          mailbox.threads[0].messages.find((message) => message.id === request.postDataJSON().messageId).read = true;
         value = mailbox;
       } else if (path.endsWith("/villagers/mara/description")) {
         if (failDescription)
@@ -390,6 +456,8 @@ try {
             },
           ],
         };
+      else if (path.endsWith("/wishes/inspect"))
+        value = { wishes: agendas.villagers.find((v) => path.includes("/" + v.characterId + "/"))?.wishes ?? [] };
       else if (path.endsWith("/agendas/mara/influence")) {
         agendas.villagers[0].ingestSchedule = true;
         value = agendas;
@@ -409,9 +477,6 @@ try {
       else if (path.endsWith("/villagers/mara") && request.method() === "DELETE") {
         village.villagers = village.villagers.filter((entry) => entry.characterId !== "mara");
         value = village;
-      } else if (path.endsWith("/wishes/swim/retire")) {
-        relationships.profiles[0].knownWishes[0].status = "retired";
-        value = relationships;
       } else if (/\/greet|\/turn|\/interpret/.test(path)) throw Error("Unexpected generation request " + path);
       await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
@@ -433,26 +498,8 @@ try {
     await expect(selector.locator(`.${P}-directory-page`)).toHaveCount(2);
     const bookBox = await page.locator(`.${P}-dossier-book`).boundingBox();
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
-    await selector.getByRole("searchbox").fill("nobody-matches");
-    await expect(selector.getByText("No villagers match your search.")).toBeVisible();
-    await selector.getByRole("searchbox").fill("");
+    await expect(selector.getByRole("searchbox")).toHaveCount(0);
     await selector.getByRole("button", { name: "Open Mara profile" }).click();
-    await page.getByRole("button", { name: "Pursuits", exact: true }).click();
-    const development = page
-      .getByRole("region", { name: "Known pursuits", exact: true })
-      .getByText("Mara: move to Mill : stalled.", { exact: false });
-    await expect(development).toBeVisible();
-    await development.scrollIntoViewIfNeeded();
-    assert.equal(
-      await development.evaluate((element) => {
-        const box = element.getBoundingClientRect();
-        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-        return hit === element || element.contains(hit);
-      }),
-      true,
-      "Known pursuits must be readable without the portrait covering them.",
-    );
-
     assert.deepEqual(
       await page.locator(`.${P}-dossier-book`).boundingBox(),
       bookBox,
@@ -503,15 +550,17 @@ try {
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     }
     await page.getByRole("button", { name: "More", exact: true }).click();
-    const menu = page.getByRole("navigation", { name: "Village menu pages" });
+    const menu = page.getByRole("navigation", { name: "More sections" });
     for (const name of ["Relationships", "Memories", "Villager Agendas", "DEBUG: Villager Wishes"])
       await expect(menu.getByRole("button", { name, exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     const directory = page.getByRole("main", { name: "Villagers directory" });
     await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await expect(menu).toHaveCount(0);
-    await directory.getByRole("searchbox", { name: "Search villagers" }).fill("explorer");
-    await expect(directory.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(1);
+    await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveCount(0);
+    await expect(directory.getByRole("button", { name: "Add a villager" })).toHaveCount(0);
+    await expect(directory.getByText("explorer", { exact: true })).toHaveCount(0);
+    await expect(directory.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     const profile = page.getByRole("region", { name: "Mara profile", exact: true });
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
@@ -526,15 +575,37 @@ try {
     await expect(profile).toBeVisible();
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
-    await expect(profile.locator(`.${P}-dossier-content`)).toBeEmpty();
+    const overview = profile.getByRole("region", { name: "Overview content" });
+    await expect(overview.getByText("Mara has expressed an interest in talking again.")).toBeVisible();
+    await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
+    await expect(overview.getByText("Learn to swim")).toBeVisible();
+    await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
+    await expect(overview.getByText("No known home or work location.")).toBeVisible();
+    await expect(overview.getByText(/PRIVATE/)).toHaveCount(0);
+    const savedProfiles = structuredClone(relationships.profiles);
+    relationships.profiles = [];
+    relationships.starting.pending = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(overview.getByText("Profile information is still being prepared.")).toBeVisible();
+    await expect(overview.getByText("No relationship shared yet.")).toHaveCount(0);
+    relationships.profiles = savedProfiles;
+    relationships.starting.pending = false;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
+    assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
     await tabs.getByRole("button", { name: "Venues", exact: true }).click();
+    await expect(profile.getByText("Mara's workshop", { exact: true })).toHaveCount(0);
+    await expect(profile.getByText("Unseen private place", { exact: true })).toHaveCount(0);
+    await expect(profile.getByRole("button", { name: /Projects Open Projects/ })).toBeVisible();
+    await expect(profile.getByRole("button", { name: /Venue Requests Open Venue Requests/ })).toBeVisible();
+    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
     await expect(profile.getByText("Mara's workshop", { exact: true })).toBeVisible();
+    await expect(profile.getByRole("heading", { name: "Unseen private place", exact: true })).toBeVisible();
     await expect(profile.getByText("Other person's request", { exact: true })).toHaveCount(0);
     await profile.getByRole("button", { name: /Mara's workshop/ }).click();
     await expect(page.locator('[data-villager-request="request:mara-request"]')).toBeFocused();
-    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
-    assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
     assert.equal(writes.length, 0, JSON.stringify(writes));
     const signature = profile.getByRole("img", { name: "Mara's signature", exact: true });
     await expect(signature).toBeVisible();
@@ -663,15 +734,17 @@ try {
     await expect(profile.getByText("Learn to swim", { exact: true }).first()).toBeVisible();
     const tabBefore = await tabs.boundingBox();
     const reading = profile.locator(`.${P}-dossier-content`);
+    let wishPages = 0;
+    while (!(await profile.getByText("Shared wish 12", { exact: true }).first().isVisible())) {
+      await profile.getByRole("button", { name: "Next Wishes page", exact: true }).click();
+      assert(++wishPages < 20);
+    }
     assert.ok(
-      await reading.evaluate((node) => {
-        node.scrollTop = node.scrollHeight;
-        return node.scrollTop > 0;
-      }),
-      "Long section content scrolls vertically",
+      await reading.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+      "Wishes use bounded pages instead of scrolling",
     );
     const tabAfter = await tabs.boundingBox();
-    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while content scrolls");
+    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while changing Wish pages");
     assert.equal(tabAfter.x, tabBefore.x);
     await expect(profile.getByText("Shared wish 12", { exact: true }).first()).toBeVisible();
     await settleTurn();
@@ -712,9 +785,59 @@ try {
     await expect(profile.getByRole("spinbutton")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `relationships-${width}-${height}.png`) });
     await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await page.evaluate((tag) => {
+      const game = document.querySelector(tag);
+      game.style.height = "calc(100vh - 80px)";
+      game.style.marginTop = "80px";
+      const control = document.createElement("button");
+      control.id = "engine-control";
+      control.textContent = "Engine control";
+      control.style.cssText = "position:fixed;top:0;left:0;height:60px;z-index:10";
+      control.addEventListener("click", () => {
+        control.dataset.clicked = "true";
+      });
+      document.body.append(control);
+    }, P);
     await profile.getByText("Message", { exact: true }).click();
     const mail = page.getByRole("dialog", { name: "Mailbox", exact: true });
-    await expect(mail.getByRole("combobox", { name: "Mail recipient" })).toHaveValue("mara");
+    const bounds = await page.evaluate((tag) => {
+      const game = document.querySelector(tag).getBoundingClientRect();
+      const overlay = document.querySelector(".villages-mailbox-overlay").getBoundingClientRect();
+      return {
+        game: { top: game.top, bottom: game.bottom, left: game.left, right: game.right },
+        overlay: { top: overlay.top, bottom: overlay.bottom, left: overlay.left, right: overlay.right },
+      };
+    }, P);
+    assert(
+      bounds.overlay.top >= bounds.game.top &&
+        bounds.overlay.bottom <= bounds.game.bottom &&
+        bounds.overlay.left >= bounds.game.left &&
+        bounds.overlay.right <= bounds.game.right,
+      "Mailbox stays within the game window",
+    );
+    const dialogBounds = await mail.evaluate((node) => {
+      const dialog = node.getBoundingClientRect();
+      const overlay = node.closest(".villages-mailbox-overlay").getBoundingClientRect();
+      return {
+        top: dialog.top,
+        bottom: dialog.bottom,
+        overlayTop: overlay.top,
+        overlayBottom: overlay.bottom,
+        css: {
+          height: getComputedStyle(node).height,
+          maxHeight: getComputedStyle(node).maxHeight,
+          minHeight: getComputedStyle(node).minHeight,
+          overlayGrid: getComputedStyle(node.closest(".villages-mailbox-overlay")).gridTemplateRows,
+        },
+      };
+    });
+    assert(
+      dialogBounds.top >= dialogBounds.overlayTop - 1 && dialogBounds.bottom <= dialogBounds.overlayBottom + 1,
+      `Mailbox dialog fits inside its overlay: ${JSON.stringify({ width, height, dialogBounds })}`,
+    );
+    await page.locator("#engine-control").click();
+    await expect(page.locator("#engine-control")).toHaveAttribute("data-clicked", "true");
+    await expect(mail.getByLabel("Recipient")).toHaveValue("mara");
     const draft = mail.getByRole("textbox", { name: "Personal message" });
     const exactMessage = "Let's talk later.\n  Exact text";
     await draft.fill(exactMessage);
@@ -722,44 +845,295 @@ try {
     await expect(profile.getByRole("button", { name: "Message", exact: true })).toBeFocused();
     await profile.getByText("Message", { exact: true }).click();
     await expect(draft).toHaveValue(exactMessage);
-    await mail.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(draft).toHaveValue("");
+    await mail.getByRole("button", { name: "Send letter", exact: true }).click();
+    await expect(mail.getByLabel("Personal mail").getByText(exactMessage, { exact: true })).toBeVisible();
     assert.equal(writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.text, exactMessage);
-    await expect(mail.getByText(exactMessage, { exact: true })).toBeVisible();
-    mailbox.invitations = [
-      {
-        id: "recover-visit",
-        threadId: "personal:mara",
-        messageId: "source",
-        proposerName: "Mara",
-        revision: 2,
-        status: "accepted",
-        terms: { title: "Tea at Mara's", detail: "Come over for tea", venueId: "mill", zoneId: "common:base" },
-        accessRecovery: { expectedRevision: 1 },
-      },
-    ];
-    await mail.getByRole("button", { name: "Close Mailbox" }).click();
-    await profile.getByText("Message", { exact: true }).click();
-    await expect(mail.getByRole("button", { name: "Retry visit access", exact: true })).toBeVisible();
-    await mail.getByRole("button", { name: "Retry visit access", exact: true }).click();
-    await expect(mail.getByRole("button", { name: "Retry visit access", exact: true })).toHaveCount(0);
     assert.equal(
       await mail.evaluate((node) => node.scrollWidth > node.clientWidth + 1),
       false,
       "Mailbox fits desktop and phone",
     );
+    if (width <= 704) {
+      await expect(mail.getByRole("navigation", { name: "Letters" })).toBeHidden();
+      await expect(mail.getByRole("button", { name: "Back to letters" })).toBeVisible();
+    }
     await page.screenshot({ path: resolve(output, `mailbox-${width}-${height}.png`) });
-    await mail.getByRole("button", { name: "Cancel message" }).click();
-    await expect(mail.getByText("cancelled", { exact: false })).toBeVisible();
+    await expect(mail.getByRole("button", { name: /Cancel letter|Retry/ })).toHaveCount(0);
+    await expect(mail.getByText("pending", { exact: true })).toHaveCount(0);
+    if (width === 390) {
+      const outgoing = mailbox.threads[0].messages.findLast((message) => message.fromId === "player");
+      outgoing.retryAvailable = true;
+      outgoing.error = "Letter processing needs attention.";
+      await expect(mail.getByRole("button", { name: "Retry", exact: true })).toBeVisible({ timeout: 10000 });
+      await mail.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(mail.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+      assert.equal(outgoing.text, exactMessage, "Recovery retains the sent letter");
+    }
     const firstMailId = writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId;
+    if (width <= 704) await mail.getByRole("button", { name: "Back to letters" }).click();
+    await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+    await mail.getByLabel("Recipient").selectOption("mara");
     await draft.fill(exactMessage);
-    await mail.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(draft).toHaveValue("");
+    const mailWrites = writes.filter((row) => row.path.endsWith("/mailbox/threads")).length;
+    await mail.getByRole("button", { name: "Send letter", exact: true }).click();
+    await expect.poll(() => writes.filter((row) => row.path.endsWith("/mailbox/threads")).length).toBe(mailWrites + 1);
     assert.notEqual(
       writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId,
       firstMailId,
       "A distinct acknowledged send can repeat the same words",
     );
+    if (width <= 704) await mail.getByRole("button", { name: "Back to letters" }).click();
+    await mail.getByRole("button", { name: "Inbox", exact: true }).click();
+    const letterRows = mail.getByRole("navigation", { name: "Letters" }).getByRole("button", { name: /Mara/ });
+    await expect(letterRows).toHaveCount(2);
+    await page.screenshot({ path: resolve(output, `mailbox-inbox-${width}-${height}.png`) });
+    if (width === 390) failMailRead = true;
+    await letterRows.first().click();
+    await expect(mail.getByLabel("Personal mail").getByText("A first letter from Mara.")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Array.from(document.fonts).some(
+            (face) => face.family === "village-letter-caveat" && face.status === "loaded",
+          ),
+        ),
+      )
+      .toBe(true);
+    const readingMode = mail.getByRole("button", { name: "Simple text" });
+    const paperView = mail.getByLabel("Personal mail");
+    await expect(paperView.locator(".villages-letter-heading")).toHaveCount(0);
+    assert(await readingMode.evaluate((node) => !!node.closest("header")), "Reading mode sits beside Mailbox");
+    const portrait = paperView.locator(".villages-letter-portrait");
+    await expect(portrait).toBeVisible();
+    assert(
+      await portrait.evaluate((node) => {
+        const face = node.getBoundingClientRect();
+        const paper = node.closest(".villages-letter-paper").getBoundingClientRect();
+        const text = node.closest(".villages-letter-pages").querySelector(".villages-letter-text");
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const overlaps = Array.from(range.getClientRects()).some(
+          (line) =>
+            line.width > 1 &&
+            line.height > 1 &&
+            line.left < face.right - 1 &&
+            line.right > face.left + 1 &&
+            line.top < face.bottom - 1 &&
+            line.bottom > face.top + 1,
+        );
+        return paper.right - face.right < 45 && !overlaps;
+      }),
+      "The sender portrait sits at the upper right without covering the letter",
+    );
+    await expect(readingMode).toHaveAttribute("aria-pressed", "false");
+    await readingMode.click();
+    await expect(readingMode).toHaveAttribute("aria-pressed", "true");
+    assert.equal(await page.evaluate(() => localStorage.getItem("villages-letter-simple")), "true");
+    assert.match(
+      await mail
+        .locator(".villages-letter-text")
+        .first()
+        .evaluate((node) => getComputedStyle(node).fontFamily),
+      /system-ui/,
+    );
+    const letterSignature = mail.getByRole("img", { name: "Mara's signature" });
+    await expect(letterSignature).toBeVisible();
+    const placement = await letterSignature.evaluate((node) => {
+      const signature = node.getBoundingClientRect();
+      const paper = node.closest(".villages-letter-paper").getBoundingClientRect();
+      return {
+        signatureRight: signature.right,
+        paperRight: paper.right,
+        signatureTop: signature.top,
+        paperTop: paper.top,
+      };
+    });
+    assert(
+      placement.paperRight - placement.signatureRight < 45 && placement.signatureTop > placement.paperTop,
+      "Signature is aligned to the right of the letter",
+    );
+    await expect(mail.getByLabel("Personal mail").getByText("A second letter from Mara.")).toHaveCount(0);
+    await page.screenshot({ path: resolve(output, `mailbox-letter-${width}-${height}.png`) });
+    if (width === 390) {
+      await expect(mail.getByRole("button", { name: "Retry reading" })).toBeVisible();
+      assert.equal(mailbox.threads[0].messages.find((message) => message.id === "first-letter").read, false);
+      await mail.getByRole("button", { name: "Retry reading" }).click();
+      await expect
+        .poll(() => mailbox.threads[0].messages.find((message) => message.id === "first-letter").read)
+        .toBe(true);
+    }
+    await expect.poll(() => writes.findLast((row) => row.path.endsWith("/read"))?.body.messageId).toBe("first-letter");
+    assert.equal(mailbox.threads[0].messages.find((message) => message.id === "second-letter").read, false);
+    if ([1366, 977, 390, 320].includes(width)) {
+      const paper = mail.locator(".villages-letter-paper");
+      const pageBody = mail.locator(".villages-letter-pages");
+      const pageCounter = mail.getByLabel("Letter pages");
+      const pageCount = () =>
+        pageCounter
+          .locator("span")
+          .textContent()
+          .then((text) => Number(text.split("/")[1]));
+      const lastCharacterVisible = () =>
+        pageBody.evaluate((node) => {
+          const textNode = Array.from(node.querySelectorAll(".villages-letter-text")).at(-1).firstChild;
+          const end = textNode.textContent.trimEnd().length;
+          const range = document.createRange();
+          range.setStart(textNode, end - 1);
+          range.setEnd(textNode, end);
+          const character = range.getBoundingClientRect();
+          const viewport = node.getBoundingClientRect();
+          return (
+            character.left >= viewport.left - 1 &&
+            character.right <= viewport.right + 1 &&
+            character.top >= viewport.top - 1 &&
+            character.bottom <= viewport.bottom + 1
+          );
+        });
+      const shortLetter =
+        "Dear friend,\n\nThe rain finally stopped this morning, so I took the long path past the mill. The garden is coming back to life, one little green shoot at a time.\n\nWould you like to walk there with me tomorrow? I will bring the tea.\n\nUntil then,\nMara";
+      mailbox.threads[0].messages.find((message) => message.id === "first-letter").text = shortLetter;
+      await expect
+        .poll(
+          () =>
+            mail
+              .locator(".villages-letter-text")
+              .allTextContents()
+              .then((parts) => parts.join("")),
+          { timeout: 10000 },
+        )
+        .toBe(shortLetter);
+      await readingMode.click();
+      if (width === 977) assert.equal(await pageCount(), 1, "A letter that fits uses one sheet");
+      const nextPage = mail.locator('button[aria-label="Next page"]');
+      const previousPage = mail.locator('button[aria-label="Previous page"]');
+      while (await nextPage.isEnabled()) await nextPage.click();
+      assert(await lastCharacterVisible(), "The final paper includes the end of the letter with the signature");
+      assert(
+        await letterSignature.evaluate((node) => {
+          const signature = node.getBoundingClientRect();
+          const viewport = node.closest(".villages-letter-pages").getBoundingClientRect();
+          return (
+            signature.right > viewport.left &&
+            signature.left < viewport.right &&
+            signature.bottom > viewport.top &&
+            signature.top < viewport.bottom
+          );
+        }),
+        "The signature is visible on that same paper",
+      );
+      if (width === 977) {
+        for (const { size, singlePage } of [
+          { size: { width: 720, height: 600 }, singlePage: false },
+          { size: { width: 1200, height: 900 }, singlePage: null },
+          { size: { width, height }, singlePage: true },
+        ]) {
+          await page.setViewportSize(size);
+          await page.evaluate(
+            () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+          );
+          if (singlePage !== null)
+            await expect
+              .poll(async () => (await pageCount()) === 1, {
+                message: `Page count after resizing to ${size.width}×${size.height}`,
+              })
+              .toBe(singlePage);
+          while (await nextPage.isEnabled()) await nextPage.click();
+          assert(await lastCharacterVisible(), "Resizing retains text on the signature's page");
+        }
+      }
+      while (await previousPage.isEnabled()) await previousPage.click();
+      await readingMode.click();
+
+      const longLetter = "A page of words from Mara, written carefully for a friend. ".repeat(45) + "The final word.";
+      mailbox.threads[0].messages.find((message) => message.id === "first-letter").text = longLetter;
+      await expect
+        .poll(
+          () =>
+            mail
+              .locator(".villages-letter-text")
+              .allTextContents()
+              .then((parts) => parts.join("")),
+          { timeout: 10000 },
+        )
+        .toBe(longLetter);
+      for (const simple of [true, false]) {
+        if (!simple) await readingMode.click();
+        await expect.poll(pageCount).toBeGreaterThan(1);
+        await expect(readingMode).toHaveAttribute("aria-pressed", String(simple));
+        assert.equal(
+          await mail
+            .locator(".villages-letter-text")
+            .first()
+            .evaluate((node) => node.style.fontStyle),
+          simple ? "" : "oblique 3deg",
+          "Personality-inspired styling is only applied in expressive mode",
+        );
+        assert.equal(
+          await paper.evaluate((node) => node.scrollHeight > node.clientHeight + 1),
+          false,
+          "Letter paper does not scroll",
+        );
+        assert.equal(await paper.evaluate((node) => getComputedStyle(node).overflow), "hidden");
+        const count = await pageCount();
+        for (let index = 0; index < count; index++) {
+          await expect(pageCounter).toContainText(`${index + 1} / ${count}`);
+          if (!simple && (index === 0 || index === count - 1))
+            await page.screenshot({
+              path: resolve(output, `mailbox-pages-${width}-${height}-${index === 0 ? "first" : "last"}.png`),
+            });
+          const signaturePosition = await letterSignature.evaluate((node) => {
+            const signature = node.getBoundingClientRect();
+            const viewport = node.closest(".villages-letter-pages").getBoundingClientRect();
+            return {
+              left: signature.left - viewport.left,
+              right: signature.right - viewport.left,
+              width: viewport.width,
+              scrollWidth: node.closest(".villages-letter-pages").scrollWidth,
+              visible:
+                signature.right > viewport.left + 1 &&
+                signature.left < viewport.right - 1 &&
+                signature.bottom > viewport.top + 1 &&
+                signature.top < viewport.bottom - 1,
+            };
+          });
+          assert.equal(
+            signaturePosition.visible,
+            index === count - 1,
+            `Signature appears only on the final paper: ${JSON.stringify({ index, count, simple, signaturePosition })}`,
+          );
+          if (index === count - 1)
+            assert(await lastCharacterVisible(), "The final paper includes the end of the letter with the signature");
+          if (index < count - 1) await mail.getByRole("button", { name: "Next page" }).click();
+        }
+        if (simple) {
+          while (await mail.getByRole("button", { name: "Previous page" }).isEnabled())
+            await mail.getByRole("button", { name: "Previous page" }).click();
+        }
+      }
+    }
+    if (width === 390) {
+      await mail.getByRole("button", { name: "Back to letters" }).click();
+      await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+      await mail.getByLabel("Recipient").selectOption("mara");
+      await draft.fill("A letter with a lost response.");
+      failMailResponse = true;
+      await mail.getByRole("button", { name: "Send letter" }).click();
+      await expect(mail.getByRole("alert")).toBeVisible();
+      const firstAttempt = writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId;
+      await mail.getByLabel("Recipient").selectOption("eli");
+      await draft.fill("A note for Eli.");
+      await mail.getByRole("button", { name: "Send letter" }).click();
+      await expect(mail.getByLabel("Personal mail").getByText("A note for Eli.")).toBeVisible();
+      await mail.getByRole("button", { name: "Back to letters" }).click();
+      await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+      await mail.getByLabel("Recipient").selectOption("mara");
+      await expect(draft).toHaveValue("A letter with a lost response.");
+      await mail.getByRole("button", { name: "Send letter" }).click();
+      await expect
+        .poll(() => writes.filter((row) => row.path.endsWith("/mailbox/threads")).at(-1).body.requestId)
+        .toBe(firstAttempt);
+      assert.equal(mailbox.threads[0].messages.filter((message) => message.id === firstAttempt).length, 1);
+    }
     await mail.getByRole("button", { name: "Close Mailbox" }).click();
     await tabs.getByRole("button", { name: "Memories", exact: true }).click();
     await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toBeVisible();
@@ -847,10 +1221,9 @@ try {
     await profile.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(profile.getByRole("alert")).toHaveCount(0);
     await profile.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
-    await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveValue("explorer");
+    await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveCount(0);
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeFocused();
     await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
-    await directory.getByRole("searchbox", { name: "Search villagers" }).fill("");
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
     await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByText(/PRIVATE/)).toHaveCount(0);
@@ -872,19 +1245,19 @@ try {
       "src",
       signatureUrl,
     );
-    await profile.getByText("Manage", { exact: true }).click();
+    await profile.getByText("Character tools", { exact: true }).click();
 
     await profile.getByRole("button", { name: "Edit description", exact: true }).click();
     const description = profile.getByRole("textbox", { name: "Description", exact: true });
     const initialDescription = village.villagers[0].summary;
     await description.fill("A reserved explorer with an interest in old machinery.");
-    await profile.getByText("Manage", { exact: true }).click();
+    await profile.getByText("Character tools", { exact: true }).click();
     await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
-    await profile.getByText("Manage", { exact: true }).click();
+    await profile.getByText("Character tools", { exact: true }).click();
     await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
-    await profile.getByText("Manage", { exact: true }).click();
+    await profile.getByText("Character tools", { exact: true }).click();
     await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-    await profile.getByText("Manage", { exact: true }).click();
+    await profile.getByText("Character tools", { exact: true }).click();
     await profile.getByRole("button", { name: "Cancel", exact: true }).click();
     assert.equal(village.villagers[0].summary, initialDescription);
     await profile.getByRole("button", { name: "Edit description", exact: true }).click();
@@ -912,13 +1285,11 @@ try {
     await profile.getByRole("button", { name: "Compare card", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Apply refresh", exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "Apply refresh", exact: true }).click();
-    await profile.getByText("Actions", { exact: true }).click();
-    await profile.getByRole("button", { name: "Move out", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "This villager has moved out" })).toBeVisible();
+    await expect(profile.getByRole("button", { name: "Move out", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
-    await expect(directory.getByRole("button", { name: "Open Mara profile" })).toHaveCount(0);
+    await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
     await page.getByRole("button", { name: "Close ×", exact: true }).click();
-    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(

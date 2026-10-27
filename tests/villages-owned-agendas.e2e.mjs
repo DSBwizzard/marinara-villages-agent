@@ -40,9 +40,9 @@ try {
       weekUnreadable: false,
       days: [{ weekday: "Monday", dateLabel: "Today", isToday: true, blocks: [] }],
       effectiveDays: { Monday: [block] },
+      wishes: [],
       agenda: {
         routineSummary: "Mara reads and tends herbs.",
-        wishes: [],
         day: [],
         week: { Monday: [block] },
         scheduleInfluenceSnapshot: {
@@ -90,7 +90,7 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("button", { name: "People", exact: true }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
     const sections = page.getByRole("navigation", { name: "Villager profile sections" });
     await sections.getByRole("button", { name: "Agenda", exact: true }).click();

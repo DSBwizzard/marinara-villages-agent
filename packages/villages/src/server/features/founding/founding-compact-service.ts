@@ -1,10 +1,10 @@
-import { bindOpeningRenovation } from "../../domain/rules/opening-renovation.js";
-import { asRecord } from "../../domain/rules/coerce.js";
-import { readOpeningProposal } from "../../domain/rules/opening-project.js";
-import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
-import { foundingRequestMessages, OPENING_IDEA_FORMAT_VERSION } from "../../domain/rules/founding-requests.js";
 import type { villagesDebugAgentsEnabled, villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
+import { asRecord } from "../../domain/rules/coerce.js";
+import { foundingRequestMessages, OPENING_IDEA_FORMAT_VERSION } from "../../domain/rules/founding-requests.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
+import { readOpeningProposal } from "../../domain/rules/opening-project.js";
+import { bindOpeningRenovation } from "../../domain/rules/opening-renovation.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
 
@@ -73,7 +73,7 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
       completion.usage?.completionTokens ?? "unavailable",
     );
     try {
-      return parseCompactFoundingCompletion(completion, { ...context, allowInitialWish: false });
+      return parseCompactFoundingCompletion(completion, context);
     } finally {
       villagesLogger().info(
         "[villages] founding task=routine contract=1 inputChars=%d outputAllowance=%d finish=%s",

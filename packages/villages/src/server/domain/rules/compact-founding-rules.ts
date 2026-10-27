@@ -1,9 +1,6 @@
-import { generatedIdentityDescription } from "./resident-description.js";
-import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import type { VillagerCard } from "../models/catalog-model.js";
 import type {
   VillageAgenda,
-  VillageCompletedWish,
   VillagePlayerBackground,
   VillageRemap,
   VillageRemapMove,
@@ -13,15 +10,20 @@ import type {
 import { villageAgendaDay } from "./agenda-plan.js";
 import { extractModelJsonObject } from "./json-reply.js";
 import { remapBlocks, VILLAGE_UNTRANSLATED_ACTIVITY } from "./native-remap.js";
-import { influenceSettings, scheduleSemanticSource, readPreparedInfluence } from "./owned-routine.js";
-import { semanticHash } from "./semantic-contract.js";
-import { readSemanticWishCriteria } from "./wish-criteria.js";
-import { routineDay, validRoutineRhythm } from "./owned-routine.js";
 import type { RoutineProfile } from "./owned-routine.js";
-import { boundText, coerceWish, MAX_ROUTINE_SUMMARY_LENGTH, MAX_VILLAGER_WISHES } from "./prompt-preset.js";
+import {
+  influenceSettings,
+  readPreparedInfluence,
+  routineDay,
+  scheduleSemanticSource,
+  validRoutineRhythm,
+} from "./owned-routine.js";
+import { boundText, MAX_ROUTINE_SUMMARY_LENGTH } from "./prompt-preset.js";
+import { generatedIdentityDescription } from "./resident-description.js";
+import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import type { NativeWeekSchedule } from "./schedule-rules.js";
-import { randomVillageSeed, VILLAGE_WEEKDAYS } from "./village-clock.js";
-import { selectWishSize, validateGeneratedWishWording } from "./wish-definition.js";
+import { semanticHash } from "./semantic-contract.js";
+import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 type PaletteEntry = {
   flexible: boolean;
@@ -42,18 +44,15 @@ export type CompactFoundingContext = {
   contractVersion?: 1 | 2;
   circumstances?: unknown;
   semanticVersion?: 2;
-  wishAttemptId?: string;
   playerBackground?: VillagePlayerBackground | null;
   playerPersonaName?: string;
-  allowInitialWish?: boolean;
   village: string;
   setting: string;
   home: string;
   card: Partial<Omit<VillagerCard, "tags">> & Pick<VillagerCard, "id" | "name"> & { tags?: readonly string[] };
   venues: readonly VillageVenue[];
   lore: readonly string[];
-  completedWishes: readonly VillageCompletedWish[];
-  activeWishes: readonly VillageWish[];
+  wishes: readonly VillageWish[];
   schedule: NativeWeekSchedule | null;
   characterId?: string;
   influenceHints?: readonly string[];
@@ -229,26 +228,6 @@ export function parseCompactFounding(
   if (typeof payload.routine !== "string" || !payload.routine.trim())
     throw new Error("The model did not describe the villager's routine.");
   const at = new Date().toISOString();
-  const wishes: VillageWish[] = [];
-  const seen = new Set<string>();
-  if (Array.isArray(payload.wishes) && !context.activeWishes.length && context.allowInitialWish !== false) {
-    for (const raw of payload.wishes) {
-      const wish = coerceWish(
-        { ...raw, size: selectWishSize(context.wishAttemptId ?? context.characterId ?? context.card.name) },
-        randomVillageSeed(),
-        at,
-      );
-      if (!wish || seen.has(compactKey(wish.wish))) continue;
-      if (context.semanticVersion === 2) {
-        wish.semanticCriteria = readSemanticWishCriteria(raw.criteria, wish.wish);
-        if (!wish.semanticCriteria || raw.neutralWording !== true)
-          throw new Error("Wish interpretation is incomplete; explicitly retry.");
-      } else validateGeneratedWishWording(wish.wish);
-      seen.add(compactKey(wish.wish));
-      wishes.push(wish);
-      if (wishes.length >= 1) break;
-    }
-  }
   if (!Array.isArray(payload.rhythm))
     throw new Error("The routine must explicitly describe rest windows, or use an empty list.");
   const rhythm = payload.rhythm.map((value) => {
@@ -357,7 +336,6 @@ export function parseCompactFounding(
       : {}),
     agenda: {
       routineProfile: profile,
-      wishes: [...context.activeWishes, ...wishes].slice(0, Math.min(2, MAX_VILLAGER_WISHES)),
       routineSummary: boundText(payload.routine, MAX_ROUTINE_SUMMARY_LENGTH),
       day: villageAgendaDay(null, context.venues, context.card.name),
       week,
