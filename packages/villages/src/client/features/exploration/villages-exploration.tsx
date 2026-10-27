@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 
 const P = "marinara-capability-villages";
 
-export type ExplorationTab = "map" | "places" | "people" | "more";
+export type ExplorationTab = "map" | "places" | "people" | "projects" | "more";
 
 export type ExplorationSheet = { tab: "places" | "people" };
 
@@ -82,6 +82,11 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" |
         <path d="M2 21v-3a7 7 0 0 1 14 0v3ZM17 3a4 4 0 0 1 0 8M20 21v-3a7 7 0 0 0-3-6" />
       </>
     ),
+    projects: (
+      <>
+        <path d="m14 5 5 5M3 21l9-9m1-8 3-2 6 6-2 3-7-7ZM3 21l3-1-2-2-1 3Z" />
+      </>
+    ),
     more: (
       <>
         <circle cx="5" cy="12" r="1" />
@@ -118,7 +123,7 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" |
   );
 }
 
-export const EXPLORATION_DESTINATIONS = ["map", "places", "people", "more"] as const;
+export const EXPLORATION_DESTINATIONS = ["map", "places", "people", "projects", "more"] as const;
 
 export function ExplorationNavigation({
   active,

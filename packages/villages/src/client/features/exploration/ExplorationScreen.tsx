@@ -98,11 +98,15 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           closeExploration();
           setShowAllMaps(false);
         } else if (tab === "places") {
-          setFocusSearch(true);
-          setExploreSheet({ tab: "places" });
+          const first = places[0] ?? snapshot?.settings.venues[0];
+          if (first) openPlace(first);
+          else {
+            setFocusSearch(true);
+            setExploreSheet({ tab: "places" });
+          }
         } else {
           setExploreSheet(null);
-          openMenu(tab === "people" ? "villagers" : "index");
+          openMenu(tab === "people" ? "villagers" : tab === "projects" ? "projects" : "index");
         }
       }}
     />
@@ -194,7 +198,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 }}
                 rows={rows}
               />
-            ) : !mobile && !placingProjectId ? (
+            ) : !placingProjectId ? (
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-navigator-toggle`}

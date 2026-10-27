@@ -19,6 +19,7 @@ export const villagesDefinition = {
   },
   assetPaths: [
     "villages-icon.png",
+    "menu-desk.jpg",
     "founding-rebuild.jpg",
     "founding-pioneer.jpg",
     "founding-prosper.jpg",
@@ -39,6 +40,7 @@ export const villagesDefinition = {
     },
     assets: {
       paths: [
+        "menu-desk.jpg",
         "founding-rebuild.jpg",
         "founding-pioneer.jpg",
         "founding-prosper.jpg",

@@ -85,7 +85,7 @@ try {
       await expect(button.locator("svg")).toHaveCSS("color", color);
     }
     await page.screenshot({ path: resolve(output, `warm-engine-map-${viewport.width}.png`) });
-    await home.getByRole("button", { name: "Places", exact: true }).click();
+    await home.getByRole("button", { name: "Show places", exact: true }).click();
     const panel = page.getByRole("complementary", { name: "Places navigator", exact: true });
     await expect(panel).toBeVisible();
     const bounds = await panel.boundingBox();

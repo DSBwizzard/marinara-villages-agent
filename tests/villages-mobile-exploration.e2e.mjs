@@ -256,7 +256,7 @@ try {
       return { left: image.left - frame.x, top: image.top - frame.y, width: image.width, height: image.height };
     };
     const showPlaces = async () => {
-      if (!(await navigator.isVisible())) await nav.getByRole("button", { name: "Places", exact: true }).click();
+      if (!(await navigator.isVisible())) await page.getByRole("button", { name: "Show places", exact: true }).click();
       await expect(navigator).toBeVisible();
     };
     const select = async (name) => {
