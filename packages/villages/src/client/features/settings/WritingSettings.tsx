@@ -53,48 +53,12 @@ function useVillageWriting() {
 
 export function VillageWritingSettings() {
   const { view, error, busy, saved, save } = useVillageWriting();
-  const [guidanceDraft, setGuidanceDraft] = useState<string | null>(null);
-  const draft = guidanceDraft ?? view?.writingGuidance ?? "";
 
   return (
     <div className={ELEMENT_TAG + "-field"}>
-      <span className={ELEMENT_TAG + "-label"}>Additional writing guidance</span>
+      <span className={ELEMENT_TAG + "-label"}>Writing</span>
       {view ? (
         <>
-          <textarea
-            autoComplete="off"
-            className={ELEMENT_TAG + "-textarea"}
-            aria-label="Additional writing guidance"
-            value={draft}
-            rows={5}
-            maxLength={view.writingGuidanceMaxLength}
-            disabled={busy}
-            onChange={(event) => setGuidanceDraft(event.target.value)}
-          />
-          <button
-            type="button"
-            className={ELEMENT_TAG + "-button"}
-            disabled={busy || draft === view.writingGuidance}
-            onClick={() => {
-              void save({ writingGuidance: draft }).then((next) => {
-                if (next) setGuidanceDraft(next.writingGuidance);
-              });
-            }}
-          >
-            Apply guidance
-          </button>
-          <button
-            type="button"
-            className={ELEMENT_TAG + "-button"}
-            disabled={busy || !draft}
-            onClick={() => {
-              void save({ writingGuidance: "" }).then((next) => {
-                if (next) setGuidanceDraft(next.writingGuidance);
-              });
-            }}
-          >
-            Clear guidance
-          </button>
           <div className={ELEMENT_TAG + "-row"}>
             <label className={ELEMENT_TAG + "-field"}>
               <span className={ELEMENT_TAG + "-label"}>Tense</span>
@@ -136,7 +100,7 @@ export function VillageWritingSettings() {
         <span className={ELEMENT_TAG + "-hint"}>Loading…</span>
       ) : null}
       {busy ? <span className={ELEMENT_TAG + "-hint"}>Saving…</span> : null}
-      {saved && !busy && draft === view?.writingGuidance ? (
+      {saved && !busy ? (
         <span className={ELEMENT_TAG + "-hint"} role="status">
           Saved
         </span>
