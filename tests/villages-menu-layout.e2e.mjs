@@ -203,7 +203,7 @@ try {
     for (const [name, key] of pages) {
       await nav.getByRole("button", { name }).click();
       if (key === "projects") {
-        const portfolio = page.getByRole("main", { name: "Project portfolio" });
+        const portfolio = page.getByRole("main", { name: "Projects" });
         await expect(portfolio).toBeVisible();
         await expect(nav).toHaveCount(0);
         await expect(portfolio.getByRole("button", { name: "New Venue", exact: true })).toBeEnabled();
@@ -249,7 +249,7 @@ try {
         progressFails = true;
         await nav.getByRole("button", { name: /^Projects \(/ }).click();
         await page
-          .getByRole("main", { name: "Project portfolio" })
+          .getByRole("main", { name: "Projects" })
           .getByRole("button", { name: /^Close/ })
           .click();
         await nav.getByRole("button", { name: /^DEBUG: Progress$/ }).click();

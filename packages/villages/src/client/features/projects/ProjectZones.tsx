@@ -2,6 +2,7 @@ import { draftZonePolicy } from "../founding/villages-founding-zones.js";
 import type { VillageVenue, VillageZoneDraft } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { ClassChoices, ArtworkUpload } from "./ProjectDesign.js";
+import { useState } from "react";
 
 const personalKind = (kind: string) => ["private-residence", "staff", "restricted"].includes(kind);
 function kindFor(role: string, personal: boolean): VillageZoneDraft["kind"] {
@@ -27,10 +28,14 @@ export function ProjectZones({
   people,
   selectedId,
   onSelect: select,
+  mobile = false,
+  pageSize = 6,
 }: {
   venue: VillageVenue;
   selectedId: string;
   onSelect(id: string): void;
+  mobile?: boolean;
+  pageSize?: number;
   people: { id: string; name: string }[];
   zones: VillageZoneDraft[];
   renovation: boolean;
@@ -40,6 +45,18 @@ export function ProjectZones({
   onZones(zones: VillageZoneDraft[]): void;
   onUpload(file?: File, zoneId?: string): void;
 }) {
+  const [view, setView] = useState<"list" | "editor">("list");
+  const [editorPage, setEditorPage] = useState<"details" | "appearance" | "access">("details");
+  const [optionPage, setOptionPage] = useState<"main" | "controllers" | "artwork">("main");
+  const [controllerPage, setControllerPage] = useState(0);
+  const [zonePage, setZonePage] = useState(0);
+  const openZone = (id: string) => {
+    select(id);
+    setEditorPage("details");
+    setOptionPage("main");
+    setControllerPage(0);
+    setView("editor");
+  };
   const rows: VillageZoneDraft[] = renovation
     ? zones
     : [
@@ -55,6 +72,9 @@ export function ProjectZones({
         })),
       ];
   const selected = rows.find((zone) => zone.id === selectedId);
+  const allZones = [{ id: "exterior" }, ...rows];
+  const pages = Math.max(1, Math.ceil(allZones.length / pageSize));
+  const currentPage = Math.min(zonePage, pages - 1);
   const entrance = !selected;
   const patch = (next: Partial<VillageZoneDraft>) => {
     if (!selected) return;
@@ -109,7 +129,7 @@ export function ProjectZones({
         personal ? [...(venue.privateSpaces ?? []), { ...area, ownerId: "" }] : (venue.privateSpaces ?? []),
       );
     }
-    select(zone.id);
+    openZone(zone.id);
   };
   const remove = () => {
     if (!selected) return;
@@ -123,41 +143,68 @@ export function ProjectZones({
     if (renovation) onZones(without(rows));
     else setNewRows(without(venue.spaces ?? []), without(venue.privateSpaces ?? []));
     select("exterior");
+    setView("list");
   };
   const privateRoom = !!selected && personalKind(selected.kind);
   const hidden = privateRoom && (renovation || selected.ownerId !== "player");
   const artwork = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].find(
     (zone) => zone.id === selected?.id,
   )?.image;
+  const hasControllers =
+    !!selected && renovation && selected.kind === "restricted" && !venue.zones?.some((zone) => zone.id === selected.id);
+  const hasArtwork = !!selected && !renovation && !hidden;
+  const controllers = [{ id: "player", name: "You" }, ...people];
+  const controllerPages = Math.max(1, Math.ceil(controllers.length / pageSize));
+  const currentControllerPage = Math.min(controllerPage, controllerPages - 1);
   return (
-    <div className="vp-columns vp-zone-columns">
+    <div className="vp-columns vp-zone-columns" data-zone-view={mobile ? view : "both"} data-editor-page={editorPage}>
       <section className="vp-panel">
         <div className="vp-panel-heading">
           <h3>Zones</h3>
           <span>{rows.length} / 6</span>
         </div>
         <nav className="vp-zone-list" aria-label="Project Zones">
-          <button type="button" aria-pressed={entrance} onClick={() => select("exterior")}>
-            <span className="vp-number">00</span>
-            <span>
-              <strong>Entrance</strong>
-              <small>Arrival & departure</small>
-            </span>
-            <span>›</span>
-          </button>
-          {rows.map((zone, index) => (
-            <button type="button" key={zone.id} aria-pressed={selected?.id === zone.id} onClick={() => select(zone.id)}>
-              <span className="vp-number">{String(index + 1).padStart(2, "0")}</span>
+          {currentPage === 0 ? (
+            <button type="button" aria-pressed={entrance} onClick={() => openZone("exterior")}>
               <span>
-                <strong>{zone.name || "Unnamed Zone"}</strong>
-                <small>
-                  {personalKind(zone.kind) ? "Private" : "Shared"} · {zone.venueClass}
-                </small>
+                <strong>Entrance</strong>
+                <small>Arrival & departure</small>
               </span>
               <span>›</span>
             </button>
-          ))}
+          ) : null}
+          {rows
+            .filter((_zone, index) => Math.floor((index + 1) / pageSize) === currentPage)
+            .map((zone) => (
+              <button
+                type="button"
+                key={zone.id}
+                aria-pressed={selected?.id === zone.id}
+                onClick={() => openZone(zone.id)}
+              >
+                <span>
+                  <strong>{zone.name || "Unnamed Zone"}</strong>
+                  <small>
+                    {personalKind(zone.kind) ? "Private" : "Shared"} · {zone.venueClass}
+                  </small>
+                </span>
+                <span>›</span>
+              </button>
+            ))}
         </nav>
+        {pages > 1 ? (
+          <div className="vp-actions">
+            <button type="button" disabled={currentPage === 0} onClick={() => setZonePage(currentPage - 1)}>
+              Previous
+            </button>
+            <span>
+              {currentPage + 1} / {pages}
+            </span>
+            <button type="button" disabled={currentPage + 1 === pages} onClick={() => setZonePage(currentPage + 1)}>
+              Next
+            </button>
+          </div>
+        ) : null}
         {editable ? (
           <div className="vp-actions">
             <button type="button" disabled={busy || rows.length >= 6} onClick={() => add(false)}>
@@ -170,7 +217,52 @@ export function ProjectZones({
         ) : null}
       </section>
       <section className="vp-panel">
+        {mobile ? (
+          <div className="vp-zone-pages">
+            <button type="button" onClick={() => setView("list")}>
+              ‹ Zones
+            </button>
+            {!entrance ? (
+              <>
+                <button type="button" aria-pressed={editorPage === "details"} onClick={() => setEditorPage("details")}>
+                  Details
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={editorPage === "appearance"}
+                  onClick={() => setEditorPage("appearance")}
+                >
+                  Appearance
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={editorPage === "access"}
+                  onClick={() => {
+                    setEditorPage("access");
+                    setOptionPage("main");
+                  }}
+                >
+                  Options
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
         <h3>{entrance ? "Entrance" : selected.name || "Zone specification"}</h3>
+        {mobile && editorPage === "access" && !entrance && optionPage === "main" && (hasControllers || hasArtwork) ? (
+          <div className="vp-detail-pages" role="group" aria-label="Zone options">
+            {hasControllers ? (
+              <button type="button" onClick={() => setOptionPage("controllers")}>
+                Controllers
+              </button>
+            ) : null}
+            {hasArtwork ? (
+              <button type="button" onClick={() => setOptionPage("artwork")}>
+                Artwork
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <fieldset disabled={!editable || busy}>
           {entrance ? (
             <label>
@@ -186,94 +278,128 @@ export function ProjectZones({
             </label>
           ) : (
             <>
-              <label>
-                Zone name
-                <input
-                  autoComplete="off"
-                  aria-label="Zone Name"
-                  maxLength={100}
-                  value={selected.name}
-                  onChange={(event) => patch({ name: event.target.value })}
-                />
-              </label>
-              <label>
-                Used for
-                <input
-                  autoComplete="off"
-                  aria-label="Zone Used For"
-                  maxLength={240}
-                  value={selected.purpose ?? ""}
-                  onChange={(event) => patch({ purpose: event.target.value })}
-                />
-              </label>
-              {hidden ? (
+              <div className="vp-zone-details">
                 <label>
-                  Room specification
-                  <textarea
+                  Zone name
+                  <input
                     autoComplete="off"
-                    aria-label="Room Specification"
-                    rows={4}
-                    maxLength={1000}
-                    value={selected.roomSpecification ?? ""}
-                    onChange={(event) => patch({ roomSpecification: event.target.value })}
+                    aria-label="Zone Name"
+                    maxLength={100}
+                    value={selected.name}
+                    onChange={(event) => patch({ name: event.target.value })}
                   />
                 </label>
-              ) : (
                 <label>
-                  Appearance
-                  <textarea
+                  Used for
+                  <input
                     autoComplete="off"
-                    aria-label="Zone Appearance"
-                    rows={4}
-                    maxLength={1000}
-                    value={selected.description}
-                    onChange={(event) => patch({ description: event.target.value })}
+                    aria-label="Zone Used For"
+                    maxLength={240}
+                    value={selected.purpose ?? ""}
+                    onChange={(event) => patch({ purpose: event.target.value })}
                   />
                 </label>
-              )}
-              <span className="vp-label">Class</span>
-              <ClassChoices
-                value={[selected.venueClass]}
-                choices={venue.classes ?? []}
-                multiple={false}
-                onChange={([role]) => patch({ venueClass: role, kind: kindFor(role, privateRoom) })}
-              />
-              {renovation && selected.kind === "restricted" && !venue.zones?.some((zone) => zone.id === selected.id) ? (
-                <>
-                  <span className="vp-label">Controllers</span>
-                  <div className="vp-choices" role="group" aria-label="Zone controllers">
-                    {[{ id: "player", name: "You" }, ...people].map((person) => (
-                      <button
-                        type="button"
-                        key={person.id}
-                        aria-pressed={selected.controllerIds?.includes(person.id) ?? false}
-                        onClick={() =>
-                          patch({
-                            controllerIds: selected.controllerIds?.includes(person.id)
-                              ? selected.controllerIds.filter((id) => id !== person.id)
-                              : [...(selected.controllerIds ?? []), person.id],
-                          })
-                        }
-                      >
-                        {person.name}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-              {hidden ? (
-                <p className="vp-note">Private contents stay hidden. Specify the physical changes here.</p>
-              ) : null}
-              {!renovation && !hidden ? (
-                <>
-                  {artwork ? <img className="vp-zone-artwork" src={artwork.url} alt={selected.name} /> : null}
-                  <ArtworkUpload busy={busy || !editable} onUpload={(file) => onUpload(file, selected.id)} />
-                </>
-              ) : null}
+              </div>
+              <div className="vp-zone-appearance">
+                {hidden ? (
+                  <label>
+                    Room specification
+                    <textarea
+                      autoComplete="off"
+                      aria-label="Room Specification"
+                      rows={4}
+                      maxLength={1000}
+                      value={selected.roomSpecification ?? ""}
+                      onChange={(event) => patch({ roomSpecification: event.target.value })}
+                    />
+                  </label>
+                ) : (
+                  <label>
+                    Appearance
+                    <textarea
+                      autoComplete="off"
+                      aria-label="Zone Appearance"
+                      rows={4}
+                      maxLength={1000}
+                      value={selected.description}
+                      onChange={(event) => patch({ description: event.target.value })}
+                    />
+                  </label>
+                )}
+                {hidden ? (
+                  <p className="vp-note">Private contents stay hidden. Specify the physical changes here.</p>
+                ) : null}
+              </div>
+              <div className="vp-zone-options">
+                {!mobile || optionPage === "main" ? (
+                  <>
+                    <span className="vp-label">Class</span>
+                    <ClassChoices
+                      value={[selected.venueClass]}
+                      choices={venue.classes ?? []}
+                      multiple={false}
+                      onChange={([role]) => patch({ venueClass: role, kind: kindFor(role, privateRoom) })}
+                    />
+                  </>
+                ) : null}
+                {hasControllers && (!mobile || optionPage === "controllers") ? (
+                  <>
+                    <span className="vp-label">Controllers</span>
+                    <div className="vp-choices" role="group" aria-label="Zone controllers">
+                      {(mobile
+                        ? controllers.slice(currentControllerPage * pageSize, (currentControllerPage + 1) * pageSize)
+                        : controllers
+                      ).map((person) => (
+                        <button
+                          type="button"
+                          key={person.id}
+                          aria-pressed={selected.controllerIds?.includes(person.id) ?? false}
+                          onClick={() =>
+                            patch({
+                              controllerIds: selected.controllerIds?.includes(person.id)
+                                ? selected.controllerIds.filter((id) => id !== person.id)
+                                : [...(selected.controllerIds ?? []), person.id],
+                            })
+                          }
+                        >
+                          {person.name}
+                        </button>
+                      ))}
+                    </div>
+                    {mobile && controllerPages > 1 ? (
+                      <div className="vp-actions">
+                        <button
+                          type="button"
+                          disabled={currentControllerPage === 0}
+                          onClick={() => setControllerPage(currentControllerPage - 1)}
+                        >
+                          Previous
+                        </button>
+                        <span>
+                          {currentControllerPage + 1} / {controllerPages}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={currentControllerPage + 1 === controllerPages}
+                          onClick={() => setControllerPage(currentControllerPage + 1)}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+                {hasArtwork && (!mobile || optionPage === "artwork") ? (
+                  <>
+                    {artwork ? <img className="vp-zone-artwork" src={artwork.url} alt={selected.name} /> : null}
+                    <ArtworkUpload busy={busy || !editable} onUpload={(file) => onUpload(file, selected.id)} />
+                  </>
+                ) : null}
+              </div>
             </>
           )}
         </fieldset>
-        {!entrance && editable ? (
+        {!entrance && editable && (!mobile || (editorPage === "access" && optionPage === "main")) ? (
           <button type="button" className="vp-subtle" disabled={busy} onClick={remove}>
             Remove Zone
           </button>

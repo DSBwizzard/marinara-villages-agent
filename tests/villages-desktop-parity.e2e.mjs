@@ -426,7 +426,7 @@ try {
     await expect(composer).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
-    await expect(page.getByRole("main", { name: "Project portfolio" })).toBeVisible();
+    await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
     await page.getByRole("button", { name: /^Close/ }).click();
     await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())

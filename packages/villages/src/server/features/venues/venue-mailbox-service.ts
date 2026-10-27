@@ -3,7 +3,8 @@ import { applyProjectMailboxDecisions } from "../../domain/rules/project-lifecyc
 import type { Handler } from "../../domain/models/background-model.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { VillageVenueMail } from "../../domain/models/world.js";
-import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
+import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
+import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { boundText, MAX_VENUE_NOTE_LENGTH } from "../../domain/rules/prompt-preset.js";
@@ -283,6 +284,12 @@ export function createVenueMailbox({
         try {
           applyMail(state, current, now.toISOString());
         } catch (error) {
+          if (error instanceof VillagesRequestError && error.code === "PROJECT_DRAFT_CAPACITY")
+            throw new WorkFailureError({
+              cause: "storage_application",
+              stage: "project-draft-capacity",
+              message: error.message,
+            });
           current.status = "declined";
           current.resolvedAt = now.toISOString();
           current.error = boundText(error instanceof Error ? error.message : String(error), MAX_VENUE_NOTE_LENGTH);

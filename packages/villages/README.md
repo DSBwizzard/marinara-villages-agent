@@ -116,7 +116,7 @@ The Memories page starts with your Persona and loads entries in batches. **Inspe
 
 Each resident can have up to two active Wishes. New attempts have a daily allowance and at least 24 hours between them. Returning after an absence does not generate a backlog of missed Wishes.
 
-**Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. Saving a draft and starting work are separate steps:
+**Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 
 1. Describe the physical result and choose the site or existing Venue.
 2. Arrange the needed agreements and a willing resident lead.
