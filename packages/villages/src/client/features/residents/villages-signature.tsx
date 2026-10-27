@@ -31,7 +31,6 @@ export function VillagerSignature({
   const [view, setView] = useState<ResidentSignatureView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [broken, setBroken] = useState("");
   const [refresh, setRefresh] = useState(0);
   const path = `/villagers/${encodeURIComponent(actorId)}/signature`;
   const running = view?.status === "running";
@@ -61,7 +60,6 @@ export function VillagerSignature({
   useVisibleInterval((signal) => read(signal), running ? 2_000 : null);
   const local = view?.fallback ?? signature ?? { name, hand: "flowing", slant: 0, spacing: 0, flourish: 0 };
   const image = view?.saved ?? saved;
-  const url = image?.image.url;
   const draw = async () => {
     if (!view || busy || running) return;
     setBusy(true);
@@ -88,30 +86,7 @@ export function VillagerSignature({
   };
   return (
     <div className={`${P}-signature`}>
-      <div
-        className={`${P}-signature-art`}
-        role="img"
-        aria-label={`${url && broken !== url ? image?.name : local.name}'s signature`}
-      >
-        {url && broken !== url ? (
-          <img className={`${P}-signature-image`} src={url} alt="" onError={() => setBroken(url)} />
-        ) : (
-          <>
-            <span
-              className={`${P}-signature-name`}
-              data-hand={local.hand}
-              aria-hidden="true"
-              dir="auto"
-              style={{ transform: `rotate(${local.slant}deg)`, letterSpacing: `${local.spacing}px` }}
-            >
-              {local.name}
-            </span>
-            <svg className={`${P}-signature-flourish`} viewBox="0 0 220 32" aria-hidden="true">
-              <path d={flourishes[local.flourish] ?? flourishes[0]} />
-            </svg>
-          </>
-        )}
-      </div>
+      <SignatureArt name={name} signature={local} saved={image} />
       <div className={`${P}-signature-controls`}>
         {view?.available || view?.recoverable ? (
           <button type="button" disabled={busy || running} onClick={() => void draw()}>
@@ -144,6 +119,46 @@ export function VillagerSignature({
         <p role="status">Generation was interrupted and may have been charged. Retry is deliberate.</p>
       ) : null}
       {error || view?.error ? <p role="alert">{error || view?.error}</p> : null}
+    </div>
+  );
+}
+
+export function SignatureArt({
+  name,
+  signature,
+  saved,
+}: {
+  name: string;
+  signature?: ResidentSignature;
+  saved?: ResidentSignatureImage | null;
+}) {
+  const [broken, setBroken] = useState("");
+  const local = signature ?? { name, hand: "flowing", slant: 0, spacing: 0, flourish: 0 };
+  const url = saved?.image.url;
+  return (
+    <div
+      className={`${P}-signature-art`}
+      role="img"
+      aria-label={`${url && broken !== url ? saved?.name : local.name}'s signature`}
+    >
+      {url && broken !== url ? (
+        <img className={`${P}-signature-image`} src={url} alt="" onError={() => setBroken(url)} />
+      ) : (
+        <>
+          <span
+            className={`${P}-signature-name`}
+            data-hand={local.hand}
+            aria-hidden="true"
+            dir="auto"
+            style={{ transform: `rotate(${local.slant}deg)`, letterSpacing: `${local.spacing}px` }}
+          >
+            {local.name}
+          </span>
+          <svg className={`${P}-signature-flourish`} viewBox="0 0 220 32" aria-hidden="true">
+            <path d={flourishes[local.flourish] ?? flourishes[0]} />
+          </svg>
+        </>
+      )}
     </div>
   );
 }
