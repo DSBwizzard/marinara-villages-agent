@@ -1778,8 +1778,6 @@ const VILLAGES_STYLES = `
 }
 .${ELEMENT_TAG}-notice-row { display: flex; align-items: flex-start; gap: .5rem; font-size: .75rem; line-height: 1.5; color: var(--muted-foreground); }
 .${ELEMENT_TAG}-notice-row > span { flex: 1 1 auto; min-width: 0; }
-.${ELEMENT_TAG}-notice-author { font-weight: 600; color: var(--foreground); }
-.${ELEMENT_TAG}-notice-add { display: flex; gap: .5rem; margin-top: .625rem; }
 .${ELEMENT_TAG}-notice-input {
   flex: 1 1 auto; min-width: 0; box-sizing: border-box;
   border: 1px solid var(--border); border-radius: .5rem;
@@ -3499,7 +3497,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 }
 .${ELEMENT_TAG}-menu-content input::placeholder, .${ELEMENT_TAG}-menu-content textarea::placeholder { color: #aebce3; }
 .${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-notice-row { border-color: #526bb1; background: #1c3568; color: var(--foreground); }
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-notice-author { color: #d9e1ff; }
 .${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-menu-body { gap: 1rem; }
 .${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-panel.${ELEMENT_TAG}-menu-content { margin: clamp(.75rem, 2cqw, 1.5rem); }
 .${ELEMENT_TAG}-menu-welcome { display: grid; align-self: start; gap: .9rem; max-width: 50rem; padding: 1.5rem; }

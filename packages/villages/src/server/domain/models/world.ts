@@ -1153,7 +1153,7 @@ export type VillageState = {
   foundedAt: string;
   /** Weather flavour. Random at founding so two villages of the same age differ. */
   seed: string;
-  /** Pinned by the player and by the villagers, oldest first. Empty at founding. */
+  /** Legacy Noticeboard notes, retained for saved-world compatibility and snapshot access. */
   noticeboard: VillageNotice[];
   /** Durable high-water mark for deterministic reconciliation. */
   simulatedThrough: string;

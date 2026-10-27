@@ -62,7 +62,7 @@ export function useExplorationViewport(host: HTMLElement, active: boolean): void
   }, [host, active]);
 }
 
-export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" | "visit" }) {
+export function MapIcon({ name }: { name: ExplorationTab | "close" | "visit" }) {
   const paths: Record<typeof name, ReactNode> = {
     map: (
       <>
@@ -95,12 +95,6 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" |
       </>
     ),
     close: <path d="m6 6 12 12M18 6 6 18" />,
-    notices: (
-      <>
-        <rect x="5" y="3" width="14" height="18" rx="2" />
-        <path d="M9 7h6M9 12h6M9 17h4" />
-      </>
-    ),
     visit: (
       <>
         <path d="M10 3H4v18h6M9 12h12m-4-4 4 4-4 4" />
@@ -287,31 +281,5 @@ export function LocationNavigator({
         ) : null}
       </div>
     </aside>
-  );
-}
-
-export function NoticesButton({
-  count,
-  disabled,
-  onSelect,
-}: {
-  count: number;
-  disabled: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={P + "-explore-notices"}
-      aria-label={`Notices (${count})`}
-      disabled={disabled}
-      onClick={onSelect}
-    >
-      <MapIcon name="notices" />
-      <span>Notices</span>
-      <span className={P + "-explore-badge"} aria-hidden="true">
-        {count}
-      </span>
-    </button>
   );
 }

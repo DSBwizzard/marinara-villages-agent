@@ -596,14 +596,6 @@
     },
     {
       "method": "post",
-      "path": "/noticeboard"
-    },
-    {
-      "method": "delete",
-      "path": "/noticeboard/:index"
-    },
-    {
-      "method": "post",
       "path": "/reconcile"
     },
     {

@@ -106,7 +106,7 @@ assert.ok(
 assert.ok(source.includes("onPlace(round4(x), round4(y), {"));
 assert.ok(source.includes("photoWidth: photoRect?.width"));
 assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-canvas`)"));
-assert.ok(source.includes("<NoticesButton"));
+assert.equal(source.includes("<NoticesButton"), false);
 assert.equal(source.includes('aria-label="Events (NYI)"'), false);
 assert.equal(source.includes("Force Village Update"), false);
 assert.equal(source.includes("FORCE_VILLAGE_UPDATE_NOTICE"), false);

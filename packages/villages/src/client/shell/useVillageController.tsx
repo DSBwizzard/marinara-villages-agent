@@ -138,9 +138,7 @@ import { useSceneRecord } from "../features/scenes/useSceneRecord.js";
 import { useScenesState } from "../features/scenes/useScenesState.js";
 import { useSceneViewport } from "../features/scenes/villages-scene-viewport.js";
 import {
-  useAddNotice,
   useInsertMacro,
-  useRemoveNotice,
   useSaveCharacterSpeechColors,
   useSaveScenerySettings,
   useSaveSendOnEnter,
@@ -473,8 +471,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setLorebookDraft,
     loreTokenBudgetDraft,
     setLoreTokenBudgetDraft,
-    noticeDraft,
-    setNoticeDraft,
     settingsError,
     setSettingsError,
     knowledgeRef,
@@ -1949,10 +1945,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const insertMacro = useInsertMacro({ knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft });
 
-  const addNotice = useAddNotice({ noticeDraft, setBusy, setNoticeDraft, setSettingsError, setSnapshot, snapshot });
-
-  const removeNotice = useRemoveNotice({ setBusy, setSettingsError, setSnapshot, snapshot });
-
   const needle = calculateNeedle({ search });
 
   const visibleCatalog = calculateVisibleCatalog({ catalog, needle });
@@ -2074,7 +2066,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     ...venueScreenCommands,
     element,
     visible,
-    addNotice,
     addVenue,
     addVillager,
     agendas,
@@ -2150,7 +2141,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     nameOfCharacter,
     navigationView,
     newSetupDraft,
-    noticeDraft,
     openArchivedVisit,
     openMenu,
     openPerson,
@@ -2181,7 +2171,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     progressDebug,
     refreshBusyId,
     refreshPreviews,
-    removeNotice,
     removeVenue,
     removeVillager,
     requestEdits,
@@ -2258,7 +2247,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setMoveTargetId,
     setMovingSetupVenueId,
     setNavigationView,
-    setNoticeDraft,
     setOpenArchivedVisit,
     setOpenPlaceId,
     setPersonProfile,
