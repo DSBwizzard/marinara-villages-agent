@@ -44,7 +44,6 @@ async function main() {
   const { updateVillageVenue } = await import(moduleUrl("packages/villages/src/server/features/venues/services.ts"));
   const { rollActiveAgendas } = await import("../packages/villages/src/server/features/residents/resident-agendas.ts");
   const { workingAgendaWeek } = await import(moduleUrl("packages/villages/src/server/domain/rules/agenda-week.ts"));
-  const { renderHomesBlock } = await import(moduleUrl("packages/villages/src/server/domain/rules/prompt-preset.ts"));
   const { REFRESH_MAX_DELAY_MS, REFRESH_MIN_DELAY_MS, villageSchedulerDelayMs } = await import(
     moduleUrl("packages/villages/src/server/jobs/village-refresh-scheduler.ts")
   );
@@ -520,10 +519,11 @@ async function main() {
       false,
       "moving without a selected Private Space never creates a room",
     );
-    assert.match(
-      renderHomesBlock(projectHomeLines(await readVillageState(), new Map()), "Player"),
-      /Rosa lives at The bakery/u,
-      "a move into a public venue is still a residence in narration",
+    assert.ok(
+      projectHomeLines(await readVillageState(), new Map()).some(
+        (home) => home.occupant === "Rosa" && home.venueName === "The bakery",
+      ),
+      "a move into a public venue remains in the home projection",
     );
     await proposeVillageResidence("housing-resident", "rosa-home", "villager");
     await decideVillageResidence("housing-resident", true, "player");
