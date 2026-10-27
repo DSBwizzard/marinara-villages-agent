@@ -59,7 +59,7 @@ const styles = `
 .${P}-workspace-content .${P}-venue-sections button[aria-pressed="true"]{background:#d9ad72;color:#18252d}
 .${P}-workspace-content .${P}-venue-profile-body{max-width:none;margin:0;padding:1rem;box-sizing:border-box}
 .${P}-workspace-about{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:1.5rem}
-.${P}-workspace-about h2{padding-bottom:.4rem;border-bottom:1px solid #607076}
+.${P}-workspace-facts h2{padding-bottom:.4rem;border-bottom:1px solid #607076}
 .${P}-workspace-about p{line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .${P}-workspace-facts{border-left:1px solid #53656a;padding-left:1rem}
 .${P}-workspace-facts dl{margin:0}.${P}-workspace-facts dl>div{display:grid;grid-template-columns:minmax(4rem,.75fr) minmax(0,1.25fr);gap:.5rem;padding:.5rem 0;border-bottom:1px solid #405157}

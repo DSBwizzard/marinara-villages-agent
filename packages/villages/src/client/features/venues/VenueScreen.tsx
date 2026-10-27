@@ -457,15 +457,14 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
         <header className={`${ELEMENT_TAG}-header ${ELEMENT_TAG}-workspace-venue-header`}>
           {place.presentation.image ? <img src={place.presentation.image.url} alt="" /> : null}
           <div>
-            <span className={`${ELEMENT_TAG}-venue-kicker`}>
-              {place.venueType || venueClassesFor(place).join(" · ")}
-            </span>
             <h1 className={`${ELEMENT_TAG}-title`}>{place.name}</h1>
             {place.form ? <p className={`${ELEMENT_TAG}-subtitle`}>{place.form}</p> : null}
           </div>
-          <button type="button" className={`${ELEMENT_TAG}-button`} disabled={navigationBusy} onClick={back}>
-            {room && room.status !== "closed" ? "Back to Scene" : "Back"}
-          </button>
+          {room && room.status !== "closed" ? (
+            <button type="button" className={`${ELEMENT_TAG}-button`} disabled={navigationBusy} onClick={back}>
+              Back to Scene
+            </button>
+          ) : null}
         </header>
         <nav className={`${ELEMENT_TAG}-venue-sections`} aria-label="Venue sections">
           {(["about", "zones", "manage"] as const).map((section) => (
@@ -489,7 +488,6 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
           {venueSection === "about" ? (
             <section className={`${ELEMENT_TAG}-workspace-about`} aria-label="About this venue">
               <div>
-                <h2>Overview</h2>
                 <p>{place.description || "No description yet."}</p>
                 {(place.constructionStatus === "worksite" || activeProject?.kind === "new-venue") && activeProject ? (
                   <button

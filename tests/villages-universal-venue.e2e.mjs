@@ -399,7 +399,10 @@ try {
         });
       }
     }
-    await profile.getByRole("button", { name: "Back", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "More", exact: true })
+      .click();
     await page.getByRole("button", { name: "Village Settings", exact: true }).click();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "View Venue", exact: true }).first().click();
