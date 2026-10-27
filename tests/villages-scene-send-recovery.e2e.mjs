@@ -138,7 +138,7 @@ try {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         if (loseOperationRead) return fulfill(route, { status: 404, json: { error: "Operation unavailable" } });
         value = { operation: session.operation };
-      } else if (path.includes("/rooms/archive/")) {
+      } else if (/\/rooms\/[^/]+\/recovery$/.test(path)) {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         value = { visit: session };
       } else if (path.endsWith("/interpretation-settings")) {

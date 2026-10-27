@@ -1,6 +1,6 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/scale, repair/http, repair/wishes
+// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/scale, repair/http, repair/wishes
 import assert from "node:assert/strict";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
@@ -751,6 +751,37 @@ await runCase("repair/retained-scenes", async () => {
   assert.ok(
     ((await f.gate.documents.getById("villages", "villages-venue-visit-held-scene"))!.data as any).sceneRevision > 9,
   );
+});
+await runCase("repair/correction-retained", async () => {
+  const f = await fixture(),
+    stamp = memoryTime(10);
+  const row = await f.gate.documents.create({
+    id: "villages-venue-visit-corrected",
+    packageId: "villages",
+    kind: "venue-visit",
+    name: "Library",
+    description: "",
+    data: {
+      version: 2,
+      id: "corrected",
+      villageSeed: "repair-world",
+      status: "closed",
+      placeName: "Library",
+      startedAt: stamp,
+      lines: [],
+      submissions: [],
+    },
+    createdAt: stamp,
+    updatedAt: stamp,
+  });
+  const correction = await f.prepare(
+    edit(repairId("scene", "corrected"), { text: "The door was blue." }, "correct-scene"),
+  );
+  await f.api.apply(correction.id);
+  assert.equal(await f.gate.documents.remove("villages", row.id, row.revision), true);
+  const retained = await f.api.inspect(repairId("scene", "corrected"));
+  assert.match(retained.title, /Library/);
+  assert.equal(retained.fields[0].value, "The door was blue.");
 });
 await runCase("repair/scale", async () => {
   const f = await fixture();

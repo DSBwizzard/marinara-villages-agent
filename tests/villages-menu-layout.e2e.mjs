@@ -108,7 +108,6 @@ const pages = [
   ["World Configuration", "village"],
   ["Visual Configuration", "visual"],
   ["Advanced", "advanced"],
-  ["Scene History", "chatlogs"],
   ["Venue Requests", "venueRequests"],
   ["Debug", "progress"],
 ];
@@ -236,9 +235,6 @@ try {
       await expect(main).toBeVisible();
       if (key === "general") {
         await expect(main.getByRole("combobox", { name: "Resident activity and Wishes" })).toBeVisible();
-      }
-      if (key === "chatlogs") {
-        await expect(root.getByRole("button", { name: "Force Village Update", exact: true })).toHaveCount(0);
       }
       if (key === "village") {
         await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toHaveCount(0);

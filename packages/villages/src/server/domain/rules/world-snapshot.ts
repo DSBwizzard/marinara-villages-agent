@@ -160,7 +160,6 @@ export function villageSettings(
   now = new Date(),
 ): VillageSettingsView {
   return {
-    visitRetention: village.visitRetention,
     promptKnowledge: village.promptKnowledge,
     defaultPromptKnowledge: VILLAGES_DEFAULT_KNOWLEDGE,
     promptBoxMaxLength: VILLAGES_PROMPT_BOX_MAX_LENGTH,

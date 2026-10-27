@@ -1,6 +1,7 @@
 import { createSceneNavigation } from "../features/scenes/scene-work-service.js";
 import { createSpriteWrites } from "../features/media/sprite-writes.js";
 import { createResidentSignatureTasks } from "../features/residents/resident-signature-tasks.js";
+import { createSceneWorkFence } from "../jobs/scene-work-fence.js";
 
 const workByStore = new WeakMap<object, ReturnType<typeof createBackendWork>>();
 function createBackendWork() {
@@ -8,6 +9,8 @@ function createBackendWork() {
     navigation: createSceneNavigation(),
     spriteWrites: createSpriteWrites(),
     signatureTasks: createResidentSignatureTasks(),
+    sceneFence: createSceneWorkFence(),
+    lateResponseFence: createSceneWorkFence(),
   };
 }
 

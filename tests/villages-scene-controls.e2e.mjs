@@ -246,7 +246,6 @@ try {
         ["village", "World Configuration"],
         ["visual", "Visual Configuration"],
         ["advanced", "Advanced"],
-        ["chatlogs", "Scene History"],
       ]) {
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "Proposals", exact: true }).click();

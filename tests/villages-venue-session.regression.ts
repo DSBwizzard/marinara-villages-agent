@@ -62,7 +62,6 @@ import { venueCardProfile } from "../packages/villages/src/server/domain/rules/v
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   listVenueVisits,
-  listVenueVisitSummaries,
   readVenueVisit,
   resetVenueSessions,
 } from "../packages/villages/src/server/features/scenes/archive.js";
@@ -1609,7 +1608,6 @@ async function main() {
     await mutateVillageState((state) => {
       state.venues.find((venue) => venue.id === "empty")!.occupancy.playerHome = false;
     });
-    assert.equal((await listVenueVisits({ placeId: "empty" })).length, 1);
     await mutateVillageState((state) => {
       state.noticeboard.push({ author: "Buster", text: "LEGACY_EVENT_POISON notice" });
     });
@@ -2326,10 +2324,8 @@ async function main() {
       }
     });
     // Outside setup changes belong to a new Scene, rather than rewriting the open snapshot.
-    const physicalSceneIds = new Set([group.id]);
     await endVenueSession(group.id);
     group = await greetVenue((await enterVenue("park")).id);
-    physicalSceneIds.add(group.id);
     const beforeChatRepair = calls;
     const chatRepair = await sendVenueTurn({
       sessionId: group.id,
@@ -2370,7 +2366,6 @@ async function main() {
       });
       await endVenueSession(group.id);
       group = await greetVenue((await enterVenue("park")).id);
-      physicalSceneIds.add(group.id);
     }
     const transferProofs = [];
     for (const mode of ["chat", "act", "fulfill"] as const) {
@@ -2697,9 +2692,6 @@ async function main() {
     await endVenueSession(group.id);
     assert.equal(await activeVenueSession(), null, "Visit ends only when the player leaves");
     assert.equal(memoryCalls, 0, "Scene close makes no memory generation request");
-    assert.equal((await listVenueVisits({ characterId: "bob" })).length, physicalSceneIds.size);
-    assert.equal((await listVenueVisits({ placeId: "park" })).length, physicalSceneIds.size);
-    assert.equal((await listVenueVisits({ placeId: "empty" })).length, 1);
 
     await mutateVillageState((state) => {
       state.villagers[1]!.agenda!.activeDay!.blocks[0]!.venueId = "park";
@@ -3038,7 +3030,7 @@ async function main() {
     const interruptedVisit = await requireLiveVenueSession(timed.id);
     assert.equal(interruptedVisit.status, "active");
     assert.equal(
-      (await listVenueVisitSummaries({ placeId: "park" })).visits.find((visit) => visit.id === timed.id)?.endReason,
+      (await listVenueVisits({ placeId: "park" })).find((visit) => visit.id === timed.id)?.endReason,
       undefined,
       "an unfinished Scene acquires no fabricated ending",
     );

@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import { renderProgressDebugPage } from "../features/background/ProgressDebugPage.js";
 import { renderProjectsPage } from "../features/projects/ProjectsPage.js";
 import { RepairPage } from "../features/repair/RepairPage.js";
-import { renderSceneArchivePage } from "../features/scenes/SceneArchivePage.js";
 import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsPage.js";
 import type { LocalDraftStatus, ReportLocalDraftStatus } from "../features/settings/local-draft-status.js";
 import { VillagesRuntimeDebug } from "../features/settings/RuntimeDebug.js";
@@ -17,11 +16,6 @@ import { MENU_PAGE_TITLES } from "./navigation.js";
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
   const {
-    archiveError,
-    archiveOffset,
-    archiveTotal,
-    archiveVenueId,
-    archiveVillagerId,
     backgroundPanel,
     connections,
     busy,
@@ -30,7 +24,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     generateRequestDescription,
     completeResidenceMove,
     decideResidenceMove,
-    deleteArchivedVisits,
     error,
     projectsController,
     goHome: rawGoHome,
@@ -42,12 +35,10 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     menuSection,
     mobile,
     nameOfCharacter,
-    openArchivedVisit,
     openMenu: rawOpenMenu,
     openPlace: rawOpenPlace,
     housingVenueId,
     setHousingVenueId,
-    openVisit,
     personalizeHomes,
     progressDebug,
     requestEdits,
@@ -58,17 +49,12 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     saveSendOnEnter,
     saveSettings,
     saveBackgroundPace,
-    saveVisitRetention,
     sceneryStyle,
     sceneryStyleProfileId,
     screen,
-    setArchiveOffset,
-    setArchiveVenueId,
-    setArchiveVillagerId,
     setFocusedProjectId,
     setLoreTokenBudgetDraft,
     setLorebookDraft,
-    setOpenArchivedVisit,
     setPersonalizeHomes,
     setPlacingProjectId,
     loadProgressDebug,
@@ -84,7 +70,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     siteProjectId,
     snapshot,
     startOver,
-    venueVisits,
     visualLoreDefault,
   } = controller;
   const [localDrafts, setLocalDrafts] = useState<Partial<Record<"world" | "map", NonNullable<LocalDraftStatus>>>>({});
@@ -159,7 +144,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
       { page: "village", label: "World Configuration" },
       { page: "visual", label: "Visual Configuration" },
       { page: "advanced", label: "Advanced" },
-      { page: "chatlogs", label: "Scene History" },
       { page: "venueRequests", label: "Venue Requests" },
       { page: "repair", label: "REPAIR" },
       { page: "progress", label: "Debug" },
@@ -251,7 +235,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               saveCharacterSpeechColors,
               saveSendOnEnter,
               saveBackgroundPace,
-              saveVisitRetention,
               setResetArmed,
               settingsError,
               snapshot,
@@ -312,26 +295,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
 
               {menuPage === "progress" && debugDiscardEnabled
                 ? renderProgressDebugPage({ error, progressDebug, loadProgressDebug })
-                : null}
-
-              {menuPage === "chatlogs"
-                ? renderSceneArchivePage({
-                    archiveError,
-                    archiveOffset,
-                    archiveTotal,
-                    archiveVenueId,
-                    archiveVillagerId,
-                    busy: busy,
-                    deleteArchivedVisits,
-                    openArchivedVisit,
-                    openVisit,
-                    setArchiveOffset,
-                    setArchiveVenueId,
-                    setArchiveVillagerId,
-                    setOpenArchivedVisit,
-                    snapshot,
-                    venueVisits,
-                  })
                 : null}
 
               {settingsError ? (

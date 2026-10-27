@@ -29,7 +29,7 @@ import {
 } from "./venue-session.js";
 import { continueSceneChange, dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
 import { activeVenueSession, touchVenueSession } from "./live-session.js";
-import { deleteAllVenueVisits, deleteVenueVisit, listVenueVisitSummaries, readVenueVisit } from "./archive.js";
+import { readVenueVisit } from "./archive.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerSceneEntryRoutes(engine: FastifyInstance) {
@@ -372,42 +372,11 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       return fail(reply, error, "ending a Scene");
     }
   });
-  app.get<{ Querystring: { venueId?: string; characterId?: string; offset?: string; limit?: string } }>(
-    "/rooms/archive",
-    async (request, reply) => {
-      try {
-        return await listVenueVisitSummaries({
-          placeId: request.query?.venueId,
-          characterId: request.query?.characterId,
-          offset: Number(request.query?.offset ?? 0),
-          limit: Number(request.query?.limit ?? 20),
-        });
-      } catch (error) {
-        return fail(reply, error, "listing Scenes");
-      }
-    },
-  );
-  app.get<{ Params: { id: string } }>("/rooms/archive/:id", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/rooms/:id/recovery", async (request, reply) => {
     try {
       return { visit: await readVenueVisit(request.params.id) };
     } catch (error) {
       return fail(reply, error, "reading a Scene");
-    }
-  });
-  app.delete<{ Params: { id: string } }>("/rooms/archive/:id", async (request, reply) => {
-    try {
-      await deleteVenueVisit(request.params.id);
-      return { deleted: true };
-    } catch (error) {
-      return fail(reply, error, "deleting a Scene");
-    }
-  });
-  app.delete("/rooms/archive", async (_request, reply) => {
-    try {
-      await deleteAllVenueVisits();
-      return { deleted: true };
-    } catch (error) {
-      return fail(reply, error, "deleting Scenes");
     }
   });
 }
