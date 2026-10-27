@@ -4,7 +4,7 @@ import { MapStage } from "./MapStage.js";
 import { ExplorationNavigation, LocationNavigator, MapIcon, NoticesButton } from "./villages-exploration.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { FullscreenToggle, HomeDateWeather, placeSpot } from "../../shared/presentation.js";
+import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
 import { useState } from "react";
 
@@ -133,7 +133,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
               onSelect={() => openMenu("noticeboard")}
             />
           ) : null}
-          {!mobile ? <FullscreenToggle /> : null}
           {placingProjectId ? (
             <button
               type="button"

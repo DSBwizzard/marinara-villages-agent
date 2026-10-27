@@ -298,7 +298,7 @@ try {
     await expect(home.getByRole("complementary", { name: "Places navigator" })).toHaveCount(0);
     if (!mobile) {
       await expect(page.getByRole("button", { name: "Places", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: /whole screen/u })).toBeVisible();
+      await expect(page.getByRole("button", { name: /whole screen/u })).toHaveCount(0);
       const stage = await home.locator(".marinara-capability-villages-stage").boundingBox();
       assert.ok(stage && stage.width <= width && stage.height <= height, "desktop fits the whole map");
       const bar = await home.locator(".marinara-capability-villages-home-bar").boundingBox();

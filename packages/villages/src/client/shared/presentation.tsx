@@ -9,7 +9,7 @@ import { ELEMENT_TAG } from "./constants.js";
 import type { EngineConnectionRow, VillageConnectionOption, VillagesStyledNode } from "./types.js";
 import { isHouse, venueClassesFor, venueSpaceFor } from "./venue.js";
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 
 /**
  * A stamp as a wall-clock time, or nothing when there is not one to read.
@@ -357,89 +357,6 @@ function weatherEmoji(weather: string): string {
   if (/frost/u.test(weather)) return "🥶";
   if (/hot|heat/u.test(weather)) return "☀️";
   return "🌤️";
-}
-
-/** The Engine's own node for this tab: everything the tab draws is inside it. */
-function hostOf(node: Element | null): HTMLElement | null {
-  return node?.closest<HTMLElement>(ELEMENT_TAG) ?? null;
-}
-
-/**
- * The way onto the whole screen, and the only way this tab has of getting one.
- *
- * The Engine cannot help here: its capability mount is a plain element in a tab
- * with no fullscreen control of its own, and GachaForge draws its own button for
- * exactly the same reason — so this one lives on the map with the rest of the
- * tab's controls rather than in a header this package does not have.
- *
- * The screen is asked for on the HOST, not on the map's frame. The host is the
- * one node a re-render does not replace, and a fullscreen element that is
- * replaced takes the fullscreen state with it — the map would go fullscreen and
- * then lose the screen the next time the snapshot arrived.
- *
- * It is not stateful beyond the one fact it has to draw. The browser is already
- * keeping the answer, so it is read back off document.fullscreenElement; a copy
- * in this component would be a second answer to the same question, and the two
- * would disagree the first time the player pressed Escape.
- */
-export function FullscreenToggle() {
-  const [full, setFull] = useState(false);
-  useEffect(() => {
-    const sync = () => setFull(hostOf(document.fullscreenElement) !== null);
-    sync();
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
-
-  // Some phones — an iPhone is the one that matters — will not give a page the
-  // whole screen at all. The button stays where it is and says so, because a
-  // control that comes and goes with the browser is a control nobody can find
-  // twice; there is nothing else this tab can offer in its place.
-  const available = document.fullscreenEnabled;
-  const label = available
-    ? full
-      ? "Leave the whole screen"
-      : "Use the whole screen"
-    : "This browser will not give the tab the whole screen";
-
-  return (
-    <button
-      type="button"
-      className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-icon-button`}
-      disabled={!available}
-      aria-pressed={full}
-      aria-label={label}
-      title={label}
-      onClick={(event: ReactMouseEvent<HTMLButtonElement>) => {
-        const host = hostOf(event.currentTarget);
-        if (!host) return;
-        if (document.fullscreenElement === host) {
-          void document.exitFullscreen().catch(() => undefined);
-          return;
-        }
-        const request = host.requestFullscreen?.();
-        if (request) void request.catch(() => undefined);
-      }}
-    >
-      {/* Inside out while the screen is ours: the same four corners pointing the
-          other way, rather than a different picture to learn. */}
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        focusable="false"
-      >
-        {full ? (
-          <path d="M9 4H5a1 1 0 0 0-1 1v4M15 4h4a1 1 0 0 1 1 1v4M9 20H5a1 1 0 0 1-1-1v-4M15 20h4a1 1 0 0 0 1-1v-4" />
-        ) : (
-          <path d="M9 3H4a1 1 0 0 0-1 1v5M15 3h5a1 1 0 0 1 1 1v5M9 21H4a1 1 0 0 1-1-1v-5M15 21h5a1 1 0 0 0 1-1v-5" />
-        )}
-      </svg>
-    </button>
-  );
 }
 
 /**
