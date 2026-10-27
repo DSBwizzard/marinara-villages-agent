@@ -476,6 +476,12 @@ try {
     await informationalRetryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
     await closeSceneErrors(page);
     const retryNext = page.getByRole("button", { name: "Next paragraph", exact: true });
+    await expect
+      .poll(
+        async () =>
+          (await retryNext.isEnabled()) || ((await composer.isVisible()) && (await composer.inputValue()) === ""),
+      )
+      .toBe(true);
     while (await retryNext.isEnabled()) await retryNext.click();
     await expect(composer).toHaveValue("");
     await expect(composer).toBeEnabled();
