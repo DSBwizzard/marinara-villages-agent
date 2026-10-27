@@ -207,6 +207,7 @@ try {
   await refresh();
   await expect(stack).toContainText(fulfilled.text);
   const second = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await mockEngineLookups(second);
   await mount(second);
   await expect(second.locator("[aria-label='World changes']")).toContainText(fulfilled.text);
   await page.getByRole("button", { name: "Dismiss " + fulfilled.text }).click();

@@ -23,6 +23,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     archiveVenueId,
     archiveVillagerId,
     backgroundPanel,
+    connections,
     busy,
     debugDiscardEnabled,
     decideVenueRequest,
@@ -242,6 +243,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             </section>
           ) : ["index", "general", "advanced"].includes(menuPage) ? (
             renderGeneralSettingsPage({
+              connections,
               category: menuPage === "advanced" ? "advanced" : "general",
               writing: controller.writing,
               busy: busy || navigationBusy,

@@ -53,6 +53,7 @@ export type MenuScreenController = {
   readonly archiveVillagerId: ScenesState["archiveVillagerId"];
   readonly backgroundPanel: React.JSX.Element;
   readonly writing: ReturnType<typeof import("../features/settings/WritingSettings.js").useVillageWriting>;
+  readonly connections: ReturnType<typeof import("../features/settings/AgentConnections.js").useAgentConnections>;
   readonly busy: boolean;
   readonly debugDiscardEnabled: ScenesState["debugDiscardEnabled"];
   readonly decideVenueRequest: ReturnType<typeof useDecideVenueRequest>;
