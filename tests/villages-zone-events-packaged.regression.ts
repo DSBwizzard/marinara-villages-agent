@@ -1719,6 +1719,118 @@ try {
   assert.equal(state().zoneId, "terrace");
   assert.deepEqual(state().submissions.at(-1).semanticPlayerMoves, []);
 
+  // Packaged intent validation preserves drafts, frozen evidence and explicit retry accounting.
+  {
+    const retained = clone(records),
+      oldIntent = clone(semanticIntentAnswer);
+    const localMessage = "*I wave to Aqua.*";
+    semanticIntentAnswer = {
+      status: "resolved",
+      instructions: "",
+      action: null,
+      movement: null,
+      timeline: [{ kind: "action", text: localMessage, zoneId: "terrace", targetId: "aqua" }],
+    };
+    const beforeLocal = clone(state()),
+      beforeWorld = clone(records.get("villages-village"));
+    await turn("local-zone-annotation", localMessage, [{ text: "You wave to Aqua." }]);
+    assert.equal(state().zoneId, beforeLocal.zoneId);
+    assert.deepEqual(state().sceneAttendance, beforeLocal.sceneAttendance);
+    assert.deepEqual(
+      records.get("villages-village").data.venues,
+      beforeWorld.data.venues,
+      "Local annotations grant no physical/access effects",
+    );
+    assert.deepEqual(records.get("villages-village").data.villagers, beforeWorld.data.villagers);
+    assert.deepEqual(state().submissions.at(-1).semanticPlayerMoves, []);
+    for (const [id, message, timeline, error] of [
+      ["prefix", "*I wave.* *I smile.*", [{ kind: "action", text: "*I smile.*" }], /omits player input/],
+      [
+        "middle",
+        "*I wave.* *I nod.* *I smile.*",
+        [
+          { kind: "action", text: "*I wave.*" },
+          { kind: "action", text: "*I smile.*" },
+        ],
+        /omits player input/,
+      ],
+      ["suffix", "*I wave.* *I smile.*", [{ kind: "action", text: "*I wave.*" }], /omits player input/],
+      [
+        "zone",
+        "*I wave.* *I smile.*",
+        [{ kind: "action", text: "*I wave.* *I smile.*", zoneId: "kitchen" }],
+        /invalid Zone metadata/,
+      ],
+    ] as const) {
+      records.clear();
+      for (const [key, value] of clone(retained)) records.set(key, value);
+      semanticIntentAnswer = { status: "resolved", instructions: "", action: null, movement: null, timeline };
+      answer = {
+        playerSpeechCapture: { status: "silent", utterances: [] },
+        residentActions: [],
+        segments: [{ text: "You greet Aqua with a wave and a smile." }],
+      };
+      const before = clone(state()),
+        worldBefore = clone(records.get("villages-village"));
+      const payload = {
+        sessionId: scene.id,
+        submissionId: "timeline-" + id,
+        mode: "chat",
+        targetId: "",
+        message,
+        expectedSceneRevision: state().sceneRevision,
+      };
+      const callsBefore = modelCalls,
+        writingBefore = narrationCalls;
+      const rejected = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+      assert.equal(rejected.statusCode, 502, rejected.body);
+      assert.match(rejected.body, error);
+      assert.equal(modelCalls, callsBefore + 2, "Invalid intent triggers no automatic replacement");
+      assert.deepEqual(state().lines, before.lines);
+      assert.deepEqual(state().submissions, before.submissions);
+      assert.deepEqual(state().heardHistory, before.heardHistory);
+      assert.deepEqual(state().sceneAttendance, before.sceneAttendance);
+      assert.deepEqual(records.get("villages-village"), worldBefore);
+      assert.equal(state().operation.input.message, message);
+      const snapshots = Object.entries(state().operation.checkpoints).filter(([key]) => key.endsWith(":input"));
+      assert(snapshots.length > 0);
+      const frozen = JSON.stringify(snapshots);
+      const blocked = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+      assert.equal(blocked.statusCode, 409, blocked.body);
+      assert.equal(modelCalls, callsBefore + 2);
+      await stop?.();
+      await app.close();
+      app = Fastify();
+      await start();
+      semanticIntentAnswer = {
+        status: "resolved",
+        instructions: "",
+        action: null,
+        movement: null,
+        timeline: [{ kind: "action", text: message, zoneId: "terrace" }],
+      };
+      let retrySnapshots = "";
+      beforeSemanticResponse = () => {
+        retrySnapshots = JSON.stringify(
+          Object.entries(state().operation.checkpoints).filter(([key]) => key.endsWith(":input")),
+        );
+      };
+      const retryPayload = { ...payload, retryOfAttemptId: state().operation.attemptId };
+      const recovered = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: retryPayload });
+      assert.equal(recovered.statusCode, 200, recovered.body);
+      assert.equal(modelCalls, callsBefore + 3, "Explicit retry repeats only the rejected System interpretation");
+      assert.equal(narrationCalls, writingBefore + 1, "Recovery preserves the saved Narration");
+      assert.equal(retrySnapshots, frozen, "Retry dispatch preserves the frozen prompt/input byte for byte");
+      assert.equal(state().submissions.filter((row: any) => row.id === payload.submissionId).length, 1);
+      const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: retryPayload });
+      assert.equal(replay.statusCode, 200, replay.body);
+      assert.equal(modelCalls, callsBefore + 3, "Accepted recovery replays without another model request");
+    }
+    records.clear();
+    for (const [key, value] of clone(retained)) records.set(key, value);
+    semanticIntentAnswer = oldIntent;
+  }
+
   // The whole mixed submission is an expected rejection, before consistency/effect review.
   {
     const retained = clone(records),
