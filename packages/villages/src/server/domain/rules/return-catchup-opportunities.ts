@@ -29,16 +29,18 @@ export function returnCatchupOpportunities(
   const windowStart = Math.max(start, end - 7 * 24 * HOUR);
   const candidates: ResidentPlanningOpportunity[] = [];
   const seen = new Set<string>();
+  const omissions = new Set<string>();
   const residents = captured.villagers.filter((resident) => {
     const joined = Date.parse(resident.addedAt),
       card = Date.parse(resident.cardSnapshot.capturedAt);
-    return (
+    const eligible =
       Number.isFinite(joined) &&
       joined <= start &&
       Number.isFinite(card) &&
       card <= start &&
-      !openingPresence(captured, resident.characterId)
-    );
+      !openingPresence(captured, resident.characterId);
+    if (!eligible) omissions.add("Some residents lacked departure-time identity or were held by the opening.");
+    return eligible;
   });
   const day = new ZonedDate(windowStart, zone);
   day.setHours(0, 0, 0, 0);
@@ -88,11 +90,24 @@ export function returnCatchupOpportunities(
       const awake: string[] = [];
       for (const { resident, blocks } of schedules) {
         const block = blocks.find((row) => row.startMinute <= minute && row.endMinute > minute);
-        if (!block || /\b(?:sleep(?:ing)?|asleep|hibernate|hibernating|dormant)\b/iu.test(block.activity)) continue;
+        if (!block) {
+          omissions.add("Some intervals had no saved resident routine.");
+          continue;
+        }
+        if (/\b(?:sleep(?:ing)?|asleep|hibernate|hibernating|dormant)\b/iu.test(block.activity)) {
+          omissions.add("Sleeping intervals were skipped.");
+          continue;
+        }
         awake.push(resident.characterId);
-        if (!block.venueId) continue;
+        if (!block.venueId) {
+          omissions.add("Some routines did not identify a Venue for an encounter.");
+          continue;
+        }
         const venue = captured.venues.find((row) => row.id === block.venueId);
-        if (!venue || venue.constructionStatus === "worksite") continue;
+        if (!venue || venue.constructionStatus === "worksite") {
+          omissions.add("Some scheduled Venues were unavailable.");
+          continue;
+        }
         const place = villagerPlaceView(projected, resident, null, minute, at);
         if (
           !place ||
@@ -100,8 +115,10 @@ export function returnCatchupOpportunities(
           !place.zoneId ||
           (block.zoneId && block.zoneId !== place.zoneId) ||
           !canEnter(projected, venue.id, place.zoneId, resident.characterId, at)
-        )
+        ) {
+          omissions.add("Some scheduled Zones could not be verified or entered.");
           continue;
+        }
         const key = JSON.stringify([venue.id, place.zoneId]);
         groups.set(key, [...(groups.get(key) ?? []), resident.characterId]);
       }
@@ -146,12 +163,13 @@ export function returnCatchupOpportunities(
   ]
     .slice(0, cap)
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  if (candidates.length > chosen.length) omissions.add("Further opportunities exceeded the remaining allowance.");
   return {
     opportunities: chosen,
-    reason: chosen.length
-      ? windowStart > start
-        ? "Grounded in the saved departure context; only the latest seven days were considered."
-        : "Grounded in the saved departure context."
-      : "No grounded resident opportunity was available.",
+    reason: [
+      chosen.length ? "Grounded in the saved departure context." : "No grounded resident opportunity was available.",
+      ...(windowStart > start ? ["Only the latest seven days were considered."] : []),
+      ...omissions,
+    ].join(" "),
   };
 }

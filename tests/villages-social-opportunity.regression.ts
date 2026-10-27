@@ -284,9 +284,11 @@ assert.ok(
   ),
   "A fallback Zone does not turn an inaccessible scheduled Zone into an encounter.",
 );
+assert.match(returnCatchupOpportunities(inaccessible, now, afterTwoHours, 3).reason, /Zones could not be verified/);
 const sleeping = structuredClone(capture);
 for (const resident of sleeping.villagers) resident.agenda!.activeDay!.blocks[0]!.activity = "Sleeping";
 assert.deepEqual(returnCatchupOpportunities(sleeping, now, afterTwoHours, 3).opportunities, []);
+assert.match(returnCatchupOpportunities(sleeping, now, afterTwoHours, 3).reason, /Sleeping intervals/);
 const longAbsence = structuredClone(capture);
 for (const resident of longAbsence.villagers) {
   delete resident.agenda!.routineProfile;
