@@ -1,4 +1,4 @@
-// Test cases: repair/review, repair/memory-undo, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/retained-scenes, repair/scale, repair/http
+// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/retained-scenes, repair/scale, repair/http
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
@@ -185,6 +185,25 @@ await runCase("repair/memory-undo", async () => {
   assert.ok(current.memories.revision > revision);
   assert.equal(projectMemories(current.memories, ["player"])[0].text, before.memories.records[0].text);
   assert.deepEqual(sceneMemories(current, "frozen"), sceneMemories(before, "frozen"));
+});
+await runCase("repair/add-memory", async () => {
+  const f = await fixture(),
+    text = "I had the most slamming ham and cheese sandwich";
+  const request = { ...edit(repairId("new-memory"), { text }, "add-sandwich"), knowers: ["player"] };
+  const review = await f.prepare(request);
+  assert.deepEqual(review.memory, { creating: true, people: ["Your Persona"] });
+  assert.equal(review.changes.length, 1, "A new memory has one content change, separate from its recipients");
+  assert.equal(review.changes[0].before, "");
+  assert.equal(review.changes[0].after, text);
+  assert.ok(!review.affected.includes(text), "Memory text is not repeated as an affected-record label");
+  await f.api.apply(review.id);
+  const added = (await f.read()).memories.records.find((row) => row.id === "player-repair:add-sandwich")!;
+  assert.equal(added.text, text);
+  assert.deepEqual(Object.keys(added.knowers), ["player"]);
+  const inverse = await f.api.undo(review.id, "undo-sandwich");
+  assert.equal(inverse.changes.filter((change) => change.before === text).length, 1);
+  await f.api.apply(inverse.id);
+  assert.ok(!projectMemories((await f.read()).memories, ["player"]).some((row) => row.id === added.id));
 });
 await runCase("repair/checkpoints", async () => {
   const f = await fixture();

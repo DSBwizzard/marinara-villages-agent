@@ -33,6 +33,7 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-notice button{margin-left:8px;}
 .villages-repair .repair-error{color:var(--repair-warn);}
 .villages-repair .repair-layout{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:20px;align-items:start;}
+.villages-repair .repair-layout[data-single=true]{grid-template-columns:minmax(0,1fr);max-width:800px;}
 .villages-repair .repair-panel{background:var(--repair-paper);border:1px solid var(--repair-line);border-radius:9px;padding:19px;min-width:0;}
 .villages-repair .repair-panel+.repair-panel{margin-top:14px;}
 .villages-repair .repair-search{display:flex;gap:10px;margin:20px 0;}
@@ -56,6 +57,8 @@ export const REPAIR_STYLES = `
 .villages-repair blockquote{margin:8px 0 13px;padding-left:12px;border-left:3px solid var(--repair-line);white-space:pre-wrap;}
 .villages-repair .repair-buttons{display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap;margin-top:22px;}
 .villages-repair .repair-comparison{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:15px;}
+.villages-repair .repair-comparison>h2{grid-column:1/-1;margin-bottom:0;}
+.villages-repair .repair-addition{margin-bottom:20px;}
 .villages-repair .repair-comparison>div{padding:16px;border:1px solid var(--repair-line);background:var(--repair-paper);border-radius:7px;min-width:0;}
 .villages-repair .repair-comparison>div:last-child{background:var(--repair-mark);}
 .villages-repair .repair-comparison p{margin:8px 0 0;}

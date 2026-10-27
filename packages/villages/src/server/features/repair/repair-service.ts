@@ -153,6 +153,8 @@ function recordChanges(before: RepairRecord[], after: RepairRecord[], selectedId
     if (old?.token === row.token) continue;
     affected.push(row.title);
     for (const field of row.fields) {
+      // Per-person wording below is the authoritative memory comparison.
+      if (row.topic === "memories" && field.key === "text" && row.people?.some((p) => p.text !== undefined)) continue;
       const previous = old?.fields.find((f) => f.key === field.key);
       if (String(previous?.value ?? "") !== String(field.value))
         changes.push({
@@ -183,7 +185,11 @@ function recordChanges(before: RepairRecord[], after: RepairRecord[], selectedId
   }
   for (const removed of prior.values()) {
     affected.push(removed.title);
-    changes.push({ label: removed.title, before: removed.summary, after: "Removed from current records" });
+    if (removed.topic === "memories" && removed.people?.some((person) => person.text !== undefined)) {
+      for (const person of removed.people)
+        if (person.text !== undefined && !person.forgotten)
+          changes.push({ label: `${person.name} · memory`, before: person.text, after: "Forgotten" });
+    } else changes.push({ label: removed.title, before: removed.summary, after: "Removed from current records" });
   }
   return { changes, affected };
 }
@@ -589,7 +595,7 @@ export function createRepairService(ports: RepairPorts) {
           "venue",
           "saved-domain",
         ].includes(kind);
-      let before: HistoryData["memoryBefore"];
+      let before: HistoryData["memoryBefore"], addedText: string | undefined;
       if (kind === "memory") {
         const target = state.memories.records.find((r) => r.id === id)!,
           root = state.memories.records.find((r) => r.id === target.rootId)!;
@@ -604,6 +610,7 @@ export function createRepairService(ports: RepairPorts) {
       const after = await allRecords(request.inspection, includeMemories, includeArchives);
       if (kind === "new-memory") {
         const added = after.state.memories.records.find((r) => r.id === "player-repair:" + request.operationId)!;
+        addedText = added.text;
         before = {
           id: added.id,
           knowers: Object.fromEntries(
@@ -622,6 +629,7 @@ export function createRepairService(ports: RepairPorts) {
         : undefined;
       return {
         record,
+        addedText,
         before,
         memoryGuard,
         seed: state.seed,
@@ -635,7 +643,8 @@ export function createRepairService(ports: RepairPorts) {
     const { record, before, seed, consequential } = simulation.value,
       [kind] = repairParts(record.id);
     const diff = recordChanges(simulation.value.beforeRecords, simulation.value.afterRecords, record.id),
-      changedFields = diff.changes,
+      changedFields =
+        kind === "new-memory" ? [{ label: "Memory", before: "", after: simulation.value.addedText! }] : diff.changes,
       affectedRecords = diff.affected;
     if (request.action !== "correct")
       changedFields.push({
@@ -644,9 +653,19 @@ export function createRepairService(ports: RepairPorts) {
         after: record.actions.find((a) => a.id === request.action)?.label ?? request.action,
       });
     if (!changedFields.length) throw badRequest("Change a value before reviewing.");
-    const affected = [...new Set([record.title, ...affectedRecords])];
-    if (record.people) affected.push(...request.knowers.map((k) => record.people!.find((p) => p.id === k)?.name ?? k));
-    if (kind === "memory" || kind === "new-memory")
+    const memory = ["memory", "new-memory"].includes(kind)
+      ? {
+          creating: kind === "new-memory",
+          people: request.knowers.map((k) => record.people!.find((p) => p.id === k)!.name),
+        }
+      : undefined;
+    const affected =
+      kind === "new-memory"
+        ? memory!.people.map((name) => `${name} · Memories`)
+        : [...new Set([record.title, ...affectedRecords])];
+    if (record.people && kind !== "new-memory")
+      affected.push(...request.knowers.map((k) => record.people!.find((p) => p.id === k)?.name ?? k));
+    if (kind === "memory")
       affected.push("Remembered knowledge only; physical state and completion records stay separate.");
     if (kind === "zone") affected.push("Future Scene physical context and artwork eligibility.");
     if (kind === "access") affected.push("Future entry and management checks.");
@@ -672,6 +691,7 @@ export function createRepairService(ports: RepairPorts) {
       related: record.related,
       checkpoint: consequential,
       undoAvailable: !!before || documentUndo,
+      ...(memory ? { memory } : {}),
     };
     const inverse = documentUndo
       ? { ...request, operationId: "", values: Object.fromEntries(record.fields.map((f) => [f.key, f.value])) }
@@ -853,6 +873,16 @@ export function createRepairService(ports: RepairPorts) {
       title: `Undo ${saved.title}`,
       changes: result.value.changes,
       affected: result.value.affected,
+      ...(saved.memoryBefore
+        ? {
+            memory: {
+              creating: false,
+              people: saved.request.knowers.map(
+                (k) => saved.record?.people?.find((p) => p.id === k)?.name ?? "Former resident",
+              ),
+            },
+          }
+        : {}),
       related: [],
       checkpoint: false,
       undoAvailable: false,

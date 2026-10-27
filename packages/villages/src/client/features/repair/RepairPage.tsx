@@ -2,7 +2,7 @@ import type { RepairTopic, RepairValue } from "../../../shared/contracts/repair.
 import type { RepairController } from "./useRepairController.js";
 import { REPAIR_STYLES } from "./repair-styles.js";
 const topics: { id: RepairTopic; name: string; description: string }[] = [
-  { id: "memories", name: "Memories", description: "Correct, forget, or record a missing detail." },
+  { id: "memories", name: "Memories", description: "Edit, add, or forget a memory." },
   { id: "people", name: "People", description: "Character context, relationships, and routines." },
   { id: "places", name: "Places", description: "Venues, Zones, objects, homes, and access." },
   { id: "world", name: "World & history", description: "Setting, founding details, and Scene corrections." },
@@ -20,6 +20,8 @@ export function RepairPage({
 }) {
   const currentTopic = topics.find((t) => t.id === c.topic)!;
   const isRestore = c.review?.kind === "restore";
+  const addingMemory = c.review?.memory?.creating === true;
+  const hasSource = !!c.selected?.source.length || !!c.selected?.related.length;
   const display = (value: RepairValue | undefined) =>
     typeof value === "boolean" ? (value ? "Yes" : "No") : String(value ?? "");
   const value = (key: string, next: RepairValue) => c.update({ values: { ...c.draft?.values, [key]: next } });
@@ -52,9 +54,17 @@ export function RepairPage({
               : c.view === "edit"
                 ? c.selected?.title
                 : c.view === "review"
-                  ? "Review repair"
+                  ? addingMemory
+                    ? "Add memory"
+                    : "Review changes"
                   : c.view === "done"
-                    ? "Repair applied"
+                    ? c.review?.kind === "undo"
+                      ? "Changes undone"
+                      : isRestore
+                        ? "Checkpoint restored"
+                        : addingMemory
+                          ? "Memory added"
+                          : "Changes saved"
                     : c.view === "history"
                       ? "Repair history"
                       : "Backups & repairs"}
@@ -144,7 +154,7 @@ export function RepairPage({
                   onClick={() => void c.open(r.id)}
                 >
                   <strong>{r.title}</strong>
-                  <small>{r.summary}</small>
+                  {r.summary ? <small>{r.summary}</small> : null}
                 </button>
               ))}
             </div>
@@ -174,7 +184,7 @@ export function RepairPage({
           </>
         ) : null}
         {c.view === "edit" && c.selected && c.draft ? (
-          <div className="repair-layout">
+          <div className="repair-layout" data-single={!hasSource}>
             <section className="repair-panel repair-editor">
               {c.selected.actions.length > 1 ? (
                 <div className="repair-actions" role="group" aria-label="Repair action">
@@ -194,10 +204,12 @@ export function RepairPage({
               {c.selected.fields.map((f) => (
                 <div className="repair-field" key={f.key}>
                   <label htmlFor={`repair-${f.key}`}>{f.label}</label>
-                  <div className="repair-current">
-                    <small>Current</small>
-                    <p>{display(f.value) || "None"}</p>
-                  </div>
+                  {!c.selected.creating ? (
+                    <div className="repair-current">
+                      <small>Current</small>
+                      <p>{display(f.value) || "None"}</p>
+                    </div>
+                  ) : null}
                   {f.type === "choice" ? (
                     <select
                       id={`repair-${f.key}`}
@@ -245,7 +257,7 @@ export function RepairPage({
               ))}
               {c.selected.people ? (
                 <fieldset>
-                  <legend>Apply to</legend>
+                  <legend>{c.selected.creating ? "Who remembers this?" : "Apply to"}</legend>
                   <div className="repair-audience">
                     {c.selected.people.map((p) => (
                       <label key={p.id}>
@@ -284,69 +296,78 @@ export function RepairPage({
                   Back to records
                 </button>
                 <button type="button" className="repair-primary" disabled={c.busy} onClick={() => void c.prepare()}>
-                  Review repair
+                  Review changes
                 </button>
               </div>
             </section>
-            <aside className="repair-source">
-              <section className="repair-panel">
-                <h2>Source</h2>
+            {hasSource ? (
+              <aside className="repair-source">
                 {c.selected.source.length ? (
-                  c.selected.source.map((s, i) => <blockquote key={i}>{s}</blockquote>)
-                ) : (
-                  <p>Player-authored record</p>
-                )}
-              </section>
-              {c.selected.related.length ? (
-                <section className="repair-panel">
-                  <h2>Related records</h2>
-                  {c.selected.related.map((r) => (
-                    <p key={r.id}>
-                      <button type="button" disabled={c.busy} onClick={() => void c.open(r.id)}>
-                        {r.title}
-                      </button>
-                    </p>
-                  ))}
-                  <small>Requires its own review.</small>
-                </section>
-              ) : null}
-            </aside>
+                  <section className="repair-panel">
+                    <h2>Source</h2>
+                    {c.selected.source.map((s, i) => (
+                      <blockquote key={i}>{s}</blockquote>
+                    ))}
+                  </section>
+                ) : null}
+                {c.selected.related.length ? (
+                  <section className="repair-panel">
+                    <h2>Related records</h2>
+                    {c.selected.related.map((r) => (
+                      <p key={r.id}>
+                        <button type="button" disabled={c.busy} onClick={() => void c.open(r.id)}>
+                          {r.title}
+                        </button>
+                      </p>
+                    ))}
+                    <small>Requires its own review.</small>
+                  </section>
+                ) : null}
+              </aside>
+            ) : null}
           </div>
         ) : null}
         {c.view === "review" && c.review ? (
           <>
-            <p className="repair-muted">{c.review.title}</p>
-            {c.review.changes.map((change, i) => (
-              <section key={i} className="repair-comparison" aria-label={change.label}>
-                <div>
-                  <small>{change.label} · Before</small>
-                  <p>{change.before || "None"}</p>
-                </div>
-                <div>
-                  <small>After</small>
-                  <p>{change.after || "None"}</p>
-                </div>
+            {!c.review.memory ? <p className="repair-muted">{c.review.title}</p> : null}
+            {addingMemory ? (
+              <section className="repair-panel repair-addition" aria-label="Memory to add">
+                <h2>Memory</h2>
+                <p>{c.review.changes[0]?.after}</p>
               </section>
-            ))}
+            ) : (
+              c.review.changes.map((change, i) => (
+                <section key={i} className="repair-comparison" aria-label={change.label}>
+                  <h2>{change.label}</h2>
+                  <div>
+                    <small>Before</small>
+                    <p>{change.before || "None"}</p>
+                  </div>
+                  <div>
+                    <small>After</small>
+                    <p>{change.after || "None"}</p>
+                  </div>
+                </section>
+              ))
+            )}
             <div className="repair-layout">
               <section className="repair-panel">
-                <h2>What this affects</h2>
+                <h2>{c.review.memory ? (addingMemory ? "Who remembers this?" : "Applies to") : "Affected records"}</h2>
                 <ul>
-                  {c.review.affected.map((effect, i) => (
+                  {(c.review.memory?.people ?? c.review.affected).map((effect, i) => (
                     <li key={i}>{effect}</li>
                   ))}
                 </ul>
               </section>
               <aside className="repair-panel">
-                <h2>Recovery</h2>
+                <h2>{c.review.checkpoint ? "Checkpoint" : "Undo"}</h2>
                 <p>
                   {c.review.checkpoint
-                    ? "Creates a checkpoint before applying."
+                    ? "Created before saving."
                     : c.review.undoAvailable
-                      ? "Previous values are saved for safe undo."
-                      : "This action has no direct undo. Saved evidence is retained."}
+                      ? "Available in Repair history."
+                      : "Unavailable for this action."}
                 </p>
-                <small>No model request.</small>
                 {c.review.related.map((r) => (
                   <p key={r.id}>{r.title} · Separate repair</p>
                 ))}
@@ -374,15 +395,22 @@ export function RepairPage({
                 disabled={c.busy || (isRestore && !c.restoreAcknowledged)}
                 onClick={() => void c.apply()}
               >
-                {c.busy ? "Saving…" : isRestore ? "Restore checkpoint" : "Apply repair"}
+                {c.busy
+                  ? "Saving…"
+                  : isRestore
+                    ? "Restore checkpoint"
+                    : addingMemory
+                      ? "Add memory"
+                      : c.review.kind === "undo"
+                        ? "Undo changes"
+                        : "Save changes"}
               </button>
             </div>
           </>
         ) : null}
         {c.view === "done" ? (
           <section className="repair-done">
-            <p>{c.review?.title}</p>
-            <p className="repair-muted">Saved with its previous values and selected scope.</p>
+            {!c.review?.memory ? <p>{c.review?.title}</p> : null}
             {c.preservedDraft ? (
               <div className="repair-panel">
                 <h2>Kept Scene draft · {c.preservedDraft.title}</h2>

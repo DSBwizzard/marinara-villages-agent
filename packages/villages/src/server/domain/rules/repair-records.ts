@@ -96,9 +96,12 @@ export function worldRepairRecords(state: VillageState, inspection: boolean, inc
         `${row.kind} · ${new Date(row.occurredAt).toLocaleDateString("en-US")}`,
         [text("text", "Remembered wording", row.text)],
         {
-          source: inspection
-            ? Object.values(stored.knowers).flatMap((k) => k.support.map((e) => e.excerpt))
-            : [...Object.values(row.knowers).flatMap((k) => k.support.map((e) => e.excerpt))],
+          source:
+            stored.origin.kind === "domain" && stored.origin.id.startsWith("player-repair:")
+              ? ["Added by you"]
+              : inspection
+                ? Object.values(stored.knowers).flatMap((k) => k.support.map((e) => e.excerpt))
+                : [...Object.values(row.knowers).flatMap((k) => k.support.map((e) => e.excerpt))],
           actions: [
             ...actions,
             { id: "forget", label: "Forget" },
@@ -128,17 +131,11 @@ export function worldRepairRecords(state: VillageState, inspection: boolean, inc
         },
       );
     }
-    add(
-      ["new-memory"],
-      "memories",
-      "Record a missing memory",
-      "Player-authored addition",
-      [text("text", "Missing detail", "")],
-      {
-        people: inspection ? people : [people[0]],
-        source: ["Player-authored repair. No fictional Scene or witnessed event is created."],
-      },
-    );
+    add(["new-memory"], "memories", "Add memory", "", [text("text", "Memory", "")], {
+      people: inspection ? people : [people[0]],
+      source: [],
+      creating: true,
+    });
   }
   for (const person of state.villagers) {
     const id = person.characterId,

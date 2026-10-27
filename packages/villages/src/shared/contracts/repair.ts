@@ -22,6 +22,7 @@ export type RepairRecord = {
   private?: boolean;
   revision?: number;
   token?: string;
+  creating?: boolean;
 };
 export type RepairRequest = {
   operationId: string;
@@ -42,6 +43,7 @@ export type RepairReview = {
   related: RepairRecord["related"];
   checkpoint: boolean;
   undoAvailable: boolean;
+  memory?: { creating: boolean; people: string[] };
 };
 export type RepairHistoryEntry = {
   id: string;

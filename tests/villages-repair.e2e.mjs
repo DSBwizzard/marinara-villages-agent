@@ -54,6 +54,19 @@ try {
         ],
         related: [],
       };
+      const addition = {
+        id: '["new-memory"]',
+        token: "current-addition",
+        topic: "memories",
+        title: "Add memory",
+        summary: "",
+        creating: true,
+        fields: [{ key: "text", label: "Memory", type: "text", value: "" }],
+        source: [],
+        people: [{ id: "player", name: "Your Persona" }],
+        actions: [{ id: "correct", label: "Correct" }],
+        related: [],
+      };
       const session = {
         id: "repair-scene",
         version: 2,
@@ -99,11 +112,23 @@ try {
         const json = (value) => fulfill(route, { json: value });
         if (path === "/rooms/active") return json({ session });
         if (path === "/repair") return json(index());
-        if (path === "/repair/records") return json({ records: [record], total: 1, next: null });
-        if (path === "/repair/record") return json(record);
+        if (path === "/repair/records") return json({ records: [record, addition], total: 2, next: null });
+        if (path === "/repair/record") return json(url.searchParams.get("id") === addition.id ? addition : record);
         if (path === "/repair/review") {
           const body = route.request().postDataJSON();
           text = body.values.text;
+          if (body.recordId === addition.id)
+            return json({
+              kind: "repair",
+              id: body.operationId,
+              title: addition.title,
+              changes: [{ label: "Memory", before: "", after: text }],
+              affected: ["Your Persona · Memories"],
+              related: [],
+              checkpoint: false,
+              undoAvailable: true,
+              memory: { creating: true, people: ["Your Persona"] },
+            });
           return json({
             kind: "repair",
             id: body.operationId,
@@ -112,6 +137,8 @@ try {
             affected: ["Your Persona", "Physical gameplay state stays separate."],
             related: [],
             checkpoint: false,
+            undoAvailable: true,
+            memory: { creating: false, people: ["Your Persona"] },
           });
         }
         if (path === "/repair/apply") {
@@ -154,9 +181,7 @@ try {
         color: getComputedStyle(el).color,
       }));
       assert.equal(colors.background, "rgb(246, 245, 239)");
-      await page
-        .getByRole("button", { name: "Memories Correct, forget, or record a missing detail.", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
       await page.getByRole("button", { name: /The workshop key Shared recollection/ }).click();
       await page
         .getByRole("textbox", { name: "Remembered wording", exact: true })
@@ -171,16 +196,14 @@ try {
       await expect(page.getByRole("textbox", { name: "Remembered wording", exact: true })).toHaveValue(
         "Nora lent you her workshop key until Friday.",
       );
-      await page.getByRole("button", { name: "Review repair", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "What this affects", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Applies to", exact: true })).toBeVisible();
       await repair.screenshot({ path: `.build-tmp/repair-ui/${name}-review.png` });
       assert.equal(await repair.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
-      await page.getByRole("button", { name: "Apply repair", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Repair applied", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Save changes", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Changes saved", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
-      await page
-        .getByRole("button", { name: "Memories Correct, forget, or record a missing detail.", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
       await page.getByRole("button", { name: /The workshop key Shared recollection/ }).click();
       await page
         .getByRole("textbox", { name: "Remembered wording", exact: true })
@@ -189,12 +212,10 @@ try {
       await page.getByRole("button", { name: "Repair history", exact: true }).click();
       await expect(page.getByRole("button", { name: "Review undo", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Review undo", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Review repair", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Apply repair", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Review changes", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Undo changes", exact: true }).click();
       await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
-      await page
-        .getByRole("button", { name: "Memories Correct, forget, or record a missing detail.", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
       await page.getByRole("button", { name: /The workshop key Shared recollection/ }).click();
       await expect(page.getByRole("textbox", { name: "Remembered wording", exact: true })).toHaveValue(
         "An unfinished repair draft stays here.",
@@ -204,6 +225,28 @@ try {
       await expect(page.getByRole("textbox", { name: "Scene draft", exact: true })).toHaveValue(
         "My unfinished Scene draft.",
       );
+      await page.getByRole("button", { name: "Open main menu", exact: true }).click();
+      await page.getByRole("button", { name: "REPAIR", exact: true }).first().click();
+      await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+      await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
+      await page.getByRole("button", { name: "Add memory", exact: true }).click();
+      await expect(repair.locator(".repair-current")).toHaveCount(0);
+      await expect(repair.getByRole("heading", { name: "Source", exact: true })).toHaveCount(0);
+      const addedText = "I had the most slamming ham and cheese sandwich";
+      await page.getByRole("textbox", { name: "Memory", exact: true }).fill(addedText);
+      await repair.screenshot({ path: `.build-tmp/repair-ui/${name}-add-editor.png` });
+      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      await expect(repair.getByRole("region", { name: "Memory to add", exact: true })).toContainText(addedText);
+      assert.equal((await repair.innerText()).split(addedText).length - 1, 1);
+      await expect(repair.getByRole("heading", { name: "Who remembers this?", exact: true })).toBeVisible();
+      await expect(repair.getByText("Before", { exact: true })).toHaveCount(0);
+      await repair.screenshot({ path: `.build-tmp/repair-ui/${name}-add-review.png` });
+      assert.equal(await repair.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
+      await repair.getByRole("button", { name: "Back", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue(addedText);
+      await repair.getByRole("button", { name: "Review changes", exact: true }).click();
+      await repair.getByRole("button", { name: "Add memory", exact: true }).click();
+      await expect(repair.getByRole("heading", { name: "Memory added", exact: true })).toBeVisible();
       await page.close();
     });
   await runCase("repair-ui/retry", async () => {
@@ -257,7 +300,7 @@ try {
     await page
       .getByRole("textbox", { name: "Place description", exact: true })
       .fill("My correction survives this conflict.");
-    await page.getByRole("button", { name: "Review repair", exact: true }).click();
+    await page.getByRole("button", { name: "Review changes", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("Your draft is kept");
     await expect(page.getByRole("textbox", { name: "Place description", exact: true })).toHaveValue(
       "My correction survives this conflict.",
