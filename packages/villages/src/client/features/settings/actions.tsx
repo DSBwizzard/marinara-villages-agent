@@ -39,9 +39,6 @@ export function useSaveSettings(ports: {
       const saved = await request<VillageSnapshot>("/settings", {
         method: "PATCH",
         body: JSON.stringify({
-          promptKnowledge: knowledgeDraft,
-          playerPersonaId: personaDraft,
-          setting: settingDraft,
           selectedLorebookIds: lorebookDraft,
           loreTokenBudget: loreTokenBudgetDraft,
         }),
@@ -307,24 +304,5 @@ export function useSaveVisitRetention(ports: {
       }
     },
     [lifetime, setArchiveVersion, setBusy, setSettingsError, setSnapshot],
-  );
-}
-
-export function useInsertMacro(ports: {
-  knowledgeDraft: string;
-  knowledgeRef: React.RefObject<HTMLTextAreaElement>;
-  pendingCaretRef: React.RefObject<number>;
-  setKnowledgeDraft: React.Dispatch<SetStateAction<string>>;
-}) {
-  const { knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft } = ports;
-  return useCallback(
-    (token: string) => {
-      const node = knowledgeRef.current;
-      const start = node?.selectionStart ?? knowledgeDraft.length;
-      const end = node?.selectionEnd ?? start;
-      pendingCaretRef.current = start + token.length;
-      setKnowledgeDraft(`${knowledgeDraft.slice(0, start)}${token}${knowledgeDraft.slice(end)}`);
-    },
-    [knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft],
   );
 }

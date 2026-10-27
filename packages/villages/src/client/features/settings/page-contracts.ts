@@ -1,10 +1,8 @@
 import type {
-  PersonaEntry,
   VillageLorebookOption,
   VillageSettings,
   VillageSnapshot,
   VillageBackgroundPace,
-  VillageVenue,
 } from "../../../shared/contracts/village.js";
 import type { MenuPage } from "../../shared/types.js";
 
@@ -35,47 +33,25 @@ export type MenuIndexPagePorts = {
 export type VillageSettingsPagePorts = {
   readonly reportLocalDraftStatus: import("./local-draft-status.js").ReportLocalDraftStatus;
   readonly setSnapshot: React.Dispatch<React.SetStateAction<VillageSnapshot>>;
-  readonly addVenue: () => void;
   readonly backgroundPanel: React.JSX.Element;
   readonly busy: boolean;
-  readonly insertMacro: (token: string) => void;
-  readonly knowledgeDraft: string;
-  readonly knowledgeRef: React.RefObject<HTMLTextAreaElement | null>;
   readonly loreTokenBudgetDraft: number;
   readonly lorebookDraft: string[];
   readonly lorebooks: VillageLorebookOption[];
   readonly lorebooksError: string;
   readonly mobile: boolean;
-  readonly nameOfCharacter: (characterId: string | null) => string;
-  readonly openPlace: (place: VillageVenue) => void;
-  readonly openSetup: (fresh: boolean, village: VillageSnapshot | null) => void;
-  readonly personaDraft: string;
   readonly personalizeHomes: boolean;
-  readonly personas: PersonaEntry[];
-  readonly placeCount: number;
-  readonly removeVenue: (id: string) => Promise<void>;
   readonly saveScenerySettings: (automaticZonePictures?: boolean) => Promise<void>;
   readonly saveSettings: () => Promise<void>;
-  readonly saveVenue: (draft: VillageVenue) => Promise<void>;
   readonly sceneryStyle: string;
   readonly sceneryStyleProfileId: string | null;
-  readonly setKnowledgeDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setLoreTokenBudgetDraft: React.Dispatch<React.SetStateAction<number>>;
   readonly setLorebookDraft: React.Dispatch<React.SetStateAction<string[]>>;
-  readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setPersonalizeHomes: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setSceneryStyle: React.Dispatch<React.SetStateAction<string>>;
   readonly setSceneryStyleProfileId: React.Dispatch<React.SetStateAction<string | null>>;
-  readonly setSettingDraft: React.Dispatch<React.SetStateAction<string>>;
-  readonly setVenueEditDraft: React.Dispatch<React.SetStateAction<VillageVenue | null>>;
-  readonly setVenueSearch: React.Dispatch<React.SetStateAction<string>>;
   readonly setVisualLoreDefault: React.Dispatch<React.SetStateAction<boolean>>;
-  readonly settingDraft: string;
   readonly settingsError: string;
   readonly snapshot: VillageSnapshot | null;
-  readonly suggestPlaces: () => Promise<void>;
-  readonly venueEditDraft: VillageVenue | null;
-  readonly venueSearch: string;
-  readonly venuesDraft: VillageVenue[];
   readonly visualLoreDefault: boolean;
 };
