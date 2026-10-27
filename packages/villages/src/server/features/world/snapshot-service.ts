@@ -202,7 +202,6 @@ export function createVillageSnapshot({
           : undefined,
       })),
       residences: village.residences,
-      noticeboard: village.noticeboard,
       villagers,
       relationshipStartingPending: village.villagers.some(
         (person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId),

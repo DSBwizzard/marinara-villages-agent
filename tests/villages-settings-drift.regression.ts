@@ -114,8 +114,6 @@ const publicFields = [
   "loreTokenBudgetMax",
   "loreTokenBudgetMin",
   "macros",
-  "maxNoticeLength",
-  "maxNoticeboardNotes",
   "maxPlaces",
   "maxVenueImageBytes",
   "maxVenueImageIdLength",

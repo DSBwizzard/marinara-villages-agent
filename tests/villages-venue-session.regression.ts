@@ -1608,9 +1608,6 @@ async function main() {
     await mutateVillageState((state) => {
       state.venues.find((venue) => venue.id === "empty")!.occupancy.playerHome = false;
     });
-    await mutateVillageState((state) => {
-      state.noticeboard.push({ author: "Buster", text: "LEGACY_EVENT_POISON notice" });
-    });
     const undiscoveredPark = (await buildVillageSnapshot()).settings.venues.find((place) => place.id === "park")!;
     assert.equal(undiscoveredPark.state.condition, "", "initial condition stays hidden before a public visit");
     assert.deepEqual(undiscoveredPark.state.publicFacts, []);
@@ -1628,11 +1625,6 @@ async function main() {
     assert.ok(
       lastVenueSystem.includes(renderPlayerBackgroundWritingContext(await readVillageState({ memories: true }))),
       "venue greetings know the recognized role",
-    );
-    assert.doesNotMatch(
-      lastVenueSystem,
-      /LEGACY_EVENT_POISON/u,
-      "legacy visual Events, tick memories, and resident notices cannot ground a scene",
     );
     assert.equal((await readVillageWriting()).writingGuidance, "");
     assert.equal((await readVillageWriting()).writingGuidanceMaxLength, WRITING_GUIDANCE_MAX_LENGTH);
