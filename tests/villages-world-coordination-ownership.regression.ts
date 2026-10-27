@@ -1,4 +1,3 @@
-import { addMemory, memoryRepair } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -6,25 +5,25 @@ import {
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
-  readVillagerCard,
   readEffectiveVillagerCard,
+  readVillagerCard,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
+import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { expireResidentWishes } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
 import {
   createWorldCoordination,
   type WorldCoordinationPorts,
 } from "../packages/villages/src/server/features/world/village-service.js";
 import {
-  configureWorldCoordination,
-  resetVillage,
-  reconcileVillage,
   buildVillageMemories,
+  configureWorldCoordination,
   forgetMemory,
+  reconcileVillage,
+  resetVillage,
 } from "../packages/villages/src/server/features/world/village.js";
+import { addMemory, memoryRepair } from "./helpers/memories-fixture.js";
 
 const stamp = "2026-10-06T12:00:00.000Z";
 function deferred() {
@@ -158,14 +157,6 @@ function fixture(name: string) {
       note(`relationship:${id}`);
       return `${name} relationship`;
     },
-    expireResidentWishes(resident, now) {
-      note(`expire:${resident.characterId}`);
-      expireResidentWishes(resident, now);
-    },
-    async reconcileWishLifecycle(now) {
-      note("wishes");
-      if (now) times.push(now);
-    },
   });
   return {
     state,
@@ -223,7 +214,6 @@ weatherOwner.release();
 weatherOwner.scope.dispose();
 assert(a.calls.indexOf("projects") < a.calls.indexOf("prepare"));
 assert(a.calls.indexOf("roll") < a.calls.indexOf("prepare"));
-assert(a.calls.indexOf("agendas") < a.calls.indexOf("wishes"));
 assert(
   a.times.every((value) => value === now),
   "the caller's exact clock reaches every clocked connection",
@@ -238,7 +228,7 @@ for (const f of [a, b]) {
       characterId: "same",
       cardSnapshot: snapshotFromCard(f.card, 1),
       addedAt: stamp,
-      completedWishes: [],
+      wishes: [],
       agenda: null,
       remap: null,
       remapFailure: null,

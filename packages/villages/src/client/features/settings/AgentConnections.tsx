@@ -1,9 +1,9 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { VillageConnectionSettings } from "../../../shared/contracts/village.js";
 import { messageFrom, request, requestHost } from "../../shared/api.js";
 import { ELEMENT_TAG, VILLAGES_IMAGE_CONNECTION_DISABLED } from "../../shared/constants.js";
 import { connectionOptionsFrom } from "../../shared/presentation.js";
 import type { EngineConnectionRow, VillageConnectionOption } from "../../shared/types.js";
-import { useCallback, useEffect, useRef, useState } from "react";
 /**
  * One connection picker.
  *

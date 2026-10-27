@@ -1,5 +1,5 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageConnectionSettings } from "../packages/villages/src/server/domain/rules/connection-rules.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 // Villages — proof for the three connections the village spends model calls on.
 //
 // The village sends work to three different places, and the whole feature is
@@ -28,26 +28,26 @@ import { defaultVillageConnectionSettings } from "../packages/villages/src/serve
 // Finally the choice is followed all the way to the model host, because the
 // resolver being right is worth nothing if a call site still reads the agent
 // config directly.
+import type { CapabilityDocumentStore, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { AsyncLocalStorage } from "node:async_hooks";
-import type { CapabilityDocumentStore, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import {
   activationScope,
   createActivationScope,
   installDefaultActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
 import { configureVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context.js";
+import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 import type { BackgroundCompletion } from "../packages/villages/src/server/domain/models/background-completion-model.js";
 import type { UsagePurpose } from "../packages/villages/src/server/domain/models/usage-model.js";
 import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
 import {
-  configureModelCompletions,
   completeWithRoom,
+  configureModelCompletions,
 } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { createConnectionSettings } from "../packages/villages/src/server/features/settings/connection-service.js";
 import {
@@ -813,8 +813,7 @@ async function main() {
     "features/founding/village-bootstrap-service.ts",
     "domain/rules/village-bootstrap-rules.ts",
     "domain/rules/native-remap.ts",
-    "features/residents/wishes/wish-progress-service.ts",
-    "features/residents/wishes/wish-lifecycle-service.ts",
+    "features/residents/wishes/service.ts",
     "features/world/village.ts",
     "features/world/village-service.ts",
     "features/residents/resident-agenda-service.ts",

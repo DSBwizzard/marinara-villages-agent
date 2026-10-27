@@ -1,16 +1,16 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { buildLocationPrompt } from "../packages/villages/src/server/domain/rules/location-image-rules.js";
-import { venueInZone, venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import assert from "node:assert/strict";
-import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { buildLocationPrompt } from "../packages/villages/src/server/domain/rules/location-image-rules.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/server/domain/rules/narrative-grounding.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { venueInZone, venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { DEFAULT_PLAYER_BACKGROUND } from "../packages/villages/src/server/domain/rules/player-background.js";
 import {
   villageCurrentSetting,
@@ -19,9 +19,9 @@ import {
 } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
-import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 
 const scenarios = [
   [
@@ -113,19 +113,19 @@ async function main() {
   } as any);
   try {
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 5 }).name,
+      coerceVillageState({ ...defaultVillageState(), version: 6 }).name,
       "",
       "new worlds have no invented village name",
     );
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 5, name: "Willowbrook" }).name,
+      coerceVillageState({ ...defaultVillageState(), version: 6, name: "Willowbrook" }).name,
       "Willowbrook",
       "authored names remain intact",
     );
     for (const [name, setting, circumstances, home] of scenarios) {
       const state = coerceVillageState({
         ...defaultVillageState(),
-        version: 5,
+        version: 6,
         wishSystemVersion: 3,
         name,
         setting,
@@ -183,14 +183,14 @@ async function main() {
           card,
           venues: [],
           lore: [],
-          completedWishes: [],
+          wishes: [],
           activeWishes: [],
           schedule: null,
         },
         async () => {},
       );
       assert.equal(calls, previousCalls + 1, "grounding adds no generation requests");
-      assert.equal(result.agenda.wishes.length, 0);
+      assert.equal(Object.hasOwn(result, "wishes"), false);
       assert.ok(captured.includes(setting));
       assert.ok(captured.includes(circumstances));
       assert.match(captured, /Starting play does not mean this place has just been established/);
@@ -217,7 +217,7 @@ async function main() {
         card,
         venues: [],
         lore: [],
-        completedWishes: [],
+        wishes: [],
         activeWishes: [],
         schedule: null,
       },
@@ -238,7 +238,7 @@ async function main() {
     common.state.condition = "The roof leaks";
     const farm = coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       seed: "farm-progress",
       setupAt: "2026-10-01T12:00:00Z",
@@ -316,7 +316,7 @@ async function main() {
 
     const legacy = coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       setupAt: "2025-01-01T00:00:00Z",
       setting: "Old harbor",
@@ -328,7 +328,7 @@ async function main() {
     assert.equal(legacy.promptKnowledge, "My custom prompt");
     assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, setupAt: legacy.setupAt })
+      coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, setupAt: legacy.setupAt })
         .playerBackground,
       "",
     );

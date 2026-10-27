@@ -1,36 +1,33 @@
-import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
-import { venueDesignHash, changedZoneIds } from "../../domain/rules/project-structure.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageProject, VillageState } from "../../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
+import { openingActive, openingView, reconcileOpening } from "../../domain/rules/opening-project.js";
+import { openingRenovationDraft } from "../../domain/rules/opening-renovation.js";
+import { readProjectPlan } from "../../domain/rules/project-completion.js";
 import {
-  projectFor,
-  PROJECT_DURATION_MS,
-  finishConstruction,
-  missingProjectAgreements,
-} from "../../domain/rules/project-lifecycle-rules.js";
-import {
+  effectiveRenovationChange,
   plannedVenue,
   readRenovationChange,
   validateRenovationDesign,
-  effectiveRenovationChange,
 } from "../../domain/rules/project-design.js";
+import {
+  PROJECT_DURATION_MS,
+  finishConstruction,
+  missingProjectAgreements,
+  projectFor,
+} from "../../domain/rules/project-lifecycle-rules.js";
+import { changedZoneIds, venueDesignHash } from "../../domain/rules/project-structure.js";
 import { approvalScope, projectDesignKey } from "../../domain/rules/project-terms.js";
-import { readProjectPlan } from "../../domain/rules/project-completion.js";
 import { assertCanAddVillageVenue } from "../../domain/rules/venue-capacity.js";
-import { openingActive, openingView, reconcileOpening } from "../../domain/rules/opening-project.js";
-import { openingRenovationDraft } from "../../domain/rules/opening-renovation.js";
 import { validVenueClasses } from "../../domain/rules/venue-model.js";
+import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
 
 export interface ProjectLifecyclePorts {
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   villagesDebugAgentsEnabled: typeof import("../../adapters/engine/runtime-host.js").villagesDebugAgentsEnabled;
   outsideVenueOperation: typeof import("../../adapters/operations/operation-context.js").outsideVenueOperation;
   preparePrivateSpaces: typeof import("../../jobs/private-space-preparation.js").preparePrivateSpaces;
-  loadProjectWishProgress(): Promise<
-    Pick<typeof import("../residents/wishes/wish-progress.js"), "processProjectWishOutbox">
-  >;
   draftNewVenueProject: typeof import("./project-drafts.js").draftNewVenueProject;
   draftRenovationProject: typeof import("./project-drafts.js").draftRenovationProject;
 }

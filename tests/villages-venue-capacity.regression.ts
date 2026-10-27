@@ -1,24 +1,24 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import {
   assertCanAddVillageVenue,
   assertVillageVenueCapacity,
   villageVenueLimit,
   villageVenueUsage,
 } from "../packages/villages/src/server/domain/rules/venue-capacity.js";
-import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { runVillageBootstrap } from "../packages/villages/src/server/features/founding/founding-setup.js";
+import { draftNewVenueProject } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { setVillageName } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { setVillageVenues } from "../packages/villages/src/server/features/venues/services.js";
 import { readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
-import { setVillageName } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { resetVillage } from "../packages/villages/src/server/features/world/village.js";
-import { runVillageBootstrap } from "../packages/villages/src/server/features/founding/founding-setup.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { draftNewVenueProject } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
-import { fixture, venue as currentVenue } from "./fixtures/villages-projects.fixture.js";
+import { venue as currentVenue, fixture } from "./fixtures/villages-projects.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 async function main() {
   const venue = (index: number) => ({ ...currentVenue("venue-" + index, "residence"), residentIds: [] });
@@ -43,7 +43,7 @@ async function main() {
       () => coerceVillageState({ ...defaultVillageState(), ...fresh, version: incompatible }),
       /Unsupported Village format/,
     );
-  assert.equal(coerceVillageState(null).version, 5);
+  assert.equal(coerceVillageState(null).version, 6);
   const f = fixture();
   await f.mutate((state) => {
     state.venues = Array.from({ length: 15 }, (_, i) => venue(i));
@@ -111,7 +111,7 @@ async function main() {
     assert.equal(records.get("villages-village").revision, 7);
     assert.deepEqual(records.get("villages-village").data, incompatible, "rejected data is never rewritten");
     records.delete("villages-village");
-    assert.equal((await readVillageState({ memories: true })).version, 5);
+    assert.equal((await readVillageState({ memories: true })).version, 6);
     const reset = await resetVillage();
     assert.equal(reset.settings.maxPlaces, 16);
     const bulk = defaultVillageState();

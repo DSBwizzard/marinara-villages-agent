@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { publishRelationshipDisclosures } from "../packages/villages/src/server/domain/rules/relationship-memories.js";
-import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
+import { publishRelationshipDisclosures } from "../packages/villages/src/server/domain/rules/relationship-memories.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import {
   correctVillageMemory,
   forgetVillageMemory,
@@ -19,7 +19,7 @@ function fixture() {
   state.villagers = ["a", "b"].map((characterId) => ({
     characterId,
     cardSnapshot: { name: characterId },
-    completedWishes: [],
+    wishes: [],
   })) as any;
   return state;
 }

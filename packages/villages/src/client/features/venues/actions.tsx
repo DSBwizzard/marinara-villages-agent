@@ -1,3 +1,4 @@
+import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
 import type { VenueClass, VenueRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
@@ -5,7 +6,6 @@ import { destinationPlaces, freshRowKey } from "../../shared/presentation.js";
 import type { MenuPage } from "../../shared/types.js";
 import { venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-exploration.js";
-import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
 
 export function useOpenVenue(ports: {
   openPlace: (place: VillageVenue) => void;

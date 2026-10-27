@@ -1,7 +1,7 @@
-import { extractModelJsonObject, modelJsonWithinBounds } from "./json-reply.js";
 import type { VenueSubmission } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
+import { extractModelJsonObject, modelJsonWithinBounds } from "./json-reply.js";
 import { parseSceneObject } from "./scene-json-syntax.js";
 
 /** Model wire format only. Saved evidence and public Scene representations do not change. */

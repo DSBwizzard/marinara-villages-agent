@@ -1,19 +1,19 @@
-import { ELEMENT_TAG } from "../shared/constants.js";
-import { MENU_PAGE_TITLES } from "./navigation.js";
+import { useCallback, useState } from "react";
 import { renderProgressDebugPage } from "../features/background/ProgressDebugPage.js";
 import { renderProjectsPage } from "../features/projects/ProjectsPage.js";
+import { RepairPage } from "../features/repair/RepairPage.js";
 import { renderSceneArchivePage } from "../features/scenes/SceneArchivePage.js";
-import { renderVenueRequestsPage } from "../features/venues/VenueRequestsPage.js";
 import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsPage.js";
-import type { MenuPage } from "../shared/types.js";
-import type { MenuScreenController } from "./menu-contracts.js";
+import type { LocalDraftStatus, ReportLocalDraftStatus } from "../features/settings/local-draft-status.js";
 import { VillagesRuntimeDebug } from "../features/settings/RuntimeDebug.js";
 import { VillageTimeControl } from "../features/settings/TimeControl.js";
-import { RepairPage } from "../features/repair/RepairPage.js";
 import { renderVillageSettingsPage } from "../features/settings/VillageSettingsPage.js";
+import { renderVenueRequestsPage } from "../features/venues/VenueRequestsPage.js";
+import { ELEMENT_TAG } from "../shared/constants.js";
+import type { MenuPage } from "../shared/types.js";
 import { WorkspaceShell, type WorkspaceDestination } from "../shared/WorkspaceShell.js";
-import { useCallback, useState } from "react";
-import type { LocalDraftStatus, ReportLocalDraftStatus } from "../features/settings/local-draft-status.js";
+import type { MenuScreenController } from "./menu-contracts.js";
+import { MENU_PAGE_TITLES } from "./navigation.js";
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
   const {

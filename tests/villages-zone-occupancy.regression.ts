@@ -1,46 +1,48 @@
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
-import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
-import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
-import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import {
-  defaultRelationshipState,
-  neutralRelationship,
-  relationshipKey,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
-import { zoneActivityFits } from "../packages/villages/src/server/domain/rules/venue-presence.js";
-import { captureSceneAttendance, accessExits } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
-import {
-  captureSceneContinuity,
-  sceneContinuityView,
-} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import { zoneEventScene, routeZoneEvents } from "../packages/villages/src/server/domain/rules/zone-events.js";
-import {
-  assertSceneMovementCapacity,
-  residentMovementOptions,
-  residentMovementUnavailable,
-} from "../packages/villages/src/server/domain/rules/resident-movement.js";
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { SemanticIntent } from "../packages/villages/src/server/domain/models/semantic-model.js";
 import {
   rejectedInputHash,
   rejectedSubmission,
 } from "../packages/villages/src/server/domain/rules/rejected-submissions.js";
+import {
+  defaultRelationshipState,
+  neutralRelationship,
+  relationshipKey,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
+  assertSceneMovementCapacity,
+  residentMovementOptions,
+  residentMovementUnavailable,
+} from "../packages/villages/src/server/domain/rules/resident-movement.js";
+import { accessExits, captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
+import {
+  captureSceneContinuity,
+  sceneContinuityView,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
+import {
+  applyAccessCommand,
+  initializeVenueAccess,
+} from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { contactCanEnter } from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { zoneActivityFits } from "../packages/villages/src/server/domain/rules/venue-presence.js";
 import {
   applyVenueSceneChange,
   readVenueSceneChange,
 } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import { resolveVenueZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
-import {
-  initializeVenueAccess,
-  applyAccessCommand,
-} from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
+import { routeZoneEvents, zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
+import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
+import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
 
 const stamp = "2026-10-22T12:00:00Z",
   at = new Date(stamp);
@@ -57,7 +59,7 @@ function fixture(count: number) {
   });
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     seed: "capacity",
     foundedAt: stamp,
     setupAt: stamp,
@@ -97,6 +99,7 @@ function fixture(count: number) {
       characterId: id,
       addedAt: stamp,
       cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: stamp },
+      wishes: [],
       agenda: {
         generatedAt: stamp,
         day: [
@@ -109,7 +112,6 @@ function fixture(count: number) {
             flexible: true,
           },
         ],
-        wishes: [],
       },
     })),
   });

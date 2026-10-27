@@ -1,6 +1,6 @@
-import type { InterpretationBatch } from "./interpretation-model.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
-import type { VenueScene, VenueReplyLine } from "./scene-model.js";
+import type { InterpretationBatch } from "./interpretation-model.js";
+import type { VenueReplyLine, VenueScene } from "./scene-model.js";
 
 export interface SemanticInterpreter {
   rejectExchange?(result: SemanticExchange): Promise<void>;
@@ -49,7 +49,6 @@ export type SemanticExchange = {
 export type SemanticProvenance = {
   preservationVersion?: 1;
   occurrenceVersion?: 1;
-  developmentVersion?: 1;
   turnPolicyVersion?: 1;
   pipelineVersion?: 3;
   residentActionsVersion?: 1 | 2;

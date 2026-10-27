@@ -1,10 +1,9 @@
 import { copyDate } from "../../shared/helpers/zoned-date.js";
-import { onVillageClockAdvance, villageNow } from "../adapters/time/clock-gate.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
+import { onVillageClockAdvance, villageNow } from "../adapters/time/clock-gate.js";
 import type { VillageState } from "../domain/models/world.js";
 import { agendaBlocksFor } from "../domain/rules/agenda-week.js";
 import { nextClockChangeAt } from "../domain/rules/village-clock.js";
-import { wishRetained } from "../domain/rules/wish-definition.js";
 import { readVillageState } from "../features/world/village-store.js";
 import { reconcileVillage } from "../features/world/village.js";
 
@@ -30,20 +29,12 @@ function localMinuteDeadline(now: Date, minute: number): number {
  * calculation is exact to the stored minute and never replays every minute in
  * between.
  */
-export function villageSchedulerDelayMs(
-  now: Date,
-  village?: Pick<VillageState, "villagers" | "residences" | "development">,
-): number {
+export function villageSchedulerDelayMs(now: Date, village?: Pick<VillageState, "villagers" | "residences">): number {
   if (!Number.isFinite(now.getTime())) return REFRESH_MAX_DELAY_MS;
   const deadlines = [nextClockChangeAt(now).getTime()];
   for (const villager of village?.villagers ?? []) {
     for (const row of villager.agenda ? agendaBlocksFor(villager.agenda, villager.ingestSchedule !== false, now) : []) {
       deadlines.push(localMinuteDeadline(now, row.startMinute), localMinuteDeadline(now, row.endMinute));
-    }
-    for (const wish of villager.agenda?.wishes ?? []) {
-      if (wishRetained(wish)) continue;
-      const expiry = Date.parse(wish.expiresAt);
-      if (Number.isFinite(expiry) && expiry > now.getTime()) deadlines.push(expiry);
     }
   }
   for (const residence of village?.residences ?? []) {
@@ -51,11 +42,6 @@ export function villageSchedulerDelayMs(
     const completesAt = Date.parse(residence.completesAt ?? "");
     if (Number.isFinite(completesAt) && completesAt > now.getTime()) deadlines.push(completesAt);
   }
-  if (village?.development?.enabled)
-    for (const resident of Object.values(village.development.residents)) {
-      const due = Date.parse(resident.nextReviewAt);
-      if (due > now.getTime()) deadlines.push(due);
-    }
   const next = Math.min(...deadlines);
   const delay = next - now.getTime() + REFRESH_SETTLE_MS;
   if (!Number.isFinite(delay)) return REFRESH_MAX_DELAY_MS;

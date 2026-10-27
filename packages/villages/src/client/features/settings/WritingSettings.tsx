@@ -1,7 +1,7 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { VillageWritingView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { VillageWritingView } from "../../../shared/contracts/village.js";
-import { useCallback, useEffect, useRef, useState } from "react";
 /** Per-village writing controls. Each save returns the server's effective settings. */
 export function useVillageWriting(enabled: boolean) {
   const [view, setView] = useState<VillageWritingView | null>(null);

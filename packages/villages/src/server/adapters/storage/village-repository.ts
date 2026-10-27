@@ -1,21 +1,21 @@
-import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
+import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { coerceVillageState, defaultVillageState } from "../../domain/decoding/village-codec.js";
-import type { VillageRepository, VillageMemoryWrite } from "../../domain/models/world-repository.js";
+import type { VillageMemoryWrite, VillageRepository } from "../../domain/models/world-repository.js";
 import type { VillageState } from "../../domain/models/world.js";
-import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 import { assertVenueOwnership } from "../operations/operation-context.js";
 import { MAX_WRITE_ATTEMPTS } from "./document-store.js";
-import { withRepairWork } from "./repair-gate.js";
 import {
+  assertMemoryWorld,
   createMemoryPayloadStore,
   emptyMemoryPayload,
   readMemoryHead,
-  assertMemoryWorld,
   type MemoryHead,
 } from "./memory-payload-store.js";
+import { withRepairWork } from "./repair-gate.js";
+type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
 const historyFields = ["memories", "memoryScenes", "memoryReceipts"] as const;
 function rootData(record: CapabilityDocumentRecord | null) {
@@ -30,7 +30,7 @@ function rootData(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 5) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 6) throw new Error("Unsupported Village format. Start a fresh Village.");
   memoryRequire(!historyFields.some((key) => Object.hasOwn(raw, key)), "history cannot be stored in the Village root");
   readMemoryHead(raw.memoryHead);
   return raw;
@@ -121,7 +121,7 @@ export function createVillageRepository(
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 5, "invalid Village mutation format");
+            memoryRequire(state.version === 6, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",

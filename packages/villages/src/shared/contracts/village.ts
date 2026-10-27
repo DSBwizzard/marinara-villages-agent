@@ -1,5 +1,5 @@
-import type { StagingCue } from "../helpers/scene-staging.js";
 import type { SpeechDelivery, SpeechPresentation } from "../helpers/scene-speech.js";
+import type { StagingCue } from "../helpers/scene-staging.js";
 import type { PlayerBackground } from "./player-background.js";
 import type { VillagesWalkBeat } from "./scene-beat.js";
 
@@ -92,11 +92,9 @@ export type BackgroundWork = {
   kind:
     | "story" // Retired saved job identity; no generation or retry.
     | "resident-planning"
-    | "development"
     | "agenda"
     | "translation"
     | "wish"
-    | "wish-check"
     | "personal-mail"
     | "social-recovery"
     | "adaptation"
@@ -929,44 +927,6 @@ export type MemoryForgetRequest = {
 export type MemoryCorrectRequest = MemoryForgetRequest & { text: string };
 
 export /**
- * One thing a villager privately wishes for, as the debug panel shows it.
- *
- * `tell` is rendered beside the wish rather than apart from it, because the two
- * halves only mean anything together: the wish says what they are after and the
- * tell is the only way anybody would ever notice. `intensity` is drawn as words
- * for the same reason it is stored as a number — 1 to 3 is how much of the time
- * it is on their mind, and "barely" reads better than a bar chart.
- */
-type VillagerWish = {
-  id: string;
-  wish: string;
-  intensity: number;
-  tell: string;
-  /**
-   * When the village wrote this, ISO, or "" when nothing readable was stored.
-   *
-   * Shown because a wish is the one thing on this tab that gets OLDER while the
-   * player is not looking, and because it is the only field that says whether
-   * the village is still keeping a wish it wrote weeks ago. Optional rather than
-   * required because this tab must read a store written by an older version of
-   * itself without drawing a blank where a date would be.
-   */
-  addedAt?: string;
-  /**
-   * The instant this wish ages out and the village drops it, or "" when it
-   * never does.
-   *
-   * Rolled once, from the wish's own id, when the wish was written — see
-   * `wishLifetimeDays` on the server. Nothing about it is told to the villager
-   * and nothing in a prompt reads it: it is here so that a wish that goes
-   * missing between two visits can be seen to have been due to go, rather than
-   * read as a bug. An unreadable one never expires, which is the safe direction,
-   * and the tab says that rather than printing a date nobody wrote.
-   */
-  expiresAt?: string;
-};
-export type CompletedVillagerWish = { wish: VillagerWish; fulfilledAt: string; memoryId: string };
-export /**
  * What one villager is after, or null when the village has not written for them.
  *
  * Null and empty are two different things here and the panel says so: null is a
@@ -975,7 +935,6 @@ export /**
  * from, and `generatedAt` is shown and never read.
  */
 type VillagerAgenda = {
-  wishes: VillagerWish[];
   routineSummary: string;
   day: { startMinute: number; endMinute: number; venueId: string; activity: string }[];
   week?: Record<string, AgendaBlock[]>;
@@ -1104,16 +1063,6 @@ type VillagePromptMessage = {
 export type VillagerAgendaView = {
   canInterpretSchedule?: boolean;
   effectiveDays?: Record<string, AgendaBlock[]>;
-  wishHistoryCount?: number;
-  wishAttempt?: {
-    stage: string;
-    reason: string;
-    calls: number;
-    inputTokens: number | null;
-    outputTokens: number | null;
-    elapsedMs: number;
-    at: string;
-  };
   characterId: string;
   name: string;
   missing: boolean;
@@ -1129,7 +1078,6 @@ export type VillagerAgendaView = {
   weekUnreadable: boolean;
   addedAt: string;
   agenda: VillagerAgenda | null;
-  completedWishes: CompletedVillagerWish[];
   scheduleInfluence?: { version: 1; enabled: boolean; categories: Record<string, boolean> };
   ingestSchedule: boolean;
   nativeSchedule: {
@@ -1241,14 +1189,6 @@ export type SetupMapReceipt = {
  * thing the row lets them change.
  */
 export type VillageLorebookOption = { id: string; name: string; enabled: boolean; hiddenFromLibrary?: boolean };
-export type WishHistoryEntry = CompletedVillagerWish & {
-  sequence: number;
-  kind: "fulfilled" | "expired";
-  correctedAt?: string;
-};
-
-export type WishHistoryPage = { entries: WishHistoryEntry[]; nextCursor: string | null; total: number };
-
 export type VillageMap = {
   id: string;
   name: string;

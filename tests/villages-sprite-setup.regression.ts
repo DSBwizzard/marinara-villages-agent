@@ -1,21 +1,23 @@
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { PNG } from "pngjs";
+import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { suggestDefaultSprite } from "../packages/villages/src/server/domain/rules/sprite-default.js";
+import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 import {
   createSpriteSetup,
   type SpriteSetupPorts,
 } from "../packages/villages/src/server/features/media/sprite-setup-service.js";
 import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
-import { suggestDefaultSprite } from "../packages/villages/src/server/domain/rules/sprite-default.js";
-import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 
 const documents = new Map<string, unknown>();
 const imageBytes = PNG.sync.write(new PNG({ width: 64, height: 96 }));
 const imageData = "data:image/png;base64," + imageBytes.toString("base64");
-let village = coerceVillageState({ ...defaultVillageState(), version: 5 });
+let village = coerceVillageState({ ...defaultVillageState(), version: 6 });
 let calls = 0,
   failImage = false,
   resolved = "",
@@ -221,7 +223,7 @@ assert.equal(calls, before);
 await assert.rejects(service.preparedManager("bupkis", draft.revision - 1), /changed/);
 village = coerceVillageState({
   ...defaultVillageState(),
-  version: 5,
+  version: 6,
   villagers: [
     {
       characterId: "bupkis",

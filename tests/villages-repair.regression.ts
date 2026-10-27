@@ -1,4 +1,6 @@
-// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/retained-scenes, repair/scale, repair/http
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
+// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/retained-scenes, repair/scale, repair/http, repair/wishes
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
@@ -60,9 +62,6 @@ async function fixture() {
     createRepairService({
       gate,
       repository: repo,
-      correctWish: async () => {
-        throw Error("No Wish command in this fixture");
-      },
       resumeProject: async () => {
         throw Error("No Project command in this fixture");
       },
@@ -828,4 +827,31 @@ await runCase("repair/http", async () => {
     await app.close();
     release();
   }
+});
+
+await runCase("repair/wishes", async () => {
+  const f = await fixture();
+  await f.repo.mutateAuthority((state) => {
+    state.villagers = wishWorld().villagers;
+    const wish = fixtureWish({ wish: "Share a conversation", reason: "Private motive." }, "talk");
+    wish.status = "fulfilled";
+    state.villagers[0].wishes = [wish];
+  });
+  const record = await f.api.inspect(repairId("wish", "a", "talk"));
+  const values = Object.fromEntries(record.fields.map((field) => [field.key, field.value]));
+  values.status = "open";
+  values.approach = "Ask when they have time.";
+  const before = await f.read(),
+    review = await f.prepare(edit(record.id, values, "fix-social-wish"));
+  assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled", "Repair review is read-only");
+  await f.api.apply(review.id);
+  const repaired = await f.read(),
+    wish = repaired.villagers[0].wishes[0];
+  assert.equal(wish.status, "open");
+  assert.equal(wish.approach, values.approach);
+  assert(wish.revision > before.villagers[0].wishes[0].revision);
+  assert.deepEqual(knownSocialWishes(repaired, "a"), [], "Administrative state repair grants no player knowledge");
+  const undo = await f.api.undo(review.id, "undo-social-wish");
+  await f.api.apply(undo.id);
+  assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled");
 });

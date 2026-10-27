@@ -1,16 +1,16 @@
+import { type SetStateAction, useCallback, useRef } from "react";
 import type {
   AgendaListResponse,
   BackgroundWork,
+  MemoryCursor,
   MemoryLibrary,
   MemoryListEntry,
-  MemoryCursor,
   VillagerAgendaView,
   VillagerRefreshPreview,
   VillageSnapshot,
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { type SetStateAction, useCallback, useRef } from "react";
 
 export function useLoadMemoryLibrary(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
@@ -134,32 +134,6 @@ export function useRewriteAgenda(ports: {
       }
     },
     [currentSnapshotRef, retryWork, setAgendas, setBusy, setError],
-  );
-}
-
-export function useCorrectCompletedWish(ports: {
-  setAgendas: React.Dispatch<SetStateAction<VillagerAgendaView[]>>;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setError: React.Dispatch<SetStateAction<string>>;
-}) {
-  const { setAgendas, setBusy, setError } = ports;
-  return useCallback(
-    async (characterId: string, wishId: string) => {
-      setBusy(true);
-      try {
-        const response = await request<AgendaListResponse>(
-          `/agendas/${encodeURIComponent(characterId)}/completed/${encodeURIComponent(wishId)}/correct`,
-          { method: "POST" },
-        );
-        setAgendas(response.villagers);
-        setError("");
-      } catch (cause) {
-        setError(messageFrom(cause, "That wish completion could not be corrected."));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [setAgendas, setBusy, setError],
   );
 }
 

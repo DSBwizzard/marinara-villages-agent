@@ -1,13 +1,11 @@
-import { fillCommittedWishMemories, pendingWishMemories } from "../../domain/rules/wish-memories.js";
-import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
-import { applyOpeningExchange } from "../../domain/rules/opening-project.js";
-import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failure.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import { releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
+import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../../domain/models/scene-model.js";
+import { applyOpeningExchange } from "../../domain/rules/opening-project.js";
 import { ingestSavedProgressEvent } from "../../domain/rules/progress-runtime.js";
+import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
+import { projectInterpretationNeedsRecovery, semanticContinued } from "../../domain/rules/semantic-continuity.js";
 import { physicalVenueEvents } from "../../domain/rules/venue-scene-state.js";
-import { semanticContinued, projectInterpretationNeedsRecovery } from "../../domain/rules/semantic-continuity.js";
-import type { VenueScene, VenueSubmission, VenueRecordEvent } from "../../domain/models/scene-model.js";
+import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failure.js";
 export interface SceneReplayEffects {
   applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission): Promise<void>;
   recordSpokenInvitation(scene: VenueScene, signal: NonNullable<VenueSubmission["invitationSignal"]>): Promise<void>;
@@ -25,13 +23,12 @@ export interface SceneProgressPorts {
   recordSpokenInvitation: SceneReplayEffects["recordSpokenInvitation"];
   createLiveEvidenceContext: typeof import("../../domain/rules/live-exchange.js").createLiveEvidenceContext;
   applyVenueTurnChange: SceneReplayEffects["applyVenueTurnChange"];
-  processWishExchange: typeof import("../residents/wishes/wish-progress.js").processWishExchange;
+  processWishExchange: typeof import("../residents/wishes/service.js").processWishExchange;
   processLiveMemories: typeof import("../residents/live-memory.js").processLiveMemories;
   processLiveRelationships: typeof import("../residents/live-memory.js").processLiveRelationships;
   runtimeDebug: typeof import("../../adapters/observability/runtime-debug.js").runtimeDebug;
   receiptForTurn: SceneReplayEffects["receiptForTurn"];
   dispatchExchange: typeof import("./exchange-processing.js").dispatchExchange;
-  processProjectWishOutbox: typeof import("../residents/wishes/wish-progress.js").processProjectWishOutbox;
   sceneQueries(): Pick<import("./services.js").SceneQueries, "progressBacklog">;
   villagesLogger: typeof import("../../adapters/engine/runtime-host.js").villagesLogger;
 }
@@ -53,7 +50,6 @@ export function createSceneProgress({
   runtimeDebug,
   receiptForTurn,
   dispatchExchange,
-  processProjectWishOutbox,
   sceneQueries,
   villagesLogger,
 }: SceneProgressPorts) {
@@ -144,7 +140,6 @@ export function createSceneProgress({
     const settled = await readSession(sessionId);
     if (settled.status === "closed")
       await mutateVillageState((state) => {
-        releaseSceneWishes(state, settled);
         releaseSceneMemories(state, settled);
       });
   }
@@ -270,11 +265,6 @@ export function createSceneProgress({
     );
     if (valid && turn.openingSignal?.kind === "first-use")
       await processOpeningSignal(scene, turn, updates.get("projects")?.status ?? processing.domains.projects.status);
-    if (valid && pendingWishMemories(await readVillageState(), sessionId, submissionId).length)
-      await mutateVillageState((state) => {
-        if (state.seed === scene.villageSeed)
-          fillCommittedWishMemories(state, sessionId, submissionId, villageNow().toISOString());
-      });
     const recordEvents = await receiptForTurn(scene, turn, false);
     if (updates.size)
       await changeSession(scene.id, (saved) => {
@@ -300,7 +290,6 @@ export function createSceneProgress({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const start = async () => {
       try {
-        await processProjectWishOutbox();
         const queue = await sceneQueries().progressBacklog();
         const batch = async () => {
           for (const turn of queue.splice(0, 8)) {

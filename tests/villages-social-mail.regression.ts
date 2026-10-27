@@ -1,23 +1,24 @@
-import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
-import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
-import {
-  correctVillageMemory,
-  forgetVillageMemory,
-} from "../packages/villages/src/server/domain/rules/village-memories.js";
 import assert from "node:assert/strict";
-import { createSocialMail } from "../packages/villages/src/server/features/residents/social-mail-service.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { RelationshipState } from "../packages/villages/src/server/domain/models/relationship-types.js";
+import type { SocialMailInput } from "../packages/villages/src/server/domain/models/social-mail.js";
+import { assertPersonalLetter } from "../packages/villages/src/server/domain/rules/personal-letter.js";
+import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   defaultRelationshipState,
   relationshipFor,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
-import { assertPersonalLetter } from "../packages/villages/src/server/domain/rules/personal-letter.js";
-import type { SocialMailInput } from "../packages/villages/src/server/domain/models/social-mail.js";
-import type { RelationshipState } from "../packages/villages/src/server/domain/models/relationship-types.js";
-import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import {
+  correctVillageMemory,
+  forgetVillageMemory,
+} from "../packages/villages/src/server/domain/rules/village-memories.js";
+import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
+import { createSocialMail } from "../packages/villages/src/server/features/residents/social-mail-service.js";
 const village = defaultVillageState();
 village.seed = "mail";
 village.foundedAt = new Date().toISOString();
@@ -25,7 +26,7 @@ village.villagers = [
   {
     characterId: "ada",
     cardSnapshot: { name: "Ada", capturedAt: "card-1", personality: "Candid" },
-    completedWishes: [],
+    wishes: [],
   },
 ] as any;
 let social = defaultRelationshipState(village.seed);
@@ -41,6 +42,7 @@ let calls = 0,
 let narrationReply = "I'd like to stay friends.";
 let failFirstIncoming = false;
 let failNativeWrite = "";
+let afterSocialCommit: (() => Promise<void>) | undefined;
 let failMemoryWrite = false;
 let failAdmission = false;
 let failInputRead = false;
@@ -147,6 +149,9 @@ const service = createSocialMail({
       throw Error("Incoming thread write unavailable");
     }
     social = next;
+    const callback = afterSocialCommit;
+    afterSocialCommit = undefined;
+    if (callback) await callback();
     return structuredClone(social);
   },
   mutateVillageState: async (mutate: any) => {
@@ -459,7 +464,7 @@ await assert.rejects(
 village.villagers.push({
   characterId: "bea",
   cardSnapshot: { name: "Bea", capturedAt: "bea-card" },
-  completedWishes: [],
+  wishes: [],
 } as any);
 const firstIncoming = service.automaticOutbox(
   await snapshot(),
@@ -970,3 +975,94 @@ assert.equal(village.socialMailOutbox!.length, 0, "Obsolete learning does not pe
 console.log(
   "Personal mail: exact outbox, failed delivery, failed reply, local replay, read privacy and automatic delivery passed.",
 );
+
+// Reading after delivery but before Wish facts attach must converge without another model call.
+for (const failPublication of [false, true]) {
+  const id = failPublication ? "wish-race-recovery" : "wish-race";
+  const words = "I would like to talk about the river " + id + ".";
+  const entry = service.automaticOutbox(
+    await snapshot(),
+    social,
+    {
+      senderId: "ada",
+      text: words,
+      relationshipReview: emptyRelationshipReview(),
+      wishChanges: [
+        {
+          actorId: "ada",
+          wishId: "new:" + id,
+          intent: "create",
+          desire: { wish: "Talk about the river " + id, reason: "Ada wants company." },
+          quote: words,
+          evidence: [0],
+          reason: "Ada communicates this current desire.",
+        },
+      ],
+    },
+    id,
+    new Date().toISOString(),
+  );
+  village.socialMailOutbox = [entry];
+  let readAt = "";
+  let reading: Promise<unknown> | undefined;
+  afterSocialCommit = async function onDelivered() {
+    if (!social.mailDeliveries[entry.id]) {
+      afterSocialCommit = onDelivered;
+      return;
+    }
+    reading = service.readLetter(entry.input.threadId, entry.id);
+    for (
+      let i = 0;
+      i < 30 && !social.mailThreads[entry.input.threadId].messages.find((m) => m.id === entry.id)?.readAt;
+      i++
+    )
+      await new Promise((resolve) => setImmediate(resolve));
+    readAt = social.mailThreads[entry.input.threadId].messages.find((m) => m.id === entry.id)!.readAt!;
+    assert.equal(
+      knownSocialWishes(village, "ada").some((w) => w.text === words),
+      false,
+      "Undelivered facts have no player knowledge",
+    );
+    if (failPublication) {
+      afterSocialCommit = async () => {
+        failMemoryWrite = true;
+      };
+    }
+  };
+  const before = calls;
+  await service.processOutbox(await snapshot());
+  if (failPublication) {
+    assert(village.socialMailOutbox?.[0]?.error, "Failed publication retains local recovery");
+    await service.retry(entry.input.threadId, entry.id, id + "-retry");
+  }
+  await reading;
+  const known = knownSocialWishes(village, "ada").find((w) => w.text === words)!;
+  assert(known, "A letter read during delivery still teaches its frozen disclosure");
+  assert.equal(known.at, readAt);
+  assert.equal(village.socialMailOutbox?.length, 0);
+  assert.equal(calls, before, "Publication and recovery are provider-free");
+}
+
+// Malformed retained reply metadata offers interpretation recovery, while preserving delivery.
+backgroundStatuses = [];
+narrationReply = "I would enjoy staying in touch.";
+await service.send({ residentId: "ada", requestId: "wish-invalid", text: "I enjoy hearing from you." });
+const invalidInput = queued.at(-1).input;
+active = invalidInput;
+const invalidMeaning = await service.handler.generate(invalidInput);
+invalidMeaning.replyWishChanges = [
+  { actorId: "ada", wishId: "missing", intent: "fulfilled", evidence: [], reason: "Invalid evidence." },
+];
+service.handler.apply(village, invalidInput, invalidMeaning, { retrying: false });
+await service.processOutbox(await snapshot());
+assert.equal(village.socialMailOutbox?.[0]?.reinterpretRequired, true);
+const beforeMeaning = calls;
+await service.retry(invalidInput.threadId, invalidInput.messageId, "repair-wish-meaning");
+const reinterpretedInput = queued.at(-1).input;
+assert.equal(reinterpretedInput.retainedReply, invalidMeaning.replyText);
+active = reinterpretedInput;
+const fixedMeaning = await service.handler.generate(reinterpretedInput);
+service.handler.apply(village, reinterpretedInput, fixedMeaning, { retrying: false });
+await service.processOutbox(await snapshot());
+assert.equal(village.socialMailOutbox?.length, 0);
+assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writing and purchases only interpretation");

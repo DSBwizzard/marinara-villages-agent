@@ -3,9 +3,9 @@ import type { MailboxView, PersonalMailThread } from "../../../shared/contracts/
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { SignatureArt } from "./villages-signature.js";
-import { AvatarFace } from "./ResidentPanels.js";
 import type { PortraitMap } from "../../shared/types.js";
+import { AvatarFace } from "./ResidentPanels.js";
+import { SignatureArt } from "./villages-signature.js";
 
 type Letter = { thread: PersonalMailThread; message: PersonalMailThread["messages"][number] };
 type Selection = { threadId: string; messageId: string } | null;

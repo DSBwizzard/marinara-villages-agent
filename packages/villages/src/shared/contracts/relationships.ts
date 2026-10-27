@@ -7,22 +7,7 @@ export type RelationshipProfile = {
   routine: string[];
   interests: string;
   wishes: string[];
-  knownDevelopment?: import("./pursuits.js").KnownPursuit[];
-  knownWishes: {
-    wishId: string;
-    text: string;
-    learnedAt: string;
-    status?: "active" | "fulfilled" | "expired" | "retired";
-    facts?: {
-      id: string;
-      kind: string;
-      quote: string;
-      at: string;
-      sceneId: string;
-      lineIds: string[];
-      supersededBy?: string;
-    }[];
-  }[];
+  knownWishes: import("./wishes.js").KnownWish[];
   learned: { text: string; kind: string; at: string; aboutName: string }[];
   access: { venueId: string; zoneId: string; active: boolean; name: string }[];
 };

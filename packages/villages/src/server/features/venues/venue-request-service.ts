@@ -1,10 +1,10 @@
-import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import type { VillageState, VillageSnapshot } from "../../domain/models/world.js";
+import type { VillageSnapshot, VillageState } from "../../domain/models/world.js";
+import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH } from "../../domain/rules/prompt-preset.js";
-import { readVenueRequestCore, type VenueRequestCore } from "../../domain/rules/venue-requests.js";
 import { queueVillageVenueRequest } from "../../domain/rules/venue-request-state.js";
+import { readVenueRequestCore, type VenueRequestCore } from "../../domain/rules/venue-requests.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import type { draftNewVenueProject } from "../projects/project-lifecycle.js";
 

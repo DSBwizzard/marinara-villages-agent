@@ -1,15 +1,15 @@
-import { MAX_PHYSICAL_DESIGN_LENGTH, MAX_PROJECT_DRAFTS } from "../../../shared/helpers/project-design.js";
 import { useEffect, useId, useRef, useState } from "react";
-import { OpeningProjects } from "./OpeningProjects.js";
-import { ProjectZones } from "./ProjectZones.js";
-import { ArtworkUpload, ClassChoices, ProjectDrawing, titleCase } from "./ProjectDesign.js";
-import { projectStyles } from "./project-styles.js";
+import type { SceneView, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import { MAX_PHYSICAL_DESIGN_LENGTH, MAX_PROJECT_DRAFTS } from "../../../shared/helpers/project-design.js";
 import { SpaceConnections } from "../../shared/SpaceConnections.js";
-import type { VillageSnapshot, VillageVenue, SceneView } from "../../../shared/contracts/village.js";
+import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
-import type { ProjectsController } from "./useProjectsController.js";
-import { request, messageFrom } from "../../shared/api.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
+import { OpeningProjects } from "./OpeningProjects.js";
+import { ArtworkUpload, ClassChoices, ProjectDrawing, titleCase } from "./ProjectDesign.js";
+import { ProjectZones } from "./ProjectZones.js";
+import { projectStyles } from "./project-styles.js";
+import type { ProjectsController } from "./useProjectsController.js";
 
 const tabs = ["Overview & Progress", "Design & Spaces", "People", "Location"] as const;
 type Tab = (typeof tabs)[number];

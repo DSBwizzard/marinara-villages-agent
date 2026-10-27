@@ -1,7 +1,7 @@
+import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import type { VillagerCard } from "../models/catalog-model.js";
 import { badRequest } from "./errors.js";
 import { renderResidentAdmission } from "./resident-admission.js";
-import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 
 /** The authored person is complete; circumstances are supplied separately. */
 export function venueCardProfile(

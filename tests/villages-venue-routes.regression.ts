@@ -1,5 +1,5 @@
-import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
+import { villageRouteSource } from "./route-source.js";
 // Wiring proof for the active Scene, Venue editor, and Mailbox. Behavior is
 // exercised by the Venue session, model, and location image suites.
 import assert from "node:assert/strict";

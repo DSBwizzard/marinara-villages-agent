@@ -1,8 +1,8 @@
-import type { ResidentsState } from "./useResidentsState.js";
+import { useCallback, useEffect } from "react";
 import type { CatalogResponse } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { readPersonaPortrait, readPortraits } from "./ResidentPanels.js";
-import { useCallback, useEffect } from "react";
+import type { ResidentsState } from "./useResidentsState.js";
 
 export function useResidentsLoadCatalog(ports: {
   readonly setCatalog: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village").CatalogEntry[]>>;

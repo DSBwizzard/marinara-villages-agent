@@ -1,19 +1,19 @@
-import { rememberDomainFact } from "./domain-memories.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
-import { venueDesignHash } from "./project-structure.js";
-import type { VillageState, VillageProject, VillageVenue, VillageVenueZone } from "../models/world.js";
+import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
+import type { VillageProject, VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { asRecord } from "./coerce.js";
+import { rememberDomainFact } from "./domain-memories.js";
 import { badRequest, conflict } from "./errors.js";
+import { prepareRenovatedPrivateInterior } from "./private-interior.js";
+import { effectiveRenovationChange, validateRenovationDesign } from "./project-design.js";
+import { venueDesignHash } from "./project-structure.js";
 import { validImage } from "./project-terms.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH } from "./prompt-preset.js";
+import { validateConnections } from "./space-connections.js";
 import { readBaseVenueLayout, validateLayoutZones } from "./venue-layout.js";
 import { defaultVenueSpace } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { readVenueImageContext } from "./village-projections.js";
-import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
-import { validateConnections } from "./space-connections.js";
-import { prepareRenovatedPrivateInterior } from "./private-interior.js";
-import { validateRenovationDesign, effectiveRenovationChange } from "./project-design.js";
 
 /** Only the saved committed design is applied; the lifecycle stages this transaction. */
 export function completeProject(state: VillageState, project: VillageProject, at: string): void {
@@ -100,7 +100,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
   project.status = "complete";
   project.progress = 100;
   project.updatedAt = at;
-  state.projectWishOutbox.push({ projectId: project.id, at });
   rememberDomainFact(state, {
     id: "project-complete:" + project.id,
     at,
