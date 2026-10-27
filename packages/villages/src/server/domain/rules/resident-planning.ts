@@ -11,6 +11,7 @@ import type {
 import type { SocialPlan } from "../models/relationship-types.js";
 import type { VillageMoment } from "./village-clock.js";
 import { hashString } from "./village-clock.js";
+import { hasVenueClass, venueResidentIds } from "./venue-model.js";
 import { villagerPlaceView } from "./village-projections.js";
 import { boundText } from "./prompt-preset.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
@@ -110,7 +111,13 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
       {
         characterId: id,
         destinations: context.venues
-          .filter((v) => !v.occupancy.playerHome && !v.occupancy.residentCharacterId)
+          .filter(
+            (v) =>
+              hasVenueClass(v, "residence") &&
+              v.constructionStatus !== "worksite" &&
+              !v.occupancy.playerHome &&
+              venueResidentIds(v).length === 0,
+          )
           .map((v) => ({ id: v.id, name: v.name })),
       },
     ];
@@ -178,8 +185,10 @@ export function readResidentPlanningProposal(
       context.opportunity.actorIds.includes(characterId) &&
       !context.pendingHousingCharacterIds.includes(characterId) &&
       venue &&
+      hasVenueClass(venue, "residence") &&
+      venue.constructionStatus !== "worksite" &&
       !venue.occupancy.playerHome &&
-      !venue.occupancy.residentCharacterId
+      venueResidentIds(venue).length === 0
     )
       housingRequests.push({ characterId, kind: "move", venueId });
   }

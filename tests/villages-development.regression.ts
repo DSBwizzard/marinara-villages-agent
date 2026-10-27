@@ -136,7 +136,6 @@ function apply(days: number, decision: "agree" | "refuse" | "conditional" = "agr
   assert.deepEqual(venueResidentIds(state.venues[1]!), ["b", "a"]);
   assert.equal(state.residences[0]!.status, "current");
   assert.equal(state.development!.residents.a!.pursuits[0]!.status, "completed");
-  assert.equal(state.venueMail.length, 0, "Typed consent does not buy another mailbox decision.");
   assert.equal(knownDevelopment(state, "a").length, 0, "Private progress does not reveal itself to the player.");
   assert.equal(
     state.memories.records.find((m) => m.committedEffect?.id.endsWith(":completed"))!.occurredAt,

@@ -29,7 +29,6 @@ for (const path of [
   "/locations/venue/:venueId/dependencies",
   "/locations/venue/:venueId/proposals",
   "/locations/venue/:venueId/player-move",
-  "/venue-mail/:mailId/decision",
 ])
   assert.ok(routes.includes(`"${path}"`), `${path} is exposed`);
 
@@ -38,6 +37,7 @@ for (const retired of [
   "/villagers/:characterId/greet",
   "/villagers/:characterId/end",
   "/villagers/:characterId/wish",
+  "/venue-mail/:mailId/decision",
   "/rooms/debug-presence",
   "/rooms/leave-pending",
   "/rooms/archive/:id/retry-memory",

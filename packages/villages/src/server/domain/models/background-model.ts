@@ -13,7 +13,6 @@ export type BackgroundKind =
   | "translation"
   | "wish"
   | "wish-check"
-  | "mail"
   | "personal-mail"
   | "social-recovery"
   | "adaptation";

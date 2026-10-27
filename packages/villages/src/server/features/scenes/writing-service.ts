@@ -91,7 +91,7 @@ import {
   readContactMoves,
   readContactRelay,
 } from "../../domain/rules/venue-contact.js";
-import { venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { hasVenueClass, venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { type MovementIntent, readPlayerMovement } from "../../domain/rules/venue-movement.js";
 import { readVenueRequestCore } from "../../domain/rules/venue-requests.js";
 import {
@@ -618,9 +618,10 @@ export function createSceneWriting({
               village.venues
                 .filter(
                   (venue) =>
+                    hasVenueClass(venue, "residence") &&
                     venue.constructionStatus !== "worksite" &&
                     !venue.occupancy.playerHome &&
-                    !venue.occupancy.residentCharacterId,
+                    venueResidentIds(venue).length === 0,
                 )
                 .map((venue) => `${venue.id}: ${venue.name}`)
                 .join("; ") || "none"
@@ -1137,7 +1138,6 @@ export function createSceneWriting({
         "invitation",
         "residenceRequest",
         "residenceDecision",
-        "renovationRequest",
         "venueRequest",
         "editApproval",
         "departures",
@@ -1284,7 +1284,6 @@ export function createSceneWriting({
       };
       const request = heardSignal(raw?.residenceRequest);
       const decision = heardSignal(raw?.residenceDecision);
-      const renovation = heardSignal(raw?.renovationRequest);
       const venueRequest = heardSignal(raw?.venueRequest);
       const invitation = heardSignal(raw?.invitation);
       const editApproval = heardSignal(raw?.editApproval);
@@ -1464,7 +1463,13 @@ export function createSceneWriting({
         residenceSignal:
           (semanticResult || mode === "chat" || mode === "ask") &&
           requestedVenueId &&
-          village.venues.some((venue) => venue.id === requestedVenueId)
+          village.venues.some(
+            (venue) =>
+              venue.id === requestedVenueId &&
+              hasVenueClass(venue, "residence") &&
+              venue.constructionStatus !== "worksite" &&
+              venueResidentIds(venue).every((id) => id === request!.speakerId),
+          )
             ? { kind: "request" as const, characterId: request!.speakerId, venueId: requestedVenueId }
             : (semanticResult || mode === "chat" || mode === "ask") &&
                 pendingDecision &&
@@ -1476,12 +1481,6 @@ export function createSceneWriting({
                   approved: decision!.entry.approved === true,
                 }
               : null,
-        renovationSignal:
-          (semanticResult || mode === "chat" || mode === "ask") &&
-          renovation &&
-          (place?.residentIds?.includes(renovation.speakerId) || place?.workerIds?.includes(renovation.speakerId))
-            ? { characterId: renovation.speakerId, venueId: place.id, quote: asTrimmedString(renovation.entry.quote) }
-            : null,
         venueRequestSignal:
           (semanticResult || mode === "chat" || mode === "ask") &&
           venueRequest &&

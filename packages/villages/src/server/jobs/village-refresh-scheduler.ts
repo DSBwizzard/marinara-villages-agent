@@ -32,7 +32,7 @@ function localMinuteDeadline(now: Date, minute: number): number {
  */
 export function villageSchedulerDelayMs(
   now: Date,
-  village?: Pick<VillageState, "villagers" | "residences" | "venueMail" | "development">,
+  village?: Pick<VillageState, "villagers" | "residences" | "development">,
 ): number {
   if (!Number.isFinite(now.getTime())) return REFRESH_MAX_DELAY_MS;
   const deadlines = [nextClockChangeAt(now).getTime()];
@@ -50,11 +50,6 @@ export function villageSchedulerDelayMs(
     if (residence.status !== "moving") continue;
     const completesAt = Date.parse(residence.completesAt ?? "");
     if (Number.isFinite(completesAt) && completesAt > now.getTime()) deadlines.push(completesAt);
-  }
-  for (const mail of village?.venueMail ?? []) {
-    if (mail.status !== "awaiting-villagers") continue;
-    const dueAt = Date.parse(mail.dueAt);
-    if (Number.isFinite(dueAt) && dueAt > now.getTime()) deadlines.push(dueAt);
   }
   if (village?.development?.enabled)
     for (const resident of Object.values(village.development.residents)) {

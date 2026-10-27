@@ -31,11 +31,6 @@ export async function reviseRenovationProject(
 export async function lockProjectBuilder(...args: Parameters<ProjectLifecycle["lockProjectBuilder"]>): Promise<void> {
   return binding.get().lockProjectBuilder(...args);
 }
-export async function requestProjectMailbox(
-  ...args: Parameters<ProjectLifecycle["requestProjectMailbox"]>
-): Promise<void> {
-  return binding.get().requestProjectMailbox(...args);
-}
 export async function startProjectConstruction(
   ...args: Parameters<ProjectLifecycle["startProjectConstruction"]>
 ): Promise<void> {

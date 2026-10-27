@@ -37,7 +37,6 @@ import {
   beginMailDelivery,
   completeMailDelivery,
   readPersonalThread,
-  respondSocialInvitation,
 } from "../packages/villages/src/server/domain/rules/social-mail.js";
 import { createRelationships } from "../packages/villages/src/server/features/residents/relationship-service.js";
 import { startVillagesApplication } from "../packages/villages/src/server/entry/application.js";
@@ -417,34 +416,6 @@ assert.equal(village.memories.records.length, countBeforeRead + 1);
 const readOnce = structuredClone(village.memories);
 readPersonalThread(state, thread.id, "2026-10-22T13:06:00Z");
 assert.deepEqual(village.memories, readOnce);
-state.invitations.invite = {
-  id: "invite",
-  threadId: thread.id,
-  messageId: "incoming",
-  proposerId: "ada",
-  participantIds: ["ada", "player"],
-  revision: 1,
-  terms: {
-    title: "Garden visit",
-    detail: "Meet in the garden",
-    venueId: "garden",
-    zoneId: "outside",
-    dueAt: "2026-10-23T12:00:00Z",
-  },
-  status: "proposed",
-};
-assert.throws(() => respondSocialInvitation(state, "invite", 0, true, "2026-10-22T14:00:00Z"), /changed/);
-respondSocialInvitation(state, "invite", 1, true, "2026-10-22T14:00:00Z");
-assert.equal(state.sharedRecords.invite!.status, "accepted");
-assert.equal(state.sharedRecords.invite!.dueAt, "2026-10-23T12:00:00Z");
-assert.equal(Object.keys(state.grants).length, 0, "Acceptance neither travels nor grants entry");
-const acceptedInvitation = structuredClone(state.invitations.invite);
-respondSocialInvitation(state, "invite", 1, true, "2026-10-22T14:00:00Z");
-assert.deepEqual(state.invitations.invite, acceptedInvitation, "The same acknowledged decision replays unchanged");
-assert.throws(() => respondSocialInvitation(state, "invite", 1, false, "2026-10-22T14:00:00Z"), /changed/);
-state.invitations.expired = { ...state.invitations.invite!, id: "expired", status: "proposed", revision: 1 };
-assert.throws(() => respondSocialInvitation(state, "expired", 1, true, "2026-10-24T14:00:00Z"), /expired/);
-
 // Shared Events budget counts admitted attempts, including failed, empty and uncertain calls.
 const budget = defaultVillageState();
 budget.backgroundPace = "balanced";

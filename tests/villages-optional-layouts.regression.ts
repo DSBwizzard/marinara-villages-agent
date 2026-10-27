@@ -10,7 +10,7 @@ import {
   decideVillageResidence,
 } from "../packages/villages/src/server/features/venues/residences.js";
 import assert from "node:assert/strict";
-import { proposePlayerMove } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
+import { movePlayerToResidence } from "../packages/villages/src/server/features/venues/residences.js";
 import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import {
   coerceVillageState,
@@ -495,18 +495,16 @@ async function main() {
     const changedLayout = structuredClone(expanded);
     changedLayout.zones!.push({ ...chamber, id: "another", ownerId: undefined });
     assert.notEqual(privatePreparationKey(expanded, chamber), privatePreparationKey(changedLayout, chamber));
-    // Player moves use the same physical assignment and survive the mail roundtrip.
-    await proposePlayerMove(privateOnly.id, "personal");
+    // An unoccupied Residence can be assigned directly.
+    await movePlayerToResidence(privateOnly.id, "personal");
     current = await readVillageState({ memories: true });
     assert.equal(current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.ownerId, "player");
     assert.equal(
       current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.state.condition,
       "Fixed hammock hooks remain anchored to the beams.",
     );
-    await proposePlayerMove(outside.id, chamber.id);
+    await assert.rejects(movePlayerToResidence(outside.id, chamber.id), /shared Residence/);
     current = await readVillageState({ memories: true });
-    assert.equal(current.venueMail.at(-1)!.proposedPrivateZoneId, chamber.id);
-    assert.equal(current.venueMail.at(-1)!.status, "awaiting-villagers");
     assert.equal(
       current.venues.find((venue) => venue.id === outside.id)!.zones!.find((zone) => zone.id === chamber.id)!.ownerId,
       undefined,

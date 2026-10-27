@@ -189,7 +189,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
         role: "system" as const,
         content:
           RELATIONSHIP_REVIEW_INSTRUCTION +
-          " Return JSON only. Independently interpret these supplied exact lines. Also return memoryChanges:[] using the native Memory contract supplied below, grounded only in actual witnessed dialogue. Use zero-based numeric lineIds into lines for social citations. For an encounter the player is absent: disclosures must be empty. For personal mail the recipient is player; save its disclosures for reading. The captured and live social baseline is context.state; absent pair revisions are 0. sceneAfter and liveAfter coincide for this automatic source. You may additionally return invitation:{title,detail,venueId,zoneId,dueAt?} only for an explicit personal-mail invitation in these exact words. A proposed invitation is not an accepted commitment. Its optional deadline must be explicitly proposed and in the future. Do not invent physical deeds or player consent. Private reasons and intentions remain private. " +
+          " Return JSON only. Independently interpret these supplied exact lines. Also return memoryChanges:[] using the native Memory contract supplied below, grounded only in actual witnessed dialogue. Use zero-based numeric lineIds into lines for social citations. For an encounter the player is absent: disclosures must be empty. For personal mail the recipient is player; save its disclosures for reading. The captured and live social baseline is context.state; absent pair revisions are 0. sceneAfter and liveAfter coincide for this automatic source. Mail cannot grant access or create actionable invitations; return permissions:[] for mail. Do not invent physical deeds or player consent. Private reasons and intentions remain private. " +
           SCENE_MEMORY_INSTRUCTION,
       },
       {
@@ -220,7 +220,6 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     )
       throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
     const record: Record<string, unknown> = { relationshipReview: review };
-    if (mail) record.invitation = interpreted?.invitation;
     if (context.memory) record.memoryContexts = { [context.memory.saved.protection.fingerprint]: context.memory.saved };
     record.semanticVersion = 2;
     record.memoryChanges = interpreted!.memoryChanges;

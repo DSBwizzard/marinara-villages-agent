@@ -40,10 +40,6 @@
     },
     {
       "method": "post",
-      "path": "/mailbox/invitations/:id/response"
-    },
-    {
-      "method": "post",
       "path": "/relationships/outbox/:id/recovery"
     },
     {
@@ -468,10 +464,6 @@
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/request-approval"
-    },
-    {
-      "method": "post",
       "path": "/projects/:projectId/builder"
     },
     {
@@ -549,10 +541,6 @@
     {
       "method": "post",
       "path": "/locations/venue/:venueId/player-move"
-    },
-    {
-      "method": "post",
-      "path": "/venue-mail/:mailId/decision"
     },
     {
       "method": "post",

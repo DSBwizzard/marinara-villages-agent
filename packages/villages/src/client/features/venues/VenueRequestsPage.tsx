@@ -66,25 +66,9 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                       <span className={`${ELEMENT_TAG}-hint`}>
                         {` · ${entry.source === "chat" ? "Conversation" : "Village life"}`}
                       </span>
-                      <input
-                        autoComplete="off"
-                        className={`${ELEMENT_TAG}-notice-input`}
-                        value={draft.name}
-                        maxLength={snapshot.settings.maxVenueNameLength}
-                        aria-label={`Requested place name from ${entry.requesterName || "villager"}`}
-                        onChange={(event) => edit({ name: event.target.value })}
-                      />
-                      <select
-                        className={`${ELEMENT_TAG}-notice-input`}
-                        value={draft.classes[0] ?? "community"}
-                        aria-label={`Requested place class from ${entry.requesterName || "villager"}`}
-                        onChange={(event) => edit({ classes: [event.target.value as (typeof draft.classes)[number]] })}
-                      >
-                        <option value="residence">Residence</option>
-                        <option value="community">Community</option>
-                        <option value="workplace">Workplace</option>
-                        <option value="other">Other</option>
-                      </select>
+                      <p>
+                        <strong>{entry.venueDraft.name}</strong> · {entry.venueDraft.classes.join(" / ")}
+                      </p>
                       <textarea
                         autoComplete="off"
                         className={`${ELEMENT_TAG}-textarea`}
@@ -110,10 +94,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                           }
                           onClick={() => void decideVenueRequest(entry, true)}
                         >
-                          {draft.name !== entry.venueDraft.name ||
-                          JSON.stringify(draft.classes) !== JSON.stringify(entry.venueDraft.classes)
-                            ? "Send counteroffer"
-                            : "Start planning project"}
+                          Start planning project
                         </button>
                         <button
                           type="button"

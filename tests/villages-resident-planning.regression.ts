@@ -31,9 +31,20 @@ function fixture() {
       { id: "square", name: "Square", form: "Square", description: "An open square.", category: "public" },
       null,
     ),
-    venueDraft({ id: "home", name: "Empty home", form: "House", description: "A home.", category: "residence" }, null),
+    venueDraft(
+      {
+        id: "home",
+        name: "Empty home",
+        form: "House",
+        description: "A home.",
+        category: "residence",
+        classes: ["residence"],
+      },
+      null,
+    ),
   ];
   state.venues[0].occupancy.residentCharacterId = "a";
+  state.venues[0].residentIds = ["a"];
   state.villagers = [
     {
       characterId: "a",

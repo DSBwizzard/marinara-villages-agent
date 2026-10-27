@@ -15,6 +15,7 @@ import {
   residentPlanningOpportunity,
   type ResidentPlanningContext,
 } from "../../domain/rules/resident-planning.js";
+import { hasVenueClass, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
@@ -243,7 +244,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             "Independently interpret these exact automatic social lines. Return one complete JSON object. " +
             RELATIONSHIP_REVIEW_INSTRUCTION +
             (mail
-              ? " The recipient is player; disclosures wait for reading. An explicit invitation may return invitation:{title,detail,venueId,zoneId,dueAt?,visitAccess:null|{accompanied:boolean,outsideHours:boolean}} using current authorized Zones only. A visit is not standing access or accepted commitment."
+              ? " The recipient is player; disclosures wait for reading. Mail cannot grant access or create actionable invitations. Return permissions:[] for mail."
               : " The player is absent: disclosures must be empty.") +
             " Use numeric zero-based lineIds. context.state is both captured and live social baseline. sceneAfter/liveAfter coincide. Return memoryChanges:[] under the native Memory contract. " +
             SCENE_MEMORY_INSTRUCTION,
@@ -282,7 +283,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       )
         throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
       record.relationshipReview = review;
-      if (mail) record.invitation = interpreted?.invitation;
       record.semanticVersion = 2;
       record.memoryChanges = interpreted!.memoryChanges;
       record.memoryContexts = { [nativeMemory.saved.protection.fingerprint]: nativeMemory.saved };
@@ -350,8 +350,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         if (
           !resident ||
           !venue ||
+          !hasVenueClass(venue, "residence") ||
+          venue.constructionStatus === "worksite" ||
           venue.occupancy.playerHome ||
-          venue.occupancy.residentCharacterId ||
+          venueResidentIds(venue).length > 0 ||
           state.residences.some(
             (r) =>
               (r.characterId === request.characterId && r.status !== "current") ||
@@ -361,7 +363,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           continue;
         const next: VillageResidence = {
           proposedPrivateZoneId: "",
-          venueId: state.venues.find((v) => v.occupancy.residentCharacterId === request.characterId)?.id ?? "",
+          venueId: state.venues.find((v) => venueResidentIds(v).includes(request.characterId))?.id ?? "",
           characterId: request.characterId,
           status: "pending",
           proposedVenueId: venue.id,

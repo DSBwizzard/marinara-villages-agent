@@ -714,7 +714,7 @@ try {
     await tabs.getByRole("button", { name: "Overview", exact: true }).click();
     await profile.getByText("Message", { exact: true }).click();
     const mail = page.getByRole("dialog", { name: "Mailbox", exact: true });
-    await expect(mail.getByRole("combobox", { name: "Mail recipient" })).toHaveValue("mara");
+    await expect(mail.getByRole("button", { name: /Mara/ }).first()).toHaveAttribute("aria-pressed", "true");
     const draft = mail.getByRole("textbox", { name: "Personal message" });
     const exactMessage = "Let's talk later.\n  Exact text";
     await draft.fill(exactMessage);
@@ -725,29 +725,20 @@ try {
     await mail.getByRole("button", { name: "Send", exact: true }).click();
     await expect(draft).toHaveValue("");
     assert.equal(writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.text, exactMessage);
-    await expect(mail.getByText(exactMessage, { exact: true })).toBeVisible();
-    mailbox.invitations = [
-      {
-        id: "recover-visit",
-        threadId: "personal:mara",
-        messageId: "source",
-        proposerName: "Mara",
-        revision: 2,
-        status: "accepted",
-        terms: { title: "Tea at Mara's", detail: "Come over for tea", venueId: "mill", zoneId: "common:base" },
-        accessRecovery: { expectedRevision: 1 },
-      },
-    ];
-    await mail.getByRole("button", { name: "Close Mailbox" }).click();
-    await profile.getByText("Message", { exact: true }).click();
-    await expect(mail.getByRole("button", { name: "Retry visit access", exact: true })).toBeVisible();
-    await mail.getByRole("button", { name: "Retry visit access", exact: true }).click();
-    await expect(mail.getByRole("button", { name: "Retry visit access", exact: true })).toHaveCount(0);
+    await expect(mail.getByLabel("Personal mail").getByText(exactMessage, { exact: true })).toBeVisible();
     assert.equal(
       await mail.evaluate((node) => node.scrollWidth > node.clientWidth + 1),
       false,
       "Mailbox fits desktop and phone",
     );
+    if (width <= 704) {
+      const list = await mail.getByRole("navigation", { name: "Conversations" }).boundingBox();
+      const letter = await mail.getByLabel("Personal mail").boundingBox();
+      assert(
+        list && letter && list.y + list.height <= letter.y + 1,
+        "Conversation list stays above the letter on phones",
+      );
+    }
     await page.screenshot({ path: resolve(output, `mailbox-${width}-${height}.png`) });
     await mail.getByRole("button", { name: "Cancel message" }).click();
     await expect(mail.getByText("cancelled", { exact: false })).toBeVisible();

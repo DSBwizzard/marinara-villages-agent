@@ -71,14 +71,6 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
       }
     },
   );
-  engine.post<{ Params: { id: string } }>("/mailbox/invitations/:id/response", async (request, reply) => {
-    try {
-      return await socialMail().respond(request.params.id, request.body);
-    } catch (error) {
-      return fail(reply, error, "respond to invitation");
-    }
-  });
-
   engine.post<{ Params: { id: string } }>("/relationships/outbox/:id/recovery", async (request, reply) => {
     try {
       await recoverSocialOutbox(request.params.id, request.body);

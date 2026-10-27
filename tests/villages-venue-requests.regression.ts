@@ -1,9 +1,5 @@
 import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
-import {
-  draftNewVenueProject,
-  draftRenovationProject,
-} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
-import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
+import { draftNewVenueProject } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import assert from "node:assert/strict";
 import {
   readConversationVenueRequest,
@@ -32,8 +28,6 @@ const { applyVillageVenueDecision } = createVenueRequests({
     throw Error("Unexpected projection in a pure request decision probe.");
   },
   draftNewVenueProject,
-  draftRenovationProject,
-  queueVenueCounteroffer,
 });
 const at = "2026-09-22T12:00:00.000Z";
 const core = { name: "The Glasshouse", classes: ["community"] as ["community"] };
@@ -103,10 +97,12 @@ const housingContext = {
       id: "rosa-home",
       occupancy: { playerHome: false, residentCharacterId: "rosa", homeKind: "small-home" },
     },
-    { ...venue("Open venue"), id: "open" },
+    { ...venue("Open venue"), id: "open", classes: ["residence"] },
     {
       ...venue("Occupied venue"),
       id: "occupied",
+      classes: ["residence"],
+      residentIds: ["someone-else"],
       occupancy: { playerHome: false, residentCharacterId: "someone-else", homeKind: "small-home" },
     },
   ],
@@ -117,6 +113,23 @@ assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "ope
   { characterId: "rosa", kind: "move", venueId: "open" },
 ]);
 assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "occupied" }], housingContext), []);
+
+const modernOccupied = {
+  ...housingContext,
+  venues: housingContext.venues.map((v) => (v.id === "open" ? { ...v, residentIds: ["someone-else"] } : v)),
+};
+assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], modernOccupied), []);
+const unfinished = {
+  ...housingContext,
+  venues: housingContext.venues.map((v) => (v.id === "open" ? { ...v, constructionStatus: "worksite" as const } : v)),
+};
+assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], unfinished), []);
+const nonResidence = {
+  ...housingContext,
+  venues: housingContext.venues.map((v) => (v.id === "open" ? { ...v, classes: ["community" as const] } : v)),
+};
+assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], nonResidence), []);
+
 assert.deepEqual(readHousingRequests([{ who: "stranger", kind: "move", venueId: "open" }], housingContext), []);
 assert.deepEqual(
   readHousingRequests([{ who: "rosa", kind: "upgrade", venueId: "rosa-home" }], housingContext),

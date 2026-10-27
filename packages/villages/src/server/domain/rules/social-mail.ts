@@ -1,7 +1,6 @@
 import type { RelationshipState, RelationshipReview } from "../models/relationship-types.js";
 import type { SocialMailMessage, SocialMailThread } from "../models/social-mail.js";
 import { conflict, badRequest } from "./errors.js";
-import { relationshipFor, relationshipKey } from "./relationship-rules.js";
 
 export const personalThreadId = (residentId: string) => "personal:" + residentId;
 export function queuePersonalMessage(
@@ -114,53 +113,3 @@ export const withoutMailDisclosures = (review: RelationshipReview): Relationship
   ...review,
   disclosures: [],
 });
-/** UI acceptance records the exact immutable terms; it invents no player dialogue, travel or private feelings. */
-export function respondSocialInvitation(
-  state: RelationshipState,
-  id: string,
-  revision: number,
-  accepted: boolean,
-  now: string,
-): void {
-  const invitation = state.invitations[id];
-  if (
-    invitation?.status === (accepted ? "accepted" : "declined") &&
-    invitation.response?.expectedRevision === revision &&
-    invitation.response.accepted === accepted
-  )
-    return;
-  if (!invitation || invitation.revision !== revision || invitation.status !== "proposed")
-    throw conflict("This invitation changed. Refresh it before deciding.");
-  if (invitation.terms.dueAt && Date.parse(invitation.terms.dueAt) <= Date.parse(now))
-    throw conflict("This invitation has expired. Ask to reschedule.");
-  if (!state.mailDeliveries[invitation.messageId]) throw conflict("This invitation has not been delivered.");
-  invitation.response = {
-    id: id + ":accept",
-    actorId: "player",
-    expectedRevision: revision,
-    accepted,
-    at: now,
-    messageId: invitation.messageId,
-    sourceHash: state.mailDeliveries[invitation.messageId]!.sourceHash,
-    terms: structuredClone(invitation.terms),
-  };
-  invitation.status = accepted ? "accepted" : "declined";
-  invitation.respondedAt = now;
-  invitation.revision++;
-  if (!accepted) return;
-  const edge = structuredClone(relationshipFor(state, invitation.proposerId, "player"));
-  edge.records[id] = {
-    id,
-    revision: 1,
-    kind: "commitment",
-    text: invitation.terms.detail,
-    participants: invitation.participantIds,
-    status: "accepted",
-    dueAt: invitation.terms.dueAt,
-    evidenceIds: [invitation.messageId, id + ":accept"],
-  };
-  state.sharedRecords[id] = structuredClone(edge.records[id]!);
-  edge.revision++;
-  edge.updatedAt = now;
-  state.edges[relationshipKey(invitation.proposerId, "player")] = edge;
-}

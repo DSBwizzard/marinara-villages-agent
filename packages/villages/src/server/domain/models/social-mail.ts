@@ -21,41 +21,12 @@ export type SocialMailThread = {
   revision: number;
   messages: SocialMailMessage[];
 };
-export type SocialInvitation = {
-  id: string;
-  threadId: string;
-  messageId: string;
-  proposerId: string;
-  participantIds: string[];
-  revision: number;
-  terms: {
-    title: string;
-    detail: string;
-    venueId: string;
-    zoneId: string;
-    dueAt?: string;
-    visitAccess?: { accompanied: boolean; outsideHours: boolean };
-  };
-  status: "proposed" | "accepted" | "declined" | "cancelled" | "fulfilled";
-  respondedAt?: string;
-  response?: {
-    id: string;
-    actorId: "player";
-    expectedRevision: number;
-    accepted: boolean;
-    at: string;
-    messageId: string;
-    sourceHash: string;
-    terms: SocialInvitation["terms"];
-  };
-};
 export type SocialMailInterpretation = {
   source: RelationshipReview;
   reply: RelationshipReview;
   replyText: string;
   sourceMemoryChanges?: unknown[];
   replyMemoryChanges?: unknown[];
-  invitation?: SocialInvitation["terms"];
 };
 export type SocialMailInput = {
   mode?: "player" | "resident";
