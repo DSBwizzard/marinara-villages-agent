@@ -16,6 +16,7 @@ try {
   for (const [width, height] of [
     [1440, 900],
     [1366, 600],
+    [977, 932],
     [900, 800],
     [768, 1024],
     [390, 844],
@@ -925,7 +926,10 @@ try {
     await expect(readingMode).toHaveAttribute("aria-pressed", "true");
     assert.equal(await page.evaluate(() => localStorage.getItem("villages-letter-simple")), "true");
     assert.match(
-      await mail.locator(".villages-letter-text").evaluate((node) => getComputedStyle(node).fontFamily),
+      await mail
+        .locator(".villages-letter-text")
+        .first()
+        .evaluate((node) => getComputedStyle(node).fontFamily),
       /system-ui/,
     );
     const letterSignature = mail.getByRole("img", { name: "Mara's signature" });
@@ -956,9 +960,7 @@ try {
     }
     await expect.poll(() => writes.findLast((row) => row.path.endsWith("/read"))?.body.messageId).toBe("first-letter");
     assert.equal(mailbox.threads[0].messages.find((message) => message.id === "second-letter").read, false);
-    if ([1366, 390, 320].includes(width)) {
-      const longLetter = "A page of words from Mara, written carefully for a friend. ".repeat(45) + "The final word.";
-      mailbox.threads[0].messages.find((message) => message.id === "first-letter").text = longLetter;
+    if ([1366, 977, 390, 320].includes(width)) {
       const paper = mail.locator(".villages-letter-paper");
       const pageBody = mail.locator(".villages-letter-pages");
       const pageCounter = mail.getByLabel("Letter pages");
@@ -967,13 +969,90 @@ try {
           .locator("span")
           .textContent()
           .then((text) => Number(text.split("/")[1]));
-      await expect(mail.locator(".villages-letter-text")).toHaveText(longLetter, { timeout: 10000 });
+      const lastCharacterVisible = () =>
+        pageBody.evaluate((node) => {
+          const textNode = Array.from(node.querySelectorAll(".villages-letter-text")).at(-1).firstChild;
+          const end = textNode.textContent.trimEnd().length;
+          const range = document.createRange();
+          range.setStart(textNode, end - 1);
+          range.setEnd(textNode, end);
+          const character = range.getBoundingClientRect();
+          const viewport = node.getBoundingClientRect();
+          return (
+            character.left >= viewport.left - 1 &&
+            character.right <= viewport.right + 1 &&
+            character.top >= viewport.top - 1 &&
+            character.bottom <= viewport.bottom + 1
+          );
+        });
+      const shortLetter =
+        "Dear friend,\n\nThe rain finally stopped this morning, so I took the long path past the mill. The garden is coming back to life, one little green shoot at a time.\n\nWould you like to walk there with me tomorrow? I will bring the tea.\n\nUntil then,\nMara";
+      mailbox.threads[0].messages.find((message) => message.id === "first-letter").text = shortLetter;
+      await expect
+        .poll(
+          () =>
+            mail
+              .locator(".villages-letter-text")
+              .allTextContents()
+              .then((parts) => parts.join("")),
+          { timeout: 10000 },
+        )
+        .toBe(shortLetter);
+      await readingMode.click();
+      const nextPage = mail.locator('button[aria-label="Next page"]');
+      const previousPage = mail.locator('button[aria-label="Previous page"]');
+      while (await nextPage.isEnabled()) await nextPage.click();
+      assert(await lastCharacterVisible(), "The final paper includes the end of the letter with the signature");
+      assert(
+        await letterSignature.evaluate((node) => {
+          const signature = node.getBoundingClientRect();
+          const viewport = node.closest(".villages-letter-pages").getBoundingClientRect();
+          return (
+            signature.right > viewport.left &&
+            signature.left < viewport.right &&
+            signature.bottom > viewport.top &&
+            signature.top < viewport.bottom
+          );
+        }),
+        "The signature is visible on that same paper",
+      );
+      if (width === 977) {
+        for (const size of [
+          { width: 1200, height: 900 },
+          { width, height },
+        ]) {
+          await page.setViewportSize(size);
+          await page.evaluate(
+            () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+          );
+          while (await nextPage.isEnabled()) await nextPage.click();
+          assert(await lastCharacterVisible(), "Resizing retains text on the signature's page");
+        }
+      }
+      while (await previousPage.isEnabled()) await previousPage.click();
+      await readingMode.click();
+
+      const longLetter = "A page of words from Mara, written carefully for a friend. ".repeat(45) + "The final word.";
+      mailbox.threads[0].messages.find((message) => message.id === "first-letter").text = longLetter;
+      await expect
+        .poll(
+          () =>
+            mail
+              .locator(".villages-letter-text")
+              .allTextContents()
+              .then((parts) => parts.join("")),
+          { timeout: 10000 },
+        )
+        .toBe(longLetter);
       for (const simple of [true, false]) {
         if (!simple) await readingMode.click();
         await expect.poll(pageCount).toBeGreaterThan(1);
         await expect(readingMode).toHaveAttribute("aria-pressed", String(simple));
         assert.equal(
-          await mail.locator(".villages-letter-text").evaluate((node) => node.style.fontStyle),
+          await mail
+            .locator(".villages-letter-text")
+            .first()
+            .evaluate((node) => node.style.fontStyle),
           simple ? "" : "oblique 3deg",
           "Personality-inspired styling is only applied in expressive mode",
         );
@@ -984,7 +1063,6 @@ try {
         );
         assert.equal(await paper.evaluate((node) => getComputedStyle(node).overflow), "hidden");
         const count = await pageCount();
-        let lastWordSeen = false;
         for (let index = 0; index < count; index++) {
           await expect(pageCounter).toContainText(`${index + 1} / ${count}`);
           if (!simple && (index === 0 || index === count - 1))
@@ -1011,20 +1089,10 @@ try {
             index === count - 1,
             `Signature appears only on the final paper: ${JSON.stringify({ index, count, simple, signaturePosition })}`,
           );
-          lastWordSeen ||= await pageBody.evaluate((node) => {
-            const textNode = node.querySelector(".villages-letter-text").firstChild;
-            const range = document.createRange();
-            range.setStart(textNode, textNode.textContent.length - 5);
-            range.setEnd(textNode, textNode.textContent.length);
-            const word = range.getBoundingClientRect();
-            const viewport = node.getBoundingClientRect();
-            return (
-              word.left >= viewport.left - 1 && word.right <= viewport.right + 1 && word.bottom <= viewport.bottom + 1
-            );
-          });
+          if (index === count - 1)
+            assert(await lastCharacterVisible(), "The final paper includes the end of the letter with the signature");
           if (index < count - 1) await mail.getByRole("button", { name: "Next page" }).click();
         }
-        assert(lastWordSeen, "The final words remain readable on a paper");
         if (simple) {
           while (await mail.getByRole("button", { name: "Previous page" }).isEnabled())
             await mail.getByRole("button", { name: "Previous page" }).click();

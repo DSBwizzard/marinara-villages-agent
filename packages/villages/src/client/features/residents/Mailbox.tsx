@@ -27,13 +27,37 @@ function LetterPages({
   const paper = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
   const [pages, setPages] = useState(1);
+  const [keepEnding, setKeepEnding] = useState(false);
   const [imageRevision, setImageRevision] = useState(0);
+  const lastWords = /(?:\S+\s+){0,2}\S+\s*$/u.exec(text)?.[0].trimEnd() ?? "";
+  const endingCharacters = Array.from(lastWords);
+  const ending = endingCharacters.length > 64 ? endingCharacters.slice(-32).join("") : lastWords;
+  const splitAt = text.trimEnd().length - ending.length;
   useLayoutEffect(() => {
     const node = paper.current;
     if (!node) return;
     const measure = () => {
       const width = node.getBoundingClientRect().width;
       if (!width || !node.clientHeight) return;
+      if (!keepEnding && sender && ending) {
+        const body = node.querySelector(".villages-letter-text")?.firstChild;
+        const signature = node.querySelector(".villages-letter-signature");
+        if (body && signature) {
+          const range = document.createRange();
+          const end = text.trimEnd().length;
+          range.setStart(body, end - 1);
+          range.setEnd(body, end);
+          const origin = node.getBoundingClientRect().left;
+          const textPage = Math.floor((range.getBoundingClientRect().left - origin + node.scrollLeft + 1) / width);
+          const signaturePage = Math.floor(
+            (signature.getBoundingClientRect().left - origin + node.scrollLeft + 1) / width,
+          );
+          if (signaturePage > textPage) {
+            setKeepEnding(true);
+            return;
+          }
+        }
+      }
       // Rounding and the signature flourish can extend a pixel beyond the last column.
       const count = Math.max(1, Math.ceil((node.scrollWidth - 3) / width));
       setPages(count);
@@ -45,26 +69,34 @@ function LetterPages({
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [text, simpleText, fontId, fontRevision, imageRevision, page]);
+  }, [text, simpleText, fontId, fontRevision, imageRevision, page, keepEnding, sender, ending]);
   const hand = !simpleText ? sender?.signatureFallback : undefined;
+  const style = {
+    fontFamily: fontId ? letterFontFamily(fontId) : simpleText ? "system-ui, sans-serif" : undefined,
+    fontStyle: hand ? `oblique ${Math.max(-3, Math.min(3, -hand.slant))}deg` : undefined,
+    letterSpacing: hand ? `${Math.max(-0.2, Math.min(0.3, hand.spacing))}px` : undefined,
+  };
+  const signature = sender ? (
+    <div className="villages-letter-signature">
+      <SignatureArt name={sender.name} signature={sender.signatureFallback} saved={sender.signature} />
+    </div>
+  ) : null;
   return (
     <>
       <div className="villages-letter-pages" ref={paper} onLoad={() => setImageRevision((value) => value + 1)}>
-        <p
-          className="villages-letter-text"
-          style={{
-            fontFamily: fontId ? letterFontFamily(fontId) : simpleText ? "system-ui, sans-serif" : undefined,
-            fontStyle: hand ? `oblique ${Math.max(-3, Math.min(3, -hand.slant))}deg` : undefined,
-            letterSpacing: hand ? `${Math.max(-0.2, Math.min(0.3, hand.spacing))}px` : undefined,
-          }}
-        >
-          {text}
+        <p className="villages-letter-text" style={style}>
+          {keepEnding ? text.slice(0, splitAt) : text}
         </p>
-        {sender ? (
-          <div className="villages-letter-signature">
-            <SignatureArt name={sender.name} signature={sender.signatureFallback} saved={sender.signature} />
+        {keepEnding ? (
+          <div className="villages-letter-ending">
+            <p className="villages-letter-text" style={style}>
+              {text.slice(splitAt)}
+            </p>
+            {signature}
           </div>
-        ) : null}
+        ) : (
+          signature
+        )}
       </div>
       <div
         className="villages-letter-pagination"
@@ -313,7 +345,8 @@ export function Mailbox({
         .villages-letter-reading{margin-left:auto;min-height:44px;border:1px solid #b18f69;background:#efdbb9;color:#302116;border-radius:.35rem;padding:.45rem .7rem}
         .villages-letter-reading[aria-pressed=true]{background:#57717a;color:#fff;border-color:#38535d;box-shadow:inset 0 0 0 1px #fff8}
         .villages-letter-pages{flex:1;min-height:0;overflow:hidden;column-count:1;column-gap:0;column-fill:auto}
-        .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6vw,1.4rem);line-height:1.55;margin:1.5rem 0}
+        .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6vw,1.4rem);line-height:1.55;margin:1.5rem 0;orphans:1;widows:1}
+        .villages-letter-ending{break-inside:avoid}.villages-letter-ending .villages-letter-text{margin:0}
         .villages-letter-signature{break-inside:avoid;width:min(14rem,60%);margin:1rem 0 1rem auto;color:#59434c;text-align:right}
         .villages-letter-pagination{display:flex;align-items:center;justify-content:center;gap:1rem;min-height:44px}
         .villages-founding-dialog .villages-letter-pagination button{min-width:44px;min-height:44px;border:0;background:transparent;color:#493526;font-size:1.6rem}
