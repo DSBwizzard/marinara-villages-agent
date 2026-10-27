@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { findLetterFont } from "../../shared/helpers/letter-font-selection.js";
 
 const loading = new Map<string, Promise<void>>();
@@ -30,13 +30,24 @@ function loadLetterFont(id: string): Promise<void> {
   loading.set(id, promise);
   return promise;
 }
-export function useLetterFont(id: string | undefined): void {
+export function useLetterFont(id: string | undefined): number {
+  const [revision, setRevision] = useState(0);
   useEffect(() => {
+    let active = true;
     if (id)
-      void loadLetterFont(id).catch(() => {
-        /* The neutral fallback remains readable. */
-      });
+      void loadLetterFont(id).then(
+        () => {
+          if (active) setRevision((value) => value + 1);
+        },
+        () => {
+          /* The neutral fallback remains readable. */
+        },
+      );
+    return () => {
+      active = false;
+    };
   }, [id]);
+  return revision;
 }
 export function letterFontFamily(id: string | undefined): string | undefined {
   const font = findLetterFont(id);

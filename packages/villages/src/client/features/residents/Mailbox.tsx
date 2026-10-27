@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MailboxView, PersonalMailThread } from "../../../shared/contracts/mailbox.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
@@ -10,6 +10,90 @@ import type { PortraitMap } from "../../shared/types.js";
 
 type Letter = { thread: PersonalMailThread; message: PersonalMailThread["messages"][number] };
 type Selection = { threadId: string; messageId: string } | null;
+
+function LetterPages({
+  text,
+  fontId,
+  simpleText,
+  fontRevision,
+  sender,
+}: {
+  text: string;
+  fontId?: string;
+  simpleText: boolean;
+  fontRevision: number;
+  sender?: VillageSnapshot["villagers"][number];
+}) {
+  const paper = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [imageRevision, setImageRevision] = useState(0);
+  useLayoutEffect(() => {
+    const node = paper.current;
+    if (!node) return;
+    const measure = () => {
+      const width = node.getBoundingClientRect().width;
+      if (!width || !node.clientHeight) return;
+      // Rounding and the signature flourish can extend a pixel beyond the last column.
+      const count = Math.max(1, Math.ceil((node.scrollWidth - 3) / width));
+      setPages(count);
+      const current = Math.min(page, count - 1);
+      if (current !== page) setPage(current);
+      node.scrollLeft = current * width;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [text, simpleText, fontId, fontRevision, imageRevision, page]);
+  const hand = !simpleText ? sender?.signatureFallback : undefined;
+  return (
+    <>
+      <div className="villages-letter-pages" ref={paper} onLoad={() => setImageRevision((value) => value + 1)}>
+        <p
+          className="villages-letter-text"
+          style={{
+            fontFamily: fontId ? letterFontFamily(fontId) : simpleText ? "system-ui, sans-serif" : undefined,
+            fontStyle: hand ? `oblique ${Math.max(-3, Math.min(3, -hand.slant))}deg` : undefined,
+            letterSpacing: hand ? `${Math.max(-0.2, Math.min(0.3, hand.spacing))}px` : undefined,
+          }}
+        >
+          {text}
+        </p>
+        {sender ? (
+          <div className="villages-letter-signature">
+            <SignatureArt name={sender.name} signature={sender.signatureFallback} saved={sender.signature} />
+          </div>
+        ) : null}
+      </div>
+      <div
+        className="villages-letter-pagination"
+        aria-label="Letter pages"
+        style={{ visibility: pages > 1 ? "visible" : "hidden" }}
+      >
+        <button
+          type="button"
+          disabled={page === 0}
+          onClick={() => setPage((current) => current - 1)}
+          aria-label="Previous page"
+        >
+          ‹
+        </button>
+        <span aria-live="polite">
+          {page + 1} / {pages}
+        </span>
+        <button
+          type="button"
+          disabled={page >= pages - 1}
+          onClick={() => setPage((current) => current + 1)}
+          aria-label="Next page"
+        >
+          ›
+        </button>
+      </div>
+    </>
+  );
+}
 
 export function Mailbox({
   open,
@@ -138,7 +222,7 @@ export function Mailbox({
     open && !simpleText && selected?.message.fromId !== "player"
       ? (selected?.thread.letterFontId ?? sender?.letterFontId)
       : undefined;
-  useLetterFont(fontId);
+  const fontRevision = useLetterFont(fontId);
   if (!open || !snapshot) return null;
   const people = snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }));
   const shown = letters
@@ -202,8 +286,8 @@ export function Mailbox({
           </button>
         </header>
         <style>{`
-        .villages-mailbox-overlay{position:absolute;inset:0;z-index:1000;display:grid;place-items:center;overflow:hidden;background:#0009;padding:1rem;box-sizing:border-box}
-        .villages-founding-dialog:has(.villages-letter-layout){width:min(76rem,100%);max-width:100%;height:min(46rem,100%);max-height:100%;margin:0;padding:0;background:#53341f url('/api/capability-packages/villages/assets/menu-desk.jpg') center/cover;color:#34271c;border:1px solid #806044;box-shadow:0 14px 50px #0009;font-family:Georgia,"Times New Roman",serif}
+        .villages-mailbox-overlay{position:absolute;inset:0;z-index:1000;display:grid;grid-template: minmax(0,1fr) / minmax(0,1fr);place-items:center;overflow:hidden;background:#0009;padding:1rem;box-sizing:border-box}
+        .villages-founding-dialog:has(.villages-letter-layout){position:relative;width:min(76rem,100%);max-width:100%;height:min(46rem,100%);max-height:100%;margin:0;padding:0;background:#53341f url('/api/capability-packages/villages/assets/menu-desk.jpg') center/cover;color:#34271c;border:1px solid #806044;box-shadow:0 14px 50px #0009;font-family:Georgia,"Times New Roman",serif}
         .villages-founding-dialog:has(.villages-letter-layout)>header{display:flex;align-items:center;justify-content:space-between;background:transparent;color:#fff7eb;border:0;padding:1.25rem 1.8rem .7rem}
         .villages-founding-dialog:has(.villages-letter-layout)>header h3{font:700 clamp(1.8rem,3.2vw,2.8rem) Georgia,serif;color:#fff7eb;text-shadow:0 2px 3px #261407}
         .villages-founding-dialog:has(.villages-letter-layout)>header>button{background:transparent;border:0;color:#fff7eb;font:1.4rem Georgia,serif;min-width:44px;min-height:44px}
@@ -223,11 +307,16 @@ export function Mailbox({
         .villages-letter-face img{position:absolute;width:100%;height:100%;object-fit:cover}
         .villages-letter-row>span:last-child{min-width:0;flex:1}.villages-letter-row strong,.villages-letter-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.villages-letter-row strong{font-size:1.35rem}.villages-letter-row small{font-size:1rem;margin-top:.2rem}
         .villages-letter-paper{position:relative;display:flex;flex-direction:column;overflow:auto;padding:clamp(1.2rem,3vw,2.5rem);box-shadow:4px 5px 0 #d1bb98,0 4px 12px #26140799,inset 0 0 35px #a4763a20}
+        .villages-letter-paper[data-reading=true]{overflow:hidden}
         .villages-letter-heading{display:flex;align-items:flex-start;gap:1rem;border-bottom:1px solid #c7ad89;padding-bottom:1rem}.villages-letter-heading h2{margin:0;font-size:clamp(1.8rem,3vw,2.7rem);color:#241a13}.villages-letter-heading small{display:block;margin-top:.25rem;font-size:1rem;color:#6c5640}
         .villages-letter-heading .villages-letter-face{width:7rem;height:7rem;margin-left:auto;border-radius:.2rem;background:transparent;font-size:3rem}
         .villages-letter-reading{margin-left:auto;min-height:44px;border:1px solid #b18f69;background:#efdbb9;color:#302116;border-radius:.35rem;padding:.45rem .7rem}
-        .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6vw,1.4rem);line-height:1.55;margin:1.5rem 0;flex:1}
-        .villages-letter-signature{align-self:flex-end;width:min(14rem,60%);margin:0 0 1rem;color:#59434c;text-align:right}
+        .villages-letter-reading[aria-pressed=true]{background:#57717a;color:#fff;border-color:#38535d;box-shadow:inset 0 0 0 1px #fff8}
+        .villages-letter-pages{flex:1;min-height:0;overflow:hidden;column-count:1;column-gap:0;column-fill:auto}
+        .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6vw,1.4rem);line-height:1.55;margin:1.5rem 0}
+        .villages-letter-signature{break-inside:avoid;width:min(14rem,60%);margin:1rem 0 1rem auto;color:#59434c;text-align:right}
+        .villages-letter-pagination{display:flex;align-items:center;justify-content:center;gap:1rem;min-height:44px}
+        .villages-founding-dialog .villages-letter-pagination button{min-width:44px;min-height:44px;border:0;background:transparent;color:#493526;font-size:1.6rem}
         .villages-letter-signature .marinara-capability-villages-signature-art{width:100%;max-width:100%}
         .villages-letter-signature .marinara-capability-villages-signature-image{display:block;margin-left:auto;max-width:100%;max-height:7rem;object-fit:contain;mix-blend-mode:multiply}
         .villages-letter-signature .marinara-capability-villages-signature-name{display:block;font:italic 2rem/1.4 var(--notebook-hand, cursive);overflow-wrap:anywhere}
@@ -237,7 +326,9 @@ export function Mailbox({
         .villages-letter-compose-fields{display:grid;gap:1rem;flex:1;margin-top:1.2rem}.villages-letter-compose-fields label{display:grid;gap:.4rem;font-size:1.1rem}.villages-founding-dialog .villages-letter-compose-fields :is(select,textarea){width:100%;box-sizing:border-box;background:#fff9ed;color:#302116;border:1px solid #b99a72;border-radius:.25rem;padding:.65rem;font:1.05rem Georgia,serif}.villages-letter-compose-fields textarea{min-height:10rem;resize:vertical}
         .villages-letter-empty{font-size:1.1rem;line-height:1.5}.villages-letter-back{display:none}.villages-letter-error{color:#6d261b;background:#f9e9d5;padding:.6rem 1rem;margin:0 1.8rem}
         .villages-letter-layout :is(button,select,textarea):focus-visible{outline:3px solid #385c6b;outline-offset:2px}.villages-letter-layout button:disabled{opacity:.55;cursor:default}
+        @media(max-height:700px){.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.5rem 1.2rem .25rem}.villages-letter-layout{padding:.25rem 1rem .75rem}.villages-letter-paper{padding:1rem}.villages-letter-heading{padding-bottom:.4rem}.villages-letter-heading .villages-letter-face{width:3rem;height:3rem;font-size:2rem}.villages-letter-text{margin:.6rem 0}.villages-letter-signature{margin:.5rem 0 .5rem auto}}
         @media(max-width:704px){.villages-mailbox-overlay{padding:0}.villages-founding-dialog:has(.villages-letter-layout){width:100%;max-width:100%;height:100%;max-height:100%;border:0;border-radius:0}.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.7rem 1rem .35rem}.villages-letter-layout{display:flex;padding:.4rem .8rem .8rem;gap:0}.villages-letter-list,.villages-letter-paper{flex:1}.villages-letter-layout[data-detail=true] .villages-letter-list{display:none}.villages-letter-layout[data-detail=false] .villages-letter-paper{display:none}.villages-letter-paper{padding:1.2rem}.villages-letter-heading .villages-letter-face{width:5rem;height:5rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{display:block;align-self:flex-start;margin:0 0 .7rem;border:0;background:transparent;color:#59442f;padding:.4rem 0;font:1rem Georgia,serif;box-shadow:none}.villages-letter-error{margin:0 .8rem}}
+        @media(max-width:704px) and (max-height:700px){.villages-letter-paper{padding:.75rem}.villages-letter-heading .villages-letter-face{width:3rem;height:3rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{margin-bottom:.25rem}}
       `}</style>
         {error || loadError ? (
           <p className="villages-letter-error" role="alert">
@@ -323,7 +414,7 @@ export function Mailbox({
               ))}
             </div>
           </nav>
-          <section className="villages-letter-paper" aria-label="Personal mail">
+          <section className="villages-letter-paper" aria-label="Personal mail" data-reading={!!selected && !composing}>
             <button
               type="button"
               className="villages-letter-back"
@@ -403,7 +494,7 @@ export function Mailbox({
                       }
                     }}
                   >
-                    Simple text
+                    Simple text {simpleText ? <span aria-hidden="true">✓</span> : null}
                   </button>
                   <AvatarFace
                     portrait={portraits[selected.thread.residentId]}
@@ -411,19 +502,14 @@ export function Mailbox({
                     className="villages-letter-face"
                   />
                 </div>
-                <p
-                  className="villages-letter-text"
-                  style={{
-                    fontFamily: fontId ? letterFontFamily(fontId) : simpleText ? "system-ui, sans-serif" : undefined,
-                  }}
-                >
-                  {selected.message.text}
-                </p>
-                {selected.message.fromId !== "player" && sender ? (
-                  <div className="villages-letter-signature">
-                    <SignatureArt name={sender.name} signature={sender.signatureFallback} saved={sender.signature} />
-                  </div>
-                ) : null}
+                <LetterPages
+                  key={selected.thread.id + ":" + selected.message.id}
+                  text={selected.message.text}
+                  fontId={fontId}
+                  simpleText={simpleText}
+                  fontRevision={fontRevision}
+                  sender={selected.message.fromId !== "player" ? sender : undefined}
+                />
                 {selected.message.error ? <p role="status">{selected.message.error}</p> : null}
                 <div className="villages-letter-actions">
                   {selected.message.fromId !== "player" &&
