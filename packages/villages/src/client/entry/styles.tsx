@@ -23,15 +23,14 @@ const VILLAGES_STYLES = `
   This tab is a panel and not a stage: its prose wraps and its lists scroll, and
   a list that scrolls is not improved by being printed smaller. Twelve-pixel body
   text is as legible on a phone as it is on a monitor, and what a phone actually
-  needs is its room back — which is what the fullscreen toggle on the map and the
-  queries at the foot of this sheet are for.
+  needs is its room back, which the queries at the foot of this sheet provide.
 
   Phone design targets portrait. Short-container rules remain useful for
   keyboards and constrained desktop windows; they do not require rotation.
 
   Both numbers are measured against the TAB rather than the window: the tab
-  shares the screen with the Engine's own furniture and takes the whole screen in
-  fullscreen, and a window query cannot tell those two apart.
+  shares the screen with the Engine's own furniture, and a window query cannot
+  tell how much room the tab has been given.
 */
 .${ELEMENT_TAG}-root {
   --${ELEMENT_TAG}-pad: clamp(.625rem, 2cqw, 1.25rem);
@@ -1779,8 +1778,6 @@ const VILLAGES_STYLES = `
 }
 .${ELEMENT_TAG}-notice-row { display: flex; align-items: flex-start; gap: .5rem; font-size: .75rem; line-height: 1.5; color: var(--muted-foreground); }
 .${ELEMENT_TAG}-notice-row > span { flex: 1 1 auto; min-width: 0; }
-.${ELEMENT_TAG}-notice-author { font-weight: 600; color: var(--foreground); }
-.${ELEMENT_TAG}-notice-add { display: flex; gap: .5rem; margin-top: .625rem; }
 .${ELEMENT_TAG}-notice-input {
   flex: 1 1 auto; min-width: 0; box-sizing: border-box;
   border: 1px solid var(--border); border-radius: .5rem;
@@ -2264,13 +2261,6 @@ const VILLAGES_STYLES = `
   overflow: hidden;
   z-index: 1;
 }
-/* A button whose whole content is a drawn glyph: square, with the glyph centred
-   in it rather than sitting on a text baseline it has none of. */
-.${ELEMENT_TAG}-icon-button {
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: .3125rem; line-height: 0;
-}
-.${ELEMENT_TAG}-icon-button svg { display: block; width: 1rem; height: 1rem; }
 /*
   Anything that went wrong, said in the corner rather than in a bar: there is no
   footer on the map, so this is the only place it can be said, and it is only
@@ -2821,63 +2811,6 @@ ${ELEMENT_TAG} {
 }
 
 /*
-  FULLSCREEN.
-
-  The HOST goes fullscreen, and only the host. It is the one node the Engine does
-  not re-make when the tab re-renders, so it is the one node that can hold the
-  whole screen while everything inside it is replaced; put the screen on an inner
-  box and the next render throws the fullscreen state away with the box. That is
-  also why there is no state here: the browser is already keeping the answer, and
-  document.fullscreenElement reads it back.
-
-  One toggle and not two. GachaForge draws a button in its header bar and a second
-  one in the corner of its stage, because its header can be pushed off screen;
-  this tab's controls live on the picture and travel with it, so the one button is
-  always where it was and there is nothing for a second one to cover.
-
-  The map is not stretched to fill the screen, and that is the whole point of
-  asking for it: MapStage measures the room it was given and fits the frame to its
-  own ratio, so a bigger room gives a bigger map. Filling and fitting are the same
-  thing on a 16:9 monitor and are not on a phone, where stretching the height
-  would fatten every pin away from the house it was put on.
-
-  The background is stated because a fullscreen element keeps a transparent
-  background and the browser paints its own black backdrop behind it: without
-  this, every letterboxed inch around the picture would be black rather than the
-  Engine's surface.
-
-  The safe-area insets are for the notch, which on a phone held sideways is on the
-  LEFT or the RIGHT edge and upright is along the TOP — and sideways is where the
-  chat drawer's own header sits while upright is where the map's controls are now
-  drawn. All four sides are written for that reason: which pair matters depends on
-  the way up the phone is, and on a phone that is not a phone they are zero. They
-  need the Engine's own page to declare a cover viewport to be anything but zero,
-  and this package cannot set that: two numbers a package cannot import are being
-  written down here a second time.
-*/
-${ELEMENT_TAG}:fullscreen {
-  background: var(--background);
-  --${ELEMENT_TAG}-safe-top: env(safe-area-inset-top, 0px);
-  --${ELEMENT_TAG}-safe-right: env(safe-area-inset-right, 0px);
-  --${ELEMENT_TAG}-safe-bottom: env(safe-area-inset-bottom, 0px);
-  --${ELEMENT_TAG}-safe-left: env(safe-area-inset-left, 0px);
-}
-${ELEMENT_TAG}:fullscreen .${ELEMENT_TAG}-root {
-  padding:
-    calc(var(--${ELEMENT_TAG}-pad) + var(--${ELEMENT_TAG}-safe-top))
-    calc(var(--${ELEMENT_TAG}-pad) + var(--${ELEMENT_TAG}-safe-right))
-    calc(var(--${ELEMENT_TAG}-pad) + var(--${ELEMENT_TAG}-safe-bottom))
-    calc(var(--${ELEMENT_TAG}-pad) + var(--${ELEMENT_TAG}-safe-left));
-}
-${ELEMENT_TAG}:fullscreen .${ELEMENT_TAG}-home-full {
-  padding:
-    calc(var(--${ELEMENT_TAG}-pad) * .6 + var(--${ELEMENT_TAG}-safe-top))
-    calc(var(--${ELEMENT_TAG}-pad) * .6 + var(--${ELEMENT_TAG}-safe-right))
-    calc(var(--${ELEMENT_TAG}-pad) * .6 + var(--${ELEMENT_TAG}-safe-bottom))
-    calc(var(--${ELEMENT_TAG}-pad) * .6 + var(--${ELEMENT_TAG}-safe-left));
-}
-
-/*
   ON A TOUCH SCREEN, EVERY CONTROL IS AT LEAST A THUMB.
 
   The paddings above draw most of these controls about twenty-six pixels tall:
@@ -2909,11 +2842,9 @@ ${ELEMENT_TAG}:fullscreen .${ELEMENT_TAG}-home-full {
   .${ELEMENT_TAG}-step[data-clickable="true"],
   .${ELEMENT_TAG}-zoom-button,
   .${ELEMENT_TAG}-remove { min-height: 2.25rem; }
-  .${ELEMENT_TAG}-icon-button,
   .${ELEMENT_TAG}-chat-mode-button,
   .${ELEMENT_TAG}-chat-send { min-width: 2.25rem; }
   .${ELEMENT_TAG}-zoom-button,
-  .${ELEMENT_TAG}-icon-button,
   .${ELEMENT_TAG}-chat-mode-button,
   .${ELEMENT_TAG}-chat-send { justify-content: center; }
   /*
@@ -3566,7 +3497,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 }
 .${ELEMENT_TAG}-menu-content input::placeholder, .${ELEMENT_TAG}-menu-content textarea::placeholder { color: #aebce3; }
 .${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-notice-row { border-color: #526bb1; background: #1c3568; color: var(--foreground); }
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-notice-author { color: #d9e1ff; }
 .${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-menu-body { gap: 1rem; }
 .${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-panel.${ELEMENT_TAG}-menu-content { margin: clamp(.75rem, 2cqw, 1.5rem); }
 .${ELEMENT_TAG}-menu-welcome { display: grid; align-self: start; gap: .9rem; max-width: 50rem; padding: 1.5rem; }

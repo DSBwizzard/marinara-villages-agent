@@ -1,5 +1,4 @@
 import type { VenueRequestsPagePorts } from "../features/venues/page-contracts.js";
-import type { useAddNotice } from "../features/settings/actions.js";
 
 import type { useAddVenue } from "../features/venues/actions.js";
 
@@ -31,8 +30,6 @@ import type { useOpenVisit } from "../features/scenes/actions.js";
 
 import type { FoundingState } from "../features/founding/useFoundingState.js";
 
-import type { useRemoveNotice } from "../features/settings/actions.js";
-
 import type { useRemoveVenue } from "../features/venues/actions.js";
 
 import type { useSaveCharacterSpeechColors } from "../features/settings/actions.js";
@@ -63,7 +60,6 @@ export type MenuScreenController = {
   readonly housingVenueId: string;
   readonly setHousingVenueId: (id: string) => void;
   readonly projectsController: ProjectsController;
-  readonly addNotice: ReturnType<typeof useAddNotice>;
   readonly addVenue: ReturnType<typeof useAddVenue>;
   readonly archiveError: ScenesState["archiveError"];
   readonly archiveOffset: ScenesState["archiveOffset"];
@@ -92,7 +88,6 @@ export type MenuScreenController = {
   readonly menuSection: ReturnType<typeof menuCategory>;
   readonly mobile: boolean;
   readonly nameOfCharacter: ReturnType<typeof useResidentsNameOfCharacter>;
-  readonly noticeDraft: SettingsState["noticeDraft"];
   readonly openArchivedVisit: ScenesState["openArchivedVisit"];
   readonly openMenu: ReturnType<typeof useScenesOpenMenu>;
   readonly openPlace: ReturnType<typeof useOpenPlace>;
@@ -103,7 +98,6 @@ export type MenuScreenController = {
   readonly personas: import("../../shared/contracts/village").PersonaEntry[];
   readonly placeCount: number;
   readonly progressDebug: import("../../shared/contracts/village").ProgressDebugView;
-  readonly removeNotice: ReturnType<typeof useRemoveNotice>;
   readonly removeVenue: ReturnType<typeof useRemoveVenue>;
   readonly requestEdits: SettingsState["requestEdits"];
   readonly resetArmed: boolean;
@@ -127,7 +121,6 @@ export type MenuScreenController = {
   readonly setLoreTokenBudgetDraft: SettingsState["setLoreTokenBudgetDraft"];
   readonly setLorebookDraft: SettingsState["setLorebookDraft"];
   readonly setMenuPage: React.Dispatch<React.SetStateAction<import("../shared/types").MenuPage>>;
-  readonly setNoticeDraft: SettingsState["setNoticeDraft"];
   readonly setOpenArchivedVisit: ScenesState["setOpenArchivedVisit"];
   readonly setPersonaDraft: SettingsState["setPersonaDraft"];
   readonly setPersonalizeHomes: FoundingState["setPersonalizeHomes"];

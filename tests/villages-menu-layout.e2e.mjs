@@ -364,14 +364,7 @@ try {
     await page.evaluate(() => document.getElementById("marinara-capability-villages-styles").remove());
     await expect.poll(() => page.locator("#marinara-capability-villages-styles").count()).toBe(1);
     await root.getByRole("button", { name: "Back to the village" }).click();
-    await page.getByRole("button", { name: /^Notices \(/ }).click();
-    await expect(root).toHaveAttribute("data-page", "noticeboard");
-    await expect(nav).toBeVisible();
-    if (process.env.VILLAGES_MENU_SCREENSHOTS) {
-      await page.screenshot({
-        path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `menu-noticeboard-${width}-${height}.png`),
-      });
-    }
+    await expect(page.getByRole("button", { name: /^Notices \(/ })).toHaveCount(0);
     await page.evaluate((elementName) => {
       const old = document.querySelector(elementName);
       old.replaceWith(document.createElement(elementName));
@@ -380,16 +373,6 @@ try {
     await expect(root).toHaveAttribute("data-page", "index");
     await expect(nav).toBeVisible();
     await expect(nav.getByRole("button", { name: /^Homes \(/ })).toHaveCount(0);
-    if (width > 700 && height > 700) {
-      await root.getByRole("button", { name: "Back to the village" }).click();
-      await page.getByRole("button", { name: "Use the whole screen" }).click();
-      await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName.toLowerCase())).toBe(tag);
-      await page.getByRole("button", { name: "More" }).click();
-      await expect(root).toBeVisible();
-      await expect(nav).toBeVisible();
-      await expect(main).toBeVisible();
-      await page.evaluate(() => document.exitFullscreen());
-    }
     assert.deepEqual(errors, [], `no browser errors at ${width}×${height}`);
     await page.close();
   }

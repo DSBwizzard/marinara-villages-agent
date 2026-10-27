@@ -298,7 +298,7 @@ try {
     await expect(home.getByRole("complementary", { name: "Places navigator" })).toHaveCount(0);
     if (!mobile) {
       await expect(page.getByRole("button", { name: "Places", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: /whole screen/u })).toBeVisible();
+      await expect(page.getByRole("button", { name: /whole screen/u })).toHaveCount(0);
       const stage = await home.locator(".marinara-capability-villages-stage").boundingBox();
       assert.ok(stage && stage.width <= width && stage.height <= height, "desktop fits the whole map");
       const bar = await home.locator(".marinara-capability-villages-home-bar").boundingBox();
@@ -310,10 +310,8 @@ try {
       });
     }
 
-    await page.getByRole("button", { name: /Notices \(1\)/u }).click();
-    await expect(page.getByRole("heading", { name: "Noticeboard", level: 1 })).toBeVisible();
-    await expect(page.getByText("Market today")).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
+    await expect(page.getByRole("button", { name: /Notices \(/u })).toHaveCount(0);
+    await page.getByRole("button", { name: "More", exact: true }).click();
     await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: /^Villagers \(/u }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();

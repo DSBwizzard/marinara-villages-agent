@@ -102,6 +102,8 @@ Starting history honors the resident cards, your backstory, and selected lore. C
 
 **Mailbox** keeps personal correspondence and invitations. Exact outgoing words are saved before generation. Reading and replaying saved processing make no model request. A proposed meeting stays optional until you accept; an explicit authorized invitation can grant one visit when accepted. It does not move your Persona or create standing access. Failed processing retains recovery controls even when the original message was already delivered.
 
+The old Noticeboard is retired. Existing notes remain in saved Village data and snapshots, but are no longer displayed or editable in the game.
+
 Residents follow routines, and their availability changes through the day. You can admit more library characters later through **Move in**. Canceling setup leaves the roster unchanged; accepted sprite copies and your original library cards stay separate.
 
 ### Memories

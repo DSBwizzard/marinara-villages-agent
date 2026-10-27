@@ -10,7 +10,6 @@ export const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   index: "Menu",
   repair: "REPAIR",
   villagers: "Villagers",
-  noticeboard: "Noticeboard",
   venueRequests: "Venue Requests",
   projects: "Projects",
   village: "Village Settings",

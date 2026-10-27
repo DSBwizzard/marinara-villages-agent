@@ -33,8 +33,6 @@ export function useSettingsState() {
 
   const [loreTokenBudgetDraft, setLoreTokenBudgetDraft] = useState(1600);
 
-  const [noticeDraft, setNoticeDraft] = useState("");
-
   const [settingsError, setSettingsError] = useState("");
 
   // The prompt box, so a macro can be dropped at the caret of it and the caret
@@ -60,8 +58,6 @@ export function useSettingsState() {
     setLorebookDraft,
     loreTokenBudgetDraft,
     setLoreTokenBudgetDraft,
-    noticeDraft,
-    setNoticeDraft,
     settingsError,
     setSettingsError,
     knowledgeRef,
