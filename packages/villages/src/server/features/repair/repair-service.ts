@@ -228,9 +228,11 @@ export function createRepairService(ports: RepairPorts) {
     if (typeof id !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(id))
       throw badRequest("Choose a saved repair or checkpoint.");
   };
-  async function allRecords(inspection: boolean, includeMemories = true, includeArchives = true) {
+  async function allRecords(inspection: boolean, includeMemories = true, includeArchives = true, personId?: string) {
     const state = await repository.readAuthority({ memories: includeMemories }),
-      result = worldRepairRecords(state, inspection, includeMemories);
+      result = worldRepairRecords(state, inspection, includeMemories, personId);
+    if (personId && personId !== "player" && !state.villagers.some((p) => p.characterId === personId))
+      throw notFound("Choose a villager from People.");
     if (inspection) {
       const relationshipId = `villages-relationships-${createHash("sha256").update(state.seed).digest("hex").slice(0, 24)}`;
       const saved = await documents.getById(PKG, relationshipId),
@@ -353,7 +355,10 @@ export function createRepairService(ports: RepairPorts) {
     }
     return {
       state,
-      records: result.map((record) => ({ ...record, token: repairDigest([state.seed, state.setupAt, record]) })),
+      records: result.map((record) => ({
+        ...record,
+        token: repairDigest([state.seed, state.setupAt, personId ?? "", record]),
+      })),
     };
   }
   async function sceneOpen() {
@@ -373,6 +378,10 @@ export function createRepairService(ports: RepairPorts) {
     return {
       seed: state.seed,
       identity: repairDigest([state.seed, state.setupAt]),
+      people: [
+        { id: "player", name: "Your Persona" },
+        ...state.villagers.map((p) => ({ id: p.characterId, name: p.cardSnapshot.name })),
+      ],
       records: [],
       historyOffset,
       historyTotal: histories.length,
@@ -391,12 +400,38 @@ export function createRepairService(ports: RepairPorts) {
       checkpoints: checkpoints.map(({ id, title, at, documents: rows }) => ({ id, title, at, records: rows.length })),
     };
   }
-  async function list(topic: string, inspection = false, query = "", offset = 0) {
-    const { records } = await allRecords(inspection, topic === "memories", topic === "world" || topic === "progress"),
+  async function list(
+    topic: string,
+    inspection = false,
+    query = "",
+    offset = 0,
+    personId?: string,
+    section = "memories",
+  ) {
+    if (topic === "people" && !personId) return { records: [], total: 0, next: null };
+    const memoryList = topic === "memories" || (topic === "people" && section !== "details");
+    const { state, records } = await allRecords(
+        inspection,
+        memoryList,
+        topic === "world" || topic === "progress",
+        personId,
+      ),
       words = query.toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+    const personName =
+      personId === "player"
+        ? "Your Persona"
+        : state.villagers.find((p) => p.characterId === personId)?.cardSnapshot.name;
+    const creation = memoryList
+      ? records.find((r) => r.creating && (!personId || r.people?.some((p) => p.id === personId)))
+      : undefined;
     const selected = records.filter(
       (r) =>
-        r.topic === topic &&
+        !r.creating &&
+        (topic === "people"
+          ? memoryList
+            ? r.topic === "memories"
+            : r.topic === "people" && repairParts(r.id).slice(1).includes(personId!)
+          : r.topic === topic) &&
         words.every((w) =>
           `${r.title} ${r.summary} ${r.source.join(" ")} ${r.people?.map((p) => p.name).join(" ") ?? ""}`
             .toLocaleLowerCase()
@@ -404,20 +439,29 @@ export function createRepairService(ports: RepairPorts) {
         ),
     );
     return {
-      records: selected.slice(offset, offset + 50),
+      records: selected.slice(offset, offset + 50).map((r) =>
+        personName && memoryList
+          ? {
+              ...r,
+              summary: `${r.people?.some((p) => p.id === personId) ? "Remembered by" : "About"} ${personName} · ${r.summary}`,
+            }
+          : r,
+      ),
       total: selected.length,
       next: offset + 50 < selected.length ? offset + 50 : null,
+      ...(creation ? { creation } : {}),
     };
   }
-  async function inspect(id: string, inspection = false) {
+  async function inspect(id: string, inspection = false, personId?: string) {
     const kind = repairParts(id)[0];
     const { records } = await allRecords(
         inspection,
         ["memory", "new-memory"].includes(kind),
         ["scene", "completed-wish", "saved-scene", "saved-domain"].includes(kind),
+        personId,
       ),
       record = records.find((r) => r.id === id);
-    if (!record) throw notFound("That record is unavailable. Inspect private records if needed.");
+    if (!record) throw notFound("That record is unavailable. Turn on Spoilers to include private records.");
     return record;
   }
   async function checkpoint(
@@ -542,7 +586,8 @@ export function createRepairService(ports: RepairPorts) {
       !input.values ||
       Array.isArray(input.values) ||
       !Array.isArray(input.knowers) ||
-      typeof input.inspection !== "boolean"
+      typeof input.inspection !== "boolean" ||
+      (input.personId !== undefined && typeof input.personId !== "string")
     )
       throw badRequest("Reopen the record before repairing it.");
   }
@@ -573,7 +618,12 @@ export function createRepairService(ports: RepairPorts) {
       const includeArchives = ["scene", "completed-wish", "saved-scene", "saved-domain"].includes(
         repairParts(request.recordId)[0],
       );
-      const { state, records } = await allRecords(request.inspection, includeMemories, includeArchives),
+      const { state, records } = await allRecords(
+          request.inspection,
+          includeMemories,
+          includeArchives,
+          request.personId,
+        ),
         record = records.find((r) => r.id === request.recordId);
       if (!record) throw notFound("That record is unavailable.");
       if (!record.actions.some((action) => action.id === request.action))
@@ -607,7 +657,7 @@ export function createRepairService(ports: RepairPorts) {
       if (consequential)
         await checkpoint(`Before ${record.title}`, request.operationId, request.inspection || !!record.private);
       await applyRecord(record, request);
-      const after = await allRecords(request.inspection, includeMemories, includeArchives);
+      const after = await allRecords(request.inspection, includeMemories, includeArchives, request.personId);
       if (kind === "new-memory") {
         const added = after.state.memories.records.find((r) => r.id === "player-repair:" + request.operationId)!;
         addedText = added.text;
@@ -754,12 +804,13 @@ export function createRepairService(ports: RepairPorts) {
     ]);
     return { applied: true };
   }
-  async function undo(id: string, operationId: string): Promise<RepairReview> {
+  async function undo(id: string, operationId: string, inspection = false): Promise<RepairReview> {
     validateId(id);
     validateId(operationId);
     const row = await documents.getById(PKG, docId(HISTORY, id));
     if (!row) throw notFound("That repair is unavailable.");
     const saved = row.data as HistoryData;
+    if (saved.private && !inspection) throw notFound("Turn on Spoilers to view this repair.");
     if (saved.undone || !saved.canUndo)
       throw conflict("This repair cannot be undone. Use its checkpoint when available.");
     const state = await read();
@@ -780,6 +831,7 @@ export function createRepairService(ports: RepairPorts) {
         saved.request.inspection,
         !!saved.memoryBefore,
         repairParts(record.id)[0] === "scene",
+        saved.request.personId,
       );
       if (before.state.seed !== saved.seed || before.state.setupAt !== saved.setupAt)
         throw conflict("The Village changed.");
@@ -864,6 +916,7 @@ export function createRepairService(ports: RepairPorts) {
         saved.request.inspection,
         !!saved.memoryBefore,
         repairParts(record.id)[0] === "scene",
+        saved.request.personId,
       );
       return recordChanges(before.records, after.records, record.id);
     });
@@ -926,7 +979,7 @@ export function createRepairService(ports: RepairPorts) {
     await gate.commit(id, result.transaction);
     return result.value;
   }
-  async function restore(id: string, operationId: string): Promise<RepairReview> {
+  async function restore(id: string, operationId: string, inspection = false): Promise<RepairReview> {
     validateId(id);
     validateId(operationId);
     if (await sceneOpen())
@@ -935,6 +988,7 @@ export function createRepairService(ports: RepairPorts) {
     if (!saved) throw notFound("That checkpoint is unavailable.");
     const checkpointData = saved.data as CheckpointData,
       state = await read();
+    if (checkpointData.private && !inspection) throw notFound("Turn on Spoilers to view this checkpoint.");
     if (checkpointData.seed !== state.seed || checkpointData.setupAt !== state.setupAt)
       throw conflict("This checkpoint belongs to another Village.");
     const simulation = await gate.simulate(async () => {

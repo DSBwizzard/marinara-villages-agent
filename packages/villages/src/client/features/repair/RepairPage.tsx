@@ -3,7 +3,7 @@ import type { RepairController } from "./useRepairController.js";
 import { REPAIR_STYLES } from "./repair-styles.js";
 const topics: { id: RepairTopic; name: string; description: string }[] = [
   { id: "memories", name: "Memories", description: "Edit, add, or forget a memory." },
-  { id: "people", name: "People", description: "Character context, relationships, and routines." },
+  { id: "people", name: "People", description: "Villagers, their memories, and character details." },
   { id: "places", name: "Places", description: "Venues, Zones, objects, homes, and access." },
   { id: "world", name: "World & history", description: "Setting, founding details, and Scene corrections." },
   { id: "progress", name: "Progress", description: "Wishes, Projects, Pursuits, and saved work." },
@@ -22,6 +22,14 @@ export function RepairPage({
   const isRestore = c.review?.kind === "restore";
   const addingMemory = c.review?.memory?.creating === true;
   const hasSource = !!c.selected?.source.length || !!c.selected?.related.length;
+  const directory = c.view === "list" && c.topic === "people" && !c.person;
+  const people = (c.index?.people ?? []).filter((p) =>
+    c.query
+      .toLocaleLowerCase()
+      .split(/\s+/u)
+      .filter(Boolean)
+      .every((word) => p.name.toLocaleLowerCase().includes(word)),
+  );
   const display = (value: RepairValue | undefined) =>
     typeof value === "boolean" ? (value ? "Yes" : "No") : String(value ?? "");
   const value = (key: string, next: RepairValue) => c.update({ values: { ...c.draft?.values, [key]: next } });
@@ -37,38 +45,74 @@ export function RepairPage({
       <main>
         {c.view !== "hub" ? (
           <nav aria-label="Repair navigation">
-            <button type="button" disabled={c.busy} onClick={() => c.setView("hub")}>
+            <button type="button" disabled={c.saving} onClick={c.showHub}>
               REPAIR
             </button>
             <span>›</span>
-            <button type="button" disabled={c.busy} onClick={() => void c.load(c.topic)}>
-              {currentTopic.name}
+            <button
+              type="button"
+              disabled={c.saving}
+              onClick={() =>
+                void (c.collection === "history"
+                  ? c.showHistory()
+                  : c.chooseTopic(c.collection === "checkpoints" ? "restore" : c.topic))
+              }
+            >
+              {c.collection === "history"
+                ? "Repair history"
+                : c.collection === "checkpoints"
+                  ? "Backups & repairs"
+                  : currentTopic.name}
             </button>
+            {c.person ? (
+              <>
+                <span>›</span>
+                <button type="button" disabled={c.busy} onClick={() => void c.load()}>
+                  {c.person.name}
+                </button>
+              </>
+            ) : null}
           </nav>
         ) : null}
-        <h1>
-          {c.view === "hub"
-            ? "REPAIR"
-            : c.view === "list"
-              ? currentTopic.name
-              : c.view === "edit"
-                ? c.selected?.title
-                : c.view === "review"
-                  ? addingMemory
-                    ? "Add memory"
-                    : "Review changes"
-                  : c.view === "done"
-                    ? c.review?.kind === "undo"
-                      ? "Changes undone"
-                      : isRestore
-                        ? "Checkpoint restored"
-                        : addingMemory
-                          ? "Memory added"
-                          : "Changes saved"
-                    : c.view === "history"
-                      ? "Repair history"
-                      : "Backups & repairs"}
-        </h1>
+        <div className="repair-heading">
+          <h1>
+            {c.view === "hub"
+              ? "REPAIR"
+              : c.view === "list"
+                ? (c.person?.name ?? currentTopic.name)
+                : c.view === "edit"
+                  ? c.selected?.title
+                  : c.view === "review"
+                    ? addingMemory
+                      ? "Add memory"
+                      : "Review changes"
+                    : c.view === "done"
+                      ? c.review?.kind === "undo"
+                        ? "Changes undone"
+                        : isRestore
+                          ? "Checkpoint restored"
+                          : addingMemory
+                            ? "Memory added"
+                            : "Changes saved"
+                      : c.view === "history"
+                        ? "Repair history"
+                        : "Backups & repairs"}
+          </h1>
+          {c.view !== "hub" && !directory ? (
+            <label className="repair-spoilers">
+              <span>Spoilers</span>
+              <input
+                autoComplete="off"
+                type="checkbox"
+                role="switch"
+                aria-label="Spoilers"
+                checked={c.inspection}
+                disabled={c.saving}
+                onChange={(e) => void c.toggleSpoilers(e.target.checked)}
+              />
+            </label>
+          ) : null}
+        </div>
         {c.view === "hub" ? <p className="repair-muted">Choose what needs correcting.</p> : null}
         {c.index?.sceneOpen ? (
           <div className="repair-notice">
@@ -96,8 +140,7 @@ export function RepairPage({
                   className="repair-tile"
                   disabled={c.busy}
                   onClick={() => {
-                    c.setQuery("");
-                    void c.load(t.id, 0, "");
+                    void c.chooseTopic(t.id);
                   }}
                 >
                   <strong>{t.name}</strong>
@@ -106,17 +149,7 @@ export function RepairPage({
               ))}
             </div>
             <footer>
-              <label>
-                <input
-                  autoComplete="off"
-                  type="checkbox"
-                  checked={c.inspection}
-                  disabled={c.busy}
-                  onChange={(e) => c.setInspection(e.target.checked)}
-                />{" "}
-                Inspect private records · spoilers
-              </label>
-              <button type="button" onClick={() => c.setView("history")}>
+              <button type="button" disabled={c.busy} onClick={() => void c.showHistory()}>
                 Repair history
               </button>
             </footer>
@@ -124,6 +157,26 @@ export function RepairPage({
         ) : null}
         {c.view === "list" ? (
           <>
+            {c.person ? (
+              <div className="repair-actions" role="group" aria-label="Villager records">
+                <button
+                  type="button"
+                  disabled={c.busy}
+                  aria-pressed={c.section === "memories"}
+                  onClick={() => void c.chooseSection("memories")}
+                >
+                  Memories
+                </button>
+                <button
+                  type="button"
+                  disabled={c.busy}
+                  aria-pressed={c.section === "details"}
+                  onClick={() => void c.chooseSection("details")}
+                >
+                  Details
+                </button>
+              </div>
+            ) : null}
             <form
               autoComplete="off"
               className="repair-search"
@@ -135,52 +188,78 @@ export function RepairPage({
               <input
                 autoComplete="off"
                 type="search"
-                aria-label="Search repair records"
+                aria-label={directory ? "Search villagers" : "Search repair records"}
                 value={c.query}
                 onChange={(e) => c.setQuery(e.target.value)}
-                placeholder="Find a record…"
+                placeholder={directory ? "Find a villager…" : "Find a record…"}
               />
               <button type="submit" disabled={c.busy}>
                 Search
               </button>
             </form>
-            <div className="repair-records">
-              {c.records.map((r) => (
-                <button
-                  type="button"
-                  key={r.id}
-                  className="repair-record"
-                  disabled={c.busy}
-                  onClick={() => void c.open(r.id)}
-                >
-                  <strong>{r.title}</strong>
-                  {r.summary ? <small>{r.summary}</small> : null}
-                </button>
-              ))}
-            </div>
-            {!c.busy && !c.records.length ? (
-              <p>
-                No records match.
-                {!c.inspection ? " Private records are available through Inspect on the REPAIR menu." : ""}
-              </p>
-            ) : null}
-            <footer>
-              <button
-                type="button"
-                disabled={c.busy || !c.offset}
-                onClick={() => void c.load(c.topic, Math.max(0, c.offset - 50))}
-              >
-                Previous
-              </button>
-              <span>{c.total ? `${c.offset + 1}–${Math.min(c.offset + 50, c.total)} of ${c.total}` : "0 records"}</span>
-              <button
-                type="button"
-                disabled={c.busy || c.offset + 50 >= c.total}
-                onClick={() => void c.load(c.topic, c.offset + 50)}
-              >
-                Next
-              </button>
-            </footer>
+            {directory ? (
+              <div className="repair-people">
+                {people.map((person) => (
+                  <button
+                    type="button"
+                    className="repair-person"
+                    disabled={c.busy}
+                    key={person.id}
+                    onClick={() => void c.choosePerson(person)}
+                  >
+                    {person.name}
+                  </button>
+                ))}
+                {!c.busy && c.index && !people.length ? <p>No villagers match.</p> : null}
+              </div>
+            ) : (
+              <>
+                {c.creation ? (
+                  <button type="button" disabled={c.busy} onClick={() => void c.open(c.creation!.id)}>
+                    {c.creation.title}
+                  </button>
+                ) : null}
+                <div className="repair-records">
+                  {c.records.map((r) => (
+                    <button
+                      type="button"
+                      key={r.id}
+                      className="repair-record"
+                      disabled={c.busy}
+                      onClick={() => void c.open(r.id)}
+                    >
+                      <strong>{r.title}</strong>
+                      {r.summary ? <small>{r.summary}</small> : null}
+                    </button>
+                  ))}
+                </div>
+                {!c.busy && !c.records.length ? (
+                  <p>
+                    No records match.
+                    {!c.inspection ? " Turn on Spoilers to include private records." : ""}
+                  </p>
+                ) : null}
+                <footer>
+                  <button
+                    type="button"
+                    disabled={c.busy || !c.offset}
+                    onClick={() => void c.load(c.topic, Math.max(0, c.offset - 50))}
+                  >
+                    Previous
+                  </button>
+                  <span>
+                    {c.total ? `${c.offset + 1}–${Math.min(c.offset + 50, c.total)} of ${c.total}` : "0 records"}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={c.busy || c.offset + 50 >= c.total}
+                    onClick={() => void c.load(c.topic, c.offset + 50)}
+                  >
+                    Next
+                  </button>
+                </footer>
+              </>
+            )}
           </>
         ) : null}
         {c.view === "edit" && c.selected && c.draft ? (
@@ -386,7 +465,7 @@ export function RepairPage({
               </label>
             ) : null}
             <div className="repair-buttons">
-              <button type="button" disabled={c.busy} onClick={() => c.setView(c.selected ? "edit" : "checkpoints")}>
+              <button type="button" disabled={c.busy} onClick={c.backFromReview}>
                 Back
               </button>
               <button
@@ -418,10 +497,10 @@ export function RepairPage({
               </div>
             ) : null}
             <div className="repair-buttons">
-              <button type="button" onClick={() => c.setView("history")}>
+              <button type="button" disabled={c.busy} onClick={() => void c.showHistory()}>
                 View repair history
               </button>
-              <button type="button" className="repair-primary" onClick={() => c.setView("hub")}>
+              <button type="button" className="repair-primary" disabled={c.busy} onClick={c.showHub}>
                 Back to REPAIR
               </button>
             </div>
@@ -505,7 +584,7 @@ export function RepairPage({
                 Save checkpoint
               </button>
             </form>
-            <button type="button" onClick={() => c.setView("history")} disabled={c.busy}>
+            <button type="button" onClick={() => void c.showHistory()} disabled={c.busy}>
               Repair history
             </button>
             <div className="repair-records">

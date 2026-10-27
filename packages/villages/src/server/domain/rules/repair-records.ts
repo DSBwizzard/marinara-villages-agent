@@ -30,7 +30,12 @@ const choices = (
   options: { value: string; label: string }[],
 ): RepairField => ({ key, label, value, type: "choice", options });
 const actions = [{ id: "correct", label: "Correct" }];
-export function worldRepairRecords(state: VillageState, inspection: boolean, includeMemories = true): RepairRecord[] {
+export function worldRepairRecords(
+  state: VillageState,
+  inspection: boolean,
+  includeMemories = true,
+  personId?: string,
+): RepairRecord[] {
   const records: RepairRecord[] = [];
   const add = (
     parts: string[],
@@ -81,27 +86,36 @@ export function worldRepairRecords(state: VillageState, inspection: boolean, inc
       ]),
     );
     const effective = new Map([...projected].map(([id, rows]) => [id, new Map(rows.map((row) => [row.rootId, row]))]));
-    const memories = inspection ? [...projected.values()].flat() : projected.get("player")!;
+    const memories = inspection
+      ? [...(personId ? (projected.get(personId) ?? []) : []), ...[...projected.values()].flat()]
+      : projected.get("player")!;
     const seen = new Set<string>();
-    for (const row of memories) {
-      if (seen.has(row.rootId)) continue;
-      seen.add(row.rootId);
-      const stored = storedById.get(row.id)!;
-      const root = storedById.get(row.rootId)!;
-      const knowers = inspection ? Object.keys(stored.knowers) : ["player"];
+    for (const candidate of memories) {
+      if (seen.has(candidate.rootId)) continue;
+      const root = storedById.get(candidate.rootId)!;
+      const focused = inspection && personId ? effective.get(personId)?.get(root.id) : undefined;
+      const row = focused ?? candidate;
+      if (personId && !focused && !row.subjects.includes(personId) && !(personId === "player" && !inspection)) continue;
+      seen.add(root.id);
+      const knowers = inspection
+        ? Object.keys(root.knowers).filter((id) => effective.get(id)?.has(root.id))
+        : ["player"];
       add(
-        ["memory", stored.id],
+        ["memory", root.id],
         "memories",
         row.text,
         `${row.kind} · ${new Date(row.occurredAt).toLocaleDateString("en-US")}`,
         [text("text", "Remembered wording", row.text)],
         {
           source:
-            stored.origin.kind === "domain" && stored.origin.id.startsWith("player-repair:")
+            root.origin.kind === "domain" && root.origin.id.startsWith("player-repair:")
               ? ["Added by you"]
               : inspection
-                ? Object.values(stored.knowers).flatMap((k) => k.support.map((e) => e.excerpt))
-                : [...Object.values(row.knowers).flatMap((k) => k.support.map((e) => e.excerpt))],
+                ? knowers.flatMap((id) => {
+                    const candidate = effective.get(id)!.get(root.id)!;
+                    return storedById.get(candidate.id)!.knowers[id].support.map((e) => e.excerpt);
+                  })
+                : Object.values(row.knowers).flatMap((k) => k.support.map((e) => e.excerpt)),
           actions: [
             ...actions,
             { id: "forget", label: "Forget" },
@@ -111,11 +125,12 @@ export function worldRepairRecords(state: VillageState, inspection: boolean, inc
             .filter((p) => knowers.includes(p.id))
             .map((p) => ({
               ...p,
-              text: effective.get(p.id)?.get(row.rootId)?.text ?? row.text,
+              text: effective.get(p.id)!.get(row.rootId)!.text,
               forgotten: !!root.knowers[p.id]?.forgotten,
             })),
           revision: root.revision,
-          private: inspection || !stored.knowers.player,
+          private: inspection || !root.knowers.player,
+          subjects: row.subjects,
           related:
             row.domainRef && ["wish", "pursuit", "project"].includes(row.domainRef.kind)
               ? [

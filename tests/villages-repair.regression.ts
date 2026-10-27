@@ -1,4 +1,4 @@
-// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/retained-scenes, repair/scale, repair/http
+// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/retained-scenes, repair/scale, repair/http
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
@@ -8,7 +8,8 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { repairId } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { captureMemoryScene, projectMemories } from "../packages/villages/src/server/domain/rules/memory-views.js";
 import { sceneMemories } from "../packages/villages/src/server/domain/rules/village-memories.js";
-import { addMemory, memoryTime, realisticMemoryHistory } from "./helpers/memories-fixture.js";
+import { addMemory, memoryTime, realisticMemoryHistory, targetOf, memoryRepair } from "./helpers/memories-fixture.js";
+import { applyMemoryRepair } from "../packages/villages/src/server/domain/rules/memory-application.js";
 import { fixture as projectFixture, venue } from "./fixtures/villages-projects.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -102,7 +103,10 @@ async function fixture() {
     },
     initial,
     prepare: async (request: RepairRequest) =>
-      api.prepare({ ...request, expectedRecord: (await api.inspect(request.recordId, request.inspection)).token! }),
+      api.prepare({
+        ...request,
+        expectedRecord: (await api.inspect(request.recordId, request.inspection, request.personId)).token!,
+      }),
     hook(h: typeof hook) {
       hook = h;
     },
@@ -204,6 +208,127 @@ await runCase("repair/add-memory", async () => {
   assert.equal(inverse.changes.filter((change) => change.before === text).length, 1);
   await f.api.apply(inverse.id);
   assert.ok(!projectMemories((await f.read()).memories, ["player"]).some((row) => row.id === added.id));
+});
+await runCase("repair/people", async () => {
+  const f = await fixture(),
+    model = projectFixture().state();
+  model.villagers[0].cardSnapshot.name = "Nora";
+  model.villagers[1].cardSnapshot.name = "Ellis";
+  model.villagers[2].cardSnapshot.name = "Mira";
+  let memories = addMemory(
+    { format: 1, revision: 0, records: [] },
+    {
+      sourceId: "shared",
+      audience: ["player", "a"],
+      text: "We will repair the telescope.",
+      patch: { subjects: ["a"] },
+    },
+  );
+  const root = memories.records[0];
+  memories = addMemory(memories, {
+    sourceId: "player-correction",
+    audience: ["player"],
+    text: "The Persona remembers a later date.",
+    patch: { action: "correct", target: targetOf(memories, root.id), subjects: ["a"] },
+  });
+  memories = addMemory(memories, {
+    sourceId: "nora-secret",
+    audience: ["a"],
+    text: "Nora privately hid a compass from Ellis.",
+    patch: { subjects: ["b"] },
+  });
+  memories = addMemory(memories, {
+    sourceId: "about-ellis",
+    audience: ["player"],
+    text: "Ellis paints the harbor boats.",
+    patch: { subjects: ["b"] },
+  });
+  memories = addMemory(memories, {
+    sourceId: "residents-only",
+    audience: ["a", "b"],
+    text: "The residents plan a private festival.",
+    patch: { subjects: [] },
+  });
+  memories = addMemory(memories, {
+    sourceId: "forgotten",
+    audience: ["a"],
+    text: "A forgotten private appointment.",
+    patch: { subjects: ["a"] },
+  });
+  const forgotten = memories.records.at(-1)!;
+  memories = applyMemoryRepair(
+    memories,
+    memoryRepair(memories, "forget", ["a"], undefined, forgotten.id),
+    memoryTime(200),
+  ).collection;
+  await f.repo.mutateAuthority(
+    (s) => {
+      Object.assign(s, model);
+      s.seed = f.initial.seed;
+      s.setupAt = f.initial.setupAt;
+      s.memories = memories;
+    },
+    { memories: true },
+  );
+  assert.deepEqual(
+    (await f.api.index()).people.map((p) => p.name),
+    ["Your Persona", "Nora", "Ellis", "Mira"],
+  );
+  assert.equal((await f.api.list("people")).records.length, 0, "People opens a roster, not mixed record rows");
+  const knownEllis = await f.api.list("people", false, "", 0, "b");
+  assert.deepEqual(
+    knownEllis.records.map((r) => r.title),
+    ["Ellis paints the harbor boats."],
+  );
+  assert.ok(knownEllis.records[0].summary.startsWith("About Ellis"));
+  assert.equal(
+    (await f.api.list("people", false, "compass", 0, "b")).total,
+    0,
+    "Private memories cannot affect Off-mode search/counts",
+  );
+  const allEllis = await f.api.list("people", true, "", 0, "b");
+  assert.ok(allEllis.records.some((r) => r.title.includes("compass")));
+  assert.ok(allEllis.records.some((r) => r.title.includes("private festival")));
+  assert.ok(!JSON.stringify(await f.api.list("people", true, "", 0, "player")).includes("compass"));
+  const nora = await f.api.inspect(repairId("memory", root.id), true, "a"),
+    player = await f.api.inspect(nora.id, true, "player");
+  assert.equal(nora.id, player.id);
+  assert.notEqual(nora.token, player.token);
+  assert.equal(nora.fields[0].value, "We will repair the telescope.");
+  assert.equal(player.fields[0].value, "The Persona remembers a later date.");
+  assert.deepEqual(
+    nora.people?.map((p) => [p.id, p.text]),
+    [
+      ["player", "The Persona remembers a later date."],
+      ["a", "We will repair the telescope."],
+    ],
+  );
+  const editBoth = {
+    ...edit(nora.id, { text: "The telescope will be repaired on Friday." }, "shared-edit"),
+    inspection: true,
+    personId: "a",
+    knowers: ["player", "a"],
+  };
+  await assert.rejects(() => f.api.prepare({ ...editBoth, expectedRecord: player.token! }), /record changed/u);
+  const review = await f.prepare(editBoth);
+  assert.deepEqual(review.memory?.people, ["Your Persona", "Nora"]);
+  await f.api.apply(review.id);
+  for (const id of ["player", "a"])
+    assert.equal(
+      projectMemories((await f.read()).memories, [id]).find((r) => r.rootId === root.id)?.text,
+      editBoth.values.text,
+    );
+  assert.equal(
+    (await f.api.list("people", false, "later date", 0, "a")).total,
+    0,
+    "Superseded original evidence stays hidden after a player correction",
+  );
+  const inverse = await f.api.undo(review.id, "shared-undo", true);
+  await f.api.apply(inverse.id);
+  assert.equal((await f.api.inspect(nora.id, true, "a")).fields[0].value, nora.fields[0].value);
+  assert.equal((await f.api.inspect(nora.id, true, "player")).fields[0].value, player.fields[0].value);
+  const allNora = await f.api.list("people", true, "", 0, "a");
+  assert.ok(allNora.records.some((r) => r.people?.some((p) => p.id === "a" && p.forgotten)));
 });
 await runCase("repair/checkpoints", async () => {
   const f = await fixture();
@@ -396,7 +521,8 @@ await runCase("repair/privacy", async () => {
   await f.api.apply(added.id);
   assert.ok(!JSON.stringify(await f.api.index(false)).includes("voyage"));
   assert.ok(JSON.stringify(await f.api.index(true)).includes("voyage"));
-  const undo = await f.api.undo(added.id, "undo-private-addition");
+  await assert.rejects(() => f.api.undo(added.id, "hidden-undo"), /Spoilers/u);
+  const undo = await f.api.undo(added.id, "undo-private-addition", true);
   await f.api.apply(undo.id);
   assert.ok(!projectMemories((await f.read()).memories, ["aqua"]).some((row) => row.text.includes("voyage")));
 });
@@ -452,6 +578,12 @@ await runCase("repair/domain-editors", async () => {
     "Private checkpoint names are hidden; public map checkpoint remains visible",
   );
   assert.ok((await f.api.index(true)).checkpoints.length >= 2);
+  const publicCheckpointIds = new Set((await f.api.index(false)).checkpoints.map((checkpoint) => checkpoint.id));
+  const privateCheckpoint = (await f.api.index(true)).checkpoints.find(
+    (checkpoint) => !publicCheckpointIds.has(checkpoint.id),
+  );
+  assert.ok(privateCheckpoint);
+  await assert.rejects(f.api.restore(privateCheckpoint.id, "hidden-checkpoint"), /Spoilers/);
   const oldHome = venue("old-home", "residence"),
     newHome = venue("new-home", "residence");
   newHome.residentIds = [];

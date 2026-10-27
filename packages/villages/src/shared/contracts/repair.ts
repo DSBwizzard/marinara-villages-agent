@@ -1,5 +1,6 @@
 export type RepairTopic = "memories" | "people" | "places" | "world" | "progress" | "restore";
 export type RepairValue = string | number | boolean;
+export type RepairPerson = { id: string; name: string };
 export type RepairField = {
   key: string;
   label: string;
@@ -23,6 +24,7 @@ export type RepairRecord = {
   revision?: number;
   token?: string;
   creating?: boolean;
+  subjects?: string[];
 };
 export type RepairRequest = {
   operationId: string;
@@ -32,6 +34,7 @@ export type RepairRequest = {
   knowers: string[];
   inspection: boolean;
   expectedRecord: string;
+  personId?: string;
 };
 export type RepairChange = { label: string; before: string; after: string };
 export type RepairReview = {
@@ -64,4 +67,6 @@ export type RepairIndex = {
   historyTotal: number;
   checkpoints: RepairCheckpoint[];
   sceneOpen: boolean;
+  people: RepairPerson[];
 };
+export type RepairRecordPage = { records: RepairRecord[]; total: number; next: number | null; creation?: RepairRecord };

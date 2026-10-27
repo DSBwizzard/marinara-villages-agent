@@ -13,28 +13,39 @@ export function registerRepairRoutes(app: FastifyInstance) {
       return fail(reply, e, "reading REPAIR");
     }
   });
-  app.get<{ Querystring: { topic: string; inspection?: string; query?: string; offset?: string } }>(
-    "/repair/records",
+  app.get<{
+    Querystring: {
+      topic: string;
+      inspection?: string;
+      query?: string;
+      offset?: string;
+      personId?: string;
+      section?: string;
+    };
+  }>("/repair/records", async (request, reply) => {
+    try {
+      return await repairs().list(
+        request.query.topic,
+        request.query.inspection === "true",
+        request.query.query ?? "",
+        Math.max(0, Number(request.query.offset) || 0),
+        request.query.personId,
+        request.query.section,
+      );
+    } catch (e) {
+      return fail(reply, e, "reading repair records");
+    }
+  });
+  app.get<{ Querystring: { id: string; inspection?: string; personId?: string } }>(
+    "/repair/record",
     async (request, reply) => {
       try {
-        return await repairs().list(
-          request.query.topic,
-          request.query.inspection === "true",
-          request.query.query ?? "",
-          Math.max(0, Number(request.query.offset) || 0),
-        );
+        return await repairs().inspect(request.query.id, request.query.inspection === "true", request.query.personId);
       } catch (e) {
-        return fail(reply, e, "reading repair records");
+        return fail(reply, e, "inspecting a repair record");
       }
     },
   );
-  app.get<{ Querystring: { id: string; inspection?: string } }>("/repair/record", async (request, reply) => {
-    try {
-      return await repairs().inspect(request.query.id, request.query.inspection === "true");
-    } catch (e) {
-      return fail(reply, e, "inspecting a repair record");
-    }
-  });
   app.post<{ Body: RepairRequest }>("/repair/review", async (request, reply) => {
     try {
       return await repairs().prepare(request.body);
@@ -49,13 +60,16 @@ export function registerRepairRoutes(app: FastifyInstance) {
       return fail(reply, e, "applying a repair");
     }
   });
-  app.post<{ Body: { id: string; operationId: string } }>("/repair/undo", async (request, reply) => {
-    try {
-      return await repairs().undo(request.body.id, request.body.operationId);
-    } catch (e) {
-      return fail(reply, e, "reviewing repair undo");
-    }
-  });
+  app.post<{ Body: { id: string; operationId: string; inspection?: boolean } }>(
+    "/repair/undo",
+    async (request, reply) => {
+      try {
+        return await repairs().undo(request.body.id, request.body.operationId, request.body.inspection === true);
+      } catch (e) {
+        return fail(reply, e, "reviewing repair undo");
+      }
+    },
+  );
   app.post<{ Body: { title: string; operationId?: string } }>("/repair/checkpoints", async (request, reply) => {
     try {
       return await repairs().createCheckpoint(request.body.title, request.body.operationId);
@@ -63,11 +77,14 @@ export function registerRepairRoutes(app: FastifyInstance) {
       return fail(reply, e, "saving a checkpoint");
     }
   });
-  app.post<{ Body: { id: string; operationId: string } }>("/repair/restore", async (request, reply) => {
-    try {
-      return await repairs().restore(request.body.id, request.body.operationId);
-    } catch (e) {
-      return fail(reply, e, "reviewing checkpoint restoration");
-    }
-  });
+  app.post<{ Body: { id: string; operationId: string; inspection?: boolean } }>(
+    "/repair/restore",
+    async (request, reply) => {
+      try {
+        return await repairs().restore(request.body.id, request.body.operationId, request.body.inspection === true);
+      } catch (e) {
+        return fail(reply, e, "reviewing checkpoint restoration");
+      }
+    },
+  );
 }
