@@ -151,10 +151,12 @@ export function ExplorationMarkers({
   pins,
   picture,
   frame,
+  onNudge,
 }: {
   pins: ExplorationPin[];
   picture: MobileMapBox;
   frame: MobileMapSize;
+  onNudge?(id: string, dx: number, dy: number): void;
 }) {
   return (
     <>
@@ -175,6 +177,20 @@ export function ExplorationMarkers({
                 aria-label={pin.text}
                 title={pin.text}
                 disabled={!pin.onSelect}
+                onKeyDown={(event) => {
+                  if (!onNudge) return;
+                  const delta: Record<string, [number, number]> = {
+                    ArrowLeft: [-0.01, 0],
+                    ArrowRight: [0.01, 0],
+                    ArrowUp: [0, -0.01],
+                    ArrowDown: [0, 0.01],
+                  };
+                  const step = delta[event.key];
+                  if (!step) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onNudge(pin.id, ...step);
+                }}
                 onClick={(event) => {
                   event.stopPropagation();
                   pin.onSelect?.();

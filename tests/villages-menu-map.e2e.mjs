@@ -77,7 +77,11 @@ try {
           body.placements.map((pin) => pin.venueId),
           state.settings.venues.filter((venue) => venue.presentation.mapId === map.id).map((venue) => venue.id),
         );
-        Object.assign(map, { name: body.name, view: body.view, revision: map.revision + 1 });
+        Object.assign(map, { name: body.name ?? map.name, view: body.view ?? map.view, revision: map.revision + 1 });
+        for (const placement of body.placements) {
+          const venue = state.settings.venues.find((entry) => entry.id === placement.venueId);
+          if (venue) Object.assign(venue.presentation, { x: placement.x, y: placement.y });
+        }
         if (holdMapSave) {
           heldMapSave = route;
           return;
@@ -114,6 +118,60 @@ try {
     await expect(page.getByRole("combobox", { name: "Displayed map" })).toHaveCount(0);
     await expect(places).toHaveCount(0);
     await expect(mapImage("Maple House")).toBeVisible();
+    const originalMarker = { ...state.settings.venues[0].presentation };
+    await page.getByRole("button", { name: "Move markers", exact: true }).click();
+    await page.getByRole("combobox", { name: "Move Venue" }).selectOption(state.settings.venues[0].id);
+    const navigationMap = page.locator("." + P + "-home-map-viewport ." + P + "-canvas");
+    const mapBox = await navigationMap.boundingBox();
+    await navigationMap.click({ position: { x: mapBox.width * 0.6, y: mapBox.height * 0.6 } });
+    assert.equal(writes.length, 0, "marker changes are a draft until saved");
+    assert.equal(
+      await page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true }))),
+      false,
+    );
+    const draftKey = "villages-marker-draft:map-house:map-house";
+    const editedPlacement = await page.evaluate(
+      ([key, id]) => JSON.parse(sessionStorage.getItem(key)).placements[id],
+      [draftKey, state.settings.venues[0].id],
+    );
+    page.once("dialog", (dialog) => dialog.accept());
+    await mount();
+    await page.getByRole("button", { name: "Resume marker edits", exact: true }).click();
+    assert.deepEqual(
+      await page.evaluate(
+        ([key, id]) => JSON.parse(sessionStorage.getItem(key)).placements[id],
+        [draftKey, state.settings.venues[0].id],
+      ),
+      editedPlacement,
+      "draft survives leaving the map",
+    );
+    await expect(page.getByRole("combobox", { name: "Move Venue" })).toHaveValue(state.settings.venues[0].id);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.deepEqual(state.settings.venues[0].presentation, originalMarker, "cancel leaves the saved marker alone");
+    await page.getByRole("button", { name: "Move markers", exact: true }).click();
+    await page.getByRole("combobox", { name: "Move Venue" }).selectOption(state.settings.venues[0].id);
+    await navigationMap.click({ position: { x: mapBox.width * 0.5, y: mapBox.height * 0.5 } });
+    const markerButton = navigationMap.locator('[data-pin-id="' + state.settings.venues[0].id + '"]');
+    await markerButton.focus();
+    await page.keyboard.press("ArrowRight");
+    mkdirSync(resolve(".build-tmp/multiple-maps"), { recursive: true });
+    await page.screenshot({ path: resolve(".build-tmp/multiple-maps/move-" + width + ".png") });
+    await page.getByRole("button", { name: "Save markers", exact: true }).click();
+    const markerWrite = writes.at(-1);
+    assert.equal(markerWrite.body.expectedRevision, 1);
+    assert.notEqual(markerWrite.body.placements[0].x, originalMarker.x);
+    assert.equal(state.settings.venues[0].presentation.x, markerWrite.body.placements[0].x);
+    await expect(page.getByRole("button", { name: "Move markers", exact: true })).toBeVisible();
+    Object.assign(state.settings.venues[0].presentation, { x: null, y: null });
+    await mount();
+    await page.getByRole("button", { name: "Move markers", exact: true }).click();
+    await page.getByRole("combobox", { name: "Move Venue" }).selectOption(state.settings.venues[0].id);
+    await navigationMap.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.getByRole("button", { name: "Save markers", exact: true }).click();
+    assert.equal(state.settings.venues[0].presentation.x, 0.51, "keyboard places an unplaced Venue");
+    assert.equal(state.settings.venues[0].presentation.y, 0.5);
+    writes.length = 0;
     await page.getByRole("button", { name: "All maps", exact: true }).click();
     await expect(page.locator("." + P + "-maps-grid button")).toHaveCount(2);
     await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
