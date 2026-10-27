@@ -8,7 +8,7 @@ import type {
 /** Inputs consumed by renderGeneralSettingsPage; assembled by the shell. */
 export type GeneralSettingsPagePorts = {
   readonly category: "general" | "advanced";
-  readonly backgroundPanel: React.JSX.Element;
+  readonly writing: ReturnType<typeof import("./WritingSettings.js").useVillageWriting>;
   readonly busy: boolean;
   readonly resetArmed: boolean;
   readonly saveCharacterSpeechColors: (characterSpeechColors: boolean) => Promise<void>;

@@ -177,17 +177,21 @@ try {
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect.poll(() => heartbeats.some((beat) => beat.visible)).toBe(true);
   await page.getByRole("button", { name: "More" }).click();
+  await expect(page.getByText("Background work", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Debug", exact: true }).click();
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Needs attention (1)" })).toBeVisible();
-  await expect(page.getByText(/Background work: 0 running \/ queued, 0 paused, 1 need attention/)).toBeVisible();
+  await expect(page.getByText("0 active · 0 paused · 1 need attention", { exact: true })).toBeVisible();
   await expect(page.getByText("Finished Wish check", { exact: true })).not.toBeVisible();
-  await page.getByText("Completed history (1)", { exact: true }).click();
+  await page.getByText("Completed (1)", { exact: true }).click();
   await expect(page.getByText("Finished Wish check", { exact: true })).toBeVisible();
-  await page.getByText("Completed history (1)", { exact: true }).click();
+  await page.getByText("Completed (1)", { exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry unfinished work" })).toBeVisible();
-  await expect(page.getByText(/3 reusable steps, 4 requests, token usage unavailable/)).toBeVisible();
+  await expect(page.getByText(/3 steps · 4 requests · tokens unavailable/)).toBeVisible();
+  if (process.env.VILLAGES_BACKGROUND_SCREENSHOT)
+    await page.screenshot({ path: process.env.VILLAGES_BACKGROUND_SCREENSHOT });
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
   await expect(page.getByRole("alert")).toContainText("Could not reach the server");
   await page.clock.fastForward(30_000);
@@ -199,10 +203,8 @@ try {
   await page.getByRole("button", { name: "Open Mara profile" }).click();
   await page.getByRole("button", { name: "Inspect", exact: true }).click();
   await expect(
-    page.getByRole("region", { name: "Mara profile", exact: true }).getByText("Mara's agenda", { exact: true }),
-  ).toBeVisible();
-  if (process.env.VILLAGES_BACKGROUND_SCREENSHOT)
-    await page.screenshot({ path: process.env.VILLAGES_BACKGROUND_SCREENSHOT });
+    page.getByRole("region", { name: "Mara profile", exact: true }).getByText("Background work"),
+  ).toHaveCount(0);
   await page.evaluate(() => {
     document.querySelector("marinara-capability-villages").style.display = "none";
   });

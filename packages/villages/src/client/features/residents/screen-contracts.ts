@@ -1,4 +1,4 @@
-import type { BackgroundWork, VillageVenue } from "../../../shared/contracts/village.js";
+import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { MenuPage } from "../../shared/types.js";
 import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-exploration.js";
 import type { DossierNavigation } from "./villages-dossier.js";
@@ -40,7 +40,6 @@ export type ResidentsScreenController = {
   readonly profileOrigin: ResidentsState["profileOrigin"];
   readonly refreshBusyId: ResidentsState["refreshBusyId"];
   readonly refreshPreviews: ResidentsState["refreshPreviews"];
-  readonly retryWork: (job: BackgroundWork) => Promise<void>;
   readonly rewriteAgenda: ReturnType<typeof useRewriteAgenda>;
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
   readonly setAgendaScheduleIngestion: ReturnType<typeof useSetAgendaScheduleIngestion>;

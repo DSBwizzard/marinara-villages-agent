@@ -1,5 +1,5 @@
 import type { VillageMap, VillageSnapshot, TownMapView } from "../../../shared/contracts/village.js";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { readFileAsDataUrl, measureImage } from "../../shared/presentation.js";
@@ -135,7 +135,7 @@ function MapEditor({
       ? (snapshot.projects.find((project) => project.id === id.slice(8))?.title ?? "")
       : (snapshot.settings.venues.find((venue) => venue.id === id)?.name ?? "");
   const [placing, setPlacing] = useState("");
-  useEffect(() => {
+  useLayoutEffect(() => {
     reportLocalDraftStatus("map", {
       dirty: JSON.stringify(draft) !== JSON.stringify(original.current),
       busy: busy || !ready,

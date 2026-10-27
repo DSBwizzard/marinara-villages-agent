@@ -102,12 +102,11 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     };
   }
   const payloads = {
-    save: { selectedLorebookIds: [], loreTokenBudget: 1600 },
+    save: { selectedLorebookIds: [], loreTokenBudget: 1600, useVisualLoreByDefault: true },
     scenery: {
       sceneryStyleProfileId: null,
       sceneryArtStyle: " Exact scenery A ",
       personalizeVenueImagesByDefault: false,
-      useVisualLoreByDefault: true,
     },
     flip: { spriteCardFlipEnabled: true },
     pace: { backgroundPace: "quiet" },

@@ -243,8 +243,8 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
           ) : ["index", "general", "advanced"].includes(menuPage) ? (
             renderGeneralSettingsPage({
               category: menuPage === "advanced" ? "advanced" : "general",
-              backgroundPanel,
-              busy: busy,
+              writing: controller.writing,
+              busy: busy || navigationBusy,
               resetArmed,
               saveCharacterSpeechColors,
               saveSendOnEnter,
@@ -260,7 +260,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               category: menuPage === "visual" ? "visual" : "world",
               reportLocalDraftStatus,
               setSnapshot,
-              busy: busy,
+              busy: busy || navigationBusy,
               loreTokenBudgetDraft,
               lorebookDraft,
               lorebooks,

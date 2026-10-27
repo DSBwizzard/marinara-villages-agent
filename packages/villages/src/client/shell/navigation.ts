@@ -17,7 +17,7 @@ export const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   general: "General Preferences",
   advanced: "Advanced",
   chatlogs: "Scene History",
-  progress: "Progress",
+  progress: "Debug",
 };
 
 /** An unfinished Scene owns navigation, including opening/closing and failed entry. */
