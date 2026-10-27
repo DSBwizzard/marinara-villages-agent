@@ -134,6 +134,28 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
                       ))}
                     </div>
                   ) : null}
+                  {list(object(encounter.relationshipReview).changes).length ? (
+                    <div>
+                      <strong>Relationship interpretations</strong>
+                      {list(object(encounter.relationshipReview).changes).map((change, index) => (
+                        <p key={index}>
+                          {name(object(change).fromId)} → {name(object(change).toId)}:{" "}
+                          {text(object(change).reason) || "Relationship update"}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  {list(encounter.wishChanges).length ? (
+                    <div>
+                      <strong>Wish interpretations</strong>
+                      {list(encounter.wishChanges).map((change, index) => (
+                        <p key={index}>
+                          {name(object(change).actorId)}:{" "}
+                          {text(object(change).reason) || text(object(change).intent) || "Wish update"}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                   {!outcome.wishReflection && !outcome.social && record.status === "settled" ? (
                     <p>Nothing noteworthy happened.</p>
                   ) : null}

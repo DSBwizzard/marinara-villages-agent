@@ -62,6 +62,10 @@ try {
               encounter: {
                 lines: [{ speakerId: resident.characterId, text: "Good to see you." }],
                 memoryChanges: [{ text: "A pleasant meeting." }],
+                relationshipReview: {
+                  changes: [{ fromId: resident.characterId, toId: resident.characterId, reason: "Trust grew." }],
+                },
+                wishChanges: [{ actorId: resident.characterId, reason: "They want to meet again." }],
               },
             },
           },
@@ -97,6 +101,8 @@ try {
     await expect(page.getByRole("article").filter({ hasText: "They missed talking together." })).toBeVisible();
     await expect(page.getByRole("article").filter({ hasText: "Good to see you." })).toBeVisible();
     await expect(page.getByRole("article").filter({ hasText: "A pleasant meeting." })).toBeVisible();
+    await expect(page.getByRole("article").filter({ hasText: "Trust grew." })).toBeVisible();
+    await expect(page.getByRole("article").filter({ hasText: "They want to meet again." })).toBeVisible();
     await expect(page.getByText("Sleeping intervals were skipped.", { exact: true })).toBeVisible();
     await expect(page.getByText("RAW-ONLY-SECRET")).toBeHidden();
     await page.getByRole("button", { name: "Copy JSON" }).click();
