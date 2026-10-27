@@ -68,6 +68,8 @@ const SYSTEM_RETRIEVAL =
   "Supplied history and memories are bounded local retrieval, never proof of absence. Ambiguous references require clarification or no update. Never request context expansion or infer a historical target from missing scope. Administrative memory constraints are not new character knowledge. ";
 const SYSTEM_CURRENT_SCENE =
   "Adjudicate the current input, draft and residentActions using supplied evidence, policy and authoritative accessScopes. An invitation enables a later player choice; it requires no completed entry. Visit scope remains visit unless current evidence explicitly grants standing permission. Do not request memories to confirm mechanical policy or reread supplied draft:N evidence. Return the complete exchange JSON, never needsContext. If essential current facts are missing, use an unresolved intent/action disposition or consistent:false with a reason. Omit unsupported optional historical enrichment; it cannot block an otherwise supported current decision. Supplied history is bounded, never proof of absence. ";
+const INTENT_TIMELINE_RULE =
+  "Only movement rows carry zoneId; omit it on speech, thought, action and context rows. The current Zone is context.zoneId. Resolved timelines must cover the entire input in source order, including every clause and punctuation. Only whitespace and surrounding quotation marks may fall between spans. Keep roleplay wrappers inside action/context spans and internal apostrophes inside words. Use context rows for other source text; never drop a clause. ";
 
 export function createSemanticService(ports: SemanticPorts) {
   async function ask<Input, Result>(
@@ -221,27 +223,45 @@ export function createSemanticService(ports: SemanticPorts) {
     )
       throw badGateway("System source timeline is incomplete.");
     let cursor = 0;
+    // Spoken spans may exclude surrounding quotes, never words, operators or roleplay syntax.
+    const isDelimiterGap = (start: number, end: number) => {
+      const gap = message.slice(start, end);
+      return (
+        /^[\s"'“”‘’]*$/u.test(gap) &&
+        !(
+          gap &&
+          !/\s/u.test(gap) &&
+          /[\p{L}\p{N}\p{M}]$/u.test(message.slice(0, start)) &&
+          /^[\p{L}\p{N}\p{M}]/u.test(message.slice(end))
+        )
+      );
+    };
     const timeline = raw.timeline.map((value) => {
       const row = asRecord(value);
       const text = typeof row.text === "string" ? row.text : "";
       const start = text ? savedInput.message.indexOf(text, cursor) : -1;
+      if (!text || start < 0) throw badGateway("System source timeline has invalid or reordered spans.");
+      if (!["speech", "thought", "action", "movement", "context"].includes(String(row.kind)))
+        throw badGateway("System source timeline has an invalid kind.");
       if (
-        !text ||
-        start < 0 ||
-        !["speech", "thought", "action", "movement", "context"].includes(String(row.kind)) ||
-        (row.targetId !== undefined &&
-          row.targetId !== "player" &&
-          !savedInput.context.referenceActors.some((actor) => actor.id === row.targetId)) ||
-        (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery))) ||
+        row.targetId !== undefined &&
+        row.targetId !== "player" &&
+        !savedInput.context.referenceActors.some((actor) => actor.id === row.targetId)
+      )
+        throw badGateway("System source timeline has an invalid actor reference.");
+      if (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery)))
+        throw badGateway("System source timeline has invalid delivery metadata.");
+      if (
         (raw.status === "resolved" && row.kind === "movement" && typeof row.zoneId !== "string") ||
         (row.zoneId !== undefined &&
-          (row.kind !== "movement" ||
-            (!savedInput.context.zones.some((zone) => zone.id === row.zoneId) &&
+          (row.kind !== "movement"
+            ? typeof row.zoneId !== "string" || row.zoneId !== savedInput.context.zoneId || row.zoneId !== scene.zoneId
+            : !savedInput.context.zones.some((zone) => zone.id === row.zoneId) &&
               !savedInput.context.accessScopes?.some(
                 (zone) => zone.id === row.zoneId && Object.hasOwn(zone, "adjacentZoneIds"),
-              ))))
+              )))
       )
-        throw badGateway("System source timeline has invalid or reordered spans.");
+        throw badGateway("System source timeline has invalid Zone metadata.");
       cursor = start + text.length;
       return {
         kind: row.kind as SemanticIntent["timeline"][number]["kind"],
@@ -250,9 +270,16 @@ export function createSemanticService(ports: SemanticPorts) {
         end: cursor,
         ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
         ...(row.delivery ? { delivery: row.delivery as "ordinary" | "whisper" | "shout" } : {}),
-        ...(typeof row.zoneId === "string" ? { zoneId: row.zoneId } : {}),
+        // Incidental current-Zone metadata must not become a planned Zone or reveal its state.
+        ...(row.kind === "movement" && typeof row.zoneId === "string" ? { zoneId: row.zoneId } : {}),
       };
     });
+    if (
+      raw.status === "resolved" &&
+      (timeline.some((step, index) => !isDelimiterGap(index === 0 ? 0 : timeline[index - 1].end, step.start)) ||
+        !isDelimiterGap(cursor, message.length))
+    )
+      throw badGateway("System source timeline omits player input. The draft is preserved.");
     if (timeline.filter((step) => step.kind === "movement").length > 8)
       throw badGateway("The movement timeline exceeds its supported step limit.");
     semanticPlayerMoves(
@@ -303,6 +330,7 @@ export function createSemanticService(ports: SemanticPorts) {
         context: semanticContext(scene, state, message, false, false, sceneContinuityView(state, scene)),
       },
       'Interpret current player intent and plausible supported action outcomes. Return {sourceHash,status:"resolved|unresolved",reason,instructions,action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:exact input span,targetId?,delivery?:"ordinary|whisper|shout"}]}. Timeline spans follow source order and cover meaningful input; code binds offsets. Never turn quoted/hypothetical words or private thoughts into actual speech. ' +
+        INTENT_TIMELINE_RULE +
         "action, when justified, is a sceneChange object {happened:true,narration,conditionBefore?,conditionAfter?,featureId?,featureText?,publicFactBefore?,publicFactAfter?,resolveTraceId?,addItem?,removeItem?,transferTo?,traceKind?,traceText?,recipientId?,sceneNote?}. " +
         "Only existing supported effects and current reachable targets. Do not create resources without established source/capability. Required resident consent absent from evidence means requires-response in instructions and no completed action. " +
         "Only the explicit Move action changes the player Zone. Movement within context.zoneId, including walking toward furniture or people, is kind:action without a Zone change. For an actual player attempt to cross Zones in this input, identify it as kind:movement with its exact destination zoneId so code can block the turn; never complete it in the draft. Quoted, hypothetical and requested travel is not a completed crossing. Multiple persistent physical steps needing intermediate receipts or unsupported effects remain unresolved. " +
@@ -362,6 +390,7 @@ export function createSemanticService(ports: SemanticPorts) {
         (combined
           ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. An empty player input is normal for a Scene greeting: return resolved intent with empty instructions and timeline, null action and movement; still independently validate all draft evidence. Include every meaningful input span in source order. Only explicit Move changes the player Zone. Local walking within the current Zone is kind:action, not movement. Identify an actual attempted crossing as kind:movement with exact destination zoneId; code blocks the entire turn. Never invent or complete a player crossing. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
           : "") +
+        (combined ? INTENT_TIMELINE_RULE : "") +
         (movementReview
           ? "Also return immediateResidentMoves:[], required even when empty. Independently identify EVERY immediate request in the original player input for residents to cross into a recorded Zone, regardless of the draft response or their willingness. residentRequestLocalIds lists ALL residents physically with the player before this reply, including passive residents absent from context.actors. context.actors is the selected reply cast, never the complete set of possible addressees. Resolve group references from the original input, these local IDs and established context before considering the draft. For example, when four residents are here and two others are already in the Studio, 'Can the four of you join those two in the Studio now?' requests the four local residents, not the selected four-person reply cast. Polite Can/Could/Would questions asking for movement now are immediate requests, not hypothetical merely because of modal wording. Rows are {characterIds:[exact resident IDs for the COMPLETE requested group],zoneId,source:zero-based intent.timeline index}. Keep every requested resident even if some refuse, stay, or only a smaller group crosses in the draft. Include requests within mixed speech/actions. Do not nominate future appointments, conditional/hypothetical travel, quoted examples or private thoughts. For these recorded-Zone requests, unresolved actor or destination identity remains unresolved intent; never invent a Zone or silently choose a smaller group. Ordinary movement toward fictional spaces does not itself require a recorded Zone nomination. These are request nominations, never completed moves or authority. "
           : "") +
