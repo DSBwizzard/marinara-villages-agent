@@ -9,6 +9,7 @@ import type { MenuPage } from "../shared/types.js";
 import type { MenuScreenController } from "./menu-contracts.js";
 import { VillagesRuntimeDebug } from "../features/settings/RuntimeDebug.js";
 import { VillageTimeControl } from "../features/settings/TimeControl.js";
+import { RepairPage } from "../features/repair/RepairPage.js";
 import { renderVillageSettingsPage } from "../features/settings/VillageSettingsPage.js";
 import { WorkspaceShell, type WorkspaceDestination } from "../shared/WorkspaceShell.js";
 import { useCallback, useState } from "react";
@@ -132,6 +133,16 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     );
   }
 
+  if (screen === "menu" && menuPage === "repair") {
+    return (
+      <RepairPage
+        controller={controller.repairController}
+        onBack={() => rawOpenMenu("index")}
+        onScene={room && room.status !== "closed" ? () => setScreen("room") : undefined}
+      />
+    );
+  }
+
   if (screen === "menu") {
     const navigate = (destination: WorkspaceDestination) => {
       if (destination === "map") goHome();
@@ -149,6 +160,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
       { page: "advanced", label: "Advanced" },
       { page: "chatlogs", label: "Scene History" },
       { page: "venueRequests", label: "Venue Requests" },
+      { page: "repair", label: "REPAIR" },
       { page: "progress", label: "Debug" },
     ];
     const chooseSection = (page: MenuPage) => {
@@ -165,7 +177,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             <button
               key={page}
               type="button"
-              disabled={navigationBusy || (!snapshot && !["general", "advanced"].includes(page))}
+              disabled={navigationBusy || (!snapshot && !["general", "advanced", "repair"].includes(page))}
               aria-current={selected === page ? "page" : undefined}
               onClick={() => chooseSection(page)}
             >
@@ -183,7 +195,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             }}
           >
             {sections.map(({ page, label }) => (
-              <option key={page} value={page} disabled={!snapshot && !["general", "advanced"].includes(page)}>
+              <option key={page} value={page} disabled={!snapshot && !["general", "advanced", "repair"].includes(page)}>
                 {label}
               </option>
             ))}

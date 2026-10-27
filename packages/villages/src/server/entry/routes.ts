@@ -38,6 +38,9 @@ import type { FastifyInstance } from "fastify";
 import { readActive, readSession } from "../adapters/storage/scene-store.js";
 import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
 import { asRecord } from "../domain/rules/coerce.js";
+import { registerRepairRoutes } from "../features/repair/routes.js";
+import { withRepairWork } from "../adapters/storage/repair-gate.js";
+import { activationScope } from "../adapters/engine/activation-scope.js";
 
 /** Register feature routes in their established host-collector order. */
 export async function villagesRoutes(engine: FastifyInstance) {
@@ -104,4 +107,18 @@ export async function villagesRoutes(engine: FastifyInstance) {
   registerBackgroundRoutes(surface);
   registerHistoryRoutes(surface);
   registerAgendaRoutes(surface);
+  // These routes inspect raw saved authority. Do not observe clocks or process outboxes.
+  const repairSurface = Object.create(engine) as FastifyInstance;
+  const owner = activationScope();
+  for (const method of ["get", "post"] as const) {
+    repairSurface[method] = ((path: string, handler: (request: never, reply: never) => unknown) => {
+      const run = async (request: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply) => {
+        const blocked = await guard(method, path, request.body);
+        if (blocked) return reply.code(409).send({ error: blocked });
+        return withRepairWork(() => Promise.resolve(handler(request as never, reply as never)));
+      };
+      return engine[method](path, owner ? owner.bind(run) : run);
+    }) as unknown as (typeof engine)[typeof method];
+  }
+  registerRepairRoutes(repairSurface);
 }

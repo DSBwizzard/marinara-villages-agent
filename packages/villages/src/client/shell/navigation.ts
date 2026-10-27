@@ -8,6 +8,7 @@ export function menuCategory(page: MenuPage): "index" | "general" | "village" | 
 
 export const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   index: "General Preferences",
+  repair: "REPAIR",
   villagers: "Villagers",
   venueRequests: "Venue Requests",
   projects: "Projects",
