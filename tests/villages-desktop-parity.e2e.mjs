@@ -339,10 +339,7 @@ try {
     await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to the village" }).click();
 
-    await page
-      .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Show places", exact: true }).click();
     const navigator = page.getByRole("complementary", { name: "Places navigator" });
     await navigator.getByRole("button", { name: mobile ? /^The Market/ : /^The Mill/ }).click();
     await navigator.getByRole("button", { name: "View venue", exact: true }).click();

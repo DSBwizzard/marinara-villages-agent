@@ -1,9 +1,15 @@
 import { STATUS_CODES } from "node:http";
 import assert from "node:assert/strict";
 import { chromium as browserType, expect } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 
 export { expect };
 const expectations = new WeakMap();
+const deskAsset = fileURLToPath(new URL("../../packages/villages/menu-desk.jpg", import.meta.url));
+const mockDeskAsset = (context) =>
+  context.route("**/api/capability-packages/villages/assets/menu-desk.jpg", (route) =>
+    route.fulfill({ path: deskAsset, contentType: "image/jpeg" }),
+  );
 
 /** Register a bounded diagnostic for a deliberate negative fixture response. */
 export function allowConsole(page, { type, text, url, count = 1 }) {
@@ -43,12 +49,14 @@ export const chromium = {
     const newContext = browser.newContext.bind(browser);
     browser.newContext = async (...args) => {
       const context = await newContext(...args);
+      await mockDeskAsset(context);
       context.on("page", watch);
       return context;
     };
     const newPage = browser.newPage.bind(browser);
     browser.newPage = async (...args) => {
       const page = await newPage(...args);
+      await mockDeskAsset(page.context());
       page.context().on("page", watch);
       watch(page);
       return page;

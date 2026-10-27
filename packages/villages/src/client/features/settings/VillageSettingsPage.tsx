@@ -99,7 +99,12 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
 
           <VillageWritingSettings />
 
-          <MapsPanel snapshot={snapshot} onSnapshot={ports.setSnapshot} mobile={mobile} />
+          <MapsPanel
+            snapshot={snapshot}
+            onSnapshot={ports.setSnapshot}
+            mobile={mobile}
+            reportLocalDraftStatus={ports.reportLocalDraftStatus}
+          />
 
           <div className={`${ELEMENT_TAG}-field`}>
             <div className={`${ELEMENT_TAG}-row`}>
@@ -157,6 +162,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             key={snapshot.settings.worldName}
             onSnapshot={ports.setSnapshot}
             initial={snapshot.settings.worldName ?? ""}
+            reportLocalDraftStatus={ports.reportLocalDraftStatus}
           />
           <VillageLorebookPicker
             books={lorebooks}

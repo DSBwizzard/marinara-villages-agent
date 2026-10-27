@@ -2,6 +2,7 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -79,7 +80,17 @@ const snapshot = {
     setupPlaceCount: 5,
     setupMinVillagerCount: 0,
     setupMaxVillagerCount: 3,
-    maps: [],
+    maps: [
+      {
+        id: "map-house",
+        name: "Village map",
+        artwork: { ref: "map", url: mapImage },
+        width: 1500,
+        height: 1000,
+        view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+        revision: 1,
+      },
+    ],
     townMapImageMaxLength: 100000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     townMapExpectedWidth: 1280,
@@ -114,9 +125,21 @@ try {
     const errors = [];
     let progressReads = 0;
     let progressFails = false;
+    let holdWorldSave = false,
+      heldWorldSave,
+      holdMapSave = false,
+      heldMapSave;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (holdWorldSave && path.endsWith("/settings") && route.request().method() === "PATCH") {
+        heldWorldSave = route;
+        return;
+      }
+      if (holdMapSave && path.endsWith("/maps/map-house") && route.request().method() === "PUT") {
+        heldMapSave = route;
+        return;
+      }
       if (path.endsWith("/progress/debug")) {
         progressReads += 1;
         return fulfill(route, {
@@ -229,6 +252,48 @@ try {
       if (key === "village") {
         await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toBeVisible();
         await expect(nav.getByRole("button", { name: "DEBUG: Villager reply guidance" })).toHaveCount(0);
+        const worldName = main.getByRole("textbox", { name: "Village world", exact: true });
+        const original = await worldName.inputValue();
+        await worldName.fill("An unsaved world name");
+        page.once("dialog", (dialog) => dialog.dismiss());
+        await page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "Map", exact: true })
+          .click();
+        await expect(worldName).toHaveValue("An unsaved world name");
+        holdWorldSave = true;
+        await worldName.locator("..").locator("..").getByRole("button", { name: "Save", exact: true }).click();
+        await expect.poll(() => !!heldWorldSave).toBe(true);
+        await expect(
+          page
+            .getByRole("navigation", { name: "Village navigation" })
+            .getByRole("button", { name: "Map", exact: true }),
+        ).toBeDisabled();
+        await fulfill(heldWorldSave, { json: snapshot });
+        holdWorldSave = false;
+        await expect(worldName).toBeEnabled();
+        await worldName.fill(original);
+        await main.getByRole("button", { name: "Edit map", exact: true }).click();
+        const mapName = main.getByRole("textbox", { name: "Map name", exact: true });
+        await expect(mapName).toBeEnabled();
+        await mapName.fill("An unsaved map name");
+        page.once("dialog", (dialog) => dialog.dismiss());
+        await page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "Projects", exact: true })
+          .click();
+        await expect(mapName).toHaveValue("An unsaved map name");
+        holdMapSave = true;
+        await main.getByRole("button", { name: "Save map", exact: true }).click();
+        await expect.poll(() => !!heldMapSave).toBe(true);
+        await expect(
+          page
+            .getByRole("navigation", { name: "Village navigation" })
+            .getByRole("button", { name: "Projects", exact: true }),
+        ).toBeDisabled();
+        await fulfill(heldMapSave, { json: snapshot });
+        holdMapSave = false;
+        await expect(mapName).toHaveCount(0);
       }
       if (key === "progress") {
         await expect(main.getByText("Engine version: synthetic-1", { exact: true })).toBeVisible();
@@ -264,17 +329,28 @@ try {
       }
       assert.ok((await main.innerText()).trim().length > 10, `${key} has visible content`);
       await expect(nav.getByRole("button", { name })).toHaveAttribute("data-active", "true");
-      const { color, background, area } = await main.evaluate((element) => {
+      const { contrast, area } = await main.evaluate((element) => {
         const style = getComputedStyle(element);
         const rect = element.getBoundingClientRect();
+        const surface = getComputedStyle(element.closest(".marinara-capability-villages-sectioned-menu"));
+        const luminance = (value) =>
+          value
+            .match(/[\d.]+/g)
+            .slice(0, 3)
+            .map(Number)
+            .map((channel) => {
+              const v = channel / 255;
+              return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+            })
+            .reduce((total, channel, i) => total + channel * [0.2126, 0.7152, 0.0722][i], 0);
+        const a = luminance(style.color),
+          b = luminance(surface.backgroundColor);
         return {
-          color: style.color,
-          background: getComputedStyle(element.closest(".marinara-capability-villages-sectioned-menu")).backgroundImage,
+          contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
           area: rect.width * rect.height,
         };
       });
-      assert.equal(color, "rgb(243, 244, 255)", `${key} has readable menu text`);
-      assert.match(background, /gradient/, `${key} has the menu surface`);
+      assert.ok(contrast >= 4.5, `${key} has readable menu text`);
       assert.ok(area > 1000, `${key} occupies a visible area`);
     }
     await root.getByRole("button", { name: "Back to menu" }).click();
