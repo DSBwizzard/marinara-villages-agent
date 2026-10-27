@@ -776,7 +776,7 @@ export function MapStage({
         )}
         {src && failedSrc === src ? (
           <span className={`${ELEMENT_TAG}-canvas-missing`}>
-            The map picture could not be loaded — choose another one in Village Settings → Village Map.
+            The map picture could not be loaded — choose another one in More → World Configuration → Maps.
           </span>
         ) : null}
         {picture && placementCursor && placing ? (

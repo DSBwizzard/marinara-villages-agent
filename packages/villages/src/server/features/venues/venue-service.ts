@@ -175,7 +175,7 @@ export function createVenueCommands({
         for (const place of places) {
           const current = state.venues.find((entry) => entry.id === place.id)!;
           if (place.presentation.x !== current.presentation.x || place.presentation.y !== current.presentation.y)
-            throw conflict("Move Venue photographs while replacing the map in Village Settings.");
+            throw conflict("Move Venue photographs while replacing the map in World Configuration.");
           if (current.constructionStatus === "worksite") {
             if (place.name !== current.name || place.description !== current.description)
               throw conflict("A worksite's identity belongs to its active project.");

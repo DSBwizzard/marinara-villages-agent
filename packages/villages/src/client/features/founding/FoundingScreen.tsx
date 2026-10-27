@@ -517,7 +517,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               <h3 aria-label="Map">Map</h3>
               {snapshot?.isFounded ? (
                 <p>
-                  Change artwork and Venue photographs in Village Settings → Village Map. Existing locations are
+                  Change artwork and Venue photographs in More → World Configuration → Maps. Existing locations are
                   retained.
                 </p>
               ) : (

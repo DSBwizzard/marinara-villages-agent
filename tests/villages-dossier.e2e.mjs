@@ -503,10 +503,10 @@ try {
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     }
     await page.getByRole("button", { name: "More", exact: true }).click();
-    const menu = page.getByRole("navigation", { name: "Village menu pages" });
+    const menu = page.getByRole("navigation", { name: "More sections" });
     for (const name of ["Relationships", "Memories", "Villager Agendas", "DEBUG: Villager Wishes"])
       await expect(menu.getByRole("button", { name, exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     const directory = page.getByRole("main", { name: "Villagers directory" });
     await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await expect(menu).toHaveCount(0);
@@ -532,7 +532,7 @@ try {
     await expect(profile.getByText("Other person's request", { exact: true })).toHaveCount(0);
     await profile.getByRole("button", { name: /Mara's workshop/ }).click();
     await expect(page.locator('[data-villager-request="request:mara-request"]')).toBeFocused();
-    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
     assert.equal(writes.length, 0, JSON.stringify(writes));
@@ -918,7 +918,7 @@ try {
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toHaveCount(0);
     await page.getByRole("button", { name: "Close ×", exact: true }).click();
-    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(

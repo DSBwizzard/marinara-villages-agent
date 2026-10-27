@@ -105,7 +105,7 @@ async function checkHooks(width) {
     if (idle) await expect.poll(async () => (await state()).busy).toBe(false);
   };
   await open("village");
-  await expect.poll(async () => (await state()).personas).toBe(1);
+  assert.equal((await state()).personas, 0, "Settings no longer loads Persona choices");
   assert.equal((await state()).knowledge, "Saved knowledge");
   assert.equal((await state()).persona, "saved-persona");
   await call(() => {
@@ -371,8 +371,11 @@ async function checkPackage(width) {
   await page.goto("http://settings-package.test/");
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
-  await page.getByRole("button", { name: "General Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Village Settings", exact: true }).click();
+  const section = async (key, label) => {
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
+    else await page.getByRole("button", { name: label, exact: true }).click();
+  };
+  await section("village", "World Configuration");
   await page.clock.fastForward(350);
   assert.equal(usagePreviews.length, 0, "public Settings never request the private cost preview");
   const loreCard = page.getByRole("region", { name: "Village Lorebooks", exact: true });
@@ -394,6 +397,7 @@ async function checkPackage(width) {
   await expect(loreBudget).toHaveValue("");
   await expect(loreBudget).toHaveAttribute("placeholder", "1600");
 
+  await section("visual", "Visual Configuration");
   await page.getByLabel("Scenery style description", { exact: true }).fill("Packaged scenery save");
   await page.getByLabel("Personalize new venue images by default", { exact: true }).uncheck();
   await page.getByLabel("Use visual lore by default", { exact: true }).check();
@@ -407,11 +411,11 @@ async function checkPackage(width) {
   });
   await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeDisabled();
   await page.getByLabel("Scenery style description", { exact: true }).fill("Newer packaged scenery draft");
-  await page.getByRole("button", { name: "Back to menu", exact: true }).click();
+  await section("general", "General Preferences");
   const saved = structuredClone(snapshot);
   Object.assign(saved.settings, scenerySaves[0].request().postDataJSON());
   await fulfill(scenerySaves[0], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
-  await page.getByRole("button", { name: "Village Settings", exact: true }).click();
+  await section("visual", "Visual Configuration");
   await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeEnabled();
   await expect(page.getByLabel("Scenery style description", { exact: true })).toHaveValue(
     "Newer packaged scenery draft",
@@ -431,6 +435,7 @@ async function checkPackage(width) {
   saved.settings.automaticZonePictures = true;
   await fulfill(scenerySaves[2], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   await expect(automatic).toBeChecked();
+  await section("general", "General Preferences");
   await expect(page.getByLabel("Additional writing guidance", { exact: true })).toHaveCount(0);
   await page.locator("label").filter({ hasText: "Tense" }).locator("select").selectOption("past");
   await expect.poll(() => narration.tense).toBe("past");
