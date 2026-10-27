@@ -37,7 +37,8 @@ const styles = `
 .${P}-workspace-nav button{display:flex;align-items:center;justify-content:center;gap:.65rem;min-width:0;min-height:54px;padding:.4rem;border:0;border-right:1px solid #516069;background:transparent;color:#f5eee0;font:inherit;cursor:pointer}
 .${P}-workspace-nav button[aria-current="page"]{background:#d9ad72;color:#17232a}
 .${P}-workspace-nav button:disabled,.${P}-workspace-venues button:disabled{opacity:.55;cursor:default}
-.${P}-workspace-nav svg{width:24px;height:24px;flex:none;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.${P}-workspace-nav svg{width:24px;height:24px;flex:none;color:#ceb48a!important;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.${P}-workspace-nav button[aria-current="page"] svg{color:#17232a!important}
 .${P}-workspace-body{display:flex;flex:1;min-height:0;min-width:0;gap:.45rem;padding:.45rem}
 .${P}-workspace-sidebar{flex:0 0 clamp(210px,25%,340px);min-width:0;min-height:0;overflow:auto;border:1px solid #7a8584;background:#202f36;padding:.8rem}
 .${P}-workspace-content{flex:1;min-width:0;min-height:0;overflow:auto;border:1px solid #7a8584;background:#202f36}
@@ -61,7 +62,7 @@ const styles = `
 .${P}-workspace-about h2{padding-bottom:.4rem;border-bottom:1px solid #607076}
 .${P}-workspace-about p{line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .${P}-workspace-facts{border-left:1px solid #53656a;padding-left:1rem}
-.${P}-workspace-facts dl{margin:0}.${P}-workspace-facts dl>div{display:grid;grid-template-columns:8rem minmax(0,1fr);gap:.5rem;padding:.5rem 0;border-bottom:1px solid #405157}
+.${P}-workspace-facts dl{margin:0}.${P}-workspace-facts dl>div{display:grid;grid-template-columns:minmax(4rem,.75fr) minmax(0,1.25fr);gap:.5rem;padding:.5rem 0;border-bottom:1px solid #405157}
 .${P}-workspace-facts dt{color:#b3d0d8}.${P}-workspace-facts dd{margin:0;overflow-wrap:anywhere}
 .${P}-workspace-content .${P}-venue-primary{display:inline-block;width:auto;padding:.7rem 1rem;border-radius:.2rem;background:#d9ad72;color:#18252d}
 .${P}-workspace-content .${P}-venue-zone-details{background:#1a292f;border-color:#758180;border-radius:.2rem}

@@ -8,7 +8,7 @@ import { snapshot as fixture, mapImage } from "./fixtures/villages-scene-browser
 const browser = await chromium.launch({ headless: true });
 const prefix = "marinara-capability-villages";
 try {
-  for (const width of [1366, 390, 320]) {
+  for (const width of [1366, 850, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
     const errors = [],
@@ -27,6 +27,7 @@ try {
       holdVenueSave = false,
       heldVenueSave;
     place.name = "Warehouse home";
+    place.venueType = "Converted office residence";
     place.classes = ["residence"];
     place.residentIds = ["mara"];
     place.occupancy = { playerHome: false, residentCharacterId: "mara", homeKind: null };
@@ -190,6 +191,17 @@ try {
     await page.getByRole("button", { name: "Places", exact: true }).click();
     const profile = page.locator(`.${prefix}-venue-profile`);
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
+    const typeLines = await profile
+      .getByRole("region", { name: "Basic information" })
+      .locator("dd")
+      .first()
+      .evaluate((entry) => {
+        const range = document.createRange();
+        range.setStart(entry.firstChild, 0);
+        range.setEnd(entry.firstChild, "Converted".length);
+        return range.getClientRects().length;
+      });
+    assert.equal(typeLines, 1, "Venue type words remain readable without splitting across lines");
     const chooseVenue = async (id, name) => {
       if (width < 700) await page.getByRole("combobox", { name: "Venue", exact: true }).selectOption(id);
       else
