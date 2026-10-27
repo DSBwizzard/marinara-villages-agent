@@ -341,6 +341,7 @@ export function QuickStartVenues({
                 <label>
                   Zone name
                   <input
+                    autoComplete="off"
                     aria-label="Zone name"
                     value={zoneId === "exterior" ? "Exterior" : (zone?.name ?? "")}
                     disabled={zoneId === "exterior" || !zone}
@@ -371,6 +372,7 @@ export function QuickStartVenues({
                 <label>
                   Used for
                   <input
+                    autoComplete="off"
                     aria-label="Used for"
                     value={zoneId === "exterior" ? "Arrival and departure" : (zone?.purpose ?? "")}
                     disabled={zoneId === "exterior" || !zone}
@@ -382,6 +384,7 @@ export function QuickStartVenues({
                   <label>
                     Room specification · optional
                     <textarea
+                      autoComplete="off"
                       aria-label="Room Specification"
                       value={zone?.roomSpecification ?? ""}
                       maxLength={1000}
@@ -393,6 +396,7 @@ export function QuickStartVenues({
                   <label>
                     Appearance
                     <textarea
+                      autoComplete="off"
                       aria-label={zoneId === "exterior" ? "Exterior appearance" : "Appearance"}
                       value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
                       maxLength={1000}
@@ -422,6 +426,7 @@ export function QuickStartVenues({
                     <label>
                       Upload image
                       <input
+                        autoComplete="off"
                         type="file"
                         accept="image/*"
                         aria-label="Upload Zone image"
