@@ -32,10 +32,6 @@
     },
     {
       "method": "post",
-      "path": "/mailbox/threads/:threadId/messages/:messageId/cancel"
-    },
-    {
-      "method": "post",
       "path": "/mailbox/threads/:threadId/messages/:messageId/retry"
     },
     {

@@ -31,7 +31,6 @@ import {
   queuePersonalMessage,
   personalThreadId,
   requireMailSource,
-  cancelPersonalMessage,
   beginMailDelivery,
   completeMailDelivery,
   readPersonalThread,
@@ -41,6 +40,7 @@ import {
 export interface SocialMailPorts {
   processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;
   readVillageSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
+  withVillageSceneAcceptance: typeof import("../world/village-store.js").withVillageSceneAcceptance;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   mutateRelationships: typeof import("./relationship-store.js").mutateRelationships;
   readRelationshipState: typeof import("./relationship-store.js").readRelationshipState;
@@ -382,7 +382,7 @@ export function createSocialMail(ports: SocialMailPorts) {
   }
   async function applyEntry(entry: SocialMailOutbox) {
     const { input, result } = entry;
-    let village = await ports.readVillageSnapshot();
+    const village = await ports.readVillageSnapshot();
     if (village.seed !== input.seed) throw conflict("Village identity changed.");
     let current = await ports.readRelationshipState(input.seed);
     if (
@@ -411,7 +411,10 @@ export function createSocialMail(ports: SocialMailPorts) {
       });
     }
     const original = requireMailSource(current, input.threadId, input.messageId).message;
-    if (original.status === "cancelled" && !current.mailDeliveries[input.messageId]) {
+    if (
+      (["cancelled", "undeliverable"].includes(original.status) && !current.mailDeliveries[input.messageId]) ||
+      (original.replyUnavailable && !current.mailDeliveries[input.messageId + ":reply"])
+    ) {
       await ports.mutateVillageState((state) => {
         if (state.seed === input.seed)
           state.socialMailOutbox = state.socialMailOutbox?.filter((row) => row.id !== entry.id);
@@ -422,7 +425,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       original.text !== input.sourceText ||
       original.sourceHash !== input.sourceHash ||
       original.incarnation !== input.incarnation ||
-      original.status === "cancelled"
+      ["cancelled", "undeliverable"].includes(original.status)
     )
       throw conflict("This mail source changed or was cancelled.");
     const complete =
@@ -445,21 +448,29 @@ export function createSocialMail(ports: SocialMailPorts) {
         input.messageId,
         input.sourceAt,
       );
-      village = await ports.readVillageSnapshot();
-      await ports.mutateRelationships(input.seed, (state) => {
-        applyRelationshipReview(
-          state,
-          withoutMailDisclosures(mailReview(result.source)),
-          village,
-          input.messageId,
-          input.sourceAt,
-        );
-        completeMailDelivery(state, input.threadId, input.messageId, input.sourceHash, new Date().toISOString());
-        if (input.mode === "resident") {
-          const message = requireMailSource(state, input.threadId, input.messageId).message;
-          message.replyStatus = "complete";
-          message.disclosures = result.source.disclosures;
-        }
+      await ports.withVillageSceneAcceptance(async (authority) => {
+        if (
+          authority.seed !== input.seed ||
+          !authority.villagers.some(
+            (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
+          )
+        )
+          throw conflict("The correspondent changed before the letter was delivered.");
+        await ports.mutateRelationships(input.seed, (state) => {
+          applyRelationshipReview(
+            state,
+            withoutMailDisclosures(mailReview(result.source)),
+            authority,
+            input.messageId,
+            input.sourceAt,
+          );
+          completeMailDelivery(state, input.threadId, input.messageId, input.sourceHash, new Date().toISOString());
+          if (input.mode === "resident") {
+            const message = requireMailSource(state, input.threadId, input.messageId).message;
+            message.replyStatus = "complete";
+            message.disclosures = result.source.disclosures;
+          }
+        });
       });
     }
     await rememberResidentMail(input, result, "source");
@@ -473,36 +484,45 @@ export function createSocialMail(ports: SocialMailPorts) {
         replyId,
         input.sourceAt,
       );
-      village = await ports.readVillageSnapshot();
-      await ports.mutateRelationships(input.seed, (state) => {
-        const { thread, message } = requireMailSource(state, input.threadId, input.messageId);
-        if (state.mailDeliveries[replyId]) return;
-        applyRelationshipReview(
-          state,
-          withoutMailDisclosures(mailReview(result.reply)),
-          village,
-          replyId,
-          input.sourceAt,
-        );
-        thread.messages.push({
-          id: replyId,
-          requestId: replyId,
-          fromId: input.residentId,
-          toId: "player",
-          text: result.replyText,
-          at: new Date().toISOString(),
-          status: "delivered",
-          replyTo: input.messageId,
-          disclosures: result.reply.disclosures,
+      await ports.withVillageSceneAcceptance(async (authority) => {
+        if (
+          authority.seed !== input.seed ||
+          !authority.villagers.some(
+            (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
+          )
+        )
+          throw conflict("The correspondent changed before the reply was delivered.");
+        await ports.mutateRelationships(input.seed, (state) => {
+          const { thread, message } = requireMailSource(state, input.threadId, input.messageId);
+          if (state.mailDeliveries[replyId]) return;
+          if (message.replyUnavailable) throw conflict("The correspondent changed before the reply was delivered.");
+          applyRelationshipReview(
+            state,
+            withoutMailDisclosures(mailReview(result.reply)),
+            authority,
+            replyId,
+            input.sourceAt,
+          );
+          thread.messages.push({
+            id: replyId,
+            requestId: replyId,
+            fromId: input.residentId,
+            toId: "player",
+            text: result.replyText,
+            at: new Date().toISOString(),
+            status: "delivered",
+            replyTo: input.messageId,
+            disclosures: result.reply.disclosures,
+          });
+          state.mailDeliveries[replyId] = {
+            messageId: replyId,
+            sourceHash: semanticHash([input.sourceHash, result.replyText]),
+            at: new Date().toISOString(),
+          };
+          message.replyStatus = "complete";
+          message.error = undefined;
+          thread.revision++;
         });
-        state.mailDeliveries[replyId] = {
-          messageId: replyId,
-          sourceHash: semanticHash([input.sourceHash, result.replyText]),
-          at: new Date().toISOString(),
-        };
-        message.replyStatus = "complete";
-        message.error = undefined;
-        thread.revision++;
       });
     } else
       await ports.mutateRelationships(input.seed, (state) => {
@@ -518,8 +538,39 @@ export function createSocialMail(ports: SocialMailPorts) {
     });
   }
   async function processOutbox(village: VillageState): Promise<boolean> {
-    const entries = (village.socialMailOutbox ?? []).filter((row) => !row.error);
-    if (!entries.length) return false;
+    let retired = false;
+    for (const entry of village.socialMailOutbox ?? []) {
+      if (
+        entry.error &&
+        village.seed === entry.input.seed &&
+        !village.villagers.some(
+          (row) =>
+            row.characterId === entry.input.residentId && row.cardSnapshot.capturedAt === entry.input.incarnation,
+        )
+      )
+        retired = (await retireChangedCorrespondent(entry)) || retired;
+    }
+    if (retired) village = await ports.readVillageSnapshot();
+    const current = await ports.readRelationshipState(village.seed);
+    const entries = (village.socialMailOutbox ?? []).filter((row) => {
+      if (!row.error) return true;
+      const source = current.mailThreads[row.input.threadId]?.messages.find((message) => message.id === row.id);
+      const completedDelivery =
+        !!current.mailDeliveries[row.id] && (!row.result.replyText || !!current.mailDeliveries[row.id + ":reply"]);
+      const changed = !village.villagers.some(
+        (resident) =>
+          resident.characterId === row.input.residentId && resident.cardSnapshot.capturedAt === row.input.incarnation,
+      );
+      if (completedDelivery && changed) return true;
+      return (
+        !!source &&
+        source.sourceHash === row.input.sourceHash &&
+        source.incarnation === row.input.incarnation &&
+        ((["cancelled", "undeliverable"].includes(source.status) && !current.mailDeliveries[row.id]) ||
+          (source.replyUnavailable && !current.mailDeliveries[row.id + ":reply"]))
+      );
+    });
+    if (!entries.length) return retired;
     for (const entry of entries) {
       const existing = running.get(entry.id);
       if (existing) {
@@ -528,6 +579,16 @@ export function createSocialMail(ports: SocialMailPorts) {
       }
       const task = applyEntry(entry)
         .catch(async (error) => {
+          const latest = await ports.readVillageSnapshot();
+          if (
+            latest.seed === entry.input.seed &&
+            !latest.villagers.some(
+              (row) =>
+                row.characterId === entry.input.residentId && row.cardSnapshot.capturedAt === entry.input.incarnation,
+            ) &&
+            (await retireChangedCorrespondent(entry))
+          )
+            return;
           const message = error instanceof Error ? error.message : "Mail delivery needs recovery.";
           await ports.mutateRelationships(entry.input.seed, (state) => {
             const source = state.mailThreads[entry.input.threadId]?.messages.find(
@@ -549,6 +610,85 @@ export function createSocialMail(ports: SocialMailPorts) {
     }
     return true;
   }
+  async function retireChangedCorrespondent(entry: SocialMailOutbox): Promise<boolean> {
+    const input = entry.input;
+    let retired = false;
+    await ports.withVillageSceneAcceptance(async (current) => {
+      if (
+        current.seed !== input.seed ||
+        current.villagers.some(
+          (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
+        )
+      )
+        return;
+      await ports.mutateRelationships(input.seed, (state) => {
+        retired = false;
+        if (
+          state.mailDeliveries[input.messageId] &&
+          (input.mode === "resident" || state.mailDeliveries[input.messageId + ":reply"])
+        )
+          return;
+        let thread = state.mailThreads[input.threadId];
+        if (!thread && input.mode === "resident") {
+          thread = state.mailThreads[input.threadId] = {
+            id: input.threadId,
+            participantIds: ["player", input.residentId],
+            revision: 0,
+            messages: [],
+          };
+        }
+        if (!thread || !thread.participantIds.includes("player") || !thread.participantIds.includes(input.residentId))
+          return;
+        let source = thread.messages.find((row) => row.id === input.messageId);
+        if (!source && input.mode === "resident") {
+          source = {
+            id: input.messageId,
+            requestId: input.messageId,
+            fromId: input.residentId,
+            toId: "player",
+            text: input.sourceText,
+            at: input.sourceAt,
+            status: "cancelled",
+            sourceHash: input.sourceHash,
+            incarnation: input.incarnation,
+          };
+          thread.messages.push(source);
+        }
+        if (
+          !source ||
+          source.sourceHash !== input.sourceHash ||
+          source.incarnation !== input.incarnation ||
+          source.fromId !== (input.mode === "resident" ? input.residentId : "player") ||
+          source.toId !== (input.mode === "resident" ? "player" : input.residentId)
+        )
+          return;
+        if (state.mailDeliveries[input.messageId]) {
+          source.replyUnavailable = true;
+          source.replyStatus = "complete";
+          source.error = "A reply could not be delivered because the correspondent changed.";
+        } else {
+          source.status = input.mode === "resident" ? "cancelled" : "undeliverable";
+          source.error =
+            input.mode === "resident" ? undefined : "This letter could not be delivered because its recipient changed.";
+        }
+        thread.revision++;
+        retired = true;
+      });
+    });
+    if (!retired) return false;
+    await ports.mutateVillageState((state) => {
+      if (state.seed === input.seed)
+        state.socialMailOutbox = state.socialMailOutbox?.filter(
+          (row) =>
+            !(
+              row.id === entry.id &&
+              row.input.sourceHash === input.sourceHash &&
+              row.input.incarnation === input.incarnation
+            ),
+        );
+    });
+    return true;
+  }
   async function queue(input: SocialMailInput, actionId?: string) {
     await ports.queueBackgroundJob({
       kind: "personal-mail",
@@ -558,6 +698,48 @@ export function createSocialMail(ports: SocialMailPorts) {
       label: "Personal reply",
       revision: actionId ? input.sourceHash + ":" + actionId : input.sourceHash,
       input,
+    });
+  }
+  async function admit(
+    village: VillageState,
+    threadId: string,
+    messageId: string,
+    actionId?: string,
+    retainedReply?: string,
+  ) {
+    try {
+      await queue(await makeInput(village, threadId, messageId, retainedReply), actionId);
+    } catch (error) {
+      const latest = await ports.readVillageSnapshot();
+      const retained = latest.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
+      if (retained && (await retireChangedCorrespondent(retained))) throw error;
+      await ports.withVillageSceneAcceptance(async (authority) => {
+        if (authority.seed !== village.seed) return;
+        await ports.mutateRelationships(village.seed, (state) => {
+          const message = state.mailThreads[threadId]?.messages.find((row) => row.id === messageId);
+          if (message && !state.mailDeliveries[message.id]) {
+            const unavailable =
+              message.fromId === "player" &&
+              !authority.villagers.some(
+                (resident) =>
+                  resident.characterId === message.toId && resident.cardSnapshot.capturedAt === message.incarnation,
+              );
+            message.status = unavailable ? "undeliverable" : message.status;
+            message.admissionFailed = !unavailable;
+            message.error = unavailable
+              ? "This letter could not be delivered because its recipient changed."
+              : "Letter processing could not start.";
+          }
+        });
+      });
+      throw error;
+    }
+    await ports.mutateRelationships(village.seed, (state) => {
+      const message = state.mailThreads[threadId]?.messages.find((row) => row.id === messageId);
+      if (message?.admissionFailed) {
+        message.admissionFailed = undefined;
+        message.error = undefined;
+      }
     });
   }
   async function makeInput(
@@ -602,21 +784,36 @@ export function createSocialMail(ports: SocialMailPorts) {
     let village = await ports.readVillageSnapshot();
     if (!village.clock?.recovery && (await processOutbox(village))) village = await ports.readVillageSnapshot();
     const state = await ports.readRelationshipState(village.seed);
+    const jobs = (await ports.backgroundWorkSummaries()).filter((job) => job.kind === "personal-mail");
+    const jobFor = (id: string) => {
+      const matches = jobs.filter((job) => job.subjectId === id);
+      return (
+        matches.find((job) => ["queued", "running", "paused"].includes(job.status)) ??
+        matches.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0]
+      );
+    };
+    const canRecover = (id: string) => {
+      const job = jobFor(id);
+      const source = Object.values(state.mailThreads)
+        .flatMap((thread) => thread.messages)
+        .find((row) => row.id === id);
+      return (
+        !village.clock?.recovery &&
+        !source?.replyUnavailable &&
+        !["cancelled", "undeliverable"].includes(source?.status ?? "") &&
+        !["queued", "running", "paused"].includes(job?.status ?? "")
+      );
+    };
     const name = (id: string) =>
       village.villagers.find((row) => row.characterId === id)?.cardSnapshot.name ?? "Former resident";
     return {
       recovery: (village.socialMailOutbox ?? [])
-        .filter((row) => !!row.error)
+        .filter((row) => !!row.error && canRecover(row.id))
         .map((row) => ({
           threadId: row.input.threadId,
           messageId: row.id,
           label: "Saved mail processing needs recovery.",
           reinterpretRequired: !!row.reinterpretRequired,
-          cancellable:
-            !state.mailDeliveries[row.id] &&
-            ["pending", "cancelled"].includes(
-              state.mailThreads[row.input.threadId]?.messages.find((message) => message.id === row.id)?.status ?? "",
-            ),
         })),
       threads: Object.values(state.mailThreads)
         .filter(
@@ -641,7 +838,20 @@ export function createSocialMail(ports: SocialMailPorts) {
                 status: state.mailDeliveries[row.id] ? "delivered" : row.status,
                 read: !!row.readAt,
                 replyPending: row.replyStatus === "pending",
-                error: row.error,
+                retryAvailable:
+                  canRecover(row.id) &&
+                  ((village.socialMailOutbox ?? []).some((entry) => entry.id === row.id && !!entry.error) ||
+                    (row.admissionFailed === true && row.status === "pending" && !jobFor(row.id)) ||
+                    ["failed", "interrupted"].includes(jobFor(row.id)?.status ?? "")),
+                error:
+                  row.status === "undeliverable" || row.replyUnavailable
+                    ? row.error
+                    : canRecover(row.id) &&
+                        ((village.socialMailOutbox ?? []).some((entry) => entry.id === row.id && !!entry.error) ||
+                          (row.admissionFailed === true && row.status === "pending" && !jobFor(row.id)) ||
+                          ["failed", "interrupted"].includes(jobFor(row.id)?.status ?? ""))
+                      ? "Letter processing needs attention."
+                      : undefined,
               })),
           };
         }),
@@ -686,8 +896,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     const source = state.mailThreads[personalThreadId(input.residentId)]!.messages.find(
       (row) => row.requestId === input.requestId,
     )!;
-    if (source.status === "pending")
-      await queue(await makeInput(village, personalThreadId(input.residentId), source.id));
+    if (source.status === "pending") await admit(village, personalThreadId(input.residentId), source.id);
     return readMailbox();
   }
   async function readLetter(threadId: string, messageId: string) {
@@ -735,23 +944,26 @@ export function createSocialMail(ports: SocialMailPorts) {
     );
     return readMailbox();
   }
-  async function cancel(threadId: string, messageId: string) {
-    const village = await ports.readVillageSnapshot();
-    await ports.mutateRelationships(village.seed, (state) => cancelPersonalMessage(state, threadId, messageId));
-    await ports.mutateVillageState((state) => {
-      if (state.seed === village.seed)
-        state.socialMailOutbox = state.socialMailOutbox?.filter((row) => row.id !== messageId);
-    });
-    return readMailbox();
-  }
   async function retry(threadId: string, messageId: string, requestId: string) {
     z.string()
       .regex(/^[a-zA-Z0-9_-]{1,200}$/)
       .parse(requestId);
     const village = await ports.readVillageSnapshot(),
       social = await ports.readRelationshipState(village.seed);
+    if (village.clock?.recovery) throw conflict("Resolve the village clock notice before retrying this letter.");
+    const source = social.mailThreads[threadId]?.messages.find((row) => row.id === messageId);
+    if (source?.replyUnavailable || (source && ["cancelled", "undeliverable"].includes(source.status)))
+      throw conflict("This letter can no longer be delivered.");
+    const jobs = (await ports.backgroundWorkSummaries()).filter(
+      (row) => row.kind === "personal-mail" && row.subjectId === messageId,
+    );
+    const job =
+      jobs.find((row) => ["queued", "running", "paused"].includes(row.status)) ??
+      jobs.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
+    if (job && ["queued", "running", "paused"].includes(job.status))
+      throw conflict("This letter is already being processed.");
     const entry = village.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
-    if (entry && !entry.reinterpretRequired) {
+    if (entry?.error && !entry.reinterpretRequired) {
       await ports.mutateVillageState((state) => {
         const saved = state.socialMailOutbox?.find((row) => row.id === messageId);
         if (saved) saved.error = undefined;
@@ -760,19 +972,29 @@ export function createSocialMail(ports: SocialMailPorts) {
       return readMailbox();
     }
     const { message } = requireMailSource(social, threadId, messageId);
-    if (message.status === "cancelled") throw conflict("This message was cancelled.");
-    if (entry) {
+    if (["cancelled", "undeliverable"].includes(message.status))
+      throw conflict("This letter can no longer be delivered.");
+    if (job && ["failed", "interrupted"].includes(job.status)) {
+      await ports.retryBackgroundJob(job.id, job.attempt, requestId);
+    } else if (entry?.error) {
       // A deliberate reinterpretation retains exact outgoing and reply text, and admits only fresh settlement context.
-      const input = await makeInput(village, threadId, messageId, entry.result.replyText);
-      await queue(input, requestId);
+      const fingerprint = (row: SocialMailOutbox) =>
+        semanticHash([row.id, row.input.sourceHash, row.input.admittedAt, row.result, row.error]);
+      const action = "mail-reinterpret-" + fingerprint(entry).slice(0, 32);
+      let claimed = false;
+      await ports.mutateVillageState((state) => {
+        claimed = false;
+        const saved = state.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
+        if (!saved || fingerprint(saved) !== fingerprint(entry) || (saved.retryClaim && saved.retryClaim !== action))
+          return;
+        saved.retryClaim = action;
+        claimed = true;
+      });
+      if (!claimed) return readMailbox();
+      await admit(village, threadId, messageId, action, entry.result.replyText);
     } else {
-      const job = (await ports.backgroundWorkSummaries()).find(
-        (row) => row.kind === "personal-mail" && row.subjectId === messageId,
-      );
-      if (job && ["failed", "interrupted", "paused"].includes(job.status))
-        await ports.retryBackgroundJob(job.id, job.attempt, requestId);
-      else if (message.status === "pending")
-        await queue(await makeInput(village, threadId, messageId), job?.status === "obsolete" ? requestId : undefined);
+      if (message.status === "pending" && !job && message.admissionFailed) await admit(village, threadId, messageId);
+      else throw conflict("This letter has no failed processing to retry.");
     }
     return readMailbox();
   }
@@ -784,7 +1006,11 @@ export function createSocialMail(ports: SocialMailPorts) {
         (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
       ) &&
       !!state.relationshipContext?.mailThreads[input.threadId]?.messages.some(
-        (row) => row.id === input.messageId && row.text === input.sourceText && row.status !== "cancelled",
+        (row) =>
+          row.id === input.messageId &&
+          row.text === input.sourceText &&
+          !row.replyUnavailable &&
+          !["cancelled", "undeliverable"].includes(row.status),
       ),
     apply: (state, input, result) => {
       state.socialMailOutbox ??= [];
@@ -795,18 +1021,38 @@ export function createSocialMail(ports: SocialMailPorts) {
         prior.result = result;
         prior.error = undefined;
         prior.reinterpretRequired = undefined;
+        prior.retryClaim = undefined;
       } else state.socialMailOutbox.push({ id: input.messageId, input, result });
     },
     afterApply: async () => {
       await processOutbox(await ports.readVillageSnapshot());
     },
     afterFailure: async (input: SocialMailInput) => {
-      await ports.mutateRelationships(input.seed, (state) => {
-        const message = state.mailThreads[input.threadId]?.messages.find((row) => row.id === input.messageId);
-        if (message)
-          message.error = state.mailDeliveries[message.id]
-            ? "Delivered; reply needs retry."
-            : "Message is pending; retry or cancel it.";
+      await ports.withVillageSceneAcceptance(async (latest) => {
+        if (latest.seed !== input.seed) return;
+        await ports.mutateRelationships(input.seed, (state) => {
+          const message = state.mailThreads[input.threadId]?.messages.find((row) => row.id === input.messageId);
+          if (!message || message.sourceHash !== input.sourceHash || message.incarnation !== input.incarnation) return;
+          if (
+            input.mode !== "resident" &&
+            !state.mailDeliveries[message.id + ":reply"] &&
+            !latest.villagers.some(
+              (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
+            )
+          ) {
+            if (state.mailDeliveries[message.id]) {
+              message.replyUnavailable = true;
+              message.replyStatus = "complete";
+              message.error = "A reply could not be delivered because the correspondent changed.";
+            } else {
+              message.status = "undeliverable";
+              message.error = "This letter could not be delivered because its recipient changed.";
+            }
+          } else
+            message.error = state.mailDeliveries[message.id]
+              ? "Delivered; reply needs retry."
+              : "Letter processing needs attention.";
+        });
       });
     },
   };
@@ -887,6 +1133,6 @@ export function createSocialMail(ports: SocialMailPorts) {
       },
     };
   }
-  return { handler, processOutbox, readMailbox, send, readLetter, cancel, retry, automaticOutbox };
+  return { handler, processOutbox, readMailbox, send, readLetter, retry, automaticOutbox };
 }
 export type SocialMailService = ReturnType<typeof createSocialMail>;

@@ -57,19 +57,10 @@ export function requireMailSource(
     throw badRequest("That personal message is unavailable.");
   return { thread, message };
 }
-/** Cancel and the applying fence share the same CAS document. Only one can win. */
-export function cancelPersonalMessage(state: RelationshipState, threadId: string, messageId: string): void {
-  const { thread, message } = requireMailSource(state, threadId, messageId);
-  if (state.mailDeliveries[messageId] || message.status === "delivered")
-    throw conflict("This message has already been delivered.");
-  if (message.status === "applying") throw conflict("Delivery needs local recovery before this message can change.");
-  if (message.status === "cancelled") return;
-  message.status = "cancelled";
-  thread.revision++;
-}
 export function beginMailDelivery(state: RelationshipState, threadId: string, messageId: string): void {
   const { message } = requireMailSource(state, threadId, messageId);
-  if (message.status === "cancelled") throw conflict("This message was cancelled.");
+  if (["cancelled", "undeliverable"].includes(message.status))
+    throw conflict("This letter can no longer be delivered.");
   if (state.mailDeliveries[messageId]) return;
   message.status = "applying";
 }

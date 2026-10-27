@@ -419,7 +419,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     if (existing) return existing.then(() => queueBackgroundJob(work));
     // Reserve before the first read or write: all callers share one admission.
     const task = (async () => {
-      if (stopped) return;
+      if (stopped) {
+        if (work.kind === "personal-mail")
+          throw new Error("Letter processing is unavailable. Try again when Villages is running.");
+        return;
+      }
       const previous = await readJob(id);
       if (
         previous &&

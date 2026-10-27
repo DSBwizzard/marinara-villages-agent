@@ -8,10 +8,11 @@ export type PersonalMailThread = {
     fromId: string;
     text: string;
     at: string;
-    status: "pending" | "applying" | "delivered" | "cancelled";
+    status: "pending" | "applying" | "delivered" | "cancelled" | "undeliverable";
     read: boolean;
     replyPending: boolean;
     error?: string;
+    retryAvailable: boolean;
   }[];
 };
 export type MailboxView = {
@@ -21,6 +22,5 @@ export type MailboxView = {
     messageId: string;
     label: string;
     reinterpretRequired: boolean;
-    cancellable: boolean;
   }[];
 };

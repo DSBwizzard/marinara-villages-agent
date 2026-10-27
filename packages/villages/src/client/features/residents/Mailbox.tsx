@@ -155,8 +155,8 @@ export function Mailbox({
     }
   };
   const detail = !!selected || composing;
-  const pathFor = (threadId: string, messageId: string, operation: "retry" | "cancel") =>
-    `/mailbox/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/${operation}`;
+  const retryPath = (threadId: string, messageId: string) =>
+    `/mailbox/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/retry`;
   return (
     <ModalDialog title="Mailbox" onClose={onClose} scrollBody>
       <style>{`
@@ -226,29 +226,22 @@ export function Mailbox({
             </button>
           </div>
           <div className="villages-letter-rows">
-            {(view?.recovery ?? []).map((row) => (
-              <article key={row.messageId}>
-                <p>{row.label}</p>
-                <div className="villages-letter-actions">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void action(pathFor(row.threadId, row.messageId, "retry"))}
-                  >
-                    {row.reinterpretRequired ? "Reinterpret saved message" : "Replay saved work"}
-                  </button>
-                  {row.cancellable ? (
+            {(view?.recovery ?? [])
+              .filter((row) => !letters.some(({ message }) => message.id === row.messageId))
+              .map((row) => (
+                <article key={row.messageId}>
+                  <p>{row.label}</p>
+                  <div className="villages-letter-actions">
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void action(pathFor(row.threadId, row.messageId, "cancel"))}
+                      onClick={() => void action(retryPath(row.threadId, row.messageId))}
                     >
-                      Discard message
+                      Retry
                     </button>
-                  ) : null}
-                </div>
-              </article>
-            ))}
+                  </div>
+                </article>
+              ))}
             {shown.length === 0 ? (
               <p className="villages-letter-empty">{folder === "inbox" ? "No letters yet." : "No sent letters."}</p>
             ) : null}
@@ -353,15 +346,6 @@ export function Mailbox({
                 />
               </div>
               <p className="villages-letter-text">{selected.message.text}</p>
-              {selected.message.fromId === "player" ? (
-                <small>
-                  {selected.message.status === "applying"
-                    ? "Delivery recovery"
-                    : selected.message.status === "delivered" && selected.message.replyPending
-                      ? "Delivered · reply pending"
-                      : selected.message.status}
-                </small>
-              ) : null}
               {selected.message.error ? <p role="status">{selected.message.error}</p> : null}
               <div className="villages-letter-actions">
                 {selected.message.fromId !== "player" &&
@@ -370,28 +354,14 @@ export function Mailbox({
                     Write back
                   </button>
                 ) : null}
-                {selected.message.fromId === "player" &&
-                (selected.message.status === "pending" ||
-                  selected.message.status === "applying" ||
-                  selected.message.replyPending) ? (
-                  <>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void action(pathFor(selected.thread.id, selected.message.id, "retry"))}
-                    >
-                      Retry {selected.message.status === "delivered" ? "reply" : "delivery"}
-                    </button>
-                    {selected.message.status === "pending" ? (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void action(pathFor(selected.thread.id, selected.message.id, "cancel"))}
-                      >
-                        Cancel letter
-                      </button>
-                    ) : null}
-                  </>
+                {selected.message.retryAvailable ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void action(retryPath(selected.thread.id, selected.message.id))}
+                  >
+                    Retry
+                  </button>
                 ) : null}
               </div>
             </>

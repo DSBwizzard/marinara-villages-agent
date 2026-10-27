@@ -49,16 +49,6 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
     }
   });
   engine.post<{ Params: { threadId: string; messageId: string } }>(
-    "/mailbox/threads/:threadId/messages/:messageId/cancel",
-    async (request, reply) => {
-      try {
-        return await socialMail().cancel(request.params.threadId, request.params.messageId);
-      } catch (error) {
-        return fail(reply, error, "cancel personal mail");
-      }
-    },
-  );
-  engine.post<{ Params: { threadId: string; messageId: string } }>(
     "/mailbox/threads/:threadId/messages/:messageId/retry",
     async (request, reply) => {
       try {

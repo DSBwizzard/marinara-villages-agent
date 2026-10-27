@@ -158,6 +158,7 @@ try {
               status: "delivered",
               read: false,
               replyPending: false,
+              retryAvailable: false,
             },
             {
               id: "second-letter",
@@ -265,8 +266,13 @@ try {
             return fulfill(route, { status: 503, json: { error: "Reply lost" } });
           }
         }
-        if (path.endsWith("/cancel"))
-          mailbox.threads[0].messages.findLast((message) => message.fromId === "player").status = "cancelled";
+        if (path.endsWith("/retry")) {
+          const failed = mailbox.threads.flatMap((thread) => thread.messages).find((message) => message.retryAvailable);
+          if (failed) {
+            failed.retryAvailable = false;
+            delete failed.error;
+          }
+        }
         if (path.endsWith("/read") && failMailRead) {
           failMailRead = false;
           return fulfill(route, { status: 503, json: { error: "Read failed" } });
@@ -775,8 +781,17 @@ try {
       await expect(mail.getByRole("button", { name: "Back to letters" })).toBeVisible();
     }
     await page.screenshot({ path: resolve(output, `mailbox-${width}-${height}.png`) });
-    await mail.getByRole("button", { name: "Cancel letter" }).click();
-    await expect(mail.getByText("cancelled", { exact: false })).toBeVisible();
+    await expect(mail.getByRole("button", { name: /Cancel letter|Retry/ })).toHaveCount(0);
+    await expect(mail.getByText("pending", { exact: true })).toHaveCount(0);
+    if (width === 390) {
+      const outgoing = mailbox.threads[0].messages.findLast((message) => message.fromId === "player");
+      outgoing.retryAvailable = true;
+      outgoing.error = "Letter processing needs attention.";
+      await expect(mail.getByRole("button", { name: "Retry", exact: true })).toBeVisible({ timeout: 10000 });
+      await mail.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(mail.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+      assert.equal(outgoing.text, exactMessage, "Recovery retains the sent letter");
+    }
     const firstMailId = writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId;
     if (width <= 704) await mail.getByRole("button", { name: "Back to letters" }).click();
     await mail.getByRole("button", { name: "Write a letter", exact: true }).click();

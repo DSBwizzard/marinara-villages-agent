@@ -6,7 +6,7 @@ export type SocialMailMessage = {
   toId: string;
   text: string;
   at: string;
-  status: "pending" | "applying" | "delivered" | "cancelled";
+  status: "pending" | "applying" | "delivered" | "cancelled" | "undeliverable";
   sourceHash?: string;
   incarnation?: string;
   readAt?: string;
@@ -14,6 +14,8 @@ export type SocialMailMessage = {
   replyStatus?: "pending" | "complete";
   disclosures?: RelationshipDisclosure[];
   error?: string;
+  admissionFailed?: boolean;
+  replyUnavailable?: boolean;
 };
 export type SocialMailThread = {
   id: string;
@@ -51,4 +53,5 @@ export type SocialMailOutbox = {
   result: SocialMailInterpretation;
   error?: string;
   reinterpretRequired?: boolean;
+  retryClaim?: string;
 };

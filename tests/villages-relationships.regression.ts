@@ -33,7 +33,6 @@ import {
 } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import {
   queuePersonalMessage,
-  cancelPersonalMessage,
   beginMailDelivery,
   completeMailDelivery,
   readPersonalThread,
@@ -361,16 +360,14 @@ assert.equal(queuePersonalMessage(state, "ada", "request-1", mail.text, mail.at)
 assert.throws(() => queuePersonalMessage(state, "ada", "request-1", "Different text", mail.at), /different message/);
 const thread = state.mailThreads["personal:ada"]!;
 beginMailDelivery(state, thread.id, mail.id);
-assert.throws(() => cancelPersonalMessage(state, thread.id, mail.id), /recovery/);
 completeMailDelivery(state, thread.id, mail.id, "source-hash", "2026-10-22T13:01:00Z");
 assert.equal(mail.replyStatus, "pending");
-assert.throws(() => cancelPersonalMessage(state, thread.id, mail.id), /already been delivered/);
 const once = structuredClone(state.mailDeliveries);
 completeMailDelivery(state, thread.id, mail.id, "other-hash", "2026-10-22T13:02:00Z");
 assert.deepEqual(state.mailDeliveries, once, "A later write cannot replace delivery authority");
 mail.replyStatus = "complete";
-const cancelled = queuePersonalMessage(state, "ada", "request-2", "Cancel me", mail.at);
-cancelPersonalMessage(state, thread.id, cancelled.id);
+const cancelled = queuePersonalMessage(state, "ada", "request-2", "Earlier retained work", mail.at);
+cancelled.status = "cancelled";
 assert.throws(() => beginMailDelivery(state, thread.id, cancelled.id), /cancelled/);
 const incoming = {
   id: "incoming",

@@ -591,6 +591,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const personalMail = createSocialMail({
     processLiveMemories,
+    withVillageSceneAcceptance,
     readVillageSnapshot: readVillageMemorySnapshot,
     mutateVillageState: mutateVillageMemoryState,
     mutateRelationships,
