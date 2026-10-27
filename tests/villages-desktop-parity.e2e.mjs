@@ -476,7 +476,7 @@ try {
     await expect(modeButton()).toHaveAttribute("title", "Say / Do");
     await modeButton().click();
     await expect(page.getByRole("menuitemradio", { name: "Move", exact: true })).toBeVisible();
-    await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toHaveCount(0);
     await page.getByRole("menuitemradio", { name: "Say / Do" }).click();
     await expect(modeButton()).toHaveAttribute("title", "Say / Do");
     assert.equal(lastTurn, null, "changing modes does not send the draft");

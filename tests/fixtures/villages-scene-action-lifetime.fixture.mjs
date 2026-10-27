@@ -38,7 +38,7 @@ function Harness(){
   if(window.operation){state.roomSubmissionIdRef.current='A-turn';state.roomLeaveSubmissionIdRef.current='A-leave';}
  },[]);
  const launch=work=>{window.pending.push(work());return window.pending.length-1;};
- const commands={move,continue:()=>continueScene(room.id),close:closeRoom,leave:leaveRoom,retry};
+ const commands={move,continue:()=>continueScene(room.id),close:closeRoom,leave:leaveRoom,retry:()=>retry(["contact","fulfill"].includes(room?.operation?.input?.mode)?{sceneId:room.id,operation:room.operation}:undefined)};
  window.h={launch:kind=>launch(commands[kind]),retain:kind=>{window.retained=commands[kind]},old:()=>launch(window.retained),
   select:(id='B',pending=false,revision=0,closed=false)=>{setRoom(scene(id,revision,closed?'closed':'active'));
    state.setRoomEnded(closed);state.setRoomMoveZoneId('private-'+id);
