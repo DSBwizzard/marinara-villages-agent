@@ -929,6 +929,33 @@ export type VillageScenarioImprint = {
   visualCues: string[];
 };
 
+export type ReturnCatchupCapture = {
+  at: string;
+  memoryRevision: number;
+  world: Pick<
+    VillageState,
+    | "seed"
+    | "setupAt"
+    | "foundedAt"
+    | "timeZone"
+    | "name"
+    | "setting"
+    | "worldName"
+    | "worldFacts"
+    | "playerBackground"
+    | "playerPersonaId"
+    | "playerPersonaName"
+    | "playerPersonaIdentity"
+    | "playerPersonaMissing"
+    | "villagers"
+    | "venues"
+    | "residences"
+    | "projects"
+    | "relationshipContext"
+    | "opening"
+  >;
+};
+
 export type VillageState = {
   memories: import("./memories.js").MemoryCollection;
   memoryScenes: Record<string, import("./memories.js").MemorySceneState>;
@@ -937,6 +964,24 @@ export type VillageState = {
   socialMailOutbox?: import("./social-mail.js").SocialMailOutbox[];
   socialPublications?: Record<string, true>;
   eventAttempts?: import("../rules/event-attempts.js").EventAttemptLedger;
+  /** Optional return batch authority; old worlds start without an active batch. */
+  returnCatchup?: {
+    capture?: ReturnCatchupCapture;
+    batch?: {
+      id: string;
+      status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
+      from?: string;
+      until?: string;
+      reason?: string;
+      opportunities?: ResidentPlanningOpportunity[];
+      records?: {
+        opportunityId: string;
+        status: "pending" | "queued" | "settling" | "settled" | "rejected";
+        outcome?: unknown;
+        error?: string;
+      }[];
+    };
+  };
   socialClarifications?: { id: string; actorIds: string[]; text: string; at: string }[];
   opening?: import("../rules/opening-project.js").OpeningRecord;
   semanticRequestReceipts?: Record<string, string>;

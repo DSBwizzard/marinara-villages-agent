@@ -62,11 +62,11 @@ export function VillageTimeControl({
     } catch (cause) {
       setError(messageFrom(cause, "Time advancement could not finish. Check the current time before retrying."));
       try {
-        const current = await request<VillageClockView>("/clock");
+        const current = await request<VillageClockView>(`/clock?actionId=${encodeURIComponent(action.actionId)}`);
         setClock(current);
         if (
           current.worldId !== action.worldId ||
-          (current.revision !== action.revision && current.lastAdvanceActionId !== action.actionId)
+          (current.revision !== action.revision && current.advanceReceipt?.actionId !== action.actionId)
         )
           setNeedsNewAction(true);
       } catch {

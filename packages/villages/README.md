@@ -169,7 +169,9 @@ Time, schedules, construction, approved moves, and expiry can advance without mo
 
 Set **Resident activity and Wishes → Off** to pause automatic social planning, routine suggestions, housing proposals, and new Wishes. Local time, construction and approved moves continue. Retained Wishes do not expire.
 
-Quiet, Balanced, and Lively permit at most 1, 3, and 6 automatic resident attempts per local day, at least fifteen minutes apart, with no missed-day catch-up. Each attempt uses at most two principal model requests; quiet outcomes, failures, and unknown outcomes still count. Residents may initiate private encounters or personal mail. Weather alone does not start an automatic request.
+Quiet, Balanced, and Lively permit at most 1, 3, and 6 automatic resident attempts per local day. Ordinary activity is at least fifteen minutes apart and does not replay missed days. Each attempt uses at most two principal model requests; quiet outcomes, failures, and unknown outcomes still count. Residents may initiate private encounters or personal mail. Weather alone does not start an automatic request.
+
+After an absence of at least one hour, Villages may use the remaining current-day allowance to create a few grounded resident encounters or private reflections. These share the ordinary allowance but do not wait fifteen minutes between opportunities. The host and internet need not be available during the absence; requests run after Villages returns. Retry can make additional model requests. Continue skips only work that can safely be abandoned, while committed effects must finish recovering. The Debug section includes a spoiler-bearing catch-up account and the development time control.
 
 Background work shows progress, failures, and provider-reported usage where available. A quiet result can be valid; the game does not need to invent an event for every interval.
 

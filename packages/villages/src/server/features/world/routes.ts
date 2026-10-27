@@ -4,6 +4,7 @@ import { fail } from "../../adapters/http/route-support.js";
 import { observeVillageClock, resolveVillageClock } from "../../adapters/time/clock-gate.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageCatalog } from "../residents/resident-cards.js";
+import { readVillageAuthority } from "./village-store.js";
 import { buildVillageSnapshot } from "./snapshot.js";
 import {
   buildVillageMemories,
@@ -32,9 +33,16 @@ export function registerSnapshotCatalogRoutes(engine: FastifyInstance) {
 }
 export function registerWorldMaintenanceRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.get("/clock", async (_request, reply) => {
+  app.get<{ Querystring: { actionId?: string } }>("/clock", async (request, reply) => {
     try {
-      return await observeVillageClock();
+      const view = await observeVillageClock();
+      if (!view || !request.query.actionId) return view;
+      const state = await readVillageAuthority();
+      if (JSON.stringify([state.seed, state.setupAt]) !== view.worldId) return await observeVillageClock();
+      const receipt =
+        state.clock?.advanceReceipts?.find((entry) => entry.actionId === request.query.actionId) ??
+        (state.clock?.lastAdvance?.actionId === request.query.actionId ? state.clock.lastAdvance : undefined);
+      return receipt ? { ...view, advanceReceipt: receipt } : view;
     } catch (error) {
       return fail(reply, error, "reading Village time");
     }

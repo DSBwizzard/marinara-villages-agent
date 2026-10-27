@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { renderProgressDebugPage } from "../features/background/ProgressDebugPage.js";
+import { ReturnCatchupDebug } from "../features/background/ReturnCatchupDebug.js";
 import { renderProjectsPage } from "../features/projects/ProjectsPage.js";
 import { RepairPage } from "../features/repair/RepairPage.js";
 import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsPage.js";
@@ -275,6 +276,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               {menuSection === "debug" ? backgroundPanel : null}
               {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
               {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
+              {menuSection === "debug" ? <ReturnCatchupDebug /> : null}
               {menuPage === "venueRequests" && snapshot
                 ? renderVenueRequestsPage({
                     housingVenueId,

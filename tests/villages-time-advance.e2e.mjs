@@ -19,6 +19,7 @@ try {
       recovery: null,
     };
     const actions = [];
+    const receipts = new Map();
     let failure = "stale";
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {
@@ -33,12 +34,15 @@ try {
       snapshot.clock = structuredClone(clock);
       snapshot.village.instant = clock.instant;
       let value = snapshot;
-      if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
+      if (path.endsWith("/background/catchup")) value = { batch: null };
+      else if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
       else if (path.endsWith("/debug/runtime")) value = { verbose: false, effective: false, engineEnabled: false };
-      else if (path.endsWith("/clock")) value = clock;
-      else if (path.endsWith("/clock/advance")) {
+      else if (path.endsWith("/clock")) {
+        const actionId = new URL(route.request().url()).searchParams.get("actionId");
+        value = { ...clock, ...(receipts.has(actionId) ? { advanceReceipt: receipts.get(actionId) } : {}) };
+      } else if (path.endsWith("/clock/advance")) {
         const action = route.request().postDataJSON();
         actions.push(action);
         if (failure === "stale") {
@@ -50,14 +54,21 @@ try {
           await fulfill(route, { status: 409, json: { error: "Time already changed. Refresh the clock." } });
           return;
         }
-        if (clock.lastAdvanceActionId !== action.actionId) {
+        if (!receipts.has(action.actionId)) {
           assert.equal(action.revision, clock.revision);
           clock.revision++;
           clock.advanceMs += action.milliseconds;
           clock.lastAdvanceActionId = action.actionId;
+          receipts.set(action.actionId, { actionId: action.actionId, milliseconds: action.milliseconds });
           clock.instant = new Date(initial + clock.advanceMs).toISOString();
         }
-        if (failure === "after-save") {
+        if (failure === "after-save" || failure === "after-save-and-other") {
+          if (failure === "after-save-and-other") {
+            clock.revision++;
+            clock.advanceMs += 60_000;
+            clock.lastAdvanceActionId = "other-tab-later";
+            clock.instant = new Date(initial + clock.advanceMs).toISOString();
+          }
           failure = "";
           await fulfill(route, { status: 500, json: { error: "Time saved; catch-up interrupted." } });
           return;
@@ -96,6 +107,12 @@ try {
       "A post-save failure retries the original duration, revision and action identity.",
     );
     assert.equal(clock.advanceMs, 3.5 * 86_400_000 + 1.25 * 3_600_000);
+    failure = "after-save-and-other";
+    await advance.click();
+    await expect(panel.getByRole("alert")).toContainText("Time saved");
+    await advance.click();
+    await expect(panel.getByRole("status")).toContainText("Time advanced");
+    assert.deepEqual(actions.at(-1), actions.at(-2), "A later tab cannot prevent replaying the saved action.");
     await panel.getByRole("spinbutton", { name: "Time amount", exact: true }).fill("1.1");
     await advance.click();
     await expect(panel.getByRole("status")).toContainText("Time advanced");

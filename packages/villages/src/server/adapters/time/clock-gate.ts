@@ -1,13 +1,15 @@
 import { createActivationBinding } from "../engine/activation-scope.js";
 import { withRepairWork, assertRepairGeneration } from "../storage/repair-gate.js";
 import type { VillageClockView, VillageTimeAdvance } from "../../../shared/contracts/clock.js";
+import type { VillageState } from "../../domain/models/world.js";
+export type ClockAdvanceEffect = (state: VillageState, from: Date, until: Date) => void;
 export interface VillageClockAuthority {
   observe(): Promise<VillageClockView>;
   now(advanceMs?: number): Date;
   shiftMs?(): number;
   commit?<T>(work: () => Promise<T>, revision?: number): Promise<T>;
   resolve(revision: number, choice: "accept" | "check"): Promise<VillageClockView>;
-  advance?(request: VillageTimeAdvance): Promise<VillageClockView>;
+  advance?(request: VillageTimeAdvance, effect?: ClockAdvanceEffect): Promise<VillageClockView>;
   onAdvance?(listener: () => void): () => void;
   advanceSettled?(): void;
 }
@@ -21,10 +23,10 @@ export function villageNow(advanceMs?: number): Date {
 export async function observeVillageClock() {
   return binding.maybe()?.observe();
 }
-export function advanceVillageClock(request: VillageTimeAdvance) {
+export function advanceVillageClock(request: VillageTimeAdvance, effect?: ClockAdvanceEffect) {
   const clock = binding.get();
   if (!clock.advance) throw new Error("Time advancement is unavailable.");
-  return clock.advance(request);
+  return clock.advance(request, effect);
 }
 export function onVillageClockAdvance(listener: () => void): () => void {
   return binding.maybe()?.onAdvance?.(listener) ?? (() => {});

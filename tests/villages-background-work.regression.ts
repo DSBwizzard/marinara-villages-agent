@@ -2,13 +2,20 @@ import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
 import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
+import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import { villageNow } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
-import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import {
+  mutateVillageMemoryState,
+  mutateVillageState,
+  readVillageState,
+} from "../packages/villages/src/server/features/world/village-store.js";
 import {
   backgroundWorkSummaries,
+  cancelReturnCatchup,
   hasVillagePresence,
   queueBackgroundJob,
   recoverBackgroundWork,
@@ -20,6 +27,8 @@ import {
 } from "../packages/villages/src/server/jobs/background-work.js";
 import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { addMemory } from "./helpers/memories-fixture.js";
+import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
 
 const rows = new Map<string, any>();
 let writesFail = false;
@@ -27,6 +36,10 @@ let conflictingWrites = 0;
 let delayClaim = false;
 let claimGate: (() => void) | null = null;
 let claimWrites = 0;
+let holdPendingTiming = false;
+let releasePendingTiming: (() => void) | null = null;
+let holdRequestCount = false;
+let releaseRequestCount: (() => void) | null = null;
 const documents = {
   async list(packageId: string, kind: string) {
     return structuredClone([...rows.values()].filter((row) => row.packageId === packageId && row.kind === kind));
@@ -49,6 +62,27 @@ const documents = {
   },
   async update(input: any) {
     if (writesFail) throw new Error("disk unavailable");
+    if (
+      holdRequestCount &&
+      input.id.startsWith("villages-background-") &&
+      input.data?.requests === 1 &&
+      input.data?.steps?.some((step: any) => step.timing?.outcome === "pending" && !step.timing.hostStartedAt)
+    ) {
+      holdRequestCount = false;
+      await new Promise<void>((resolve) => {
+        releaseRequestCount = resolve;
+      });
+    }
+    if (
+      holdPendingTiming &&
+      input.id.startsWith("villages-background-") &&
+      input.data?.steps?.some((step: any) => step.timing?.outcome === "pending" && !step.timing.hostStartedAt)
+    ) {
+      holdPendingTiming = false;
+      await new Promise<void>((resolve) => {
+        releasePendingTiming = resolve;
+      });
+    }
     const row = rows.get(input.id);
     if (input.id === "villages-village" && conflictingWrites-- > 0) return null;
     if (!row || row.revision !== input.expectedRevision) return null;
@@ -199,6 +233,10 @@ async function reset() {
   failStep = "";
   blockStep = "";
   providerGate = null;
+  holdPendingTiming = false;
+  releasePendingTiming = null;
+  holdRequestCount = false;
+  releaseRequestCount = null;
   now = 0;
   await mutateVillageState((state) => {
     Object.assign(state, defaultVillageState());
@@ -673,6 +711,258 @@ async function main() {
         assert(rows.has(retained!.id), "Inspect polling preserves failed work for deliberate recovery");
       }
     }
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "balanced";
+      state.eventAttempts = undefined;
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("return-session", true);
+    await queueBackgroundJob(work("recurring", ["ordinary-during-return"], false));
+    await settleBackgroundWork();
+    assert.equal(calls.includes("ordinary-during-return"), false, "The active return holds unrelated recurring work.");
+    registerBackgroundHandler("resident-planning", {
+      async generate(input) {
+        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        return {};
+      },
+      valid: () => true,
+      apply(_state, input) {
+        effects.push(input.step);
+      },
+    });
+    const currentDate = localDateKey(villageNow());
+    const catchupWork = (subject: string, step: string): BackgroundInput => ({
+      kind: "resident-planning",
+      subjectId: subject,
+      seed: "fixture",
+      revision: subject,
+      finite: false,
+      label: "Catch-up",
+      automaticDate: currentDate,
+      input: { context: { catchup: true }, catchupBatchId: "return-batch", step },
+    });
+    await queueBackgroundJob(catchupWork("return-one", "return-one"));
+    await settleBackgroundWork();
+    assert.ok(effects.includes("return-one"), "Catch-up can run while ordinary work is held.");
+    blockStep = "return-late";
+    await queueBackgroundJob(catchupWork("return-late", "return-late"));
+    await until(() => providerGate !== null);
+    await cancelReturnCatchup("return-batch");
+    providerGate!();
+    await settleBackgroundWork();
+    assert.equal(effects.includes("return-late"), false, "A late response cannot apply after cancellation.");
+    assert.equal((await readVillageState()).eventAttempts!.attempts.length, 2, "Cancelled dispatch remains charged.");
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await queueBackgroundJob(catchupWork("retry-before-dispatch", "retry-before-dispatch"));
+    await settleBackgroundWork();
+    let pending = await summary("retry-before-dispatch");
+    assert.equal(pending.status, "paused");
+    await retryBackgroundJob(pending.id, pending.attempt, "retry-before-visible");
+    await settleBackgroundWork();
+    assert.equal(calls.includes("retry-before-dispatch"), false, "An explicit retry cannot dispatch while hidden.");
+    await villageBackgroundPresence("retry-session", true);
+    await settleBackgroundWork();
+    assert.ok(calls.includes("retry-before-dispatch"));
+    assert.equal(
+      (await readVillageState()).eventAttempts!.attempts.length,
+      1,
+      "The first retried dispatch reserves its allowance.",
+    );
+    await villageBackgroundPresence("retry-session", false);
+    await queueBackgroundJob(catchupWork("retry-over-budget", "retry-over-budget"));
+    await settleBackgroundWork();
+    pending = await summary("retry-over-budget");
+    await retryBackgroundJob(pending.id, pending.attempt, "retry-without-allowance");
+    await settleBackgroundWork();
+    await villageBackgroundPresence("retry-session", true);
+    await settleBackgroundWork();
+    assert.equal(calls.includes("retry-over-budget"), false, "A retry cannot bypass an exhausted daily allowance.");
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("admission-session", true);
+    holdPendingTiming = true;
+    await queueBackgroundJob(catchupWork("cancel-before-dispatch", "cancel-before-dispatch"));
+    await until(() => releasePendingTiming !== null);
+    await cancelReturnCatchup("return-batch");
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    assert.equal(
+      calls.includes("cancel-before-dispatch"),
+      false,
+      "Cancellation before admission prevents a paid request.",
+    );
+    assert.equal(
+      (await summary("cancel-before-dispatch")).requests,
+      0,
+      "No request is counted before provider dispatch.",
+    );
+    const cancelledRecord = rows.get((await summary("cancel-before-dispatch")).id).data;
+    assert.equal(cancelledRecord.status, "obsolete");
+    assert.deepEqual(
+      cancelledRecord.steps,
+      [],
+      "Cancelled undispatched work cannot leave a running-step restore hold.",
+    );
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("hide-before-admission", true);
+    holdPendingTiming = true;
+    await queueBackgroundJob(catchupWork("hidden-before-dispatch", "hidden-before-dispatch"));
+    await until(() => releasePendingTiming !== null);
+    await villageBackgroundPresence("hide-before-admission", false);
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    const hidden = await summary("hidden-before-dispatch");
+    assert.equal(hidden.status, "paused", "No request began, so hiding is a pause rather than an interruption.");
+    assert.equal(hidden.requests, 0);
+    assert.deepEqual(rows.get(hidden.id).data.steps, []);
+    await villageBackgroundPresence("hide-before-admission", true);
+    await settleBackgroundWork();
+    assert.ok(
+      calls.includes("hidden-before-dispatch"),
+      "Visibility resumes the unstarted request without explicit retry.",
+    );
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("hide-during-count", true);
+    holdRequestCount = true;
+    await queueBackgroundJob(catchupWork("hidden-during-count", "hidden-during-count"));
+    await until(() => releaseRequestCount !== null);
+    await villageBackgroundPresence("hide-during-count", false);
+    releaseRequestCount!();
+    await settleBackgroundWork();
+    const countPaused = await summary("hidden-during-count");
+    assert.equal(countPaused.status, "paused");
+    assert.equal(countPaused.requests, 0, "A pre-dispatch hide does not count a provider request.");
+    assert.equal(calls.includes("hidden-during-count"), false);
+    await villageBackgroundPresence("hide-during-count", true);
+    await settleBackgroundWork();
+    assert.ok(calls.includes("hidden-during-count"), "The unstarted request resumes after visibility returns.");
+    await reset();
+    await mutateVillageMemoryState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.memories = addMemory(state.memories, { sourceId: "before-return" });
+    });
+    registerBackgroundHandler("resident-planning", {
+      async generate(input) {
+        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        return {};
+      },
+      valid: (state) => state.memories.revision > 0,
+      apply(state, input) {
+        assert.ok(state.memories.revision > 0, "Application receives the committed Memory payload.");
+        effects.push(input.step);
+      },
+    });
+    await villageBackgroundPresence("memory-session", true);
+    await queueBackgroundJob(catchupWork("loaded-memory", "loaded-memory"));
+    await settleBackgroundWork();
+    assert.ok(effects.includes("loaded-memory"), "Catch-up validates and applies with a real persisted Memory head.");
+    await reset();
+    await mutateVillageMemoryState((state) => {
+      state.returnCatchup = { batch: { id: "return-batch", status: "recovering" } };
+      state.memories = addMemory(state.memories, { sourceId: "before-interpretation" });
+    });
+    registerBackgroundHandler("social-recovery", {
+      async generate(input) {
+        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        return {};
+      },
+      valid: (state) => state.memories.revision > 0,
+      apply(_state, input) {
+        effects.push(input.step);
+      },
+    });
+    const reinterpret = (step: string): BackgroundInput => ({
+      kind: "social-recovery",
+      subjectId: step,
+      seed: "fixture",
+      revision: step,
+      finite: true,
+      label: "Encounter meaning",
+      input: { entry: { catchupBatchId: "return-batch" }, step },
+    });
+    await villageBackgroundPresence("interpretation-session", true);
+    holdPendingTiming = true;
+    await queueBackgroundJob(reinterpret("cancel-interpretation"));
+    await until(() => releasePendingTiming !== null);
+    await cancelReturnCatchup("return-batch");
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    assert.equal(calls.includes("cancel-interpretation"), false, "Cancelled interpretation does not dispatch.");
+    await reset();
+    await mutateVillageMemoryState((state) => {
+      state.returnCatchup = { batch: { id: "return-batch", status: "recovering" } };
+      state.memories = addMemory(state.memories, { sourceId: "before-interpretation" });
+    });
+    await villageBackgroundPresence("interpretation-hidden", true);
+    holdPendingTiming = true;
+    await queueBackgroundJob(reinterpret("hidden-interpretation"));
+    await until(() => releasePendingTiming !== null);
+    await villageBackgroundPresence("interpretation-hidden", false);
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    assert.equal(calls.includes("hidden-interpretation"), false, "Hidden interpretation does not dispatch.");
+    await villageBackgroundPresence("interpretation-hidden", true);
+    await settleBackgroundWork();
+    assert.ok(effects.includes("hidden-interpretation"), "Interpretation resumes with the persisted Memory payload.");
+    await reset();
+    await mutateVillageState((state) => {
+      const instant = villageNow().toISOString();
+      state.returnCatchup = {
+        batch: {
+          id: "return-batch",
+          status: "running",
+          from: instant,
+          until: instant,
+          opportunities: [
+            {
+              id: "safe",
+              kind: "routine",
+              startsAt: instant,
+              endsAt: instant,
+              actorIds: ["a"],
+              venueId: "",
+              facts: [],
+            },
+          ],
+          records: [{ opportunityId: "safe", status: "settling" }],
+        },
+      };
+      state.socialOutbox = [{ id: "safe:social", catchupBatchId: "return-batch" }, { id: "unrelated:social" }] as any;
+    });
+    await cancelReturnCatchup("return-batch");
+    const skipped = await readVillageState();
+    assert.deepEqual(
+      skipped.socialOutbox?.map((row) => row.id),
+      ["unrelated:social"],
+      "Continue discards only the uncommitted return source.",
+    );
+    assert.equal(skipped.returnCatchup?.batch?.records?.[0]?.status, "rejected");
+    await reset();
+    await mutateRelationships("fixture", (state) => {
+      state.applied["partial:social"] = true;
+    });
+    await mutateVillageState((state) => {
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.socialOutbox = [{ id: "partial:social", catchupBatchId: "return-batch" }] as any;
+    });
+    await assert.rejects(() => cancelReturnCatchup("return-batch"), /recovering the saved encounter/);
     console.log(
       "villages-background-work: concurrency, checkpoint retry, fairness, presence, recovery, stale results, bounded storage ok",
     );

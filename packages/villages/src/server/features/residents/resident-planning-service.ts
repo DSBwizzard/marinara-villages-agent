@@ -3,9 +3,18 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageResidence } from "../../domain/models/world.js";
+import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asRecord } from "../../domain/rules/coerce.js";
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
+import {
+  ReturnOpportunityUnavailable,
+  returnCatchupSubject,
+  sameReturnResident,
+} from "../../domain/rules/return-catchup-authority.js";
+import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
+import { departureMemoriesAvailable } from "../../domain/rules/return-catchup-capture.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { recallMemories } from "../../domain/rules/memory-recall.js";
 import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
@@ -15,6 +24,7 @@ import { relationshipWritingPrompt } from "../../domain/rules/relationship-prese
 import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
   buildResidentPlanningMessages,
+  assertCatchupChoices,
   localDateKey,
   planningAllowance,
   readResidentPlanningProposal,
@@ -31,12 +41,15 @@ import {
   SOCIAL_WISH_INSTRUCTION,
 } from "../../domain/rules/social-wishes.js";
 import { hasVenueClass, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { venueZones } from "../../domain/rules/venue-zones.js";
 import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
 
 export type ResidentPlanningPorts = {
+  afterCatchup?: (input: unknown) => Promise<void>;
+  afterCatchupFailure?: (input: unknown) => Promise<void>;
   applySavedStartingTies?: () => Promise<void>;
   automaticMail?: import("./social-mail-service.js").SocialMailService["automaticOutbox"];
   readVillageState: typeof import("../world/village-store.js").readVillageState;
@@ -179,6 +192,183 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       },
     });
   }
+  /** Queue one dated opportunity using the saved departure context. */
+  async function queueReturnOpportunity(
+    batchId: string,
+    opportunity: ResidentPlanningOpportunity,
+    capture: ReturnCatchupCapture,
+  ): Promise<void> {
+    const current = await readVillageState({ memories: true });
+    if (current.returnCatchup?.batch?.id !== batchId || current.returnCatchup.batch.status !== "running")
+      throw new Error("The catch-up batch is no longer active.");
+    const eventAt = Date.parse(opportunity.startsAt),
+      capturedAt = Date.parse(capture.at),
+      returnAt = Date.parse(current.returnCatchup.batch.until ?? "");
+    if (
+      !Number.isFinite(eventAt) ||
+      !Number.isFinite(capturedAt) ||
+      !Number.isFinite(returnAt) ||
+      current.returnCatchup.batch.from !== capture.at ||
+      !current.returnCatchup.capture ||
+      backgroundRevision(current.returnCatchup.capture) !== backgroundRevision(capture) ||
+      !current.returnCatchup.batch.opportunities?.some((row) => JSON.stringify(row) === JSON.stringify(opportunity)) ||
+      eventAt < capturedAt ||
+      eventAt > returnAt ||
+      returnAt > villageNow().getTime() ||
+      opportunity.endsAt !== opportunity.startsAt ||
+      !["encounter", "routine"].includes(opportunity.kind) ||
+      !opportunity.actorIds.length ||
+      opportunity.actorIds.includes("player") ||
+      new Set(opportunity.actorIds).size !== opportunity.actorIds.length ||
+      (opportunity.kind === "encounter" && (opportunity.actorIds.length < 2 || !opportunity.venueId)) ||
+      (opportunity.kind === "routine" && (opportunity.actorIds.length !== 1 || !!opportunity.venueId))
+    )
+      throw new ReturnOpportunityUnavailable("The historical opportunity is not supported by its departure interval.");
+    if (!departureMemoriesAvailable(capture, current))
+      throw new ReturnOpportunityUnavailable("Resident memories changed after the departure capture.");
+    if (JSON.stringify(current.relationshipContext) !== JSON.stringify(capture.world.relationshipContext))
+      throw new ReturnOpportunityUnavailable("Resident relationships changed after the departure capture.");
+    if (JSON.stringify(current.opening) !== JSON.stringify(capture.world.opening))
+      throw new ReturnOpportunityUnavailable("The opening changed after the departure capture.");
+    const historical: VillageState = structuredClone({ ...current, ...capture.world });
+    const now = new ZonedDate(
+      opportunity.startsAt,
+      historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
+    planRoutineDays(historical, now);
+    if (opportunity.actorIds.some((id) => !historical.relationshipContext?.reviewedActorIds.includes(id)))
+      throw new ReturnOpportunityUnavailable("A resident's relationships have not been reviewed.");
+    if (
+      opportunity.actorIds.some((id) => {
+        const before = historical.villagers.find((row) => row.characterId === id);
+        const live = current.villagers.find((row) => row.characterId === id);
+        return (
+          !before ||
+          !live ||
+          !sameReturnResident(
+            before,
+            live,
+            new ZonedDate(
+              opportunity.startsAt,
+              historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+            ),
+            historical,
+          )
+        );
+      })
+    )
+      throw new ReturnOpportunityUnavailable("A resident changed after the departure capture.");
+    if (
+      opportunity.venueId &&
+      JSON.stringify(historical.venues.find((row) => row.id === opportunity.venueId)) !==
+        JSON.stringify(current.venues.find((row) => row.id === opportunity.venueId))
+    )
+      throw new ReturnOpportunityUnavailable("The opportunity's Venue changed after the departure capture.");
+    const moment = deriveVillageMoment({
+      foundedAt: historical.foundedAt,
+      seed: historical.seed,
+      timeZone: historical.timeZone || undefined,
+      now,
+    });
+    const venue = historical.venues.find((row) => row.id === opportunity.venueId);
+    const encounterZone = venue && venueZones(venue).find((row) => row.id === opportunity.zoneId);
+    if (opportunity.kind === "encounter" && (!venue || !encounterZone))
+      throw new ReturnOpportunityUnavailable("The historical encounter Zone is unavailable.");
+    const context: ResidentPlanningContext = {
+      version: 1,
+      catchup: true,
+      village: historical.name,
+      setting: villageCurrentSetting(historical),
+      playerBackground: historical.playerBackground,
+      playerPersonaName: historical.playerPersonaName,
+      worldFacts: historical.worldFacts,
+      moment,
+      residents: historical.villagers
+        .filter((resident) => opportunity.actorIds.includes(resident.characterId))
+        .map((resident) => {
+          const card = readEffectiveVillagerCard(resident);
+          return {
+            characterId: resident.characterId,
+            name: card.name,
+            profile: venueCardProfile(card, readPlayerIdentity(historical).name),
+            doing:
+              agendaAt(resident.agenda, moment.minuteOfDay, now, resident.ingestSchedule !== false)?.activity ?? "",
+            agenda: resident.agenda,
+            wishes: resident.wishes,
+          };
+        }),
+      venues: [],
+      ...(venue && encounterZone
+        ? {
+            catchupPlace: {
+              venueId: venue.id,
+              name: venue.name,
+              category: venue.category,
+              classes: venue.classes,
+              zone: {
+                id: encounterZone.id,
+                name: encounterZone.name,
+                kind: encounterZone.kind,
+                description: encounterZone.description,
+              },
+            },
+          }
+        : {}),
+      pendingHousingCharacterIds: [],
+      opportunity,
+      narrationMemories: Object.fromEntries(
+        opportunity.actorIds.map((id) => [
+          id,
+          recallMemories(historical.memories, {
+            purpose: "narration",
+            audience: [id],
+            query: opportunity.facts.join(" ") + " " + id,
+          }).serialized,
+        ]),
+      ),
+      memory: sceneMemoryContext(historical, opportunity.actorIds, opportunity.facts.join(" ")),
+      social: {
+        candidates: [],
+        relationships: opportunity.actorIds.map((id) => relationshipWritingPrompt(historical, id)),
+        state: socialContextState(historical.relationshipContext, opportunity.actorIds, opportunity.facts.join(" ")),
+      },
+    };
+    const dateKey = localDateKey(villageNow());
+    await queueBackgroundJob({
+      kind: "resident-planning",
+      subjectId: returnCatchupSubject(batchId, opportunity.id),
+      seed: historical.seed,
+      revision: batchId + ":" + opportunity.id,
+      finite: false,
+      label: "Return catch-up",
+      automaticDate: dateKey,
+      input: {
+        catchupBatchId: batchId,
+        context,
+        opportunity,
+        dateKey,
+        now: opportunity.startsAt,
+        memoryRevision: capture.memoryRevision,
+        captureRevision: backgroundRevision(capture),
+        returnUntil: current.returnCatchup.batch.until,
+        relationships: capture.world.relationshipContext,
+        admitted: structuredClone({
+          villagers: historical.villagers,
+          venues: historical.venues,
+          residences: historical.residences,
+          projects: historical.projects,
+          timeZone: historical.timeZone,
+          opening: historical.opening,
+        }),
+        actorIncarnations: Object.fromEntries(
+          opportunity.actorIds.map((id) => [
+            id,
+            historical.villagers.find((row) => row.characterId === id)?.cardSnapshot.capturedAt,
+          ]),
+        ),
+      },
+    });
+  }
   async function proposeResidentChoices(context: ResidentPlanningContext) {
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
@@ -259,7 +449,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             (mail
               ? " The recipient is player; disclosures wait for reading. Mail cannot grant access or create actionable invitations. Return permissions:[] for mail."
               : " The player is absent: disclosures must be empty.") +
-            " Use numeric zero-based lineIds. context.state is both captured and live social baseline. sceneAfter/liveAfter coincide. Return memoryChanges:[] under the native Memory contract. " +
+            " Use numeric zero-based lineIds. context.state is both captured and live social baseline. sceneAfter/liveAfter coincide. Return the memoryChanges array under the native Memory contract. " +
             SCENE_MEMORY_INSTRUCTION +
             " " +
             SOCIAL_WISH_INSTRUCTION +
@@ -271,10 +461,12 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             lines,
             mode: mail ? "mail" : "encounter",
             context: context.social,
-            residents: context.residents.map((r) => ({ characterId: r.characterId, wishes: r.wishes })),
+            residents: context.residents
+              .filter((r) => !context.catchup || context.opportunity.actorIds.includes(r.characterId))
+              .map((r) => ({ characterId: r.characterId, wishes: r.wishes })),
             memory: nativeMemory.envelope,
             now: context.moment.instant,
-            zones: context.venues,
+            zones: context.catchup ? (context.catchupPlace ? [context.catchupPlace] : []) : context.venues,
           }),
         },
       ];
@@ -315,6 +507,37 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     generate: (input) => proposeResidentChoices(input.context),
     valid: (state, input) =>
       input.context.version === 1 &&
+      (!input.context.catchup ||
+        (state.returnCatchup?.batch?.id === input.catchupBatchId &&
+          state.returnCatchup.batch.status === "running" &&
+          state.returnCatchup.batch.until === input.returnUntil &&
+          !!state.returnCatchup.capture &&
+          backgroundRevision(state.returnCatchup.capture) === input.captureRevision &&
+          !!state.returnCatchup.batch.opportunities?.some(
+            (row) => JSON.stringify(row) === JSON.stringify(input.opportunity),
+          ) &&
+          state.memories.revision === input.memoryRevision &&
+          JSON.stringify(state.relationshipContext) === JSON.stringify(input.relationships) &&
+          JSON.stringify(state.opening) === JSON.stringify(input.admitted.opening) &&
+          input.opportunity.actorIds.every((id: string) => {
+            const live = state.villagers.find((row) => row.characterId === id);
+            const before = input.admitted.villagers.find((row: { characterId: string }) => row.characterId === id);
+            return (
+              !!live &&
+              !!before &&
+              sameReturnResident(
+                before,
+                live,
+                new ZonedDate(input.now, input.admitted.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+                { ...state, ...input.admitted },
+              )
+            );
+          }) &&
+          (!input.opportunity.venueId ||
+            JSON.stringify(state.venues.find((row) => row.id === input.opportunity.venueId)) ===
+              JSON.stringify(
+                input.admitted.venues.find((row: { id: string }) => row.id === input.opportunity.venueId),
+              )))) &&
       input.context.setting === villageCurrentSetting(state) &&
       state.backgroundPace !== "off" &&
       input.opportunity.actorIds.every((id: string) =>
@@ -326,6 +549,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
       ) <= input.dateKey,
     apply(state, input, proposal) {
+      if (input.context.catchup) assertCatchupChoices(proposal);
       const { dateKey, opportunity } = input;
       if (state.backgroundPace === "off" || state.processedActionIds.includes(opportunity.id)) return;
       if (proposal.wishReflection) {
@@ -365,6 +589,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         if (!state.socialOutbox.some((entry) => entry.id === id))
           state.socialOutbox.push({
             id,
+            ...(input.context.catchup ? { catchupBatchId: input.catchupBatchId } : {}),
             seed: state.seed,
             at: input.now,
             opportunity,
@@ -415,7 +640,28 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       if (state.lastPlanningDate < dateKey) state.lastPlanningDate = dateKey;
       state.planningUsage = { dateKey, count: used + 1 };
       state.processedActionIds = [...state.processedActionIds, opportunity.id].slice(-256);
+      if (input.context.catchup) {
+        const tracking = state.returnCatchup;
+        const record = tracking?.batch?.records?.find((row) => row.opportunityId === opportunity.id);
+        if (!tracking?.capture || !record || tracking.batch?.id !== input.catchupBatchId)
+          throw new Error("The return opportunity is no longer recorded in its batch.");
+        record.outcome = structuredClone(proposal);
+        record.status = proposal.social?.encounter ? "settling" : "settled";
+        if (proposal.wishReflection) {
+          const id = String(asRecord(proposal.wishReflection).actorId);
+          const captured = tracking.capture.world.villagers.find((row) => row.characterId === id);
+          const live = state.villagers.find((row) => row.characterId === id);
+          if (!captured || !live) throw new Error("The reflecting resident changed.");
+          captured.wishes = structuredClone(live.wishes);
+        }
+      }
+    },
+    afterApply: async (input) => {
+      if (input.context.catchup) await ports.afterCatchup?.(input);
+    },
+    afterFailure: async (input) => {
+      if (input?.context?.catchup) await ports.afterCatchupFailure?.(input);
     },
   };
-  return { reconcile, handler };
+  return { reconcile, queueReturnOpportunity, handler };
 }

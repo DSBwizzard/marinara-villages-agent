@@ -278,6 +278,37 @@ async function verify() {
     );
     assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
     assert.equal(f.state.clock!.advanceMs, request.milliseconds + DAY);
+    const legacyFixture = fixture();
+    await legacyFixture.repository.mutateAuthority((state) => {
+      state.seed = "legacy-time-test";
+      state.foundedAt = state.setupAt;
+    });
+    const legacyFirst = await legacyFixture.clock.observe();
+    await legacyFixture.clock.advance!({
+      worldId: legacyFirst.worldId!,
+      revision: legacyFirst.revision,
+      actionId: "legacy-last",
+      milliseconds: DAY,
+    });
+    await legacyFixture.repository.mutateAuthority((state) => {
+      // Older villages only retained the last advance identity.
+      delete state.clock!.advanceReceipts;
+    });
+    const legacy = await legacyFixture.clock.observe();
+    await legacyFixture.clock.advance!({
+      worldId: legacy.worldId!,
+      revision: legacy.revision,
+      actionId: "after-legacy",
+      milliseconds: 60_000,
+    });
+    assert.ok(legacyFixture.state.clock!.advanceReceipts?.some((receipt) => receipt.actionId === "legacy-last"));
+    await legacyFixture.clock.advance!({
+      ...request,
+      worldId: legacy.worldId!,
+      actionId: "legacy-last",
+      milliseconds: DAY,
+    });
+    assert.equal(legacyFixture.state.clock!.advanceMs, DAY + 60_000);
     assert.deepEqual(
       coerceVillageState({ ...defaultVillageState(), ...JSON.parse(JSON.stringify(f.state)), projects: [] }).clock,
       f.state.clock,
@@ -285,6 +316,13 @@ async function verify() {
     f.jump(3 * 3_600_000);
     const restarted = createVillageClock(f.repository, f.sources);
     await restarted.observe();
+    await restarted.advance!(request);
+    assert.equal(
+      f.state.clock!.advanceMs,
+      request.milliseconds + DAY,
+      "An earlier action remains idempotent after another advance and restart.",
+    );
+    await assert.rejects(restarted.advance!({ ...request, milliseconds: DAY }), /another duration/);
     assert.equal(
       restarted.now().getTime(),
       f.wall + request.milliseconds + DAY,

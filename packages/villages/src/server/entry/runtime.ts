@@ -316,6 +316,9 @@ import { applyResidenceEditApproval, configureVenueZoneEdits } from "../features
 import { createVillageSnapshot } from "../features/world/snapshot-service.js";
 import { buildVillageSnapshot, configureVillageSnapshot } from "../features/world/snapshot.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
+import { createReturnCatchup } from "../features/background/return-catchup-service.js";
+import { createReturnCatchupSettlement } from "../features/background/return-catchup-settlement.js";
+import { advanceReturnCatchup, configureReturnCatchup } from "../features/background/return-catchup.js";
 import { createVillageStateService } from "../features/world/village-state-service.js";
 import {
   configureVillageStateService,
@@ -325,6 +328,7 @@ import {
   readVillageMemoryAuthority,
   readVillageMemorySnapshot,
   readVillageMemoryState,
+  readVillageSnapshot,
   readVillageState,
   withVillageSceneAcceptance,
 } from "../features/world/village-store.js";
@@ -334,8 +338,10 @@ import { createBackgroundWork } from "../jobs/background-service.js";
 import {
   backgroundJobSnapshot,
   backgroundWorkSummaries,
+  cancelReturnCatchup,
   configureBackgroundWork,
   previewBackgroundJobs,
+  hasVillagePresence,
   queueBackgroundJob,
   retireBackgroundResident,
   retryBackgroundJob,
@@ -608,6 +614,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     readVillageSnapshot: readVillageMemorySnapshot,
     queueBackgroundJob,
     interpretSocialSource,
+    afterCatchup: advanceReturnCatchup,
   });
   const releaseRelationshipSocial = configureRelationshipSocial(relationshipSocial);
   const startingTies = createStartingTies({
@@ -1104,6 +1111,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const residentPlanning = createResidentPlanning({
+    afterCatchup: advanceReturnCatchup,
+    afterCatchupFailure: advanceReturnCatchup,
     applySavedStartingTies: startingTies.applySaved,
     automaticMail: personalMail.automaticOutbox,
     readVillageState,
@@ -1167,6 +1176,25 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       ],
     }),
   );
+  const returnSettlement = createReturnCatchupSettlement({
+    gate: repairGate(),
+    readSnapshot: readVillageSnapshot,
+    mutate: mutateVillageMemoryState,
+    processSocialOutbox,
+  });
+  const returnCatchup = createReturnCatchup({
+    readSnapshot: readVillageSnapshot,
+    mutate: mutateVillageMemoryState,
+    queue: residentPlanning.queueReturnOpportunity,
+    job: backgroundJobSnapshot,
+    retryJob: retryBackgroundJob,
+    cancel: cancelReturnCatchup,
+    settle: returnSettlement.settle,
+    reinterpret: relationshipSocial.recoverCatchup,
+    hasPresence: hasVillagePresence,
+    now: villageNow,
+  });
+  const releaseReturnCatchup = configureReturnCatchup(returnCatchup);
   const releasePrivateSpaces = configurePrivateSpacePreparation(
     createPrivateSpacePreparation({
       mutateDocument,
@@ -1205,6 +1233,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseFoundingSetup();
     releaseWorldCoordination();
     releaseFounding();
+    releaseReturnCatchup();
     releaseBackground();
     releaseUsagePreview();
     releaseUsageMeter();

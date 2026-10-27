@@ -218,6 +218,8 @@ await runCase("village-clock-recovery", async () => {
       const retry = await restartApp.inject({ method: "POST", url: "/api/villages/clock/advance", payload });
       assert.equal(retry.statusCode, 200, retry.body);
       assert.equal(retry.json().clock.advanceMs, totalAdvance, "HTTP retry does not double an advance.");
+      const catchup = await restartApp.inject({ method: "GET", url: "/api/villages/background/catchup" });
+      assert.equal(catchup.statusCode, 200, catchup.body);
       const stale = await restartApp.inject({
         method: "POST",
         url: "/api/villages/clock/advance",

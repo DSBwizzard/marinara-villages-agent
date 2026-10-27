@@ -7,6 +7,7 @@ import type { SocialEncounter } from "../../domain/models/relationship-types.js"
 import type { SocialOutboxEntry } from "../../domain/models/social-outbox-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
+import { conflict } from "../../domain/rules/errors.js";
 import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
 import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
 import {
@@ -15,6 +16,7 @@ import {
   SocialRevisionConflict,
 } from "../../domain/rules/relationship-rules.js";
 import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
+import { departureMemoriesAvailable } from "../../domain/rules/return-catchup-capture.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { readEncounter } from "../../domain/rules/social-encounter.js";
 import { projectSocialActivities, reconcileSocialPlans, socialPlanValid } from "../../domain/rules/social-rules.js";
@@ -31,13 +33,16 @@ export type RelationshipSocialPorts = {
   processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;
   mutateVillageState: typeof mutateVillageState;
   mutateRelationships: typeof mutateRelationships;
+  afterCatchup?: () => Promise<void>;
 };
 /** A saved social outbox settles relationships before its Village acknowledgement. */
 export function createRelationshipSocial(ports: RelationshipSocialPorts) {
   const { mutateVillageState, mutateRelationships, processLiveMemories } = ports;
 
-  async function processSocialOutbox(village: VillageState): Promise<boolean> {
-    const pending = (village.socialOutbox ?? []).filter((entry) => !entry.processed && !entry.error).slice(0, 8);
+  async function processSocialOutbox(village: VillageState, sourceId?: string): Promise<boolean> {
+    const pending = (village.socialOutbox ?? [])
+      .filter((entry) => !entry.processed && !entry.error && (sourceId ? entry.id === sourceId : !entry.catchupBatchId))
+      .slice(0, 8);
     if (!pending.length) return false;
     for (const entry of pending) {
       if (entry.seed !== village.seed) continue;
@@ -255,6 +260,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
     const village = await ports.readVillageSnapshot({ memories: true }),
       entry = village.socialOutbox?.find((row) => row.id === id);
     if (!entry) return;
+    if (entry.catchupBatchId) throw conflict("Recover this encounter from Village catch-up.");
     if (input.reinterpret) {
       if (!ports.queueBackgroundJob) throw new Error("Encounter interpretation unavailable.");
       await ports.queueBackgroundJob({
@@ -280,6 +286,41 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
       await processSocialOutbox(await ports.readVillageSnapshot());
     }
   }
+  async function recoverCatchup(batchId: string, opportunityId: string, requestId: string) {
+    if (!ports.readVillageSnapshot || !ports.queueBackgroundJob) throw new Error("Encounter recovery unavailable.");
+    const village = await ports.readVillageSnapshot({ memories: true });
+    const tracking = village.returnCatchup;
+    const entry = village.socialOutbox?.find((row) => row.id === opportunityId + ":social");
+    const record = tracking?.batch?.records?.find((row) => row.opportunityId === opportunityId);
+    if (
+      tracking?.batch?.id !== batchId ||
+      tracking.batch.status !== "recovering" ||
+      !tracking.capture ||
+      record?.status !== "settling" ||
+      !entry ||
+      entry.catchupBatchId !== batchId ||
+      !entry.reinterpretRequired ||
+      !departureMemoriesAvailable(tracking.capture, village) ||
+      JSON.stringify(village.relationshipContext) !== JSON.stringify(tracking.capture.world.relationshipContext)
+    )
+      throw conflict("The saved encounter changed before interpretation could be retried.");
+    const historical = { ...village, ...tracking.capture.world };
+    await ports.queueBackgroundJob({
+      kind: "social-recovery",
+      subjectId: entry.id,
+      seed: village.seed,
+      revision: requestId,
+      finite: true,
+      label: "Encounter meaning",
+      input: {
+        entry: structuredClone(entry),
+        social: structuredClone(entry.relationshipSnapshot),
+        seed: village.seed,
+        admittedAt: entry.at,
+        memory: sceneMemoryContext(historical, entry.opportunity.actorIds, entry.opportunity.facts.join(" ")),
+      },
+    });
+  }
   const handler: Handler = {
     async generate(input: {
       entry: SocialOutboxEntry;
@@ -296,7 +337,11 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           state: input.social,
           candidates: [],
           relationships: [],
-          residents: input.entry.admitted.villagers,
+          residents: input.entry.catchupBatchId
+            ? input.entry.admitted.villagers.filter((resident) =>
+                input.entry.opportunity.actorIds.includes(resident.characterId),
+              )
+            : input.entry.admitted.villagers,
           at: input.admittedAt,
           memory: input.memory,
         },
@@ -305,6 +350,15 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
     },
     valid: (state, input) =>
       state.seed === input.seed &&
+      (!input.entry.catchupBatchId ||
+        (state.returnCatchup?.batch?.id === input.entry.catchupBatchId &&
+          state.returnCatchup.batch.status === "recovering" &&
+          !!state.returnCatchup.capture &&
+          departureMemoriesAvailable(state.returnCatchup.capture, state) &&
+          JSON.stringify(state.relationshipContext) ===
+            JSON.stringify(state.returnCatchup.capture.world.relationshipContext) &&
+          JSON.stringify(state.socialOutbox?.find((row) => row.id === input.entry.id)) ===
+            JSON.stringify(input.entry))) &&
       !!state.socialOutbox?.some((row) => row.id === input.entry.id) &&
       input.entry.opportunity.actorIds.every((id: string) =>
         state.villagers.some(
@@ -322,11 +376,23 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
       entry.reinterpreted = true;
       entry.error = undefined;
       entry.reinterpretRequired = undefined;
+      if (entry.catchupBatchId) {
+        const batch = state.returnCatchup!.batch!;
+        const record = batch.records?.find((row) => row.opportunityId + ":social" === entry.id);
+        if (!record || record.status !== "settling") throw conflict("The saved catch-up encounter changed.");
+        record.outcome = { ...asRecord(record.outcome), social: structuredClone(entry.proposal) };
+        record.error = undefined;
+        batch.status = "running";
+      }
     },
-    afterApply: async () => {
-      if (ports.readVillageSnapshot) await processSocialOutbox(await ports.readVillageSnapshot());
+    afterApply: async (input) => {
+      if (input.entry.catchupBatchId) await ports.afterCatchup?.();
+      else if (ports.readVillageSnapshot) await processSocialOutbox(await ports.readVillageSnapshot());
+    },
+    afterFailure: async (input) => {
+      if (input.entry.catchupBatchId) await ports.afterCatchup?.();
     },
   };
-  return { processSocialOutbox, recover, handler };
+  return { processSocialOutbox, recover, recoverCatchup, handler };
 }
 export type RelationshipSocialService = ReturnType<typeof createRelationshipSocial>;

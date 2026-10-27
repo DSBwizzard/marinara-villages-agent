@@ -1,11 +1,16 @@
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { activationScope } from "../adapters/engine/activation-scope.js";
 import { publicSceneRoutes } from "../adapters/http/public-scene-routes.js";
 import { withRepairWork } from "../adapters/storage/repair-gate.js";
+import { villageNow } from "../adapters/time/clock-gate.js";
 import { readActive, readSession } from "../adapters/storage/scene-store.js";
 import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
 import { asRecord } from "../domain/rules/coerce.js";
 import { registerBackgroundRoutes } from "../features/background/routes.js";
+import { prepareReturnCatchup } from "../features/background/return-catchup.js";
+import { hasVillagePresence } from "../jobs/background-work.js";
+import { peekVillageAuthority } from "../features/world/village-store.js";
 import { registerFoundingRoutes } from "../features/founding/routes.js";
 import {
   registerSpriteManagerRoutes,
@@ -46,11 +51,32 @@ export async function villagesRoutes(engine: FastifyInstance) {
   const guard = async (method: string, path: string, body: unknown) => {
     if (
       method === "get" ||
-      path.startsWith("/spinoffs/") ||
       path === "/background/presence" ||
+      path === "/background/catchup/retry" ||
+      path === "/background/catchup/continue" ||
       (path === "/reconcile" && asRecord(body).forceStory !== true)
     )
       return null;
+    let state = await peekVillageAuthority();
+    if (!hasVillagePresence() && state.returnCatchup?.capture) {
+      await prepareReturnCatchup(villageNow(), randomUUID());
+      state = await peekVillageAuthority();
+    }
+    let alreadyAdvanced = false;
+    if (path === "/clock/advance") {
+      const request = asRecord(body);
+      const receipt =
+        state.clock?.advanceReceipts?.find((entry) => entry.actionId === request.actionId) ??
+        (state.clock?.lastAdvance?.actionId === request.actionId ? state.clock.lastAdvance : undefined);
+      alreadyAdvanced = !!receipt && receipt.milliseconds === request.milliseconds;
+    }
+    if (
+      !alreadyAdvanced &&
+      state.returnCatchup?.batch &&
+      !["completed", "cancelled"].includes(state.returnCatchup.batch.status)
+    )
+      return "Village catch-up is still in progress. Finish or continue before changing the Village.";
+    if (path.startsWith("/spinoffs/")) return null;
     const active = await readActive();
     if (active.sessionId && spinoffLocksScene((await readSession(active.sessionId)).spinoff))
       return "Your spinoff is still pending. You can browse Villages, but finish or discard it before changing Village state.";
