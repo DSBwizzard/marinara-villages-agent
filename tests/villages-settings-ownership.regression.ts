@@ -55,7 +55,6 @@ function fixture(name: string) {
       return {
         village: { name: state.name },
         settings: { sendOnEnter: state.sendOnEnter, backgroundPace: state.backgroundPace },
-        noticeboard: structuredClone(state.noticeboard),
       } as VillageSnapshot;
     },
     async readLinkedPersona(id) {

@@ -17,8 +17,6 @@ import {
   DEFAULT_HOME_BUILDING,
   homeBuildingOptions,
   isHousePlace,
-  MAX_NOTICE_LENGTH,
-  MAX_NOTICEBOARD_NOTES,
   MAX_SETTING_LENGTH,
   MAX_TOWN_MAP_IMAGE_LENGTH,
   MAX_VENUE_IMAGE_BYTES,
@@ -178,8 +176,6 @@ export function villageSettings(
     // beside it is what tells a panel whether to draw a choice or a notice.
     playerPersonaName: player.name,
     playerPersonaMissing: player.missing,
-    maxNoticeboardNotes: MAX_NOTICEBOARD_NOTES,
-    maxNoticeLength: MAX_NOTICE_LENGTH,
     setting: village.setting,
     foundingReason: village.foundingReason,
     worldName: village.worldName ?? null,

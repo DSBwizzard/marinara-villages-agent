@@ -32,7 +32,6 @@ const snapshot = {
     dayIndex: 1,
     nextTransitionAt: "",
   },
-  noticeboard: [],
   projects: [],
   venueRequests: [],
   residences: [],
