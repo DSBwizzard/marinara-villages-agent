@@ -276,7 +276,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               {menuSection === "debug" ? backgroundPanel : null}
               {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
               {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
-              {menuSection === "debug" ? <ReturnCatchupDebug /> : null}
+              {menuSection === "debug" ? <ReturnCatchupDebug snapshot={snapshot} /> : null}
               {menuPage === "venueRequests" && snapshot
                 ? renderVenueRequestsPage({
                     housingVenueId,
