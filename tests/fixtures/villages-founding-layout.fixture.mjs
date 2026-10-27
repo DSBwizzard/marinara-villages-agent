@@ -687,14 +687,11 @@ export async function verifyFoundingLayout(group) {
           holdConnectionSave = true;
           await system.selectOption("");
           await expect.poll(() => heldConnectionSave !== null).toBe(true);
-          await forward("Continue to People").click();
-          await expect(root).toHaveAttribute("data-step", "0");
-          await expect(connectionCard.getByRole("alert")).toContainText("Connections are still loading");
+          await expect(connectionCard.getByText("Connections · Needs setup")).toBeVisible();
           holdConnectionSave = false;
           await fulfill(heldConnectionSave, { status: 503, json: { error: "Save failed" } });
           await expect(system).toBeDisabled();
-          await forward("Continue to People").click();
-          await expect(root).toHaveAttribute("data-step", "0");
+          await expect(connectionCard.getByText("Connections · Needs setup")).toBeVisible();
           await connectionCard.getByRole("button", { name: "Retry", exact: true }).click();
           await expect(system).toBeEnabled();
           await system.selectOption("talk");

@@ -21,7 +21,7 @@ const bundle = await build({
       const draftRevision=useRef(9),draftSaveQueue=useRef(Promise.resolve());
       const openSetup=useCallback(()=>setOpened(true),[]);
       const startOver=useFoundingStartOver({draftRevision,draftSaveQueue,openSetup,setBusy,setCatalog:()=>{},setDraftReady,setResetArmed,setSavedSetupDraft,setSettingsError,setSnapshot});
-      return <>{renderGeneralSettingsPage({category:'advanced',writing:{busy:false},busy,resetArmed,setResetArmed,settingsError,snapshot,startOver,
+      return <>{renderGeneralSettingsPage({category:'advanced',writing:{busy:false},connections:{settings:null,options:[],error:'',readFailed:false,busy:false,saving:false,choose:async()=>{},refresh:()=>{}},busy,resetArmed,setResetArmed,settingsError,snapshot,startOver,
         saveCharacterSpeechColors:async()=>{},saveSendOnEnter:async()=>{},saveBackgroundPace:async()=>{},saveVisitRetention:async()=>{}})}
         <pre id='state'>{JSON.stringify({founded:snapshot.isFounded,busy,opened,draftReady,savedDraft,revision:draftRevision.current})}</pre></>;
     }
