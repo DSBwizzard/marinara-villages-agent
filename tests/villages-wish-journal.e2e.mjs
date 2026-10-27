@@ -10,8 +10,13 @@ const browser = await chromium.launch({
 });
 mkdirSync(".build-tmp/wish-journal", { recursive: true });
 try {
-  for (const width of [390, 1280]) {
-    const page = await browser.newPage({ viewport: { width, height: 844 } });
+  for (const [width, height] of [
+    [390, 844],
+    [1280, 844],
+    [1366, 600],
+    [320, 650],
+  ]) {
+    const page = await browser.newPage({ viewport: { width, height } });
     await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -75,7 +80,10 @@ try {
               id: "private",
               revision: 3,
               wish: "PRIVATE SOCIAL DESIRE",
-              reason: "PRIVATE REASON",
+              reason:
+                "PRIVATE REASON. " +
+                "Unhurried company lets them speak honestly while retaining time for their ordinary life. ".repeat(3) +
+                "They want this.",
               status: "open",
               attention: { state: "background", reason: "Available when relevant." },
               approach: "Ask Roxie about a quiet afternoon together.",
@@ -97,6 +105,20 @@ try {
                   text: "Other things need attention today.",
                 },
               ],
+            },
+            {
+              id: "foreground",
+              revision: 1,
+              wish: "PRIVATE FOREGROUND DESIRE",
+              reason: "Another grounded social desire.",
+              status: "open",
+              attention: { state: "foreground", reason: "A recent conversation brought this to mind." },
+              approach: "",
+              conditions: [],
+              history: [],
+              addedAt: now,
+              changedAt: now,
+              origin: { kind: "reflection", sourceId: "reflection", lineIds: [] },
             },
           ],
         };
@@ -191,9 +213,36 @@ try {
     await expect(profile.getByRole("region", { name: "Wish details", exact: true })).toHaveCount(0);
     const openWish = profile.getByRole("button", { name: "Open Wish: Go swimming with Roxie.", exact: true });
     await expect(openWish).toBeVisible();
+    await settleTurn();
+    const camera = () =>
+      page.evaluate(() => [
+        window.scrollX,
+        window.scrollY,
+        ...[".marinara-capability-villages-dossier-root", ".marinara-capability-villages-dossier-content"].map(
+          (selector) => document.querySelector(selector).scrollTop,
+        ),
+      ]);
+    const beforeCamera = await camera();
     await openWish.press("Enter");
     const details = profile.getByRole("region", { name: "Wish details", exact: true });
     await expect(details).toBeFocused();
+    assert.deepEqual(await camera(), beforeCamera, "Opening a Wish preserves the camera and notebook scroll positions");
+    const section = details.getByRole("combobox", { name: "Wish detail section" });
+    const noScroll = async () => {
+      await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(profile.getByRole("button", { name: /^(Inspect|Leave Inspect)$/ })).toBeInViewport({ ratio: 1 });
+      await expect(details.getByRole("button", { name: "← Wishes", exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(section).toBeInViewport({ ratio: 1 });
+      await expect(details.getByRole("button", { name: "Next detail page" })).toBeInViewport({ ratio: 1 });
+      assert(
+        await profile
+          .locator(".marinara-capability-villages-dossier-content")
+          .evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+      );
+      assert.deepEqual(await camera(), beforeCamera);
+    };
+    await noScroll();
+    await section.selectOption("history");
     await expect(details.getByRole("region", { name: "Recorded statements" }).locator("time")).toHaveCount(4);
     await expect(profile.getByText("Deep water makes me nervous.", { exact: true })).toBeVisible();
     await expect(profile.getByText("I like the idea of lessons.", { exact: true })).toBeVisible();
@@ -203,6 +252,16 @@ try {
     assert.equal(writes, 0, "Browsing People and wishes makes no mutation or generation request");
     await expect(profile.getByText("I would prefer the lake.", { exact: true })).toBeVisible();
     await settleTurn();
+    const nextPage = details.getByRole("button", { name: "Next detail page" });
+    let pages = 0;
+    while (await nextPage.isEnabled()) {
+      await nextPage.click();
+      await noScroll();
+      assert(++pages < 30);
+    }
+    await expect(details.getByText("Actually, the shallow beach sounds better.", { exact: true })).toBeInViewport({
+      ratio: 1,
+    });
     await page.screenshot({ path: resolve(`.build-tmp/wish-journal/profile-${width}.png`), fullPage: true });
     assert.ok(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -215,29 +274,75 @@ try {
     await profile.getByRole("button", { name: "Inspect", exact: true }).click();
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE", { exact: true })).toBeVisible();
     assert.equal(privateReads, 1);
-    await expect(profile.getByText("PRIVATE REASON", { exact: true })).toHaveCount(0);
+    await expect(profile.getByText(/PRIVATE REASON/)).toHaveCount(0);
     await profile.getByRole("button", { name: "Open Wish: PRIVATE SOCIAL DESIRE", exact: true }).click();
-    await expect(details.getByRole("region", { name: "Why it matters" })).toHaveText(/PRIVATE REASON/);
+    await expect(details.getByRole("region", { name: "Wish summary" })).toHaveText(/PRIVATE REASON/);
+    await noScroll();
+    let summaryPages = 0;
+    while (await nextPage.isEnabled()) {
+      await nextPage.click();
+      await noScroll();
+      assert(++summaryPages < 30);
+    }
+    assert(
+      await details
+        .getByRole("region", { name: "Wish summary" })
+        .locator("p")
+        .last()
+        .evaluate((node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const last = [...range.getClientRects()].at(-1),
+            frame = node.closest(".villages-wish-page-window").getBoundingClientRect();
+          return (
+            last.left >= frame.left - 1 &&
+            last.right <= frame.right + 1 &&
+            last.top >= frame.top - 1 &&
+            last.bottom <= frame.bottom + 1
+          );
+        }),
+      "The final line of a long reason is reachable without scrolling",
+    );
+    await section.selectOption("attention");
     await expect(details.getByRole("region", { name: "Attention", exact: true })).toHaveText(
       /In the background.*Available when relevant\./s,
     );
+    await noScroll();
+    await section.selectOption("approach");
     await expect(details.getByRole("region", { name: "Approach", exact: true })).toHaveText(
       /Ask Roxie about a quiet afternoon together\./,
     );
+    await noScroll();
+    await section.selectOption("conditions");
     await expect(details.getByRole("region", { name: "Conditions", exact: true })).toHaveText(
       /Somewhere quiet, please\./,
     );
+    await noScroll();
+    await section.selectOption("history");
     await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem")).toHaveCount(3);
     await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem").last()).toContainText(
       "Chose to ask Roxie directly.",
     );
     await expect(details.getByText("Other things need attention today.", { exact: true })).toBeVisible();
+    while (await nextPage.isEnabled()) {
+      await nextPage.click();
+      await noScroll();
+      assert(++pages < 30);
+    }
+    await expect(details.getByText("Chose to ask Roxie directly.", { exact: true })).toBeInViewport({ ratio: 1 });
     await settleTurn();
     await page.screenshot({ path: resolve(`.build-tmp/wish-journal/inspect-${width}.png`), fullPage: true });
     await details.getByRole("button", { name: "← Wishes", exact: true }).click();
     await expect(details).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "Open Wish: PRIVATE SOCIAL DESIRE", exact: true })).toBeFocused();
-    await expect(profile.getByText("PRIVATE REASON", { exact: true })).toHaveCount(0);
+    await expect(profile.getByText(/PRIVATE REASON/)).toHaveCount(0);
+    await profile.getByRole("button", { name: "Open Wish: PRIVATE FOREGROUND DESIRE", exact: true }).click();
+    await section.selectOption("attention");
+    await expect(details.getByRole("region", { name: "Attention", exact: true })).toHaveText(
+      /On their mind.*A recent conversation brought this to mind\./s,
+    );
+    await noScroll();
+    await details.getByRole("button", { name: "← Wishes", exact: true }).click();
     await profile.getByRole("button", { name: "Leave Inspect", exact: true }).click();
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
     await profile.getByRole("button", { name: "← Back to Villagers" }).click();
@@ -246,7 +351,7 @@ try {
       .getByRole("navigation", { name: "Villager profile sections" })
       .getByRole("button", { name: "Wishes", exact: true })
       .click();
-    await expect(page.getByText("No Wishes shared yet.", { exact: true })).toBeVisible();
+    await expect(page.getByText("No Wishes known yet.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Open Feddy profile" }).click();
     await page

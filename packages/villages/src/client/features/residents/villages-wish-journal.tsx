@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KnownWish, SocialWish } from "../../../shared/contracts/wishes.js";
 import { useVillageActivity } from "../../shared/activity.js";
 import { WISH_JOURNAL_STYLES } from "./wish-journal-styles.js";
+import { WishPages } from "./wish-pages.js";
 export type { KnownWish } from "../../../shared/contracts/wishes.js";
 type View = { profiles: { characterId: string; knownWishes?: KnownWish[] }[] };
 type Request = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -37,7 +38,7 @@ type Entry = {
   known?: KnownWish;
   privateWish?: SocialWish;
 };
-function PrivateWishDetails({ wish }: { wish: SocialWish }) {
+function PrivateWishDetails({ wish, section }: { wish: SocialWish; section: string }) {
   const history = [...(wish.history ?? [])];
   if (!history.some((event) => event.kind === "create"))
     history.unshift({
@@ -51,49 +52,136 @@ function PrivateWishDetails({ wish }: { wish: SocialWish }) {
   history.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   return (
     <>
-      <section className="villages-wish-section" aria-label="Why it matters">
-        <h4>Why it matters</h4>
-        <p>{wish.reason}</p>
-      </section>
-      <section className="villages-wish-section" aria-label="Attention">
-        <h4>Attention</h4>
-        <strong>{attentionLabels[wish.attention.state]}</strong>
-        <p>{wish.attention.reason}</p>
-      </section>
-      <section className="villages-wish-section" aria-label="Approach">
-        <h4>Approach</h4>
-        <p>{wish.approach || "None chosen."}</p>
-      </section>
-      <section className="villages-wish-section" aria-label="Conditions">
-        <h4>Conditions</h4>
-        {wish.conditions?.length ? (
-          <ul>
-            {wish.conditions.map((condition) => (
-              <li key={condition.id}>
-                <blockquote>{condition.quote}</blockquote>
-                {timestamp(condition.at)}
+      {section === "wish" ? (
+        <section className="villages-wish-section" aria-label="Wish summary">
+          <h4>Desired outcome</h4>
+          <p>{wish.wish}</p>
+          <h4>Why it matters</h4>
+          <p>{wish.reason}</p>
+        </section>
+      ) : section === "attention" ? (
+        <section className="villages-wish-section" aria-label="Attention">
+          <h4>Attention</h4>
+          <strong>{attentionLabels[wish.attention.state]}</strong>
+          <p>{wish.attention.reason}</p>
+        </section>
+      ) : section === "approach" ? (
+        <section className="villages-wish-section" aria-label="Approach">
+          <h4>Approach</h4>
+          <p>{wish.approach || "None chosen."}</p>
+        </section>
+      ) : section === "conditions" ? (
+        <section className="villages-wish-section" aria-label="Conditions">
+          <h4>Conditions</h4>
+          {wish.conditions?.length ? (
+            <ul>
+              {wish.conditions.map((condition) => (
+                <li key={condition.id}>
+                  <blockquote>{condition.quote}</blockquote>
+                  {timestamp(condition.at)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>None expressed.</p>
+          )}
+        </section>
+      ) : (
+        <section className="villages-wish-section" aria-label="Wish history">
+          <h4>History</h4>
+          <ol className="villages-wish-timeline">
+            {history.map((event) => (
+              <li key={event.id}>
+                <div className="villages-wish-event">
+                  <strong>{historyLabels[event.kind] ?? "Recorded"}</strong>
+                  {timestamp(event.at)}
+                </div>
+                <p>{event.text}</p>
               </li>
             ))}
-          </ul>
-        ) : (
-          <p>None expressed.</p>
-        )}
-      </section>
-      <section className="villages-wish-section" aria-label="Wish history">
-        <h4>History</h4>
-        <ol className="villages-wish-timeline">
-          {history.map((event) => (
-            <li key={event.id}>
-              <div className="villages-wish-event">
-                <strong>{historyLabels[event.kind] ?? "Recorded"}</strong>
-                {timestamp(event.at)}
-              </div>
-              <p>{event.text}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
+          </ol>
+        </section>
+      )}
     </>
+  );
+}
+function WishDetail({
+  entry,
+  prefix,
+  busy,
+  onBack,
+  onFollow,
+}: {
+  entry: Entry;
+  prefix: string;
+  busy: boolean;
+  onBack: () => void;
+  onFollow: (wish: KnownWish) => void;
+}) {
+  const [section, setSection] = useState("wish");
+  return (
+    <section className="villages-wish-detail" aria-label="Wish details" data-wish-id={entry.id} tabIndex={-1}>
+      <div className="villages-wish-actions">
+        <button type="button" className="villages-wish-back" onClick={onBack}>
+          ← Wishes
+        </button>
+        {entry.known ? (
+          <button
+            type="button"
+            className={`${prefix}-button villages-wish-follow`}
+            aria-pressed={entry.known.followed}
+            disabled={busy}
+            onClick={() => onFollow(entry.known!)}
+          >
+            {entry.known.followed ? "Following" : "Follow"}
+          </button>
+        ) : null}
+      </div>
+      <header>
+        <h3>{entry.title}</h3>
+        <div className="villages-wish-meta">
+          {entry.status ? <span className="villages-wish-status">{statuses[entry.status]}</span> : null}
+          {timestamp(entry.at)}
+        </div>
+      </header>
+      <select aria-label="Wish detail section" value={section} onChange={(event) => setSection(event.target.value)}>
+        <option value="wish">Wish</option>
+        {entry.privateWish ? (
+          <>
+            <option value="attention">Attention</option>
+            <option value="approach">Approach</option>
+            <option value="conditions">Conditions</option>
+          </>
+        ) : null}
+        <option value="history">History</option>
+      </select>
+      <WishPages key={section}>
+        {entry.privateWish ? (
+          <PrivateWishDetails wish={entry.privateWish} section={section} />
+        ) : section === "wish" ? (
+          <section className="villages-wish-section" aria-label="Wish summary">
+            <h4>Desired outcome</h4>
+            <p>{entry.title}</p>
+          </section>
+        ) : (
+          <section className="villages-wish-section" aria-label="Recorded statements">
+            <h4>History</h4>
+            {entry.known?.facts.length ? (
+              <ol className="villages-wish-timeline">
+                {entry.known.facts.map((fact) => (
+                  <li key={fact.id}>
+                    {timestamp(fact.at)}
+                    <blockquote>{fact.text}</blockquote>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>No further statements recorded.</p>
+            )}
+          </section>
+        )}
+      </WishPages>
+    </section>
   );
 }
 export function VillagerWishJournal({
@@ -125,6 +213,17 @@ export function VillagerWishJournal({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const root = useRef<HTMLElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const [listHeight, setListHeight] = useState(0);
+  const [listPage, setListPage] = useState(0);
+  useLayoutEffect(() => {
+    if (!list.current) return;
+    const measure = () => setListHeight(list.current?.clientHeight ?? 0);
+    const observer = new ResizeObserver(measure);
+    observer.observe(list.current);
+    measure();
+    return () => observer.disconnect();
+  });
   useEffect(() => {
     if (!visible || inspect || suppliedWishes !== undefined) return;
     const controller = new AbortController();
@@ -179,14 +278,13 @@ export function VillagerWishJournal({
     if (focusedSelection.current === key) return;
     focusedSelection.current = key;
     target?.focus({ preventScroll: true });
-    target?.scrollIntoView({ block: "nearest" });
   }, [characterId, wishes, privateWishes, selectedId, inspect]);
   useEffect(() => {
     if (selectedId || !backFocus.current) return;
     const target = [...(root.current?.querySelectorAll<HTMLButtonElement>("[data-wish-summary]") ?? [])].find(
       (el) => el.dataset.wishSummary === backFocus.current,
     );
-    target?.focus();
+    target?.focus({ preventScroll: true });
     backFocus.current = "";
   }, [selectedId]);
   const follow = async (wish: KnownWish) => {
@@ -221,6 +319,16 @@ export function VillagerWishJournal({
     : (wishes?.map((wish) => ({ id: wish.wishId, title: wish.text, at: wish.at, status: wish.status, known: wish })) ??
       null);
   const selected = entries?.find((entry) => entry.id === selectedId);
+  const pageSize = Math.max(1, Math.floor((listHeight + 8) / 112));
+  const listPages = Math.max(1, Math.ceil((entries?.length ?? 0) / pageSize));
+  const currentListPage = Math.min(listPage, listPages - 1);
+  const focusedIndex = entries?.findIndex((entry) => entry.id === focusWishId) ?? -1;
+  useEffect(() => {
+    setListPage(0);
+  }, [characterId, inspect]);
+  useEffect(() => {
+    if (focusedIndex >= 0) setListPage(Math.floor(focusedIndex / pageSize));
+  }, [focusedIndex, pageSize]);
   return (
     <section
       ref={root}
@@ -232,14 +340,14 @@ export function VillagerWishJournal({
         {error ? <p role="alert">{error}</p> : null}
         <div className="villages-wish-layout" data-open={!!selected}>
           <div className="villages-wish-list">
-            <h3>{inspect ? "Retained Wishes" : "Shared wishes"}</h3>
+            <h3>{inspect ? "All Wishes" : "Known Wishes"}</h3>
             {entries === null ? (
               <p role="status">Reading Wishes…</p>
             ) : !entries.length ? (
-              <p>{inspect ? "No retained Wishes." : "No Wishes shared yet."}</p>
+              <p>{inspect ? "No Wishes recorded." : "No Wishes known yet."}</p>
             ) : (
-              <ul>
-                {entries.map((entry) => (
+              <ul ref={list} style={{ gridAutoRows: Math.min(104, listHeight || 104) }}>
+                {entries.slice(currentListPage * pageSize, (currentListPage + 1) * pageSize).map((entry) => (
                   <li key={entry.id}>
                     <button
                       type="button"
@@ -263,58 +371,42 @@ export function VillagerWishJournal({
                 ))}
               </ul>
             )}
+            {entries?.length ? (
+              <nav className="villages-wish-pagination" aria-label="Wish list pages">
+                <button
+                  type="button"
+                  aria-label="Previous Wishes page"
+                  disabled={currentListPage === 0}
+                  onClick={() => setListPage(currentListPage - 1)}
+                >
+                  ←
+                </button>
+                <span role="status">
+                  {currentListPage + 1} / {listPages}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Next Wishes page"
+                  disabled={currentListPage + 1 >= listPages}
+                  onClick={() => setListPage(currentListPage + 1)}
+                >
+                  →
+                </button>
+              </nav>
+            ) : null}
           </div>
           {selected ? (
-            <section
-              className="villages-wish-detail"
-              aria-label="Wish details"
-              data-wish-id={selected.id}
-              tabIndex={-1}
-            >
-              <button
-                type="button"
-                className="villages-wish-back"
-                onClick={() => {
-                  backFocus.current = selected.id;
-                  setSelection({ characterId, inspect, id: "" });
-                }}
-              >
-                ← Wishes
-              </button>
-              <header>
-                <h3>{selected.title}</h3>
-                <div className="villages-wish-meta">
-                  {selected.status ? <span className="villages-wish-status">{statuses[selected.status]}</span> : null}
-                  {timestamp(selected.at)}
-                </div>
-                {selected.known ? (
-                  <button
-                    type="button"
-                    className={`${prefix}-button villages-wish-follow`}
-                    aria-pressed={selected.known.followed}
-                    disabled={!!busy}
-                    onClick={() => void follow(selected.known!)}
-                  >
-                    {selected.known.followed ? "Following" : "Follow"}
-                  </button>
-                ) : null}
-              </header>
-              {selected.privateWish ? (
-                <PrivateWishDetails wish={selected.privateWish} />
-              ) : (
-                <section className="villages-wish-section" aria-label="Recorded statements">
-                  <h4>History</h4>
-                  <ol className="villages-wish-timeline">
-                    {selected.known?.facts.map((fact) => (
-                      <li key={fact.id}>
-                        {timestamp(fact.at)}
-                        <blockquote>{fact.text}</blockquote>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-              )}
-            </section>
+            <WishDetail
+              key={selected.id}
+              entry={selected}
+              prefix={prefix}
+              busy={!!busy}
+              onFollow={(wish) => void follow(wish)}
+              onBack={() => {
+                backFocus.current = selected.id;
+                setSelection({ characterId, inspect, id: "" });
+              }}
+            />
           ) : entries?.length ? (
             <p className="villages-wish-placeholder">Select a Wish</p>
           ) : null}

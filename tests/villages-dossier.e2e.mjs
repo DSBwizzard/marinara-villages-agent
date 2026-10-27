@@ -722,15 +722,17 @@ try {
     await expect(profile.getByText("Learn to swim", { exact: true }).first()).toBeVisible();
     const tabBefore = await tabs.boundingBox();
     const reading = profile.locator(`.${P}-dossier-content`);
+    let wishPages = 0;
+    while (!(await profile.getByText("Shared wish 12", { exact: true }).first().isVisible())) {
+      await profile.getByRole("button", { name: "Next Wishes page", exact: true }).click();
+      assert(++wishPages < 20);
+    }
     assert.ok(
-      await reading.evaluate((node) => {
-        node.scrollTop = node.scrollHeight;
-        return node.scrollTop > 0;
-      }),
-      "Long section content scrolls vertically",
+      await reading.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+      "Wishes use bounded pages instead of scrolling",
     );
     const tabAfter = await tabs.boundingBox();
-    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while content scrolls");
+    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while changing Wish pages");
     assert.equal(tabAfter.x, tabBefore.x);
     await expect(profile.getByText("Shared wish 12", { exact: true }).first()).toBeVisible();
     await settleTurn();
