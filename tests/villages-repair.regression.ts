@@ -1,6 +1,6 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/scale, repair/http, repair/wishes
+// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes
 import assert from "node:assert/strict";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
@@ -782,6 +782,66 @@ await runCase("repair/correction-retained", async () => {
   const retained = await f.api.inspect(repairId("scene", "corrected"));
   assert.match(retained.title, /Library/);
   assert.equal(retained.fields[0].value, "The door was blue.");
+});
+await runCase("repair/restored-evidence", async () => {
+  const f = await fixture(),
+    stamp = memoryTime(10);
+  const scene = {
+    version: 2,
+    id: "restored",
+    villageSeed: "repair-world",
+    status: "closed",
+    placeName: "Library",
+    startedAt: stamp,
+    endedAt: stamp,
+    sceneRevision: 2,
+    submissions: [],
+    lines: [],
+  };
+  const savedScene = await f.gate.documents.create({
+    id: "villages-venue-visit-restored",
+    packageId: "villages",
+    kind: "venue-visit",
+    name: "Scene",
+    description: "",
+    data: scene,
+    createdAt: stamp,
+    updatedAt: stamp,
+  });
+  await f.gate.documents.create({
+    id: "villages-project-scene-evidence",
+    packageId: "villages",
+    kind: "project-scene-evidence",
+    name: "Evidence",
+    description: "",
+    data: { version: 1, seed: "repair-world", scenes: [{ revision: 12, digest: "saved", scene }] },
+    createdAt: stamp,
+    updatedAt: stamp,
+  });
+  const cp = await f.api.createCheckpoint("Publication interrupted", "publication-checkpoint");
+  await f.gate.documents.remove("villages", savedScene.id, savedScene.revision);
+  await f.gate.documents.create({
+    id: "villages-scene-terminal-restored",
+    packageId: "villages",
+    kind: "scene-terminal",
+    name: "Receipt",
+    description: "",
+    data: {
+      sceneId: "restored",
+      generationReceipts: [
+        { operationId: "old", attemptId: "spent", stages: ["reply"], outcome: "unknown", acknowledgedAt: stamp },
+      ],
+    },
+    createdAt: stamp,
+    updatedAt: stamp,
+  });
+  const review = await f.api.restore(cp.id, "restore-publication");
+  await f.api.apply(review.id);
+  const restored = (await f.gate.documents.getById("villages", savedScene.id))!.data as any;
+  assert.equal(restored.generationReceipts[0].attemptId, "spent");
+  const index = (await f.gate.documents.getById("villages", "villages-project-scene-evidence"))!.data as any;
+  assert.deepEqual(index.scenes, [], "a restored source is rebuilt against its new revision");
+  assert.equal(await f.gate.documents.getById("villages", "villages-scene-terminal-restored"), null);
 });
 await runCase("repair/scale", async () => {
   const f = await fixture();
