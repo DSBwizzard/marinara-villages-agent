@@ -153,6 +153,20 @@ async function main() {
   );
   assert.equal(a.state.sceneryArtStyle, originalStyle, "invalid multi-field mutation publishes no partial state");
 
+  const loreOnly = fixture("Lore only");
+  loreOnly.state.venues = [];
+  loreOnly.state.setting = "A saved world";
+  loreOnly.state.promptKnowledge = "Saved player knowledge";
+  loreOnly.state.playerPersonaId = "saved-persona";
+  loreOnly.state.narrationStyle.writingGuidance = "Saved writing guidance";
+  await loreOnly.service.setVillageLoreSettings(["book"], 800);
+  assert.equal(loreOnly.state.setting, "A saved world");
+  assert.equal(loreOnly.state.promptKnowledge, "Saved player knowledge");
+  assert.equal(loreOnly.state.playerPersonaId, "saved-persona");
+  assert.equal(loreOnly.state.narrationStyle.writingGuidance, "Saved writing guidance");
+  assert.equal(loreOnly.bootstrapCalls, 0, "saving Lorebooks does not bootstrap an empty world");
+  assert.equal(loreOnly.personaReads, 0, "saving Lorebooks does not resolve or replace the Persona");
+
   const bootstrap = fixture("Bootstrap");
   bootstrap.state.venues = [venueDraft({ name: "Home", description: "Residence", classes: ["residence"] }, null)];
   bootstrap.retryWith((state) => {

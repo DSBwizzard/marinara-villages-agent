@@ -250,7 +250,7 @@ try {
         await expect(root.getByRole("button", { name: "Force Village Update", exact: true })).toHaveCount(0);
       }
       if (key === "village") {
-        await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toBeVisible();
+        await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toHaveCount(0);
         await expect(nav.getByRole("button", { name: "DEBUG: Villager reply guidance" })).toHaveCount(0);
         const worldName = main.getByRole("textbox", { name: "Village world", exact: true });
         const original = await worldName.inputValue();
