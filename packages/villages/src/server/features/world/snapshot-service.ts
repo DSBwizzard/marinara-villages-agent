@@ -208,7 +208,6 @@ export function createVillageSnapshot({
           : undefined,
       })),
       residences: village.residences,
-      venueMail: village.venueMail,
       noticeboard: village.noticeboard,
       villagers,
       relationshipStartingPending: village.villagers.some(

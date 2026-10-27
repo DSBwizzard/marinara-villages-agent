@@ -100,7 +100,7 @@ Each resident has their own perspective: their connection with you, expectations
 
 Starting history honors the resident cards, your backstory, and selected lore. Conflicting authored facts ask for a specific clarification in Inspect. Preparing this history does not invent your consent.
 
-**Mailbox** keeps personal correspondence and invitations. Exact outgoing words are saved before generation. Reading and replaying saved processing make no model request. A proposed meeting stays optional until you accept; an explicit authorized invitation can grant one visit when accepted. It does not move your Persona or create standing access. Failed processing retains recovery controls even when the original message was already delivered.
+**Mailbox** keeps personal correspondence as individual letters in Inbox and Sent. Opening one letter marks only that letter read. Sent letters remain in Sent; failure recovery is offered only when processing needs attention. Exact outgoing words are saved before generation. Reading and replaying saved processing make no model request. Letters can influence relationships and memories, but do not grant access, create commitments, or perform actions. Failed processing retains recovery controls even when the original message was already delivered.
 
 The old Noticeboard is retired. Existing notes remain in saved Village data and snapshots, but are no longer displayed or editable in the game.
 

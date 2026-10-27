@@ -14,7 +14,6 @@ import {
   lockProjectBuilder,
   placeNewVenueProject,
   renewRenovationApprovals,
-  requestProjectMailbox,
   reviseRenovationProject,
   startProjectConstruction,
   resumeProject,
@@ -55,7 +54,6 @@ export function registerProjectRoutes(engine: FastifyInstance) {
   };
   projectAction("plan", saveProjectPlan);
   projectAction("place", placeNewVenueProject);
-  projectAction("request-approval", requestProjectMailbox);
   projectAction("builder", lockProjectBuilder);
   projectAction("start", startProjectConstruction);
   projectAction("resume", resumeProject);

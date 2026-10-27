@@ -561,15 +561,8 @@ try {
         .getByRole("button", { name: "Manage", exact: true })
         .click();
       await expect(page.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
-      await page.getByRole("button", { name: "Request to live here" }).click();
-      await page.getByRole("button", { name: "Send housing request" }).click();
-      const moveError = page.getByRole("alert");
-      await expect(moveError).toHaveText("This home has no room for another resident.");
-      const errorBox = await moveError.boundingBox();
-      assert.ok(
-        errorBox && errorBox.x >= 0 && errorBox.x + errorBox.width <= width,
-        "residence error fits the viewport",
-      );
+      await expect(page.getByRole("button", { name: "Move here" })).toBeDisabled();
+      await expect(page.getByText("Moving into a shared Residence is not available yet.")).toBeVisible();
       await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
     }
     await page.close();

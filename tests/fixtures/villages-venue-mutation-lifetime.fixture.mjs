@@ -51,7 +51,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     residentCharacterIds: [],
     playerHome: false,
     workerCharacterIds: [],
-    pendingMailCount: 0,
     pendingResidenceCharacterIds: [],
     remapCount: 0,
     roomPresent: false,
@@ -263,11 +262,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       }
       // Removal keeps the complete dependency blocker precedence and exact confirmation behavior.
       for (const [dependencies, expected] of [
-        [
-          { roomPresent: true, pendingMailCount: 2, playerHome: true },
-          "End the active Scene before deleting this Venue.",
-        ],
-        [{ pendingMailCount: 2, playerHome: true }, "Resolve pending Venue decisions before deleting this Venue."],
+        [{ roomPresent: true, playerHome: true }, "End the active Scene before deleting this Venue."],
         [{ playerHome: true }, "Move every resident, including yourself, before deleting this Residence."],
         [
           { residentCharacterIds: ["resident"] },

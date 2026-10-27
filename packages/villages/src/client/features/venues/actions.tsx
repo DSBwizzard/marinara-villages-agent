@@ -248,25 +248,17 @@ export function useRemoveVenue(ports: {
           residentCharacterIds: string[];
           playerHome: boolean;
           workerCharacterIds: string[];
-          pendingMailCount: number;
           pendingResidenceCharacterIds: string[];
           remapCount: number;
           roomPresent: boolean;
           eventCount: number;
         }>(`/locations/venue/${encodeURIComponent(id)}/dependencies`);
         if (!lifetime.owns(claim)) return;
-        if (
-          dependencies.roomPresent ||
-          dependencies.playerHome ||
-          dependencies.residentCharacterIds.length ||
-          dependencies.pendingMailCount
-        ) {
+        if (dependencies.roomPresent || dependencies.playerHome || dependencies.residentCharacterIds.length) {
           setSettingsError(
             dependencies.roomPresent
               ? "End the active Scene before deleting this Venue."
-              : dependencies.pendingMailCount
-                ? "Resolve pending Venue decisions before deleting this Venue."
-                : "Move every resident, including yourself, before deleting this Residence.",
+              : "Move every resident, including yourself, before deleting this Residence.",
           );
           return;
         }

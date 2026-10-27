@@ -301,7 +301,7 @@ export function useVenueScreenCommands(ports: {
       });
       if (player.owns(claim)) setSnapshot(next);
     } catch (cause) {
-      if (player.owns(claim)) setVenueEditError(messageFrom(cause, "The move could not be requested."));
+      if (player.owns(claim)) setVenueEditError(messageFrom(cause, "The move could not be completed."));
     } finally {
       player.finish(claim);
     }
@@ -378,7 +378,7 @@ export function useVenueScreenCommands(ports: {
       });
       if (editor.owns(claim)) setSnapshot(next);
     } catch (cause) {
-      if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "The move could not be requested."));
+      if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "The move could not be completed."));
     } finally {
       if (editor.finish(claim)) setVenueEditBusy(false);
     }

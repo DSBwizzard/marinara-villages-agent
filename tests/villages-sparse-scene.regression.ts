@@ -208,11 +208,7 @@ assert.doesNotMatch(
   minimal,
   /wishChanges|projectSpeech|residenceRequest|residenceDecision|editApproval:|manage-access/,
 );
-assert.match(
-  minimal,
-  /renovationRequest|venueRequest/,
-  "spontaneous available proposals survive ordinary conversation",
-);
+assert.match(minimal, /venueRequest/, "spontaneous available proposals survive ordinary conversation");
 const full = compactSceneContract(
   { ...context, wishes: true, projects: true, invitationZones: "common" },
   { management: true, movement: true, residences: true, residenceDecision: true, editApproval: true },

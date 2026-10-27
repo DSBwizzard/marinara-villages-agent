@@ -42,21 +42,12 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
   });
   engine.post<{ Params: { threadId: string } }>("/mailbox/threads/:threadId/read", async (request, reply) => {
     try {
-      return await socialMail().readThread(request.params.threadId);
+      const { messageId } = z.object({ messageId: z.string().min(1) }).parse(request.body);
+      return await socialMail().readLetter(request.params.threadId, messageId);
     } catch (error) {
       return fail(reply, error, "read personal thread");
     }
   });
-  engine.post<{ Params: { threadId: string; messageId: string } }>(
-    "/mailbox/threads/:threadId/messages/:messageId/cancel",
-    async (request, reply) => {
-      try {
-        return await socialMail().cancel(request.params.threadId, request.params.messageId);
-      } catch (error) {
-        return fail(reply, error, "cancel personal mail");
-      }
-    },
-  );
   engine.post<{ Params: { threadId: string; messageId: string } }>(
     "/mailbox/threads/:threadId/messages/:messageId/retry",
     async (request, reply) => {
@@ -71,14 +62,6 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
       }
     },
   );
-  engine.post<{ Params: { id: string } }>("/mailbox/invitations/:id/response", async (request, reply) => {
-    try {
-      return await socialMail().respond(request.params.id, request.body);
-    } catch (error) {
-      return fail(reply, error, "respond to invitation");
-    }
-  });
-
   engine.post<{ Params: { id: string } }>("/relationships/outbox/:id/recovery", async (request, reply) => {
     try {
       await recoverSocialOutbox(request.params.id, request.body);

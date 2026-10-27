@@ -150,7 +150,8 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
       if (
         !destination ||
         !hasVenueClass(destination, "residence") ||
-        venueResidentIds(destination).includes(person.characterId) ||
+        destination.constructionStatus === "worksite" ||
+        venueResidentIds(destination).length > 0 ||
         (prior && ["moving", "pending"].includes(prior.status)) ||
         venueAssignedCount(destination) + reserved >= venueCapacity(destination)
       )
@@ -160,8 +161,16 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
       } catch {
         return true;
       }
-    } else if (!prior || prior.status !== "pending" || prior.requestedBy === "villager" || !prior.proposedVenueId)
-      return true;
+    } else {
+      if (!prior || prior.status !== "pending" || prior.requestedBy === "villager" || !prior.proposedVenueId)
+        return true;
+      const destination = current.venues.find((row) => row.id === prior.proposedVenueId);
+      if (
+        residence.approved === true &&
+        (!destination || venueResidentIds(destination).some((id) => id !== person.characterId))
+      )
+        return true;
+    }
   }
   const edit = asRecord(reply.editApprovalSignal);
   if (edit.proposalId) {
@@ -169,18 +178,6 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
     if (!proposal || proposal.declined || !proposal.requiredIds.includes(String(edit.residentId))) return true;
     const zone = proposal.zoneId && liveVenue && resolveVenueZone(liveVenue, proposal.zoneId);
     if (zone && zone.state.updatedAt !== proposal.baseUpdatedAt) return true;
-  }
-  const renovation = asRecord(reply.renovationSignal);
-  if (renovation.characterId) {
-    const venue = current.venues.find((row) => row.id === renovation.venueId);
-    if (
-      !venue ||
-      ![...venueResidentIds(venue), ...(venue.workerIds ?? [])].includes(String(renovation.characterId)) ||
-      current.venueMail.some(
-        (row) => row.venueId === venue.id && ["pending-player", "awaiting-villagers"].includes(row.status),
-      )
-    )
-      return true;
   }
   for (const value of Array.isArray(reply.developmentChanges) ? reply.developmentChanges : []) {
     const row = asRecord(value);

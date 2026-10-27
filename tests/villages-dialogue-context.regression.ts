@@ -245,7 +245,6 @@ async function run() {
       "sceneChange",
       "residenceRequest",
       "residenceDecision",
-      "renovationRequest",
       "venueRequest",
       "editApproval",
       "memoryChanges",
