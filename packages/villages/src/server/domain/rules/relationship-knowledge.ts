@@ -28,6 +28,25 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
       summary: learned.filter((row) => row.kind === "connection" && row.toId === "player").at(-1)?.text ?? "",
       knownAt: learned.at(-1)?.at ?? "",
       routine: learned.filter((row) => row.kind === "routine").map((row) => row.text),
+      knownPlaces: memories
+        .filter((row) => {
+          const knowledge = row.knowers.player;
+          const fields = knowledge?.disclosed;
+          return (
+            knowledge?.basis === "report" &&
+            knowledge.attributedTo === resident.characterId &&
+            row.domainRef?.kind === "relationship" &&
+            row.domainRef.characterId === resident.characterId &&
+            fields?.toId === resident.characterId &&
+            (fields.kind === "home" || fields.kind === "work")
+          );
+        })
+        .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id))
+        .map((row) => ({
+          kind: row.knowers.player!.disclosed!.kind as "home" | "work",
+          text: row.text,
+          at: row.occurredAt,
+        })),
       interests: learned
         .filter((row) => row.kind === "preference")
         .map((row) => row.text)

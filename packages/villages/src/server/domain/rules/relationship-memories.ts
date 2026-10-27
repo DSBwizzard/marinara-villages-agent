@@ -20,6 +20,7 @@ export function publishRelationshipDisclosures(
   recordedAt = new Date(recordedAt).toISOString();
   source = { ...source, id: Buffer.byteLength(source.id) > 160 ? "social-source:" + memoryHash(source.id) : source.id };
   for (const row of disclosures) {
+    if ((row.kind === "home" || row.kind === "work") && row.fromId !== row.toId) continue;
     const id = "social-disclosure:" + memoryHash(row.id);
     // Check before constructing a proposal at the current collection revision. Replays after
     // Forget/Correct must neither change its fingerprint nor recreate suppressed learning.

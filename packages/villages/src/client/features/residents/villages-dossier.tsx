@@ -30,7 +30,7 @@ export type DossierVenue = {
   name: string;
   image?: string;
   connections: string[];
-  inspectOnly?: boolean;
+  publicConnections: string[];
 };
 export type DossierLink = { id: string; title: string; detail: string; onOpen: () => void; playerVisible?: boolean };
 
@@ -204,13 +204,12 @@ export function VillagerDossier({
       return {
         ...venue,
         connections: [
-          ...(inspect ? venue.connections : []),
+          ...(inspect ? venue.connections : venue.publicConnections),
           ...grants.map((grant) => `${grant.name} · ${grant.active ? "Standing access" : "Access suspended"}`),
         ],
-        inspectOnly: venue.inspectOnly && !grants.length,
       };
     })
-    .filter((venue) => venue.connections.length && (inspect || !venue.inspectOnly));
+    .filter((venue) => venue.connections.length);
   const venueCards = () =>
     visibleVenues.length ? (
       <div className={`${P}-dossier-venues`}>
@@ -381,6 +380,8 @@ export function VillagerDossier({
                               (entry) =>
                                 entry.kind !== "routine" &&
                                 entry.kind !== "preference" &&
+                                entry.kind !== "home" &&
+                                entry.kind !== "work" &&
                                 entry.text !== profile.summary,
                             )
                             .map((entry, index) => (
@@ -412,11 +413,23 @@ export function VillagerDossier({
                             <p>No routine shared yet.</p>
                           )}
                         </Sheet>
-                        <Sheet title="Home and work" icon="venues">
-                          <p>No known home or work location.</p>
-                        </Sheet>
                       </>
                     )}
+                    <Sheet title="Home and work" icon="venues">
+                      {venues.some((venue) => venue.publicConnections.length) ? (
+                        <ul>
+                          {venues.flatMap((venue) =>
+                            venue.publicConnections.map((role) => (
+                              <li key={`${venue.id}:${role}`}>
+                                {role} · {venue.name}
+                              </li>
+                            )),
+                          )}
+                        </ul>
+                      ) : (
+                        <p>No home or workplace assigned.</p>
+                      )}
+                    </Sheet>
                     {inspect ? inspectors.overview : null}
                   </div>
                 ) : section === "relationships" ? (

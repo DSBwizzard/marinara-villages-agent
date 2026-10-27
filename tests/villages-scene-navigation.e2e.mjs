@@ -110,7 +110,7 @@ try {
     function Harness(){const c=useVillageController({element:document.getElementById('root')});window.navigation=c;
       return <><pre id="screen">{!c.room && c.sceneRestoration.status!=='ready'?c.sceneRestoration.status:c.screen}</pre>{c.screen==='person'&&<VillagerDossier navigation={c.personProfile}
         villager={{characterId:'mara',name:'Mara',summary:'A resident',tags:[]}} portrait={null} request={request}
-        venues={[{id:'mill',name:'The Mill',connections:['Home']}]} links={[{id:'project',title:'A project',onOpen:noop}]}
+        venues={[{id:'mill',name:'The Mill',connections:['Home'],publicConnections:['Home']}]} links={[{id:'project',title:'A project',onOpen:noop}]}
         controls={<button>Character card</button>} inspectors={{overview:<button>Manage village</button>}}
         onInspectSection={noop} onBack={()=>c.setScreen('room')} onVenue={noop}/>}</>;
     } createRoot(document.getElementById('root')).render(<Harness/>);
@@ -182,7 +182,8 @@ try {
     .getByRole("navigation", { name: "Villager profile sections" })
     .getByRole("button", { name: "Venues", exact: true })
     .click();
-  await expect(page.getByRole("button", { name: "View Venue", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "View Venue", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "A project" })).toHaveCount(0);
   await page.getByRole("button", { name: "Inspect", exact: true }).click();
   await expect(page.getByRole("button", { name: "View Venue", exact: true })).toBeEnabled();
