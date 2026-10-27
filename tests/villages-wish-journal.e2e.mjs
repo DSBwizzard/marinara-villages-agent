@@ -73,13 +73,30 @@ try {
           wishes: [
             {
               id: "private",
+              revision: 3,
               wish: "PRIVATE SOCIAL DESIRE",
               reason: "PRIVATE REASON",
               status: "open",
-              attention: { state: "background", reason: "Quietly retained" },
-              approach: "",
+              attention: { state: "background", reason: "Available when relevant." },
+              approach: "Ask Roxie about a quiet afternoon together.",
               addedAt: now,
-              conditions: [],
+              changedAt: now,
+              origin: { kind: "preparation", sourceId: "founding", lineIds: [] },
+              conditions: [{ id: "quiet", quote: "Somewhere quiet, please.", at: now }],
+              history: [
+                {
+                  id: "approach",
+                  at: new Date(Date.parse(now) + 120000).toISOString(),
+                  kind: "approach",
+                  text: "Chose to ask Roxie directly.",
+                },
+                {
+                  id: "attention",
+                  at: new Date(Date.parse(now) + 60000).toISOString(),
+                  kind: "attention",
+                  text: "Other things need attention today.",
+                },
+              ],
             },
           ],
         };
@@ -155,6 +172,14 @@ try {
     await nav.getByRole("button", { name: "People", exact: true }).click();
     await page.getByRole("button", { name: "Open Feddy profile" }).click();
     const profile = page.getByRole("region", { name: "Feddy profile" });
+    const settleTurn = () =>
+      profile
+        .locator(".marinara-capability-villages-dossier-turn")
+        .evaluateAll((nodes) =>
+          Promise.all(
+            nodes.flatMap((node) => node.getAnimations().map((animation) => animation.finished.catch(() => {}))),
+          ),
+        );
     await page
       .getByRole("navigation", { name: "Villager profile sections" })
       .getByRole("button", { name: "Wishes", exact: true })
@@ -162,7 +187,14 @@ try {
     await expect(profile.getByRole("region", { name: "Known wishes" })).toBeVisible();
     assert.equal(privateReads, 0);
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
-    await expect(profile.locator("time")).toHaveCount(5);
+    await expect(profile.getByText("Deep water makes me nervous.", { exact: true })).toHaveCount(0);
+    await expect(profile.getByRole("region", { name: "Wish details", exact: true })).toHaveCount(0);
+    const openWish = profile.getByRole("button", { name: "Open Wish: Go swimming with Roxie.", exact: true });
+    await expect(openWish).toBeVisible();
+    await openWish.press("Enter");
+    const details = profile.getByRole("region", { name: "Wish details", exact: true });
+    await expect(details).toBeFocused();
+    await expect(details.getByRole("region", { name: "Recorded statements" }).locator("time")).toHaveCount(4);
     await expect(profile.getByText("Deep water makes me nervous.", { exact: true })).toBeVisible();
     await expect(profile.getByText("I like the idea of lessons.", { exact: true })).toBeVisible();
     await expect(profile.getByText("I would prefer the lake.", { exact: true })).toBeVisible();
@@ -170,6 +202,7 @@ try {
     await expect(profile.getByRole("progressbar")).toHaveCount(0);
     assert.equal(writes, 0, "Browsing People and wishes makes no mutation or generation request");
     await expect(profile.getByText("I would prefer the lake.", { exact: true })).toBeVisible();
+    await settleTurn();
     await page.screenshot({ path: resolve(`.build-tmp/wish-journal/profile-${width}.png`), fullPage: true });
     assert.ok(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -182,6 +215,29 @@ try {
     await profile.getByRole("button", { name: "Inspect", exact: true }).click();
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE", { exact: true })).toBeVisible();
     assert.equal(privateReads, 1);
+    await expect(profile.getByText("PRIVATE REASON", { exact: true })).toHaveCount(0);
+    await profile.getByRole("button", { name: "Open Wish: PRIVATE SOCIAL DESIRE", exact: true }).click();
+    await expect(details.getByRole("region", { name: "Why it matters" })).toHaveText(/PRIVATE REASON/);
+    await expect(details.getByRole("region", { name: "Attention", exact: true })).toHaveText(
+      /In the background.*Available when relevant\./s,
+    );
+    await expect(details.getByRole("region", { name: "Approach", exact: true })).toHaveText(
+      /Ask Roxie about a quiet afternoon together\./,
+    );
+    await expect(details.getByRole("region", { name: "Conditions", exact: true })).toHaveText(
+      /Somewhere quiet, please\./,
+    );
+    await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem")).toHaveCount(3);
+    await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem").last()).toContainText(
+      "Chose to ask Roxie directly.",
+    );
+    await expect(details.getByText("Other things need attention today.", { exact: true })).toBeVisible();
+    await settleTurn();
+    await page.screenshot({ path: resolve(`.build-tmp/wish-journal/inspect-${width}.png`), fullPage: true });
+    await details.getByRole("button", { name: "← Wishes", exact: true }).click();
+    await expect(details).toHaveCount(0);
+    await expect(profile.getByRole("button", { name: "Open Wish: PRIVATE SOCIAL DESIRE", exact: true })).toBeFocused();
+    await expect(profile.getByText("PRIVATE REASON", { exact: true })).toHaveCount(0);
     await profile.getByRole("button", { name: "Leave Inspect", exact: true }).click();
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
     await profile.getByRole("button", { name: "← Back to Villagers" }).click();

@@ -189,6 +189,7 @@ try {
   await expect(page.getByRole("button", { name: "A project" })).toBeEnabled();
   await page.getByRole("button", { name: "Leave Inspect", exact: true }).click();
   await page.getByRole("button", { name: "Wishes", exact: true }).click();
+  await page.getByRole("button", { name: "Open Wish: Share gardening stories", exact: true }).click();
   await expect(page.getByRole("button", { name: "Following", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "← Back to Villagers" }).click();
   await expect(page.locator("#screen")).toHaveText("room");

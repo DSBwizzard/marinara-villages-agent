@@ -433,28 +433,26 @@ export function VillagerDossier({
                   inspect ? (
                     inspectors.wishes
                   ) : (
-                    <Sheet title="Shared wishes" icon="wishes">
-                      <VillagerWishJournal
-                        inspect={inspect}
-                        request={request}
-                        characterId={navigation.actorId}
-                        prefix={P}
-                        focusWishId={navigation.wishId}
-                        wishes={relationships ? (profile?.knownWishes ?? []) : null}
-                        onWishes={(knownWishes) =>
-                          setRelationships((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  profiles: current.profiles.map((entry) =>
-                                    entry.characterId === navigation.actorId ? { ...entry, knownWishes } : entry,
-                                  ),
-                                }
-                              : current,
-                          )
-                        }
-                      />
-                    </Sheet>
+                    <VillagerWishJournal
+                      inspect={inspect}
+                      request={request}
+                      characterId={navigation.actorId}
+                      prefix={P}
+                      focusWishId={navigation.wishId}
+                      wishes={relationships ? (profile?.knownWishes ?? []) : null}
+                      onWishes={(knownWishes) =>
+                        setRelationships((current) =>
+                          current
+                            ? {
+                                ...current,
+                                profiles: current.profiles.map((entry) =>
+                                  entry.characterId === navigation.actorId ? { ...entry, knownWishes } : entry,
+                                ),
+                              }
+                            : current,
+                        )
+                      }
+                    />
                   )
                 ) : section === "memories" ? (
                   inspect ? (

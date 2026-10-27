@@ -142,10 +142,6 @@ try {
             ? [{ wishId: "swim", text: "Learn to swim", at: now, status: "open", followed: true, facts: [] }]
             : [],
         ties: [],
-        knownDevelopment:
-          characterId === "mara"
-            ? [{ id: "pursuit-known", at: now, title: "Restore the mill", text: "Mara hopes to restore the mill" }]
-            : [],
         learned:
           characterId === "mara"
             ? [{ text: "Mara and Eli are friends", kind: "connection", at: now, aboutName: "Eli" }]
@@ -571,7 +567,6 @@ try {
     await expect(overview.getByText("Mara has expressed an interest in talking again.")).toBeVisible();
     await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
     await expect(overview.getByText("Learn to swim")).toBeVisible();
-    await expect(overview.getByText("Mara: move to Mill : stalled.")).toBeVisible();
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
     await expect(overview.getByText("No known home or work location.")).toBeVisible();
     await expect(overview.getByText(/PRIVATE/)).toHaveCount(0);
