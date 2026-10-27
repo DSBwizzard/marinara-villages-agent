@@ -700,11 +700,11 @@ const responseContext = {
 const withoutWishes = buildVenueResponseContract({ ...responseContext, wishes: false }).join("\n");
 assert.match(withoutWishes, /wishChanges:\[\]/);
 assert.doesNotMatch(withoutWishes, /intent:\"reveal\|progress\|check\"/);
-assert.match(buildVenueResponseContract({ ...responseContext, wishes: true }).join("\n"), /reveal\|progress\|check/);
+assert.match(buildVenueResponseContract({ ...responseContext, wishes: true }).join("\n"), /wishChanges:\[\]/);
 assert.match(
   buildVenueResponseContract(responseContext).join("\n"),
-  /reveal\|progress\|check/,
-  "legacy callers retain Wish schema",
+  /wishChanges:\[\]/,
+  "Writing keeps the empty Wish metadata envelope",
 );
 assert.doesNotMatch(withoutWishes, /heardPlayerBy and segments FIRST|Segments:.*heardBy/);
 assert.match(withoutWishes, /Every knower must witness every citation/);
