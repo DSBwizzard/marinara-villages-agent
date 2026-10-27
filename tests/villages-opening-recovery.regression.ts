@@ -134,6 +134,57 @@ assert.equal(pointer.sessionId, "gathering");
 assert.equal(saved.lines.length, 1);
 assert.equal(sceneWrites, 1, "only the pointer is restored");
 
+// The interactive opening retains the same saved Scene on crash recovery, but
+// finishes without starting the legacy proposal chain.
+state.opening.version = 3;
+state.opening.stage = "gathering";
+saved.status = "closed";
+pointer = { sessionId: saved.id, placeId: saved.placeId };
+assert.equal(await live.activeVenueSession(), null);
+assert.equal(state.opening.stage, "complete");
+state.opening.stage = "gathering";
+const closedInteractive = await commands.enterVenue("community", "community");
+assert.equal(closedInteractive.id, "gathering");
+assert.equal(state.opening.stage, "complete");
+assert.equal(sceneWrites, 1, "recovery does not create or reattach another Scene");
+const closingCommands = createSceneCommands({
+  readSession: async () => saved,
+  readVillageState: async () => state,
+  mutateVillageState,
+  changeSession: async (_id: string, change: (value: typeof saved) => void) => {
+    change(saved);
+    return saved;
+  },
+  clearActivePointer: async () => {
+    pointer = { sessionId: "", placeId: "" };
+  },
+  coordinateVenue: async (
+    _id: unknown,
+    _request: unknown,
+    _kind: unknown,
+    _input: unknown,
+    _revision: unknown,
+    _attempt: unknown,
+    work: () => Promise<unknown>,
+  ) => work(),
+} as unknown as SceneCommandPorts);
+for (const how of ["semantic", "abandon"] as const) {
+  state.opening.stage = "gathering";
+  saved.status = "active";
+  saved.endedAt = "";
+  saved.submissions = how === "semantic" ? [{ id: "turn", semanticConclude: true } as any] : [];
+  pointer = { sessionId: saved.id, placeId: saved.placeId };
+  if (how === "semantic") await closingCommands.finishSemanticScene(saved.id);
+  else await closingCommands.closeVenueSession(saved.id, undefined, undefined, "interrupted-operation");
+  assert.equal(saved.status, "closed", how);
+  assert.equal(state.opening.stage, "complete", how);
+  assert.equal(pointer.sessionId, "", how);
+}
+state.opening.version = 2;
+state.opening.stage = "gathering";
+saved.status = "active";
+saved.submissions = [];
+
 // A failed opening-receipt write stays discoverable even after other exchange domains finished.
 const processing = createExchangeProcessing({
   seed: state.seed,

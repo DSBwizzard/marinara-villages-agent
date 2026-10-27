@@ -232,7 +232,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       }
       // Opening ideas are independent of Routine/Wish parsing and commit one resident at a time.
       let openingError = "";
-      if (!targeted && !connectionBlocked) {
+      if (!targeted && !connectionBlocked && initial.opening?.version === 2) {
         for (const id of initial.opening?.residentIds ?? []) {
           try {
             const live = await readVillageState();
@@ -280,11 +280,13 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             ),
           )
           .map((row) => row.characterId);
-        const ideasReady = !state.opening?.residentIds.some(
-          (id) =>
-            state.villagers.some((row) => row.characterId === id) &&
-            !state.opening!.proposals.some((row) => row.residentId === id),
-        );
+        const ideasReady =
+          state.opening?.version !== 2 ||
+          !state.opening.residentIds.some(
+            (id) =>
+              state.villagers.some((row) => row.characterId === id) &&
+              !state.opening!.proposals.some((row) => row.residentId === id),
+          );
         const spacesReady = privatePreparationRooms(state).every(({ zone }) => zone.preparation?.status === "ready");
         marker.status =
           marker.venueDetailsSeeded &&

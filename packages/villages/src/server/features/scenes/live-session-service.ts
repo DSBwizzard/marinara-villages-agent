@@ -66,7 +66,7 @@ export function createLiveScenes({
         state.opening.gatheringSceneId === session.id &&
         state.opening.id === session.openingGatheringId
       )
-        state.opening.stage = "conversations";
+        state.opening.stage = state.opening.version === 3 ? "complete" : "conversations";
     });
   }
   async function activeVenueSession(): Promise<VenueScene | null> {
