@@ -80,23 +80,16 @@ import {
 import { useProjectsController } from "../features/projects/useProjectsController.js";
 import { useProjectsState } from "../features/projects/useProjectsState.js";
 import {
-  useAddVillager,
   useApplyVillagerRefresh,
   useCorrectCompletedWish,
   useForgetMemory,
   useLoadAgendas,
   useLoadMemoryLibrary,
   usePreviewVillagerRefresh,
-  useRemoveVillager,
   useRewriteAgenda,
   useSetAgendaScheduleIngestion,
 } from "../features/residents/actions.js";
-import {
-  calculateNeedle,
-  calculatePersonaPortraitId,
-  calculatePortraitWanted,
-  calculateVisibleCatalog,
-} from "../features/residents/calculations.js";
+import { calculatePersonaPortraitId, calculatePortraitWanted } from "../features/residents/calculations.js";
 import {
   useResidentAgendaPolling,
   useResidentInspection,
@@ -106,7 +99,6 @@ import {
 import { useResidentsState } from "../features/residents/useResidentsState.js";
 import {
   usePersonaPortrait,
-  useResidentPickerLoad,
   useResidentPortraits,
   useResidentsLoadCatalog,
 } from "../features/residents/workflow-controller.js";
@@ -217,8 +209,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setPersonProfile,
     profileInspection,
     setProfileInspection,
-    rosterSearch,
-    setRosterSearch,
     profileOrigin,
     spriteManagerId,
     setSpriteManagerId,
@@ -1075,15 +1065,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setOpenArchivedVisit,
   });
 
-  useResidentPickerLoad({ loadCatalog, pickerOpen });
-
   // Kept as its own effect, keyed on the stamp: the picture is fetched once and
   // re-fetched only when the server says the map changed, so the homepage never
   // holds a stale copy and the snapshot never carries a megabyte of base64.
-
-  const addVillager = useAddVillager({ loadCatalog, setBusy, setError, setSnapshot });
-
-  const removeVillager = useRemoveVillager({ catalog, loadCatalog, setBusy, setError, setSnapshot });
 
   const previewVillagerRefresh = usePreviewVillagerRefresh({ setError, setRefreshBusyId, setRefreshPreviews });
 
@@ -1109,7 +1093,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
   const { progressDebug, loadProgressDebug } = useProgressDiagnostics({ setError });
   const openMenu = useScenesOpenMenu({
-    loadCatalog,
     loadLorebooks,
     loadProgressDebug,
     debugDiscardEnabled,
@@ -1932,10 +1915,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setPlaceProblem,
   });
 
-  const needle = calculateNeedle({ search });
-
-  const visibleCatalog = calculateVisibleCatalog({ catalog, needle });
-
   /**
    * Everybody the tab can currently draw a face for, as one string.
    *
@@ -1950,7 +1929,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * pictures for a list nobody is looking at is the one kind of work this could
    * do that the player would never see the result of.
    */
-  const portraitWanted = calculatePortraitWanted({ catalog, pickerOpen, screen, setupStep, snapshot, visibleCatalog });
+  const portraitWanted = calculatePortraitWanted({ catalog, screen, setupStep, snapshot });
 
   /**
    * The faces behind everybody the tab can draw.
@@ -2083,7 +2062,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     element,
     visible,
     addVenue,
-    addVillager,
     agendas,
     applyVillagerRefresh,
     archiveError,
@@ -2186,7 +2164,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     refreshBusyId,
     refreshPreviews,
     removeVenue,
-    removeVillager,
     requestEdits,
     resetArmed,
     restoreSetupDraft,
@@ -2216,7 +2193,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomSubmissionIdRef,
     roomTargetId,
     roomUnresolvedChanges,
-    rosterSearch,
     saveCharacterSpeechColors,
     saveScenerySettings,
     saveSendOnEnter,
@@ -2283,7 +2259,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomMode,
     setRoomMoveZoneId,
     setRoomTargetId,
-    setRosterSearch,
     setSceneryStyle,
     setSceneryStyleProfileId,
     setScreen,
@@ -2415,7 +2390,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venueVisits,
     venueZoneKey,
     venuesDraft,
-    visibleCatalog,
     visualLoreDefault,
   };
 }
