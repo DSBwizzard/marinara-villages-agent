@@ -121,6 +121,7 @@ export function FieldHelp({ label, children }: { label: string; children: ReactN
       <button
         ref={button}
         type="button"
+        className="villages-founding-help-button"
         aria-label={"Help: " + label}
         aria-expanded={open}
         onClick={() => {
