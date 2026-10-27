@@ -1,23 +1,23 @@
-import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
-import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import assert from "node:assert/strict";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import type { SocialOutboxEntry } from "../packages/villages/src/server/domain/models/social-outbox-model.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
 } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { readEncounter } from "../packages/villages/src/server/domain/rules/social-encounter.js";
-import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
-import { createRelationshipSocial } from "../packages/villages/src/server/features/residents/relationship-social-service.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { WorkFailureError, metadataFailure } from "../packages/villages/src/server/domain/rules/work-failure.js";
+import { createRelationshipSocial } from "../packages/villages/src/server/features/residents/relationship-social-service.js";
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
-import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import type { SocialOutboxEntry } from "../packages/villages/src/server/domain/models/social-outbox-model.js";
 const village = coerceVillageState({
   ...defaultVillageState(),
   seed: "events",
@@ -83,6 +83,7 @@ const entry: SocialOutboxEntry = {
         { speakerId: "a", text: "I would like to spend more time together." },
         { speakerId: "b", text: "Let's talk again." },
       ],
+      wishChanges: [],
       relationshipReview: {
         ...emptyRelationshipReview(),
         changes: [
@@ -255,7 +256,7 @@ const writer = createResidentPlanning({
             housingRequests: [],
             social: { mail: { senderId: "a", text: "Hello.", invitation: { title: "Forged invitation" } } },
           }
-        : { relationshipReview: emptyRelationshipReview(), memoryChanges: [] },
+        : { wishChanges: [], relationshipReview: emptyRelationshipReview(), memoryChanges: [] },
     ),
   }),
 } as any);

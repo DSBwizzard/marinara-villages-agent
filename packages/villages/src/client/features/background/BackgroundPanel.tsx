@@ -1,7 +1,7 @@
+import { useState } from "react";
 import type { BackgroundWork } from "../../../shared/contracts/village.js";
 import { messageFrom } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { useState } from "react";
 
 function waitingTime(timestamp: string): string {
   const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(timestamp)) / 60_000));

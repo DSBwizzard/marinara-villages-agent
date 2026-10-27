@@ -1,12 +1,12 @@
+import { useRef, useState } from "react";
 import type {
   ArchiveVisitSummary,
-  RoomRecordEvent,
-  SceneView,
-  SceneChangeIssue,
   RoomOperation,
+  RoomRecordEvent,
+  SceneChangeIssue,
+  SceneView,
 } from "../../../shared/contracts/village.js";
 import type { SceneComposerMode } from "../../shared/types.js";
-import { useRef, useState } from "react";
 import { useSceneReadingSession } from "./reading-session.js";
 
 export type LegacySceneRecovery = { sceneId: string; operation: RoomOperation };

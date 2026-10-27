@@ -1,16 +1,16 @@
+import type { FastifyInstance } from "fastify";
+import { fail, readPlaceId, readVenueId } from "../../adapters/http/route-support.js";
+import { retryPrivateSpaces } from "../../jobs/private-space-preparation.js";
+import { createRenovationProject } from "../projects/project-lifecycle.js";
 import {
   approveVillageResidence,
   completeVillageResidence,
   decideVillageResidence,
-  proposeVillageResidence,
   movePlayerToResidence,
+  proposeVillageResidence,
   retryResidencePrivateSpaceAdaptation,
 } from "../venues/residences.js";
-import { fail, readPlaceId, readVenueId } from "../../adapters/http/route-support.js";
-import { retryPrivateSpaces } from "../../jobs/private-space-preparation.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
-import { decideVillageVenueRequest } from "./venue-requests.js";
-import { proposeResidenceSpaceEdit, updateVillageZone } from "./zone-edits.js";
 import {
   changeVenueAccess,
   createVillageVenue,
@@ -18,8 +18,8 @@ import {
   previewVillageVenueDeletion,
   updateVillageVenue,
 } from "./services.js";
-import { createRenovationProject } from "../projects/project-lifecycle.js";
-import type { FastifyInstance } from "fastify";
+import { decideVillageVenueRequest } from "./venue-requests.js";
+import { proposeResidenceSpaceEdit, updateVillageZone } from "./zone-edits.js";
 
 export function registerVenueAccessRoutes(engine: FastifyInstance) {
   const app = engine;

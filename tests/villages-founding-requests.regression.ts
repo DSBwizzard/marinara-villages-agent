@@ -1,7 +1,12 @@
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  parseCompactFounding,
+  parseCompactFoundingCompletion,
+} from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import {
   foundingIdentity,
   foundingRequestMessages,
@@ -9,10 +14,9 @@ import {
   WISH_INSTRUCTIONS,
 } from "../packages/villages/src/server/domain/rules/founding-requests.js";
 import {
-  parseCompactFounding,
-  parseCompactFoundingCompletion,
-} from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
-import { coerceFoundingTasks } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
+  coerceFoundingTasks,
+  foundingTaskRevision,
+} from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 const card = {
   id: "feddy-fixture",
   name: "Synthetic resident",
@@ -40,7 +44,7 @@ const context = {
   venues: [],
   lore: [],
   activeWishes: [],
-  completedWishes: [],
+  wishes: [],
   schedule: null,
 };
 assert(ROUTINE_INSTRUCTIONS.length <= 1600);
@@ -73,7 +77,7 @@ const payload = {
   days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
   rhythm: [],
 };
-assert.equal(parseCompactFounding(payload, context).agenda.wishes.length, 0);
+assert.equal(Object.hasOwn(parseCompactFounding(payload, context), "wishes"), false);
 assert.equal(
   parseCompactFounding({ ...payload, days: Array.from({ length: 7 }, () => [0, 1, 2, 3]) }, context).agenda
     .routineProfile!.days[0].length,
@@ -103,7 +107,7 @@ console.log("Founding request budgets, full identity, explicit Routine contract 
 
 const state = coerceVillageState({
   ...defaultVillageState(),
-  version: 5,
+  version: 6,
   seed: "revision-fixture",
   setting: "Shared place",
   villagers: [

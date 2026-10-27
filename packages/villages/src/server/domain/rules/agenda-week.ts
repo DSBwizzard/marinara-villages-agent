@@ -1,6 +1,6 @@
 import type { VillageAgenda, VillageAgendaBlock, VillageRemap, VillageVenue } from "../models/world.js";
-import { lookupRemap, remapBlockKey } from "./native-remap.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
+import { lookupRemap, remapBlockKey } from "./native-remap.js";
 import { routineDay } from "./owned-routine.js";
 import { type NativeWeekSchedule, parseBlockRange } from "./schedule-rules.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -228,7 +228,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
           ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
           zoneId: entry.zoneId,
         })));
-  for (const adjustment of [...(agenda.wishActivities ?? []), ...(agenda.socialActivities ?? [])]) {
+  for (const adjustment of agenda.socialActivities ?? []) {
     if (adjustment.dateKey !== key) continue;
     const started = agenda.activeDay?.dateKey === key && adjustment.startMinute <= at.getHours() * 60 + at.getMinutes();
     if (!started && !flexibleAgendaInterval(ordinary, adjustment.startMinute, adjustment.endMinute)) continue;

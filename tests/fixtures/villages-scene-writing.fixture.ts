@@ -1,17 +1,19 @@
-import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
+import { readEffectiveVillagerCard } from "../../packages/villages/src/server/adapters/engine/catalog.js";
+import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VillagerCard } from "../../packages/villages/src/server/domain/models/catalog-model.js";
+import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
+import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
+import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/social-wishes.js";
 import {
   createSceneWriting,
   type SceneWritingPorts,
 } from "../../packages/villages/src/server/features/scenes/writing-service.js";
-import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { readEffectiveVillagerCard } from "../../packages/villages/src/server/adapters/engine/catalog.js";
-import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
-import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
-import type { VillagerCard } from "../../packages/villages/src/server/domain/models/catalog-model.js";
-import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
 
 /** Exercise the current Scene prompt path with a fitting model that cannot generate. */
 export async function currentScenePrompt(
@@ -41,7 +43,7 @@ export async function currentScenePrompt(
   };
   const world = coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     ...state,
     villagers: state.villagers.some((resident) => resident.characterId === card.id)
       ? state.villagers.map((resident) =>

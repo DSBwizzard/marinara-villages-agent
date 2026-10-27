@@ -1,8 +1,8 @@
 import type {
+  VillageBackgroundPace,
   VillageLorebookOption,
   VillageSettings,
   VillageSnapshot,
-  VillageBackgroundPace,
 } from "../../../shared/contracts/village.js";
 
 /** Inputs consumed by renderGeneralSettingsPage; assembled by the shell. */

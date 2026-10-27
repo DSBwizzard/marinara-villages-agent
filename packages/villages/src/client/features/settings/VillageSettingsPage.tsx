@@ -1,8 +1,8 @@
+import { ELEMENT_TAG } from "../../shared/constants.js";
 import { MapsPanel } from "./MapsPanel.js";
 import { WorldNameSettings } from "./WorldNameSettings.js";
-import { ELEMENT_TAG } from "../../shared/constants.js";
 
-import { VillageLorebookPicker, LoreTokenBudgetField } from "../founding/FoundingPanels.js";
+import { LoreTokenBudgetField, VillageLorebookPicker } from "../founding/FoundingPanels.js";
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
 import type { VillageSettingsPagePorts } from "./page-contracts.js";
 

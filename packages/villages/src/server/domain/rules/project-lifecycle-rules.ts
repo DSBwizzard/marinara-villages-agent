@@ -1,8 +1,8 @@
-import { completeProject } from "./project-completion.js";
-export { validImage, renovationAffectedIds } from "./project-terms.js";
-import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
 import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import { conflict, notFound } from "./errors.js";
+import { completeProject } from "./project-completion.js";
+import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
+export { renovationAffectedIds, validImage } from "./project-terms.js";
 
 export const PROJECT_DURATION_MS = 24 * 60 * 60_000;
 export function active(state: VillageState, kind?: "new-venue" | "renovation"): boolean {

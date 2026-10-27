@@ -1,22 +1,22 @@
-import assert from "node:assert/strict";
 import Fastify from "fastify";
-import { readVillagerCard, toCatalogEntry } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import assert from "node:assert/strict";
 import {
   createActivationScope,
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { readVillagerCard, toCatalogEntry } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
-import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import { createResidentCards } from "../packages/villages/src/server/features/residents/resident-card-service.js";
 import {
-  configureResidentCards,
-  buildVillageCatalog,
-  previewVillagerRefresh,
   applyVillagerRefresh,
+  buildVillageCatalog,
+  configureResidentCards,
+  previewVillagerRefresh,
 } from "../packages/villages/src/server/features/residents/resident-cards.js";
 import { registerResidentRoutes } from "../packages/villages/src/server/features/residents/routes.js";
 import { registerSnapshotCatalogRoutes } from "../packages/villages/src/server/features/world/routes.js";
@@ -45,7 +45,7 @@ function fixture(name: string) {
       characterId: "same",
       cardSnapshot: snapshotFromCard(card, 4),
       addedAt: stamp,
-      completedWishes: [],
+      wishes: [],
       ingestSchedule: false,
       agenda: unwrittenVillageAgenda(state.venues, card.name),
       remap: { signature: "retained-remap" } as any,

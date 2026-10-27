@@ -1,7 +1,8 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { villageRouteSource } from "./route-source.js";
 // Continuous Villages time: exact projection, migration, idempotent restart
 // reconciliation, model-independent progress, and the live unreferenced timer.
 import assert from "node:assert/strict";
@@ -83,9 +84,9 @@ async function main() {
   const retainedDeadline = {
     villagers: [
       {
+        wishes: [{ size: "larger", learnedAt: at(9, 40).toISOString(), expiresAt: at(9, 43).toISOString() }],
         agenda: {
           day: [],
-          wishes: [{ size: "larger", learnedAt: at(9, 40).toISOString(), expiresAt: at(9, 43).toISOString() }],
         },
       },
     ],
@@ -101,7 +102,7 @@ async function main() {
   const migrated = coerceVillageState({
     ...defaultVillageState(),
     backgroundPace: "quiet",
-    version: 5,
+    version: 6,
     wishSystemVersion: 3,
     foundedAt: "2026-09-01T07:00:00.000Z",
     lastHappeningKey: "2:morning",
@@ -117,7 +118,8 @@ async function main() {
           sourceStatus: "available",
           capturedAt: "2026-09-01T00:00:00.000Z",
         },
-        agenda: { day: [{ clock: "morning", venueId: "square", activity: "walking" }], wishes: [] },
+        wishes: [],
+        agenda: { day: [{ clock: "morning", venueId: "square", activity: "walking" }] },
       },
     ],
   });
@@ -128,7 +130,7 @@ async function main() {
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       backgroundPace: "off",
       refreshClocks: [],
@@ -138,7 +140,7 @@ async function main() {
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       refreshClocks: ["morning", "evening"],
     }).backgroundPace,
@@ -214,7 +216,6 @@ async function main() {
               return {
                 content: JSON.stringify({
                   routine: "Studying quietly.",
-                  wishes: [],
                   palette: Array.from({ length: 6 }, (_, i) => ({
                     activity: "Studying the stars " + i,
                     venue: 0,
@@ -268,22 +269,10 @@ async function main() {
             revision: 1,
             sourceStatus: "available",
           },
-          completedWishes: [],
+          wishes: [fixtureWish({ wish: "Share a conversation" }, "retained", start.toISOString())],
           agenda: {
             day: [],
             generatedAt: start.toISOString(),
-            wishes: [
-              {
-                id: "retained",
-                wish: "Experience swimming",
-                tell: "",
-                intensity: 1,
-                size: "larger",
-                addedAt: start.toISOString(),
-                learnedAt: start.toISOString(),
-                expiresAt: new Date(start.getTime() + 14 * 86400000).toISOString(),
-              },
-            ],
           },
         },
       ] as any;
@@ -307,14 +296,9 @@ async function main() {
     assert.equal((await readVillageState()).lastKnownTimeZone, quiet.village.timeZone);
     const retainedState = await readVillageState();
     assert.equal(
-      retainedState.villagers[0].agenda!.wishes[0].id,
+      retainedState.villagers[0].wishes[0].id,
       "retained",
-      "Restart catch-up retains discovered larger wishes",
-    );
-    assert.equal(
-      retainedState.wishRefillIntents.retained,
-      undefined,
-      "Retained wishes never queue expiry replacements",
+      "Restart catch-up retains desires independently of attention or player knowledge",
     );
     await mutateVillageState((state) => {
       state.villagers = [];
@@ -347,8 +331,8 @@ async function main() {
           },
           addedAt: start.toISOString(),
           ingestSchedule: false,
+          wishes: [],
           agenda: {
-            wishes: [],
             routineSummary: "",
             day: [],
             week,

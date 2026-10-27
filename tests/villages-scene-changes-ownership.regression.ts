@@ -1,13 +1,5 @@
-import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
-import {
-  configureSceneChanges,
-  readSceneChanges,
-  dismissSceneNotice,
-  replaySceneChanges,
-} from "../packages/villages/src/server/features/scenes/changes.js";
+import assert from "node:assert/strict";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -17,21 +9,29 @@ import {
   createVenueOperationContext,
   type Context,
 } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import {
-  defaultRelationshipState,
-  applyRelationshipReview,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
-import { relationshipChangeNotices } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import type { RelationshipChange } from "../packages/villages/src/server/domain/models/relationship-types.js";
 import type { VenueSubmission } from "../packages/villages/src/server/domain/models/scene-model.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { relationshipChangeNotices } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
+import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import {
+  applyRelationshipReview,
+  defaultRelationshipState,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
+import {
+  configureSceneChanges,
+  dismissSceneNotice,
+  readSceneChanges,
+  replaySceneChanges,
+} from "../packages/villages/src/server/features/scenes/changes.js";
 
 type Document = Awaited<ReturnType<CapabilityDocumentStore["list"]>>[number];
 const stamp = "2026-10-07T12:00:00.000Z";
@@ -64,7 +64,7 @@ function submission(id: string, sequence: number): VenueSubmission {
 }
 function fixture(name: string) {
   const world = coerceVillageState({
-    version: 5,
+    version: 6,
     ...defaultVillageState(),
     seed: name,
     foundedAt: stamp,

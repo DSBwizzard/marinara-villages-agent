@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { sceneLocationContext } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
@@ -11,7 +11,7 @@ import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js
 
 const at = "2026-10-23T12:00:00.000Z";
 const world = coerceVillageState({
-  version: 5,
+  version: 6,
   ...defaultVillageState(),
   seed: "location-regression",
   venues: [

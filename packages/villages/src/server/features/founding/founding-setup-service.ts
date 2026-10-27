@@ -1,11 +1,9 @@
 import { chooseLetterFont } from "../../../shared/helpers/letter-font-selection.js";
-import { readWorldName } from "../../../shared/helpers/resident-admission.js";
-import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { randomUUID } from "node:crypto";
-import { initialOpening } from "../../domain/rules/opening-project.js";
-import { villageNow } from "../../adapters/time/clock-gate.js";
+import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
-import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
+import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageSnapshot, VillageState, VillageVenue } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
@@ -16,16 +14,19 @@ import {
   parsePlaces,
   validateFoundingRoster,
 } from "../../domain/rules/founding-record.js";
+import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import {
   DEFAULT_LORE_TOKEN_BUDGET,
   readLoreTokenBudget,
   readSelectedLorebookIds,
 } from "../../domain/rules/lore-policy.js";
+import { initialOpening } from "../../domain/rules/opening-project.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
 import { playerBackgroundForSetup } from "../../domain/rules/player-background.js";
 import { isHousePlace, villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
-import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 import { readFoundingResidentAdmissions } from "../../domain/rules/resident-admission.js";
+import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
+import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { readScenarioImprint, readWorldFacts } from "../../domain/rules/scenario-rules.js";
 import { DEFAULT_SCENERY_STYLE, readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
@@ -36,8 +37,7 @@ import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import type { prepareVillageMap } from "../media/town-map-review.js";
 import type { readVillageConnectionSettings, validateVillageSetupConnections } from "../settings/connections.js";
 import type { readLinkedPersona } from "../settings/personas.js";
-import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
-import type { proposeVillage, proposePublicVenueNames, draftVillageVenueDescriptions } from "./village-bootstrap.js";
+import type { draftVillageVenueDescriptions, proposePublicVenueNames, proposeVillage } from "./village-bootstrap.js";
 
 export interface FoundingSetupPorts {
   preparedSpriteManager?(
@@ -387,7 +387,7 @@ export function createFoundingSetup({
           },
           addedAt: villageNow().toISOString(),
           agenda: unwrittenVillageAgenda(state.venues, card.name, villageNow()),
-          completedWishes: [],
+          wishes: [],
           ingestSchedule: false,
           scheduleInfluence: influenceSettings(null),
           remap: null,

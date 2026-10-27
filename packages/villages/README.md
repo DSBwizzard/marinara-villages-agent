@@ -124,9 +124,11 @@ Opening REPAIR and applying ordinary corrections preserve your unfinished Scene,
 
 ## Wishes and Projects
 
-**Wishes** are outcomes a resident wants. You learn about them through conversation and discovery. The journal records what you have learned; it does not show hidden progress percentages. A Wish is fulfilled by its actual outcome and expressed conditions, rather than by a promise or a Project proposal alone.
+**Wishes** are concrete personal social desires. They can arise through conversation, correspondence, resident encounters and occasional private reflection. Residents can act on them, reconsider an approach, keep them quietly in the background, fulfill them or withdraw them. Invitations and plans establish arrangements; the desired interaction must actually happen. NPCs can satisfy Wishes without player involvement.
 
-Each resident can have up to two active Wishes. New attempts have a daily allowance and at least 24 hours between them. Returning after an absence does not generate a backlog of missed Wishes.
+The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
+
+This refactor requires a fresh Village (format 6); earlier saves are rejected without conversion.
 
 **Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 
@@ -158,7 +160,7 @@ Sprite setup lets you choose expressions, facing, inclusion, defaults, and frami
 
 Time, schedules, construction, approved moves, and expiry can advance without model requests. Recurring creative activity runs while Villages is visible and pauses before its next request after you leave. Work you already requested can finish while you are away.
 
-Set **Resident activity and Wishes → Off** to pause automatic social planning, routine suggestions, housing proposals, and new Wishes. This leaves local time, construction, approved moves, and existing Wish expiry running.
+Set **Resident activity and Wishes → Off** to pause automatic social planning, routine suggestions, housing proposals, and new Wishes. Local time, construction and approved moves continue. Retained Wishes do not expire.
 
 Quiet, Balanced, and Lively permit at most 1, 3, and 6 automatic resident attempts per local day, at least fifteen minutes apart, with no missed-day catch-up. Each attempt uses at most two principal model requests; quiet outcomes, failures, and unknown outcomes still count. Residents may initiate private encounters or personal mail. Weather alone does not start an automatic request.
 

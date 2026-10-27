@@ -1,6 +1,10 @@
-import { buildVillageSnapshot } from "../features/world/snapshot.js";
-import { readVillageState } from "../features/world/village-store.js";
+import type { FastifyInstance } from "fastify";
+import { activationScope } from "../adapters/engine/activation-scope.js";
 import { publicSceneRoutes } from "../adapters/http/public-scene-routes.js";
+import { withRepairWork } from "../adapters/storage/repair-gate.js";
+import { readActive, readSession } from "../adapters/storage/scene-store.js";
+import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
+import { asRecord } from "../domain/rules/coerce.js";
 import { registerBackgroundRoutes } from "../features/background/routes.js";
 import { registerFoundingRoutes } from "../features/founding/routes.js";
 import {
@@ -9,6 +13,7 @@ import {
   registerVenueImageRoutes,
 } from "../features/media/routes.js";
 import { registerProjectRoutes } from "../features/projects/routes.js";
+import { registerRepairRoutes } from "../features/repair/routes.js";
 import {
   registerAgendaRoutes,
   registerRelationshipRoutes,
@@ -34,13 +39,6 @@ import {
   registerSnapshotCatalogRoutes,
   registerWorldMaintenanceRoutes,
 } from "../features/world/routes.js";
-import type { FastifyInstance } from "fastify";
-import { readActive, readSession } from "../adapters/storage/scene-store.js";
-import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
-import { asRecord } from "../domain/rules/coerce.js";
-import { registerRepairRoutes } from "../features/repair/routes.js";
-import { withRepairWork } from "../adapters/storage/repair-gate.js";
-import { activationScope } from "../adapters/engine/activation-scope.js";
 
 /** Register feature routes in their established host-collector order. */
 export async function villagesRoutes(engine: FastifyInstance) {
@@ -58,31 +56,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return "Your spinoff is still pending. You can browse Villages, but finish or discard it before changing Village state.";
     return null;
   };
-  const surface = publicSceneRoutes(
-    engine,
-    guard,
-    async (request, result) => {
-      if (request.headers?.["x-villages-housing-view"] !== "current" || !result || typeof result !== "object")
-        return result;
-      const value = result as Record<string, unknown>;
-      const snapshot = Array.isArray(value.villagers) && value.settings ? value : asRecord(value.snapshot);
-      if (!Array.isArray(snapshot.villagers) || !snapshot.settings || !(await readVillageState()).development)
-        return result;
-      // Rebuild from the exact state atomically marked as delivered; this also covers mutation and visible polling responses.
-      const delivered = {
-        ...(await buildVillageSnapshot(undefined, true)),
-      };
-      return snapshot === value ? delivered : { ...value, snapshot: delivered };
-    },
-    [
-      "get /memories",
-      "get /memories/inspect",
-      "get /memories/:id/evidence",
-      "get /memories/inspect/:id",
-      "post /memories/:id/forget",
-      "post /memories/:id/correct",
-    ],
-  );
+  const surface = publicSceneRoutes(engine, guard, [
+    "get /memories",
+    "get /memories/inspect",
+    "get /memories/:id/evidence",
+    "get /memories/inspect/:id",
+    "post /memories/:id/forget",
+    "post /memories/:id/correct",
+  ]);
   registerInterpretationRoutes(surface);
   registerRelationshipRoutes(surface);
   registerSpriteManagerRoutes(surface);

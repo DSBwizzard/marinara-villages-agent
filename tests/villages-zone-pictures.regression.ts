@@ -1,27 +1,27 @@
 import assert from "node:assert/strict";
+import { readZonePictureReference } from "../packages/villages/src/server/adapters/engine/zone-picture-reference.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import type { VillageVenueImage } from "../packages/villages/src/server/domain/models/world.js";
+import { imageEditSupport } from "../packages/villages/src/server/domain/rules/image-edit-support.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 import {
   claimZonePictureEntry,
   zonePictureContext,
 } from "../packages/villages/src/server/domain/rules/zone-picture.js";
-import { imageEditSupport } from "../packages/villages/src/server/domain/rules/image-edit-support.js";
-import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
-import { readZonePictureReference } from "../packages/villages/src/server/adapters/engine/zone-picture-reference.js";
-import { createVenueCommands } from "../packages/villages/src/server/features/venues/venue-service.js";
-import {
-  createLocationImages,
-  type LocationImagePorts,
-} from "../packages/villages/src/server/features/media/location-image-service.js";
 import {
   createImageGeneration,
   type ImageGenerationPorts,
 } from "../packages/villages/src/server/features/media/image-generation-service.js";
-import type { VillageVenueImage } from "../packages/villages/src/server/domain/models/world.js";
+import {
+  createLocationImages,
+  type LocationImagePorts,
+} from "../packages/villages/src/server/features/media/location-image-service.js";
+import { createVenueCommands } from "../packages/villages/src/server/features/venues/venue-service.js";
 
 const picture = (id: string): VillageVenueImage => ({
   id,
@@ -31,7 +31,7 @@ const picture = (id: string): VillageVenueImage => ({
 const image = picture("original");
 function fixture() {
   return coerceVillageState({
-    version: 5,
+    version: 6,
     ...defaultVillageState(),
     wishSystemVersion: 3,
     venues: [

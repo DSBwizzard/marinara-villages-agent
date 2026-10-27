@@ -40,9 +40,9 @@ try {
       weekUnreadable: false,
       days: [{ weekday: "Monday", dateLabel: "Today", isToday: true, blocks: [] }],
       effectiveDays: { Monday: [block] },
+      wishes: [],
       agenda: {
         routineSummary: "Mara reads and tends herbs.",
-        wishes: [],
         day: [],
         week: { Monday: [block] },
         scheduleInfluenceSnapshot: {

@@ -1,13 +1,14 @@
-import { VillagerMemoriesPanel } from "./MemoriesPanel.js";
-import { IdentityDescriptionEditor } from "./IdentityDescriptionEditor.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { agendaMinuteLabel, agendaUpdatePending, remapPlaceName } from "../../shared/presentation.js";
+import { IdentityDescriptionEditor } from "./IdentityDescriptionEditor.js";
+import { VillagerMemoriesPanel } from "./MemoriesPanel.js";
+import { AvatarFace } from "./ResidentPanels.js";
 import type { ResidentsScreenController } from "./screen-contracts.js";
-import { AvatarFace, WishHistory, wishLifetimeLabel } from "./ResidentPanels.js";
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
 import { SpriteManager } from "./villages-sprite-manager.js";
+import { VillagerWishJournal } from "./villages-wish-journal.js";
 
 export function ResidentsScreen({
   controller,
@@ -23,7 +24,6 @@ export function ResidentsScreen({
     agendas,
     applyVillagerRefresh,
     busy,
-    correctCompletedWish,
     error,
     explorationReturnTab,
     forgetMemory,
@@ -170,78 +170,7 @@ export function ResidentsScreen({
       });
     }
     const wishInspection = (
-      <div className={`${ELEMENT_TAG}-overlay`}>
-        <div className={`${ELEMENT_TAG}-overlay-head`}>
-          <h2 className={`${ELEMENT_TAG}-panel-title`}>Private wishes</h2>
-        </div>
-
-        {agendas === null ? (
-          <p className={`${ELEMENT_TAG}-empty`}>Reading what the villagers wish…</p>
-        ) : selectedAgendas.length === 0 ? (
-          <p className={`${ELEMENT_TAG}-empty`}>Nobody lives here yet.</p>
-        ) : (
-          <section>
-            {selectedAgendas.map((villager) => (
-              <div key={villager.characterId}>
-                <h3 className={`${ELEMENT_TAG}-story-day`}>
-                  {villager.name}
-                  {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
-                </h3>
-                {villager.agenda === null ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>No wishes recorded.</p>
-                ) : villager.agenda.wishes.length === 0 ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>
-                    {villager.agenda.personalizationFailure
-                      ? `Routine personalization needs attention: ${villager.agenda.personalizationFailure}`
-                      : villager.agenda.generatedAt
-                        ? "No current wishes."
-                        : "Their provisional routine is available. New wishes follow the daily allowance."}
-                  </p>
-                ) : (
-                  <ul className={`${ELEMENT_TAG}-story`}>
-                    {villager.agenda.wishes.map((wish) => (
-                      <li key={wish.id} className={`${ELEMENT_TAG}-wish-card`}>
-                        <p className={`${ELEMENT_TAG}-wish-text`}>{wish.wish}</p>
-                        {/* Said as the thing somebody would notice,
-                                      which is the half that makes a wish a
-                                      reason for an event instead of a to-do. */}
-                        {wish.tell.length > 0 ? (
-                          <p className={`${ELEMENT_TAG}-wish-tell`}>{`Shows as: ${wish.tell}`}</p>
-                        ) : null}
-                        {/* How long it has been sitting there, and the
-                                      day it goes quiet on its own. Said here
-                                      because this tab is the only place a wish is
-                                      a fact at all, and a wish that vanishes
-                                      between two visits reads as a bug until the
-                                      date it was always going to vanish on is
-                                      written down beside it. */}
-                        <p className={`${ELEMENT_TAG}-wish-meta`}>
-                          {`${wish.intensity === 1 ? "Faint" : wish.intensity === 3 ? "Strong" : "Present"} · ${wishLifetimeLabel(wish.addedAt ?? "", wish.expiresAt ?? "", Date.parse(snapshot?.village?.instant ?? "") || Date.now())}`}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <WishHistory
-                  characterId={villager.characterId}
-                  total={villager.wishHistoryCount ?? 0}
-                  busy={busy}
-                  onCorrect={correctCompletedWish}
-                />
-                {villager.wishAttempt ? (
-                  <p
-                    className={`${ELEMENT_TAG}-hint`}
-                  >{`Wish update: ${villager.wishAttempt.stage} · ${villager.wishAttempt.reason} · ${villager.wishAttempt.calls} requests · input tokens ${villager.wishAttempt.inputTokens ?? "unavailable"} · output tokens ${villager.wishAttempt.outputTokens ?? "unavailable"}`}</p>
-                ) : null}
-                {/*
-                          The Engine's own week and the village's translation of
-                          it live in Villager Agendas, not alongside wishes.
-                        */}
-              </div>
-            ))}
-          </section>
-        )}
-      </div>
+      <VillagerWishJournal request={request} characterId={personProfile.actorId} prefix={ELEMENT_TAG} inspect />
     );
     const agendaInspection = (
       <div className={`${ELEMENT_TAG}-overlay`}>

@@ -1,18 +1,18 @@
-import type { useVillageController as ControllerFactory } from "./useVillageController.js";
-import { ELEMENT_TAG } from "../shared/constants.js";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ExplorationScreen } from "../features/exploration/ExplorationScreen.js";
 import { FoundingScreen } from "../features/founding/FoundingScreen.js";
 import { PreparationScreen } from "../features/founding/PreparationScreen.js";
 import { ResumeScreen } from "../features/founding/ResumeScreen.js";
+import { Mailbox } from "../features/residents/Mailbox.js";
 import { ResidentsScreen } from "../features/residents/ResidentsScreen.js";
 import { RosterScreen } from "../features/residents/RosterScreen.js";
 import { SceneScreen } from "../features/scenes/SceneScreen.js";
-import { Mailbox } from "../features/residents/Mailbox.js";
-import { MenuScreen } from "./MenuScreen.js";
 import { VenueScreen } from "../features/venues/VenueScreen.js";
+import { ELEMENT_TAG } from "../shared/constants.js";
+import { MenuScreen } from "./MenuScreen.js";
+import type { useVillageController as ControllerFactory } from "./useVillageController.js";
 import { useVillageController } from "./useVillageController.js";
 import { VillagesFrame } from "./VillagesFrame.js";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export function VillagesView({ element }: { element: HTMLElement }) {
   const controller = useVillageController({ element });

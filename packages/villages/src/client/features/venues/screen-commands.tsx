@@ -1,12 +1,12 @@
-import { createVillagesClientId } from "../../shared/request-id.js";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import type { VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import type { AccessCommand } from "../../../shared/helpers/venue-access.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { venueSpaceFor } from "../../shared/venue.js";
 import { editableVenueFields } from "./edit-fields.js";
 import type { VenuesState } from "./useVenuesState.js";
-import { useLayoutEffect, useMemo, useRef } from "react";
 
 function editorDraftKey(draft: VillageVenue, classes: readonly VenueClass[]) {
   return JSON.stringify([

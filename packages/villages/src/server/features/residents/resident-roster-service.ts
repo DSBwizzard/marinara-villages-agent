@@ -1,17 +1,17 @@
 import { chooseLetterFont, legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
-import { readResidentAdmission, EMPTY_RESIDENT_ADMISSION } from "../../../shared/helpers/resident-admission.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
-import { randomVillageSeed } from "../../domain/rules/village-clock.js";
-import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
+import { EMPTY_RESIDENT_ADMISSION, readResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
-import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
+import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
+import { randomVillageSeed } from "../../domain/rules/village-clock.js";
+import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
 
 export interface ResidentRosterPorts {
   preparedSpriteManager?(
@@ -115,7 +115,7 @@ export function createResidentRoster({
           },
           addedAt,
           agenda: unwrittenVillageAgenda(state.venues, card.name, villageNow()),
-          completedWishes: [],
+          wishes: [],
           ingestSchedule: false,
           scheduleInfluence: influenceSettings(null),
           remap: null,

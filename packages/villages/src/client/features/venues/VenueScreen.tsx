@@ -1,13 +1,13 @@
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
 import { venueAssignedCountFor, venueCapacityFor, venueClassesFor } from "../../shared/venue.js";
+import { WorkspaceShell, type WorkspaceDestination } from "../../shared/WorkspaceShell.js";
 import type { VenueScreenController } from "./screen-contracts.js";
-import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayout, ZoneAccessLabels } from "./VenueLayout.js";
-import { WorkspaceShell, type WorkspaceDestination } from "../../shared/WorkspaceShell.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const { venueEditDraft, setVenueEditDraft, venueEditBusy, saveVenueName } = controller;

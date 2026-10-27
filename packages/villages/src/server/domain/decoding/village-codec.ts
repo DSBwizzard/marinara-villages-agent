@@ -1,29 +1,15 @@
-import { readWishGoalJournal } from "../rules/wish-journal.js";
-import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
-import { readMemoryCollection, memoryObject, memoryRequire } from "../rules/memory-integrity.js";
-import { readMemorySceneStates } from "../rules/village-memories.js";
-import { localDateKey } from "../rules/resident-planning.js";
-import { readDevelopment } from "../rules/development-codec.js";
-import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
-import { readProjectPlan } from "../rules/project-completion.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
-import { readOpening } from "../rules/opening-project.js";
-import { coerceFoundingTasks } from "../rules/founding-tasks.js";
-import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
-import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
-import { decodeVillageClock } from "../rules/clock-recovery.js";
-import { readSceneWishProtections } from "../rules/scene-wish-protection.js";
-import { savedVenueClassRecord } from "./venue-class-compat.js";
+import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import {
+  EMPTY_RESIDENT_ADMISSION,
   readResidentAdmission,
   readWorldName,
-  EMPTY_RESIDENT_ADMISSION,
 } from "../../../shared/helpers/resident-admission.js";
-import { isPrivateInterior, observePrivateInterior, privateInteriorKey } from "../rules/private-interior.js";
-import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
+import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
+import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type {
   VillageAgenda,
-  VillageCompletedWish,
+  VillageBackgroundPace,
   VillageNotice,
   VillagePendingDecision,
   VillageProject,
@@ -32,7 +18,6 @@ import type {
   VillageRemapMove,
   VillageResidence,
   VillageState,
-  VillageBackgroundPace,
   VillageTownMapView,
   VillageVenue,
   VillageVenueClass,
@@ -43,26 +28,23 @@ import type {
   VillageVenueZone,
   VillageVillager,
   VillageVillagerCardSnapshot,
-  VillageWish,
   VillageZoneDraft,
 } from "../models/world.js";
 import { unwrittenVillageAgenda, VILLAGE_AGENDA_WINDOWS } from "../rules/agenda-plan.js";
 import { completeAgendaWeek, legacyAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
-import {
-  asFraction,
-  asInstant,
-  asIsoString,
-  asRecord,
-  asString,
-  asStringArray,
-  asTrimmedString,
-} from "../rules/coerce.js";
+import { decodeVillageClock } from "../rules/clock-recovery.js";
+import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
+import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
+import { memoryObject, memoryRequire, readMemoryCollection } from "../rules/memory-integrity.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "../rules/native-remap.js";
+import { readOpening } from "../rules/opening-project.js";
 import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
 import { coercePlayerBackground } from "../rules/player-background.js";
+import { isPrivateInterior, observePrivateInterior, privateInteriorKey } from "../rules/private-interior.js";
 import { coerceProgressTasks } from "../rules/progress-engine.js";
+import { readProjectPlan } from "../rules/project-completion.js";
 import {
   boundText,
   DEFAULT_TOWN_MAP_VIEW,
@@ -71,10 +53,10 @@ import {
   isGlobalGalleryRef,
   isHomeBuildingKind,
   isTownMapFit,
-  MAX_PHYSICAL_NARRATION_LENGTH,
   MAX_NOTICE_AUTHOR_LENGTH,
   MAX_NOTICE_LENGTH,
   MAX_NOTICEBOARD_NOTES,
+  MAX_PHYSICAL_NARRATION_LENGTH,
   MAX_PLACES,
   MAX_PLAYER_PERSONA_ID_LENGTH,
   MAX_PLAYER_PERSONA_IDENTITY_LENGTH,
@@ -90,16 +72,16 @@ import {
   MAX_VENUE_IMAGE_URL_LENGTH,
   MAX_VENUE_NAME_LENGTH,
   MAX_VENUE_NOTE_LENGTH,
-  MAX_VILLAGER_WISHES,
-  MAX_WISH_LENGTH,
-  MAX_WISH_TELL_LENGTH,
   TOWN_MAP_FOCUS_MAX,
   TOWN_MAP_FOCUS_MIN,
   TOWN_MAP_ZOOM_MAX,
   TOWN_MAP_ZOOM_MIN,
   VILLAGES_PROMPT_BOX_MAX_LENGTH,
 } from "../rules/prompt-preset.js";
+import { localDateKey } from "../rules/resident-planning.js";
 import { coerceScenarioImprint, coerceWorldFacts } from "../rules/scenario-rules.js";
+import { coerceSocialActivities } from "../rules/social-activity.js";
+import { readSocialWish } from "../rules/social-wishes.js";
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
@@ -111,15 +93,15 @@ import {
   ZONE_KINDS,
 } from "../rules/venue-zones.js";
 import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex } from "../rules/village-clock.js";
-import { coerceWishActivities, coerceWishLifecycle } from "../rules/wish-coercion.js";
-import { wishSize } from "../rules/wish-definition.js";
-import { readSemanticWishCriteria } from "../rules/wish-criteria.js";
+import { readMemorySceneStates } from "../rules/village-memories.js";
+import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
+import { savedVenueClassRecord } from "./venue-class-compat.js";
 
-import { shortWishText, wishPolicy, routineRevision } from "../rules/wish-policy.js";
+import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 5,
+    version: 6,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     memoryReceipts: {},
@@ -128,8 +110,6 @@ export function defaultVillageState(): VillageState {
     noticeSequence: 0,
     dismissedNoticeIds: [],
     socialContractVersion: 2,
-    projectWishOutbox: [],
-    wishRefillIntents: {},
     progressEngineVersion: 1,
     name: "",
     narrationStyle: defaultVillageNarrationStyle(),
@@ -178,8 +158,6 @@ export function defaultVillageState(): VillageState {
     // nobody has said anything yet — shipping a few notices to make the panel
     // look occupied would be the village inventing its own history.
     noticeboard: [],
-    // Memories begin with witnessed experiences and explicit domain outcomes.
-    sceneWishProtections: {},
     simulatedThrough: "",
     lastKnownTimeZone: "",
     timeZone: "",
@@ -250,8 +228,7 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     // village write one. An empty agenda is a positive statement that asking
     // produced nothing, and it must only ever come from actually asking.
     agenda: coerceAgenda(raw.agenda, venues, cardSnapshot.name, raw.ingestSchedule !== false),
-    completedWishes: coerceCompletedWishes(raw.completedWishes),
-    wishLifecycle: coerceWishLifecycle(raw.wishLifecycle),
+    wishes: Array.isArray(raw.wishes) ? raw.wishes.map(readSocialWish) : [],
     ingestSchedule: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false).enabled,
     scheduleInfluence: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false),
     // Read on the same terms as the agenda, and for the same reason — but null
@@ -301,64 +278,6 @@ function coerceRemapFailure(value: unknown): VillageRemapFailure | null {
   if (!at || message.length === 0) return null;
   return { at, message };
 }
-function coerceWish(value: unknown): VillageWish | null {
-  const raw = asRecord(value);
-  const wish = boundText(raw.wish, MAX_WISH_LENGTH);
-  if (wish.length === 0) return null;
-  const intensity = typeof raw.intensity === "number" && Number.isFinite(raw.intensity) ? Math.round(raw.intensity) : 2;
-  const need = asRecord(raw.need);
-  return {
-    id: asTrimmedString(raw.id) || randomVillageSeed(),
-    wish,
-    ...(asRecord(raw.semanticCriteria).semanticVersion === 2 && asRecord(raw.semanticCriteria).goal === wish
-      ? { semanticCriteria: readSemanticWishCriteria(raw.semanticCriteria, wish) }
-      : {}),
-    // Clamped rather than dropped. The number only decides how loudly a wish is
-    // written and in what order, so a model that answers with 0 or 9 has said
-    // something usable badly, not something unusable.
-    intensity: Math.min(3, Math.max(1, intensity)),
-    tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
-    addedAt: asInstant(raw.addedAt),
-    expiresAt: asInstant(raw.expiresAt),
-    goalJournal: readWishGoalJournal(raw.goalJournal),
-    size: wishSize(raw.size),
-    conditionRevision:
-      Number.isSafeInteger(raw.conditionRevision) && (raw.conditionRevision as number) >= 0
-        ? (raw.conditionRevision as number)
-        : 0,
-    ...(asInstant(raw.learnedAt)
-      ? {
-          learnedAt: asInstant(raw.learnedAt),
-          learnedLineIds: Array.isArray(raw.learnedLineIds)
-            ? raw.learnedLineIds.filter((id): id is string => typeof id === "string")
-            : [],
-        }
-      : {}),
-    ...(shortWishText(need.id)
-      ? {
-          need: {
-            id: shortWishText(need.id),
-            subject: shortWishText(need.subject, 80),
-            action: shortWishText(need.action, 80),
-            policy: wishPolicy(need.policy),
-          },
-        }
-      : {}),
-  };
-}
-function coerceCompletedWishes(value: unknown): VillageCompletedWish[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  return value.flatMap((entry): VillageCompletedWish[] => {
-    const raw = asRecord(entry);
-    const wish = coerceWish(raw.wish);
-    const fulfilledAt = asInstant(raw.fulfilledAt);
-    const memoryId = asTrimmedString(raw.memoryId);
-    if (!wish || !fulfilledAt || !memoryId || seen.has(wish.id)) return [];
-    seen.add(wish.id);
-    return [{ wish, fulfilledAt, memoryId }];
-  });
-}
 function coerceAgenda(
   value: unknown,
   venues: readonly VillageVenue[],
@@ -368,20 +287,8 @@ function coerceAgenda(
   if (value === null || value === undefined) return null;
   const raw = asRecord(value);
   if (Object.keys(raw).length === 0) return null;
-  const wishes: VillageWish[] = [];
-  const seen = new Set<string>();
-  if (Array.isArray(raw.wishes)) {
-    for (const entry of raw.wishes) {
-      const wish = coerceWish(entry);
-      if (!wish || seen.has(wish.id) || wishes.length >= MAX_VILLAGER_WISHES) continue;
-      seen.add(wish.id);
-      wishes.push(wish);
-    }
-  }
   const agenda: VillageAgenda = {
-    wishActivities: coerceWishActivities(raw.wishActivities),
-    socialActivities: coerceWishActivities(raw.socialActivities),
-    wishes,
+    socialActivities: coerceSocialActivities(raw.socialActivities),
     routineSummary: boundText(raw.routineSummary, MAX_ROUTINE_SUMMARY_LENGTH),
     day: Array.isArray(raw.day)
       ? raw.day.flatMap((entry) => {
@@ -1581,7 +1488,7 @@ function memoryField(value: unknown): unknown {
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 5) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 6) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
@@ -1606,7 +1513,7 @@ export function coerceVillageState(value: unknown): VillageState {
     memoryRequire(!Object.hasOwn(asRecord(raw.exchangeReceipts), id), "duplicate memory receipt");
   }
   const state: VillageState = {
-    version: 5,
+    version: 6,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(
@@ -1631,18 +1538,6 @@ export function coerceVillageState(value: unknown): VillageState {
     eventAttempts: raw.eventAttempts
       ? (structuredClone(raw.eventAttempts) as VillageState["eventAttempts"])
       : undefined,
-    projectWishOutbox: Array.isArray(raw.projectWishOutbox)
-      ? (raw.projectWishOutbox as VillageState["projectWishOutbox"])
-      : [],
-    sceneWishProtections: readSceneWishProtections(raw.sceneWishProtections),
-    wishRefillIntents: Object.fromEntries(
-      Object.entries(asRecord(raw.wishRefillIntents)).flatMap(([id, value]) => {
-        const row = asRecord(value);
-        return typeof row.id === "string" && typeof row.settled === "string"
-          ? [[id, { id: row.id, settled: row.settled }]]
-          : [];
-      }),
-    ),
     progressEngineVersion: 1,
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
@@ -1689,7 +1584,6 @@ export function coerceVillageState(value: unknown): VillageState {
       return { mode: "forever" as const, value: 0 };
     })(),
     residences: coerceResidences(raw.residences),
-    development: readDevelopment(raw.development),
     // Left empty rather than stamped with "now": a record that predates the
     // setup flow should open the wizard, not claim it has been set up.
     opening: readOpening(raw.opening),
@@ -1788,6 +1682,9 @@ export function coerceVillageState(value: unknown): VillageState {
       ? (structuredClone(raw.socialOutbox) as VillageState["socialOutbox"])
       : [],
     projects: coerceProjects(raw.projects ?? []),
+    wishFollowing: Object.fromEntries(
+      Object.entries(asRecord(raw.wishFollowing)).filter(([, v]) => typeof v === "boolean"),
+    ) as Record<string, boolean>,
     progressTasks: coerceProgressTasks(raw.progressTasks),
     pendingDecisions: coercePendingDecisions(raw.pendingDecisions),
     ...(raw.formerLetterFonts

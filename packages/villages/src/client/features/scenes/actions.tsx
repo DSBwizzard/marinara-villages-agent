@@ -1,3 +1,9 @@
+import { useCallback, useRef, type SetStateAction } from "react";
+import {
+  isSceneTurnOutcome,
+  sceneTurnOutcomeMessage,
+  type SceneTurnOutcome,
+} from "../../../shared/contracts/scene-turn-outcome.js";
 import type {
   RoomLine,
   RoomOperation,
@@ -10,7 +16,10 @@ import type {
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
+import { recordTurnTiming } from "../../shared/turn-timing.js";
 import type { SceneComposerMode } from "../../shared/types.js";
+import { useSceneEntryLifetime } from "./entry-lifetime.js";
+import { useSceneRequestLifetime } from "./request-lifetime.js";
 import {
   completedGreetingAfterFailure,
   completedRoomAfterFailure,
@@ -19,18 +28,9 @@ import {
   refreshSceneAfterFailure,
   staleVenueReason,
 } from "./ScenePanel.js";
-import { recordTurnTiming } from "../../shared/turn-timing.js";
-import {
-  isSceneTurnOutcome,
-  sceneTurnOutcomeMessage,
-  type SceneTurnOutcome,
-} from "../../../shared/contracts/scene-turn-outcome.js";
 import { useTurnRecovery } from "./turn-recovery.js";
 import type { LegacySceneRecovery } from "./useScenesState.js";
 import { sceneResend } from "./villages-venue-send";
-import { useSceneRequestLifetime } from "./request-lifetime.js";
-import { useSceneEntryLifetime } from "./entry-lifetime.js";
-import { type SetStateAction, useCallback, useRef } from "react";
 
 function sameSavedOperation(
   expected: RoomOperation,

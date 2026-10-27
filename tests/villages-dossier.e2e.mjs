@@ -1,3 +1,4 @@
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
@@ -150,13 +151,9 @@ try {
         wishes: characterId === "mara" ? ["Learn to swim"] : [],
         knownWishes:
           characterId === "mara"
-            ? [{ wishId: "swim", text: "Learn to swim", learnedAt: now, status: "active", facts: [] }]
+            ? [{ wishId: "swim", text: "Learn to swim", at: now, status: "open", followed: true, facts: [] }]
             : [],
         ties: [],
-        knownDevelopment:
-          characterId === "mara"
-            ? [{ id: "pursuit-known", at: now, title: "Restore the mill", text: "Mara hopes to restore the mill" }]
-            : [],
         learned:
           characterId === "mara"
             ? [{ text: "Mara and Eli are friends", kind: "connection", at: now, aboutName: "Eli" }]
@@ -208,17 +205,17 @@ try {
         weekUnreadable: false,
         ingestSchedule: false,
         nativeSchedule: null,
-        agenda: {
-          wishes: [
+        wishes: [
+          fixtureWish(
             {
-              id: characterId + "-private",
               wish: characterId === "mara" ? "PRIVATE MARA WISH" : "PRIVATE ELI WISH",
-              tell: "",
-              intensity: 2,
-              addedAt: now,
-              expiresAt: now,
+              reason: "Grounded social fixture desire",
             },
-          ],
+            characterId + "-private",
+            now,
+          ),
+        ],
+        agenda: {
           routineSummary: "PRIVATE ROUTINE",
           generatedAt: now,
           activeDay: { blocks: [] },
@@ -232,15 +229,13 @@ try {
         wishHistoryCount: 0,
       })),
     };
-    relationships.profiles[0].knownDevelopment = [
-      { id: "move", text: "Mara: move to Mill : stalled.", at: now, status: "stalled" },
-    ];
     relationships.profiles[0].knownWishes.push(
       ...Array.from({ length: 12 }, (_, index) => ({
         wishId: `shared-${index}`,
         text: `Shared wish ${index + 1}`,
-        learnedAt: now,
-        status: "active",
+        at: now,
+        followed: true,
+        status: "open",
         facts: [],
       })),
     );
@@ -461,6 +456,8 @@ try {
             },
           ],
         };
+      else if (path.endsWith("/wishes/inspect"))
+        value = { wishes: agendas.villagers.find((v) => path.includes("/" + v.characterId + "/"))?.wishes ?? [] };
       else if (path.endsWith("/agendas/mara/influence")) {
         agendas.villagers[0].ingestSchedule = true;
         value = agendas;
@@ -480,9 +477,6 @@ try {
       else if (path.endsWith("/villagers/mara") && request.method() === "DELETE") {
         village.villagers = village.villagers.filter((entry) => entry.characterId !== "mara");
         value = village;
-      } else if (path.endsWith("/wishes/swim/retire")) {
-        relationships.profiles[0].knownWishes[0].status = "retired";
-        value = relationships;
       } else if (/\/greet|\/turn|\/interpret/.test(path)) throw Error("Unexpected generation request " + path);
       await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
@@ -506,22 +500,6 @@ try {
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
     await expect(selector.getByRole("searchbox")).toHaveCount(0);
     await selector.getByRole("button", { name: "Open Mara profile" }).click();
-    await page.getByRole("button", { name: "Pursuits", exact: true }).click();
-    const development = page
-      .getByRole("region", { name: "Known pursuits", exact: true })
-      .getByText("Mara: move to Mill : stalled.", { exact: false });
-    await expect(development).toBeVisible();
-    await development.scrollIntoViewIfNeeded();
-    assert.equal(
-      await development.evaluate((element) => {
-        const box = element.getBoundingClientRect();
-        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-        return hit === element || element.contains(hit);
-      }),
-      true,
-      "Known pursuits must be readable without the portrait covering them.",
-    );
-
     assert.deepEqual(
       await page.locator(`.${P}-dossier-book`).boundingBox(),
       bookBox,
@@ -601,7 +579,6 @@ try {
     await expect(overview.getByText("Mara has expressed an interest in talking again.")).toBeVisible();
     await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
     await expect(overview.getByText("Learn to swim")).toBeVisible();
-    await expect(overview.getByText("Mara: move to Mill : stalled.")).toBeVisible();
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
     await expect(overview.getByText("No known home or work location.")).toBeVisible();
     await expect(overview.getByText(/PRIVATE/)).toHaveCount(0);
@@ -757,15 +734,17 @@ try {
     await expect(profile.getByText("Learn to swim", { exact: true }).first()).toBeVisible();
     const tabBefore = await tabs.boundingBox();
     const reading = profile.locator(`.${P}-dossier-content`);
+    let wishPages = 0;
+    while (!(await profile.getByText("Shared wish 12", { exact: true }).first().isVisible())) {
+      await profile.getByRole("button", { name: "Next Wishes page", exact: true }).click();
+      assert(++wishPages < 20);
+    }
     assert.ok(
-      await reading.evaluate((node) => {
-        node.scrollTop = node.scrollHeight;
-        return node.scrollTop > 0;
-      }),
-      "Long section content scrolls vertically",
+      await reading.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+      "Wishes use bounded pages instead of scrolling",
     );
     const tabAfter = await tabs.boundingBox();
-    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while content scrolls");
+    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while changing Wish pages");
     assert.equal(tabAfter.x, tabBefore.x);
     await expect(profile.getByText("Shared wish 12", { exact: true }).first()).toBeVisible();
     await settleTurn();

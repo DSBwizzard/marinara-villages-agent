@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { residentPlanningOpportunity } from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 
 const state = defaultVillageState();
 state.seed = "social-opportunity";
@@ -9,7 +9,8 @@ state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any
 state.villagers = ["ada", "ben"].map((characterId) => ({
   characterId,
   cardSnapshot: { name: characterId },
-  agenda: { day: [], wishes: [] },
+  wishes: [],
+  agenda: { day: [] },
 })) as any;
 const now = new Date("2026-10-26T17:00:00.000Z");
 const moment = deriveVillageMoment({ foundedAt: now.toISOString(), seed: state.seed, now });

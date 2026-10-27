@@ -1,25 +1,25 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import assert from "node:assert/strict";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
 import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
 import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
-import assert from "node:assert/strict";
-import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
-  queueBackgroundJob,
-  registerBackgroundHandler,
-  settleBackgroundWork,
   backgroundWorkSummaries,
+  hasVillagePresence,
+  queueBackgroundJob,
+  recoverBackgroundWork,
+  registerBackgroundHandler,
   retryBackgroundJob,
+  settleBackgroundWork,
   startBackgroundWork,
   villageBackgroundPresence,
-  hasVillagePresence,
-  recoverBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
-import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 const rows = new Map<string, any>();
 let writesFail = false;
@@ -236,7 +236,7 @@ async function reset() {
             name: id,
             capturedAt: "2026-09-01T00:00:00.000Z",
           },
-          completedWishes: [],
+          wishes: [],
           addedAt: "2026-09-01T00:00:00.000Z",
         }) as any,
     );
@@ -541,7 +541,7 @@ async function main() {
       setting: "",
       lore: [],
       loreKey: "",
-      completedWishes: [],
+      wishes: [],
       venues: [],
       wishes: [],
       name: "Rosa",
@@ -639,7 +639,7 @@ async function main() {
             name: "Cycle",
             capturedAt: new Date().toISOString(),
           },
-          completedWishes: [],
+          wishes: [],
         } as any,
       ];
     });

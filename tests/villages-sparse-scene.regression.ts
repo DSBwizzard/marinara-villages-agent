@@ -1,13 +1,24 @@
-import { PLAYER_CAPTURE_CONTRACT } from "../packages/villages/src/server/domain/rules/player-speech-capture.js";
-import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
-import { readSceneWritingCapabilities } from "../packages/villages/src/server/domain/rules/scene-compact-contract.js";
 import assert from "node:assert/strict";
 import {
-  normalizeSceneEffectReferences,
+  materializePlayerSpeech,
+  PLAYER_CAPTURE_CONTRACT,
+} from "../packages/villages/src/server/domain/rules/player-speech-capture.js";
+import { sceneMissingFields } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
+import {
+  compactSceneContract,
+  readSceneWritingCapabilities,
+  reliableSceneContract,
+} from "../packages/villages/src/server/domain/rules/scene-compact-contract.js";
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import {
+  completeSceneObject,
   normalizeRecoverableSceneReply,
+  normalizeSceneEffectReferences,
+  normalizeSparseSceneReply,
 } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { materializePlayerSpeech } from "../packages/villages/src/server/domain/rules/player-speech-capture.js";
+import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
 import { workFailureSummary } from "../packages/villages/src/server/domain/rules/work-failure.js";
+import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zone-events.js";
 
 // Compact optional metadata and citation syntax survive player-speech insertion.
 {
@@ -82,17 +93,6 @@ import { workFailureSummary } from "../packages/villages/src/server/domain/rules
   });
   assert.deepEqual(valid.failures, {});
 }
-import {
-  completeSceneObject,
-  normalizeSparseSceneReply,
-} from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { sceneMissingFields } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
-import {
-  compactSceneContract,
-  reliableSceneContract,
-} from "../packages/villages/src/server/domain/rules/scene-compact-contract.js";
-import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zone-events.js";
-import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 
 const raw = {
   segments: [

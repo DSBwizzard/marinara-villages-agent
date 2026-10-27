@@ -1,28 +1,30 @@
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { flexibleAgendaInterval } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { agendaAt, agendaDayPlan, villageAgendaDay } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
-  agendaBlocksFor,
-  agendaDateKey,
-  completeAgendaWeek,
-  legacyAgendaWeek,
-  replaceRemainingAgendaDay,
-  scheduleInformedWeek,
-  workingAgendaWeek,
-} from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import { villagerPlaceView } from "../packages/villages/src/server/domain/rules/village-projections.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type {
   VillageAgenda,
   VillageState,
   VillageVenue,
   VillageVillager,
 } from "../packages/villages/src/server/domain/models/world.js";
+import { agendaAt, agendaDayPlan, villageAgendaDay } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import {
+  agendaBlocksFor,
+  agendaDateKey,
+  completeAgendaWeek,
+  flexibleAgendaInterval,
+  legacyAgendaWeek,
+  replaceRemainingAgendaDay,
+  scheduleInformedWeek,
+  workingAgendaWeek,
+} from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
+import { villagerPlaceView } from "../packages/villages/src/server/domain/rules/village-projections.js";
 
 function place(id: string, residentCharacterId: string | null = null): VillageVenue {
   return {
@@ -205,7 +207,7 @@ assert.equal(overnight.Monday?.at(-1)?.activity, "Keeping watch");
 assert.equal(overnight.Tuesday?.[0]?.endMinute, 360, "an overnight source continues into the next day");
 const recovered = coerceVillageState({
   ...defaultVillageState(),
-  version: 5,
+  version: 6,
   wishSystemVersion: 3,
   villagers: [
     {

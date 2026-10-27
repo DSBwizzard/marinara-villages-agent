@@ -1,32 +1,37 @@
 // Test cases: memories-runtime/schema, memories-runtime/own-scene, memories-runtime/live-writer, memories-runtime/committed-recovery, memories-runtime/frozen-fields, memories-runtime/source-identity, memories-runtime/public-inspection, memories-runtime/acoustic-privacy, memories-runtime/protection-boundary
 import assert from "node:assert/strict";
-import { runCase } from "../scripts/test-cases.mjs";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { bindLiveProposals, liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+import { readMemoryCollection } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import {
+  estimatedMemoryTokens,
+  memoryProtectionContext,
+} from "../packages/villages/src/server/domain/rules/memory-protection.js";
+import { projectMemories } from "../packages/villages/src/server/domain/rules/memory-views.js";
+import {
+  bindSceneMemorySuggestion,
+  sceneMemoryContext,
+  sceneMemoryUnit,
+} from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import {
   applyVillageMemory,
   forgetVillageMemory,
   reserveMemoryScene,
   sceneMemories,
 } from "../packages/villages/src/server/domain/rules/village-memories.js";
-import { projectMemories } from "../packages/villages/src/server/domain/rules/memory-views.js";
-import { memoryProposal, memoryRepair, memoryTime, targetOf } from "./helpers/memories-fixture.js";
 import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
-import { bindLiveProposals, liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
-import {
-  bindSceneMemorySuggestion,
-  sceneMemoryContext,
-  sceneMemoryUnit,
-} from "../packages/villages/src/server/domain/rules/scene-memories.js";
-import { readMemoryCollection } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { createWorldCoordination } from "../packages/villages/src/server/features/world/village-service.js";
+import { runCase } from "../scripts/test-cases.mjs";
 import {
-  memoryProtectionContext,
-  estimatedMemoryTokens,
-} from "../packages/villages/src/server/domain/rules/memory-protection.js";
-import { realisticMemoryHistory } from "./helpers/memories-fixture.js";
+  memoryProposal,
+  memoryRepair,
+  memoryTime,
+  realisticMemoryHistory,
+  targetOf,
+} from "./helpers/memories-fixture.js";
 
 function writerFixture() {
   let state = defaultVillageState();
@@ -104,7 +109,7 @@ function writerFixture() {
 
 await runCase("memories-runtime/schema", () => {
   const state = defaultVillageState();
-  assert.equal(state.version, 5);
+  assert.equal(state.version, 6);
   assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(state))).memories, state.memories);
   const missing = structuredClone(state);
   delete (missing as any).memories;

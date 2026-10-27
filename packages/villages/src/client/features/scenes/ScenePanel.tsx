@@ -1,9 +1,20 @@
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { isSceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
 import type {
   ResidentSprite,
   RoomLine,
   RoomRecordEvent,
-  SceneView,
   SceneChangeIssue,
+  SceneView,
 } from "../../../shared/contracts/village.js";
 import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import {
@@ -18,27 +29,16 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
 import type { Portrait, PortraitMap, RoomStep, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
+import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, SceneInformationChip, type SceneErrorItem } from "./scene-errors.js";
-import { isSceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";
 import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene.js";
 import { useReadingPages } from "./villages-reading-viewport.js";
-import type { SceneReadingSession } from "./reading-session.js";
 import { hasCompletedRoomSubmission, nextRoomReadIndex } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
 import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
-import {
-  type CSSProperties,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
 
 /** Unseen Zone names remain private. */
 export function sceneZoneLabel(zone?: { name: string; kind: string; seen?: boolean }): string {
