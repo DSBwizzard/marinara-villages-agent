@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { startingZone } from "./founding-template.js";
+import { addFoundingZone } from "./founding-template.js";
 import { draftZonePolicy } from "./villages-founding-zones.js";
 import {
   foundingVenueIssues,
@@ -132,21 +132,11 @@ export function QuickStartVenues({
     if (!selected) return;
     const personal = newZoneType === "private";
     if (personal && selected.category === "public-center") return;
-    const row = {
-      ...startingZone(selected, personal),
-      id: `zone:${createVillagesClientId()}`,
-      name: "New Zone",
-      connectedTo: ["exterior"],
-    };
-    const spaces = personal ? (selected.spaces ?? []) : [...(selected.spaces ?? []), row];
-    const privateSpaces = personal ? [...(selected.privateSpaces ?? []), row] : (selected.privateSpaces ?? []);
-    onPatch({
-      ...selected,
-      spaces,
-      privateSpaces,
-      layout: spaces.length ? (privateSpaces.length ? "both" : "common") : "private",
-    });
-    setZoneId(row.id);
+    const id = `zone:${createVillagesClientId()}`;
+    const next = addFoundingZone(selected, personal, id);
+    if (next === selected) return;
+    onPatch(next);
+    setZoneId(id);
   };
   const referencesZone =
     !!selected &&

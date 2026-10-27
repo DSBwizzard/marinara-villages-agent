@@ -6,6 +6,8 @@ import { arrangeQuickStartVenues } from "../packages/villages/src/client/feature
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { calculateSetupBeginningSourceKey } from "../packages/villages/src/client/features/founding/calculations.js";
 import { mergeQuickStartSpaces } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
+import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
+import { foundingZoneProblem } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { extractFoundingVenueReply } from "../packages/villages/src/server/domain/rules/founding-venue-reply.js";
@@ -70,6 +72,11 @@ assert.equal(
 );
 assert.deepEqual(foundingVenueIssues([complete], false, true), []);
 assert.doesNotThrow(() => parsePlace(complete, true), "Quick Start produces a server-valid founding Residence");
+for (const personal of [false, true]) {
+  const added = addFoundingZone(draft, personal, "zone:new");
+  assert.equal(foundingZoneProblem(added), "", "adding a Zone preserves existing connection routes");
+  assert.doesNotThrow(() => parsePlace(added, true), "the added Zone remains valid for founding");
+}
 const singleSpace = { ...draft, layout: "common" as const, privateSpaces: [] };
 assert.equal(
   mergeQuickStartSpaces(singleSpace, structuredClone(singleSpace), parsed[0], ["layout"]).privateSpaces?.length,
