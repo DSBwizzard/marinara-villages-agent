@@ -794,8 +794,38 @@ try {
     await expect(profile.getByRole("spinbutton")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `relationships-${width}-${height}.png`) });
     await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await page.evaluate((tag) => {
+      const game = document.querySelector(tag);
+      game.style.height = "calc(100vh - 80px)";
+      game.style.marginTop = "80px";
+      const control = document.createElement("button");
+      control.id = "engine-control";
+      control.textContent = "Engine control";
+      control.style.cssText = "position:fixed;top:0;left:0;height:60px;z-index:10";
+      control.addEventListener("click", () => {
+        control.dataset.clicked = "true";
+      });
+      document.body.append(control);
+    }, P);
     await profile.getByText("Message", { exact: true }).click();
     const mail = page.getByRole("dialog", { name: "Mailbox", exact: true });
+    const bounds = await page.evaluate((tag) => {
+      const game = document.querySelector(tag).getBoundingClientRect();
+      const overlay = document.querySelector(".villages-mailbox-overlay").getBoundingClientRect();
+      return {
+        game: { top: game.top, bottom: game.bottom, left: game.left, right: game.right },
+        overlay: { top: overlay.top, bottom: overlay.bottom, left: overlay.left, right: overlay.right },
+      };
+    }, P);
+    assert(
+      bounds.overlay.top >= bounds.game.top &&
+        bounds.overlay.bottom <= bounds.game.bottom &&
+        bounds.overlay.left >= bounds.game.left &&
+        bounds.overlay.right <= bounds.game.right,
+      "Mailbox stays within the game window",
+    );
+    await page.locator("#engine-control").click();
+    await expect(page.locator("#engine-control")).toHaveAttribute("data-clicked", "true");
     await expect(mail.getByLabel("Recipient")).toHaveValue("mara");
     const draft = mail.getByRole("textbox", { name: "Personal message" });
     const exactMessage = "Let's talk later.\n  Exact text";
@@ -849,6 +879,22 @@ try {
     if (width === 390) failMailRead = true;
     await letterRows.first().click();
     await expect(mail.getByLabel("Personal mail").getByText("A first letter from Mara.")).toBeVisible();
+    const letterSignature = mail.getByRole("img", { name: "Mara's signature" });
+    await expect(letterSignature).toBeVisible();
+    const placement = await letterSignature.evaluate((node) => {
+      const signature = node.getBoundingClientRect();
+      const paper = node.closest(".villages-letter-paper").getBoundingClientRect();
+      return {
+        signatureRight: signature.right,
+        paperRight: paper.right,
+        signatureTop: signature.top,
+        paperTop: paper.top,
+      };
+    });
+    assert(
+      placement.paperRight - placement.signatureRight < 45 && placement.signatureTop > placement.paperTop,
+      "Signature is aligned to the right of the letter",
+    );
     await expect(mail.getByLabel("Personal mail").getByText("A second letter from Mara.")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `mailbox-letter-${width}-${height}.png`) });
     if (width === 390) {
