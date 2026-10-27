@@ -403,10 +403,16 @@ export function VillagerDossier({
                           {profile?.knownWishes?.length || profile?.knownDevelopment?.length ? (
                             <ul>
                               {profile?.knownWishes?.map((wish) => (
-                                <li key={wish.wishId}>{wish.text}</li>
+                                <li key={wish.wishId}>
+                                  {wish.text}
+                                  {wish.status ? ` · ${wish.status}` : ""}
+                                </li>
                               ))}
                               {profile?.knownDevelopment?.map((pursuit) => (
-                                <li key={pursuit.id}>{pursuit.title || pursuit.text}</li>
+                                <li key={pursuit.id}>
+                                  {pursuit.title || pursuit.text}
+                                  {pursuit.status ? ` · ${pursuit.status}` : ""}
+                                </li>
                               ))}
                             </ul>
                           ) : (
