@@ -5,7 +5,6 @@ import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { agendaMinuteLabel, agendaUpdatePending, remapPlaceName } from "../../shared/presentation.js";
 import type { ResidentsScreenController } from "./screen-contracts.js";
-import { BackgroundWorkPanel } from "../background/BackgroundPanel.js";
 import { AvatarFace, WishHistory, wishLifetimeLabel } from "./ResidentPanels.js";
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
 import { SpriteManager } from "./villages-sprite-manager.js";
@@ -38,7 +37,6 @@ export function ResidentsScreen({
     profileOrigin,
     refreshBusyId,
     refreshPreviews,
-    retryWork,
     rewriteAgenda,
     screen,
     setAgendaScheduleIngestion,
@@ -480,12 +478,6 @@ export function ResidentsScreen({
             ) : undefined
           }
           inspectors={{
-            overview: (
-              <BackgroundWorkPanel
-                jobs={(snapshot?.backgroundWork ?? []).filter((job) => job.subjectId === personProfile.actorId)}
-                onRetry={retryWork}
-              />
-            ),
             wishes: wishInspection,
             agenda: agendaInspection,
             memories: (

@@ -7,7 +7,7 @@ import { AgentConnections } from "./AgentConnections.js";
 export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
   const {
     category,
-    backgroundPanel,
+    writing,
     busy,
     resetArmed,
     saveCharacterSpeechColors,
@@ -23,8 +23,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
     <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
       {category === "general" ? (
         <>
-          {backgroundPanel}
-          {snapshot?.isFounded ? <VillageWritingSettings /> : null}
+          {snapshot?.isFounded ? <VillageWritingSettings writing={writing} /> : null}
 
           {snapshot ? (
             <div className={`${ELEMENT_TAG}-field`}>
@@ -127,10 +126,9 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
           ) : null}
 
           <div className={`${ELEMENT_TAG}-field`}>
-            <span className={`${ELEMENT_TAG}-label`}>Starting over</span>
+            <span className={`${ELEMENT_TAG}-label`}>Erase Village</span>
             <p className={`${ELEMENT_TAG}-empty`}>
-              This is not the same thing. It takes the village apart completely — the villagers, their conversations,
-              the places, your own details and the map — and hands you an empty one. There is no way back.
+              Permanently erase this Village and its progress. This cannot be undone.
             </p>
             <div className={`${ELEMENT_TAG}-row`}>
               {resetArmed ? (
@@ -138,10 +136,10 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-danger`}
-                    disabled={busy}
+                    disabled={busy || writing.busy}
                     onClick={() => void startOver()}
                   >
-                    Yes, empty the village
+                    Erase Village permanently
                   </button>
                   <button
                     type="button"
@@ -149,17 +147,17 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
                     disabled={busy}
                     onClick={() => setResetArmed(false)}
                   >
-                    Keep it
+                    Cancel
                   </button>
                 </>
               ) : (
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}
-                  disabled={busy || !snapshot}
+                  disabled={busy || writing.busy || !snapshot}
                   onClick={() => setResetArmed(true)}
                 >
-                  Reset the village and start over
+                  Erase Village
                 </button>
               )}
             </div>

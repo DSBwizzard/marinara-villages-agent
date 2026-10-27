@@ -24,7 +24,7 @@ function Harness(){
  openMenu=useCallback(v=>{window.calls.menu++;rawMenu(v)},[]);
  const ports={snapshot,setSnapshot,setBusy,setSettingsError,setVenueEditDraft,setVenuesDraft,requestEdits,setRequestEdits,openMenu};
  const save=useSaveVenue(ports),remove=useRemoveVenue(ports),decide=useDecideVenueRequest(ports),pace=useSaveBackgroundPace(ports),settings=useSaveSettings({...ports,
- knowledgeDraft:'',personaDraft:'',settingDraft:'',lorebookDraft:[],loreTokenBudgetDraft:1600,acceptSavedSettings:()=>window.acks++});
+ knowledgeDraft:'',personaDraft:'',settingDraft:'',lorebookDraft:[],loreTokenBudgetDraft:1600,visualLoreDefault:true,acceptSavedSettings:()=>window.acks++});
  const commands={save:()=>save(venueEditDraft),remove:()=>remove(window.targetId),approve:()=>decide(window.entry,true),deny:()=>decide(window.entry,false),pace:()=>pace('quiet'),settings};
  const launch=fn=>{window.pending.push(fn());return window.pending.length-1},run=kind=>launch(commands[kind]);
  const reset=()=>{rawSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});rawBusy(true)};

@@ -171,6 +171,8 @@ try {
     holdMapSave = true;
     await page.getByRole("button", { name: "Save map", exact: true }).click();
     await expect.poll(() => !!heldMapSave).toBe(true);
+    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled();
+    await expect(page.getByLabel("Village world", { exact: true })).toBeDisabled();
     await expect(page.locator("." + P + "-map-edit-canvas")).toHaveAttribute("inert", "");
     await editStage.scrollIntoViewIfNeeded();
     const heldBox = await editStage.boundingBox();

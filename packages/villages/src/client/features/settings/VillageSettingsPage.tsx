@@ -60,15 +60,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               />
               Personalize new venue images by default
             </label>
-            <label>
-              <input
-                autoComplete="off"
-                type="checkbox"
-                checked={visualLoreDefault}
-                onChange={(event) => setVisualLoreDefault(event.target.checked)}
-              />
-              Use visual lore by default
-            </label>
             <button type="button" disabled={busy} onClick={() => void saveScenerySettings()}>
               Save scenery settings
             </button>
@@ -82,45 +73,56 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
           {snapshot ? (
             <section className={`${ELEMENT_TAG}-panel`}>
               <h2 className={`${ELEMENT_TAG}-panel-title`}>World Configuration</h2>
+              <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+                <MapsPanel
+                  snapshot={snapshot}
+                  onSnapshot={ports.setSnapshot}
+                  mobile={mobile}
+                  reportLocalDraftStatus={ports.reportLocalDraftStatus}
+                />
 
-              <MapsPanel
-                snapshot={snapshot}
-                onSnapshot={ports.setSnapshot}
-                mobile={mobile}
-                reportLocalDraftStatus={ports.reportLocalDraftStatus}
-              />
-
-              <WorldNameSettings
-                key={snapshot.settings.worldName}
-                onSnapshot={ports.setSnapshot}
-                initial={snapshot.settings.worldName ?? ""}
-                reportLocalDraftStatus={ports.reportLocalDraftStatus}
-              />
-              <VillageLorebookPicker
-                books={lorebooks}
-                error={lorebooksError}
-                selected={lorebookDraft}
-                onChange={setLorebookDraft}
-                disabled={busy}
-              />
-              <LoreTokenBudgetField
-                value={loreTokenBudgetDraft}
-                onChange={setLoreTokenBudgetDraft}
-                min={snapshot.settings.loreTokenBudgetMin ?? 0}
-                max={snapshot.settings.loreTokenBudgetMax ?? 3200}
-                disabled={busy}
-              />
-
-              <div className={`${ELEMENT_TAG}-row`}>
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  onClick={() => void saveSettings()}
+                <WorldNameSettings
+                  key={snapshot.settings.worldName}
+                  onSnapshot={ports.setSnapshot}
+                  initial={snapshot.settings.worldName ?? ""}
+                  reportLocalDraftStatus={ports.reportLocalDraftStatus}
+                />
+                <VillageLorebookPicker
+                  books={lorebooks}
+                  error={lorebooksError}
+                  selected={lorebookDraft}
+                  onChange={setLorebookDraft}
                   disabled={busy}
-                >
-                  Save settings
-                </button>
-              </div>
+                />
+                <LoreTokenBudgetField
+                  value={loreTokenBudgetDraft}
+                  onChange={setLoreTokenBudgetDraft}
+                  min={snapshot.settings.loreTokenBudgetMin ?? 0}
+                  max={snapshot.settings.loreTokenBudgetMax ?? 3200}
+                  disabled={busy}
+                />
+                <label className={`${ELEMENT_TAG}-row`}>
+                  <input
+                    autoComplete="off"
+                    type="checkbox"
+                    disabled={busy}
+                    checked={visualLoreDefault}
+                    onChange={(event) => setVisualLoreDefault(event.target.checked)}
+                  />
+                  Use selected lorebooks when generating images
+                </label>
+
+                <div className={`${ELEMENT_TAG}-row`}>
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-button`}
+                    onClick={() => void saveSettings()}
+                    disabled={busy}
+                  >
+                    Save settings
+                  </button>
+                </div>
+              </fieldset>
             </section>
           ) : null}
         </>

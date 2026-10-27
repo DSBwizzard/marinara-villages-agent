@@ -1,5 +1,6 @@
 import { sceneNavigationScreen } from "./navigation.js";
 import { useSettingsDraftSession } from "../features/settings/draft-session.js";
+import { useVillageWriting } from "../features/settings/WritingSettings.js";
 import type { TownMapView, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
 import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
@@ -186,6 +187,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   }, [element]);
 
   const { snapshot, setSnapshot, beginSnapshotRead } = useVillageSnapshot();
+  const writing = useVillageWriting(snapshot?.isFounded === true);
   const [error, setError] = useState("");
 
   const homeBuildings = snapshot?.settings.homeBuildings ?? [];
@@ -464,6 +466,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     settingsError,
     setSettingsError,
   } = useSettingsState();
+
+  useLayoutEffect(() => {
+    if (screen !== "menu" || menuPage !== "advanced") setResetArmed(false);
+  }, [screen, menuPage, setResetArmed]);
 
   const {
     savedSetupDraft,
@@ -968,14 +974,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const retryWork = useResidentsRetryWork({ loadAgendas, setSnapshot });
 
-  const backgroundPanel = (
-    <BackgroundWorkPanel
-      jobs={(snapshot?.backgroundWork ?? []).filter((job) =>
-        menuPage === "venueRequests" ? job.kind === "adaptation" : true,
-      )}
-      onRetry={retryWork}
-    />
-  );
+  const backgroundPanel = <BackgroundWorkPanel jobs={snapshot?.backgroundWork ?? []} onRetry={retryWork} />;
 
   const rewriteAgenda = useRewriteAgenda({
     currentSnapshotRef,
@@ -1429,6 +1428,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     knowledgeDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
+    visualLoreDefault,
     personaDraft,
     setBusy,
     setSettingsError,
@@ -1441,7 +1441,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     sceneryStyle,
     sceneryStyleProfileId,
     personalizeHomes,
-    visualLoreDefault,
     snapshot,
     setBusy,
     setSettingsError,
@@ -2072,6 +2071,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     archiveVenueId,
     archiveVillagerId,
     backgroundPanel,
+    writing,
     busy,
     catalog,
 
