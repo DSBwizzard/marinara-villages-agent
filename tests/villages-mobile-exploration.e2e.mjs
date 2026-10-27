@@ -458,7 +458,10 @@ try {
     await settleLayout();
     const retained = await geometry();
     await nav.getByRole("button", { name: "More", exact: true }).click();
-    await page.getByRole("button", { name: "Back to the village", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Map", exact: true })
+      .click();
     await expect.poll(geometry).toEqual(retained);
     if (mobile) {
       await showPlaces();

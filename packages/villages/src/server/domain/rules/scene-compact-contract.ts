@@ -6,6 +6,7 @@ import type { VillageState } from "../models/world.js";
 import type { VenueScene } from "../models/scene-model.js";
 import { accessManagementPrompt } from "./access-speech.js";
 import { venueZones } from "./venue-zones.js";
+import { hasVenueClass, venueResidentIds } from "./venue-model.js";
 import type { VenueResponseContext } from "./venue-response-contract.js";
 
 // System owns the complete social interpretation; writing metadata is only a nomination.
@@ -46,7 +47,7 @@ ACTION-BASED SOUND. ${ZONE_SOUND_CONTRACT}`
       ? `Resolve submitted local physical attempts in this reply. sceneChange:{happened:true,narration,conditionBefore,conditionAfter,featureId,featureText,publicFactBefore,publicFactAfter,resolveTraceId,addItem,removeItem,transferTo,traceKind,traceText,recipientId,sceneNote}. Omit unused fields. Replacements need exact old IDs/values; conditionAfter is complete. Pickups/handoffs remove listed inventory; transferTo is player or physically present resident, not a remote listener. recipientId is for notes only; notes need a known recipient. New traces need kind/text. sceneNote is temporary layout, never a lasting repair. Locks persist. No invented supplies, consent, elsewhere-deeds, promises-as-results or lasting change without valid metadata. Failure gets narration only. ${c.residentControlled ? "Lasting Residence edits require all required residents' explicit approval of the exact proposal; entry is not edit approval." : ""}`
       : "",
     c.conversational
-      ? `Spontaneous proposals can be expressed in speech. Capture renovationRequest:{source:0} for a concrete structural improvement here; venueRequest:{source:0,name,classes:["workplace|community|other"]} for a NEW public Venue, one or two classes. Source means the complete segment; do not repeat speakerId or quote. Approval starts planning, not construction; accepted commitments remain binding until withdrawn.`
+      ? `Spontaneous proposals can be expressed in speech. Capture venueRequest:{source:0,name,classes:["workplace|community|other"]} for a NEW public Venue, one or two classes. Source means the complete segment; do not repeat speakerId or quote. Approval starts planning, not construction; accepted commitments remain binding until withdrawn.`
       : "",
     capabilities.residences ? `Optional residenceRequest:{source:0,venueId} for a listed available Residence.` : "",
     capabilities.residenceDecision
@@ -80,7 +81,10 @@ export function sceneWritingCapabilities(state: VillageState, scene: VenueScene)
     movement: !!venue && venueZones(venue).length > 1,
     residences: state.venues.some(
       (venue) =>
-        venue.constructionStatus !== "worksite" && !venue.occupancy.playerHome && !venue.occupancy.residentCharacterId,
+        hasVenueClass(venue, "residence") &&
+        venue.constructionStatus !== "worksite" &&
+        !venue.occupancy.playerHome &&
+        venueResidentIds(venue).length === 0,
     ),
     residenceDecision: state.residences.some(
       (move) => move.status === "pending" && move.requestedBy === "player" && actors.includes(move.characterId),
@@ -139,7 +143,7 @@ export function reliableSceneContract(c: VenueResponseContext, capabilities: Sce
           : "")
       : "",
     c.conversational
-      ? 'Spontaneous proposals:renovationRequest:{source:0} for structural improvement here; venueRequest:{source:0,name,classes:["workplace|community|other"]} for NEW public Venue,1–2 classes. Approval starts planning,never construction; accepted commitments bind until withdrawn.'
+      ? 'Spontaneous proposals:venueRequest:{source:0,name,classes:["workplace|community|other"]} for NEW public Venue,1–2 classes. Approval starts planning,never construction; accepted commitments bind until withdrawn.'
       : "",
     capabilities.residences ? "residenceRequest:{source:0,venueId},listed available Residence only." : "",
     capabilities.residenceDecision ? "residenceDecision:{source:0,approved},pending player move only." : "",

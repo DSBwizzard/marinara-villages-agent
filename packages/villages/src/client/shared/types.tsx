@@ -312,6 +312,7 @@ export type RoomStep = {
 /**
  * Pages reachable from the village menu.
  */
-type MenuTab = "villagers" | "venueRequests" | "projects" | "village" | "general" | "chatlogs" | "progress";
+type MenuTab =
+  "villagers" | "venueRequests" | "projects" | "village" | "visual" | "general" | "advanced" | "chatlogs" | "progress";
 
 export type MenuPage = "index" | "repair" | MenuTab;

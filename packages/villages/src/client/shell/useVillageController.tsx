@@ -981,7 +981,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const backgroundPanel = (
     <BackgroundWorkPanel
       jobs={(snapshot?.backgroundWork ?? []).filter((job) =>
-        menuPage === "venueRequests" ? ["mail", "adaptation"].includes(job.kind) : true,
+        menuPage === "venueRequests" ? job.kind === "adaptation" : true,
       )}
       onRetry={retryWork}
     />
@@ -1113,8 +1113,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const openMenu = useScenesOpenMenu({
     loadCatalog,
     loadLorebooks,
-    loadPersonas,
     loadProgressDebug,
+    debugDiscardEnabled,
     menuPage,
     screen,
     setFocusedRequestId,

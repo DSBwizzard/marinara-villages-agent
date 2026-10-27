@@ -194,7 +194,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
     try {
       const body = request.body ?? {};
       if (body.townMapImage !== undefined || body.townMapView !== undefined)
-        throw conflict("Edit the village map in Village Settings.");
+        throw conflict("Edit the village map in World Configuration.");
       let snapshot = await buildVillageSnapshot();
       if (
         body.sceneryArtStyle !== undefined ||

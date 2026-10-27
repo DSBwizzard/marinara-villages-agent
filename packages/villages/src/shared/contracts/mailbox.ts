@@ -1,4 +1,3 @@
-import type { VillageSnapshot } from "./village.js";
 export type PersonalMailThread = {
   id: string;
   residentId: string;
@@ -9,10 +8,11 @@ export type PersonalMailThread = {
     fromId: string;
     text: string;
     at: string;
-    status: "pending" | "applying" | "delivered" | "cancelled";
+    status: "pending" | "applying" | "delivered" | "cancelled" | "undeliverable";
     read: boolean;
     replyPending: boolean;
     error?: string;
+    retryAvailable: boolean;
   }[];
 };
 export type MailboxView = {
@@ -22,18 +22,5 @@ export type MailboxView = {
     messageId: string;
     label: string;
     reinterpretRequired: boolean;
-    cancellable: boolean;
   }[];
-  invitations: {
-    id: string;
-    threadId: string;
-    messageId: string;
-    proposerName: string;
-    revision: number;
-    terms: { title: string; detail: string; venueId: string; zoneId: string; dueAt?: string };
-    status: "proposed" | "accepted" | "declined" | "cancelled" | "fulfilled";
-    accessRecovery?: { expectedRevision: number };
-    accessError?: string;
-  }[];
-  venueMail: VillageSnapshot["venueMail"];
 };

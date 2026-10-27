@@ -45,7 +45,7 @@ try {
     await page.goto("http://sprite-entry.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("button", { name: "People", exact: true }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
     await page.getByText("Manage", { exact: true }).click();
     await page

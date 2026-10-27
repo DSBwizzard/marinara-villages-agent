@@ -660,7 +660,6 @@ try {
     active = false;
     await load();
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await page.getByRole("button", { name: "General settings", exact: true }).click();
     const toggle = page.getByRole("checkbox", { name: "Send on Enter", exact: true });
     await expect(toggle).not.toBeChecked();
     await toggle.check();
@@ -668,7 +667,6 @@ try {
     assert.deepEqual(settingsWrites.at(-1), { sendOnEnter: true });
     await load();
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await page.getByRole("button", { name: "General settings", exact: true }).click();
     await expect(toggle).toBeChecked();
     active = true;
     await load();

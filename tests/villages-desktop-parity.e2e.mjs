@@ -312,8 +312,8 @@ try {
 
     await expect(page.getByRole("button", { name: /Notices \(/u })).toHaveCount(0);
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: /^Villagers \(/u }).click();
+    await expect(page.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
     await page.getByText("Manage", { exact: true }).click();
     const managerButton = page.getByRole("button", { name: /Manage sprites ·/u }).first();
@@ -325,17 +325,16 @@ try {
     await expect(managerButton).toBeFocused();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Close ×" }).click();
-    await page.getByRole("button", { name: "Village Settings" }).click();
+    const section = async (key, label) => {
+      if (mobile) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
+      else await page.getByRole("button", { name: label, exact: true }).click();
+    };
+    await section("village", "World Configuration");
     await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit map" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
-    await page.getByRole("button", { name: "DEBUG Settings" }).click();
-    await expect(page.getByRole("button", { name: "Scenes" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
-    await page.getByRole("button", { name: "Back to the village" }).click();
-    await page.getByRole("button", { name: "More" }).click();
-    await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back to the village" }).click();
+    await section("chatlogs", "Scene History");
+    await expect(page.getByRole("heading", { name: "Scene History", level: 1 })).toBeVisible();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map" }).click();
 
     await page.getByRole("button", { name: "Show places", exact: true }).click();
     const navigator = page.getByRole("complementary", { name: "Places navigator" });
@@ -561,15 +560,8 @@ try {
         .getByRole("button", { name: "Manage", exact: true })
         .click();
       await expect(page.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
-      await page.getByRole("button", { name: "Request to live here" }).click();
-      await page.getByRole("button", { name: "Send housing request" }).click();
-      const moveError = page.getByRole("alert");
-      await expect(moveError).toHaveText("This home has no room for another resident.");
-      const errorBox = await moveError.boundingBox();
-      assert.ok(
-        errorBox && errorBox.x >= 0 && errorBox.x + errorBox.width <= width,
-        "residence error fits the viewport",
-      );
+      await expect(page.getByRole("button", { name: "Move here" })).toBeDisabled();
+      await expect(page.getByText("Moving into a shared Residence is not available yet.")).toBeVisible();
       await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
     }
     await page.close();

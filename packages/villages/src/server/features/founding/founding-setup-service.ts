@@ -211,7 +211,7 @@ export function createFoundingSetup({
       ),
     );
     // Founding posts the houses placed in the wizard. Later setup runs keep the
-    // other venues and require every saved pin to stay put; Village Settings owns
+    // other venues and require every saved pin to stay put; World Configuration owns
     // map replacement and its placement pass.
     //
     // A stored place the posted map does name is not stored twice: the posted copy
@@ -271,7 +271,7 @@ export function createFoundingSetup({
         return !next || next.presentation.x !== old.presentation.x || next.presentation.y !== old.presentation.y;
       })
     )
-      throw conflict("Move Venue photographs while replacing the map in Village Settings.");
+      throw conflict("Move Venue photographs while replacing the map in World Configuration.");
     for (const old of village.venues) {
       if (!old.occupancy.residentCharacterId) continue;
       const next = venues.find((venue) => venue.id === old.id);

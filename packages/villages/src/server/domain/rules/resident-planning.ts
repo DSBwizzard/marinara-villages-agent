@@ -11,9 +11,11 @@ import type {
 import type { SocialPlan } from "../models/relationship-types.js";
 import type { VillageMoment } from "./village-clock.js";
 import { hashString } from "./village-clock.js";
+import { hasVenueClass, venueResidentIds } from "./venue-model.js";
 import { villagerPlaceView } from "./village-projections.js";
 import { boundText } from "./prompt-preset.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
+import { PERSONAL_LETTER_INSTRUCTION } from "./personal-letter.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
@@ -110,7 +112,13 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
       {
         characterId: id,
         destinations: context.venues
-          .filter((v) => !v.occupancy.playerHome && !v.occupancy.residentCharacterId)
+          .filter(
+            (v) =>
+              hasVenueClass(v, "residence") &&
+              v.constructionStatus !== "worksite" &&
+              !v.occupancy.playerHome &&
+              venueResidentIds(v).length === 0,
+          )
           .map((v) => ({ id: v.id, name: v.name })),
       },
     ];
@@ -141,6 +149,7 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
       ". Select one exact offered ID with social.planId, or none. Availability is not preference or consent.",
     "A CURRENT encounter opportunity with at least two actors in one Zone may have social.encounter:{opportunityId,lines:[{speakerId,text}],relationshipReview:{changes:[],permissions:[],disclosures:[]}}. Write two to eight short spoken lines by offered actors only. Never invent player actions, past history, secrets, possessions, injury or physical effects. Omit the encounter if nothing fits. A separate System check interprets its consequences.",
     "Instead of an encounter, social.mail may be {senderId,text} from one offered actor to player, at most 2000 characters: a personal message, question or invitation grounded in their own intentions. No player consent, unseen deeds, or invented contact details. Choose at most one encounter or mail. Private/unknown locations permit mail only.",
+    PERSONAL_LETTER_INSTRUCTION,
     "Housing choices: " +
       JSON.stringify(housing) +
       ". housingRequests accepts at most one {who:exact resident ID,kind:move,venueId:offered destination ID}. It is a pending request, never a completed move. Usually empty; choose only a move the resident independently wants.",
@@ -178,8 +187,10 @@ export function readResidentPlanningProposal(
       context.opportunity.actorIds.includes(characterId) &&
       !context.pendingHousingCharacterIds.includes(characterId) &&
       venue &&
+      hasVenueClass(venue, "residence") &&
+      venue.constructionStatus !== "worksite" &&
       !venue.occupancy.playerHome &&
-      !venue.occupancy.residentCharacterId
+      venueResidentIds(venue).length === 0
     )
       housingRequests.push({ characterId, kind: "move", venueId });
   }

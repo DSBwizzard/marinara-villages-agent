@@ -33,6 +33,8 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
           !Number.isInteger(request.body.expectedAttempt)
         )
           throw badRequest("Choose a background job to retry.");
+        const job = (await backgroundWorkSummaries()).find((row) => row.id === request.body!.id);
+        if (job?.kind === "personal-mail") throw badRequest("Retry letter processing from the Mailbox.");
         await retryBackgroundJob(request.body.id, request.body.expectedAttempt as number, request.body.actionId);
         return await buildVillageSnapshot();
       } catch (error) {

@@ -118,15 +118,6 @@ const VILLAGES_STYLES = `
   color: var(--primary);
   box-shadow: inset 0 0 0 1px var(--primary);
 }
-/*
-  The menu's options, gathered under headings rather than strung out in one row:
-  everything that shows you the village under Village Management, and everything
-  that changes how it behaves under General Settings. More groups are expected.
-*/
-.${ELEMENT_TAG}-menu-nav { display: flex; flex-direction: column; gap: .875rem; }
-.${ELEMENT_TAG}-menu-group { display: flex; flex-direction: column; gap: .375rem; }
-.${ELEMENT_TAG}-menu-group > .${ELEMENT_TAG}-panel-title { margin: 0; }
-.${ELEMENT_TAG}-menu-group-buttons { display: flex; flex-wrap: wrap; gap: .5rem; }
 .${ELEMENT_TAG}-menu-body { display: flex; flex-direction: column; gap: 1rem; }
 .${ELEMENT_TAG}-roster { display: flex; flex-direction: column; gap: .375rem; margin-top: .75rem; }
 .${ELEMENT_TAG}-roster-entry { min-width: 0; border: 1px solid var(--border); border-radius: .75rem; padding: .5rem .625rem; background: color-mix(in srgb, var(--popover) 92%, transparent); }
@@ -2966,7 +2957,6 @@ ${ELEMENT_TAG} {
   .${ELEMENT_TAG}-chat-vn-reading { max-height: min(34cqh, 11rem); }
 }
 @container ${ELEMENT_TAG} (max-width: 34rem) {
-  .${ELEMENT_TAG}-menu-group-buttons { flex-direction: column; align-items: stretch; }
   .${ELEMENT_TAG}-chat-menu { max-width: 88cqw; }
   .${ELEMENT_TAG}-chat-modes { max-width: 88cqw; }
   .${ELEMENT_TAG}-chat-menu-button { width: 2.25rem; height: 2.25rem; }
@@ -3448,25 +3438,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-title { font-size: clamp(1.3rem, 2.4cqw, 2rem); font-weight: 700; }
 .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-subtitle { color: var(--muted-foreground); font-size: .82rem; }
 .${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-header > .${ELEMENT_TAG}-error { flex-basis: 100%; margin: 0; }
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav {
-  grid-column: 1; grid-row: 2; display: flex; flex-direction: column; gap: 1rem; min-height: 0; overflow-y: auto;
-  padding: 1rem .7rem; border-right: 1px solid #314782;
-  background: radial-gradient(circle at 25% 85%, #274588, transparent 65%), linear-gradient(#10214a, #142a5b);
-}
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group { gap: .45rem; }
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group > .${ELEMENT_TAG}-panel-title {
-  padding: .1rem .5rem; color: #b9c5ff; font-size: .7rem;
-}
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group-buttons { flex-direction: column; align-items: stretch; gap: .25rem; }
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav .${ELEMENT_TAG}-button {
-  min-height: 2.45rem; border-color: transparent; background: transparent;
-  color: var(--foreground); text-align: left; font-size: .85rem;
-}
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav .${ELEMENT_TAG}-button:hover { border-color: #6a7fc4; background: #253b75; color: white; }
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav .${ELEMENT_TAG}-button[data-active="true"] {
-  border-color: #8060ff; background: linear-gradient(105deg, #5139b4, #253c8d);
-  color: white; box-shadow: 0 0 0 1px #8756ff, 0 0 1rem #683cf955;
-}
 .${ELEMENT_TAG}-menu-content {
   grid-column: 2; grid-row: 2; box-sizing: border-box; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto;
   padding: clamp(.75rem, 2cqw, 1.5rem);
@@ -3495,24 +3466,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-notice-row { border-color: #526bb1; background: #1c3568; color: var(--foreground); }
 .${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-menu-body { gap: 1rem; }
 .${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-panel.${ELEMENT_TAG}-menu-content { margin: clamp(.75rem, 2cqw, 1.5rem); }
-.${ELEMENT_TAG}-menu-welcome { display: grid; align-self: start; gap: .9rem; max-width: 50rem; padding: 1.5rem; }
-.${ELEMENT_TAG}-menu-welcome h2 { margin: 0; font-size: clamp(1.4rem, 3cqw, 2.2rem); }
-.${ELEMENT_TAG}-menu-welcome p { max-width: 40rem; margin: 0; color: var(--muted-foreground); line-height: 1.6; }
-.${ELEMENT_TAG}-menu-quick-links { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .4rem; }
-@container (max-width: 48rem) {
-  .${ELEMENT_TAG}-root.${ELEMENT_TAG}-sectioned-menu { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
-  .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav {
-    grid-column: 1; grid-row: 2; flex-direction: row; gap: 1.25rem; max-height: 7.5rem;
-    overflow-x: auto; overflow-y: hidden; padding: .6rem .75rem;
-    border-right: 0; border-bottom: 1px solid #314782;
-  }
-  .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group { flex: 0 0 auto; }
-  .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group-buttons { flex-direction: row; flex-wrap: nowrap; }
-  .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav .${ELEMENT_TAG}-button { flex: 0 0 auto; min-height: 2.5rem; white-space: nowrap; }
-  .${ELEMENT_TAG}-menu-content { grid-column: 1; grid-row: 3; padding: .75rem; }
-  .${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-header { padding: .75rem; }
-}
-
 /* Approved founding flow: a shared footer and compact, direct venue editing. */
 .${ELEMENT_TAG}-setup-root { display: flex; flex-direction: column; gap: .65rem; padding: .75rem; height: 100%; overflow: hidden; }
 .${ELEMENT_TAG}-setup-heading h1 { margin: 0; font-size: 1.5rem; }

@@ -97,7 +97,6 @@ export type BackgroundWork = {
     | "translation"
     | "wish"
     | "wish-check"
-    | "mail"
     | "personal-mail"
     | "social-recovery"
     | "adaptation"
@@ -159,20 +158,6 @@ export type VillageSnapshot = {
     requestedBy?: "player" | "villager";
     completesAt?: string;
   }[];
-  venueMail: Array<{
-    id: string;
-    venueId: string;
-    title: string;
-    detail: string;
-    kind: "change" | "player-move" | "counteroffer" | "villager-change" | "villager-move" | "project-approval";
-    status: "pending-player" | "awaiting-villagers" | "approved" | "declined";
-    createdAt: string;
-    dueAt: string;
-    resolvedAt: string;
-    affectedIds: string[];
-    decisions: { characterId: string; accepted: boolean; reply: string }[];
-    error: string;
-  }>;
   villagers: VillageVillagerView[];
   relationshipStartingPending?: boolean;
   /**
@@ -251,7 +236,7 @@ export type BuildProject = {
     targetVenueId: string;
     change: { classes?: VenueClass[]; capacity?: number; zones?: VillageZoneDraft[]; detail: string } | null;
     affectedIds: string[];
-    approvals: { residentId: string; source: "conversation" | "mailbox" }[];
+    approvals: { residentId: string; source: "conversation" }[];
     candidates: { residentId: string }[];
     builderId: string;
     workOrder: { startsAt: string; completesAt: string; pausedAt: string; remainingMs: number } | null;

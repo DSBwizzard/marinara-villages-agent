@@ -41,7 +41,6 @@ export type VillageVenueDeletionDependencies = {
   residentCharacterIds: string[];
   playerHome: boolean;
   workerCharacterIds: string[];
-  pendingMailCount: number;
   pendingResidenceCharacterIds: string[];
   remapCount: number;
   roomPresent: boolean;
@@ -175,7 +174,7 @@ export function createVenueCommands({
         for (const place of places) {
           const current = state.venues.find((entry) => entry.id === place.id)!;
           if (place.presentation.x !== current.presentation.x || place.presentation.y !== current.presentation.y)
-            throw conflict("Move Venue photographs while replacing the map in Village Settings.");
+            throw conflict("Move Venue photographs while replacing the map in World Configuration.");
           if (current.constructionStatus === "worksite") {
             if (place.name !== current.name || place.description !== current.description)
               throw conflict("A worksite's identity belongs to its active project.");
@@ -386,10 +385,6 @@ export function createVenueCommands({
       residentCharacterIds: venueResidentIds(venue),
       playerHome: venue.occupancy.playerHome,
       workerCharacterIds: venue.workerIds ?? [],
-      pendingMailCount: village.venueMail.filter(
-        (entry) =>
-          entry.venueId === venueId && (entry.status === "pending-player" || entry.status === "awaiting-villagers"),
-      ).length,
       pendingResidenceCharacterIds: village.residences
         .filter((residence) => residence.status === "pending" && residence.proposedVenueId === venueId)
         .map((residence) => residence.characterId),
@@ -484,7 +479,6 @@ export function createVenueCommands({
     if (dependencies.residentCharacterIds.length || dependencies.playerHome)
       throw conflict("Move every resident, including yourself, before deleting this Residence.");
     if (dependencies.roomPresent) throw conflict("End the active Scene before deleting this venue.");
-    if (dependencies.pendingMailCount) throw conflict("Resolve pending Venue decisions before deleting this Venue.");
     await mutateVillageState((state) => {
       const current = state.venues.find((venue) => venue.id === venueId);
       if (!current) throw notFound("That Venue no longer exists.");
@@ -492,13 +486,6 @@ export function createVenueCommands({
         throw conflict("A project-built venue requires an explicit future demolition project.");
       if (hasVenueClass(current, "residence") && venueAssignedCount(current) > 0)
         throw conflict("Move every resident before deleting this Residence.");
-      if (
-        state.venueMail.some(
-          (entry) =>
-            entry.venueId === venueId && (entry.status === "pending-player" || entry.status === "awaiting-villagers"),
-        )
-      )
-        throw conflict("Resolve pending Venue decisions before deleting this Venue.");
       state.venues = state.venues.filter((venue) => venue.id !== venueId);
       keepAgendaPlaces(state);
       state.residences = state.residences.filter(
