@@ -12,6 +12,9 @@ import type { VenuesState } from "./useVenuesState.js";
 
 /** Values and actions used by VenueScreen; independent of shell implementation. */
 export type VenueScreenController = {
+  readonly goHome: () => void;
+  readonly openMenu: (page: import("../../shared/types.js").MenuPage) => void;
+  readonly openPlace: (place: VillageVenue) => void;
   readonly venueSection: VenuesState["venueSection"];
   readonly setVenueSection: VenuesState["setVenueSection"];
   readonly planVenueRenovation: (place: VillageVenue) => void;

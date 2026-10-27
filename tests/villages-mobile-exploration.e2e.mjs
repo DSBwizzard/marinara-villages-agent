@@ -256,7 +256,7 @@ try {
       return { left: image.left - frame.x, top: image.top - frame.y, width: image.width, height: image.height };
     };
     const showPlaces = async () => {
-      if (!(await navigator.isVisible())) await nav.getByRole("button", { name: "Places", exact: true }).click();
+      if (!(await navigator.isVisible())) await page.getByRole("button", { name: "Show places", exact: true }).click();
       await expect(navigator).toBeVisible();
     };
     const select = async (name) => {
@@ -308,7 +308,10 @@ try {
     await navigator.getByRole("button", { name: "View venue", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Unplaced Venue", exact: true })).toBeVisible();
     assert.equal(sceneRequests.length, 0, "selecting and reading a Venue never starts a Scene");
-    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Map", exact: true })
+      .click();
     await showPlaces();
     await expect(navigator.getByRole("searchbox")).toHaveValue("unPLACED");
     await page.setViewportSize({ width: mobile ? 1100 : 390, height: 844 });
@@ -356,12 +359,18 @@ try {
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await screenshot("venue");
     assert.equal(sceneRequests.length, 0, "opening a Venue directly never starts a Scene");
-    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Map", exact: true })
+      .click();
     await settleLayout();
     const beforeMarker = await cameraGeometry();
     await marker.press("Enter");
     await expect(page.getByRole("heading", { name: "Village Market", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Map", exact: true })
+      .click();
     await expect.poll(cameraGeometry).toEqual(beforeMarker);
     for (const [id, name] of [
       ["edge", "Edge Venue"],
@@ -380,7 +389,10 @@ try {
         .click();
       await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "Map", exact: true })
+        .click();
       await expect.poll(cameraGeometry).toEqual(beforeTap);
     }
     assert.equal(sceneRequests.length, 0, "map and keyboard selections remain free of Scene requests");
