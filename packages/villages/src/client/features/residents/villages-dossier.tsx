@@ -389,7 +389,7 @@ export function VillagerDossier({
                         <Sheet title="Relationships" icon="relationships">
                           <p>{profile?.summary || "No relationship shared yet."}</p>
                           {profile?.learned
-                            .filter(
+                            ?.filter(
                               (entry) =>
                                 entry.kind !== "routine" &&
                                 entry.kind !== "preference" &&
