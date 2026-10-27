@@ -23,7 +23,8 @@ const people = [
   { id: "b", name: "Ellis" },
 ];
 const sharedId = '["memory","shared"]',
-  secretId = '["memory","secret"]';
+  secretId = '["memory","secret"]',
+  additionId = '["new-memory"]';
 const known = "Your recollection of the telescope.",
   privateText = "Nora's private recollection.",
   secretText = "Nora's private compass.";
@@ -37,116 +38,156 @@ async function fixture(width) {
   await mockEngineLookups(page);
   const gates = new Map(),
     calls = [];
-  const hold = (key) => {
+  const hold = (key, patch = {}) => {
     const start = deferred(),
       release = deferred(),
       done = deferred();
-    const entry = { start, release, done };
-    gates.set(key, entry);
+    gates.set(key, { start, release, done, patch });
     return { started: start.promise, release: () => release.resolve(), done: done.promise };
   };
-  const reply = async (route, key, value, status = 200) => {
+  const reply = async (route, key, value) => {
     const gate = gates.get(key);
     if (gate) {
+      gates.delete(key);
       gate.start.resolve();
       await gate.release.promise;
+      value = { ...value, ...gate.patch };
     }
-    await fulfill(route, { status, json: value });
+    await fulfill(route, { json: value });
     gate?.done.resolve();
   };
-  const record = (id, spoilers, person) => ({
-    id,
-    token: `${person}-${spoilers}-${id}`,
+  const record = (id, person) => {
+    const value =
+      id === secretId
+        ? secretText
+        : person === "b"
+          ? "Ellis paints the harbor."
+          : person === "player"
+            ? known
+            : privateText;
+    return {
+      id,
+      token: `${person}-${id}`,
+      topic: "memories",
+      title: value,
+      summary: "Information",
+      fields: [{ key: "text", label: "Memory", type: "text", value }],
+      source: ["Saved source"],
+      people:
+        id === secretId
+          ? [{ ...people[1], text: secretText }]
+          : [
+              { ...people[0], text: known },
+              { ...people[1], text: privateText },
+            ],
+      actions: [{ id: "correct", label: "Modify" }],
+      related: [],
+    };
+  };
+  const addition = {
+    id: additionId,
+    token: "addition",
     topic: "memories",
-    title: id === secretId ? secretText : person === "b" ? "Ellis paints the harbor." : spoilers ? privateText : known,
-    summary: "Information",
-    fields: [
-      {
-        key: "text",
-        label: "Memory",
-        type: "text",
-        value: id === secretId ? secretText : spoilers ? privateText : known,
-      },
-    ],
-    source: ["Saved source"],
-    people: spoilers
-      ? id === secretId
-        ? [people[1]]
-        : [
-            { ...people[0], text: known },
-            { ...people[1], text: privateText },
-          ]
-      : [{ ...people[0], text: known }],
+    title: "Add memory",
+    summary: "",
+    fields: [{ key: "text", label: "Memory", type: "text", value: "" }],
+    source: [],
+    people,
     actions: [{ id: "correct", label: "Modify" }],
     related: [],
-    private: spoilers,
-  });
+    creating: true,
+  };
   await page.route("http://repair-people.test/", (route) =>
     fulfill(route, { contentType: "text/html", body: '<div id="root"></div>' }),
   );
   await page.route("**/api/villages**", async (route) => {
     const url = new URL(route.request().url()),
       path = url.pathname.replace("/api/villages", ""),
-      spoilers = url.searchParams.get("inspection") === "true",
       person = url.searchParams.get("personId");
-    calls.push({ path, spoilers, person });
+    assert.equal(url.searchParams.has("inspection"), false, "REPAIR requests cannot carry a spoiler mode");
+    calls.push({ path, person });
     if (path === "/repair")
-      return reply(route, spoilers ? "index-on" : "index-off", {
+      return reply(route, "index", {
         seed: "world",
         identity: "world-one",
         people,
         records: [],
         sceneOpen: false,
         historyOffset: 0,
-        historyTotal: spoilers ? 1 : 0,
-        history: spoilers
-          ? [
-              {
-                id: "private-history",
-                title: "Hidden correction",
-                at: "2026-10-26T20:00:00Z",
-                changes: [],
-                affected: [],
-                undone: false,
-                canUndo: true,
-              },
-            ]
-          : [],
-        checkpoints: spoilers
-          ? [{ id: "private-checkpoint", title: "Hidden checkpoint", at: "2026-10-26T20:00:00Z", records: 3 }]
-          : [],
+        historyTotal: 1,
+        history: [
+          {
+            id: "private-history",
+            title: "Private correction",
+            at: "2026-10-26T20:00:00Z",
+            changes: [],
+            affected: [],
+            undone: false,
+            canUndo: true,
+          },
+        ],
+        checkpoints: [
+          { id: "private-checkpoint", title: "Private checkpoint", at: "2026-10-26T20:00:00Z", records: 3 },
+        ],
       });
     if (path === "/repair/records") {
-      const rows =
-        url.searchParams.get("section") === "details"
-          ? spoilers
-            ? [{ ...record("details", true, person), topic: "people", title: "Nora's character context" }]
-            : []
-          : person === "b"
-            ? [record('["memory","ellis"]', spoilers, person)]
-            : [record(sharedId, spoilers, person), ...(spoilers ? [record(secretId, true, person)] : [])];
-      return reply(route, spoilers ? "list-on" : "list-off", { records: rows, total: rows.length, next: null });
+      const details = url.searchParams.get("section") === "details";
+      const rows = details
+        ? [
+            {
+              id: "details",
+              token: "details",
+              topic: "people",
+              title: "Nora's character context",
+              summary: "Character",
+              fields: [{ key: "context", label: "Context", type: "text", value: "Private character context" }],
+              source: [],
+              actions: [{ id: "correct", label: "Modify" }],
+              related: [],
+            },
+          ]
+        : person === "b"
+          ? [record('["memory","ellis"]', person)]
+          : [record(sharedId, person), record(secretId, person)];
+      return reply(route, "list", {
+        records: rows,
+        total: rows.length,
+        next: null,
+        ...(!details ? { creation: addition } : {}),
+      });
     }
     if (path === "/repair/record") {
       const id = url.searchParams.get("id");
-      if (id === secretId && !spoilers) return reply(route, "hidden-record", { error: "Turn on Spoilers." }, 404);
-      return reply(route, spoilers ? "record-on" : "record-off", record(id, spoilers, person));
+      return reply(route, `record:${id}`, id === additionId ? addition : record(id, person));
     }
     if (path === "/repair/apply") return reply(route, "apply", { applied: true });
     if (["/repair/review", "/repair/undo", "/repair/restore"].includes(path)) {
       const body = route.request().postDataJSON();
-      calls.push({ body, path });
-      const kind = path.endsWith("/undo") ? "undo" : path.endsWith("/restore") ? "restore" : "repair";
+      assert.equal("inspection" in body, false);
+      calls.push({ path, body });
+      const kind = path.endsWith("/undo") ? "undo" : path.endsWith("/restore") ? "restore" : "repair",
+        creating = body.recordId === additionId;
       return reply(route, kind, {
         kind,
         id: "plan",
-        title: "Hidden review",
-        changes: [{ label: "Memory", before: privateText, after: body.values?.text ?? "Private inverse" }],
+        title: "Saved review",
+        changes:
+          kind === "restore"
+            ? [{ label: "Village", before: "Current world", after: "Checkpoint world" }]
+            : creating
+              ? [{ label: "Memory", before: "", after: body.values.text }]
+              : (body.knowers ?? ["a"]).map((id) => ({
+                  label: `${people.find((p) => p.id === id).name} · memory`,
+                  before: id === "player" ? known : privateText,
+                  after: body.values?.text ?? "Saved inverse",
+                })),
         affected: [],
         related: [],
         checkpoint: kind === "restore",
         undoAvailable: true,
-        memory: { creating: false, people: (body.knowers ?? ["a"]).map((id) => people.find((p) => p.id === id).name) },
+        ...(kind !== "restore"
+          ? { memory: { creating, people: (body.knowers ?? ["a"]).map((id) => people.find((p) => p.id === id).name) } }
+          : {}),
       });
     }
     throw Error("Unexpected REPAIR fixture request: " + path);
@@ -162,11 +203,15 @@ const openPeople = async (page) => {
     .click();
   await expect(page.getByRole("button", { name: "Nora", exact: true })).toBeVisible();
 };
-const spoilers = (page) => page.getByRole("switch", { name: "Spoilers", exact: true });
 const goNora = async (page) => {
   await openPeople(page);
   await page.getByRole("button", { name: "Nora", exact: true }).click();
-  await expect(spoilers(page)).not.toBeChecked();
+};
+const chooseEllis = async (page) => {
+  await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+  await openPeople(page);
+  await page.getByRole("button", { name: "Ellis", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
 };
 try {
   await mkdir(".build-tmp/repair-people", { recursive: true });
@@ -174,10 +219,10 @@ try {
     for (const width of [1440, 390]) {
       const f = await fixture(width),
         { page, root } = f;
-      await expect(spoilers(page)).toHaveCount(0);
+      await expect(page.getByRole("switch")).toHaveCount(0);
       await openPeople(page);
       for (const p of people) await expect(page.getByRole("button", { name: p.name, exact: true })).toBeVisible();
-      await expect(root.getByText(known, { exact: true })).toHaveCount(0);
+      await expect(root.getByText(privateText, { exact: true })).toHaveCount(0);
       await root.screenshot({ path: `.build-tmp/repair-people/roster-${width}.png` });
       const input = page.getByRole("searchbox", { name: "Search villagers", exact: true }),
         search = page.getByRole("button", { name: "Search", exact: true });
@@ -192,14 +237,15 @@ try {
           return range.getClientRects().length;
         }),
         1,
-        "Search must stay on one line even at larger mobile font size",
+        "Search stays on one line at larger mobile font size",
       );
       await root.evaluate((el) => (el.style.fontSize = ""));
       await page.getByRole("button", { name: "Nora", exact: true }).click();
-      await expect(spoilers(page)).not.toBeChecked();
-      await expect(root.getByRole("button", { name: /Your recollection/ })).toBeVisible();
-      await spoilers(page).check();
       await expect(root.getByRole("button", { name: /Nora's private recollection/ })).toBeVisible();
+      await expect(root.getByRole("button", { name: /Nora's private compass/ })).toBeVisible();
+      await expect(root.getByRole("button", { name: "Add memory", exact: true })).toBeEnabled();
+      await expect(page.getByRole("switch")).toHaveCount(0);
+      await root.screenshot({ path: `.build-tmp/repair-people/person-${width}.png` });
       await root.getByRole("button", { name: /Nora's private recollection/ }).click();
       await expect(page.getByRole("checkbox", { name: "Nora", exact: true })).toBeChecked();
       await expect(page.getByRole("checkbox", { name: "Your Persona", exact: true })).not.toBeChecked();
@@ -211,31 +257,39 @@ try {
       const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
       assert.deepEqual([...sent.knowers].sort(), ["a", "player"]);
       assert.equal(sent.personId, "a");
-      assert.equal(sent.inspection, true);
       const scope = root
         .locator(".repair-panel")
         .filter({ has: page.getByRole("heading", { name: "Applies to", exact: true }) });
       await expect(scope).toContainText("Your Persona");
       await expect(scope).toContainText("Nora");
-      await spoilers(page).uncheck();
-      await expect(field).toHaveValue(known);
-      await expect(page.getByRole("checkbox", { name: "Nora", exact: true })).toHaveCount(0);
-      await spoilers(page).check();
+      await expect(root.getByText(known, { exact: true })).toBeVisible();
+      await expect(root.getByText(privateText, { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
       await expect(field).toHaveValue("The corrected shared recollection.");
       await page.getByRole("button", { name: "Back to records", exact: true }).click();
+      await page.getByRole("button", { name: "Add memory", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name: "Nora", exact: true })).toBeChecked();
+      await expect(page.getByRole("checkbox", { name: "Your Persona", exact: true })).not.toBeChecked();
+      await field.fill("A missing memory for Nora.");
+      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      assert.deepEqual(f.calls.findLast((call) => call.path === "/repair/review" && call.body).body.knowers, ["a"]);
+      await expect(root.getByRole("region", { name: "Memory to add", exact: true })).toContainText(
+        "A missing memory for Nora.",
+      );
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await page.getByRole("button", { name: "Back to records", exact: true }).click();
+      await page.getByRole("button", { name: "Details", exact: true }).click();
+      await expect(root.getByRole("button", { name: /Nora's character context/ })).toBeVisible();
+      await page.getByRole("button", { name: "Memories", exact: true }).click();
       await root.getByRole("button", { name: /Nora's private compass/ }).click();
       await field.fill("Edited private compass memory.");
-      await spoilers(page).uncheck();
-      await expect(root.getByRole("button", { name: /Your recollection/ })).toBeVisible();
-      await expect(root).not.toContainText("Edited private compass");
-      await spoilers(page).check();
-      await root.getByRole("button", { name: /Nora's private compass/ }).click();
-      await expect(field).toHaveValue("Edited private compass memory.");
       await page.getByRole("button", { name: "People", exact: true }).click();
       await page.getByRole("button", { name: "Ellis", exact: true }).click();
-      await expect(spoilers(page)).not.toBeChecked();
       await expect(root).not.toContainText(secretText);
-      await root.screenshot({ path: `.build-tmp/repair-people/person-${width}.png` });
+      await page.getByRole("button", { name: "People", exact: true }).click();
+      await page.getByRole("button", { name: "Nora", exact: true }).click();
+      await root.getByRole("button", { name: /Nora's private compass/ }).click();
+      await expect(field).toHaveValue("Edited private compass memory.");
       assert.equal(await root.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
       await f.close();
     }
@@ -244,63 +298,58 @@ try {
     const f = await fixture(390),
       { page, root } = f;
     await goNora(page);
-    const index = f.hold("index-on");
-    await spoilers(page).check();
-    await index.started;
-    await spoilers(page).uncheck();
-    await expect(root.getByRole("button", { name: /Your recollection/ })).toBeVisible();
-    index.release();
-    await index.done;
-    await expect(root).not.toContainText("Hidden correction");
-    await expect(root).not.toContainText(secretText);
-    await spoilers(page).check();
-    await expect(root.getByRole("button", { name: /Nora's private compass/ })).toBeVisible();
-    const open = f.hold("record-on");
+    const opened = f.hold(`record:${secretId}`);
     await root.getByRole("button", { name: /Nora's private compass/ }).click();
-    await open.started;
-    await spoilers(page).uncheck();
-    open.release();
-    await open.done;
-    await expect(root.getByRole("button", { name: /Your recollection/ })).toBeVisible();
-    await expect(root).not.toContainText(secretText);
-    await spoilers(page).check();
+    await opened.started;
+    await chooseEllis(page);
+    opened.release();
+    await opened.done;
+    await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "People", exact: true }).click();
+    await page.getByRole("button", { name: "Nora", exact: true }).click();
     await root.getByRole("button", { name: /Nora's private recollection/ }).click();
-    const field = page.getByRole("textbox", { name: "Memory", exact: true });
-    await field.fill("Private pending draft.");
+    await page.getByRole("textbox", { name: "Memory", exact: true }).fill("Pending Nora draft.");
     const review = f.hold("repair");
     await page.getByRole("button", { name: "Review changes", exact: true }).click();
     await review.started;
-    await spoilers(page).uncheck();
+    await chooseEllis(page);
     review.release();
     await review.done;
-    await expect(field).toHaveValue(known);
-    await expect(root).not.toContainText("Hidden review");
+    await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
+    await expect(root).not.toContainText("Pending Nora draft.");
+    for (const kind of ["undo", "restore"]) {
+      await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+      await page
+        .getByRole("button", {
+          name: kind === "undo" ? "Repair history" : "Backups & repairs Review repairs, undo, or restore a checkpoint.",
+          exact: true,
+        })
+        .click();
+      await expect(root).toContainText(kind === "undo" ? "Private correction" : "Private checkpoint");
+      const pending = f.hold(kind);
+      await page
+        .getByRole("button", { name: kind === "undo" ? "Review undo" : "Review restoration", exact: true })
+        .click();
+      await pending.started;
+      await chooseEllis(page);
+      pending.release();
+      await pending.done;
+      await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
+    }
     await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Repair history", exact: true })).toBeEnabled();
+    const staleIndex = f.hold("index", { identity: "retired-world" });
     await page.getByRole("button", { name: "Repair history", exact: true }).click();
-    await spoilers(page).check();
-    await expect(root).toContainText("Hidden correction");
-    const undo = f.hold("undo");
-    await page.getByRole("button", { name: "Review undo", exact: true }).click();
-    await undo.started;
-    await spoilers(page).uncheck();
-    undo.release();
-    await undo.done;
-    await expect(root).not.toContainText("Hidden correction");
-    await expect(root).not.toContainText("Hidden review");
-    await page.getByRole("button", { name: "REPAIR", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Backups & repairs Review repairs, undo, or restore a checkpoint.", exact: true })
-      .click();
-    await spoilers(page).check();
-    await expect(root).toContainText("Hidden checkpoint");
-    const restore = f.hold("restore");
-    await page.getByRole("button", { name: "Review restoration", exact: true }).click();
-    await restore.started;
-    await spoilers(page).uncheck();
-    restore.release();
-    await restore.done;
-    await expect(root).not.toContainText("Hidden checkpoint");
-    await expect(root).not.toContainText("Hidden review");
+    await staleIndex.started;
+    await chooseEllis(page);
+    staleIndex.release();
+    await staleIndex.done;
+    await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "People", exact: true }).click();
+    await page.getByRole("button", { name: "Nora", exact: true }).click();
+    await root.getByRole("button", { name: /Nora's private recollection/ }).click();
+    await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue("Pending Nora draft.");
     await f.close();
   });
   await runCase("repair-people/restore-draft", async () => {
@@ -309,7 +358,7 @@ try {
     await page
       .getByRole("button", { name: "Backups & repairs Review repairs, undo, or restore a checkpoint.", exact: true })
       .click();
-    await spoilers(page).check();
+    await expect(root).toContainText("Private checkpoint");
     await page.getByRole("button", { name: "Review restoration", exact: true }).click();
     await page.getByRole("checkbox", { name: "Replace Village progress with this checkpoint", exact: true }).check();
     await page.evaluate(() => {
@@ -319,7 +368,7 @@ try {
     await expect.poll(() => page.evaluate(() => window.refreshStarted)).toBe(true);
     await expect(root.getByRole("heading", { name: "Checkpoint restored", exact: true })).toHaveCount(0);
     await expect(root.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
-    await expect(spoilers(page)).toBeDisabled();
+    await expect(root.getByRole("button", { name: "Main menu", exact: true })).toBeDisabled();
     await page.evaluate(() =>
       window.releaseRepairRefresh({ title: "Previous Scene", text: "My unfinished Scene draft." }),
     );

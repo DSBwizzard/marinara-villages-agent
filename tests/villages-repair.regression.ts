@@ -10,6 +10,7 @@ import { captureMemoryScene, projectMemories } from "../packages/villages/src/se
 import { sceneMemories } from "../packages/villages/src/server/domain/rules/village-memories.js";
 import { addMemory, memoryTime, realisticMemoryHistory, targetOf, memoryRepair } from "./helpers/memories-fixture.js";
 import { applyMemoryRepair } from "../packages/villages/src/server/domain/rules/memory-application.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { fixture as projectFixture, venue } from "./fixtures/villages-projects.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -105,7 +106,7 @@ async function fixture() {
     prepare: async (request: RepairRequest) =>
       api.prepare({
         ...request,
-        expectedRecord: (await api.inspect(request.recordId, request.inspection, request.personId)).token!,
+        expectedRecord: (await api.inspect(request.recordId, request.personId)).token!,
       }),
     hook(h: typeof hook) {
       hook = h;
@@ -124,7 +125,6 @@ const edit = (recordId: string, values: RepairRequest["values"], operationId = "
   operationId,
   action: "correct",
   knowers: [],
-  inspection: false,
   expectedRecord: "fixture",
 });
 
@@ -304,23 +304,24 @@ await runCase("repair/people", async () => {
     ["Your Persona", "Nora", "Ellis", "Mira"],
   );
   assert.equal((await f.api.list("people")).records.length, 0, "People opens a roster, not mixed record rows");
-  const knownEllis = await f.api.list("people", false, "", 0, "b");
-  assert.deepEqual(
-    knownEllis.records.map((r) => r.title),
-    ["Ellis paints the harbor boats."],
-  );
-  assert.ok(knownEllis.records[0].summary.startsWith("About Ellis"));
+  const beforeBrowsing = await f.read();
   assert.equal(
-    (await f.api.list("people", false, "compass", 0, "b")).total,
-    0,
-    "Private memories cannot affect Off-mode search/counts",
+    (await f.api.list("people", "compass", 0, "b")).total,
+    1,
+    "Administrative search includes memories the Persona does not know",
   );
-  const allEllis = await f.api.list("people", true, "", 0, "b");
+  const allEllis = await f.api.list("people", "", 0, "b");
   assert.ok(allEllis.records.some((r) => r.title.includes("compass")));
   assert.ok(allEllis.records.some((r) => r.title.includes("private festival")));
-  assert.ok(!JSON.stringify(await f.api.list("people", true, "", 0, "player")).includes("compass"));
-  const nora = await f.api.inspect(repairId("memory", root.id), true, "a"),
-    player = await f.api.inspect(nora.id, true, "player");
+  assert.ok(allEllis.records.some((r) => r.title.includes("harbor") && r.summary.startsWith("About Ellis")));
+  assert.ok(allEllis.creation?.people?.some((person) => person.id === "b"));
+  assert.ok(
+    (await f.api.list("people", "", 0, "a", "details")).records.some((r) => r.title.includes("character context")),
+  );
+  assert.ok(!JSON.stringify(await f.api.list("people", "", 0, "player")).includes("compass"));
+  assert.deepEqual(await f.read(), beforeBrowsing, "Administrative browsing cannot teach or change saved knowledge");
+  const nora = await f.api.inspect(repairId("memory", root.id), "a"),
+    player = await f.api.inspect(nora.id, "player");
   assert.equal(nora.id, player.id);
   assert.notEqual(nora.token, player.token);
   assert.equal(nora.fields[0].value, "We will repair the telescope.");
@@ -334,7 +335,6 @@ await runCase("repair/people", async () => {
   );
   const editBoth = {
     ...edit(nora.id, { text: "The telescope will be repaired on Friday." }, "shared-edit"),
-    inspection: true,
     personId: "a",
     knowers: ["player", "a"],
   };
@@ -347,16 +347,11 @@ await runCase("repair/people", async () => {
       projectMemories((await f.read()).memories, [id]).find((r) => r.rootId === root.id)?.text,
       editBoth.values.text,
     );
-  assert.equal(
-    (await f.api.list("people", false, "later date", 0, "a")).total,
-    0,
-    "Superseded original evidence stays hidden after a player correction",
-  );
-  const inverse = await f.api.undo(review.id, "shared-undo", true);
+  const inverse = await f.api.undo(review.id, "shared-undo");
   await f.api.apply(inverse.id);
-  assert.equal((await f.api.inspect(nora.id, true, "a")).fields[0].value, nora.fields[0].value);
-  assert.equal((await f.api.inspect(nora.id, true, "player")).fields[0].value, player.fields[0].value);
-  const allNora = await f.api.list("people", true, "", 0, "a");
+  assert.equal((await f.api.inspect(nora.id, "a")).fields[0].value, nora.fields[0].value);
+  assert.equal((await f.api.inspect(nora.id, "player")).fields[0].value, player.fields[0].value);
+  const allNora = await f.api.list("people", "", 0, "a");
   assert.ok(allNora.records.some((r) => r.people?.some((p) => p.id === "a" && p.forgotten)));
 });
 await runCase("repair/checkpoints", async () => {
@@ -533,25 +528,52 @@ await runCase("repair/fences", async () => {
 });
 await runCase("repair/privacy", async () => {
   const f = await fixture();
-  assert.ok(!JSON.stringify(await f.api.list("memories")).includes("hidden brass compass"));
-  assert.ok(JSON.stringify(await f.api.list("memories", true)).includes("hidden brass compass"));
+  assert.ok(JSON.stringify(await f.api.list("memories")).includes("hidden brass compass"));
+  const untouched = await f.read();
+  assert.ok(!projectMemories(untouched.memories, ["player"]).some((r) => r.text.includes("hidden brass compass")));
+  const stamp = memoryTime(10),
+    archived = {
+      id: "private-archive",
+      status: "closed",
+      placeName: "Workshop",
+      startedAt: stamp,
+      lines: [{ id: "whisper", content: "A private archived exchange.", contactHidden: true, heardBy: ["aqua"] }],
+      submissions: [],
+      operation: { internal: "Private runtime sentinel" },
+    };
+  await f.gate.documents.create({
+    id: "private-archive",
+    packageId: "villages",
+    kind: "venue-visit",
+    name: "Workshop",
+    description: "",
+    data: archived,
+    createdAt: stamp,
+    updatedAt: stamp,
+  });
+  const archiveRecord = await f.api.inspect(repairId("scene", archived.id));
+  assert.ok(archiveRecord.source.includes(archived.lines[0].content));
+  assert.ok(!JSON.stringify(archiveRecord).includes("Private runtime sentinel"));
+  assert.equal(publicSceneResponse(archived).lines.length, 0, "Gameplay still hides the private exchange");
+  assert.deepEqual(await f.read(), untouched, "Administrative reads cannot change gameplay knowledge");
   const id = (await f.read()).memories.records[0].id;
   await assert.rejects(
-    () => f.prepare({ ...edit(repairId("memory", id), { text: "Teach another person" }), knowers: ["aqua"] }),
+    () => f.prepare({ ...edit(repairId("memory", id), { text: "Teach another person" }), knowers: ["stranger"] }),
     /knowers/u,
   );
   assert.equal((await f.read()).memories.revision, f.initial.memories.revision);
   const secret = {
     ...edit(repairId("new-memory"), { text: "Nora secretly plans a voyage." }, "private-addition"),
     knowers: ["aqua"],
-    inspection: true,
   };
   const added = await f.prepare(secret);
   await f.api.apply(added.id);
-  assert.ok(!JSON.stringify(await f.api.index(false)).includes("voyage"));
-  assert.ok(JSON.stringify(await f.api.index(true)).includes("voyage"));
-  await assert.rejects(() => f.api.undo(added.id, "hidden-undo"), /Spoilers/u);
-  const undo = await f.api.undo(added.id, "undo-private-addition", true);
+  const legacyHistory = [...f.rows.values()].find((row) => row.kind === "repair-history" && row.data.id === added.id)!;
+  legacyHistory.data.private = true;
+  legacyHistory.data.request.inspection = false;
+  legacyHistory.data.record.private = true;
+  assert.ok(JSON.stringify(await f.api.index()).includes("voyage"), "Earlier private history remains available");
+  const undo = await f.api.undo(added.id, "undo-private-addition");
   await f.api.apply(undo.id);
   assert.ok(!projectMemories((await f.read()).memories, ["aqua"]).some((row) => row.text.includes("voyage")));
 });
@@ -592,27 +614,22 @@ await runCase("repair/domain-editors", async () => {
   assert.ok((await f.read()).maps[0].revision > revision);
   assert.equal((await f.read()).venues[0].presentation.x, 0.2);
   assert.ok(
-    !(await f.api.list("places")).records.some((record) => record.id === repairId("zone", "cafe", "common")),
-    "Unseen/private current interiors require inspection",
+    (await f.api.list("places")).records.some((record) => record.id === repairId("zone", "cafe", "common")),
+    "Administrative records include unseen interiors",
   );
-  const physical = await f.api.inspect(repairId("zone", "cafe", "common"), true);
+  const physical = await f.api.inspect(repairId("zone", "cafe", "common"));
   const physicalValues = Object.fromEntries(physical.fields.map((field) => [field.key, field.value]));
   physicalValues.condition = "The roof is sound.";
-  const roof = await f.prepare({ ...edit(physical.id, physicalValues, "fix-roof"), inspection: true });
+  const roof = await f.prepare(edit(physical.id, physicalValues, "fix-roof"));
   await f.api.apply(roof.id);
   assert.equal((await f.read()).venues[0].zones?.find((z) => z.id === "common")?.state.condition, "The roof is sound.");
-  assert.equal(
-    (await f.api.index(false)).checkpoints.length,
-    1,
-    "Private checkpoint names are hidden; public map checkpoint remains visible",
-  );
-  assert.ok((await f.api.index(true)).checkpoints.length >= 2);
-  const publicCheckpointIds = new Set((await f.api.index(false)).checkpoints.map((checkpoint) => checkpoint.id));
-  const privateCheckpoint = (await f.api.index(true)).checkpoints.find(
-    (checkpoint) => !publicCheckpointIds.has(checkpoint.id),
-  );
-  assert.ok(privateCheckpoint);
-  await assert.rejects(f.api.restore(privateCheckpoint.id, "hidden-checkpoint"), /Spoilers/);
+  assert.ok((await f.api.index()).checkpoints.length >= 2);
+  const legacyCheckpoint = [...f.rows.values()].find((row) => row.kind === "repair-checkpoint")!;
+  legacyCheckpoint.data.private = true;
+  assert.ok((await f.api.index()).checkpoints.some((checkpoint) => checkpoint.id === legacyCheckpoint.data.id));
+  const restoreReview = await f.api.restore(legacyCheckpoint.data.id, "legacy-private-checkpoint");
+  assert.equal(restoreReview.kind, "restore");
+  await f.api.apply(restoreReview.id);
   const oldHome = venue("old-home", "residence"),
     newHome = venue("new-home", "residence");
   newHome.residentIds = [];
@@ -635,7 +652,6 @@ await runCase("repair/domain-editors", async () => {
   });
   const home = await f.prepare({
     ...edit(repairId("home", "a"), { destination: repairId("new-home", "bedroom") }, "fix-home"),
-    inspection: true,
   });
   await f.api.apply(home.id);
   const housed = await f.read();
@@ -743,11 +759,11 @@ await runCase("repair/scale", async () => {
     },
     { memories: true },
   );
-  const page = await f.api.list("memories", true);
+  const page = await f.api.list("memories");
   assert.equal(page.records.length, 50);
   assert.ok(page.total > 10000);
   const oldest = (await f.read()).memories.records[0];
-  const found = await f.api.inspect(repairId("memory", oldest.id), true);
+  const found = await f.api.inspect(repairId("memory", oldest.id));
   assert.ok(found.people?.length);
   assert.ok(found.source.length);
 });
@@ -770,6 +786,23 @@ await runCase("repair/http", async () => {
     await villagesRoutes(app);
     const index = await app.inject({ url: "/repair" });
     assert.equal(index.statusCode, 200, index.body);
+    const memories = await app.inject({ url: "/repair/records?topic=memories&inspection=false" });
+    assert.equal(memories.statusCode, 200, memories.body);
+    assert.ok(memories.json().records.some((entry: any) => entry.title.includes("hidden brass compass")));
+    assert.ok(memories.json().creation.people.some((person: any) => person.id === "aqua"));
+    const checkpoint = await app.inject({
+      method: "POST",
+      url: "/repair/checkpoints",
+      payload: { title: "HTTP checkpoint", operationId: "http-checkpoint" },
+    });
+    assert.equal(checkpoint.statusCode, 200, checkpoint.body);
+    const restoration = await app.inject({
+      method: "POST",
+      url: "/repair/restore",
+      payload: { id: checkpoint.json().id, operationId: "http-restoration" },
+    });
+    assert.equal(restoration.statusCode, 200, restoration.body);
+    assert.equal(restoration.json().kind, "restore");
     const record = (await app.inject({ url: "/repair/record?id=" + encodeURIComponent(repairId("world")) })).json();
     const input = {
       ...edit(

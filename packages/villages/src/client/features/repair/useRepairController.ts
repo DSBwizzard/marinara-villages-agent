@@ -22,8 +22,7 @@ export function useRepairController(
   const [index, setIndex] = useState<RepairIndex | null>(null),
     [topic, setTopic] = useState<RepairTopic>("memories"),
     [view, setView] = useState<View>("hub");
-  const [inspection, setInspection] = useState(false),
-    [person, setPerson] = useState<RepairPerson | null>(null),
+  const [person, setPerson] = useState<RepairPerson | null>(null),
     [section, setSection] = useState<Section>("memories");
   const [records, setRecords] = useState<RepairRecord[]>([]),
     [creation, setCreation] = useState<RepairRecord | null>(null),
@@ -45,8 +44,7 @@ export function useRepairController(
     collection = useRef<"list" | "history" | "checkpoints">("list");
   const pending = useRef<RepairRequest | null>(null),
     checkpointRequest = useRef<{ title: string; operationId: string } | null>(null);
-  const draftKey = (id: string, spoilers = inspection, who = person) =>
-    JSON.stringify([world.current, who?.id ?? "", spoilers, id]);
+  const draftKey = (id: string) => JSON.stringify([world.current, person?.id ?? "", id]);
   const current = (ticket: number) => epoch.current === ticket;
   const invalidate = () => {
     epoch.current++;
@@ -60,16 +58,15 @@ export function useRepairController(
     setError("");
     setRestoreAcknowledged(false);
   };
-  const acceptIndex = (result: RepairIndex, ticket: number, spoilers: boolean) => {
+  const acceptIndex = (result: RepairIndex, ticket: number) => {
     if (!current(ticket)) return;
     const identity = result.identity ?? result.seed;
     if (world.current && world.current !== identity) {
       invalidate();
       setDrafts({});
       setPerson(null);
-      setInspection(false);
       setView("hub");
-      setIndex(spoilers ? null : result);
+      setIndex(result);
       checkpointRequest.current = null;
       world.current = identity;
       return;
@@ -77,16 +74,16 @@ export function useRepairController(
     world.current = identity;
     setIndex(result);
   };
-  const readIndex = async (spoilers = inspection, historyOffset = 0) => {
+  const readIndex = async (historyOffset = 0) => {
     const ticket = epoch.current;
-    const result = await request<RepairIndex>(`/repair?inspection=${spoilers}&historyOffset=${historyOffset}`);
-    acceptIndex(result, ticket, spoilers);
+    const result = await request<RepairIndex>(`/repair?historyOffset=${historyOffset}`);
+    acceptIndex(result, ticket);
   };
   useEffect(() => {
     if (!active) return;
     const abort = new AbortController(),
       ticket = epoch.current;
-    void request<RepairIndex>(`/repair?inspection=${inspection}`, { signal: abort.signal })
+    void request<RepairIndex>("/repair", { signal: abort.signal })
       .then((result) => {
         if (abort.signal.aborted || epoch.current !== ticket) return;
         const identity = result.identity ?? result.seed;
@@ -98,11 +95,10 @@ export function useRepairController(
           setSelected(null);
           setReview(null);
           setPerson(null);
-          setInspection(false);
           setRecords([]);
           setCreation(null);
           setView("hub");
-          setIndex(inspection ? null : result);
+          setIndex(result);
           checkpointRequest.current = null;
           return;
         }
@@ -113,7 +109,7 @@ export function useRepairController(
         if (!abort.signal.aborted && epoch.current === ticket) setError(messageFrom(cause, "Could not open REPAIR."));
       });
     return () => abort.abort();
-  }, [active, inspection]);
+  }, [active]);
   const act = async (fn: (ticket: number) => Promise<void>) => {
     const ticket = epoch.current,
       id = ++operation.current;
@@ -131,7 +127,6 @@ export function useRepairController(
     nextTopic: RepairTopic,
     start: number,
     search: string,
-    spoilers: boolean,
     who: RepairPerson | null,
     part: Section,
     ticket: number,
@@ -139,7 +134,7 @@ export function useRepairController(
     if (!current(ticket)) return;
     if (nextTopic === "restore" || (nextTopic === "people" && !who)) return;
     const result = await request<RepairRecordPage>(
-      `/repair/records?topic=${nextTopic}&inspection=${spoilers}&offset=${start}&query=${encodeURIComponent(search)}${who ? `&personId=${encodeURIComponent(who.id)}&section=${part}` : ""}`,
+      `/repair/records?topic=${nextTopic}&offset=${start}&query=${encodeURIComponent(search)}${who ? `&personId=${encodeURIComponent(who.id)}&section=${part}` : ""}`,
     );
     if (!current(ticket)) return;
     setRecords(result.records.filter((row) => !row.creating));
@@ -150,12 +145,10 @@ export function useRepairController(
   const load = (nextTopic: RepairTopic = topic, start = 0, search = query) =>
     act(async (ticket) => {
       setView(nextTopic === "restore" ? "checkpoints" : "list");
-      await fetchRecords(nextTopic, start, search, inspection, person, section, ticket);
+      await fetchRecords(nextTopic, start, search, person, section, ticket);
     });
   const chooseTopic = (nextTopic: RepairTopic) => {
     invalidate();
-    if (inspection) setIndex(null);
-    setInspection(false);
     setPerson(null);
     setSection("memories");
     setQuery("");
@@ -163,14 +156,12 @@ export function useRepairController(
     collection.current = nextTopic === "restore" ? "checkpoints" : "list";
     setView(collection.current);
     return act(async (ticket) => {
-      await readIndex(false);
-      await fetchRecords(nextTopic, 0, "", false, null, "memories", ticket);
+      await readIndex();
+      await fetchRecords(nextTopic, 0, "", null, "memories", ticket);
     });
   };
   const choosePerson = (who: RepairPerson) => {
     invalidate();
-    if (inspection) setIndex(null);
-    setInspection(false);
     setPerson(who);
     setTopic("people");
     setSection("memories");
@@ -178,48 +169,42 @@ export function useRepairController(
     collection.current = "list";
     setView("list");
     return act(async (ticket) => {
-      await readIndex(false);
-      await fetchRecords("people", 0, "", false, who, "memories", ticket);
+      await readIndex();
+      await fetchRecords("people", 0, "", who, "memories", ticket);
     });
   };
   const chooseSection = (part: Section) => {
     invalidate();
-    if (inspection) setIndex(null);
-    setInspection(false);
     setSection(part);
     setQuery("");
     setView("list");
     return act(async (ticket) => {
-      await readIndex(false);
-      await fetchRecords(topic, 0, "", false, person, part, ticket);
+      await readIndex();
+      await fetchRecords(topic, 0, "", person, part, ticket);
     });
   };
   const showHub = () => {
     invalidate();
-    if (inspection) setIndex(null);
-    setInspection(false);
     setPerson(null);
     setView("hub");
-    void act(() => readIndex(false));
+    void act(() => readIndex());
   };
   const showHistory = () => {
     invalidate();
-    if (inspection) setIndex(null);
-    setInspection(false);
     setPerson(null);
     collection.current = "history";
     setView("history");
-    return act(() => readIndex(false));
+    return act(() => readIndex());
   };
-  const fetchRecord = async (id: string, spoilers: boolean, ticket: number, inherit?: Draft) => {
+  const fetchRecord = async (id: string, ticket: number) => {
     if (!current(ticket)) return;
     const record = await request<RepairRecord>(
-      `/repair/record?id=${encodeURIComponent(id)}&inspection=${spoilers}${person ? `&personId=${encodeURIComponent(person.id)}` : ""}`,
+      `/repair/record?id=${encodeURIComponent(id)}${person ? `&personId=${encodeURIComponent(person.id)}` : ""}`,
     );
     if (!current(ticket)) return;
     setSelected(record);
     setView("edit");
-    const key = draftKey(id, spoilers),
+    const key = draftKey(id),
       focus = record.people?.find((p) => p.id === person?.id),
       values = Object.fromEntries(record.fields.map((f) => [f.key, f.value]));
     setDrafts((prior) =>
@@ -227,46 +212,20 @@ export function useRepairController(
         ? prior
         : {
             ...prior,
-            [key]: inherit
-              ? { ...inherit, values: { ...values, ...inherit.values } }
-              : {
-                  values,
-                  knowers: focus ? [focus.id] : (record.people?.slice(0, 1).map((p) => p.id) ?? []),
-                  action: record.actions[0].id,
-                },
+            [key]: {
+              values,
+              knowers: focus ? [focus.id] : (record.people?.slice(0, 1).map((p) => p.id) ?? []),
+              action: record.actions[0].id,
+            },
           },
     );
   };
   const open = (id: string) => {
     invalidate();
     setView("edit");
-    return act((ticket) => fetchRecord(id, inspection, ticket));
+    return act((ticket) => fetchRecord(id, ticket));
   };
   const draft = selected ? drafts[draftKey(selected.id)] : undefined;
-  const toggleSpoilers = (next: boolean) => {
-    const target = selected,
-      inherit = next && draft && target?.fields.some((f) => draft.values[f.key] !== f.value) ? draft : undefined,
-      priorView = view;
-    invalidate();
-    setIndex(null);
-    setInspection(next);
-    setView(target && ["edit", "review", "done"].includes(priorView) ? "edit" : collection.current);
-    return act(async (ticket) => {
-      await readIndex(next);
-      if (!current(ticket)) return;
-      if (target && ["edit", "review", "done"].includes(priorView)) {
-        try {
-          await fetchRecord(target.id, next, ticket, inherit);
-          return;
-        } catch (cause) {
-          if (!current(ticket)) return;
-          if ((cause as { status?: number }).status !== 404) throw cause;
-          setView(collection.current);
-        }
-      }
-      await fetchRecords(topic, 0, query, next, person, section, ticket);
-    });
-  };
   const update = (change: Partial<Draft>) => {
     if (!selected) return;
     const key = draftKey(selected.id);
@@ -286,7 +245,6 @@ export function useRepairController(
           selected.topic === "memories" && ["forget", "remember"].includes(draft.action)
             ? Object.fromEntries(selected.fields.map((field) => [field.key, field.value]))
             : draft.values,
-        inspection,
         expectedRecord: selected.token ?? "",
         ...(person ? { personId: person.id } : {}),
       };
@@ -329,7 +287,7 @@ export function useRepairController(
     return act(async (ticket) => {
       const result = await request<RepairReview>("/repair/undo", {
         method: "POST",
-        body: JSON.stringify({ id, operationId: createVillagesClientId(), inspection }),
+        body: JSON.stringify({ id, operationId: createVillagesClientId() }),
       });
       if (!current(ticket)) return;
       setReview(result);
@@ -342,7 +300,7 @@ export function useRepairController(
     return act(async (ticket) => {
       const result = await request<RepairReview>("/repair/restore", {
         method: "POST",
-        body: JSON.stringify({ id, operationId: createVillagesClientId(), inspection }),
+        body: JSON.stringify({ id, operationId: createVillagesClientId() }),
       });
       if (!current(ticket)) return;
       setReview(result);
@@ -368,7 +326,6 @@ export function useRepairController(
     index,
     topic,
     view,
-    inspection,
     person,
     section,
     collection: collection.current,
@@ -395,7 +352,6 @@ export function useRepairController(
     chooseSection,
     showHub,
     showHistory,
-    toggleSpoilers,
     open,
     update,
     prepare,
@@ -408,7 +364,7 @@ export function useRepairController(
       setReview(null);
       setView(selected ? "edit" : collection.current);
     },
-    historyPage: (start: number) => act(() => readIndex(inspection, start)),
+    historyPage: (start: number) => act(() => readIndex(start)),
   };
 }
 export type RepairController = ReturnType<typeof useRepairController>;

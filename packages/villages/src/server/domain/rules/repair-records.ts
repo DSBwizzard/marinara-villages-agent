@@ -1,7 +1,7 @@
 import type { RepairRecord, RepairField, RepairRequest } from "../../../shared/contracts/repair.js";
 import type { VillageState } from "../models/world.js";
 import type { MemoryKnower } from "../models/memories.js";
-import { inspectMemoryCandidates, projectMemories, retainMemoryScenes } from "./memory-views.js";
+import { inspectMemoryCandidates, retainMemoryScenes } from "./memory-views.js";
 import { correctVillageMemory, forgetVillageMemory } from "./village-memories.js";
 import { validateMemoryRecord, memoryHash } from "./memory-integrity.js";
 import { normalizeVillageMutation } from "./world-mutation.js";
@@ -30,12 +30,7 @@ const choices = (
   options: { value: string; label: string }[],
 ): RepairField => ({ key, label, value, type: "choice", options });
 const actions = [{ id: "correct", label: "Modify" }];
-export function worldRepairRecords(
-  state: VillageState,
-  inspection: boolean,
-  includeMemories = true,
-  personId?: string,
-): RepairRecord[] {
+export function worldRepairRecords(state: VillageState, includeMemories = true, personId?: string): RepairRecord[] {
   const records: RepairRecord[] = [];
   const add = (
     parts: string[],
@@ -71,35 +66,21 @@ export function worldRepairRecords(
     ...state.villagers.map((v) => ({ id: v.characterId, name: v.cardSnapshot.name })),
   ];
   if (includeMemories) {
-    if (inspection)
-      for (const id of new Set(state.memories.records.flatMap((r) => Object.keys(r.knowers))))
-        if (!people.some((p) => p.id === id)) people.push({ id, name: "Former resident" });
+    for (const id of new Set(state.memories.records.flatMap((r) => Object.keys(r.knowers))))
+      if (!people.some((p) => p.id === id)) people.push({ id, name: "Former resident" });
     const storedById = new Map(state.memories.records.map((r) => [r.id, r]));
-    const projected = new Map(
-      people.map((p) => [
-        p.id,
-        inspection
-          ? inspectMemoryCandidates(state.memories, p.id)
-          : p.id === "player"
-            ? projectMemories(state.memories, ["player"])
-            : [],
-      ]),
-    );
+    const projected = new Map(people.map((p) => [p.id, inspectMemoryCandidates(state.memories, p.id)]));
     const effective = new Map([...projected].map(([id, rows]) => [id, new Map(rows.map((row) => [row.rootId, row]))]));
-    const memories = inspection
-      ? [...(personId ? (projected.get(personId) ?? []) : []), ...[...projected.values()].flat()]
-      : projected.get("player")!;
+    const memories = [...(personId ? (projected.get(personId) ?? []) : []), ...[...projected.values()].flat()];
     const seen = new Set<string>();
     for (const candidate of memories) {
       if (seen.has(candidate.rootId)) continue;
       const root = storedById.get(candidate.rootId)!;
-      const focused = inspection && personId ? effective.get(personId)?.get(root.id) : undefined;
+      const focused = personId ? effective.get(personId)?.get(root.id) : undefined;
       const row = focused ?? candidate;
-      if (personId && !focused && !row.subjects.includes(personId) && !(personId === "player" && !inspection)) continue;
+      if (personId && !focused && !row.subjects.includes(personId)) continue;
       seen.add(root.id);
-      const knowers = inspection
-        ? Object.keys(root.knowers).filter((id) => effective.get(id)?.has(root.id))
-        : ["player"];
+      const knowers = Object.keys(root.knowers).filter((id) => effective.get(id)?.has(root.id));
       add(
         ["memory", root.id],
         "memories",
@@ -110,12 +91,10 @@ export function worldRepairRecords(
           source:
             root.origin.kind === "domain" && root.origin.id.startsWith("player-repair:")
               ? ["Added by you"]
-              : inspection
-                ? knowers.flatMap((id) => {
-                    const candidate = effective.get(id)!.get(root.id)!;
-                    return storedById.get(candidate.id)!.knowers[id].support.map((e) => e.excerpt);
-                  })
-                : Object.values(row.knowers).flatMap((k) => k.support.map((e) => e.excerpt)),
+              : knowers.flatMap((id) => {
+                  const candidate = effective.get(id)!.get(root.id)!;
+                  return storedById.get(candidate.id)!.knowers[id].support.map((e) => e.excerpt);
+                }),
           actions: [
             ...actions,
             { id: "forget", label: "Forget" },
@@ -129,7 +108,6 @@ export function worldRepairRecords(
               forgotten: !!root.knowers[p.id]?.forgotten,
             })),
           revision: root.revision,
-          private: inspection || !root.knowers.player,
           subjects: row.subjects,
           related:
             row.domainRef && ["wish", "pursuit", "project"].includes(row.domainRef.kind)
@@ -147,7 +125,7 @@ export function worldRepairRecords(
       );
     }
     add(["new-memory"], "memories", "Add memory", "", [text("text", "Memory", "")], {
-      people: inspection ? people : [people[0]],
+      people,
       source: [],
       creating: true,
     });
@@ -155,94 +133,82 @@ export function worldRepairRecords(
   for (const person of state.villagers) {
     const id = person.characterId,
       name = person.cardSnapshot.name;
-    if (inspection) {
-      const homeOptions = state.venues
-        .filter((v) => hasVenueClass(v, "residence") && v.constructionStatus !== "worksite")
-        .flatMap((v) =>
-          venueZones(v)
-            .filter((z) => z.kind === "private-residence" && (!z.ownerId || z.ownerId === id))
-            .map((z) => ({ value: repairId(v.id, z.id), label: `${v.name} · ${z.name}` })),
-        );
-      const home = state.venues.find((v) => venueResidentIds(v).includes(id)),
-        sleep = home?.destinations?.[id]?.sleep ?? (home && venueZones(home).find((z) => z.ownerId === id)?.id);
-      if (homeOptions.length)
-        add(
-          ["home", id],
-          "places",
-          `${name} · home assignment`,
-          "Residence and sleep destination",
-          [
-            choices("destination", "Home", home && sleep ? repairId(home.id, sleep) : "", [
-              { value: "", label: "Unassigned" },
-              ...homeOptions,
-            ]),
-          ],
-          {
-            private: true,
-            source: ["Repairs ownership and the sleep destination. Objects stay in their recorded Zones."],
-          },
-        );
+    const homeOptions = state.venues
+      .filter((v) => hasVenueClass(v, "residence") && v.constructionStatus !== "worksite")
+      .flatMap((v) =>
+        venueZones(v)
+          .filter((z) => z.kind === "private-residence" && (!z.ownerId || z.ownerId === id))
+          .map((z) => ({ value: repairId(v.id, z.id), label: `${v.name} · ${z.name}` })),
+      );
+    const home = state.venues.find((v) => venueResidentIds(v).includes(id)),
+      sleep = home?.destinations?.[id]?.sleep ?? (home && venueZones(home).find((z) => z.ownerId === id)?.id);
+    if (homeOptions.length)
       add(
-        ["person", id],
-        "people",
-        `${name} · character context`,
-        "Village-owned character copy",
+        ["home", id],
+        "places",
+        `${name} · home assignment`,
+        "Residence and sleep destination",
         [
-          text("homeworld", "Homeworld", person.admission.homeworld),
-          text("startingSituation", "Starting situation", person.admission.startingSituation),
-          ...(["personality", "backstory", "scenario", "appearance", "postHistoryInstructions"] as const).map((key) =>
-            text(
-              key,
-              {
-                personality: "Personality",
-                backstory: "Backstory",
-                scenario: "Card scenario",
-                appearance: "Appearance",
-                postHistoryInstructions: "Writing instructions",
-              }[key],
-              person.cardSnapshot[key] ?? "",
-            ),
-          ),
+          choices("destination", "Home", home && sleep ? repairId(home.id, sleep) : "", [
+            { value: "", label: "Unassigned" },
+            ...homeOptions,
+          ]),
         ],
         {
-          private: true,
-          source: ["Captured character and admission context. The original library card stays separate."],
+          source: ["Repairs ownership and the sleep destination. Objects stay in their recorded Zones."],
         },
       );
-      if (person.agenda) {
-        add(
-          ["routine", id],
-          "people",
-          `${name} · routine`,
-          "Future routine plans",
-          [
-            text("routineSummary", "Routine", person.agenda.routineSummary),
-            ...person.agenda.day.flatMap((block, i) => [
-              {
-                key: `start:${i}`,
-                label: `Block ${i + 1} start minute`,
-                value: block.startMinute,
-                type: "number" as const,
-                min: 0,
-                max: 1439,
-              },
-              {
-                key: `end:${i}`,
-                label: `Block ${i + 1} end minute`,
-                value: block.endMinute,
-                type: "number" as const,
-                min: 1,
-                max: 1440,
-              },
-              text(`activity:${i}`, `Block ${i + 1} activity`, block.activity),
-            ]),
-          ],
-          { private: true },
-        );
-      }
+    add(
+      ["person", id],
+      "people",
+      `${name} · character context`,
+      "Village-owned character copy",
+      [
+        text("homeworld", "Homeworld", person.admission.homeworld),
+        text("startingSituation", "Starting situation", person.admission.startingSituation),
+        ...(["personality", "backstory", "scenario", "appearance", "postHistoryInstructions"] as const).map((key) =>
+          text(
+            key,
+            {
+              personality: "Personality",
+              backstory: "Backstory",
+              scenario: "Card scenario",
+              appearance: "Appearance",
+              postHistoryInstructions: "Writing instructions",
+            }[key],
+            person.cardSnapshot[key] ?? "",
+          ),
+        ),
+      ],
+      {
+        source: ["Captured character and admission context. The original library card stays separate."],
+      },
+    );
+    if (person.agenda) {
+      add(["routine", id], "people", `${name} · routine`, "Future routine plans", [
+        text("routineSummary", "Routine", person.agenda.routineSummary),
+        ...person.agenda.day.flatMap((block, i) => [
+          {
+            key: `start:${i}`,
+            label: `Block ${i + 1} start minute`,
+            value: block.startMinute,
+            type: "number" as const,
+            min: 0,
+            max: 1439,
+          },
+          {
+            key: `end:${i}`,
+            label: `Block ${i + 1} end minute`,
+            value: block.endMinute,
+            type: "number" as const,
+            min: 1,
+            max: 1440,
+          },
+          text(`activity:${i}`, `Block ${i + 1} activity`, block.activity),
+        ]),
+      ]);
     }
     for (const wish of person.agenda?.wishes ?? []) {
-      if (!inspection) continue;
       add(
         ["wish", id, wish.id],
         "progress",
@@ -250,24 +216,22 @@ export function worldRepairRecords(
         "Active Wish",
         [text("wish", "Desired outcome", wish.wish)],
         {
-          private: true,
           source: ["Corrects the authoritative desired outcome; does not invent fulfillment."],
           actions: [...actions, { id: "retire", label: "Retire Wish" }],
         },
       );
     }
     for (const wish of person.completedWishes) {
-      if (!inspection) continue;
       add(
         ["completed-wish", id, wish.wish.id],
         "progress",
         `${name} · ${wish.wish?.wish ?? "Completed Wish"}`,
         "Recorded Wish outcome",
         [],
-        { actions: [{ id: "reopen", label: "Withdraw mistaken completion" }], private: true },
+        { actions: [{ id: "reopen", label: "Withdraw mistaken completion" }] },
       );
     }
-    if (inspection && state.development?.residents[id])
+    if (state.development?.residents[id])
       for (const pursuit of state.development.residents[id].pursuits)
         add(
           ["pursuit", id, pursuit.id],
@@ -275,7 +239,7 @@ export function worldRepairRecords(
           `${name} · Pursuit`,
           pursuit.status,
           [text("reason", "Recorded reason", pursuit.reason)],
-          { private: true, actions: [...actions, { id: "end", label: "End Pursuit" }] },
+          { actions: [...actions, { id: "end", label: "End Pursuit" }] },
         );
   }
   for (const venue of state.venues) {
@@ -295,8 +259,6 @@ export function worldRepairRecords(
         })),
     ]);
     for (const zone of venueZones(venue)) {
-      const privateRecord = zone.kind !== "exterior" && zone.ownerId !== "player";
-      if (privateRecord && !inspection) continue;
       add(
         ["zone", venue.id, zone.id],
         "places",
@@ -308,19 +270,16 @@ export function worldRepairRecords(
           text("items", "Objects (one per line)", zone.state.items.join("\n")),
           text("publicFacts", "Recorded facts (one per line)", zone.state.publicFacts.join("\n")),
           ...zone.state.features.map((f) => text(`feature:${f.id}`, "Feature", f.text)),
-          ...zone.state.traces
-            .filter((t) => inspection || !t.recipientId || t.recipientId === "player")
-            .map((t) => text(`trace:${t.id}`, t.kind === "note" ? "Note" : "Physical trace", t.text)),
+          ...zone.state.traces.map((t) => text(`trace:${t.id}`, t.kind === "note" ? "Note" : "Physical trace", t.text)),
         ],
         {
-          private: privateRecord,
           source: [`Owner: ${people.find((p) => p.id === zone.ownerId)?.name ?? "Unassigned"}`],
           related: state.projects
             .filter((p) => p.venueId === venue.id)
             .map((p) => ({ id: repairId("project", p.id), title: p.title })),
         },
       );
-      if (inspection && zone.access) {
+      if (zone.access) {
         add(
           ["access", venue.id, zone.id],
           "places",
@@ -350,7 +309,6 @@ export function worldRepairRecords(
               },
             ]),
           ],
-          { private: true },
         );
         for (const person of people)
           if (venue.access)
@@ -376,7 +334,6 @@ export function worldRepairRecords(
                 },
               ],
               {
-                private: true,
                 source: ["Administrative access repair. Existing Venue-wide bans and opening hours remain separate."],
               },
             );

@@ -119,20 +119,6 @@ export function RepairPage({
                         ? "Repair history"
                         : "Backups & repairs"}
           </h1>
-          {c.view !== "hub" && !directory ? (
-            <label className="repair-spoilers">
-              <span>Spoilers</span>
-              <input
-                autoComplete="off"
-                type="checkbox"
-                role="switch"
-                aria-label="Spoilers"
-                checked={c.inspection}
-                disabled={c.saving}
-                onChange={(e) => void c.toggleSpoilers(e.target.checked)}
-              />
-            </label>
-          ) : null}
         </div>
         {c.view === "hub" ? <p className="repair-muted">Choose what needs correcting.</p> : null}
         {c.index?.sceneOpen ? (
@@ -254,12 +240,7 @@ export function RepairPage({
                     </button>
                   ))}
                 </div>
-                {!c.busy && !c.records.length ? (
-                  <p>
-                    No records match.
-                    {!c.inspection ? " Turn on Spoilers to include private records." : ""}
-                  </p>
-                ) : null}
+                {!c.busy && !c.records.length ? <p>No records match.</p> : null}
                 <footer>
                   <button
                     type="button"

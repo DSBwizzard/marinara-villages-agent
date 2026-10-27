@@ -20,7 +20,6 @@ export type RepairRecord = {
   actions: { id: string; label: string }[];
   people?: { id: string; name: string; text?: string; forgotten?: boolean }[];
   related: { id: string; title: string }[];
-  private?: boolean;
   revision?: number;
   token?: string;
   creating?: boolean;
@@ -32,7 +31,6 @@ export type RepairRequest = {
   action: string;
   values: Record<string, RepairValue>;
   knowers: string[];
-  inspection: boolean;
   expectedRecord: string;
   personId?: string;
 };

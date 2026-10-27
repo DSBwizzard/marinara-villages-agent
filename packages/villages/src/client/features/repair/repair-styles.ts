@@ -18,7 +18,6 @@ export const REPAIR_STYLES = `
 .villages-repair h2{font-size:18px;font-weight:500;margin:0 0 10px;}
 .villages-repair .repair-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;}
 .villages-repair .repair-heading h1{min-width:0;margin-bottom:0;}
-.villages-repair .repair-spoilers{display:flex;align-items:center;gap:8px;min-height:44px;white-space:nowrap;flex:none;cursor:pointer;font-size:13px;}
 .villages-repair .repair-people{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;}
 .villages-repair .repair-person{text-align:left;padding:20px;font-size:17px;}
 .villages-repair p{margin:0 0 12px;white-space:pre-wrap;}

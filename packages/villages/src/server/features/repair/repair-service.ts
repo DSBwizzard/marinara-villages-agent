@@ -21,7 +21,6 @@ import {
 import { coerceRelationshipState, relationshipKey } from "../../domain/rules/relationship-rules.js";
 import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import { publicSceneResponse } from "../../domain/rules/scene-public.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceVillageState } from "../../domain/decoding/village-codec.js";
 import type { ExchangeEffectReceipt } from "../../domain/models/wish-check-model.js";
@@ -66,13 +65,11 @@ type CheckpointData = {
   id: string;
   title: string;
   at: string;
-  private?: boolean;
   documents: RepairDocument[];
 };
 type HistoryData = RepairHistoryEntry & {
   seed: string;
   setupAt: string;
-  private: boolean;
   request: RepairRequest;
   record?: RepairRecord;
   inverse?: RepairRequest;
@@ -228,57 +225,45 @@ export function createRepairService(ports: RepairPorts) {
     if (typeof id !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(id))
       throw badRequest("Choose a saved repair or checkpoint.");
   };
-  async function allRecords(inspection: boolean, includeMemories = true, includeArchives = true, personId?: string) {
+  async function allRecords(includeMemories = true, includeArchives = true, personId?: string) {
     const state = await repository.readAuthority({ memories: includeMemories }),
-      result = worldRepairRecords(state, inspection, includeMemories, personId);
+      result = worldRepairRecords(state, includeMemories, personId);
     if (personId && personId !== "player" && !state.villagers.some((p) => p.characterId === personId))
       throw notFound("Choose a villager from People.");
-    if (inspection) {
-      const relationshipId = `villages-relationships-${createHash("sha256").update(state.seed).digest("hex").slice(0, 24)}`;
-      const saved = await documents.getById(PKG, relationshipId),
-        social = coerceRelationshipState(state.seed, saved?.data);
-      for (const edge of Object.values(social.edges)) {
-        const name = (id: string) =>
-          id === "player"
-            ? "Your Persona"
-            : (state.villagers.find((v) => v.characterId === id)?.cardSnapshot.name ?? "Former resident");
-        result.push({
-          id: repairId("relationship", edge.fromId, edge.toId),
-          topic: "people",
-          title: `${name(edge.fromId)} → ${name(edge.toId)}`,
-          summary: "Directional relationship",
-          fields: [
-            { key: "connection", label: "Connection", type: "text", value: edge.connection },
-            { key: "stance", label: "Current stance", type: "text", value: edge.stance },
-            {
-              key: "expectations",
-              label: "Expectations (one per line)",
-              type: "text",
-              value: edge.expectations.join("\n"),
-            },
-            { key: "concerns", label: "Concerns (one per line)", type: "text", value: edge.concerns.join("\n") },
-          ],
-          source: ["Current relationship record. Permissions and disclosures remain separate."],
-          actions: [{ id: "correct", label: "Modify" }],
-          related: [],
-          private: true,
-        });
-      }
+    const relationshipId = `villages-relationships-${createHash("sha256").update(state.seed).digest("hex").slice(0, 24)}`;
+    const saved = await documents.getById(PKG, relationshipId),
+      social = coerceRelationshipState(state.seed, saved?.data);
+    for (const edge of Object.values(social.edges)) {
+      const name = (id: string) =>
+        id === "player"
+          ? "Your Persona"
+          : (state.villagers.find((v) => v.characterId === id)?.cardSnapshot.name ?? "Former resident");
+      result.push({
+        id: repairId("relationship", edge.fromId, edge.toId),
+        topic: "people",
+        title: `${name(edge.fromId)} → ${name(edge.toId)}`,
+        summary: "Directional relationship",
+        fields: [
+          { key: "connection", label: "Connection", type: "text", value: edge.connection },
+          { key: "stance", label: "Current stance", type: "text", value: edge.stance },
+          {
+            key: "expectations",
+            label: "Expectations (one per line)",
+            type: "text",
+            value: edge.expectations.join("\n"),
+          },
+          { key: "concerns", label: "Concerns (one per line)", type: "text", value: edge.concerns.join("\n") },
+        ],
+        source: ["Current relationship record. Permissions and disclosures remain separate."],
+        actions: [{ id: "correct", label: "Modify" }],
+        related: [],
+      });
     }
     if (includeArchives)
       for (const row of await documents.list(PKG, "venue-visit")) {
-        const scene = publicSceneResponse(row.data) as {
-          id: string;
-          status: string;
-          placeName: string;
-          lines: { content: string; contactHidden?: boolean }[];
-          startedAt: string;
-          operation?: unknown;
-          submissions?: unknown[];
-        };
-        const raw = row.data as import("../../domain/models/scene-model.js").VenueScene;
+        const scene = row.data as import("../../domain/models/scene-model.js").VenueScene;
         const unfinished =
-          raw.submissions?.filter((turn) => turn.processing && unfinishedExchange(turn.processing)) ?? [];
+          scene.submissions?.filter((turn) => turn.processing && unfinishedExchange(turn.processing)) ?? [];
         if (unfinished.length) {
           result.push({
             id: repairId("saved-scene", scene.id),
@@ -289,7 +274,7 @@ export function createRepairService(ports: RepairPorts) {
             source: ["Applies retained output without requesting replacement generation."],
             actions: [{ id: "replay", label: "Replay saved work" }],
             related: [],
-            revision: raw.sceneRevision,
+            revision: scene.sceneRevision,
           });
           for (const turn of unfinished)
             for (const domain of ["memories", "relationships", "wishes", "projects"] as const)
@@ -305,7 +290,7 @@ export function createRepairService(ports: RepairPorts) {
                   ],
                   actions: [{ id: "continue", label: "Continue without this update" }],
                   related: [],
-                  revision: raw.sceneRevision,
+                  revision: scene.sceneRevision,
                 });
         }
         if (scene.status !== "closed") continue;
@@ -323,10 +308,7 @@ export function createRepairService(ports: RepairPorts) {
               value: (annotation?.data as { text?: string })?.text ?? "",
             },
           ],
-          source: scene.lines
-            .filter((l) => !l.contactHidden)
-            .slice(-6)
-            .map((l) => l.content),
+          source: scene.lines.slice(-6).map((l) => l.content),
           actions: [{ id: "correct", label: "Modify" }],
           related: [],
         });
@@ -337,7 +319,7 @@ export function createRepairService(ports: RepairPorts) {
       for (const page of pages.filter((p) => p.id.startsWith(prefix)))
         for (const candidate of (page.data as { entries?: unknown[] }).entries ?? []) {
           const outcome = coerceWishOutcome(candidate);
-          if (!inspection || !outcome || outcome.kind !== "fulfilled" || outcome.correctedAt) continue;
+          if (!outcome || outcome.kind !== "fulfilled" || outcome.correctedAt) continue;
           const id = repairId("completed-wish", person.characterId, outcome.wish.id);
           if (result.some((r) => r.id === id)) continue;
           result.push({
@@ -349,7 +331,6 @@ export function createRepairService(ports: RepairPorts) {
             source: ["Saved fulfillment record"],
             actions: [{ id: "reopen", label: "Withdraw mistaken completion" }],
             related: [],
-            private: true,
           });
         }
     }
@@ -365,15 +346,15 @@ export function createRepairService(ports: RepairPorts) {
     const pointer = await documents.getById(PKG, "villages-active-venue");
     return !!(pointer?.data as { sessionId?: string })?.sessionId;
   }
-  async function index(inspection = false, historyOffset = 0): Promise<RepairIndex> {
+  async function index(historyOffset = 0): Promise<RepairIndex> {
     const state = await repository.readAuthority();
     const histories = (await documents.list(PKG, HISTORY))
       .map((r) => r.data as HistoryData)
-      .filter((r) => r.seed === state.seed && r.setupAt === state.setupAt && (!r.private || inspection))
+      .filter((r) => r.seed === state.seed && r.setupAt === state.setupAt)
       .sort((a, b) => b.at.localeCompare(a.at));
     const checkpoints = (await documents.list(PKG, CHECKPOINT))
       .map((r) => r.data as CheckpointData)
-      .filter((r) => r.seed === state.seed && r.setupAt === state.setupAt && (!r.private || inspection))
+      .filter((r) => r.seed === state.seed && r.setupAt === state.setupAt)
       .sort((a, b) => b.at.localeCompare(a.at));
     return {
       seed: state.seed,
@@ -400,22 +381,10 @@ export function createRepairService(ports: RepairPorts) {
       checkpoints: checkpoints.map(({ id, title, at, documents: rows }) => ({ id, title, at, records: rows.length })),
     };
   }
-  async function list(
-    topic: string,
-    inspection = false,
-    query = "",
-    offset = 0,
-    personId?: string,
-    section = "memories",
-  ) {
+  async function list(topic: string, query = "", offset = 0, personId?: string, section = "memories") {
     if (topic === "people" && !personId) return { records: [], total: 0, next: null };
     const memoryList = topic === "memories" || (topic === "people" && section !== "details");
-    const { state, records } = await allRecords(
-        inspection,
-        memoryList,
-        topic === "world" || topic === "progress",
-        personId,
-      ),
+    const { state, records } = await allRecords(memoryList, topic === "world" || topic === "progress", personId),
       words = query.toLocaleLowerCase().split(/\s+/u).filter(Boolean);
     const personName =
       personId === "player"
@@ -452,23 +421,18 @@ export function createRepairService(ports: RepairPorts) {
       ...(creation ? { creation } : {}),
     };
   }
-  async function inspect(id: string, inspection = false, personId?: string) {
+  async function inspect(id: string, personId?: string) {
     const kind = repairParts(id)[0];
     const { records } = await allRecords(
-        inspection,
         ["memory", "new-memory"].includes(kind),
         ["scene", "completed-wish", "saved-scene", "saved-domain"].includes(kind),
         personId,
       ),
       record = records.find((r) => r.id === id);
-    if (!record) throw notFound("That record is unavailable. Turn on Spoilers to include private records.");
+    if (!record) throw notFound("That record is unavailable.");
     return record;
   }
-  async function checkpoint(
-    title: string,
-    id: string = randomUUID(),
-    privateRecord = false,
-  ): Promise<RepairCheckpoint> {
+  async function checkpoint(title: string, id: string = randomUUID()): Promise<RepairCheckpoint> {
     const state = await repository.readAuthority();
     const rows: RepairDocument[] = [];
     const root = await documents.getById(PKG, "villages-village");
@@ -488,7 +452,6 @@ export function createRepairService(ports: RepairPorts) {
       id,
       title,
       at: new Date().toISOString(),
-      private: privateRecord,
       documents: rows,
     };
     await store(docId(CHECKPOINT, id), CHECKPOINT, data);
@@ -586,13 +549,12 @@ export function createRepairService(ports: RepairPorts) {
       !input.values ||
       Array.isArray(input.values) ||
       !Array.isArray(input.knowers) ||
-      typeof input.inspection !== "boolean" ||
       (input.personId !== undefined && typeof input.personId !== "string")
     )
       throw badRequest("Reopen the record before repairing it.");
   }
-  async function guardRecord(record: RepairRecord, inspection: boolean) {
-    const current = await inspect(record.id, inspection);
+  async function guardRecord(record: RepairRecord, personId?: string) {
+    const current = await inspect(record.id, personId);
     // Source/audience/actions are dependencies too, not only editable text.
     return repairDigest(current);
   }
@@ -618,12 +580,7 @@ export function createRepairService(ports: RepairPorts) {
       const includeArchives = ["scene", "completed-wish", "saved-scene", "saved-domain"].includes(
         repairParts(request.recordId)[0],
       );
-      const { state, records } = await allRecords(
-          request.inspection,
-          includeMemories,
-          includeArchives,
-          request.personId,
-        ),
+      const { state, records } = await allRecords(includeMemories, includeArchives, request.personId),
         record = records.find((r) => r.id === request.recordId);
       if (!record) throw notFound("That record is unavailable.");
       if (!record.actions.some((action) => action.id === request.action))
@@ -654,10 +611,9 @@ export function createRepairService(ports: RepairPorts) {
           knowers: Object.fromEntries(request.knowers.map((k) => [k, structuredClone(root.knowers[k])])),
         };
       }
-      if (consequential)
-        await checkpoint(`Before ${record.title}`, request.operationId, request.inspection || !!record.private);
+      if (consequential) await checkpoint(`Before ${record.title}`, request.operationId);
       await applyRecord(record, request);
-      const after = await allRecords(request.inspection, includeMemories, includeArchives, request.personId);
+      const after = await allRecords(includeMemories, includeArchives, request.personId);
       if (kind === "new-memory") {
         const added = after.state.memories.records.find((r) => r.id === "player-repair:" + request.operationId)!;
         addedText = added.text;
@@ -756,7 +712,6 @@ export function createRepairService(ports: RepairPorts) {
       canUndo: review.undoAvailable,
       seed,
       setupAt: simulation.value.setupAt,
-      private: request.inspection || !!record.private,
       request,
       record,
       inverse,
@@ -804,13 +759,12 @@ export function createRepairService(ports: RepairPorts) {
     ]);
     return { applied: true };
   }
-  async function undo(id: string, operationId: string, inspection = false): Promise<RepairReview> {
+  async function undo(id: string, operationId: string): Promise<RepairReview> {
     validateId(id);
     validateId(operationId);
     const row = await documents.getById(PKG, docId(HISTORY, id));
     if (!row) throw notFound("That repair is unavailable.");
     const saved = row.data as HistoryData;
-    if (saved.private && !inspection) throw notFound("Turn on Spoilers to view this repair.");
     if (saved.undone || !saved.canUndo)
       throw conflict("This repair cannot be undone. Use its checkpoint when available.");
     const state = await read();
@@ -818,17 +772,12 @@ export function createRepairService(ports: RepairPorts) {
     const record =
       saved.memoryBefore || saved.undoWrites
         ? saved.record!
-        : await inspect(saved.request.recordId, saved.request.inspection);
-    if (
-      !saved.memoryBefore &&
-      !saved.undoWrites &&
-      (await guardRecord(record, saved.request.inspection)) !== saved.guard
-    )
+        : await inspect(saved.request.recordId, saved.request.personId);
+    if (!saved.memoryBefore && !saved.undoWrites && (await guardRecord(record, saved.request.personId)) !== saved.guard)
       throw conflict("The record changed after this repair. Review a new correction instead.");
     const request = { ...(saved.inverse ?? saved.request), operationId };
     const result = await gate.simulate(async () => {
       const before = await allRecords(
-        saved.request.inspection,
         !!saved.memoryBefore,
         repairParts(record.id)[0] === "scene",
         saved.request.personId,
@@ -842,7 +791,7 @@ export function createRepairService(ports: RepairPorts) {
           repairDigest(before.state.memories.records.find((r) => r.id === saved.memoryBefore!.id)) !== saved.memoryGuard
         )
           throw conflict("This memory changed after the repair. Review a new correction instead.");
-      } else if (!saved.undoWrites && (await guardRecord(record, saved.request.inspection)) !== saved.guard)
+      } else if (!saved.undoWrites && (await guardRecord(record, saved.request.personId)) !== saved.guard)
         throw conflict("The record changed after this repair. Review a new correction instead.");
       if (saved.memoryBefore)
         await repository.mutateAuthority(
@@ -913,7 +862,6 @@ export function createRepairService(ports: RepairPorts) {
         updatedAt: new Date().toISOString(),
       });
       const after = await allRecords(
-        saved.request.inspection,
         !!saved.memoryBefore,
         repairParts(record.id)[0] === "scene",
         saved.request.personId,
@@ -979,7 +927,7 @@ export function createRepairService(ports: RepairPorts) {
     await gate.commit(id, result.transaction);
     return result.value;
   }
-  async function restore(id: string, operationId: string, inspection = false): Promise<RepairReview> {
+  async function restore(id: string, operationId: string): Promise<RepairReview> {
     validateId(id);
     validateId(operationId);
     if (await sceneOpen())
@@ -988,7 +936,6 @@ export function createRepairService(ports: RepairPorts) {
     if (!saved) throw notFound("That checkpoint is unavailable.");
     const checkpointData = saved.data as CheckpointData,
       state = await read();
-    if (checkpointData.private && !inspection) throw notFound("Turn on Spoilers to view this checkpoint.");
     if (checkpointData.seed !== state.seed || checkpointData.setupAt !== state.setupAt)
       throw conflict("This checkpoint belongs to another Village.");
     const simulation = await gate.simulate(async () => {
@@ -1174,7 +1121,6 @@ export function createRepairService(ports: RepairPorts) {
       action: "restore",
       values: {},
       knowers: [],
-      inspection: true,
       expectedRecord: repairDigest(checkpointData),
     };
     const history: HistoryData = {
@@ -1187,7 +1133,6 @@ export function createRepairService(ports: RepairPorts) {
       canUndo: false,
       seed: state.seed,
       setupAt: state.setupAt,
-      private: true,
       request,
       guard: "",
     };
