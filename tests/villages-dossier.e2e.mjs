@@ -900,6 +900,31 @@ try {
       )
       .toBe(true);
     const readingMode = mail.getByRole("button", { name: "Simple text" });
+    const paperView = mail.getByLabel("Personal mail");
+    await expect(paperView.locator(".villages-letter-heading")).toHaveCount(0);
+    assert(await readingMode.evaluate((node) => !!node.closest("header")), "Reading mode sits beside Mailbox");
+    const portrait = paperView.locator(".villages-letter-portrait");
+    await expect(portrait).toBeVisible();
+    assert(
+      await portrait.evaluate((node) => {
+        const face = node.getBoundingClientRect();
+        const paper = node.closest(".villages-letter-paper").getBoundingClientRect();
+        const text = node.closest(".villages-letter-pages").querySelector(".villages-letter-text");
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const overlaps = Array.from(range.getClientRects()).some(
+          (line) =>
+            line.width > 1 &&
+            line.height > 1 &&
+            line.left < face.right - 1 &&
+            line.right > face.left + 1 &&
+            line.top < face.bottom - 1 &&
+            line.bottom > face.top + 1,
+        );
+        return paper.right - face.right < 45 && !overlaps;
+      }),
+      "The sender portrait sits at the upper right without covering the letter",
+    );
     await expect(readingMode).toHaveAttribute("aria-pressed", "false");
     await readingMode.click();
     await expect(readingMode).toHaveAttribute("aria-pressed", "true");
