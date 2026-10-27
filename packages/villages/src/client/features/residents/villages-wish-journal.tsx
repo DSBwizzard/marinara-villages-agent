@@ -50,11 +50,13 @@ export function VillagerWishJournal({
       setPrivate(null);
       return;
     }
+    setPrivate(null);
     const controller = new AbortController();
     void request<{ wishes: SocialWish[] }>(`/villagers/${encodeURIComponent(characterId)}/wishes/inspect`, {
       signal: controller.signal,
     })
       .then((view) => {
+        if (!Array.isArray(view.wishes)) throw new Error("Wishes could not be read.");
         if (!controller.signal.aborted) setPrivate(view.wishes);
       })
       .catch((cause) => {

@@ -435,6 +435,8 @@ try {
             },
           ],
         };
+      else if (path.endsWith("/wishes/inspect"))
+        value = { wishes: agendas.villagers.find((v) => path.includes("/" + v.characterId + "/"))?.wishes ?? [] };
       else if (path.endsWith("/agendas/mara/influence")) {
         agendas.villagers[0].ingestSchedule = true;
         value = agendas;
