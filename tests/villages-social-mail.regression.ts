@@ -12,6 +12,7 @@ import {
   relationshipFor,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { assertPersonalLetter } from "../packages/villages/src/server/domain/rules/personal-letter.js";
 import type { SocialMailInput } from "../packages/villages/src/server/domain/models/social-mail.js";
 import type { RelationshipState } from "../packages/villages/src/server/domain/models/relationship-types.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -37,6 +38,7 @@ let calls = 0,
   failCleanup = false,
   truncateMeaning = false,
   sourceOnlyReply = false;
+let narrationReply = "I'd like to stay friends.";
 let failFirstIncoming = false;
 let failNativeWrite = "";
 let failMemoryWrite = false;
@@ -203,7 +205,7 @@ const service = createSocialMail({
     calls++;
     if (model.connectionId === "system") assert.equal(options.reasoningEffort, "low");
     if (model.connectionId === "narration")
-      return { content: JSON.stringify({ text: "I'd like to stay friends." }), finishReason: "stop" };
+      return { content: JSON.stringify({ text: narrationReply }), finishReason: "stop" };
     if (failMeaning) throw Error("Meaning provider unavailable");
     if (truncateMeaning) return { content: "", finishReason: "length", usage: { completionReasoningTokens: 4096 } };
     const replyChange = change(active, 0, true);
@@ -305,6 +307,22 @@ function resetFixtureWork(input: SocialMailInput) {
   backgroundStatuses = [];
 }
 assert.equal("cancel" in service, false, "Sent letters cannot be cancelled");
+assert.throws(
+  () => assertPersonalLetter("Hello! *Pip dusts his paws and grins.* How are you?", "Pip"),
+  /roleplay action/,
+);
+assert.throws(() => assertPersonalLetter("Hello!\n*waves*", "Pip"), /roleplay action/);
+assert.throws(() => assertPersonalLetter("Hello! *waves* How are you?", "Pip"), /roleplay action/);
+assert.throws(
+  () => assertPersonalLetter("Hello! Pip dusts his paws and grins. How are you?", "Pip"),
+  /roleplay action/,
+);
+assert.doesNotThrow(() => assertPersonalLetter("I walked home yesterday. It was *very* lovely (and quiet).", "Pip"));
+assert.doesNotThrow(() => assertPersonalLetter("I love the *smiles* you draw and your *looks* are wonderful.", "Pip"));
+assert.doesNotThrow(() => assertPersonalLetter("I love the *waves* you draw.", "Pip"));
+await service.send({ residentId: "ada", requestId: "player-authored", text: "I wrote *waves* on the page." });
+assert.equal(social.mailThreads["personal:ada"]!.messages[0]!.text, "I wrote *waves* on the page.");
+resetFixtureWork(queued.at(-1).input);
 await service.readMailbox();
 assert.equal(calls, 0);
 failAdmission = true;
@@ -334,6 +352,23 @@ resetFixtureWork(queued.at(-1).input);
 await service.send({ residentId: "ada", requestId: "one", text: "Hello\n  exact text" });
 assert.equal(calls, 0, "Sending first saves exact pending text before dispatch");
 active = queued.at(-1).input;
+const beforeInvalidReply = calls;
+narrationReply = "Hello. *Ada smiles and waves.*";
+await assert.rejects(() => service.handler.generate({ ...active, sourceText: "*waves* Hello" }), /roleplay action/);
+assert.equal(calls, beforeInvalidReply + 1, "Invalid reply stops before the System interpretation request");
+assert.equal(
+  social.mailThreads[active.threadId]!.messages[0]!.text,
+  "Hello\n  exact text",
+  "The player's exact words are unchanged",
+);
+const beforeRetainedReply = calls;
+await assert.rejects(
+  () => service.handler.generate({ ...active, retainedReply: "*Ada waves.* Hello!" }),
+  /roleplay action/,
+);
+assert.equal(calls, beforeRetainedReply, "A retained invalid reply is rejected without a model call");
+narrationReply = "I'd like to stay friends.";
+calls = beforeInvalidReply;
 const initialCalls = calls,
   initialPrompts = promptHistory.length;
 await service.handler.generate(active);
@@ -433,6 +468,17 @@ const firstIncoming = service.automaticOutbox(
   "first-incoming",
   new Date().toISOString(),
 );
+assert.throws(
+  () =>
+    service.automaticOutbox(
+      village,
+      social,
+      { senderId: "bea", text: "Hi! *Bea smiles.*", relationshipReview: emptyRelationshipReview() },
+      "bad-incoming",
+      new Date().toISOString(),
+    ),
+  /roleplay action/,
+);
 village.socialMailOutbox = [firstIncoming];
 failFirstIncoming = true;
 await service.processOutbox(await snapshot());
@@ -441,6 +487,18 @@ assert((await service.readMailbox()).recovery?.some((row) => row.messageId === f
 await service.retry(firstIncoming.input.threadId, firstIncoming.id, "replay-first-incoming");
 assert(social.mailDeliveries[firstIncoming.id]);
 assert.equal(village.socialMailOutbox?.length, 0);
+const oldAutomatic = service.automaticOutbox(
+  await snapshot(),
+  social,
+  { senderId: "bea", text: "Hello.", relationshipReview: emptyRelationshipReview() },
+  "old-action",
+  new Date().toISOString(),
+);
+oldAutomatic.input.sourceText = "Hello. *Bea smiles.*";
+village.socialMailOutbox = [oldAutomatic];
+await service.processOutbox(await snapshot());
+assert.equal(village.socialMailOutbox?.length, 0, "An unseen malformed saved automatic letter is retired locally");
+assert.equal(social.mailDeliveries[oldAutomatic.id], undefined);
 
 // Automatic mail is a single already interpreted source. Delivery creates no automatic reply chain.
 const automatic = service.automaticOutbox(
@@ -513,6 +571,58 @@ sourceOnlyReply = true;
 await assert.rejects(() => service.handler.generate(active), /Every reply effect must cite/);
 sourceOnlyReply = false;
 resetFixtureWork(active);
+
+await service.send({ residentId: "ada", requestId: "old-invalid", text: "My exact letter." });
+active = queued.at(-1).input;
+const oldInvalid = await service.handler.generate(active);
+oldInvalid.replyText = "Hello. *Ada smiles.*";
+service.handler.apply(village, active, oldInvalid, { retrying: false });
+await service.processOutbox(await snapshot());
+assert(village.socialMailOutbox?.[0]?.reinterpretRequired, "A saved malformed reply waits for explicit recovery");
+assert.equal(social.mailDeliveries[active.messageId + ":reply"], undefined);
+backgroundStatuses = [
+  { id: "prior-failed-job", kind: "personal-mail", subjectId: active.messageId, status: "failed", attempt: 1 },
+];
+const beforeReplacement = calls;
+await service.retry(active.threadId, active.messageId, "replace-old-reply");
+assert.equal(queued.at(-1).input.retainedReply, undefined, "Explicit recovery asks for a new written reply");
+assert.match(queued.at(-1).revision, /:mail-rewrite-/);
+assert.equal(calls, beforeReplacement, "Retry admission itself does not dispatch a model call");
+backgroundStatuses = [
+  { id: "replacement-failed-job", kind: "personal-mail", subjectId: active.messageId, status: "failed", attempt: 1 },
+];
+await service.retry(active.threadId, active.messageId, "retry-replacement");
+assert.equal(retries.at(-1), "replacement-failed-job", "A failed replacement retries its own job");
+assert.equal(
+  social.mailThreads[active.threadId]!.messages.find((message) => message.id === active.messageId)!.text,
+  "My exact letter.",
+);
+resetFixtureWork(active);
+
+const memoryBeforeInvalidRecovery = structuredClone(village.memories);
+const receiptsBeforeInvalidRecovery = structuredClone(village.memoryReceipts);
+await service.send({ residentId: "ada", requestId: "old-invalid-memory", text: "MEMORY: I collect amber fossils." });
+active = queued.at(-1).input;
+const invalidAfterSource = await service.handler.generate(active);
+service.handler.apply(village, active, invalidAfterSource, { retrying: false });
+failNativeWrite = "source";
+await service.processOutbox(await snapshot());
+assert(social.mailDeliveries[active.messageId], "The source was delivered before Memory failed");
+village.socialMailOutbox![0]!.result.replyText = "Hello. *Ada smiles.*";
+backgroundStatuses = [];
+const beforeMemoryRetryQueue = queued.length;
+failNativeWrite = "source";
+await assert.rejects(() => service.retry(active.threadId, active.messageId, "memory-recovery-fails"));
+assert.equal(queued.length, beforeMemoryRetryQueue, "A replacement cannot overwrite unsettled source Memory");
+await service.retry(active.threadId, active.messageId, "memory-recovery-succeeds");
+assert.equal(queued.length, beforeMemoryRetryQueue + 1);
+assert(
+  village.memories.records.some((row) => row.text.includes("amber fossils")),
+  "The delivered source's original Memory settles before replacement admission",
+);
+resetFixtureWork(active);
+village.memories = memoryBeforeInvalidRecovery;
+village.memoryReceipts = receiptsBeforeInvalidRecovery;
 
 const held = service.automaticOutbox(
   await snapshot(),

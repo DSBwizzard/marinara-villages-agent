@@ -208,6 +208,39 @@ invalid.payload({});
 await assert.rejects(invalid.service.handler.generate(invalid.queued[0].input), /incomplete choices/);
 assert.equal(invalid.calls.length, 1, "Malformed output never buys an automatic repair");
 
+const actionLetter = fixture();
+await actionLetter.service.reconcile(now);
+actionLetter.payload({
+  social: { mail: { senderId: "a", text: "Hello! *Ada dusts her hands and smiles.*" } },
+  routineIdea: null,
+  housingRequests: [],
+});
+await assert.rejects(actionLetter.service.handler.generate(actionLetter.queued[0].input), /roleplay action/);
+assert.equal(actionLetter.calls.length, 1, "An invalid automatic letter never triggers interpretation or repair");
+assert.match(actionLetter.calls[0].messages[0].content, /only the words the resident puts in a personal letter/i);
+
+const savedAction = fixture();
+await savedAction.service.reconcile(now);
+const savedInput = savedAction.queued[0].input;
+savedAction.service.handler.apply(
+  savedAction.state,
+  savedInput,
+  {
+    social: { mail: { senderId: "a", text: "Hello. *Ada dusts her paws.*" } },
+    routineIdea: { characterId: "a", activity: "Reading by the window", venueId: "", flexible: true },
+    housingRequests: [],
+  },
+  { retrying: true },
+);
+assert.equal(savedAction.state.socialMailOutbox?.length ?? 0, 0, "Previously saved invalid mail is not delivered");
+assert(
+  savedAction.state.villagers[0].agenda!.routineProfile!.activities.some(
+    (row) => row.activity === "Reading by the window",
+  ),
+  "Other saved choices are retained",
+);
+assert.equal(savedAction.calls.length, 0, "Applying a saved result never triggers a model request");
+
 const legacyRaw: any = { ...effects.state };
 delete legacyRaw.backgroundPace;
 delete legacyRaw.lastPlanningDate;

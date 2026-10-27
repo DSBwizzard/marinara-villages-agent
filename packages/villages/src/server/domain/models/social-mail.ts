@@ -54,4 +54,5 @@ export type SocialMailOutbox = {
   error?: string;
   reinterpretRequired?: boolean;
   retryClaim?: string;
+  retryAdmitted?: string;
 };

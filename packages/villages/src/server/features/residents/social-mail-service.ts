@@ -3,6 +3,12 @@ import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
 import { SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
 import { recallMemories } from "../../domain/rules/memory-recall.js";
 import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
+import {
+  assertPersonalLetter,
+  hasPersonalLetterAction,
+  PersonalLetterActionError,
+  PERSONAL_LETTER_INSTRUCTION,
+} from "../../domain/rules/personal-letter.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { z } from "zod";
 import type { Handler } from "../../domain/models/background-model.js";
@@ -162,7 +168,9 @@ export function createSocialMail(ports: SocialMailPorts) {
                   {
                     role: "system",
                     content:
-                      "Write one setting-appropriate personal reply as this resident. Treat the pending player's exact message as the proposed incoming source. System will independently settle its meaning before either message is delivered. Keep the resident's voice, initiative and boundaries; they may refuse or end a bond. Never invent player words, feelings, consent, travel or physical deeds. Communication alone does not perform physical tasks or grant access. Return JSON {text:string}, at most 2000 characters. Empty text is a valid choice not to reply.",
+                      "Write one setting-appropriate personal reply as this resident. " +
+                      PERSONAL_LETTER_INSTRUCTION +
+                      " Treat the pending player's exact message as the proposed incoming source. System will independently settle its meaning before either message is delivered. Keep the resident's voice, initiative and boundaries; they may refuse or end a bond. Never invent player words, feelings, consent, travel or physical deeds. Communication alone does not perform physical tasks or grant access. Return JSON {text:string}, at most 2000 characters. Empty text is a valid choice not to reply.",
                   },
                   {
                     role: "user",
@@ -185,6 +193,7 @@ export function createSocialMail(ports: SocialMailPorts) {
             ).text ?? "",
           ));
     if (text.length > 2000) throw new Error("The personal reply exceeded its size limit.");
+    if (input.mode !== "resident") assertPersonalLetter(text, resident.cardSnapshot.name);
     const sourceLine: RelationshipEvidenceLine = {
       id: input.messageId,
       speakerId: input.mode === "resident" ? input.residentId : "player",
@@ -385,6 +394,11 @@ export function createSocialMail(ports: SocialMailPorts) {
     const village = await ports.readVillageSnapshot();
     if (village.seed !== input.seed) throw conflict("Village identity changed.");
     let current = await ports.readRelationshipState(input.seed);
+    if (input.mode !== "resident" && result.replyText && !current.mailDeliveries[input.messageId + ":reply"])
+      assertPersonalLetter(
+        result.replyText,
+        input.admitted.villagers.find((row) => row.characterId === input.residentId)?.cardSnapshot.name,
+      );
     if (
       input.mode === "resident" &&
       !current.mailThreads[input.threadId]?.messages.some((row) => row.id === input.messageId)
@@ -540,6 +554,15 @@ export function createSocialMail(ports: SocialMailPorts) {
   async function processOutbox(village: VillageState): Promise<boolean> {
     let retired = false;
     for (const entry of village.socialMailOutbox ?? []) {
+      const sender = entry.input.admitted.villagers.find((row) => row.characterId === entry.input.residentId)
+        ?.cardSnapshot.name;
+      if (entry.input.mode === "resident" && hasPersonalLetterAction(entry.input.sourceText, sender)) {
+        const discarded = await retireChangedCorrespondent(entry, true);
+        if (discarded) {
+          retired = true;
+          continue;
+        }
+      }
       if (
         entry.error &&
         village.seed === entry.input.seed &&
@@ -600,7 +623,8 @@ export function createSocialMail(ports: SocialMailPorts) {
             const saved = state.socialMailOutbox?.find((row) => row.id === entry.id);
             if (saved) {
               saved.error = message;
-              saved.reinterpretRequired = error instanceof SocialRevisionConflict;
+              saved.reinterpretRequired =
+                error instanceof SocialRevisionConflict || error instanceof PersonalLetterActionError;
             }
           });
         })
@@ -610,19 +634,21 @@ export function createSocialMail(ports: SocialMailPorts) {
     }
     return true;
   }
-  async function retireChangedCorrespondent(entry: SocialMailOutbox): Promise<boolean> {
+  async function retireChangedCorrespondent(entry: SocialMailOutbox, invalidLetter = false): Promise<boolean> {
     const input = entry.input;
     let retired = false;
     await ports.withVillageSceneAcceptance(async (current) => {
       if (
         current.seed !== input.seed ||
-        current.villagers.some(
-          (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
-        )
+        (!invalidLetter &&
+          current.villagers.some(
+            (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
+          ))
       )
         return;
       await ports.mutateRelationships(input.seed, (state) => {
         retired = false;
+        if (invalidLetter && input.mode !== "resident") return;
         if (
           state.mailDeliveries[input.messageId] &&
           (input.mode === "resident" || state.mailDeliveries[input.messageId + ":reply"])
@@ -963,7 +989,20 @@ export function createSocialMail(ports: SocialMailPorts) {
     if (job && ["queued", "running", "paused"].includes(job.status))
       throw conflict("This letter is already being processed.");
     const entry = village.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
-    if (entry?.error && !entry.reinterpretRequired) {
+    const name = village.villagers.find((row) => row.characterId === entry?.input.residentId)?.cardSnapshot.name;
+    const replaceInvalidReply =
+      !!entry?.error &&
+      entry.input.mode !== "resident" &&
+      !social.mailDeliveries[messageId + ":reply"] &&
+      hasPersonalLetterAction(entry.result.replyText, name);
+    const fingerprint = (row: SocialMailOutbox) =>
+      semanticHash([row.id, row.input.sourceHash, row.input.admittedAt, row.result, row.error]);
+    const rewriteAction = replaceInvalidReply && entry ? "mail-rewrite-" + fingerprint(entry).slice(0, 32) : "";
+    // An older saved reply may have failed after source delivery but before its Memory settled.
+    // Preserve that local work before a replacement generation can overwrite the saved result.
+    if (replaceInvalidReply && entry && social.mailDeliveries[messageId])
+      await rememberResidentMail(entry.input, entry.result, "source");
+    if (entry?.error && !entry.reinterpretRequired && !replaceInvalidReply) {
       await ports.mutateVillageState((state) => {
         const saved = state.socialMailOutbox?.find((row) => row.id === messageId);
         if (saved) saved.error = undefined;
@@ -974,13 +1013,15 @@ export function createSocialMail(ports: SocialMailPorts) {
     const { message } = requireMailSource(social, threadId, messageId);
     if (["cancelled", "undeliverable"].includes(message.status))
       throw conflict("This letter can no longer be delivered.");
-    if (job && ["failed", "interrupted"].includes(job.status)) {
+    if (
+      job &&
+      ["failed", "interrupted"].includes(job.status) &&
+      (!replaceInvalidReply || entry?.retryAdmitted === rewriteAction)
+    ) {
       await ports.retryBackgroundJob(job.id, job.attempt, requestId);
     } else if (entry?.error) {
-      // A deliberate reinterpretation retains exact outgoing and reply text, and admits only fresh settlement context.
-      const fingerprint = (row: SocialMailOutbox) =>
-        semanticHash([row.id, row.input.sourceHash, row.input.admittedAt, row.result, row.error]);
-      const action = "mail-reinterpret-" + fingerprint(entry).slice(0, 32);
+      // An explicit retry replaces an invalid unseen reply; otherwise it retains the saved text.
+      const action = (replaceInvalidReply ? "mail-rewrite-" : "mail-reinterpret-") + fingerprint(entry).slice(0, 32);
       let claimed = false;
       await ports.mutateVillageState((state) => {
         claimed = false;
@@ -991,7 +1032,11 @@ export function createSocialMail(ports: SocialMailPorts) {
         claimed = true;
       });
       if (!claimed) return readMailbox();
-      await admit(village, threadId, messageId, action, entry.result.replyText);
+      await admit(village, threadId, messageId, action, replaceInvalidReply ? undefined : entry.result.replyText);
+      await ports.mutateVillageState((state) => {
+        const saved = state.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
+        if (saved?.retryClaim === action) saved.retryAdmitted = action;
+      });
     } else {
       if (message.status === "pending" && !job && message.admissionFailed) await admit(village, threadId, messageId);
       else throw conflict("This letter has no failed processing to retry.");
@@ -1022,6 +1067,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         prior.error = undefined;
         prior.reinterpretRequired = undefined;
         prior.retryClaim = undefined;
+        prior.retryAdmitted = undefined;
       } else state.socialMailOutbox.push({ id: input.messageId, input, result });
     },
     afterApply: async () => {
@@ -1073,6 +1119,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       .parse(value);
     const resident = village.villagers.find((person) => person.characterId === row.senderId);
     if (!resident) throw new Error("Automatic correspondent is unavailable.");
+    assertPersonalLetter(row.text, resident.cardSnapshot.name);
     const messageId = opportunityId + ":mail",
       threadId = personalThreadId(row.senderId);
     const captured = admission({ ...village, relationshipContext: social }, row.senderId);

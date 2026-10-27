@@ -1,4 +1,5 @@
 import { recallMemories } from "../../domain/rules/memory-recall.js";
+import { assertPersonalLetter, hasPersonalLetterAction } from "../../domain/rules/personal-letter.js";
 import { eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
@@ -220,6 +221,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         String((mail as Record<string, unknown>).text).length > 2000)
     )
       throw new Error("Invalid automatic correspondent or message.");
+    if (mail) {
+      const row = mail as { senderId: string; text: string };
+      assertPersonalLetter(row.text, context.residents.find((resident) => resident.characterId === row.senderId)?.name);
+    }
     for (const raw of [encounter, mail])
       if (raw && typeof raw === "object")
         for (const key of [
@@ -309,7 +314,18 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       const { dateKey, opportunity } = input;
       if (state.backgroundPace === "off" || state.processedActionIds.includes(opportunity.id)) return;
       const used = state.planningUsage.dateKey === dateKey ? state.planningUsage.count : 0;
-      if (proposal.social?.mail) {
+      const savedMail = proposal.social?.mail as { senderId?: string; text?: string } | undefined;
+      // A result saved by an older writer may contain a stage direction. Omit only
+      // that unseen letter; other already-generated choices still apply normally.
+      const invalidSavedMail =
+        typeof savedMail?.text === "string" &&
+        hasPersonalLetterAction(
+          savedMail.text,
+          input.context.residents.find(
+            (resident: { characterId: string }) => resident.characterId === savedMail.senderId,
+          )?.name ?? state.villagers.find((resident) => resident.characterId === savedMail.senderId)?.cardSnapshot.name,
+        );
+      if (proposal.social?.mail && !invalidSavedMail) {
         if (!ports.automaticMail) throw new Error("Automatic personal mail unavailable.");
         const entry = ports.automaticMail(
           { ...state, ...input.admitted },
