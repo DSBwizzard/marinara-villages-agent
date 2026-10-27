@@ -63,12 +63,16 @@ try {
         body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="180"><text x="20" y="120" font-size="100" font-style="italic">Mara</text></svg>',
       }),
     );
-    village.settings.venues[0].residentIds = ["mara"];
+    // Legacy worlds may use the single-resident occupancy field.
+    village.settings.venues[0].occupancy.residentCharacterId = "mara";
+    village.settings.venues[1].workerIds = ["mara"];
+    village.settings.venues[2].workerIds = ["mara"];
     village.villagers[0].place = { id: "mill" };
     village.settings.venues.push({
       ...structuredClone(village.settings.venues[1]),
       id: "secret-place",
       name: "Unseen private place",
+      workerIds: [],
       zones: [{ id: "secret-zone", name: "Secret", kind: "private-residence", seen: false, ownerId: "mara" }],
     });
     village.projects = [
@@ -580,13 +584,33 @@ try {
     await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
     await expect(overview.getByText("Learn to swim")).toBeVisible();
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
-    await expect(overview.getByText("No known home or work location.")).toBeVisible();
+    await expect(overview.getByText("Home · The Mill", { exact: true })).toBeVisible();
+    await expect(overview.getByText("Work · The Harbour", { exact: true })).toBeVisible();
+    await expect(overview.getByText("Work · The Market", { exact: true })).toBeVisible();
     await expect(overview.getByText(/PRIVATE/)).toHaveCount(0);
+    if (width === 1440) {
+      village.settings.venues[0].occupancy.residentCharacterId = null;
+      village.settings.venues[1].residentIds = ["mara"];
+      village.settings.venues[1].name = "New Harbour";
+      village.settings.venues[2].workerIds = [];
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect(overview.getByText("Home · New Harbour", { exact: true })).toBeVisible();
+      await expect(overview.getByText("Work · New Harbour", { exact: true })).toBeVisible();
+      await expect(overview.getByText("Home · The Mill", { exact: true })).toHaveCount(0);
+      await expect(overview.getByText("Work · The Market", { exact: true })).toHaveCount(0);
+      village.settings.venues[0].occupancy.residentCharacterId = "mara";
+      village.settings.venues[1].residentIds = [];
+      village.settings.venues[1].name = "The Harbour";
+      village.settings.venues[2].workerIds = ["mara"];
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect(overview.getByText("Home · The Mill", { exact: true })).toBeVisible();
+    }
     const savedProfiles = structuredClone(relationships.profiles);
     relationships.profiles = [];
     relationships.starting.pending = true;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(overview.getByText("Profile information is still being prepared.")).toBeVisible();
+    await expect(overview.getByText("Home · The Mill", { exact: true })).toBeVisible();
     await expect(overview.getByText("No relationship shared yet.")).toHaveCount(0);
     relationships.profiles = savedProfiles;
     relationships.starting.pending = false;
@@ -594,6 +618,8 @@ try {
     await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
     assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
     await tabs.getByRole("button", { name: "Venues", exact: true }).click();
+    await expect(profile.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
+    await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
     await expect(profile.getByText("Mara's workshop", { exact: true })).toHaveCount(0);
     await expect(profile.getByText("Unseen private place", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: /Projects Open Projects/ })).toBeVisible();
@@ -773,7 +799,7 @@ try {
       throw cause;
     }
     await tabs.getByRole("button", { name: "Venues", exact: true }).click();
-    await expect(profile.getByText("Agenda destination", { exact: true })).toBeVisible();
+    await expect(profile.getByText(/Agenda destination/)).toBeVisible();
     await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
     await expect(profile.getByText("PRIVATE MARA STANCE", { exact: true })).toBeVisible();
     await expect(profile.getByText("Starting history returned an invalid connection.", { exact: false })).toBeVisible();
@@ -1214,6 +1240,9 @@ try {
     await profile.getByRole("button", { name: "Forget", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Forget", exact: true })).toBeDisabled();
     await expect(profile.getByText("Forgotten", { exact: true }).first()).toBeVisible();
+    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await expect(profile.getByText("Home · The Mill", { exact: true })).toBeVisible();
+    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
     failMemories = true;
     await profile.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(profile.getByRole("alert")).toContainText("Memory service unavailable");
@@ -1225,6 +1254,7 @@ try {
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeFocused();
     await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
+    await expect(page.getByText("No home or workplace assigned.", { exact: true })).toBeVisible();
     await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByText(/PRIVATE/)).toHaveCount(0);
     await expect(page.getByText("No character summary recorded.", { exact: true })).toHaveCount(0);

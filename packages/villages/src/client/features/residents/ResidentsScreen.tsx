@@ -75,7 +75,9 @@ export function ResidentsScreen({
     const relevantVenues: DossierVenue[] = (snapshot?.settings.venues ?? []).map((venue) => {
       const connections: string[] = [];
       const home = (venue.residentIds ?? [venue.occupancy.residentCharacterId]).includes(personProfile.actorId);
-      if (home) connections.push("Home");
+      const work = venue.workerIds?.includes(personProfile.actorId) ?? false;
+      const publicConnections = [...(home ? ["Home"] : []), ...(work ? ["Work"] : [])];
+      connections.push(...publicConnections);
       const controlled = venue.zones?.some(
         (zone) => zone.ownerId === personProfile.actorId || zone.controllerIds?.includes(personProfile.actorId),
       );
@@ -84,13 +86,13 @@ export function ResidentsScreen({
       const agendaDestination = selectedAgendas.some((entry) =>
         Object.values(entry.effectiveDays ?? {}).some((blocks) => blocks.some((block) => block.venueId === venue.id)),
       );
-      if (!connections.length && agendaDestination) connections.push("Agenda destination");
+      if (connections.length === publicConnections.length && agendaDestination) connections.push("Agenda destination");
       return {
         id: venue.id,
         name: venue.name,
         image: venue.presentation.image?.url,
         connections,
-        inspectOnly: !home && !controlled && venue.id !== person?.place?.id,
+        publicConnections,
       };
     });
     const relatedLinks: DossierLink[] = [];

@@ -71,7 +71,7 @@ export type RelationshipDisclosure = {
   fromId: string;
   toId: string;
   text: string;
-  kind: "explanation" | "preference" | "boundary" | "routine" | "history" | "connection";
+  kind: "explanation" | "preference" | "boundary" | "routine" | "history" | "connection" | "home" | "work";
   lineIds: string[];
   excerpts?: string[];
 };
