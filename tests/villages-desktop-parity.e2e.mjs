@@ -331,8 +331,7 @@ try {
     await section("village", "World Configuration");
     await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit map" })).toBeVisible();
-    await section("chatlogs", "Scene History");
-    await expect(page.getByRole("heading", { name: "Scene History", level: 1 })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Scene History", exact: true })).toHaveCount(0);
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map" }).click();
 
     await page.getByRole("button", { name: "Show places", exact: true }).click();

@@ -179,7 +179,7 @@ for (const raw of ["{currentParagraph}", "{ruling.reason}"]) {
 const countIn = (needle: string) => entrySource.split(needle).length - 1;
 
 assert.equal(countIn("renderVillagesMarkdown(message.content"), 0, "private transcripts are gone");
-assert.equal(countIn("renderVillagesMarkdown(line.content"), 2, "venue history and archive render Markdown");
+assert.equal(countIn("renderVillagesMarkdown(line.content"), 1, "active Scene dialogue renders Markdown");
 assert.equal(countIn("drawVillagesNodes(readingPages.nodes"), 2, "venue narration and speech render Markdown");
 assert.equal(countIn("renderVillagesMarkdown(aside.text"), 1, "venue asides render Markdown");
 const scenePanel = readFileSync(

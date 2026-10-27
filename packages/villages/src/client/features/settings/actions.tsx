@@ -1,5 +1,5 @@
 import { type SetStateAction, useCallback } from "react";
-import type { VillageBackgroundPace, VillageSettings, VillageSnapshot } from "../../../shared/contracts/village.js";
+import type { VillageBackgroundPace, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import type { SavedSettingsDraft } from "./draft-session.js";
@@ -261,40 +261,5 @@ export function useSaveCharacterSpeechColors(ports: {
       }
     },
     [lifetime, snapshot?.settings?.characterSpeechColors, setSnapshot, setBusy, setSettingsError],
-  );
-}
-
-export function useSaveVisitRetention(ports: {
-  snapshot: VillageSnapshot | null;
-  setArchiveVersion: React.Dispatch<SetStateAction<number>>;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setSettingsError: React.Dispatch<SetStateAction<string>>;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-}) {
-  const { snapshot } = ports;
-
-  const { setArchiveVersion, setBusy, setSettingsError, setSnapshot } = ports;
-  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
-  return useCallback(
-    async (visitRetention: VillageSettings["visitRetention"]) => {
-      const claim = lifetime.begin();
-      if (!claim) return;
-      setBusy(true);
-      setSettingsError("");
-      try {
-        const saved = await request<VillageSnapshot>("/settings", {
-          method: "PATCH",
-          body: JSON.stringify({ visitRetention }),
-        });
-        if (!lifetime.owns(claim)) return;
-        setSnapshot(saved);
-        setArchiveVersion((version) => version + 1);
-      } catch (cause) {
-        if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "Scene retention could not be saved."));
-      } finally {
-        if (lifetime.finish(claim)) setBusy(false);
-      }
-    },
-    [lifetime, setArchiveVersion, setBusy, setSettingsError, setSnapshot],
   );
 }

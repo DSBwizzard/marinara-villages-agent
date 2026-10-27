@@ -40,7 +40,14 @@ const PKG = "villages",
   PLAN = "repair-plan",
   HISTORY = "repair-history",
   CHECKPOINT = "repair-checkpoint";
-const GAME_KINDS = ["venue-visit", "venue-active", "relationships", "repair-annotation"];
+const GAME_KINDS = [
+  "venue-visit",
+  "venue-active",
+  "relationships",
+  "repair-annotation",
+  "scene-terminal",
+  "project-scene-evidence",
+];
 type Doc = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const copy = (row: Doc): RepairDocument => ({
   id: row.id,
@@ -240,9 +247,11 @@ export function createRepairService(ports: RepairPorts) {
         related: [],
       });
     }
-    if (includeArchives)
+    if (includeArchives) {
+      const sceneIds = new Set<string>();
       for (const row of await documents.list(PKG, "venue-visit")) {
         const scene = row.data as import("../../domain/models/scene-model.js").VenueScene;
+        sceneIds.add(scene.id);
         const unfinished =
           scene.submissions?.filter((turn) => turn.processing && unfinishedExchange(turn.processing)) ?? [];
         if (unfinished.length) {
@@ -280,7 +289,7 @@ export function createRepairService(ports: RepairPorts) {
           id: repairId("scene", scene.id),
           topic: "world",
           title: `${scene.placeName} · ${new Date(scene.startedAt).toLocaleDateString("en-US")}`,
-          summary: "Archived Scene correction",
+          summary: "Scene correction",
           fields: [
             {
               key: "text",
@@ -294,6 +303,33 @@ export function createRepairService(ports: RepairPorts) {
           related: [],
         });
       }
+      for (const row of await documents.list(PKG, "repair-annotation")) {
+        const annotation = row.data as {
+          seed?: string;
+          sceneId?: string;
+          text?: string;
+          placeName?: string;
+          startedAt?: string;
+        };
+        if (
+          annotation.seed !== state.seed ||
+          !annotation.sceneId ||
+          sceneIds.has(annotation.sceneId) ||
+          typeof annotation.text !== "string"
+        )
+          continue;
+        result.push({
+          id: repairId("scene", annotation.sceneId),
+          topic: "world",
+          title: `${annotation.placeName || "Scene"} · ${annotation.startedAt ? new Date(annotation.startedAt).toLocaleDateString("en-US") : "date unavailable"}`,
+          summary: "Scene correction",
+          fields: [{ key: "text", label: "Historical correction", type: "text", value: annotation.text }],
+          source: [],
+          actions: [{ id: "correct", label: "Modify" }],
+          related: [],
+        });
+      }
+    }
     return {
       state,
       records: result.map((record) => ({
@@ -463,7 +499,16 @@ export function createRepairService(ports: RepairPorts) {
         throw badRequest("Enter a short historical correction.");
       const key = docId("repair-annotation", id),
         old = await documents.getById(PKG, key),
-        data = { seed: (await repository.readAuthority()).seed, sceneId: id, text: request.values.text.trim(), at };
+        source = await documents.getById(PKG, `villages-venue-visit-${id}`),
+        context = (source?.data ?? old?.data ?? {}) as { placeName?: string; startedAt?: string },
+        data = {
+          seed: (await repository.readAuthority()).seed,
+          sceneId: id,
+          text: request.values.text.trim(),
+          at,
+          placeName: context.placeName ?? "",
+          startedAt: context.startedAt ?? "",
+        };
       if (old)
         await documents.update({
           id: key,
@@ -618,8 +663,7 @@ export function createRepairService(ports: RepairPorts) {
       affected.push("Remembered knowledge only; physical state and completion records stay separate.");
     if (kind === "zone") affected.push("Future Scene physical context and artwork eligibility.");
     if (kind === "access") affected.push("Future entry and management checks.");
-    if (kind === "scene")
-      affected.push("Historical annotation; original transcript and mechanical outcomes are retained.");
+    if (kind === "scene") affected.push("Historical annotation; mechanical outcomes are retained.");
     if (kind === "saved-scene" || kind === "saved-domain")
       affected.push("Retained Scene effects change. A previously requested conclusion may finish after recovery.");
     if (await sceneOpen()) affected.push("The unfinished Scene keeps its captured context and draft.");
@@ -924,6 +968,20 @@ export function createRepairService(ports: RepairPorts) {
       const currentRoot = await documents.getById(PKG, "villages-village");
       const preserved = currentRoot!.data as Record<string, unknown>;
       const wanted = new Map(checkpointData.documents.map((row) => [row.id, structuredClone(row)]));
+      // A restored source gets a new storage revision. Rebuild its compact evidence on
+      // retirement instead of comparing that new revision with a pre-restore receipt.
+      const restoredScenes = new Set(
+        [...wanted.values()].filter((row) => row.kind === "venue-visit").map((row) => (row.data as { id: string }).id),
+      );
+      for (const [key, row] of wanted) {
+        if (row.kind === "scene-terminal" && restoredScenes.has((row.data as { sceneId: string }).sceneId))
+          wanted.delete(key);
+        if (row.kind === "project-scene-evidence") {
+          const index = row.data as { scenes?: { scene: { id: string } }[] };
+          if (Array.isArray(index.scenes))
+            index.scenes = index.scenes.filter((entry) => !restoredScenes.has(entry.scene.id));
+        }
+      }
       const root = wanted.get("villages-village")!;
       const data = root.data as Record<string, unknown>;
       for (const key of [
@@ -1004,9 +1062,39 @@ export function createRepairService(ports: RepairPorts) {
             edge.revision = Math.max(edge.revision, live?.edges[key]?.revision ?? 0) + 1;
         }
         if (value.kind === "venue-visit") {
-          const scene = value.data as { sceneRevision: number },
+          const scene = value.data as {
+              id: string;
+              sceneRevision: number;
+              generationReceipts?: import("../../domain/models/scene-model.js").VenueScene["generationReceipts"];
+            },
             live = old?.data as typeof scene | undefined;
           scene.sceneRevision = Math.max(scene.sceneRevision, live?.sceneRevision ?? 0) + 1;
+          const terminal = current.find(
+            (row) => row.kind === "scene-terminal" && (row.data as { sceneId?: string }).sceneId === scene.id,
+          );
+          const receipts =
+            (terminal?.data as { generationReceipts?: typeof scene.generationReceipts } | undefined)
+              ?.generationReceipts ?? [];
+          scene.generationReceipts ??= [];
+          for (const receipt of receipts)
+            if (!scene.generationReceipts.some((saved) => saved.attemptId === receipt.attemptId))
+              scene.generationReceipts.push(structuredClone(receipt));
+          const terminalData = terminal?.data as
+            import("../../domain/models/scene-terminal-model.js").SceneTerminal | undefined;
+          const uncertain = Object.entries(terminalData?.optionalAttempts ?? {})
+            .filter(([, attempt]) => attempt.status === "unknown")
+            .map(([fingerprint]) => fingerprint);
+          if (uncertain.length && terminalData?.operation) {
+            const attemptId = `optional:${terminalData.operation.attemptId}`;
+            if (!scene.generationReceipts.some((saved) => saved.attemptId === attemptId))
+              scene.generationReceipts.push({
+                operationId: terminalData.operation.id,
+                attemptId,
+                stages: uncertain,
+                outcome: "unknown",
+                acknowledgedAt: terminalData.endedAt,
+              });
+          }
         }
         if (old) await documents.update({ ...value, packageId: PKG, expectedRevision: old.revision, updatedAt: stamp });
         else await documents.create({ ...value, packageId: PKG, createdAt: stamp, updatedAt: stamp });
@@ -1034,7 +1122,7 @@ export function createRepairService(ports: RepairPorts) {
         ...before.map((field, i) => ({ label: field.label, before: field.value, after: after[i].value })),
       ],
       affected: [
-        "Memories, people, places, relationships, progress and archived Scenes return to this checkpoint.",
+        "Memories, people, places, relationships, progress and saved Scenes return to this checkpoint.",
         "Current time, spending records and purchased responses are retained.",
         "Elapsed Projects can finish when play resumes.",
         "A new checkpoint preserves the current Village.",

@@ -104,21 +104,18 @@ import {
 import {
   useCloseRoom,
   useContinueRoomWithoutGreeting,
-  useDeleteArchivedVisits,
   useDiscardRoomDebug,
   useDismissRoomNotice,
   useGreetRoom,
   useLeaveRoom,
   useMoveRoom,
   useOpenRoom,
-  useOpenVisit,
   useReceiveRoomRecordEvents,
   useRetrySavedScene,
   useSendRoom,
 } from "../features/scenes/actions.js";
 import {
   useActiveSceneRestoration,
-  useSceneArchive,
   useSceneChangesPolling,
   useSceneInterruptedSubmission,
   useSceneOpeningWarning,
@@ -135,7 +132,6 @@ import {
   useSaveSendOnEnter,
   useSaveSettings,
   useSaveSpriteCardFlip,
-  useSaveVisitRetention,
 } from "../features/settings/actions.js";
 import { useAgentConnections } from "../features/settings/AgentConnections.js";
 import { useSettingsDraftSession } from "../features/settings/draft-session.js";
@@ -231,24 +227,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   } = useResidentsState();
 
   const {
-    venueVisits,
-    setVenueVisits,
-    archiveTotal,
-    setArchiveTotal,
-    archiveOffset,
-    setArchiveOffset,
-    archiveVersion,
-    setArchiveVersion,
-    openArchivedVisit,
-    setOpenArchivedVisit,
     _endFailed,
     setEndFailed,
-    archiveVenueId,
-    setArchiveVenueId,
-    archiveVillagerId,
-    setArchiveVillagerId,
-    archiveError,
-    setArchiveError,
     mailboxOpen,
     setMailboxOpen,
     sceneReading,
@@ -1037,28 +1017,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setScreen,
   });
 
-  useSceneArchive({
-    archiveOffset,
-    archiveVenueId,
-    archiveVersion,
-    archiveVillagerId,
-    menuPage,
-    setArchiveError,
-    setArchiveTotal,
-    setVenueVisits,
-    snapshot,
-  });
-
-  const openVisit = useOpenVisit({ setArchiveError, setOpenArchivedVisit });
-
-  const deleteArchivedVisits = useDeleteArchivedVisits({
-    setArchiveError,
-    setArchiveOffset,
-    setArchiveVersion,
-    setBusy,
-    setOpenArchivedVisit,
-  });
-
   // Kept as its own effect, keyed on the stamp: the picture is fetched once and
   // re-fetched only when the server says the map changed, so the homepage never
   // holds a stale copy and the snapshot never carries a megabyte of base64.
@@ -1453,14 +1411,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const saveSendOnEnter = useSaveSendOnEnter({ setBusy, setSettingsError, setSnapshot, snapshot });
 
   const saveCharacterSpeechColors = useSaveCharacterSpeechColors({ setBusy, setSettingsError, setSnapshot, snapshot });
-
-  const saveVisitRetention = useSaveVisitRetention({
-    setArchiveVersion,
-    setBusy,
-    setSettingsError,
-    setSnapshot,
-    snapshot,
-  });
 
   /**
    * Ask the model for places again. Deliberately a separate button from Save:
@@ -2058,11 +2008,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     addVenue,
     agendas,
     applyVillagerRefresh,
-    archiveError,
-    archiveOffset,
-    archiveTotal,
-    archiveVenueId,
-    archiveVillagerId,
     backgroundPanel,
     writing,
     busy,
@@ -2078,7 +2023,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     generateRequestDescription,
     completeResidenceMove,
     decideResidenceMove,
-    deleteArchivedVisits,
     discardRoomDebug,
     dismissRoomNotice,
     draftPins,
@@ -2128,7 +2072,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     nameOfCharacter,
     navigationView,
     newSetupDraft,
-    openArchivedVisit,
     openMenu,
     openPerson,
     openPlace,
@@ -2136,7 +2079,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     openRoom,
     openSetup,
     openVenue,
-    openVisit,
     patchSetupVenue,
     personProfile,
     personaDraft,
@@ -2197,7 +2139,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     saveSpriteCardFlip,
     saveBackgroundPace,
     saveVenue,
-    saveVisitRetention,
     savedPins,
     savedSetupDraft,
     savedTownMapShape,
@@ -2213,9 +2154,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     checkSavedReply,
     replyPending,
     setAgendaScheduleIngestion,
-    setArchiveOffset,
-    setArchiveVenueId,
-    setArchiveVillagerId,
     setBusy,
     setConnectionSetupProblem,
     setError,
@@ -2234,7 +2172,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setMoveTargetId,
     setMovingSetupVenueId,
     setNavigationView,
-    setOpenArchivedVisit,
     setOpenPlaceId,
     setPersonProfile,
     setPersonaDraft,
@@ -2384,7 +2321,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venuePage,
     venueProposalDraft,
     venueSearch,
-    venueVisits,
     venueZoneKey,
     venuesDraft,
     visualLoreDefault,

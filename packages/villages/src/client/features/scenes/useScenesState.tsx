@@ -1,11 +1,5 @@
 import { useRef, useState } from "react";
-import type {
-  ArchiveVisitSummary,
-  RoomOperation,
-  RoomRecordEvent,
-  SceneChangeIssue,
-  SceneView,
-} from "../../../shared/contracts/village.js";
+import type { RoomOperation, RoomRecordEvent, SceneChangeIssue } from "../../../shared/contracts/village.js";
 import type { SceneComposerMode } from "../../shared/types.js";
 import { useSceneReadingSession } from "./reading-session.js";
 
@@ -14,23 +8,8 @@ export type LegacySceneRecovery = { sceneId: string; operation: RoomOperation };
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useScenesState(isFounded?: boolean) {
   const sceneReading = useSceneReadingSession(isFounded);
-  const [venueVisits, setVenueVisits] = useState<ArchiveVisitSummary[] | null>(null);
-
-  const [archiveTotal, setArchiveTotal] = useState(0);
-
-  const [archiveOffset, setArchiveOffset] = useState(0);
-
-  const [archiveVersion, setArchiveVersion] = useState(0);
-
-  const [openArchivedVisit, setOpenArchivedVisit] = useState<SceneView | null>(null);
 
   const [_endFailed, setEndFailed] = useState(false);
-
-  const [archiveVenueId, setArchiveVenueId] = useState("");
-
-  const [archiveVillagerId, setArchiveVillagerId] = useState("");
-
-  const [archiveError, setArchiveError] = useState("");
 
   const [mailboxOpen, setMailboxOpen] = useState(false);
 
@@ -118,24 +97,8 @@ export function useScenesState(isFounded?: boolean) {
    */
   return {
     sceneReading,
-    venueVisits,
-    setVenueVisits,
-    archiveTotal,
-    setArchiveTotal,
-    archiveOffset,
-    setArchiveOffset,
-    archiveVersion,
-    setArchiveVersion,
-    openArchivedVisit,
-    setOpenArchivedVisit,
     _endFailed,
     setEndFailed,
-    archiveVenueId,
-    setArchiveVenueId,
-    archiveVillagerId,
-    setArchiveVillagerId,
-    archiveError,
-    setArchiveError,
     mailboxOpen,
     setMailboxOpen,
     roomOpen,
