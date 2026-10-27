@@ -362,9 +362,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   ): Promise<T | undefined> {
     if (!/^[a-zA-Z0-9-]{1,100}$/.test(sessionId)) throw badRequest("Invalid browser session.");
     if (!visible) {
+      hasVillagePresence(); // Expired leases cannot establish a late departure boundary.
       const wasVisible = sessions.delete(sessionId);
       pendingPresence.delete(sessionId);
-      if (wasVisible && !hasVillagePresence() && !pendingPresence.size && !resumingPresence) await options.onHidden?.();
+      if (wasVisible && !hasVillagePresence()) await options.onHidden?.();
       return;
     }
     if (hasVillagePresence()) {

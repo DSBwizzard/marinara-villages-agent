@@ -476,6 +476,34 @@ async function main() {
     await villageBackgroundPresence("confirmed-tab", true);
     await villageBackgroundPresence("confirmed-tab", false, { onHidden });
     assert.equal(confirmedBoundaries, 1, "The final confirmed session establishes a departure boundary.");
+    await villageBackgroundPresence("expired-tab", true);
+    now += 90_001;
+    await villageBackgroundPresence("expired-tab", false, { onHidden });
+    assert.equal(confirmedBoundaries, 1, "A late hidden message cannot move an expired departure boundary.");
+
+    await reset();
+    let finishResume: (() => void) | undefined;
+    let pendingBoundary = 0;
+    const firstReturn = villageBackgroundPresence("first-return", true, {
+      beforeResume: () =>
+        new Promise<void>((resolve) => {
+          finishResume = resolve;
+        }),
+      onVisible: async () => {
+        await villageBackgroundPresence("first-return", false, {
+          onHidden: async () => {
+            pendingBoundary++;
+          },
+        });
+        await villageBackgroundPresence("pending-return", false);
+      },
+    });
+    await until(() => !!finishResume);
+    const pendingReturn = villageBackgroundPresence("pending-return", true);
+    finishResume!();
+    await Promise.all([firstReturn, pendingReturn]);
+    assert.equal(pendingBoundary, 1, "A pending return cannot erase the last confirmed departure.");
+    assert.equal(hasVillagePresence(), false);
 
     await reset();
     let catchUps = 0;
