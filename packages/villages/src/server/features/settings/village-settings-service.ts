@@ -1,9 +1,9 @@
 import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import type { VillageSnapshot, VillageState, VillageBackgroundPace } from "../../domain/models/world.js";
-import { badRequest, notFound } from "../../domain/rules/errors.js";
+import { badRequest } from "../../domain/rules/errors.js";
 import { readLoreTokenBudget, readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
-import { boundText, MAX_NOTICE_LENGTH, MAX_NOTICEBOARD_NOTES, remapVenues } from "../../domain/rules/prompt-preset.js";
+import { remapVenues } from "../../domain/rules/prompt-preset.js";
 import { readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { readBool } from "../../domain/rules/village-projections.js";
 import { readPromptBox, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
@@ -169,34 +169,6 @@ export function createVillageSettings({
     return buildVillageSnapshot();
   }
 
-  async function addNotice(value: unknown): Promise<VillageSnapshot> {
-    const notice = boundText(value, MAX_NOTICE_LENGTH);
-    if (notice.length === 0) throw badRequest("Write something before pinning it up.");
-    // Read the length inside the mutation so a concurrent change is respected
-    // rather than overwritten by a count taken before the retry loop.
-    await mutateVillageState((state) => {
-      if (state.noticeboard.length >= MAX_NOTICEBOARD_NOTES) {
-        throw badRequest(`The noticeboard holds at most ${MAX_NOTICEBOARD_NOTES} notices.`);
-      }
-      // Unsigned, because that is what a note you tack up yourself looks like.
-      // The villagers' notes carry their names; yours does not need one, since
-      // everyone here already knows who you are.
-      state.noticeboard.push({ author: "", text: notice });
-    });
-    return buildVillageSnapshot();
-  }
-
-  /** Take one notice down. Removed by position, so identical notices are separable. */
-  async function removeNoticeAt(index: unknown): Promise<VillageSnapshot> {
-    const position = Number(index);
-    if (!Number.isInteger(position) || position < 0) throw badRequest("That is not a notice on the board.");
-    await mutateVillageState((state) => {
-      if (position >= state.noticeboard.length) throw notFound("That notice is no longer on the board.");
-      state.noticeboard.splice(position, 1);
-    });
-    return buildVillageSnapshot();
-  }
-
   async function setScenerySettings(value: {
     sceneryArtStyle?: unknown;
     sceneryStyleProfileId?: unknown;
@@ -233,8 +205,6 @@ export function createVillageSettings({
     setVillagePlayer,
     setVillageSetting,
     setVillageWorldName,
-    addNotice,
-    removeNoticeAt,
     setScenerySettings,
   };
 }

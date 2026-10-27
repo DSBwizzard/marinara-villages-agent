@@ -4,7 +4,6 @@ import { renderProgressDebugPage } from "../features/background/ProgressDebugPag
 import { renderProjectsPage } from "../features/projects/ProjectsPage.js";
 import { renderSceneArchivePage } from "../features/scenes/SceneArchivePage.js";
 import { renderVenueRequestsPage } from "../features/venues/VenueRequestsPage.js";
-import { renderNoticeboardPage } from "../features/world/NoticeboardPage.js";
 import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsPage.js";
 import { renderMenuIndexPage } from "../features/settings/MenuIndexPage.js";
 import type { MenuScreenController } from "./menu-contracts.js";
@@ -17,7 +16,6 @@ import type { LocalDraftStatus, ReportLocalDraftStatus } from "../features/setti
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
   const {
-    addNotice,
     addVenue,
     archiveError,
     archiveOffset,
@@ -46,7 +44,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     menuSection,
     mobile,
     nameOfCharacter,
-    noticeDraft,
     openArchivedVisit,
     openMenu: rawOpenMenu,
     openPlace: rawOpenPlace,
@@ -59,7 +56,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     personas,
     placeCount,
     progressDebug,
-    removeNotice,
     removeVenue,
     requestEdits,
     resetArmed,
@@ -82,7 +78,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     setLoreTokenBudgetDraft,
     setLorebookDraft,
     setMenuPage: rawSetMenuPage,
-    setNoticeDraft,
     setOpenArchivedVisit,
     setPersonaDraft,
     setPersonalizeHomes,
@@ -381,17 +376,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               {backgroundPanel}
               {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
               {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
-              {menuPage === "noticeboard" && snapshot
-                ? renderNoticeboardPage({
-                    addNotice,
-                    busy: busy,
-                    noticeDraft,
-                    removeNotice,
-                    setNoticeDraft,
-                    snapshot,
-                  })
-                : null}
-
               {menuPage === "venueRequests" && snapshot
                 ? renderVenueRequestsPage({
                     housingVenueId,

@@ -310,9 +310,8 @@ export type RoomStep = {
 //     place and now match nothing.
 
 /**
- * Pages reachable from the village menu and the map's Noticeboard shortcut.
+ * Pages reachable from the village menu.
  */
-type MenuTab =
-  "villagers" | "noticeboard" | "venueRequests" | "projects" | "village" | "general" | "chatlogs" | "progress";
+type MenuTab = "villagers" | "venueRequests" | "projects" | "village" | "general" | "chatlogs" | "progress";
 
 export type MenuPage = "index" | MenuTab;

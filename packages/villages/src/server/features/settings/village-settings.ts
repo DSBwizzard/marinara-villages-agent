@@ -39,12 +39,6 @@ export function setVillagePlayer(...args: Parameters<VillageSettings["setVillage
 export function setVillageSetting(...args: Parameters<VillageSettings["setVillageSetting"]>) {
   return villageSettings().setVillageSetting(...args);
 }
-export function addNotice(...args: Parameters<VillageSettings["addNotice"]>) {
-  return villageSettings().addNotice(...args);
-}
-export function removeNoticeAt(...args: Parameters<VillageSettings["removeNoticeAt"]>) {
-  return villageSettings().removeNoticeAt(...args);
-}
 export function setScenerySettings(...args: Parameters<VillageSettings["setScenerySettings"]>) {
   return villageSettings().setScenerySettings(...args);
 }

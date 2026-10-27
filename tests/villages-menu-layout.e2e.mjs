@@ -364,14 +364,7 @@ try {
     await page.evaluate(() => document.getElementById("marinara-capability-villages-styles").remove());
     await expect.poll(() => page.locator("#marinara-capability-villages-styles").count()).toBe(1);
     await root.getByRole("button", { name: "Back to the village" }).click();
-    await page.getByRole("button", { name: /^Notices \(/ }).click();
-    await expect(root).toHaveAttribute("data-page", "noticeboard");
-    await expect(nav).toBeVisible();
-    if (process.env.VILLAGES_MENU_SCREENSHOTS) {
-      await page.screenshot({
-        path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `menu-noticeboard-${width}-${height}.png`),
-      });
-    }
+    await expect(page.getByRole("button", { name: /^Notices \(/ })).toHaveCount(0);
     await page.evaluate((elementName) => {
       const old = document.querySelector(elementName);
       old.replaceWith(document.createElement(elementName));

@@ -132,7 +132,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
         <span className={`${ELEMENT_TAG}-label`}>Starting over</span>
         <p className={`${ELEMENT_TAG}-empty`}>
           This is not the same thing. It takes the village apart completely — the villagers, their conversations, the
-          places, the noticeboard, your own details and the map — and hands you an empty one. There is no way back.
+          places, your own details and the map — and hands you an empty one. There is no way back.
         </p>
         <div className={`${ELEMENT_TAG}-row`}>
           {resetArmed ? (
