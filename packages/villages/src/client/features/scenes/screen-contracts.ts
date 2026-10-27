@@ -61,6 +61,8 @@ export type SceneScreenController = {
   readonly roomGreetingNotice: ScenesState["roomGreetingNotice"];
   readonly roomLeaveSubmissionIdRef: ScenesState["roomLeaveSubmissionIdRef"];
   readonly roomMode: ScenesState["roomMode"];
+  readonly legacyRecovery: ScenesState["legacyRecovery"];
+  readonly setLegacyRecovery: ScenesState["setLegacyRecovery"];
   readonly roomMoveOperationIdRef: ScenesState["roomMoveOperationIdRef"];
   readonly roomMoveZoneId: ScenesState["roomMoveZoneId"];
   readonly roomNotices: ScenesState["roomNotices"];

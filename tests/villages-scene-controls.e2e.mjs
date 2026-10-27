@@ -170,9 +170,10 @@ try {
       await expect(send).toBeEnabled();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
-      for (const mode of ["Say / Do", "Move", "Contact", "Conclude"])
+      for (const mode of ["Say / Do", "Move", "Conclude"])
         await expect(page.getByRole("menuitemradio", { name: mode, exact: true })).toBeVisible();
-      await expect(page.getByRole("menuitemradio", { name: "Fulfill", exact: true })).toHaveCount(0);
+      for (const removed of ["Contact", "Fulfill"])
+        await expect(page.getByRole("menuitemradio", { name: removed, exact: true })).toHaveCount(0);
       await expect(page.getByRole("menuitemradio", { name: "Knock / Call", exact: true })).toHaveCount(0);
       await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
       await page.getByRole("button", { name: "Venue actions" }).click();

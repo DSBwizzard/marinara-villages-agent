@@ -326,6 +326,7 @@ export function useSceneInterruptedSubmission(ports: {
   composerEditVersionRef: React.RefObject<number>;
   restoredSceneDraftRef: React.RefObject<string>;
   room: import("../../../shared/contracts/village.js").SceneView;
+  setLegacyRecovery: React.Dispatch<React.SetStateAction<import("./useScenesState.js").LegacySceneRecovery | null>>;
   roomMoveOperationIdRef: React.RefObject<string>;
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
   setRoomContactKind: React.Dispatch<React.SetStateAction<"knock" | "call">>;
@@ -338,6 +339,7 @@ export function useSceneInterruptedSubmission(ports: {
     composerEditVersionRef,
     restoredSceneDraftRef,
     room,
+    setLegacyRecovery,
     roomMoveOperationIdRef,
     setRoomContactBoundary,
     setRoomContactKind,
@@ -371,20 +373,17 @@ export function useSceneInterruptedSubmission(ports: {
           }
           return;
         }
+        const legacy = ["contact", "fulfill"].includes(operation.input.mode ?? "");
+        if (legacy) {
+          setLegacyRecovery((current) => (current?.sceneId === room.id ? current : { sceneId: room.id, operation }));
+        }
         if (!operation.input.message) return;
         restoredSceneDraftRef.current = restoreKey;
         if (composerEditVersionRef.current !== editVersion) return;
         setRoomDraft((current) => current || operation.input?.message || "");
         if (editVersion !== 0) return;
         if (operation.input.mode === "leave") setRoomMode("conclude");
-        else if (["chat", "fulfill", "contact"].includes(operation.input.mode ?? "")) {
-          setRoomMode(operation.input.mode as "chat" | "fulfill" | "contact");
-          setRoomTargetId(operation.input.targetId ?? "");
-          if (operation.input.contact) {
-            setRoomContactKind(operation.input.contact.kind === "call" ? "call" : "knock");
-            setRoomContactBoundary(operation.input.contact.boundaryZoneId ?? "");
-          }
-        }
+        else if (operation.input.mode === "chat") setRoomMode("chat");
       })
       .catch(() => {});
     return () => {
@@ -406,6 +405,7 @@ export function useSceneInterruptedSubmission(ports: {
     setRoomTargetId,
     setRoomContactKind,
     setRoomContactBoundary,
+    setLegacyRecovery,
   ]);
 }
 

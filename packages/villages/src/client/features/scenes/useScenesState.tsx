@@ -3,10 +3,13 @@ import type {
   RoomRecordEvent,
   SceneView,
   SceneChangeIssue,
+  RoomOperation,
 } from "../../../shared/contracts/village.js";
 import type { SceneComposerMode } from "../../shared/types.js";
 import { useRef, useState } from "react";
 import { useSceneReadingSession } from "./reading-session.js";
+
+export type LegacySceneRecovery = { sceneId: string; operation: RoomOperation };
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useScenesState(isFounded?: boolean) {
@@ -37,6 +40,7 @@ export function useScenesState(isFounded?: boolean) {
   const [roomDraft, setRoomDraft] = useState("");
 
   const [roomMode, setRoomMode] = useState<SceneComposerMode>("chat");
+  const [legacyRecovery, setLegacyRecovery] = useState<LegacySceneRecovery | null>(null);
 
   const [roomContactBoundary, setRoomContactBoundary] = useState("");
 
@@ -140,6 +144,8 @@ export function useScenesState(isFounded?: boolean) {
     setRoomDraft,
     roomMode,
     setRoomMode,
+    legacyRecovery,
+    setLegacyRecovery,
     roomContactBoundary,
     setRoomContactBoundary,
     roomContactKind,

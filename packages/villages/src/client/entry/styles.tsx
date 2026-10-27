@@ -1561,10 +1561,6 @@ const VILLAGES_STYLES = `
 */
 .${ELEMENT_TAG}-composer-row { display: flex; flex-wrap: wrap; }
 /* Textarea scrollbar widths must not resize its sibling scope or the mode menu. */
-.${ELEMENT_TAG}-scene-scope { flex: 0 0 100%; min-width: 0; max-width: 100%; margin: 0 0 .375rem; align-self: center; font-size: .625rem; line-height: 1.3; color: var(--muted-foreground); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.${ELEMENT_TAG}-composer-row > .${ELEMENT_TAG}-scene-scope + .${ELEMENT_TAG}-chat-input { flex: 1 1 0; }
-.${ELEMENT_TAG}-contact-controls { display: flex; flex-wrap: wrap; gap: 6px; }
-.${ELEMENT_TAG}-contact-controls > select { flex: 1 1 130px; min-width: 0; max-width: 100%; }
 .${ELEMENT_TAG}-composer-row > .${ELEMENT_TAG}-claim,
 .${ELEMENT_TAG}-composer-row > .${ELEMENT_TAG}-chat-input { flex: 1 1 auto; min-width: 0; }
 /*
