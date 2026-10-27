@@ -488,9 +488,16 @@ export async function verifyFoundingLayout(group) {
         let root = page.locator(".villages-forging-v2");
         const forward = (name) => root.getByRole("button", { name, exact: true });
         const bounds = async () => {
+          const overflow = await root.evaluate((element) => {
+            const right = element.getBoundingClientRect().right;
+            return [...element.querySelectorAll("*")]
+              .filter((child) => child.getBoundingClientRect().right > right + 1)
+              .slice(0, 5)
+              .map((child) => `${child.tagName}.${child.className}`);
+          });
           assert.ok(
             await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
-            "no horizontal overflow",
+            `no horizontal overflow: ${overflow}`,
           );
           const footer = root.locator(".villages-forging-footer");
           const box = await footer.boundingBox();
@@ -681,21 +688,21 @@ export async function verifyFoundingLayout(group) {
         await capture("place");
         if (width === 390 && height === 844) {
           const connectionCard = root.locator(".villages-founding-connections");
-          await expect(connectionCard.getByText("Connections · Ready")).toBeVisible();
-          await connectionCard.getByText("Connections · Ready").click();
           const system = connectionCard.getByLabel("System", { exact: true });
+          await expect(system).toBeVisible();
           holdConnectionSave = true;
           await system.selectOption("");
           await expect.poll(() => heldConnectionSave !== null).toBe(true);
-          await expect(connectionCard.getByText("Connections · Needs setup")).toBeVisible();
+          await forward("Continue to People").click();
+          await expect(root).toHaveAttribute("data-step", "0");
+          await expect(connectionCard.getByText("Connections are still loading.")).toBeVisible();
           holdConnectionSave = false;
           await fulfill(heldConnectionSave, { status: 503, json: { error: "Save failed" } });
           await expect(system).toBeDisabled();
-          await expect(connectionCard.getByText("Connections · Needs setup")).toBeVisible();
           await connectionCard.getByRole("button", { name: "Retry", exact: true }).click();
           await expect(system).toBeEnabled();
           await system.selectOption("talk");
-          await expect(connectionCard.getByText("Connections · Ready")).toBeVisible();
+          await expect(system).toHaveValue("talk");
         }
         await forward("Continue to People").click();
         await expect(root).toHaveAttribute("data-step", "1");
@@ -800,6 +807,23 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByLabel("Village Name", { exact: true })).toHaveCount(0);
         const mapDialog = root.getByRole("region", { name: "Map artwork", exact: true });
         await expect(mapDialog).toBeVisible();
+        await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
+        await expect(mapDialog.getByRole("img", { name: "Selected village map" })).toHaveAttribute(
+          "src",
+          /^data:image\/png;base64,/,
+        );
+        await expect
+          .poll(() =>
+            mapDialog
+              .getByRole("img", { name: "Selected village map" })
+              .evaluate((image) => [image.naturalWidth, image.naturalHeight]),
+          )
+          .toEqual([1536, 1024]);
+        assert.equal(mapCalls, 0, "the simple map makes no image request");
+        await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
         const stylePicker = mapDialog.getByLabel("Scenery style preset", { exact: true });
         await expect(stylePicker).toHaveValue("");
         await expect(stylePicker.getByRole("option", { name: "Engine default (My ink map)", exact: true })).toHaveCount(
@@ -831,9 +855,8 @@ export async function verifyFoundingLayout(group) {
           await mapDialog.getByRole("button", { name: "Close Map Details help", exact: true }).click();
           await expect(mapHelp).toHaveAttribute("aria-expanded", "false");
         }
-        await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
         await expect(mapDialog.getByRole("group", { name: "Map source", exact: true }).getByRole("button")).toHaveCount(
-          2,
+          3,
         );
         await expect(mapDialog.getByRole("button", { name: "Generate artwork", exact: true })).toHaveAttribute(
           "aria-pressed",
@@ -1079,10 +1102,9 @@ export async function verifyFoundingLayout(group) {
             "sheet fits viewport",
           );
         };
-        await expect(root.locator(".villages-workspace-tray")).toBeVisible();
-        await expect(root.locator("[data-venue-id]")).toHaveCount(homeCount + 2);
-        await expect(forward("Review village")).toBeDisabled();
-        await root.locator("[data-venue-id]").first().click();
+        await expect(pins).toHaveCount(homeCount + 2);
+        await expect(forward("Review village")).toBeEnabled();
+        await pins.first().click();
         await expect(inspector.getByLabel("Venue Name", { exact: true })).toBeVisible();
         await expect(inspector.getByLabel("Exterior Description", { exact: true })).toBeVisible();
         await expect(root.getByRole("dialog", { name: "Venue editor", exact: true })).toHaveCount(1);
@@ -1119,27 +1141,16 @@ export async function verifyFoundingLayout(group) {
           await capture("venue-image-preview");
         }
         await inspector.getByRole("button", { name: "Done", exact: true }).click();
-        await expect(root.locator("[data-venue-id]").first()).toBeFocused();
+        await expect(pins.first()).toBeFocused();
         await mapView();
-        assert.equal(imageCalls, 0, "editing an unplaced Venue starts no image generation");
+        assert.equal(imageCalls, 0, "editing a Venue starts no image generation");
         await expect(root.locator(".villages-workspace-overview")).toHaveCSS("border-color", "rgb(67, 84, 125)");
         await expect(root).toHaveCSS("background-color", "rgb(18, 25, 54)");
         await capture("venue-placement");
         await forward("Suggest names & descriptions").click();
         await expect(forward("Suggest names & descriptions")).toBeEnabled();
         assert.equal(suggestionCalls, 1);
-        await expect(root.locator("[data-venue-id]")).toHaveCount(homeCount + 2);
-        await expect(forward("Review village")).toBeDisabled();
-        const spots = Array.from({ length: homeCount + 2 }, (_, i) => ({
-          x: homeCount === 3 ? 0.22 + (i % 3) * 0.28 : 0.22 + (i % 2) * 0.56,
-          y: i < (homeCount === 3 ? 3 : 2) ? 0.28 : 0.72,
-        }));
-        for (const [index, spot] of spots.entries()) {
-          await canvas.scrollIntoViewIfNeeded();
-          const box = await canvas.boundingBox();
-          await page.mouse.click(box.x + spot.x * box.width, box.y + spot.y * box.height);
-          await expect(pins).toHaveCount(index + 1);
-        }
+        await expect(forward("Review village")).toBeEnabled();
         await expect(pins).toHaveCount(homeCount + 2);
         await expect(root.locator(".villages-workspace-summary")).toContainText("Ready for review");
 
@@ -1430,11 +1441,9 @@ export async function verifyFoundingLayout(group) {
         );
         await inspector.getByLabel("Zone Appearance", { exact: true }).fill("");
         await mapView();
-        await expect(forward("Review village")).toBeDisabled();
-        await open();
-        await zone("Private");
+        await expect(forward("Review village")).toBeEnabled();
+        await forward("Review village").click();
         await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toBeVisible();
-        await expect(forward("Review village")).toBeDisabled();
         await inspector.getByLabel("Zone Appearance", { exact: true }).fill("My hammock and traveling journal.");
         await open(homeCount + 1);
         await zone("Common");
@@ -1484,7 +1493,7 @@ export async function verifyFoundingLayout(group) {
         assert.equal(suggestionCalls, 2);
         await open();
         await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue(
-          width === 1366 ? "Edited while suggesting" : "Renewed observatory quarters",
+          width === 1366 ? "Edited while suggesting" : "My observatory quarters",
         );
         await inspector.getByLabel("Venue Name", { exact: true }).fill("My observatory quarters");
         await mapView();
@@ -1902,10 +1911,7 @@ export async function verifyFoundingLayout(group) {
           foundingPayload.foundingCharacterIds.slice().sort(),
           ["finn", "rosa", "lee"].slice(0, homeCount).sort(),
         );
-        assert.equal(
-          foundingPayload.venues[0].name,
-          width === 1366 ? "Renewed observatory quarters" : "My observatory quarters",
-        );
+        assert.equal(foundingPayload.venues[0].name, "My observatory quarters");
         assert.equal(foundingPayload.venues[0].description, "A blue door beside the telescope corridor.");
         assert.equal(foundingPayload.venues[0].privateSpaces[0].description, "My hammock and traveling journal.");
         assert.equal(

@@ -127,8 +127,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
               </li>
             ))}
           </ul>
-          <details>
-            <summary>Preparation details</summary>
+          <section aria-label="Preparation details">
             <p>
               {phase === "venues"
                 ? "Starting venue details"
@@ -156,7 +155,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
             {preparation?.status === "pending" && preparation.error ? (
               <p className={`${ELEMENT_TAG}-hint`}>{`Previous attempt: ${preparation.error}`}</p>
             ) : null}
-          </details>
+          </section>
           {preparation?.status === "failed" ? (
             <div className={`${ELEMENT_TAG}-overlay`}>
               <p className={`${ELEMENT_TAG}-error`} role="alert">

@@ -15,7 +15,14 @@ export function startingZone(venue: VillageVenue, personal: boolean) {
     ...personalSpaceDraft(),
     id: personal ? "private:base" : "common:base",
     name: personal ? "Private Space" : "Common Space",
-    purpose: "",
+    purpose: personal ? "Rest and personal activities" : community ? "Community gatherings" : "Everyday activities",
+    description: personal
+      ? venue.occupancy.playerHome
+        ? "A private space for rest."
+        : ""
+      : community
+        ? "A shared space for the community."
+        : "A shared space in the residence.",
     ownerId,
     venueClass: role as "community" | "residence",
     access: draftZonePolicy(venue, { ownerId, venueClass: role }, personal),

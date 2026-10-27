@@ -178,6 +178,15 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     return () => cancelAnimationFrame(frame);
   }, [setupProblem, inlineProblem, backgroundError, validationAttempt]);
 
+  useEffect(() => {
+    if (screen !== "setup" || setupStep !== 3 || snapshot?.isFounded || setupWorkspace.mode !== "quick") return;
+    setSetupVenues((venues) =>
+      venues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
+        ? arrangeQuickStartVenues(venues)
+        : venues,
+    );
+  }, [screen, setupStep, snapshot?.isFounded, setupWorkspace.mode, setupVenues, setSetupVenues]);
+
   if (screen === "setup") {
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
       id,
@@ -315,6 +324,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 data-active={index === setupStep}
               >
                 <span aria-hidden="true">{index + 1}</span>
+                <span aria-hidden="true">{label}</span>
               </li>
             ))}
           </ol>
@@ -502,15 +512,12 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             </>
           ) : null}
           <div className="villages-forging-card villages-founding-connections" hidden={setupStep !== 0}>
-            <details open={!!connectionSetupProblem}>
-              <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
-              {connectionSetupProblem && validatedFields.includes("connections") ? (
-                <p role="alert" data-founding-problem tabIndex={-1}>
-                  {connectionSetupProblem}
-                </p>
-              ) : null}
-              <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
-            </details>
+            {connectionSetupProblem && validatedFields.includes("connections") ? (
+              <p role="alert" data-founding-problem tabIndex={-1}>
+                {connectionSetupProblem}
+              </p>
+            ) : null}
+            <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
           </div>
           {setupStep === 2 ? (
             <section className="villages-forging-card villages-map-panel" aria-label="Map artwork">
@@ -525,6 +532,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   <div className="villages-map-sources" role="group" aria-label="Map source">
                     {(
                       [
+                        ["simple", "Simple map", "Start now and replace the artwork later."],
                         ["generate", "Generate artwork", "Generate a map from the information provided so far"],
                         ["upload", "Upload image", "Use your own map artwork."],
                       ] as const
@@ -713,7 +721,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <QuickStartVenues
                   venues={setupVenues}
                   people={wizardVillagers}
-                  setting={setupSetting}
                   selectedId={selectedSetupVenueId}
                   state={setupWorkspace}
                   busy={setupSuggestionsBusy}
@@ -738,6 +745,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   }}
                   onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
                   onGenerate={(venueId) => void suggestSetupVenues({ quickStart: true, venueId })}
+                  onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
+                  onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
                   onArrange={() => {
                     setSetupVenues((venues) => arrangeQuickStartVenues(venues, true));
                     setSetupMapReviewed(false);
@@ -846,7 +855,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         Change map
                       </button>
                     </div>
-                    <p>{setupMapSource === "upload" ? "Uploaded artwork" : "Chosen artwork"}</p>
+                    <p>
+                      {setupMapSource === "simple"
+                        ? "Simple map"
+                        : setupMapSource === "upload"
+                          ? "Uploaded artwork"
+                          : "Chosen artwork"}
+                    </p>
                     {setupMapPrompt && setupMapPrompt !== snapshot?.settings.townMapLayoutPrompt ? (
                       <p>Map Details: {setupMapPrompt}</p>
                     ) : null}
@@ -954,14 +969,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           <button
             type="button"
             className="villages-forging-primary"
-            disabled={
-              busy ||
-              setupEditorOpen ||
-              setupSuggestionsBusy ||
-              setupVenueBusy ||
-              !!draftSaveError ||
-              (setupStep === 3 && setupIssues.length > 0)
-            }
+            disabled={busy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError}
             onClick={() => {
               setValidationAttempt((attempt) => attempt + 1);
               setValidatedFields((fields) => [

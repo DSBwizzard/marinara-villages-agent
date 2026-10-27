@@ -114,7 +114,7 @@ export function createFoundingSuggestSetupVenues(ports: {
             return row;
           const changed: SetupVenueDraft = { ...row };
           for (const key of ["name", "venueType", "form", "description"] as const)
-            if ((key === "name" || !setupAuthoredFieldsRef.current[row.id]?.includes(key)) && row[key] === before[key])
+            if (!setupAuthoredFieldsRef.current[row.id]?.includes(key) && row[key] === before[key])
               changed[key] = proposal[key] ?? row[key];
           if (options?.quickStart)
             return mergeQuickStartSpaces(changed, before, proposal, setupAuthoredFieldsRef.current[row.id] ?? []);
@@ -271,7 +271,6 @@ export function createFoundingGotoSetupStep(ports: {
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
           : residentContextProblem ||
-            connectionSetupProblem ||
             (!snapshot?.isFounded ? playerBackgroundProblem(setupPlayerBackground) : "") ||
             (!snapshot?.isFounded &&
             (setupHomeCount < 1 ||
@@ -290,6 +289,7 @@ export function createFoundingGotoSetupStep(ports: {
           : "";
       const problem =
         placeProblem ||
+        connectionSetupProblem ||
         (step >= 2 ? peopleProblem : "") ||
         (step >= 3 ? mapProblem : "") ||
         (step >= 4 ? setupBlocker(step === 4) : "");
