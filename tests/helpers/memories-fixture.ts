@@ -193,12 +193,12 @@ export function realisticMemoryHistory(count: number): MemoryCollection {
                 }
               : {}),
             ...(i > 1 && i % 43 === 0 ? { forgotten: { at: memoryTime(i * 5 + 2), operationId: "forget-" + i } } : {}),
-            ...(i > 1 && i % 11 === 0 ? { disclosed: { title: "Move to " + place, status: "considering" } } : {}),
+            ...(i > 1 && i % 11 === 0 ? { disclosed: { title: "Time together near " + place, status: "open" } } : {}),
           },
         ]),
       ),
       ...(i > 1 && i % 11 === 0
-        ? { domainRef: { kind: "pursuit" as const, id: "move-" + i, characterId: actor } }
+        ? { domainRef: { kind: "wish" as const, id: "company-" + i, characterId: actor } }
         : {}),
       lastApplication: { id: "history-application-" + i, fingerprint: memoryHash([id, text]) },
     };
