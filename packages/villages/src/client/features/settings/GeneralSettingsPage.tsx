@@ -2,12 +2,13 @@ import type { VillageSettings, VillageBackgroundPace } from "../../../shared/con
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { GeneralSettingsPagePorts } from "./page-contracts.js";
 import { VillageWritingSettings } from "./WritingSettings.js";
-import { AgentConnections } from "./AgentConnections.js";
+import { AgentConnectionsControls } from "./AgentConnections.js";
 
 export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
   const {
     category,
     writing,
+    connections,
     busy,
     resetArmed,
     saveCharacterSpeechColors,
@@ -79,7 +80,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
         </>
       ) : (
         <>
-          <AgentConnections />
+          <AgentConnectionsControls connections={connections} disabled={busy} />
           {snapshot ? (
             <div className={`${ELEMENT_TAG}-field`}>
               <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-visit-retention`}>
@@ -136,7 +137,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-danger`}
-                    disabled={busy || writing.busy}
+                    disabled={busy || writing.busy || connections.saving}
                     onClick={() => void startOver()}
                   >
                     Erase Village permanently
@@ -154,7 +155,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}
-                  disabled={busy || writing.busy || !snapshot}
+                  disabled={busy || writing.busy || connections.saving || !snapshot}
                   onClick={() => setResetArmed(true)}
                 >
                   Erase Village

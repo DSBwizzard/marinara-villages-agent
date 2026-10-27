@@ -9,6 +9,7 @@ import type {
 export type GeneralSettingsPagePorts = {
   readonly category: "general" | "advanced";
   readonly writing: ReturnType<typeof import("./WritingSettings.js").useVillageWriting>;
+  readonly connections: ReturnType<typeof import("./AgentConnections.js").useAgentConnections>;
   readonly busy: boolean;
   readonly resetArmed: boolean;
   readonly saveCharacterSpeechColors: (characterSpeechColors: boolean) => Promise<void>;

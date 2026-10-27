@@ -3,7 +3,7 @@ import { messageFrom, request, requestHost } from "../../shared/api.js";
 import { ELEMENT_TAG, VILLAGES_IMAGE_CONNECTION_DISABLED } from "../../shared/constants.js";
 import { connectionOptionsFrom } from "../../shared/presentation.js";
 import type { EngineConnectionRow, VillageConnectionOption } from "../../shared/types.js";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 /**
  * One connection picker.
  *
@@ -73,48 +73,85 @@ function ConnectionPicker({
  * village would otherwise take them with it — which is exactly the setting
  * nobody wants to enter twice.
  */
-export function AgentConnections({
-  onSetupProblem,
-  onImageWarningChange,
-  compact = false,
-}: {
-  onSetupProblem?: (problem: string) => void;
-  onImageWarningChange?: (needed: boolean) => void;
-  compact?: boolean;
-}) {
+export function useAgentConnections(enabled: boolean, viewing = false) {
   const [settings, setSettings] = useState<VillageConnectionSettings | null>(null);
   const [options, setOptions] = useState<VillageConnectionOption[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
+  const alive = useRef(false);
+  const generation = useRef(0);
+  const read = useRef<AbortController | null>(null);
+  const saving = useRef(false);
+  const refreshAfterSave = useRef(false);
 
-  /**
-   * Read once, when the panel is first drawn.
-   *
-   * Two servers, one screen, and they have to agree before anything is drawn:
-   * the Engine knows which connections exist, the village knows which were
-   * chosen. A picker built from one of them alone would either offer nothing or
-   * offer something the save cannot honour, so a failure in either is reported
-   * as the panel failing rather than half-drawn.
-   */
-  useEffect(() => {
-    let cancelled = false;
+  const refresh = useCallback((force = false) => {
+    if (!alive.current) return;
+    if (read.current) {
+      if (!force) return;
+      generation.current++;
+      read.current.abort();
+      read.current = null;
+    }
+    if (saving.current) {
+      refreshAfterSave.current = true;
+      return;
+    }
+    const controller = new AbortController();
+    const current = ++generation.current;
+    read.current = controller;
+    setRefreshing(true);
     void (async () => {
       try {
         const [chosen, rows] = await Promise.all([
-          request<VillageConnectionSettings>("/connections"),
-          requestHost<EngineConnectionRow[]>("/api/connections"),
+          request<VillageConnectionSettings>("/connections", { signal: controller.signal }),
+          requestHost<EngineConnectionRow[]>("/api/connections", { signal: controller.signal }),
         ]);
-        if (cancelled) return;
+        if (!alive.current || generation.current !== current) return;
         setSettings(chosen);
         setOptions(connectionOptionsFrom(Array.isArray(rows) ? rows : []));
+        setReadFailed(false);
+        setError("");
       } catch (cause) {
-        if (!cancelled) setError(messageFrom(cause, "This agent's connections could not be read."));
+        if (alive.current && generation.current === current && !controller.signal.aborted) {
+          setReadFailed(true);
+          setError(messageFrom(cause, "This agent's connections could not be read."));
+        }
+      } finally {
+        if (read.current === controller) read.current = null;
+        if (alive.current && generation.current === current) setRefreshing(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  const invalidate = useCallback(() => {
+    generation.current++;
+    read.current?.abort();
+    read.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) {
+      setSettings(null);
+      setOptions([]);
+      setError("");
+      setReadFailed(false);
+      setRefreshing(false);
+      return;
+    }
+    alive.current = true;
+    refresh();
+    return () => {
+      alive.current = false;
+      invalidate();
+      refreshAfterSave.current = false;
+    };
+  }, [enabled, invalidate, refresh]);
+
+  useEffect(() => {
+    if (enabled && viewing) refresh(true);
+  }, [enabled, viewing, refresh]);
 
   /**
    * Save the moment a picker moves, the same way the automatic-update switches
@@ -124,20 +161,73 @@ export function AgentConnections({
    */
   const choose = useCallback(
     async (patch: { systemConnectionId?: string; narrationConnectionId?: string; imageConnectionId?: string }) => {
+      if (!alive.current || saving.current || read.current || readFailed) return;
+      saving.current = true;
+      const current = ++generation.current;
       setBusy(true);
       setError("");
       try {
-        setSettings(
-          await request<VillageConnectionSettings>("/connections", { method: "PUT", body: JSON.stringify(patch) }),
-        );
+        const next = await request<VillageConnectionSettings>("/connections", {
+          method: "PUT",
+          body: JSON.stringify(patch),
+        });
+        if (alive.current && generation.current === current) setSettings(next);
       } catch (cause) {
-        setError(messageFrom(cause, "That connection could not be saved."));
+        if (alive.current && generation.current === current) {
+          setReadFailed(true);
+          setError(
+            messageFrom(cause, "That connection could not be saved. Check the saved connections before continuing."),
+          );
+        }
       } finally {
-        setBusy(false);
+        saving.current = false;
+        if (alive.current) {
+          setBusy(false);
+          if (refreshAfterSave.current) {
+            refreshAfterSave.current = false;
+            refresh();
+          }
+        }
       }
     },
-    [],
+    [readFailed, refresh],
   );
+
+  return {
+    settings,
+    options,
+    error,
+    readFailed,
+    saving: busy,
+    busy: busy || refreshing || readFailed,
+    choose,
+    refresh,
+  };
+}
+
+export function AgentConnections(props: {
+  onSetupProblem?: (problem: string) => void;
+  onImageWarningChange?: (needed: boolean) => void;
+  compact?: boolean;
+}) {
+  const connections = useAgentConnections(true);
+  return <AgentConnectionsControls {...props} connections={connections} />;
+}
+
+export function AgentConnectionsControls({
+  connections,
+  onSetupProblem,
+  onImageWarningChange,
+  compact = false,
+  disabled = false,
+}: {
+  disabled?: boolean;
+  connections: ReturnType<typeof useAgentConnections>;
+  onSetupProblem?: (problem: string) => void;
+  onImageWarningChange?: (needed: boolean) => void;
+  compact?: boolean;
+}) {
+  const { settings, options, error, readFailed, busy, choose, refresh } = connections;
 
   const talk = options.filter((option) => option.category === "language");
   const pictures = options.filter((option) => option.category === "image_generation");
@@ -152,7 +242,9 @@ export function AgentConnections({
     if (!onSetupProblem) return;
     const systemId = settings?.systemConnectionId ?? "";
     const narrationId = settings?.narrationConnectionId ?? "";
-    if (!settings) {
+    if (connections.readFailed) {
+      onSetupProblem("Check connections before continuing.");
+    } else if (connections.saving || !settings) {
       onSetupProblem("Connections are still loading.");
     } else if (systemId.length === 0 || narrationId.length === 0) {
       onSetupProblem("Choose both System and Narration connections before continuing.");
@@ -161,7 +253,7 @@ export function AgentConnections({
     } else {
       onSetupProblem("");
     }
-  }, [onSetupProblem, settings, talk]);
+  }, [connections.readFailed, connections.saving, onSetupProblem, settings, talk]);
 
   useEffect(() => {
     onImageWarningChange?.(imageNeedsWarning);
@@ -177,7 +269,7 @@ export function AgentConnections({
             label="System"
             options={talk}
             value={settings.systemConnectionId}
-            disabled={busy}
+            disabled={busy || disabled}
             onChange={(next) => void choose({ systemConnectionId: next })}
           />
           <ConnectionPicker
@@ -185,7 +277,7 @@ export function AgentConnections({
             label="Narration"
             options={talk}
             value={settings.narrationConnectionId}
-            disabled={busy}
+            disabled={busy || disabled}
             onChange={(next) => void choose({ narrationConnectionId: next })}
           />
           <div className={`${ELEMENT_TAG}-field`}>
@@ -196,7 +288,7 @@ export function AgentConnections({
               id={`${ELEMENT_TAG}-connection-image`}
               className={`${ELEMENT_TAG}-select`}
               value={settings.imageConnectionId}
-              disabled={busy}
+              disabled={busy || disabled}
               onChange={(event) => void choose({ imageConnectionId: event.target.value })}
             >
               <option value={VILLAGES_IMAGE_CONNECTION_DISABLED}>Disabled</option>
@@ -220,6 +312,11 @@ export function AgentConnections({
       {error ? (
         <p className={`${ELEMENT_TAG}-error`} role="alert">
           {error}
+          {readFailed ? (
+            <button type="button" onClick={() => refresh()}>
+              Retry
+            </button>
+          ) : null}
         </p>
       ) : null}
     </div>
