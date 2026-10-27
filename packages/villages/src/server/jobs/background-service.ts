@@ -362,9 +362,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   ): Promise<T | undefined> {
     if (!/^[a-zA-Z0-9-]{1,100}$/.test(sessionId)) throw badRequest("Invalid browser session.");
     if (!visible) {
-      sessions.delete(sessionId);
+      const wasVisible = sessions.delete(sessionId);
       pendingPresence.delete(sessionId);
-      if (!hasVillagePresence() && !pendingPresence.size && !resumingPresence) await options.onHidden?.();
+      if (wasVisible && !hasVillagePresence() && !pendingPresence.size && !resumingPresence) await options.onHidden?.();
       return;
     }
     if (hasVillagePresence()) {

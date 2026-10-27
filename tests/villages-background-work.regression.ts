@@ -467,6 +467,17 @@ async function main() {
     assert.equal(hasVillagePresence(), false, "a late visible heartbeat cannot overwrite a newer hidden message");
 
     await reset();
+    let confirmedBoundaries = 0;
+    const onHidden = async () => {
+      confirmedBoundaries++;
+    };
+    await villageBackgroundPresence("never-visible", false, { onHidden });
+    assert.equal(confirmedBoundaries, 0, "A hidden message cannot initialize tracking without confirmed visibility.");
+    await villageBackgroundPresence("confirmed-tab", true);
+    await villageBackgroundPresence("confirmed-tab", false, { onHidden });
+    assert.equal(confirmedBoundaries, 1, "The final confirmed session establishes a departure boundary.");
+
+    await reset();
     let catchUps = 0;
     const beforeResume = async () => {
       catchUps++;
