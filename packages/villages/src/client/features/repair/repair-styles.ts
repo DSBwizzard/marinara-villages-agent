@@ -13,7 +13,7 @@ export const REPAIR_STYLES = `
 .villages-repair button:disabled{opacity:.5;cursor:default;}
 .villages-repair :is(button,input,select,textarea):focus-visible{outline:3px solid var(--repair-focus);outline-offset:3px;}
 .villages-repair :is(.repair-primary,button[aria-pressed=true]){background:var(--repair-primary);color:var(--repair-onprimary);border-color:var(--repair-primary);}
-.villages-repair .repair-primary:hover:not(:disabled){background:var(--repair-primary);filter:brightness(.94);}
+.villages-repair :is(.repair-primary,button[aria-pressed=true]):hover:not(:disabled){background:var(--repair-primary);filter:brightness(.94);}
 .villages-repair h1{font-size:27px;font-weight:500;line-height:1.25;margin:0 0 12px;letter-spacing:.03em;}
 .villages-repair h2{font-size:18px;font-weight:500;margin:0 0 10px;}
 .villages-repair .repair-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;}

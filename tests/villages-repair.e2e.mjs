@@ -222,6 +222,15 @@ try {
       const unfinished = "An unfinished modification must not become the memory being forgotten.";
       await page.getByRole("textbox", { name: "Memory", exact: true }).fill(unfinished);
       await page.getByRole("button", { name: "Forget", exact: true }).click();
+      assert.equal(
+        await page
+          .getByRole("button", { name: "Forget", exact: true })
+          .evaluate((element) => getComputedStyle(element).backgroundColor),
+        await page
+          .getByRole("button", { name: "Review forgetting", exact: true })
+          .evaluate((element) => getComputedStyle(element).backgroundColor),
+        "Hover preserves the selected action's primary background and contrast",
+      );
       await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveCount(0);
       await expect(repair.getByText(record.fields[0].value, { exact: true })).toBeVisible();
       await expect(repair).not.toContainText(unfinished);
