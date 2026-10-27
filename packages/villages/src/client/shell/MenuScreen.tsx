@@ -9,6 +9,7 @@ import { renderMenuIndexPage } from "../features/settings/MenuIndexPage.js";
 import type { MenuScreenController } from "./menu-contracts.js";
 import { VillagesRuntimeDebug } from "../features/settings/RuntimeDebug.js";
 import { VillageTimeControl } from "../features/settings/TimeControl.js";
+import { RepairPage } from "../features/repair/RepairPage.js";
 import { renderVillageSettingsPage } from "../features/settings/VillageSettingsPage.js";
 import { WorkspaceShell, type WorkspaceDestination } from "../shared/WorkspaceShell.js";
 import { useCallback, useState } from "react";
@@ -141,6 +142,14 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
   // everything you can change lives here behind one button that was already on
   // the map. It is written as two groups rather than one list because the split
   // is real: Village Management is the village, General settings is the tab.
+  if (screen === "menu" && menuPage === "repair")
+    return (
+      <RepairPage
+        controller={controller.repairController}
+        onBack={() => setMenuPage("index")}
+        onScene={room && room.status !== "closed" ? () => setScreen("room") : undefined}
+      />
+    );
   if (screen === "menu") {
     const navigate = (destination: WorkspaceDestination) => {
       if (destination === "map") goHome();
@@ -192,6 +201,15 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             <div className={`${ELEMENT_TAG}-menu-group`}>
               <h2 className={`${ELEMENT_TAG}-panel-title`}>Village Management</h2>
               <div className={`${ELEMENT_TAG}-menu-group-buttons`}>
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  onClick={() => openMenu("repair")}
+                  disabled={!snapshot || busy}
+                >
+                  REPAIR
+                </button>
+
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}

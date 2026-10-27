@@ -91,7 +91,7 @@ import { proposeVillageResidence } from "../features/venues/residences.js";
 import { decideVillageResidence } from "../features/venues/residences.js";
 import { pruneVenueVisits } from "../features/scenes/archive.js";
 import { requireLiveVenueSession } from "../features/scenes/live-session.js";
-import { readSceneChanges } from "../features/scenes/changes.js";
+import { readSceneChanges, replaySceneChanges, continueSceneChange } from "../features/scenes/changes.js";
 import { VENUE_REPLY_MAX_TOKENS } from "../features/scenes/writing.js";
 import { explicitSceneActions } from "../features/scenes/writing.js";
 import { generateContactResponse } from "../features/scenes/writing.js";
@@ -365,6 +365,10 @@ import {
 } from "../jobs/background-work.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import { randomUUID } from "node:crypto";
+import { createRepairService } from "../features/repair/repair-service.js";
+import { configureRepairs } from "../features/repair/repair.js";
+import { repairGate } from "../adapters/storage/repair-gate.js";
+import { resumeProject, cancelProject } from "../features/projects/project-lifecycle.js";
 import { backendWorkFor } from "./backend-work.js";
 
 // A process identity preserves the existing saved-attempt recovery policy.
@@ -1135,6 +1139,17 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     reconcileWishLifecycle,
   });
   const releaseWorldCoordination = configureWorldCoordination(worldCoordination);
+  const releaseRepairs = configureRepairs(
+    createRepairService({
+      gate: repairGate(),
+      repository: villageRepository,
+      correctWish: correctResidentWish,
+      resumeProject,
+      cancelProject,
+      replaySaved: replaySceneChanges,
+      continueSaved: continueSceneChange,
+    }),
+  );
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
       villagesDocuments,
@@ -1195,6 +1210,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseGraph = () => {
+    releaseRepairs();
     releaseSettings();
     releaseFoundingSetup();
     releaseWorldCoordination();

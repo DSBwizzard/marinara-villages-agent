@@ -305,7 +305,11 @@ async function main() {
     const failure = new Error("A raw world storage failure");
     a.failNext("get", "villages-village", failure);
     await assert.rejects(previewVillageBurst({ action: "images" }), (error) => error === failure);
-    assert.equal(a.calls.length, 1, "raw read failure precedes model and background lookup");
+    assert.ok(
+      a.calls.every((call) => call.op === "get" && ["villages-repair-control", "villages-village"].includes(call.id)),
+      "raw read failure precedes model and background lookup; only recovery admission may precede it",
+    );
+    assert.equal(a.calls.filter((call) => call.id === "villages-village").length, 1);
     a.failNext("resolver", "same-connection", new Error("model unavailable"));
     const result = await previewVillageBurst({ action: "images", count: 1 });
     assert.equal(result.requests, 1, "resolution failure retains counts and unknown prices");

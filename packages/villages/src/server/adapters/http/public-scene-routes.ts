@@ -4,6 +4,7 @@ import { publicSceneResponse } from "../../domain/rules/scene-public.js";
 import type { VillageRouteHandler } from "./route-support.js";
 import type { FastifyInstance } from "fastify";
 import { activationScope } from "../engine/activation-scope.js";
+import { withRepairWork } from "../storage/repair-gate.js";
 
 export function publicSceneRoutes(
   engine: FastifyInstance,
@@ -22,7 +23,9 @@ export function publicSceneRoutes(
           if (blocked) return reply.code(409).send({ error: blocked });
           return handler(request, reply);
         };
-        let result = await (clockIndependentRoutes.includes(`${method} ${path}`) ? work() : withVillageClockWork(work));
+        let result = await withRepairWork(() =>
+          clockIndependentRoutes.includes(`${method} ${path}`) ? work() : withVillageClockWork(work),
+        );
         if (present) result = await present(request, result);
         if (result && typeof result === "object") {
           const payload = result as Record<string, unknown>;
