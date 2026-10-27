@@ -999,6 +999,7 @@ try {
         )
         .toBe(shortLetter);
       await readingMode.click();
+      if (width === 977) assert.equal(await pageCount(), 1, "A letter that fits uses one sheet");
       const nextPage = mail.locator('button[aria-label="Next page"]');
       const previousPage = mail.locator('button[aria-label="Previous page"]');
       while (await nextPage.isEnabled()) await nextPage.click();
@@ -1017,14 +1018,21 @@ try {
         "The signature is visible on that same paper",
       );
       if (width === 977) {
-        for (const size of [
-          { width: 1200, height: 900 },
-          { width, height },
+        for (const { size, singlePage } of [
+          { size: { width: 720, height: 600 }, singlePage: false },
+          { size: { width: 1200, height: 900 }, singlePage: null },
+          { size: { width, height }, singlePage: true },
         ]) {
           await page.setViewportSize(size);
           await page.evaluate(
             () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
           );
+          if (singlePage !== null)
+            await expect
+              .poll(async () => (await pageCount()) === 1, {
+                message: `Page count after resizing to ${size.width}×${size.height}`,
+              })
+              .toBe(singlePage);
           while (await nextPage.isEnabled()) await nextPage.click();
           assert(await lastCharacterVisible(), "Resizing retains text on the signature's page");
         }

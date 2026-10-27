@@ -25,6 +25,8 @@ function LetterPages({
   sender?: VillageSnapshot["villagers"][number];
 }) {
   const paper = useRef<HTMLDivElement>(null);
+  const navigation = useRef<HTMLDivElement>(null);
+  const dimensions = useRef<{ width: number; height: number } | null>(null);
   const [page, setPage] = useState(0);
   const [pages, setPages] = useState(1);
   const [keepEnding, setKeepEnding] = useState(false);
@@ -39,6 +41,25 @@ function LetterPages({
     const measure = () => {
       const width = node.getBoundingClientRect().width;
       if (!width || !node.clientHeight) return;
+      const previousSize = dimensions.current;
+      dimensions.current = { width, height: node.clientHeight };
+      if (keepEnding && previousSize && (previousSize.width !== width || previousSize.height !== node.clientHeight)) {
+        setKeepEnding(false);
+        return;
+      }
+      const controls = navigation.current;
+      if (controls && controls.style.display !== "none") {
+        const previousDisplay = controls.style.display;
+        controls.style.display = "none";
+        const fitsWithoutControls = node.scrollWidth - 3 <= width;
+        controls.style.display = previousDisplay;
+        if (fitsWithoutControls) {
+          setPages(1);
+          setPage(0);
+          node.scrollLeft = 0;
+          return;
+        }
+      }
       if (!keepEnding && sender && ending) {
         const body = node.querySelector(".villages-letter-text")?.firstChild;
         const signature = node.querySelector(".villages-letter-signature");
@@ -99,9 +120,10 @@ function LetterPages({
         )}
       </div>
       <div
+        ref={navigation}
         className="villages-letter-pagination"
         aria-label="Letter pages"
-        style={{ visibility: pages > 1 ? "visible" : "hidden" }}
+        style={{ display: pages > 1 ? "flex" : "none" }}
       >
         <button
           type="button"
@@ -345,9 +367,9 @@ export function Mailbox({
         .villages-letter-reading{margin-left:auto;min-height:44px;border:1px solid #b18f69;background:#efdbb9;color:#302116;border-radius:.35rem;padding:.45rem .7rem}
         .villages-letter-reading[aria-pressed=true]{background:#57717a;color:#fff;border-color:#38535d;box-shadow:inset 0 0 0 1px #fff8}
         .villages-letter-pages{flex:1;min-height:0;overflow:hidden;column-count:1;column-gap:0;column-fill:auto}
-        .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6vw,1.4rem);line-height:1.55;margin:1.5rem 0;orphans:1;widows:1}
+        .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6vw,1.4rem);line-height:1.55;margin:.5rem 0;orphans:1;widows:1}
         .villages-letter-ending{break-inside:avoid}.villages-letter-ending .villages-letter-text{margin:0}
-        .villages-letter-signature{break-inside:avoid;width:min(14rem,60%);margin:1rem 0 1rem auto;color:#59434c;text-align:right}
+        .villages-letter-signature{break-inside:avoid;width:min(14rem,60%);margin:.5rem 0 .5rem auto;color:#59434c;text-align:right}
         .villages-letter-pagination{display:flex;align-items:center;justify-content:center;gap:1rem;min-height:44px}
         .villages-founding-dialog .villages-letter-pagination button{min-width:44px;min-height:44px;border:0;background:transparent;color:#493526;font-size:1.6rem}
         .villages-letter-signature .marinara-capability-villages-signature-art{width:100%;max-width:100%}
@@ -359,7 +381,7 @@ export function Mailbox({
         .villages-letter-compose-fields{display:grid;gap:1rem;flex:1;margin-top:1.2rem}.villages-letter-compose-fields label{display:grid;gap:.4rem;font-size:1.1rem}.villages-founding-dialog .villages-letter-compose-fields :is(select,textarea){width:100%;box-sizing:border-box;background:#fff9ed;color:#302116;border:1px solid #b99a72;border-radius:.25rem;padding:.65rem;font:1.05rem Georgia,serif}.villages-letter-compose-fields textarea{min-height:10rem;resize:vertical}
         .villages-letter-empty{font-size:1.1rem;line-height:1.5}.villages-letter-back{display:none}.villages-letter-error{color:#6d261b;background:#f9e9d5;padding:.6rem 1rem;margin:0 1.8rem}
         .villages-letter-layout :is(button,select,textarea):focus-visible{outline:3px solid #385c6b;outline-offset:2px}.villages-letter-layout button:disabled{opacity:.55;cursor:default}
-        @media(max-height:700px){.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.5rem 1.2rem .25rem}.villages-letter-layout{padding:.25rem 1rem .75rem}.villages-letter-paper{padding:1rem}.villages-letter-heading{padding-bottom:.4rem}.villages-letter-heading .villages-letter-face{width:3rem;height:3rem;font-size:2rem}.villages-letter-text{margin:.6rem 0}.villages-letter-signature{margin:.5rem 0 .5rem auto}}
+        @media(max-height:700px){.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.5rem 1.2rem .25rem}.villages-letter-layout{padding:.25rem 1rem .75rem}.villages-letter-paper{padding:1rem}.villages-letter-heading{padding-bottom:.4rem}.villages-letter-heading .villages-letter-face{width:3rem;height:3rem;font-size:2rem}}
         @media(max-width:704px){.villages-mailbox-overlay{padding:0}.villages-founding-dialog:has(.villages-letter-layout){width:100%;max-width:100%;height:100%;max-height:100%;border:0;border-radius:0}.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.7rem 1rem .35rem}.villages-letter-layout{display:flex;padding:.4rem .8rem .8rem;gap:0}.villages-letter-list,.villages-letter-paper{flex:1}.villages-letter-layout[data-detail=true] .villages-letter-list{display:none}.villages-letter-layout[data-detail=false] .villages-letter-paper{display:none}.villages-letter-paper{padding:1.2rem}.villages-letter-heading .villages-letter-face{width:5rem;height:5rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{display:block;align-self:flex-start;margin:0 0 .7rem;border:0;background:transparent;color:#59442f;padding:.4rem 0;font:1rem Georgia,serif;box-shadow:none}.villages-letter-error{margin:0 .8rem}}
         @media(max-width:704px) and (max-height:700px){.villages-letter-paper{padding:.75rem}.villages-letter-heading .villages-letter-face{width:3rem;height:3rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{margin-bottom:.25rem}}
       `}</style>
