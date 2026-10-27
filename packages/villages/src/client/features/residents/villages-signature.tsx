@@ -1,10 +1,10 @@
-import { useFocusRevision, useVillageActivity, useVisibleInterval } from "../../shared/activity.js";
+import { useCallback, useEffect, useState } from "react";
 import type {
   ResidentSignature,
   ResidentSignatureImage,
   ResidentSignatureView,
 } from "../../../shared/helpers/resident-signature.js";
-import { useCallback, useEffect, useState } from "react";
+import { useFocusRevision, useVillageActivity, useVisibleInterval } from "../../shared/activity.js";
 
 const P = "marinara-capability-villages";
 const flourishes = [

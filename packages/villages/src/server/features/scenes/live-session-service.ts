@@ -1,17 +1,15 @@
-import { gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
-import { captureSceneLayout } from "../../domain/rules/scene-layout.js";
-import { villageNow, observeVillageClock, villageClockShiftMs } from "../../adapters/time/clock-gate.js";
 import { randomUUID } from "node:crypto";
-import { spinoffLocksScene } from "../../domain/models/spinoff-model.js";
+import { observeVillageClock, villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
+import { spinoffLocksScene } from "../../domain/models/spinoff-model.js";
 import { conflict } from "../../domain/rules/errors.js";
+import { gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
 import { accessExits, captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
-import { captureSceneContinuity } from "../../domain/rules/scene-continuity.js";
-import { protectSceneWishes, releaseSceneWishes } from "../../domain/rules/scene-wish-protection.js";
+import { captureSceneContinuity, sceneContinuityView } from "../../domain/rules/scene-continuity.js";
+import { captureSceneLayout } from "../../domain/rules/scene-layout.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
-import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
-import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
+import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import {
   canInviteToZone,
   legacyZoneId,
@@ -80,7 +78,6 @@ export function createLiveScenes({
     session = await alignSceneClock(session);
     if (session.status === "closed") {
       await completeGathering(session);
-      await mutateVillageState((state) => releaseSceneWishes(state, session));
       await clearActivePointer(session.id);
       return null;
     }
@@ -306,7 +303,6 @@ export function createLiveScenes({
         });
       let continuity!: NonNullable<VenueScene["continuity"]>;
       await mutateVillageState((state) => {
-        protectSceneWishes(state, session, now);
         // Capture while relationship authority is hydrated. The public world
         // mutation result intentionally strips that transient context.
         continuity = captureSceneContinuity(state, session, now);

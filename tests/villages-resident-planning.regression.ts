@@ -1,20 +1,20 @@
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import assert from "node:assert/strict";
 import {
-  defaultVillageState,
-  coerceVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
-import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
-import {
-  readVillagerCard,
   readEffectiveVillagerCard,
+  readVillagerCard,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
-import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
+import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 
 const now = new Date(),
   at = now.toISOString(),
@@ -50,7 +50,7 @@ function fixture() {
       characterId: "a",
       cardSnapshot: snapshotFromCard(readVillagerCard({ id: "a", comment: "", data: { name: "Ada" } }), 1),
       addedAt: at,
-      completedWishes: [],
+      wishes: [],
       remap: null,
       remapFailure: null,
       agenda: {
@@ -58,7 +58,6 @@ function fixture() {
         routineSummary: "A quiet day",
         source: "village",
         generatedAt: at,
-        wishes: [],
         routineProfile: {
           version: 1,
           activities: [
@@ -98,7 +97,11 @@ function fixture() {
         finishReason: "stop",
         content: JSON.stringify(
           messages[0].content.startsWith("Independently interpret")
-            ? { memoryChanges: [], relationshipReview: { changes: [], permissions: [], disclosures: [] } }
+            ? {
+                wishChanges: [],
+                memoryChanges: [],
+                relationshipReview: { changes: [], permissions: [], disclosures: [] },
+              }
             : payload,
         ),
       } as any;
@@ -122,7 +125,7 @@ const input = f.queued[0].input;
 assert.equal(input.opportunity.kind, "routine", "A lone resident still gets routine and housing choices");
 const quiet: any = await f.service.handler.generate(input);
 assert.equal(f.calls.length, 1);
-assert.deepEqual(quiet, { housingRequests: [], routineIdea: undefined, social: undefined });
+assert.deepEqual(quiet, { housingRequests: [], routineIdea: undefined, social: undefined, wishReflection: null });
 assert.equal(f.service.handler.valid(f.state, input), true);
 reserveEventAttempt(f.state, f.queued[0].revision, dateKey, now.getTime());
 f.service.handler.apply(f.state, input, quiet, { retrying: false });

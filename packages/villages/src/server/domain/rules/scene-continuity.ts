@@ -1,13 +1,11 @@
 import type { VenueScene } from "../models/scene-model.js";
-import type { VillageState, VillageWish, VillageVenueSpace, VillageVenue } from "../models/world.js";
-import { physicalVenueEvents } from "./venue-scene-state.js";
-import { venueZones, resolveVenueZone, legacyZoneId } from "./venue-zones.js";
-import { sceneWishProtected } from "./scene-wish-protection.js";
+import type { VillageState, VillageVenue, VillageVenueSpace, VillageWish } from "../models/world.js";
 import { relationshipKey } from "./relationship-rules.js";
-import { wishExpired } from "./wish-definition.js";
-import { reserveMemoryScene, sceneMemories } from "./village-memories.js";
-import { contactNeighbors, contactPosition } from "./venue-contact.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
+import { contactNeighbors, contactPosition } from "./venue-contact.js";
+import { physicalVenueEvents } from "./venue-scene-state.js";
+import { legacyZoneId, resolveVenueZone, venueZones } from "./venue-zones.js";
+import { reserveMemoryScene, sceneMemories } from "./village-memories.js";
 
 /** Current writer context, never evidence or a public attendance/room disclosure. */
 export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, actorIds: readonly string[]) {
@@ -62,7 +60,6 @@ export const sceneContinuityFields = [
   "villagers",
   "venues",
   "residences",
-  "development",
   "relationshipContext",
   "venueEvents",
   "projects",
@@ -81,7 +78,6 @@ export type SceneContinuity = {
 /** Exact after-values retained atomically with an accepted effect. Server-only. */
 export type SceneEffectFacts = {
   standingPermissions?: import("../models/relationship-types.js").RelationshipReview["permissions"];
-  development?: { characterId: string; resident: import("../models/development-model.js").ResidentDevelopment };
   wish?: { actorId: string; wishId: string; value: VillageWish | null };
 };
 
@@ -91,8 +87,7 @@ export function captureSceneWishEffect(state: VillageState, actorId: string, wis
       actorId,
       wishId,
       value:
-        state.villagers.find((row) => row.characterId === actorId)?.agenda?.wishes.find((row) => row.id === wishId) ??
-        null,
+        state.villagers.find((row) => row.characterId === actorId)?.wishes.find((row) => row.id === wishId) ?? null,
     },
   });
 }
@@ -120,11 +115,6 @@ export function captureSceneContinuity(state: VillageState, scene: VenueScene, n
   const facts = structuredClone(
     Object.fromEntries(sceneContinuityFields.map((key) => [key, state[key]])),
   ) as SceneContinuity["facts"];
-  for (const resident of facts.villagers)
-    if (resident.agenda)
-      resident.agenda.wishes = resident.agenda.wishes.filter(
-        (wish) => !wishExpired(wish, now) || sceneWishProtected(state, resident.characterId, wish, scene.id),
-      );
   return {
     version: 2,
     seed: state.seed,
@@ -143,7 +133,6 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
   const view = {
     ...current,
     ...structuredClone(context.facts),
-    development: structuredClone(context.facts.development),
     ...(includeMemories
       ? {
           memories: current.memoryScenes[scene.id]
@@ -186,15 +175,10 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
         continue;
       const facts = receipt.sceneFacts;
       if (!facts) continue;
-      if (facts.development && view.development)
-        view.development.residents[facts.development.characterId] = structuredClone(facts.development.resident);
       if (facts.wish) {
         const { actorId, wishId, value } = structuredClone(facts.wish);
         const resident = view.villagers.find((row) => row.characterId === actorId);
-        if (resident?.agenda)
-          resident.agenda.wishes = resident.agenda.wishes.flatMap((wish) =>
-            wish.id === wishId ? (value ? [value] : []) : [wish],
-          );
+        if (resident) resident.wishes = [...resident.wishes.filter((w) => w.id !== wishId), ...(value ? [value] : [])];
       }
     }
   }

@@ -1,27 +1,27 @@
 import assert from "node:assert/strict";
+import { readVillageLore, readVillageVisualLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
+  coerceLoreTokenBudget,
   coerceSelectedLorebookIds,
   readLoreTokenBudget,
-  coerceLoreTokenBudget,
   readSelectedLorebookIds,
 } from "../packages/villages/src/server/domain/rules/lore-policy.js";
-import { readVillageLore, readVillageVisualLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
 import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);
   assert.deepEqual(
-    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }).selectedLorebookIds,
+    coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3 }).selectedLorebookIds,
     [],
   );
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       selectedLorebookIds: ["world", "world", "missing"],
     }).selectedLorebookIds,
@@ -35,7 +35,7 @@ async function main() {
   assert.equal(readLoreTokenBudget(100), 100);
   assert.equal(coerceLoreTokenBudget(0), 0);
   assert.equal(
-    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, loreTokenBudget: 0 })
+    coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, loreTokenBudget: 0 })
       .loreTokenBudget,
     0,
   );

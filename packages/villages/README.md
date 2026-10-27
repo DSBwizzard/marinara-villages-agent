@@ -100,7 +100,7 @@ Each resident has their own perspective: their connection with you, expectations
 
 Starting history honors the resident cards, your backstory, and selected lore. Conflicting authored facts ask for a specific clarification in Inspect. Preparing this history does not invent your consent.
 
-**Mailbox** keeps personal correspondence as individual letters in Inbox and Sent. Opening one letter marks only that letter read. Sent letters remain in Sent; failure recovery is offered only when processing needs attention. Exact outgoing words are saved before generation. Reading and replaying saved processing make no model request. Letters can influence relationships and memories, but do not grant access, create commitments, or perform actions. Failed processing retains recovery controls even when the original message was already delivered.
+**Mailbox** keeps personal correspondence as individual letters in Inbox and Sent. Opening one letter marks only that letter read. Sent letters remain in Sent; failure recovery is offered only when processing needs attention. Exact outgoing words are saved before generation. Reading and replaying saved processing make no model request. Each villager receives a randomly chosen letter style when they join. **Simple text** switches the letter body to a neutral font and is remembered on that browser or device; signatures stay visible. Missing characters fall back to a device font. Letters can influence relationships and memories, but do not grant access, create commitments, or perform actions. Failed processing retains recovery controls even when the original message was already delivered.
 
 The old Noticeboard is retired. Existing notes remain in saved Village data and snapshots, but are no longer displayed or editable in the game.
 
@@ -116,7 +116,7 @@ The Memories page starts with your Persona and loads entries in batches. **Inspe
 
 ## Repair your world
 
-Open **REPAIR** from the main menu. Choose **Memories**, **People**, **Places**, **World & history**, **Progress**, or **Backups & repairs**. **People** lists the villagers; choose someone to see their **Memories** or **Details**. REPAIR is an administrative view: saved records, private memories, sources, history, and repair tools are available by default. Browsing does not teach your Persona or any villager anything.
+Open **REPAIR** from the main menu. Choose **Memories**, **People**, **Places**, **World & history**, **Progress**, or **Backups & repairs**. **People** lists the villagers; choose someone to see their **Memories** or **Details**. Under **Details**, **letter style** previews and changes their font for existing and future letters. The style stays with that character if they leave and return. REPAIR is an administrative view: saved records, private memories, sources, history, and repair tools are available by default. Browsing does not teach your Persona or any villager anything.
 
 Edit a record, then use **Review changes** to check **Before / After** and **Affected records** before saving. **Modify** edits a memory's text. **Forget** shows the saved memory as read-only text and lets you select who forgets it; **Review forgetting** shows the effect before saving. Switching back to Modify keeps your unfinished edit. Memory changes apply only to selected people who already know the detail; the review shows each person's current wording. A memory about someone does not give that person knowledge of it. **Add memory** shows the new text and who will remember it, with the source recorded as **Added by you**. Physical facts, access, character context, relationships and authoritative progress have separate editors. Historical Scene corrections are annotations; the original transcript remains available. Saved-effect recovery replays retained work without requesting new model responses.
 
@@ -126,9 +126,11 @@ Opening REPAIR and applying ordinary corrections preserve your unfinished Scene,
 
 ## Wishes and Projects
 
-**Wishes** are outcomes a resident wants. You learn about them through conversation and discovery. The journal records what you have learned; it does not show hidden progress percentages. A Wish is fulfilled by its actual outcome and expressed conditions, rather than by a promise or a Project proposal alone.
+**Wishes** are concrete personal social desires. They can arise through conversation, correspondence, resident encounters and occasional private reflection. Residents can act on them, reconsider an approach, keep them quietly in the background, fulfill them or withdraw them. Invitations and plans establish arrangements; the desired interaction must actually happen. NPCs can satisfy Wishes without player involvement.
 
-Each resident can have up to two active Wishes. New attempts have a daily allowance and at least 24 hours between them. Returning after an absence does not generate a backlog of missed Wishes.
+The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
+
+This refactor requires a fresh Village (format 6); earlier saves are rejected without conversion.
 
 **Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 
@@ -160,7 +162,7 @@ Sprite setup lets you choose expressions, facing, inclusion, defaults, and frami
 
 Time, schedules, construction, approved moves, and expiry can advance without model requests. Recurring creative activity runs while Villages is visible and pauses before its next request after you leave. Work you already requested can finish while you are away.
 
-Set **Resident activity and Wishes → Off** to pause automatic social planning, routine suggestions, housing proposals, and new Wishes. This leaves local time, construction, approved moves, and existing Wish expiry running.
+Set **Resident activity and Wishes → Off** to pause automatic social planning, routine suggestions, housing proposals, and new Wishes. Local time, construction and approved moves continue. Retained Wishes do not expire.
 
 Quiet, Balanced, and Lively permit at most 1, 3, and 6 automatic resident attempts per local day, at least fifteen minutes apart, with no missed-day catch-up. Each attempt uses at most two principal model requests; quiet outcomes, failures, and unknown outcomes still count. Residents may initiate private encounters or personal mail. Weather alone does not start an automatic request.
 

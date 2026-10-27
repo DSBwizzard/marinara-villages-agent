@@ -1,8 +1,8 @@
-import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { RosterScreenController } from "./screen-contracts.js";
-import { AvatarFace } from "./ResidentPanels.js";
 import { useLayoutEffect, useRef } from "react";
+import { ELEMENT_TAG } from "../../shared/constants.js";
 import { PeopleBook } from "./PeopleBook.js";
+import { AvatarFace } from "./ResidentPanels.js";
+import type { RosterScreenController } from "./screen-contracts.js";
 
 export function RosterScreen({
   controller,

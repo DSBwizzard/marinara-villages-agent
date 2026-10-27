@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
-  readPlayerBackground,
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
   coercePlayerBackground,
   playerBackgroundForSetup,
+  readPlayerBackground,
   renderPlayerBackgroundContext,
 } from "../packages/villages/src/server/domain/rules/player-background.js";
-import {
-  defaultVillageState,
-  coerceVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
 assert.equal(readPlayerBackground("  I came here as king.  "), "I came here as king.");
 for (const raw of [{ title: "King" }, null, 3, "x".repeat(1201)]) assert.throws(() => readPlayerBackground(raw));
@@ -19,7 +19,7 @@ assert.equal(playerBackgroundForSetup("Before", undefined, false), "Before");
 assert.equal(playerBackgroundForSetup("Before", "Before", false), "Before");
 assert.equal(playerBackgroundForSetup("Before", "After", true), "After");
 const state = coerceVillageState({
-  version: 5,
+  version: 6,
   ...defaultVillageState(),
   playerBackground: "At founding I held the crown.",
   worldFacts: ["The player later abdicated."],

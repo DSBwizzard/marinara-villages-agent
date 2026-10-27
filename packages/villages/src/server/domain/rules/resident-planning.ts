@@ -1,5 +1,6 @@
-import { openingPresence } from "./opening-presence.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import type { SocialPlan } from "../models/relationship-types.js";
 import type {
   ResidentPlanningOpportunity,
   VillageAgenda,
@@ -8,16 +9,15 @@ import type {
   VillageState,
   VillageVenue,
 } from "../models/world.js";
-import type { SocialPlan } from "../models/relationship-types.js";
-import type { VillageMoment } from "./village-clock.js";
-import { hashString } from "./village-clock.js";
-import { hasVenueClass, venueResidentIds } from "./venue-model.js";
-import { villagerPlaceView } from "./village-projections.js";
-import { boundText } from "./prompt-preset.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
+import { openingPresence } from "./opening-presence.js";
 import { PERSONAL_LETTER_INSTRUCTION } from "./personal-letter.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+import { boundText } from "./prompt-preset.js";
+import { hasVenueClass, venueResidentIds } from "./venue-model.js";
+import type { VillageMoment } from "./village-clock.js";
+import { hashString } from "./village-clock.js";
+import { villagerPlaceView } from "./village-projections.js";
 
 export function localDateKey(now: Date): string {
   return (
@@ -56,9 +56,8 @@ export function residentPlanningOpportunity(
     currentPlaces.set(key, [...(currentPlaces.get(key) ?? []), resident.characterId]);
   }
   const overlap = [...currentPlaces].find(([, ids]) => ids.length >= 2);
-  const wishing = residents.find((r) => r.agenda?.wishes.length);
   const rotation = (village.eventAttempts?.attempts.length ?? 0) % residents.length;
-  const actorIds = overlap?.[1].slice(0, 4) ?? [(wishing ?? residents[rotation]!).characterId];
+  const actorIds = overlap?.[1].slice(0, 4) ?? [residents[rotation]!.characterId];
   const destination = overlap?.[0] ?? [...currentPlaces].find(([, ids]) => ids.includes(actorIds[0]))?.[0];
   const [venueId, zoneId] = destination ? (JSON.parse(destination) as [string, string]) : ["", "exterior"];
   const kind = overlap ? "encounter" : "routine";
@@ -86,7 +85,14 @@ export type ResidentPlanningContext = {
   playerPersonaName?: string;
   worldFacts: readonly string[];
   moment: VillageMoment;
-  residents: { characterId: string; name: string; profile: string; doing: string; agenda: VillageAgenda | null }[];
+  residents: {
+    characterId: string;
+    name: string;
+    profile: string;
+    doing: string;
+    agenda: VillageAgenda | null;
+    wishes: import("../../../shared/contracts/wishes.js").SocialWish[];
+  }[];
   venues: readonly VillageVenue[];
   pendingHousingCharacterIds: string[];
   opportunity: ResidentPlanningOpportunity;
@@ -102,6 +108,7 @@ export type ResidentPlanningProposal = {
   routineIdea?: { characterId?: unknown; activity?: unknown; venueId?: unknown; zoneId?: unknown; flexible?: unknown };
   housingRequests: { characterId: string; kind: "move"; venueId: string }[];
   social?: { planId?: unknown; encounter?: unknown; mail?: unknown };
+  wishReflection?: unknown;
 };
 export function buildResidentPlanningMessages(context: ResidentPlanningContext): CapabilityLanguageModelMessage[] {
   const offered = context.opportunity;
@@ -129,6 +136,7 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     "The player controls their own words, actions, thoughts, decisions and consent. Never invent their participation or consent. Cards govern identity; private wishes need no disclosure or forced pursuit.",
     "Village: " + context.village + ". Setting: " + context.setting,
     renderPlayerBackgroundContext(context, false),
+    "Retained desires are a catalogue for considering this opportunity, never a quota or a requirement to act. Ordinary life and the complete character govern attention. No Wish need be mentioned or pursued.",
     "World facts: " + JSON.stringify(context.worldFacts),
     "Current opportunity: " + JSON.stringify(offered),
     ...context.residents
@@ -139,7 +147,7 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
           "\nCurrent activity: " +
           r.doing +
           ". Private wishes: " +
-          (r.agenda?.wishes ?? []).map((w) => w.wish).join("; "),
+          JSON.stringify(r.wishes.filter((w) => w.status === "open")),
       ),
     "Prior memories by resident (only each resident’s own knowers are their knowledge): " +
       JSON.stringify(context.narrationMemories ?? {}),
@@ -149,12 +157,13 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
       ". Select one exact offered ID with social.planId, or none. Availability is not preference or consent.",
     "A CURRENT encounter opportunity with at least two actors in one Zone may have social.encounter:{opportunityId,lines:[{speakerId,text}],relationshipReview:{changes:[],permissions:[],disclosures:[]}}. Write two to eight short spoken lines by offered actors only. Never invent player actions, past history, secrets, possessions, injury or physical effects. Omit the encounter if nothing fits. A separate System check interprets its consequences.",
     "Instead of an encounter, social.mail may be {senderId,text} from one offered actor to player, at most 2000 characters: a personal message, question or invitation grounded in their own intentions. No player consent, unseen deeds, or invented contact details. Choose at most one encounter or mail. Private/unknown locations permit mail only.",
+    "A quiet opportunity may include wishReflection:null or {actorId,desire:{wish,reason},reason} for one new grounded social desire, or {actorId,wishId,attention:{state:background|foreground,reason},reason} to reconsider attention, {actorId,wishId,decision:approach,approach:string,reason} to choose or stop an attempt (empty approach), or {actorId,wishId,decision:withdrawn,reason} only when this resident actually stops wanting that outcome. A failed attempt alone does not withdraw the desire. Use only an offered actor. Reflection never proves fulfillment, another person's response, or public knowledge. No new physical facts or completed experiences. No daily quota; retained desires do not require attention. Reflection is available only when social is null. Existing history and refusals govern initiative; an unchanged open Wish is not a reason to repeat a declined invitation. Ordinary social activity needs no Wish.",
     PERSONAL_LETTER_INSTRUCTION,
     "Housing choices: " +
       JSON.stringify(housing) +
       ". housingRequests accepts at most one {who:exact resident ID,kind:move,venueId:offered destination ID}. It is a pending request, never a completed move. Usually empty; choose only a move the resident independently wants.",
     "routineIdea may be one {characterId,activity,venueId,zoneId,flexible:true} for an ordinary future activity at an existing accessible place, or null. It cannot establish employment, assets, commitments or physical changes.",
-    'Return JSON with exactly these top-level fields: {"social":null,"routineIdea":null,"housingRequests":[]}. Replace null only for an applicable structured choice. No narration, public updates, memories or world-state edits.',
+    'Return JSON with exactly these top-level fields: {"social":null,"routineIdea":null,"housingRequests":[],"wishReflection":null}. Replace null only for an applicable structured choice. No narration, public updates, memories or world-state edits.',
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -194,7 +203,9 @@ export function readResidentPlanningProposal(
     )
       housingRequests.push({ characterId, kind: "move", venueId });
   }
+  if (payload.wishReflection && payload.social) throw new Error("Choose an interaction or quiet reflection.");
   return {
+    wishReflection: payload.wishReflection ?? null,
     housingRequests,
     routineIdea: (payload.routineIdea as ResidentPlanningProposal["routineIdea"]) ?? undefined,
     social: (payload.social as ResidentPlanningProposal["social"]) ?? undefined,

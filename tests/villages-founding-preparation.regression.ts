@@ -1,35 +1,34 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
-import { villageFoundingSetting } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
-import assert from "node:assert/strict";
 import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
+import { foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
-  preparePrivateSpaces,
-  retryPrivateSpaces,
-  privatePreparationRooms,
-  startPrivateSpacePreparation,
-} from "../packages/villages/src/server/jobs/private-space-preparation.js";
-import {
+  foundingPreparationSnapshot,
   prepareFoundedVillage,
   retryFoundedVillagePreparation,
-  foundingPreparationSnapshot,
 } from "../packages/villages/src/server/features/founding/preparation.js";
+import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   recoverBackgroundWork,
-  startBackgroundWork,
   retryBackgroundJob,
   settleBackgroundWork,
+  startBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
-import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
+import {
+  preparePrivateSpaces,
+  privatePreparationRooms,
+  retryPrivateSpaces,
+  startPrivateSpacePreparation,
+} from "../packages/villages/src/server/jobs/private-space-preparation.js";
 
 const rows = new Map<string, any>();
 const calls: string[] = [];
@@ -48,7 +47,7 @@ function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     wishSystemVersion: 3,
     seed: "station-fields",
     name: "Station Fields",
@@ -468,110 +467,6 @@ async function main() {
       await retryFoundedVillagePreparation();
       await prepareFoundedVillage();
       assert.equal(calls.length, before, "repeated actions after recovery generate nothing");
-    }
-
-    // Upgrade old combined jobs only after explicit retry, recovering each valid part.
-    for (const migration of [
-      "both-valid",
-      "routine-only",
-      "wish-only",
-      "neither",
-      "unknown",
-      "applied",
-      "applied-gap",
-    ]) {
-      install();
-      mode = "routine-invalid";
-      await prepareFoundedVillage();
-      await mutateVillageState((live) => {
-        live.villagers = live.villagers.slice(0, 1);
-        const marker = live.foundingPreparation!;
-        delete marker.tasks;
-        delete marker.tasksVersion;
-        marker.completedIds = [];
-        marker.status = "failed";
-        marker.error = "Legacy failure";
-        for (const row of rows.values())
-          if (row.kind === "background-work" && row.data.kind === "wish") {
-            rows.delete(row.id);
-            delete live.backgroundReceipts[row.id];
-          }
-      });
-      const legacyRow = [...rows.values()].find(
-        (row) => row.kind === "background-work" && row.data.kind === "agenda" && row.data.subjectId === "aqua",
-      )!;
-      state = await readVillageState({ memories: true });
-      const claim = state.villagers[0].wishLifecycle!.attempt!.id;
-      const legacy = legacyRow.data;
-      legacy.revision = agendaRevision(state, "aqua");
-      legacy.id = backgroundRevision([state.seed, "agenda", "aqua", legacy.revision]);
-      delete legacy.input.foundingContract;
-      legacy.input.revision = legacy.revision;
-      legacy.input.initialWishAttemptId = claim;
-      delete legacy.input.context.contractVersion;
-      legacy.input.context.allowInitialWish = true;
-      legacy.input.context.setting = villageFoundingSetting(state);
-      const response = JSON.parse(legacy.steps[0].response.content);
-      response.palette = response.palette.map((row: any) => ({ ...row, venue: 0 }));
-      const desire = {
-        wish: "An evening conversation about old journeys",
-        intensity: 1,
-        need: { subject: "shared travel stories", action: "conversation", policy: "recurring" },
-        criteria: { kind: "conversation", requiresPhysical: false },
-        neutralWording: true,
-      };
-      response.wishes = [desire];
-      if (["wish-only", "neither"].includes(migration)) response.days = [];
-      if (["routine-only", "neither"].includes(migration)) response.wishes = [{ ...desire, criteria: {} }];
-      legacy.steps[0].key = "owned-routine-profile";
-      legacy.steps[0].response.content = JSON.stringify(response);
-      if (migration === "unknown") {
-        legacy.steps[0] = { key: "owned-routine-profile", fingerprint: "uncertain", status: "running" };
-        legacy.usageComplete = false;
-        legacy.tokens = null;
-      }
-      if (migration.startsWith("applied")) {
-        const agenda = parseCompactFoundingCompletion(legacy.steps[0].response, legacy.input.context).agenda;
-        await mutateVillageState((live) => {
-          live.villagers[0].agenda = agenda;
-          live.foundingPreparation!.completedIds = migration === "applied-gap" ? [] : ["aqua"];
-          live.villagers[0].wishLifecycle!.attempt!.candidate = agenda.wishes[0];
-          live.villagers[0].wishLifecycle!.attempt!.reason = "Initial wish granted during preparation.";
-          live.backgroundReceipts[legacyRow.id] = legacy.id;
-        });
-        legacy.status = "completed";
-        legacy.input = null;
-        legacy.steps = [];
-      }
-      calls.length = 0;
-      mode = "valid";
-      await foundingPreparationSnapshot();
-      assert.equal(calls.length, 0, "upgrade reads do not dispatch");
-      await retryFoundedVillagePreparation({ actionId: "migrate-" + migration });
-      await prepareFoundedVillage();
-      state = await readVillageState({ memories: true });
-      assert.equal(
-        state.foundingPreparation?.status,
-        "ready",
-        migration + JSON.stringify(state.foundingPreparation?.tasks),
-      );
-      assert.equal(
-        calls.length,
-        ["both-valid", "applied", "applied-gap"].includes(migration)
-          ? 0
-          : ["routine-only", "wish-only"].includes(migration)
-            ? 1
-            : 2,
-        migration + ": reuse each independently valid purchased result",
-      );
-      assert.equal(state.villagers[0].wishLifecycle?.attempt?.id, claim, "migration reuses the original allowance");
-      if (["both-valid", "wish-only", "applied", "applied-gap"].includes(migration))
-        assert.equal(state.villagers[0].agenda?.wishes.length, 1);
-      if (migration === "unknown")
-        assert(
-          [...rows.values()].some((row) => row.kind === "background-history" && row.data.usageComplete === false),
-          "unknown billing evidence survives replacement",
-        );
     }
 
     for (const interruptedStatus of ["queued", "paused"]) {

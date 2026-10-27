@@ -1,8 +1,8 @@
-import type { VillageSettings, VillageBackgroundPace } from "../../../shared/contracts/village.js";
+import type { VillageBackgroundPace, VillageSettings } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { AgentConnectionsControls } from "./AgentConnections.js";
 import type { GeneralSettingsPagePorts } from "./page-contracts.js";
 import { VillageWritingSettings } from "./WritingSettings.js";
-import { AgentConnectionsControls } from "./AgentConnections.js";
 
 export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
   const {

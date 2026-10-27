@@ -1,17 +1,29 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
+import assert from "node:assert/strict";
 import { mock } from "node:test";
+import { measurePipeline } from "../packages/villages/src/server/adapters/observability/pipeline-metrics.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import {
+  DEFAULT_PLAYER_BACKGROUND,
+  renderPlayerBackgroundContext,
+  renderPlayerBackgroundWritingContext,
+} from "../packages/villages/src/server/domain/rules/player-background.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { physicalVenueEvents } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import {
+  venueReplyIntegrity,
+  venueSceneHistory,
+} from "../packages/villages/src/server/domain/rules/venue-turn-integrity.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
+import { setVillageSendOnEnter } from "../packages/villages/src/server/features/settings/village-settings.js";
+import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
+import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
+import { proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
+import { fixtureAcousticModel, fixtureLocalAttention } from "./fixtures/villages-attention.fixture.js";
+import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 // Keep one fixture day across a UTC/local midnight; async timers remain real.
 mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00.000Z") });
-import { fixtureLocalAttention, fixtureAcousticModel } from "./fixtures/villages-attention.fixture.js";
-import { setVillageSendOnEnter } from "../packages/villages/src/server/features/settings/village-settings.js";
-import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
-import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import assert from "node:assert/strict";
-import { wishReceiptRecords } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
-import { physicalVenueEvents } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
-import { measurePipeline } from "../packages/villages/src/server/adapters/observability/pipeline-metrics.js";
 // Older narration fixtures declare no Wish proposal; missing/invalid metadata has dedicated live-domain coverage.
 let fixtureSource = "";
 function fixtureJson(value: any) {
@@ -36,41 +48,24 @@ function fixtureJson(value: any) {
       : value,
   );
 }
-import {
-  DEFAULT_PLAYER_BACKGROUND,
-  renderPlayerBackgroundContext,
-  renderPlayerBackgroundWritingContext,
-} from "../packages/villages/src/server/domain/rules/player-background.js";
-import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import { proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import {
-  venueReplyIntegrity,
-  venueSceneHistory,
-} from "../packages/villages/src/server/domain/rules/venue-turn-integrity.js";
-import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
-  readVillageWriting,
-  saveVillageWriting,
-} from "../packages/villages/src/server/features/settings/narration-settings.js";
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   VENUE_SCENE_WRITING_FOUNDATION,
   WRITING_GUIDANCE_MAX_LENGTH,
 } from "../packages/villages/src/server/domain/rules/narration-style.js";
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import { venueCardProfile } from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
-  continueVenueWithoutGreeting,
-  endVenueSession as endVenueSessionRaw,
-  closeVenueSessionWithReceipts,
-  enterVenue,
-  enterResidencePrivateSpace,
-  moveVenueZone,
-  leaveVenueSession,
-  greetVenue as greetVenueRaw,
-  sendVenueTurn as sendVenueTurnRaw,
-  discardVenueVisitDebug,
-} from "../packages/villages/src/server/features/scenes/venue-session.js";
+  listVenueVisits,
+  listVenueVisitSummaries,
+  readVenueVisit,
+  resetVenueSessions,
+} from "../packages/villages/src/server/features/scenes/archive.js";
 import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
 import {
   activeVenueSession,
@@ -79,22 +74,26 @@ import {
 } from "../packages/villages/src/server/features/scenes/live-session.js";
 import { readProjectTurnEvidence } from "../packages/villages/src/server/features/scenes/services.js";
 import {
-  resetVenueSessions,
-  listVenueVisits,
-  listVenueVisitSummaries,
-  readVenueVisit,
-} from "../packages/villages/src/server/features/scenes/archive.js";
-import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
-import { venueCardProfile } from "../packages/villages/src/server/domain/rules/venue-writing.js";
+  closeVenueSessionWithReceipts,
+  continueVenueWithoutGreeting,
+  discardVenueVisitDebug,
+  endVenueSession as endVenueSessionRaw,
+  enterResidencePrivateSpace,
+  enterVenue,
+  greetVenue as greetVenueRaw,
+  leaveVenueSession,
+  moveVenueZone,
+  sendVenueTurn as sendVenueTurnRaw,
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
 import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+  readVillageWriting,
+  saveVillageWriting,
+} from "../packages/villages/src/server/features/settings/narration-settings.js";
+import { setVillageVenueImage, updateVillageVenue } from "../packages/villages/src/server/features/venues/services.js";
+import { proposeResidenceSpaceEdit } from "../packages/villages/src/server/features/venues/zone-edits.js";
+import { buildVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { reconcileVillage, resetVillage } from "../packages/villages/src/server/features/world/village.js";
-import { proposeResidenceSpaceEdit } from "../packages/villages/src/server/features/venues/zone-edits.js";
-import { updateVillageVenue, setVillageVenueImage } from "../packages/villages/src/server/features/venues/services.js";
-import { buildVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
 
 // These tests deliberately retry failed calls. Supply explicit authorization under the new contract.
 async function sendVenueTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {
@@ -1654,9 +1653,9 @@ async function main() {
       /Alternate narration and speakers|Every player speech turn needs spoken dialogue/u,
     );
     assert.equal(defaultVillageState().sendOnEnter, false);
-    assert.equal(coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }).sendOnEnter, false);
+    assert.equal(coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3 }).sendOnEnter, false);
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, sendOnEnter: "true" })
+      coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, sendOnEnter: "true" })
         .sendOnEnter,
       false,
     );
@@ -1665,13 +1664,13 @@ async function main() {
     assert.equal((await setVillageSendOnEnter(false)).settings.sendOnEnter, false);
     await assert.rejects(() => setVillageSendOnEnter("true"), /must be on or off/u);
     assert.deepEqual(
-      coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3 }).narrationStyle,
+      coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3 }).narrationStyle,
       defaultVillageState().narrationStyle,
     );
     assert.deepEqual(
       coerceVillageState({
         ...defaultVillageState(),
-        version: 5,
+        version: 6,
         wishSystemVersion: 3,
         narrationStyle: {
           tense: "past",
@@ -2359,12 +2358,6 @@ async function main() {
     assert.equal(repairProof.actionReceipt?.conditionAfter, "a dry ceiling");
     assert.deepEqual(repairProof.actionReceipt?.witnessIds, ["bob", "tina"]);
     assert.equal(repairProof.zoneId, chatRepair.session.zoneId);
-    assert.ok(
-      wishReceiptRecords(await readVillageState({ memories: true }), "bob", chatRepair.session).some(
-        (event) => event.id === repairProof.id,
-      ),
-      "Chat repair is usable witnessed physical evidence",
-    );
 
     async function stock(item: string) {
       await mutateVillageState((state) => {
@@ -3371,7 +3364,7 @@ async function main() {
     const roomForMigration = homeForMigration.privateSpaces!.find((space) => space.ownerId === "bob")!;
     const migrated = coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       ...persistedForMigration,
       venues: persistedForMigration.venues.map((place) =>

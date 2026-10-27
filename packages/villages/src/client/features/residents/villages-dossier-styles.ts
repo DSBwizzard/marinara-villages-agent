@@ -163,35 +163,6 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-actions .${P}-dossier-management, .${P}-dossier-actions .${P}-notebook-close { margin:0; }
 .${P}-dossier-toolbar .${P}-dossier-actions .${P}-notebook-close { position:static; }
 .${P}-dossier-actions > button[aria-pressed="true"] { outline:2px solid #789573; outline-offset:1px; background:#f3efd9; }
-.${P}-pursuit-heading { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:20px 0 12px; }
-.${P}-pursuit-heading h3 { font-size:30px; margin:0; }
-.${P}-pursuit-status { display:inline-block; padding:2px 12px; font-size:17px; border-radius:5px; background:#e5dfd0; white-space:nowrap; }
-.${P}-pursuit-status[data-status="stalled"] { background:#f4cf81; color:#653f10; }
-.${P}-pursuit-status:is([data-status="arranged"],[data-status="completed"]) { background:#d9e5bb; }
-.${P}-pursuit-summary > h3, .${P}-pursuit-inspection > h3 { border-top:1px solid var(--dossier-line); padding-top:16px; margin-top:20px; }
-.${P}-pursuit-progress { list-style:none; display:flex; justify-content:space-between; gap:12px; padding:18px 0; margin:20px 0; border-block:1px solid var(--dossier-line); }
-.${P}-pursuit-progress li { display:flex; flex:1; flex-direction:column; align-items:center; gap:8px; text-align:center; font-size:16px; position:relative; }
-.${P}-pursuit-progress li:not(:last-child)::after { content:"→"; position:absolute; top:2px; right:-15px; font-size:24px; color:#827057; }
-.${P}-pursuit-progress li > span { display:grid; place-items:center; width:36px; height:36px; border:2px solid #8b806d; border-radius:50%; font:22px sans-serif; }
-.${P}-pursuit-progress li[data-state="done"] > span { color:white; border-color:#829774; background:#829774; }
-.${P}-pursuit-progress li[data-state="current"] > span { background:#f4cf81; border-color:#ad7c35; }
-.${P}-pursuit-agreements, .${P}-pursuit-review { margin:12px 0 20px; }
-.${P}-pursuit-agreements > div, .${P}-pursuit-review > div { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:baseline; gap:12px; margin:8px 0; }
-.${P}-pursuit-agreements dd, .${P}-pursuit-review dd { margin:0; overflow-wrap:anywhere; }
-.${P}-pursuit-agreements dd { width:fit-content; padding:2px 12px; border-radius:4px; background:#eee0bf; }
-.${P}-pursuit-agreements dd[data-decision="agree"] { background:#dbe6bc; }
-.${P}-pursuit-agreements dd[data-decision="refuse"] { background:#ebc1af; }
-.${P}-pursuit-history ol, .${P}-pursuit-decisions { list-style:none; padding:0; }
-.${P}-pursuit-history li, .${P}-pursuit-decisions li { padding:12px 0 18px; border-bottom:1px solid var(--dossier-line); }
-.${P}-pursuit-history blockquote { margin:8px 0; }
-.${P}-pursuit-inspection article { padding-bottom:16px; border-bottom:1px solid var(--dossier-line); }
-.${P}-pursuit-inspection h4 { font-size:22px; margin:12px 0; }
-.${P}-pursuit-inspection details { margin:16px 0; overflow-wrap:anywhere; }
-.${P}-pursuit-inspection summary { cursor:pointer; }
-.${P}-pursuit-inspection details > button { display:block; margin-top:12px; }
-.${P}-pursuit-machinery { list-style:none; padding:0; display:grid; gap:20px; justify-items:center; }
-.${P}-pursuit-machinery li { position:relative; width:min(240px,100%); text-align:center; border:1px solid var(--dossier-line); padding:8px; border-radius:4px; background:#f4e7ce; }
-.${P}-pursuit-machinery li:not(:last-child)::after { content:"↓"; position:absolute; left:50%; bottom:-24px; line-height:24px; }
 .${P}-notebook-session[data-phase="opening"] .${P}-notebook-motion { animation:${P}-book-slide-in 350ms ease-out both; }
 .${P}-notebook-session[data-phase="closing"] .${P}-notebook-motion { animation:${P}-book-slide-in 350ms ease-in reverse both; }
 @keyframes ${P}-book-slide-in { from { transform:translateX(110vw); } to { transform:translateX(0); } }
@@ -261,12 +232,6 @@ export const DOSSIER_STYLES = `
   .${P}-dossier-actions { flex-basis:100%; margin-left:0; gap:6px; padding-right:78px; }
   .${P}-dossier-actions > button, .${P}-dossier-actions .${P}-dossier-management > summary { padding:6px 8px; font-size:14px; white-space:nowrap; }
   .${P}-dossier-toolbar .${P}-dossier-actions .${P}-notebook-close { font-size:14px; padding:6px 8px; }
-  .${P}-pursuit-heading { margin:12px 0; gap:8px; }
-  .${P}-pursuit-heading h3 { font-size:26px; }
-  .${P}-pursuit-progress { flex-direction:column; gap:14px; }
-  .${P}-pursuit-progress li { flex-direction:row; text-align:left; gap:12px; }
-  .${P}-pursuit-progress li:not(:last-child)::after { content:""; left:17px; top:36px; right:auto; width:2px; height:14px; background:#9b8a6b; }
-  .${P}-pursuit-progress li > span { flex-shrink:0; }
   .${P}-directory-head h1 { font-size:32px; }
   .${P}-directory-grid { grid-template-columns:minmax(0,1fr); gap:16px; }
 }

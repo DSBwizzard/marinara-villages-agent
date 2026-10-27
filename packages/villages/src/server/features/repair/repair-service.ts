@@ -1,55 +1,46 @@
-import { randomUUID, createHash } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import { createHash, randomUUID } from "node:crypto";
 import type {
+  RepairChange,
+  RepairCheckpoint,
+  RepairHistoryEntry,
   RepairIndex,
   RepairRecord,
   RepairRequest,
   RepairReview,
-  RepairHistoryEntry,
-  RepairCheckpoint,
-  RepairChange,
 } from "../../../shared/contracts/repair.js";
-import type { VillageRepository } from "../../domain/models/world-repository.js";
-import type { MemoryKnower } from "../../domain/models/memories.js";
-import {
-  worldRepairRecords,
-  repairId,
-  repairParts,
-  applyWorldRepair,
-  changeMemoryProtection,
-} from "../../domain/rules/repair-records.js";
-import { coerceRelationshipState, relationshipKey } from "../../domain/rules/relationship-rules.js";
-import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
-import { villageNow } from "../../adapters/time/clock-gate.js";
-import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
-import { coerceVillageState } from "../../domain/decoding/village-codec.js";
-import type { ExchangeEffectReceipt } from "../../domain/models/wish-check-model.js";
-import type { VillageState } from "../../domain/models/world.js";
-import { WISH_SYSTEM_VERSION } from "../../domain/rules/wish-definition.js";
-import { coerceWishOutcome } from "../../domain/rules/wish-coercion.js";
-import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
-import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import {
   repairDigest,
   repairDocumentDigest,
+  type RepairDocument,
   type RepairGate,
   type RepairTransaction,
-  type RepairDocument,
   type RepairWrite,
 } from "../../adapters/storage/repair-gate.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
+import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
+import { coerceVillageState } from "../../domain/decoding/village-codec.js";
+import type { MemoryKnower } from "../../domain/models/memories.js";
+import type { ExchangeEffectReceipt } from "../../domain/models/wish-check-model.js";
+import type { VillageRepository } from "../../domain/models/world-repository.js";
+import type { VillageState } from "../../domain/models/world.js";
+import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
+import { coerceRelationshipState, relationshipKey } from "../../domain/rules/relationship-rules.js";
+import {
+  applyWorldRepair,
+  changeMemoryProtection,
+  repairId,
+  repairParts,
+  worldRepairRecords,
+} from "../../domain/rules/repair-records.js";
+import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
+import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
 
 const PKG = "villages",
   PLAN = "repair-plan",
   HISTORY = "repair-history",
   CHECKPOINT = "repair-checkpoint";
-const GAME_KINDS = [
-  "venue-visit",
-  "venue-active",
-  "relationships",
-  "wish-history-page",
-  "wish-history-pointer",
-  "repair-annotation",
-];
+const GAME_KINDS = ["venue-visit", "venue-active", "relationships", "repair-annotation"];
 type Doc = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const copy = (row: Doc): RepairDocument => ({
   id: row.id,
@@ -118,22 +109,13 @@ function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
   for (const person of prior.villagers) {
     const live = current.villagers.find((p) => p.characterId === person.characterId);
     person.cardSnapshot.revision = Math.max(person.cardSnapshot.revision, live?.cardSnapshot.revision ?? 0) + 1;
-    for (const wish of person.agenda?.wishes ?? [])
-      wish.conditionRevision =
-        Math.max(
-          wish.conditionRevision ?? 0,
-          live?.agenda?.wishes.find((w) => w.id === wish.id)?.conditionRevision ?? 0,
-        ) + 1;
+    for (const wish of person.wishes)
+      wish.revision = Math.max(wish.revision, live?.wishes.find((w) => w.id === wish.id)?.revision ?? 0) + 1;
   }
   for (const venue of prior.venues)
     if (venue.access)
       venue.access.revision =
         Math.max(venue.access.revision, current.venues.find((v) => v.id === venue.id)?.access?.revision ?? 0) + 1;
-  if (prior.development) {
-    prior.development.generation = Math.max(prior.development.generation, current.development?.generation ?? 0) + 1;
-    for (const [id, resident] of Object.entries(prior.development.residents))
-      resident.revision = Math.max(resident.revision, current.development?.residents[id]?.revision ?? 0) + 1;
-  }
 }
 function assertSettledSocial(state: VillageState) {
   if (state.socialMailOutbox?.length || state.socialOutbox?.some((row) => !row.processed))
@@ -193,7 +175,6 @@ function recordChanges(before: RepairRecord[], after: RepairRecord[], selectedId
 export type RepairPorts = {
   gate: RepairGate;
   repository: VillageRepository;
-  correctWish(characterId: string, wishId: string, now?: Date): Promise<void>;
   resumeProject(id: string, value: unknown, now?: Date): Promise<void>;
   cancelProject(id: string, value: unknown, now?: Date): Promise<void>;
   replaySaved(sceneId: string): Promise<unknown>;
@@ -313,27 +294,6 @@ export function createRepairService(ports: RepairPorts) {
           related: [],
         });
       }
-    const pages = includeArchives ? await documents.list(PKG, "wish-history-page") : [];
-    for (const person of state.villagers) {
-      const prefix = `wish-history:${createHash("sha256").update(`wish-journal-v${WISH_SYSTEM_VERSION}\0${state.seed}\0${person.characterId}`).digest("hex")}:page:`;
-      for (const page of pages.filter((p) => p.id.startsWith(prefix)))
-        for (const candidate of (page.data as { entries?: unknown[] }).entries ?? []) {
-          const outcome = coerceWishOutcome(candidate);
-          if (!outcome || outcome.kind !== "fulfilled" || outcome.correctedAt) continue;
-          const id = repairId("completed-wish", person.characterId, outcome.wish.id);
-          if (result.some((r) => r.id === id)) continue;
-          result.push({
-            id,
-            topic: "progress",
-            title: `${person.cardSnapshot.name} · ${outcome.wish.wish}`,
-            summary: "Recorded Wish fulfillment",
-            fields: [],
-            source: ["Saved fulfillment record"],
-            actions: [{ id: "reopen", label: "Withdraw mistaken completion" }],
-            related: [],
-          });
-        }
-    }
     return {
       state,
       records: result.map((record) => ({
@@ -425,7 +385,7 @@ export function createRepairService(ports: RepairPorts) {
     const kind = repairParts(id)[0];
     const { records } = await allRecords(
         ["memory", "new-memory"].includes(kind),
-        ["scene", "completed-wish", "saved-scene", "saved-domain"].includes(kind),
+        ["scene", "saved-scene", "saved-domain"].includes(kind),
         personId,
       ),
       record = records.find((r) => r.id === id);
@@ -522,7 +482,6 @@ export function createRepairService(ports: RepairPorts) {
         sub,
         repairParts(record.id)[3] as "memories" | "relationships" | "wishes" | "projects",
       );
-    else if (kind === "completed-wish") await ports.correctWish(id, sub, now);
     else if (kind === "project" && ["resume", "cancel"].includes(request.action)) {
       const project = (await repository.readAuthority()).projects.find((p) => p.id === id)!;
       await (request.action === "resume" ? ports.resumeProject : ports.cancelProject)(
@@ -569,17 +528,10 @@ export function createRepairService(ports: RepairPorts) {
       return saved.review;
     }
     const simulation = await gate.simulate(async () => {
-      const includeMemories = [
-        "memory",
-        "new-memory",
-        "completed-wish",
-        "wish",
-        "saved-scene",
-        "saved-domain",
-      ].includes(repairParts(request.recordId)[0]);
-      const includeArchives = ["scene", "completed-wish", "saved-scene", "saved-domain"].includes(
+      const includeMemories = ["memory", "new-memory", "wish", "saved-scene", "saved-domain"].includes(
         repairParts(request.recordId)[0],
       );
+      const includeArchives = ["scene", "saved-scene", "saved-domain"].includes(repairParts(request.recordId)[0]);
       const { state, records } = await allRecords(includeMemories, includeArchives, request.personId),
         record = records.find((r) => r.id === request.recordId);
       if (!record) throw notFound("That record is unavailable.");
@@ -590,18 +542,9 @@ export function createRepairService(ports: RepairPorts) {
           "This record changed after you opened it. Reopen it to review the current value; your draft is kept.",
         );
       const [kind, id] = repairParts(record.id),
-        consequential = [
-          "zone",
-          "access",
-          "permission",
-          "home",
-          "project",
-          "wish",
-          "completed-wish",
-          "pursuit",
-          "venue",
-          "saved-domain",
-        ].includes(kind);
+        consequential = ["zone", "access", "permission", "home", "project", "wish", "venue", "saved-domain"].includes(
+          kind,
+        );
       let before: HistoryData["memoryBefore"], addedText: string | undefined;
       if (kind === "memory") {
         const target = state.memories.records.find((r) => r.id === id)!,
@@ -675,7 +618,6 @@ export function createRepairService(ports: RepairPorts) {
       affected.push("Remembered knowledge only; physical state and completion records stay separate.");
     if (kind === "zone") affected.push("Future Scene physical context and artwork eligibility.");
     if (kind === "access") affected.push("Future entry and management checks.");
-    if (kind === "completed-wish") affected.push("Wish history, completion memory and future Wish eligibility.");
     if (kind === "scene")
       affected.push("Historical annotation; original transcript and mechanical outcomes are retained.");
     if (kind === "saved-scene" || kind === "saved-domain")
@@ -686,8 +628,7 @@ export function createRepairService(ports: RepairPorts) {
       !rootWrite ||
       repairDigest((rootWrite.before?.data as { memoryHead?: unknown })?.memoryHead) ===
         repairDigest((rootWrite.after?.data as { memoryHead?: unknown })?.memoryHead);
-    const documentUndo =
-      !["memory", "new-memory", "completed-wish", "saved-scene", "saved-domain"].includes(kind) && sameMemoryHead;
+    const documentUndo = !["memory", "new-memory", "saved-scene", "saved-domain"].includes(kind) && sameMemoryHead;
     const review: RepairReview = {
       kind: "repair",
       id: request.operationId,
@@ -992,7 +933,6 @@ export function createRepairService(ports: RepairPorts) {
         "lastPlanningDate",
         "processedActionIds",
         "backgroundReceipts",
-        "wishRefillIntents",
         "semanticRequestReceipts",
         "semanticContinuations",
         "backgroundPace",
@@ -1000,18 +940,6 @@ export function createRepairService(ports: RepairPorts) {
         "loreTokenBudget",
       ])
         if (key in preserved) data[key] = structuredClone(preserved[key]);
-      const oldResidents = data.villagers as {
-        characterId: string;
-        wishLifecycle?: { attempt?: unknown; lastPhaseKey?: string };
-      }[];
-      const currentResidents = preserved.villagers as typeof oldResidents;
-      for (const p of oldResidents) {
-        const live = currentResidents.find((v) => v.characterId === p.characterId);
-        if (p.wishLifecycle && live?.wishLifecycle) {
-          p.wishLifecycle.attempt = structuredClone(live.wishLifecycle.attempt);
-          p.wishLifecycle.lastPhaseKey = live.wishLifecycle.lastPhaseKey;
-        }
-      }
       for (const row of current) if (!wanted.has(row.id)) await documents.remove(PKG, row.id, row.revision);
       const savedHead = data.memoryHead as { id: string } | null,
         savedPayload = savedHead ? wanted.get(savedHead.id) : undefined;

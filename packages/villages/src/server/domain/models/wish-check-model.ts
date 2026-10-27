@@ -1,12 +1,8 @@
-import type { InterpretationCheck, InterpretationResult } from "./interpretation-check-model.js";
-import type { WishFactCandidate } from "../rules/wish-journal.js";
-import type { WorkFailure } from "../rules/work-failure.js";
 import type { VenueRecordEvent } from "./scene-model.js";
-import type { WishCriteria, WishInterpretationContext } from "./wish-interpretation-model.js";
-import type { VillageWish } from "./world.js";
 
 export type ExchangeEffectReceipt = {
   wishOutcome?: "fulfilled" | "corrected";
+  wishDisclosures?: import("../../../shared/contracts/wishes.js").WishDisclosure[];
   wishGoal?: string;
   wishAudience?: string[];
   wishDisclosure?: true;
@@ -29,42 +25,11 @@ export type ExchangeEffectReceipt = {
   notice?: VenueRecordEvent;
 };
 export type WishProposal = {
-  semanticVerdict?: { outcome: "none" | "progress" | "fulfilled"; evidenceIds: string[]; reason: string };
-  semanticCriteria?: WishCriteria;
-  conditionRevision?: number;
-  conditionAt?: string;
-  facts?: WishFactCandidate[];
-  receiptIds?: string[];
   actorId: string;
   wishId: string;
   fingerprint: string;
-  intent: "reveal" | "journal" | "progress" | "check";
+  intent: string;
   lineIds: string[];
+  change: import("../rules/social-wishes.js").SocialWishChange;
+  captured: import("./world.js").VillageVillager[];
 };
-export type WishCheckInput = {
-  contractVersion?: 2 | 3;
-  sceneId: string;
-  submissionId: string;
-  seed: string;
-  proposal: WishProposal;
-  wish: VillageWish;
-  at: string;
-  context: WishInterpretationContext;
-};
-export type PreparedWishVerdict = {
-  decision?: { check: InterpretationCheck; result: InterpretationResult };
-  criteria: WishCriteria;
-  outcome: string;
-  evidenceIds: string[];
-  reason: string;
-  memory: string;
-  receiptIds: string[];
-};
-export type WishBatchInput = {
-  contractVersion?: 2 | 3;
-  sceneId: string;
-  submissionId: string;
-  seed: string;
-  items: WishCheckInput[];
-};
-export type PreparedWishBatch = { items: { id: string; verdict: PreparedWishVerdict }[]; failures?: WorkFailure[] };

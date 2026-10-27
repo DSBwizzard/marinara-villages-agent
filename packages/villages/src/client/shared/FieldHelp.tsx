@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useId, useRef, useState, useEffect } from "react";
+import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
 
 function HelpPopup({
   label,

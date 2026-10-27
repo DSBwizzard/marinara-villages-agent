@@ -1,37 +1,36 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import assert from "node:assert/strict";
 import {
-  createActivationScope,
-  installDefaultActivation,
   activationScope,
   bindActivationService,
+  createActivationScope,
+  installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
-import { configureSceneWork, sceneWork } from "../packages/villages/src/server/features/scenes/scene-work.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { WISH_PROPOSAL_INSTRUCTION } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  greetVenue,
-  enterVenue,
-  enterResidencePrivateSpace,
-  sendVenueTurn,
-  retrySceneChangeInterpretation,
-  moveVenueZone,
-  configureSceneCommands,
-  sceneReplayEffects,
-} from "../packages/villages/src/server/features/scenes/venue-session.js";
 import {
   createSceneCommands,
   type SceneCommandPorts,
 } from "../packages/villages/src/server/features/scenes/command-service.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
+import { configureSceneWork, sceneWork } from "../packages/villages/src/server/features/scenes/scene-work.js";
+import {
+  configureSceneCommands,
+  enterResidencePrivateSpace,
+  enterVenue,
+  greetVenue,
+  moveVenueZone,
+  sceneReplayEffects,
+  sendVenueTurn,
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
 import { VENUE_REPLY_MAX_TOKENS } from "../packages/villages/src/server/features/scenes/writing.js";
-import { WISH_PROPOSAL_INSTRUCTION } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => {
@@ -700,101 +699,6 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
     second.owner.dispose();
   }
 }
-// Wish recovery keeps its lazy loader and loaded retry command under the initiating owner.
-{
-  const terminal = new Error("Saved notices ready");
-  const first = commandFixture("Retry A", ({ scene, world, touch, stamp }) => {
-    const turn = scene.submissions[0];
-    turn.processing!.domains.wishes.status = "failed";
-    turn.liveProposals = {
-      version: 1,
-      memoryChanges: [],
-      relationshipChanges: {},
-      memoryVersions: {},
-      earlierLineIds: [],
-      playerLineId: "player-line",
-      replyLineIds: [],
-    };
-    return {
-      coordinateVenue: async (_id, id, kind, input, _expected, _retry, run) => {
-        assert.equal(id, "change:same-turn:wishes");
-        assert.equal(kind, "change-interpretation");
-        assert.deepEqual(input, { submissionId: "same-turn", domain: "wishes" });
-        return run();
-      },
-      readVillageState: async () => world,
-      villagesDocuments: () => ({
-        list: async () => [
-          {
-            id: "same-job",
-            packageId: "villages",
-            kind: "background-work",
-            name: "Wish retry",
-            description: "",
-            revision: 1,
-            createdAt: stamp,
-            updatedAt: stamp,
-            data: {
-              kind: "wish-check",
-              seed: world.seed,
-              input: { sceneId: scene.id, submissionId: turn.id },
-              status: "failed",
-              attempt: 2,
-            },
-          },
-        ],
-        getById: async () => assert.fail("Wish retry does not read arbitrary documents"),
-        remove: async () => assert.fail("Wish retry does not remove documents"),
-      }),
-      loadBackgroundRetry: async () => {
-        await touch("retry-loader");
-        return {
-          retryBackgroundJob: async (id, attempt, actionId) => {
-            assert.equal(id, "same-job");
-            assert.equal(attempt, 2);
-            assert.match(actionId, /^[a-f0-9]{64}$/);
-            await touch("retry-command");
-          },
-        };
-      },
-      venueOperationId: () => "Retry A operation",
-      venueCheckpoint: async (_id, run) => run(),
-      outsideVenueOperation: (run) => run(),
-      readSceneChanges: async () => {
-        await touch("changes");
-        throw terminal;
-      },
-    };
-  });
-  const second = commandFixture("Retry B");
-  first.pause("retry-loader");
-  const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
-  const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
-  const clearFirst = installDefaultActivation(first.owner, () => {});
-  const pending = retrySceneChangeInterpretation("same-scene", "same-turn", "wishes");
-  const checked = assert.rejects(pending, (error) => error === terminal);
-  await first.entered.promise;
-  const clearSecond = installDefaultActivation(second.owner, () => {});
-  releaseFirst();
-  clearFirst();
-  first.gate.resolve();
-  try {
-    await checked;
-    assert.equal(first.calls.filter((stage) => stage === "retry-command").length, 1);
-    assert.equal(first.calls.filter((stage) => stage === "progress").length, 2);
-    assert(first.owners.every((owner) => owner === first.owner));
-    assert.deepEqual(second.calls, []);
-    assert.equal(first.modelAccess + second.modelAccess, 0);
-  } finally {
-    releaseFirst();
-    releaseSecond();
-    clearFirst();
-    clearSecond();
-    first.owner.dispose();
-    second.owner.dispose();
-  }
-}
-
 // Free navigation replay retains its owner and never starts image work.
 {
   const first = commandFixture("Image A", ({ scene, world, touch, stamp }) => {

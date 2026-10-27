@@ -1,9 +1,5 @@
-import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import assert from "node:assert/strict";
-import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";
-import { createScheduleInfluence } from "../packages/villages/src/server/features/residents/schedule-influence-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import {
   addRoutineIdea,
   deriveInfluence,
@@ -11,10 +7,14 @@ import {
   scheduleSemanticSource,
   type RoutineProfile,
 } from "../packages/villages/src/server/domain/rules/owned-routine.js";
-import { semanticHash } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
-import { createRelationshipSocial } from "../packages/villages/src/server/features/residents/relationship-social-service.js";
-import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { semanticContinuationKey } from "../packages/villages/src/server/domain/rules/semantic-continuity.js";
+import { semanticHash } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
+import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
+import { createRelationshipSocial } from "../packages/villages/src/server/features/residents/relationship-social-service.js";
+import { createScheduleInfluence } from "../packages/villages/src/server/features/residents/schedule-influence-service.js";
+import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";
 
 const state = defaultVillageState();
 state.seed = "semantic-lifecycle";
@@ -23,7 +23,7 @@ state.playerBackground = "I have been a friend of a for years.";
 state.villagers = ["a", "b"].map((id) => ({
   characterId: id,
   cardSnapshot: { id, name: id, revision: 1, description: "Authored context", sourceStatus: "available" },
-  completedWishes: [],
+  wishes: [],
 })) as any;
 const relationships = defaultRelationshipState(state.seed);
 state.relationshipContext = relationships;

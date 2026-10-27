@@ -1,4 +1,3 @@
-import { initialIdentityDescription } from "../packages/villages/src/server/domain/rules/resident-description.js";
 import assert from "node:assert/strict";
 import {
   bindActivationService,
@@ -9,20 +8,21 @@ import {
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { initialIdentityDescription } from "../packages/villages/src/server/domain/rules/resident-description.js";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   createResidentAgendas,
   type ResidentAgendaPorts,
 } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
 import {
+  clearVillagerAgenda,
   configureResidentAgendas,
   queueVillagerAgenda,
-  clearVillagerAgenda,
   rollActiveAgendas,
 } from "../packages/villages/src/server/features/residents/resident-agendas.js";
-import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -40,7 +40,7 @@ function fixture(name: string) {
     characterId: "same",
     cardSnapshot: snapshotFromCard(card, 2),
     addedAt: "2026-10-06T12:00:00Z",
-    completedWishes: [],
+    wishes: [],
     remap: null,
     remapFailure: null,
     ingestSchedule: false,
@@ -192,7 +192,6 @@ assert.equal(a.jobs[0].finite, false);
 assert.equal(a.jobs[0].revision, revision);
 assert.equal(a.jobs[0].input.context.village, "A");
 assert.deepEqual(a.jobs[0].input.context.lore, ["Lore A"]);
-assert.equal(a.jobs[0].input.context.allowInitialWish, false);
 assert(!a.calls.includes("allowance"));
 assert.equal(a.generated, 0, "Queueing records input; the handler owns generation.");
 await b.service.queueVillagerAgenda("same");
@@ -201,8 +200,6 @@ assert.equal(b.jobs[0].input.context.village, "B");
 const founding = fixture("Founding");
 founding.state.foundingPreparation = { status: "pending" } as any;
 await founding.service.queueVillagerAgenda("same");
-assert.equal(founding.jobs[0].input.initialWishAttemptId, undefined);
-assert.equal(founding.jobs[0].input.context.allowInitialWish, false);
 assert(!founding.calls.includes("allowance"), "Routine does not reserve a Wish allowance");
 const unavailable = fixture("Unavailable");
 unavailable.missingCard();
@@ -229,10 +226,8 @@ await assert.rejects(deliberate.service.clearVillagerAgenda("absent", "action"),
 const local = fixture("Local");
 await local.service.setVillagerScheduleInfluence("same", { enabled: true, categories: { rhythm: false } });
 await local.service.buildVillageAgendas();
-await local.service.correctCompletedWish("same", "wish");
 assert.equal(local.jobs.length, 0);
 assert.equal(local.generated, 0);
-assert(local.calls.includes("correct:same:wish"));
 assert.equal(local.state.villagers[0]!.scheduleInfluence!.categories.rhythm, false);
 const mutations = local.calls.filter((operation) => operation === "mutate").length;
 await assert.rejects(
@@ -266,7 +261,7 @@ const result = structuredClone(a.resident.agenda);
 result.wishes = [{ id: "unadmitted", description: "A generated wish" }] as any;
 handler.apply(a.state, input, result, { retrying: false });
 assert.deepEqual(a.state.villagers[0]!.agenda!.activeDay, current, "A profile result preserves today's captured plan.");
-assert.deepEqual(a.state.villagers[0]!.agenda!.wishes, [], "Ordinary regeneration cannot introduce an initial wish.");
+assert.deepEqual(a.state.villagers[0]!.wishes, [], "Ordinary regeneration cannot introduce an initial wish.");
 
 const one = createActivationScope(),
   two = createActivationScope();

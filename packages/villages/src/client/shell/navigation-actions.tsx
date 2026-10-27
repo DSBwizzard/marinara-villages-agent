@@ -1,5 +1,5 @@
-import type { MenuPage } from "../shared/types.js";
 import { useCallback } from "react";
+import type { MenuPage } from "../shared/types.js";
 
 export function useScenesOpenMenu(ports: {
   loadLorebooks: (signal?: AbortSignal) => Promise<void>;

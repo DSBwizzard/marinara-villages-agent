@@ -1,37 +1,37 @@
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
-import { fixtureLocalAttention, fixtureAcousticModel } from "./fixtures/villages-attention.fixture.js";
 import assert from "node:assert/strict";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { fixtureAcousticModel, fixtureLocalAttention } from "./fixtures/villages-attention.fixture.js";
+import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  enterVenue,
-  continueVenueWithoutGreeting,
-  sendVenueTurn as submitTurnRaw,
-  moveVenueZone,
-  discardVenueVisitDebug,
-} from "../packages/villages/src/server/features/scenes/venue-session.js";
-import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import {
+  contactDevice,
   contactNeighbors,
   contactPath,
   contactPosition,
-  readContactRelay,
-  readContactIntent,
-  readContactDelivery,
-  contactDevice,
   contactReach,
+  readContactDelivery,
+  readContactIntent,
+  readContactRelay,
 } from "../packages/villages/src/server/domain/rules/venue-contact.js";
-import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
+import {
+  continueVenueWithoutGreeting,
+  discardVenueVisitDebug,
+  enterVenue,
+  moveVenueZone,
+  sendVenueTurn as submitTurnRaw,
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
 
 const now = new Date(),
   stamp = now.toISOString(),
@@ -92,11 +92,10 @@ function villager(id: string, venueId: string, zoneId: string, activity = "Visit
       exampleDialogue: "",
     },
     addedAt: stamp,
-    completedWishes: [],
+    wishes: [],
     remap: null,
     ingestSchedule: false,
     agenda: {
-      wishes: [],
       routineSummary: "",
       day: [block],
       week: { [weekday]: [block] },

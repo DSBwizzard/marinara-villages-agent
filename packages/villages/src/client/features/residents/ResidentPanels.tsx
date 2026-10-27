@@ -1,5 +1,5 @@
-import type { WishHistoryPage } from "../../../shared/contracts/village.js";
-import { messageFrom, request, requestHost } from "../../shared/api.js";
+import { type CSSProperties, useState } from "react";
+import { requestHost } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type {
   AvatarCrop,
@@ -8,36 +8,6 @@ import type {
   Portrait,
   PortraitMap,
 } from "../../shared/types.js";
-import { type CSSProperties, useState } from "react";
-
-/** How a wish's death day is said: a day, and never a time of day. */
-const WISH_DEATH_DAY = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
-
-/**
- * How old a wish is and when it dies, as the one trailing line the tab prints.
- *
- * Days and never a timestamp, because a wish is an ordinary thing somebody keeps
- * on their mind rather than an event with a clock on it, and because the only
- * date the village ever decided about this wish is which DAY it goes. Two facts,
- * said one after the other, and either can be missing: an `addedAt` that cannot
- * be read says nothing about age rather than reading as today, and a deadline
- * that cannot be read never expires — the safe direction the server chose,
- * repeated rather than guessed at with a date nobody wrote.
- *
- * The caller supplies authoritative Village time, including development advances.
- */
-export function wishLifetimeLabel(addedAt: string, expiresAt: string, now = Date.now()): string {
-  const parts: string[] = [];
-  const born = Date.parse(addedAt);
-  if (Number.isFinite(born)) {
-    const days = Math.floor((now - born) / 86_400_000);
-    parts.push(days <= 0 ? "written today" : days === 1 ? "written yesterday" : `written ${days} days ago`);
-  }
-  // A wish without a readable deadline has no set expiry.
-  const dies = Date.parse(expiresAt);
-  parts.push(Number.isFinite(dies) ? `fades ${WISH_DEATH_DAY.format(new Date(dies))}` : "no set end");
-  return parts.join(" · ");
-}
 
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
@@ -255,86 +225,5 @@ export function AvatarFace({
         name.slice(0, 1).toUpperCase()
       )}
     </span>
-  );
-}
-
-export function WishHistory({
-  characterId,
-  total,
-  busy,
-  onCorrect,
-}: {
-  characterId: string;
-  total: number;
-  busy: boolean;
-  onCorrect: (characterId: string, wishId: string) => Promise<void>;
-}) {
-  const [page, setPage] = useState<WishHistoryPage | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [failure, setFailure] = useState("");
-  const load = async (cursor?: string) => {
-    setLoading(true);
-    setFailure("");
-    try {
-      setPage(
-        await request<WishHistoryPage>(
-          `/agendas/${encodeURIComponent(characterId)}/history${cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`}`,
-        ),
-      );
-    } catch (error) {
-      setFailure(messageFrom(error, "Wish history could not be read."));
-    } finally {
-      setLoading(false);
-    }
-  };
-  return (
-    <details
-      className={`${ELEMENT_TAG}-agenda-notes`}
-      onToggle={(event) => {
-        if (event.currentTarget.open && !page && !loading) void load();
-      }}
-    >
-      <summary>{`Wish history (${total})`}</summary>
-      {failure ? <p role="alert">{failure}</p> : null}
-      {loading ? <p>Loading wish history…</p> : null}
-      <ul className={`${ELEMENT_TAG}-story`}>
-        {page?.entries.map((entry) => (
-          <li key={entry.sequence} className={`${ELEMENT_TAG}-wish-card`}>
-            <p className={`${ELEMENT_TAG}-wish-text`}>{entry.wish.wish}</p>
-            <p
-              className={`${ELEMENT_TAG}-wish-meta`}
-            >{`${entry.correctedAt ? "Corrected" : entry.kind === "fulfilled" ? "Fulfilled" : "Expired"} ${new Date(entry.correctedAt || entry.fulfilledAt).toLocaleDateString()}`}</p>
-            {entry.kind === "fulfilled" && !entry.correctedAt ? (
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={busy || loading}
-                onClick={() =>
-                  void (async () => {
-                    await onCorrect(characterId, entry.wish.id);
-                    await load();
-                  })()
-                }
-              >
-                Mark as not fulfilled
-              </button>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      <button type="button" className={`${ELEMENT_TAG}-button`} disabled={loading} onClick={() => void load()}>
-        Latest outcomes
-      </button>
-      {page?.nextCursor ? (
-        <button
-          type="button"
-          className={`${ELEMENT_TAG}-button`}
-          disabled={loading}
-          onClick={() => void load(page.nextCursor!)}
-        >
-          Older outcomes
-        </button>
-      ) : null}
-    </details>
   );
 }

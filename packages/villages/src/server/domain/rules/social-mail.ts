@@ -1,6 +1,6 @@
-import type { RelationshipState, RelationshipReview } from "../models/relationship-types.js";
+import type { RelationshipReview, RelationshipState } from "../models/relationship-types.js";
 import type { SocialMailMessage, SocialMailThread } from "../models/social-mail.js";
-import { conflict, badRequest } from "./errors.js";
+import { badRequest, conflict } from "./errors.js";
 
 export const personalThreadId = (residentId: string) => "personal:" + residentId;
 export function queuePersonalMessage(

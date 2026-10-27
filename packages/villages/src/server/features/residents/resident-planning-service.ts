@@ -1,13 +1,18 @@
-import { recallMemories } from "../../domain/rules/memory-recall.js";
-import { assertPersonalLetter, hasPersonalLetterAction } from "../../domain/rules/personal-letter.js";
-import { eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
-import { socialContextState } from "../../domain/rules/social-context.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
-import { sceneMemoryContext, SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
 import { createHash } from "node:crypto";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageResidence } from "../../domain/models/world.js";
+import { agendaAt } from "../../domain/rules/agenda-plan.js";
+import { asRecord } from "../../domain/rules/coerce.js";
+import { eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
+import { recallMemories } from "../../domain/rules/memory-recall.js";
+import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
+import { assertPersonalLetter, hasPersonalLetterAction } from "../../domain/rules/personal-letter.js";
+import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
+import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
   buildResidentPlanningMessages,
   localDateKey,
@@ -16,19 +21,20 @@ import {
   residentPlanningOpportunity,
   type ResidentPlanningContext,
 } from "../../domain/rules/resident-planning.js";
-import { hasVenueClass, venueResidentIds } from "../../domain/rules/venue-model.js";
-import { agendaAt } from "../../domain/rules/agenda-plan.js";
-import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
-import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
-import { venueCardProfile, fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
-import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
-import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
-import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
-import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
-import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
-import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
-import { villageNow } from "../../adapters/time/clock-gate.js";
+import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
+import { socialContextState } from "../../domain/rules/social-context.js";
+import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
+import {
+  applyWishReflection,
+  readSocialWishChanges,
+  SOCIAL_WISH_INSTRUCTION,
+} from "../../domain/rules/social-wishes.js";
+import { hasVenueClass, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
+import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
+import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
+import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
 
 export type ResidentPlanningPorts = {
   applySavedStartingTies?: () => Promise<void>;
@@ -119,6 +125,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           profile: venueCardProfile(card, readPlayerIdentity(village).name),
           doing: agendaAt(resident.agenda, moment.minuteOfDay, now, resident.ingestSchedule !== false)?.activity ?? "",
           agenda: resident.agenda,
+          wishes: resident.wishes,
         };
       }),
       venues: village.venues,
@@ -234,6 +241,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           "memoryContexts",
           "relationshipReview",
           "invitation",
+          "wishChanges",
         ])
           delete (raw as Record<string, unknown>)[key];
     if (encounter || mail) {
@@ -252,7 +260,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               ? " The recipient is player; disclosures wait for reading. Mail cannot grant access or create actionable invitations. Return permissions:[] for mail."
               : " The player is absent: disclosures must be empty.") +
             " Use numeric zero-based lineIds. context.state is both captured and live social baseline. sceneAfter/liveAfter coincide. Return memoryChanges:[] under the native Memory contract. " +
-            SCENE_MEMORY_INSTRUCTION,
+            SCENE_MEMORY_INSTRUCTION +
+            " " +
+            SOCIAL_WISH_INSTRUCTION +
+            " For Wish evidence use zero-based current line indexes. Private NPC encounters never disclose to player. Supplied resident.wishes are the captured authority; no speech is required to concern them.",
         },
         {
           role: "user" as const,
@@ -260,6 +271,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             lines,
             mode: mail ? "mail" : "encounter",
             context: context.social,
+            residents: context.residents.map((r) => ({ characterId: r.characterId, wishes: r.wishes })),
             memory: nativeMemory.envelope,
             now: context.moment.instant,
             zones: context.venues,
@@ -284,10 +296,13 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         !review ||
         !Array.isArray(interpreted?.memoryChanges) ||
         interpreted.memoryChanges.length > 16 ||
+        !Array.isArray(interpreted.wishChanges) ||
+        interpreted.wishChanges.length > 16 ||
         !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
       )
         throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
       record.relationshipReview = review;
+      record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
       record.semanticVersion = 2;
       record.memoryChanges = interpreted!.memoryChanges;
       record.memoryContexts = { [nativeMemory.saved.protection.fingerprint]: nativeMemory.saved };
@@ -313,6 +328,12 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     apply(state, input, proposal) {
       const { dateKey, opportunity } = input;
       if (state.backgroundPace === "off" || state.processedActionIds.includes(opportunity.id)) return;
+      if (proposal.wishReflection) {
+        const owner = asRecord(proposal.wishReflection).actorId;
+        if (!opportunity.actorIds.includes(String(owner))) throw new Error("Reflection owner was not offered.");
+        if (proposal.social) throw new Error("Reflection cannot fabricate an interaction.");
+        applyWishReflection(state, proposal.wishReflection, opportunity.id, input.now, input.admitted.villagers);
+      }
       const used = state.planningUsage.dateKey === dateKey ? state.planningUsage.count : 0;
       const savedMail = proposal.social?.mail as { senderId?: string; text?: string } | undefined;
       // A result saved by an older writer may contain a stage direction. Omit only

@@ -1,22 +1,22 @@
 import { randomUUID } from "node:crypto";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createProjectLifecycle } from "../../packages/villages/src/server/features/projects/project-lifecycle-service.js";
+import type {
+  VillageProject,
+  VillageState,
+  VillageVenue,
+} from "../../packages/villages/src/server/domain/models/world.js";
+import { unwrittenVillageAgenda } from "../../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { approvalScope, projectDesignKey } from "../../packages/villages/src/server/domain/rules/project-terms.js";
+import { initializeVenueAccess } from "../../packages/villages/src/server/domain/rules/venue-access.js";
+import { defaultVenueSpace } from "../../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   draftNewVenueProject,
   draftRenovationProject,
 } from "../../packages/villages/src/server/features/projects/project-drafts.js";
-import { defaultVenueSpace } from "../../packages/villages/src/server/domain/rules/venue-model.js";
-import { initializeVenueAccess } from "../../packages/villages/src/server/domain/rules/venue-access.js";
-import { projectDesignKey, approvalScope } from "../../packages/villages/src/server/domain/rules/project-terms.js";
-import { unwrittenVillageAgenda } from "../../packages/villages/src/server/domain/rules/agenda-plan.js";
-import type {
-  VillageState,
-  VillageVenue,
-  VillageProject,
-} from "../../packages/villages/src/server/domain/models/world.js";
+import { createProjectLifecycle } from "../../packages/villages/src/server/features/projects/project-lifecycle-service.js";
 
 export function venue(id = "cafe", role: "community" | "residence" = "community"): VillageVenue {
   const entrance = {
@@ -78,7 +78,7 @@ export function fixture() {
     characterId: id,
     addedAt: state.setupAt,
     ingestSchedule: false,
-    completedWishes: [],
+    wishes: [],
     cardSnapshot: {
       id,
       name: id,

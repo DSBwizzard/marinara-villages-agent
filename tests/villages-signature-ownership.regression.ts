@@ -1,5 +1,3 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import {
@@ -7,8 +5,11 @@ import {
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   createResidentSignatures,
   type ResidentSignaturePorts,
@@ -20,6 +21,7 @@ import {
   readResidentSignature,
 } from "../packages/villages/src/server/features/residents/resident-signature.js";
 import type { ResidentSignatureView } from "../packages/villages/src/shared/helpers/resident-signature.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -32,7 +34,7 @@ const stamp = "2026-10-07T00:00:00.000Z";
 function documents(name: string) {
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     seed: "identical-seed",
     name,
     foundedAt: stamp,

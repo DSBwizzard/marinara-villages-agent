@@ -1,20 +1,20 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  queueBackgroundJob,
-  registerBackgroundHandler,
-  settleBackgroundWork,
-  retryBackgroundJob,
-  recoverBackgroundWork,
-} from "../packages/villages/src/server/jobs/background-work.js";
-import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";
-import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
+import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import {
+  queueBackgroundJob,
+  recoverBackgroundWork,
+  registerBackgroundHandler,
+  retryBackgroundJob,
+  settleBackgroundWork,
+} from "../packages/villages/src/server/jobs/background-work.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 const records = new Map<string, any>();
 const documents = {
   getById: async (_p: string, id: string) => structuredClone(records.get(id) ?? null),
@@ -162,7 +162,7 @@ try {
         sourceStatus: "available",
         capturedAt: new Date().toISOString(),
       },
-      completedWishes: [],
+      wishes: [],
     })) as any;
   });
   const connection = "Aware of their public work without having met them. ".repeat(3).trim();

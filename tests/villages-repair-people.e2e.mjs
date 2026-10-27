@@ -1,6 +1,7 @@
-// Test cases: repair-people/navigation, repair-people/late-responses, repair-people/restore-draft
+// Test cases: repair-people/navigation, repair-people/letter-font, repair-people/late-responses, repair-people/restore-draft
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium, expect, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
@@ -84,6 +85,35 @@ async function fixture(width) {
       related: [],
     };
   };
+  const fontRecord = {
+    id: '["letter-font","a"]',
+    token: "font-token",
+    topic: "people",
+    title: "Nora · letter style",
+    summary: "Applies to existing and future letters",
+    fields: [
+      {
+        key: "letterFontId",
+        label: "Letter style",
+        type: "choice",
+        value: "patrick-hand",
+        options: [
+          { value: "patrick-hand", label: "Patrick Hand" },
+          { value: "caveat", label: "Caveat" },
+        ],
+      },
+    ],
+    source: [],
+    actions: [{ id: "correct", label: "Modify" }],
+    related: [],
+  };
+  await page.route("**/api/capability-packages/villages/assets/letter-fonts/*.json", (route) => {
+    const name = new URL(route.request().url()).pathname.split("/").at(-1);
+    return fulfill(route, {
+      contentType: "application/json",
+      body: readFileSync("packages/villages/letter-fonts/" + name, "utf8"),
+    });
+  });
   const addition = {
     id: additionId,
     token: "addition",
@@ -145,6 +175,7 @@ async function fixture(width) {
               actions: [{ id: "correct", label: "Modify" }],
               related: [],
             },
+            fontRecord,
           ]
         : person === "b"
           ? [record('["memory","ellis"]', person)]
@@ -158,7 +189,11 @@ async function fixture(width) {
     }
     if (path === "/repair/record") {
       const id = url.searchParams.get("id");
-      return reply(route, `record:${id}`, id === additionId ? addition : record(id, person));
+      return reply(
+        route,
+        `record:${id}`,
+        id === additionId ? addition : id === fontRecord.id ? fontRecord : record(id, person),
+      );
     }
     if (path === "/repair/apply") return reply(route, "apply", { applied: true });
     if (["/repair/review", "/repair/undo", "/repair/restore"].includes(path)) {
@@ -291,6 +326,33 @@ try {
       await root.getByRole("button", { name: /Nora's private compass/ }).click();
       await expect(field).toHaveValue("Edited private compass memory.");
       assert.equal(await root.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
+      await f.close();
+    }
+  });
+  await runCase("repair-people/letter-font", async () => {
+    for (const width of [1440, 390]) {
+      const f = await fixture(width),
+        { page, root } = f;
+      await goNora(page);
+      await page.getByRole("button", { name: "Details", exact: true }).click();
+      await root.getByRole("button", { name: /Nora · letter style/ }).click();
+      const select = page.getByLabel("Letter style", { exact: true });
+      await select.selectOption("caveat");
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            Array.from(document.fonts).some(
+              (face) => face.family === "village-letter-caveat" && face.status === "loaded",
+            ),
+          ),
+        )
+        .toBe(true);
+      await expect(root.getByText("Dear friend, I hope this letter finds you well. 123")).toBeVisible();
+      assert.equal(await root.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
+      await root.screenshot({ path: ".build-tmp/repair-people/letter-font-" + width + ".png" });
+      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
+      assert.equal(sent.values.letterFontId, "caveat");
       await f.close();
     }
   });

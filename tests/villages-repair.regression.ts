@@ -1,5 +1,9 @@
-// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/retained-scenes, repair/scale, repair/http
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
+// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/scale, repair/http, repair/wishes
 import assert from "node:assert/strict";
+import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
+import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -60,9 +64,6 @@ async function fixture() {
     createRepairService({
       gate,
       repository: repo,
-      correctWish: async () => {
-        throw Error("No Wish command in this fixture");
-      },
       resumeProject: async () => {
         throw Error("No Project command in this fixture");
       },
@@ -828,4 +829,70 @@ await runCase("repair/http", async () => {
     await app.close();
     release();
   }
+});
+
+await runCase("repair/letter-fonts", async () => {
+  const f = await fixture(),
+    model = projectFixture().state();
+  await f.repo.mutateAuthority((state) => {
+    state.villagers = model.villagers;
+  });
+  const resident = (await f.read()).villagers[0]!;
+  const id = repairId("letter-font", resident.characterId);
+  const record = await f.api.inspect(id, resident.characterId);
+  const original = legacyLetterFont(resident.characterId);
+  assert.equal(record.fields[0]!.value, original);
+  assert.equal(record.fields[0]!.options!.length, 100);
+  const next = LETTER_FONTS.find((font) => font.id !== original)!.id;
+  const request = { ...edit(id, { letterFontId: next }, "font-change"), personId: resident.characterId };
+  const review = await f.prepare(request);
+  assert.equal((await f.read()).villagers[0]!.letterFontId, undefined, "Review is read-only");
+  await f.api.apply(review.id);
+  assert.equal((await f.read()).villagers[0]!.letterFontId, next);
+  f.reopen();
+  assert.equal((await f.read()).villagers[0]!.letterFontId, next, "The decoder preserves the saved style");
+  const undo = await f.api.undo(review.id, "undo-font-change");
+  await f.api.apply(undo.id);
+  assert.equal((await f.read()).villagers[0]!.letterFontId, undefined);
+
+  await f.repo.mutateAuthority((state) => {
+    state.villagers[0]!.letterFontId = "future-font-id";
+  });
+  assert.equal((await f.read()).villagers[0]!.letterFontId, "future-font-id", "Unknown IDs survive loading");
+  const missing = await f.api.inspect(id, resident.characterId);
+  assert.equal(missing.fields[0]!.value, "future-font-id");
+  assert.ok(missing.fields[0]!.options!.some((option) => option.value === "future-font-id"));
+  const stale = await f.prepare({ ...request, operationId: "stale-font" });
+  await f.repo.mutateAuthority((state) => {
+    state.villagers[0]!.letterFontId = original;
+  });
+  await assert.rejects(() => f.api.apply(stale.id), /changed/u);
+  assert.equal((await f.read()).villagers[0]!.letterFontId, original);
+});
+
+await runCase("repair/wishes", async () => {
+  const f = await fixture();
+  await f.repo.mutateAuthority((state) => {
+    state.villagers = wishWorld().villagers;
+    const wish = fixtureWish({ wish: "Share a conversation", reason: "Private motive." }, "talk");
+    wish.status = "fulfilled";
+    state.villagers[0].wishes = [wish];
+  });
+  const record = await f.api.inspect(repairId("wish", "a", "talk"));
+  const values = Object.fromEntries(record.fields.map((field) => [field.key, field.value]));
+  values.status = "open";
+  values.approach = "Ask when they have time.";
+  const before = await f.read(),
+    review = await f.prepare(edit(record.id, values, "fix-social-wish"));
+  assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled", "Repair review is read-only");
+  await f.api.apply(review.id);
+  const repaired = await f.read(),
+    wish = repaired.villagers[0].wishes[0];
+  assert.equal(wish.status, "open");
+  assert.equal(wish.approach, values.approach);
+  assert(wish.revision > before.villagers[0].wishes[0].revision);
+  assert.deepEqual(knownSocialWishes(repaired, "a"), [], "Administrative state repair grants no player knowledge");
+  const undo = await f.api.undo(review.id, "undo-social-wish");
+  await f.api.apply(undo.id);
+  assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled");
 });

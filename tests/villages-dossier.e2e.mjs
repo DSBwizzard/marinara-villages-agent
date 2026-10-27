@@ -1,7 +1,8 @@
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as base, mapImage, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -16,12 +17,17 @@ try {
   for (const [width, height] of [
     [1440, 900],
     [1366, 600],
+    [977, 932],
     [900, 800],
     [768, 1024],
     [390, 844],
     [390, 600],
     [320, 650],
-  ].filter(([width]) => !process.env.VILLAGES_DOSSIER_WIDTH || width === Number(process.env.VILLAGES_DOSSIER_WIDTH))) {
+  ].filter(
+    ([width, height]) =>
+      (!process.env.VILLAGES_DOSSIER_WIDTH || width === Number(process.env.VILLAGES_DOSSIER_WIDTH)) &&
+      (!process.env.VILLAGES_DOSSIER_HEIGHT || height === Number(process.env.VILLAGES_DOSSIER_HEIGHT)),
+  )) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
     await mockEngineLookups(page);
     const errors = [],
@@ -30,6 +36,13 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     const village = structuredClone(base);
     village.villagers = village.villagers.slice(0, 2);
+    village.villagers[0].letterFontId = "caveat";
+    await page.route("**/api/capability-packages/villages/assets/letter-fonts/caveat.json", (route) =>
+      fulfill(route, {
+        contentType: "application/json",
+        body: readFileSync("packages/villages/letter-fonts/caveat.json", "utf8"),
+      }),
+    );
     village.villagers[0].summary = "A curious explorer who enjoys meeting people and sharing stories.";
     if (width === 390) village.villagers[0].summary = village.villagers[0].summary.repeat(12);
     village.villagers[0].identityDescription = { text: village.villagers[0].summary, revision: "description-1" };
@@ -138,13 +151,9 @@ try {
         wishes: characterId === "mara" ? ["Learn to swim"] : [],
         knownWishes:
           characterId === "mara"
-            ? [{ wishId: "swim", text: "Learn to swim", learnedAt: now, status: "active", facts: [] }]
+            ? [{ wishId: "swim", text: "Learn to swim", at: now, status: "open", followed: true, facts: [] }]
             : [],
         ties: [],
-        knownDevelopment:
-          characterId === "mara"
-            ? [{ id: "pursuit-known", at: now, title: "Restore the mill", text: "Mara hopes to restore the mill" }]
-            : [],
         learned:
           characterId === "mara"
             ? [{ text: "Mara and Eli are friends", kind: "connection", at: now, aboutName: "Eli" }]
@@ -196,17 +205,17 @@ try {
         weekUnreadable: false,
         ingestSchedule: false,
         nativeSchedule: null,
-        agenda: {
-          wishes: [
+        wishes: [
+          fixtureWish(
             {
-              id: characterId + "-private",
               wish: characterId === "mara" ? "PRIVATE MARA WISH" : "PRIVATE ELI WISH",
-              tell: "",
-              intensity: 2,
-              addedAt: now,
-              expiresAt: now,
+              reason: "Grounded social fixture desire",
             },
-          ],
+            characterId + "-private",
+            now,
+          ),
+        ],
+        agenda: {
           routineSummary: "PRIVATE ROUTINE",
           generatedAt: now,
           activeDay: { blocks: [] },
@@ -220,15 +229,13 @@ try {
         wishHistoryCount: 0,
       })),
     };
-    relationships.profiles[0].knownDevelopment = [
-      { id: "move", text: "Mara: move to Mill : stalled.", at: now, status: "stalled" },
-    ];
     relationships.profiles[0].knownWishes.push(
       ...Array.from({ length: 12 }, (_, index) => ({
         wishId: `shared-${index}`,
         text: `Shared wish ${index + 1}`,
-        learnedAt: now,
-        status: "active",
+        at: now,
+        followed: true,
+        status: "open",
         facts: [],
       })),
     );
@@ -449,6 +456,8 @@ try {
             },
           ],
         };
+      else if (path.endsWith("/wishes/inspect"))
+        value = { wishes: agendas.villagers.find((v) => path.includes("/" + v.characterId + "/"))?.wishes ?? [] };
       else if (path.endsWith("/agendas/mara/influence")) {
         agendas.villagers[0].ingestSchedule = true;
         value = agendas;
@@ -468,9 +477,6 @@ try {
       else if (path.endsWith("/villagers/mara") && request.method() === "DELETE") {
         village.villagers = village.villagers.filter((entry) => entry.characterId !== "mara");
         value = village;
-      } else if (path.endsWith("/wishes/swim/retire")) {
-        relationships.profiles[0].knownWishes[0].status = "retired";
-        value = relationships;
       } else if (/\/greet|\/turn|\/interpret/.test(path)) throw Error("Unexpected generation request " + path);
       await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
@@ -494,22 +500,6 @@ try {
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
     await expect(selector.getByRole("searchbox")).toHaveCount(0);
     await selector.getByRole("button", { name: "Open Mara profile" }).click();
-    await page.getByRole("button", { name: "Pursuits", exact: true }).click();
-    const development = page
-      .getByRole("region", { name: "Known pursuits", exact: true })
-      .getByText("Mara: move to Mill : stalled.", { exact: false });
-    await expect(development).toBeVisible();
-    await development.scrollIntoViewIfNeeded();
-    assert.equal(
-      await development.evaluate((element) => {
-        const box = element.getBoundingClientRect();
-        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-        return hit === element || element.contains(hit);
-      }),
-      true,
-      "Known pursuits must be readable without the portrait covering them.",
-    );
-
     assert.deepEqual(
       await page.locator(`.${P}-dossier-book`).boundingBox(),
       bookBox,
@@ -589,7 +579,6 @@ try {
     await expect(overview.getByText("Mara has expressed an interest in talking again.")).toBeVisible();
     await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
     await expect(overview.getByText("Learn to swim")).toBeVisible();
-    await expect(overview.getByText("Mara: move to Mill : stalled.")).toBeVisible();
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
     await expect(overview.getByText("No known home or work location.")).toBeVisible();
     relationships.profiles[0].knownPlaces = [{ kind: "home", text: "Mara says she lives at the Mill.", at: now }];
@@ -749,15 +738,17 @@ try {
     await expect(profile.getByText("Learn to swim", { exact: true }).first()).toBeVisible();
     const tabBefore = await tabs.boundingBox();
     const reading = profile.locator(`.${P}-dossier-content`);
+    let wishPages = 0;
+    while (!(await profile.getByText("Shared wish 12", { exact: true }).first().isVisible())) {
+      await profile.getByRole("button", { name: "Next Wishes page", exact: true }).click();
+      assert(++wishPages < 20);
+    }
     assert.ok(
-      await reading.evaluate((node) => {
-        node.scrollTop = node.scrollHeight;
-        return node.scrollTop > 0;
-      }),
-      "Long section content scrolls vertically",
+      await reading.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+      "Wishes use bounded pages instead of scrolling",
     );
     const tabAfter = await tabs.boundingBox();
-    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while content scrolls");
+    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while changing Wish pages");
     assert.equal(tabAfter.x, tabBefore.x);
     await expect(profile.getByText("Shared wish 12", { exact: true }).first()).toBeVisible();
     await settleTurn();
@@ -828,6 +819,26 @@ try {
         bounds.overlay.right <= bounds.game.right,
       "Mailbox stays within the game window",
     );
+    const dialogBounds = await mail.evaluate((node) => {
+      const dialog = node.getBoundingClientRect();
+      const overlay = node.closest(".villages-mailbox-overlay").getBoundingClientRect();
+      return {
+        top: dialog.top,
+        bottom: dialog.bottom,
+        overlayTop: overlay.top,
+        overlayBottom: overlay.bottom,
+        css: {
+          height: getComputedStyle(node).height,
+          maxHeight: getComputedStyle(node).maxHeight,
+          minHeight: getComputedStyle(node).minHeight,
+          overlayGrid: getComputedStyle(node.closest(".villages-mailbox-overlay")).gridTemplateRows,
+        },
+      };
+    });
+    assert(
+      dialogBounds.top >= dialogBounds.overlayTop - 1 && dialogBounds.bottom <= dialogBounds.overlayBottom + 1,
+      `Mailbox dialog fits inside its overlay: ${JSON.stringify({ width, height, dialogBounds })}`,
+    );
     await page.locator("#engine-control").click();
     await expect(page.locator("#engine-control")).toHaveAttribute("data-clicked", "true");
     await expect(mail.getByLabel("Recipient")).toHaveValue("mara");
@@ -883,6 +894,52 @@ try {
     if (width === 390) failMailRead = true;
     await letterRows.first().click();
     await expect(mail.getByLabel("Personal mail").getByText("A first letter from Mara.")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Array.from(document.fonts).some(
+            (face) => face.family === "village-letter-caveat" && face.status === "loaded",
+          ),
+        ),
+      )
+      .toBe(true);
+    const readingMode = mail.getByRole("button", { name: "Simple text" });
+    const paperView = mail.getByLabel("Personal mail");
+    await expect(paperView.locator(".villages-letter-heading")).toHaveCount(0);
+    assert(await readingMode.evaluate((node) => !!node.closest("header")), "Reading mode sits beside Mailbox");
+    const portrait = paperView.locator(".villages-letter-portrait");
+    await expect(portrait).toBeVisible();
+    assert(
+      await portrait.evaluate((node) => {
+        const face = node.getBoundingClientRect();
+        const paper = node.closest(".villages-letter-paper").getBoundingClientRect();
+        const text = node.closest(".villages-letter-pages").querySelector(".villages-letter-text");
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const overlaps = Array.from(range.getClientRects()).some(
+          (line) =>
+            line.width > 1 &&
+            line.height > 1 &&
+            line.left < face.right - 1 &&
+            line.right > face.left + 1 &&
+            line.top < face.bottom - 1 &&
+            line.bottom > face.top + 1,
+        );
+        return paper.right - face.right < 45 && !overlaps;
+      }),
+      "The sender portrait sits at the upper right without covering the letter",
+    );
+    await expect(readingMode).toHaveAttribute("aria-pressed", "false");
+    await readingMode.click();
+    await expect(readingMode).toHaveAttribute("aria-pressed", "true");
+    assert.equal(await page.evaluate(() => localStorage.getItem("villages-letter-simple")), "true");
+    assert.match(
+      await mail
+        .locator(".villages-letter-text")
+        .first()
+        .evaluate((node) => getComputedStyle(node).fontFamily),
+      /system-ui/,
+    );
     const letterSignature = mail.getByRole("img", { name: "Mara's signature" });
     await expect(letterSignature).toBeVisible();
     const placement = await letterSignature.evaluate((node) => {
@@ -911,6 +968,153 @@ try {
     }
     await expect.poll(() => writes.findLast((row) => row.path.endsWith("/read"))?.body.messageId).toBe("first-letter");
     assert.equal(mailbox.threads[0].messages.find((message) => message.id === "second-letter").read, false);
+    if ([1366, 977, 390, 320].includes(width)) {
+      const paper = mail.locator(".villages-letter-paper");
+      const pageBody = mail.locator(".villages-letter-pages");
+      const pageCounter = mail.getByLabel("Letter pages");
+      const pageCount = () =>
+        pageCounter
+          .locator("span")
+          .textContent()
+          .then((text) => Number(text.split("/")[1]));
+      const lastCharacterVisible = () =>
+        pageBody.evaluate((node) => {
+          const textNode = Array.from(node.querySelectorAll(".villages-letter-text")).at(-1).firstChild;
+          const end = textNode.textContent.trimEnd().length;
+          const range = document.createRange();
+          range.setStart(textNode, end - 1);
+          range.setEnd(textNode, end);
+          const character = range.getBoundingClientRect();
+          const viewport = node.getBoundingClientRect();
+          return (
+            character.left >= viewport.left - 1 &&
+            character.right <= viewport.right + 1 &&
+            character.top >= viewport.top - 1 &&
+            character.bottom <= viewport.bottom + 1
+          );
+        });
+      const shortLetter =
+        "Dear friend,\n\nThe rain finally stopped this morning, so I took the long path past the mill. The garden is coming back to life, one little green shoot at a time.\n\nWould you like to walk there with me tomorrow? I will bring the tea.\n\nUntil then,\nMara";
+      mailbox.threads[0].messages.find((message) => message.id === "first-letter").text = shortLetter;
+      await expect
+        .poll(
+          () =>
+            mail
+              .locator(".villages-letter-text")
+              .allTextContents()
+              .then((parts) => parts.join("")),
+          { timeout: 10000 },
+        )
+        .toBe(shortLetter);
+      await readingMode.click();
+      if (width === 977) assert.equal(await pageCount(), 1, "A letter that fits uses one sheet");
+      const nextPage = mail.locator('button[aria-label="Next page"]');
+      const previousPage = mail.locator('button[aria-label="Previous page"]');
+      while (await nextPage.isEnabled()) await nextPage.click();
+      assert(await lastCharacterVisible(), "The final paper includes the end of the letter with the signature");
+      assert(
+        await letterSignature.evaluate((node) => {
+          const signature = node.getBoundingClientRect();
+          const viewport = node.closest(".villages-letter-pages").getBoundingClientRect();
+          return (
+            signature.right > viewport.left &&
+            signature.left < viewport.right &&
+            signature.bottom > viewport.top &&
+            signature.top < viewport.bottom
+          );
+        }),
+        "The signature is visible on that same paper",
+      );
+      if (width === 977) {
+        for (const { size, singlePage } of [
+          { size: { width: 720, height: 600 }, singlePage: false },
+          { size: { width: 1200, height: 900 }, singlePage: null },
+          { size: { width, height }, singlePage: true },
+        ]) {
+          await page.setViewportSize(size);
+          await page.evaluate(
+            () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+          );
+          if (singlePage !== null)
+            await expect
+              .poll(async () => (await pageCount()) === 1, {
+                message: `Page count after resizing to ${size.width}×${size.height}`,
+              })
+              .toBe(singlePage);
+          while (await nextPage.isEnabled()) await nextPage.click();
+          assert(await lastCharacterVisible(), "Resizing retains text on the signature's page");
+        }
+      }
+      while (await previousPage.isEnabled()) await previousPage.click();
+      await readingMode.click();
+
+      const longLetter = "A page of words from Mara, written carefully for a friend. ".repeat(45) + "The final word.";
+      mailbox.threads[0].messages.find((message) => message.id === "first-letter").text = longLetter;
+      await expect
+        .poll(
+          () =>
+            mail
+              .locator(".villages-letter-text")
+              .allTextContents()
+              .then((parts) => parts.join("")),
+          { timeout: 10000 },
+        )
+        .toBe(longLetter);
+      for (const simple of [true, false]) {
+        if (!simple) await readingMode.click();
+        await expect.poll(pageCount).toBeGreaterThan(1);
+        await expect(readingMode).toHaveAttribute("aria-pressed", String(simple));
+        assert.equal(
+          await mail
+            .locator(".villages-letter-text")
+            .first()
+            .evaluate((node) => node.style.fontStyle),
+          simple ? "" : "oblique 3deg",
+          "Personality-inspired styling is only applied in expressive mode",
+        );
+        assert.equal(
+          await paper.evaluate((node) => node.scrollHeight > node.clientHeight + 1),
+          false,
+          "Letter paper does not scroll",
+        );
+        assert.equal(await paper.evaluate((node) => getComputedStyle(node).overflow), "hidden");
+        const count = await pageCount();
+        for (let index = 0; index < count; index++) {
+          await expect(pageCounter).toContainText(`${index + 1} / ${count}`);
+          if (!simple && (index === 0 || index === count - 1))
+            await page.screenshot({
+              path: resolve(output, `mailbox-pages-${width}-${height}-${index === 0 ? "first" : "last"}.png`),
+            });
+          const signaturePosition = await letterSignature.evaluate((node) => {
+            const signature = node.getBoundingClientRect();
+            const viewport = node.closest(".villages-letter-pages").getBoundingClientRect();
+            return {
+              left: signature.left - viewport.left,
+              right: signature.right - viewport.left,
+              width: viewport.width,
+              scrollWidth: node.closest(".villages-letter-pages").scrollWidth,
+              visible:
+                signature.right > viewport.left + 1 &&
+                signature.left < viewport.right - 1 &&
+                signature.bottom > viewport.top + 1 &&
+                signature.top < viewport.bottom - 1,
+            };
+          });
+          assert.equal(
+            signaturePosition.visible,
+            index === count - 1,
+            `Signature appears only on the final paper: ${JSON.stringify({ index, count, simple, signaturePosition })}`,
+          );
+          if (index === count - 1)
+            assert(await lastCharacterVisible(), "The final paper includes the end of the letter with the signature");
+          if (index < count - 1) await mail.getByRole("button", { name: "Next page" }).click();
+        }
+        if (simple) {
+          while (await mail.getByRole("button", { name: "Previous page" }).isEnabled())
+            await mail.getByRole("button", { name: "Previous page" }).click();
+        }
+      }
+    }
     if (width === 390) {
       await mail.getByRole("button", { name: "Back to letters" }).click();
       await mail.getByRole("button", { name: "Write a letter", exact: true }).click();

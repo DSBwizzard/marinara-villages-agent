@@ -1,8 +1,8 @@
-import type { SavedSettingsDraft } from "./draft-session.js";
-import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
-import type { VillageSettings, VillageSnapshot, VillageBackgroundPace } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
 import { type SetStateAction, useCallback } from "react";
+import type { VillageBackgroundPace, VillageSettings, VillageSnapshot } from "../../../shared/contracts/village.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
+import type { SavedSettingsDraft } from "./draft-session.js";
 
 export function useSaveSettings(ports: {
   knowledgeDraft: string;

@@ -1,44 +1,45 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  clearVillagerAgenda,
-  setVillagerScheduleInfluence,
-  buildVillageAgendas,
-} from "../packages/villages/src/server/features/residents/resident-agendas.js";
-import { routineRevision, routineRevisionMatches } from "../packages/villages/src/server/domain/rules/wish-policy.js";
-import { adoptedProfile } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
-import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
 import {
-  influenceSettings,
-  deriveInfluence,
-  routineDay,
-  compressAgendaBlocks,
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
   addRoutineIdea,
+  adoptedProfile,
   agendaPromptDay,
+  compressAgendaBlocks,
+  deriveInfluence,
+  influenceSettings,
+  routineDay,
   validateRoutineDay,
 } from "../packages/villages/src/server/domain/rules/owned-routine.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
+import { routineRevision, routineRevisionMatches } from "../packages/villages/src/server/domain/rules/wish-policy.js";
+import {
+  buildVillageAgendas,
+  clearVillagerAgenda,
+  setVillagerScheduleInfluence,
+} from "../packages/villages/src/server/features/residents/resident-agendas.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { reconcileVillage } from "../packages/villages/src/server/features/world/village.js";
-import { rollActiveAgendas } from "../packages/villages/src/server/features/residents/resident-agendas.js";
+import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import {
-  startBackgroundWork,
-  settleBackgroundWork,
-  backgroundWorkSummaries,
-} from "../packages/villages/src/server/jobs/background-work.js";
-import { parseCompactFounding } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
-import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
-import {
-  agendaDateKey,
   agendaBlocksFor,
+  agendaDateKey,
   completeAgendaWeek,
 } from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import { wishSlots } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
-import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
+import { parseCompactFounding } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { rollActiveAgendas } from "../packages/villages/src/server/features/residents/resident-agendas.js";
+import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
+import { reconcileVillage } from "../packages/villages/src/server/features/world/village.js";
+import {
+  backgroundWorkSummaries,
+  settleBackgroundWork,
+  startBackgroundWork,
+} from "../packages/villages/src/server/jobs/background-work.js";
 
 const today = new Date(),
   dateKey = agendaDateKey(today),
@@ -73,7 +74,7 @@ const context = {
   home: "Home",
   venues: [],
   lore: [],
-  completedWishes: [],
+  wishes: [],
   activeWishes: [],
   schedule: null,
 };
@@ -92,7 +93,7 @@ const translated = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [{ ...
 const raw = {
   memories: { format: 1, revision: 0, records: [] },
   memoryScenes: {},
-  version: 5,
+  version: 6,
   seed: "owned-test",
   setting: "Quiet valley",
   backgroundPace: "off",
@@ -104,8 +105,8 @@ const raw = {
       addedAt: "2026-09-01",
       ingestSchedule: true,
       cardSnapshot: { ...card, revision: 1, sourceStatus: "available", capturedAt: "2026-09-01T00:00:00.000Z" },
+      wishes: [],
       agenda: {
-        wishes: [],
         generatedAt: "2026-09-01T00:00:00.000Z",
         routineSummary: "Existing life",
         week: legacyWeek,
@@ -485,11 +486,6 @@ async function main() {
       blocks: [block],
       scheduleInformed: false,
     };
-    const slots = wishSlots(actor, state, new Date(next.getFullYear(), next.getMonth(), next.getDate(), 8));
-    assert.ok(
-      slots.length && slots.every((slot) => slot.endMinute - slot.startMinute <= 60),
-      "long optional activities contain opportunities",
-    );
     source = null;
     resetNativeScheduleCache();
     await buildVillageAgendas();
@@ -508,7 +504,7 @@ async function main() {
     };
     const access = coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],
@@ -531,7 +527,7 @@ async function main() {
     assert.equal(validateRoutineDay([destination], resident, access)[0]!.venueId, "");
     const crowd = coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],

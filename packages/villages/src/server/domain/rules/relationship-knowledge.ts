@@ -1,9 +1,8 @@
-import { projectMemories } from "./memory-views.js";
-import { knownWishes } from "./wish-journal.js";
-import { knownDevelopment } from "./development-knowledge.js";
+import type { RelationshipProfile } from "../../../shared/contracts/relationships.js";
 import type { RelationshipState } from "../models/relationship-types.js";
 import type { VillageState } from "../models/world.js";
-import type { RelationshipProfile } from "../../../shared/contracts/relationships.js";
+import { projectMemories } from "./memory-views.js";
+import { knownWishes } from "./wish-journal.js";
 export type { RelationshipProfile } from "../../../shared/contracts/relationships.js";
 
 /** Learned values are saved disclosures, never a projection of private social authority. */
@@ -54,7 +53,6 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
         .join("; "),
       wishes: knownWishes(village, resident.characterId).map((row) => row.text),
       knownWishes: knownWishes(village, resident.characterId),
-      knownDevelopment: knownDevelopment(village, resident.characterId),
       learned: learned.map(({ toId, ...row }) => ({ ...row, aboutName: name(toId) })),
       access: Object.values(state.grants)
         .filter(

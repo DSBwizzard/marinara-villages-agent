@@ -1,5 +1,4 @@
-import { recordTurnTiming } from "../../shared/turn-timing.js";
-import { useCallback, useState, useRef } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   isSceneTurnOutcome,
   isSceneTurnOutcomeMessage,
@@ -9,12 +8,12 @@ import type { RoomOperation, SceneView } from "../../../shared/contracts/village
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js";
-import type { SceneScreenController } from "./screen-contracts.js";
+import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { DecisionsControl } from "../settings/villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
-import { RoomPanel, sceneZoneLabel, currentRoom } from "./ScenePanel.js";
-import { useContext, useEffect } from "react";
 import type { SceneErrorItem } from "./scene-errors.js";
+import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
+import type { SceneScreenController } from "./screen-contracts.js";
 import { SpinoffActionContext, SpinoffErrorContext } from "./SpinoffPanel.js";
 
 const requestErrorIds = new Set(["room", "operation", "greeting"]);

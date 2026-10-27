@@ -1,16 +1,18 @@
-import type { RepairRecord, RepairField, RepairRequest } from "../../../shared/contracts/repair.js";
-import type { VillageState } from "../models/world.js";
+import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
+import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import type { RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
 import type { MemoryKnower } from "../models/memories.js";
-import { inspectMemoryCandidates, retainMemoryScenes } from "./memory-views.js";
-import { correctVillageMemory, forgetVillageMemory } from "./village-memories.js";
-import { validateMemoryRecord, memoryHash } from "./memory-integrity.js";
-import { normalizeVillageMutation } from "./world-mutation.js";
-import { venueZones } from "./venue-zones.js";
-import { venueResidentIds, venueCapacity, hasVenueClass } from "./venue-model.js";
-import { assertResidencePrivateDestination } from "./venue-layout.js";
-import { keepAgendaPlaces } from "./resident-agenda.js";
-import { removeWishActivities } from "./wish-policy.js";
+import type { VillageState } from "../models/world.js";
 import { badRequest, conflict } from "./errors.js";
+import { memoryHash, validateMemoryRecord } from "./memory-integrity.js";
+import { inspectMemoryCandidates, retainMemoryScenes } from "./memory-views.js";
+import { keepAgendaPlaces } from "./resident-agenda.js";
+import { readSocialWish } from "./social-wishes.js";
+import { assertResidencePrivateDestination } from "./venue-layout.js";
+import { hasVenueClass, venueCapacity, venueResidentIds } from "./venue-model.js";
+import { venueZones } from "./venue-zones.js";
+import { correctVillageMemory, forgetVillageMemory } from "./village-memories.js";
+import { normalizeVillageMutation } from "./world-mutation.js";
 
 export const repairId = (...parts: string[]) => JSON.stringify(parts);
 export const repairParts = (id: string): string[] => {
@@ -110,7 +112,7 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
           revision: root.revision,
           subjects: row.subjects,
           related:
-            row.domainRef && ["wish", "pursuit", "project"].includes(row.domainRef.kind)
+            row.domainRef && ["wish", "project"].includes(row.domainRef.kind)
               ? [
                   {
                     id:
@@ -184,6 +186,22 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
         source: ["Captured character and admission context. The original library card stays separate."],
       },
     );
+    const fontId = person.letterFontId ?? legacyLetterFont(id);
+    add(
+      ["letter-font", id],
+      "people",
+      `${name} · letter style`,
+      "Applies to existing and future letters",
+      [
+        choices("letterFontId", "Letter style", fontId, [
+          ...(!LETTER_FONTS.some((font) => font.id === fontId) ? [{ value: fontId, label: "Unavailable style" }] : []),
+          ...[...LETTER_FONTS]
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((font) => ({ value: font.id, label: font.name })),
+        ]),
+      ],
+      { source: [] },
+    );
     if (person.agenda) {
       add(["routine", id], "people", `${name} · routine`, "Future routine plans", [
         text("routineSummary", "Routine", person.agenda.routineSummary),
@@ -208,39 +226,33 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
         ]),
       ]);
     }
-    for (const wish of person.agenda?.wishes ?? []) {
+    for (const wish of person.wishes)
       add(
         ["wish", id, wish.id],
         "progress",
-        `${name} · ${wish.wish}`,
-        "Active Wish",
-        [text("wish", "Desired outcome", wish.wish)],
-        {
-          source: ["Corrects the authoritative desired outcome; does not invent fulfillment."],
-          actions: [...actions, { id: "retire", label: "Retire Wish" }],
-        },
+        name + " · " + wish.wish,
+        wish.status,
+        [
+          text("wish", "Desired outcome", wish.wish),
+          text("reason", "Reason", wish.reason),
+          choices(
+            "status",
+            "Status",
+            wish.status,
+            ["open", "fulfilled", "withdrawn"].map((value) => ({ value, label: value })),
+          ),
+          text("approach", "Approach", wish.approach),
+          choices(
+            "attention",
+            "Attention",
+            wish.attention.state,
+            ["background", "foreground"].map((value) => ({ value, label: value })),
+          ),
+          text("attentionReason", "Attention reason", wish.attention.reason),
+          ...wish.conditions.map((c) => text("condition:" + c.id, "Essential condition", c.quote)),
+        ],
+        { source: ["Private retained desire. Player knowledge is repaired separately."] },
       );
-    }
-    for (const wish of person.completedWishes) {
-      add(
-        ["completed-wish", id, wish.wish.id],
-        "progress",
-        `${name} · ${wish.wish?.wish ?? "Completed Wish"}`,
-        "Recorded Wish outcome",
-        [],
-        { actions: [{ id: "reopen", label: "Withdraw mistaken completion" }] },
-      );
-    }
-    if (state.development?.residents[id])
-      for (const pursuit of state.development.residents[id].pursuits)
-        add(
-          ["pursuit", id, pursuit.id],
-          "progress",
-          `${name} · Pursuit`,
-          pursuit.status,
-          [text("reason", "Recorded reason", pursuit.reason)],
-          { actions: [...actions, { id: "end", label: "End Pursuit" }] },
-        );
   }
   for (const venue of state.venues) {
     add(["venue", venue.id], "places", venue.name, "Venue description and map placement", [
@@ -529,6 +541,10 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         for (const key of ["personality", "backstory", "scenario", "appearance", "postHistoryInstructions"] as const)
           p.cardSnapshot[key] = str(key);
         p.cardSnapshot.revision++;
+      } else if (kind === "letter-font") {
+        const person = state.villagers.find((v) => v.characterId === id);
+        if (!person) throw conflict("That villager is unavailable.");
+        person.letterFontId = str("letterFontId");
       } else if (kind === "routine") {
         const agenda = state.villagers.find((v) => v.characterId === id)!.agenda!;
         agenda.routineSummary = str("routineSummary");
@@ -616,29 +632,40 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
             });
         }
       } else if (kind === "wish") {
-        const p = state.villagers.find((v) => v.characterId === id)!,
-          wish = p.agenda!.wishes.find((w) => w.id === sub)!;
-        if (request.action === "retire") {
-          p.agenda!.wishes = p.agenda!.wishes.filter((w) => w.id !== sub);
-          removeWishActivities(p, sub, new Date(at));
-          const need = p.wishLifecycle?.needs.find((n) => n.id === wish.need?.id);
-          if (need) need.state = "expired";
-          state.progressTasks = state.progressTasks.filter(
-            (task) => task.definition.owner.kind !== "wish" || task.definition.owner.id !== sub,
-          );
-        } else {
-          if (!str("wish") || str("wish").length > 600) throw badRequest("Enter a short desired outcome.");
-          wish.wish = str("wish");
-          wish.semanticCriteria = undefined;
-          wish.conditionRevision = (wish.conditionRevision ?? 0) + 1;
-        }
-      } else if (kind === "pursuit") {
-        const resident = state.development!.residents[id],
-          pursuit = resident.pursuits.find((p) => p.id === sub)!;
-        pursuit.reason = str("reason");
-        pursuit.updatedAt = at;
-        if (request.action === "end") pursuit.status = "ended" as typeof pursuit.status;
-        resident.revision++;
+        const owner = state.villagers.find((p) => p.characterId === id)!,
+          wish = owner.wishes.find((w) => w.id === sub)!;
+        const status = str("status"),
+          attention = str("attention");
+        if (
+          !["open", "fulfilled", "withdrawn"].includes(status) ||
+          !["background", "foreground"].includes(attention) ||
+          !["wish", "reason", "attentionReason"].every((key) => str(key).length > 0 && str(key).length <= 320) ||
+          str("approach").length > 320
+        )
+          throw badRequest("Enter a short desired outcome, reason and valid status.");
+        const corrected = readSocialWish({
+          ...wish,
+          wish: str("wish"),
+          reason: str("reason"),
+          status,
+          approach: str("approach"),
+          attention: { state: attention, reason: str("attentionReason") },
+          revision: wish.revision + 1,
+          changedAt: at,
+          conditions: wish.conditions.map((c) => ({ ...c, quote: str("condition:" + c.id) })).filter((c) => c.quote),
+          history: [
+            ...wish.history,
+            {
+              id: request.operationId,
+              at,
+              kind: "repair",
+              text: "Administrative correction.",
+              sourceId: request.operationId,
+              lineIds: [],
+            },
+          ],
+        });
+        owner.wishes = owner.wishes.map((w) => (w.id === sub ? corrected : w));
       } else if (kind === "project") {
         const project = state.projects.find((p) => p.id === id)!;
         if (!str("title") || str("title").length > 160) throw badRequest("Enter a short Project title.");

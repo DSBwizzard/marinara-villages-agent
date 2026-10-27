@@ -1,13 +1,14 @@
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 // Test cases: scene-halt/captured-calendar, scene-halt/calendar, scene-halt/evidence, scene-halt/world, scene-halt/authority-order
 import assert from "node:assert/strict";
-import { runCase } from "../scripts/test-cases.mjs";
-import { readSceneHalt, capturedSceneCalendar } from "../packages/villages/src/server/domain/rules/scene-halt.js";
-import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
+import { capturedSceneCalendar, readSceneHalt } from "../packages/villages/src/server/domain/rules/scene-halt.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { runCase } from "../scripts/test-cases.mjs";
 
 const choice = { chosenAt: "2026-10-15T20:00:00Z", timeZone: "America/Los_Angeles" };
 const clear = { reason: "none", quote: "", appointments: [] };
@@ -147,23 +148,22 @@ await runCase("scene-halt/world", () => {
   );
   const resident = {
     characterId: "roxie",
-    agenda: {
-      wishes: [{ id: "wish", wish: "Discuss bikes", addedAt: scene.startedAt, expiresAt: "2026-10-13T00:00:00Z" }],
-    },
+    wishes: [fixtureWish({ wish: "Discuss bikes", reason: "Grounded social fixture desire" }, "wish", scene.startedAt)],
+    agenda: {},
   };
   world.villagers = [resident] as any;
   scene.continuity = captureSceneContinuity(world, scene, Date.parse(scene.startedAt));
-  const wish = { wishChanges: [{ actorId: "roxie", wishId: "wish", intent: "check" }] };
+  const wish = { wishChanges: [{ actorId: "roxie", wishId: "wish", intent: "fulfilled" }] };
   assert.equal(sceneHaltWorldConflict(scene, world, wish), false, "passing the expiry is not a new condition");
   const fulfilled = structuredClone(world);
-  fulfilled.villagers[0].agenda!.wishes = [];
+  fulfilled.villagers[0].wishes = [];
   assert.equal(sceneHaltWorldConflict(scene, fulfilled, wish), true);
   assert.equal(
     sceneHaltWorldConflict(scene, fulfilled, { wishChanges: [{ ...wish.wishChanges[0], intent: "reveal" }] }),
     false,
     "mentioning an old Wish does not revive it",
   );
-  world.villagers[0].agenda!.wishes[0].conditionRevision = 1;
+  world.villagers[0].wishes[0].revision++;
   assert.equal(sceneHaltWorldConflict(scene, world, wish), true, "new required conditions cannot be undone");
 });
 

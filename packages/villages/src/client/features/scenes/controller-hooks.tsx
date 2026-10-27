@@ -1,12 +1,14 @@
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import type {
   ArchiveVisitSummary,
   RoomOperation,
   RoomRecordEvent,
-  SceneView,
   SceneChangeIssue,
+  SceneView,
 } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
 import { useFocusRevision } from "../../shared/activity.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import {
   completedGreetingAfterFailure,
   currentRoom,
@@ -15,8 +17,6 @@ import {
   staleVenueReason,
 } from "./ScenePanel.js";
 import { isLocalRoomCompletion } from "./villages-room-reading";
-import { useSceneEntryLifetime } from "./entry-lifetime.js";
-import { useEffect, useEffectEvent, useCallback, useState, useRef } from "react";
 
 export function useSceneChangesPolling(ports: {
   visible: boolean;
@@ -44,15 +44,7 @@ export function useSceneChangesPolling(ports: {
   const focusRevision = useFocusRevision(ports.visible && ports.viewing);
   const sceneChanges = ports.snapshot?.sceneChanges;
   const revision = room?.id && sceneChanges?.sceneId === room.id ? sceneChanges.revision : "";
-  const jobs = JSON.stringify(
-    ports.snapshot?.backgroundWork
-      ?.filter(
-        (job) =>
-          job.kind === "wish-check" &&
-          (job.subjectId.startsWith(`wish-batch:${room?.id}:`) || job.subjectId.startsWith(`wish-change:${room?.id}:`)),
-      )
-      .map(({ id, status, attempt, updatedAt }) => [id, status, attempt, updatedAt]) ?? [],
-  );
+  const jobs = "";
   useEffect(() => {
     if (
       !room?.id ||

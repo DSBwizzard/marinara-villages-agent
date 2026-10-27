@@ -1,4 +1,3 @@
-import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import {
   focusedPhotoScale,
@@ -9,6 +8,7 @@ import {
   mobileMapGesture,
   mobilePhotoScale,
 } from "../packages/villages/src/client/features/exploration/villages-mobile-map.ts";
+import { clientImplementation } from "./client-source.js";
 
 const image = { width: 1500, height: 1000 };
 const frame = { width: 360, height: 600 };

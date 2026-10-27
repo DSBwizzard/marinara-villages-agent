@@ -1,23 +1,24 @@
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash } from "node:crypto";
-import { SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
 import type { villagesDebugAgentsEnabled, villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { backgroundCalls } from "../../adapters/operations/background-context.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../../domain/rules/narrative-grounding.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NAME_LENGTH } from "../../domain/rules/prompt-preset.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
+import { SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
+import { readSocialWishChanges, SOCIAL_WISH_INSTRUCTION } from "../../domain/rules/social-wishes.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
 import {
   BOOTSTRAP_MAX_TOKENS,
   BOOTSTRAP_TEMPERATURE,
-  type VillageBootstrapProposal,
   buildBootstrapMessages,
   coerceProposal,
+  type VillageBootstrapProposal,
 } from "../../domain/rules/village-bootstrap-rules.js";
 
 export type VillageBootstrapServicePorts = {
@@ -175,6 +176,10 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       state?: import("../../domain/models/relationship-types.js").RelationshipState;
       candidates: unknown[];
       relationships: string[];
+      residents: Pick<
+        import("../../domain/models/world.js").VillageVillager,
+        "characterId" | "cardSnapshot" | "wishes"
+      >[];
       memory?: ReturnType<typeof import("../../domain/rules/scene-memories.js").sceneMemoryContext>;
       at: string;
     },
@@ -190,7 +195,9 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
         content:
           RELATIONSHIP_REVIEW_INSTRUCTION +
           " Return JSON only. Independently interpret these supplied exact lines. Also return memoryChanges:[] using the native Memory contract supplied below, grounded only in actual witnessed dialogue. Use zero-based numeric lineIds into lines for social citations. For an encounter the player is absent: disclosures must be empty. For personal mail the recipient is player; save its disclosures for reading. The captured and live social baseline is context.state; absent pair revisions are 0. sceneAfter and liveAfter coincide for this automatic source. Mail cannot grant access or create actionable invitations; return permissions:[] for mail. Do not invent physical deeds or player consent. Private reasons and intentions remain private. " +
-          SCENE_MEMORY_INSTRUCTION,
+          SCENE_MEMORY_INSTRUCTION +
+          "\n" +
+          SOCIAL_WISH_INSTRUCTION,
       },
       {
         role: "user" as const,
@@ -214,6 +221,8 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     if (
       judged.finishReason === "length" ||
       !review ||
+      !Array.isArray(interpreted?.wishChanges) ||
+      interpreted.wishChanges.length > 16 ||
       !Array.isArray(interpreted?.memoryChanges) ||
       interpreted.memoryChanges.length > 16 ||
       !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
@@ -223,6 +232,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     if (context.memory) record.memoryContexts = { [context.memory.saved.protection.fingerprint]: context.memory.saved };
     record.semanticVersion = 2;
     record.memoryChanges = interpreted!.memoryChanges;
+    record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
     record.semanticSourceHash = createHash("sha256").update(JSON.stringify(reviewMessages)).digest("hex");
     return record;
   }

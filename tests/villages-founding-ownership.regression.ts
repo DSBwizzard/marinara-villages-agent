@@ -1,28 +1,30 @@
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
-import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import {
-  foundingSlot,
-  foundingCompletedIds,
-  foundingTaskRevision,
-  completeFoundingTask,
-} from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
   installDefaultActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import {
+  completeFoundingTask,
+  foundingCompletedIds,
+  foundingSlot,
+  foundingTaskRevision,
+} from "../packages/villages/src/server/domain/rules/founding-tasks.js";
+import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
+import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   createFoundingPreparation,
   type FoundingPreparationPorts,
 } from "../packages/villages/src/server/features/founding/preparation-service.js";
 import {
   configureFoundingPreparation,
-  prepareFoundedVillage,
   foundingPreparationSnapshot,
+  prepareFoundedVillage,
 } from "../packages/villages/src/server/features/founding/preparation.js";
 
 function deferred() {
@@ -44,7 +46,7 @@ function fixture(name: string) {
   const stamp = new Date().toISOString();
   let state = coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     seed: "same-seed",
     name,
     setting: name,

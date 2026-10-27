@@ -13,7 +13,7 @@ export function useResidentInspection(ports: {
   useEffect(() => {
     if (screen !== "person" || !personProfile || !profileInspection) return;
     const controller = new AbortController();
-    if (["wishes", "agenda", "venues"].includes(profileInspection)) {
+    if (["agenda", "venues"].includes(profileInspection)) {
       setAgendas(null);
       void loadAgendas(controller.signal);
     }
@@ -33,7 +33,7 @@ export function useResidentAgendaPolling(ports: {
   const pending =
     screen === "person" &&
     !!profileInspection &&
-    ["wishes", "agenda", "venues"].includes(profileInspection) &&
+    ["agenda", "venues"].includes(profileInspection) &&
     agendas?.some(
       (villager) =>
         villager.characterId === personProfile?.actorId &&

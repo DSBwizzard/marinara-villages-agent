@@ -1,6 +1,6 @@
 import type { VenueClass, VillageVenue, VillageVenueImage } from "../../shared/contracts/village.js";
-import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
 import type { SpeechDelivery } from "../../shared/helpers/scene-speech.js";
+import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
 import type { VillagesMarkdownNode } from "./villages-inline-markdown";
 
 export type SetupMapSource = "existing" | "generate" | "upload";

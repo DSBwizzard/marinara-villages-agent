@@ -1,5 +1,5 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import { isPrivateInterior, privateInteriorKey } from "../../domain/rules/private-interior.js";
+import type { VenueScene } from "../../domain/models/scene-model.js";
 import type {
   VillageSnapshot,
   VillageState,
@@ -9,6 +9,7 @@ import type {
 } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { parsePlace } from "../../domain/rules/founding-record.js";
+import { isPrivateInterior, privateInteriorKey } from "../../domain/rules/private-interior.js";
 import {
   boundText,
   isHousePlace,
@@ -33,7 +34,6 @@ import {
 import { readVenueImageContext } from "../../domain/rules/village-projections.js";
 import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
-import type { VenueScene } from "../../domain/models/scene-model.js";
 import { zonePictureBaseline, zonePictureContext } from "../../domain/rules/zone-picture.js";
 export type VillageVenueDeletionDependencies = {
   venueId: string;

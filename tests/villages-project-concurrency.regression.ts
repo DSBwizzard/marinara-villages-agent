@@ -1,16 +1,16 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
-import { fixture } from "./fixtures/villages-projects.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import { createProjectLifecycle } from "../packages/villages/src/server/features/projects/project-lifecycle-service.js";
+import {
+  PROJECT_DURATION_MS,
+  reconcileProjectLifecycles,
+} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import {
   draftNewVenueProject,
   draftRenovationProject,
 } from "../packages/villages/src/server/features/projects/project-drafts.js";
-import {
-  reconcileProjectLifecycles,
-  PROJECT_DURATION_MS,
-} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
+import { createProjectLifecycle } from "../packages/villages/src/server/features/projects/project-lifecycle-service.js";
+import { fixture } from "./fixtures/villages-projects.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 const f = fixture(),
   now = new Date("2026-10-24T00:00:00Z");
 const ids = [
@@ -133,6 +133,6 @@ for (const completeFirst of [false, true]) {
       race.some((result) => result.status === "rejected"),
       "late cancellation cannot undo completed work",
     );
-  else assert.equal(record.data.projectWishOutbox.length, 0, "cancelled work emits no completion benefit");
+  else assert.equal(record.data.projects[0].status, "cancelled");
 }
 console.log("Concurrent starts, CAS retries, request payload binding and cancellation/completion races passed.");

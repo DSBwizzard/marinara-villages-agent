@@ -3,6 +3,7 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  "tests/villages-social-wishes.regression.ts",
   "tests/villages-scene-halt.regression.ts",
   // Pure Memories rules and deterministic process-local histories; no runtime or saved worlds.
   "tests/villages-memories-core.regression.ts",
@@ -34,7 +35,6 @@ export const isolatedTests = new Set([
   "tests/villages-time-advance.e2e.mjs",
   "tests/villages-interpretation.regression.ts",
   "tests/villages-project-interpretation.regression.ts",
-  "tests/villages-wish-interpretation.regression.ts",
   "tests/villages-scene-json-hardening.regression.ts",
   "tests/villages-founding-phone-layout.e2e.mjs",
   "tests/villages-founding-compact-layout.e2e.mjs",
@@ -92,7 +92,6 @@ export const isolatedTests = new Set([
   "tests/villages-live-memory.regression.ts",
   "tests/villages-live-scene-ownership.regression.ts",
   "tests/villages-scene-time.regression.ts",
-  "tests/villages-live-wishes.regression.ts",
   "tests/villages-lorebooks.regression.ts",
   "tests/villages-map-replacement.regression.ts",
   "tests/villages-markdown.regression.ts",
@@ -196,12 +195,8 @@ export const isolatedTests = new Set([
   "tests/villages-venue-send.regression.ts",
   "tests/villages-venue-service.regression.ts",
   "tests/villages-venue-session.regression.ts",
-  "tests/villages-wish-batch.regression.ts",
-  "tests/villages-wish-clock-ownership.regression.ts",
   "tests/villages-wish-journal.e2e.mjs",
   "tests/villages-wish-journal.regression.ts",
-  "tests/villages-wish-lifecycle.regression.ts",
-  "tests/villages-wish-prevention.regression.ts",
   "tests/villages-world-coordination-ownership.regression.ts",
   "tests/villages-world-mutation.regression.ts",
   "tests/villages-zones.regression.ts",
