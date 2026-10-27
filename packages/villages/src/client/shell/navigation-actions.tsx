@@ -2,7 +2,6 @@ import type { MenuPage } from "../shared/types.js";
 import { useCallback } from "react";
 
 export function useScenesOpenMenu(ports: {
-  loadCatalog: (signal?: AbortSignal) => Promise<void>;
   loadLorebooks: (signal?: AbortSignal) => Promise<void>;
   loadProgressDebug: () => Promise<void>;
   debugDiscardEnabled: boolean;
@@ -18,7 +17,6 @@ export function useScenesOpenMenu(ports: {
   openSettings: () => void;
 }) {
   const {
-    loadCatalog,
     loadLorebooks,
     loadProgressDebug,
     debugDiscardEnabled,
@@ -36,10 +34,6 @@ export function useScenesOpenMenu(ports: {
       setFocusedRequestId("");
       if (tab === "projects") setSiteProjectId("");
       setSettingsError("");
-      // The villager list is read when it is asked for rather than kept current
-      // on every snapshot.
-      if (tab === "villagers") void loadCatalog();
-
       if (tab === "village") void loadLorebooks();
       if (tab === "progress" && debugDiscardEnabled) void loadProgressDebug();
       const enteringVillageSettings =
@@ -52,7 +46,6 @@ export function useScenesOpenMenu(ports: {
       setFocusedRequestId,
       setSiteProjectId,
       setSettingsError,
-      loadCatalog,
       loadLorebooks,
       loadProgressDebug,
       debugDiscardEnabled,

@@ -227,7 +227,7 @@ try {
     async function openManager() {
       await expect.poll(() => page.evaluate(() => !!window.featureController?.snapshot)).toBe(true);
       await page.evaluate(() => window.featureController.openPerson({ actorId: "mara", returnTo: "menu" }));
-      await page.getByText("Manage", { exact: true }).click();
+      await page.getByText("Character tools", { exact: true }).click();
       await page
         .getByRole("button", { name: /Manage sprites ·/ })
         .first()

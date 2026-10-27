@@ -15,13 +15,9 @@ import type { useLoadMemoryLibrary } from "./actions.js";
 
 import type { usePreviewVillagerRefresh } from "./actions.js";
 
-import type { useRemoveVillager } from "./actions.js";
-
 import type { useRewriteAgenda } from "./actions.js";
 
 import type { useSetAgendaScheduleIngestion } from "./actions.js";
-
-import type { useAddVillager } from "./actions.js";
 
 /** Values and actions used by ResidentsScreen; independent of shell implementation. */
 export type ResidentsScreenController = {
@@ -44,7 +40,6 @@ export type ResidentsScreenController = {
   readonly profileOrigin: ResidentsState["profileOrigin"];
   readonly refreshBusyId: ResidentsState["refreshBusyId"];
   readonly refreshPreviews: ResidentsState["refreshPreviews"];
-  readonly removeVillager: ReturnType<typeof useRemoveVillager>;
   readonly retryWork: (job: BackgroundWork) => Promise<void>;
   readonly rewriteAgenda: ReturnType<typeof useRewriteAgenda>;
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
@@ -52,6 +47,7 @@ export type ResidentsScreenController = {
   readonly setExploreSheet: React.Dispatch<React.SetStateAction<ExplorationSheet | null>>;
   readonly setFocusedProjectId: (id: string) => void;
   readonly setFocusedRequestId: React.Dispatch<React.SetStateAction<string>>;
+  readonly setHousingVenueId: React.Dispatch<React.SetStateAction<string>>;
   readonly setMemoryLibrary: ResidentsState["setMemoryLibrary"];
   readonly setMenuPage: React.Dispatch<React.SetStateAction<import("../../shared/types").MenuPage>>;
   readonly setPersonProfile: ResidentsState["setPersonProfile"];
@@ -72,21 +68,11 @@ export type ResidentsScreenController = {
 
 /** Values and actions used by RosterScreen; independent of shell implementation. */
 export type RosterScreenController = {
-  readonly addVillager: ReturnType<typeof useAddVillager>;
-  readonly busy: boolean;
-  readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];
   readonly error: string;
   readonly menuPage: import("../../shared/types").MenuPage;
   readonly openPerson: (navigation: DossierNavigation) => void;
-  readonly pickerOpen: boolean;
   readonly portraits: ResidentsState["portraits"];
-  readonly rosterSearch: ResidentsState["rosterSearch"];
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
-  readonly search: string;
   readonly setMenuPage: React.Dispatch<React.SetStateAction<import("../../shared/types").MenuPage>>;
-  readonly setPickerOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  readonly setRosterSearch: ResidentsState["setRosterSearch"];
-  readonly setSearch: React.Dispatch<React.SetStateAction<string>>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-  readonly visibleCatalog: import("../../../shared/contracts/village").CatalogEntry[];
 };

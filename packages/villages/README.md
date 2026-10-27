@@ -94,7 +94,7 @@ A Scene keeps the time, attendance, and situation it began with. A morning conve
 
 ## Get to know the residents
 
-Profiles show what you have learned about a resident: relationships, shared Wishes, known routines, and discovered history. **Back to Villagers** keeps your directory search and reading position. **Inspect** reveals spoilers only when you deliberately open it; inspecting does not teach your Persona or the residents anything.
+Profiles show what you have learned about a resident: relationships, shared Wishes, known routines, and discovered history. **Back to Villagers** keeps your directory reading position. **Inspect** reveals spoilers only when you deliberately open it; inspecting does not teach your Persona or the residents anything.
 
 Each resident has their own perspective: their connection with you, expectations, concerns, and particular shared history. A boundary, a mutual agreement, and a concrete commitment mean different things. You author your Persona’s feelings. Serious choices can end a friendship or partnership; reconciliation is possible and never guaranteed. Time away creates no automatic penalty, and friendship grants neither access nor secrets.
 
@@ -104,7 +104,7 @@ Starting history honors the resident cards, your backstory, and selected lore. C
 
 The old Noticeboard is retired. Existing notes remain in saved Village data and snapshots, but are no longer displayed or editable in the game.
 
-Residents follow routines, and their availability changes through the day. You can admit more library characters later through **Move in**. Canceling setup leaves the roster unchanged; accepted sprite copies and your original library cards stay separate.
+Residents follow routines, and their availability changes through the day. Founding admits the chosen characters; accepted sprite copies and your original library cards stay separate.
 
 ### Memories
 

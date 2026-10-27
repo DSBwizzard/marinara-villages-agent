@@ -198,7 +198,6 @@ try {
   await page.getByRole("button", { name: "People", exact: true }).click();
   await page.getByRole("button", { name: "Open Mara profile" }).click();
   await page.getByRole("button", { name: "Inspect", exact: true }).click();
-  await page.getByText("Manage", { exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Mara profile", exact: true }).getByText("Mara's agenda", { exact: true }),
   ).toBeVisible();

@@ -149,7 +149,7 @@ try {
     const buttonBox = await pursuits.boundingBox(),
       bookBox = await page.locator(`.${P}-dossier-book`).boundingBox();
     assert.ok(buttonBox.y + buttonBox.height <= bookBox.y, "Pursuits stays above the book.");
-    const manageBox = await actions.getByText("Manage", { exact: true }).boundingBox(),
+    const manageBox = await actions.getByText("Character tools", { exact: true }).boundingBox(),
       closeBox = await actions.getByRole("button", { name: "Close ×", exact: true }).boundingBox();
     assert.ok(
       buttonBox.x + buttonBox.width <= manageBox.x && manageBox.x + manageBox.width <= closeBox.x,
